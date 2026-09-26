@@ -1218,130 +1218,10 @@ fn encode_session_record(
 fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
     let mut d = Decoder::new(bytes);
     let value = match d.u8()? {
-        0 => DraftEditorCandidateSessionRecordV1::Head(dec_session_head(&mut d)?),
-        1 => {
-            let request_bytes = d.bytes("draft editor session open request")?.to_vec();
-            let head = dec_session_head(&mut d)?;
-            let request = decode_canonical_session_open_request_bytes(&request_bytes)?;
-            let selector = request.selector();
-            let candidate_generation = selector.history().candidate_generation();
-            let expected_session_generation = candidate_generation.checked_add(1).unwrap_or(0);
-            if head.thread_id() != selector.thread_id()
-                || head.draft_id() != selector.draft_id()
-                || head.session_id() != request.session_id()
-                || head.open_operation_id() != request.operation_id()
-                || head.session_generation() != expected_session_generation
-                || head.durable_base_selector_revision() != selector.selector_revision()
-                || head.durable_base_root() != selector.root()
-                || head.durable_base_history() != selector.history()
-                || head.published_candidate_generation() != candidate_generation
-                || head.published_selector_revision() != selector.selector_revision()
-                || head.published_root() != selector.root()
-                || head.published_history() != selector.history()
-                || head.newest_candidate_generation() != candidate_generation
-                || head.newest_root() != selector.root()
-                || head.newest_history().root() != selector.root()
-                || head.newest_history().key().session_id() != Some(request.session_id())
-                || head.logical_extent() != selector.root().summary().logical_extent()
-                || head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
-                || head.active_operation().is_some()
-            {
-                return Err(CodecError::InvalidLength(
-                    "draft editor session open receipt",
-                ));
-            }
-            DraftEditorCandidateSessionRecordV1::OpenReceipt(
-                DraftEditorCandidateSessionOpenReceiptV1::new(request_bytes, head),
-            )
-        }
-        2 => {
-            let request_bytes = d.bytes("candidate publication request")?.to_vec();
-            let prior = dec_current_selector(&mut d)?;
-            let successor = dec_current_selector(&mut d)?;
-            let before = dec_session_head(&mut d)?;
-            let after = dec_session_head(&mut d)?;
-            let frontier = dec_history_frontier(&mut d)?;
-            let request = decode_candidate_publication_request_bytes(&request_bytes)?;
-            let published_pair =
-                DraftRootHistoryPairV1::new(request.candidate().root(), frontier.reference());
-            if request.selector() != prior
-                || request.candidate_generation()
-                    != request.candidate().history().candidate_generation()
-                || frontier.reference().key()
-                    != DraftEditHistoryFrontierKeyV1::publication(
-                        prior.draft_id(),
-                        request.session_id(),
-                        request.operation_id(),
-                    )
-                || frontier.reference().candidate_generation() != request.candidate_generation()
-                || frontier.reference().root() != request.candidate().root()
-                || successor.thread_id() != prior.thread_id()
-                || successor.thread_revision() != prior.thread_revision()
-                || successor.draft_id() != prior.draft_id()
-                || successor.root() != request.candidate().root()
-                || successor.history() != frontier.reference()
-                || prior.selector_revision().checked_next().ok()
-                    != Some(successor.selector_revision())
-                || before.draft_id() != prior.draft_id()
-                || before.session_id() != request.session_id()
-                || before
-                    .published(
-                        request.candidate_generation(),
-                        published_pair,
-                        successor.selector_revision(),
-                    )
-                    .as_ref()
-                    != Some(&after)
-            {
-                return Err(CodecError::InvalidLength("candidate publication receipt"));
-            }
-            DraftEditorCandidateSessionRecordV1::OpenReceipt(
-                DraftEditorCandidateSessionOpenReceiptV1::from_publication(
-                    DraftEditorCandidatePublicationReceiptV1::new(
-                        request_bytes,
-                        prior,
-                        successor,
-                        before,
-                        after,
-                        frontier,
-                    ),
-                ),
-            )
-        }
-        3 => {
-            let request_bytes = d.bytes("candidate disposal request")?.to_vec();
-            let before = dec_session_head(&mut d)?;
-            let after = dec_session_head(&mut d)?;
-            let frontier = dec_history_frontier(&mut d)?;
-            let request = decode_candidate_disposal_request_bytes(&request_bytes)?;
-            if request.draft_id() != before.draft_id()
-                || request.session_id() != before.session_id()
-                || request.expected_session_generation() != before.session_generation()
-                || !(request.expected_pair()
-                    == DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
-                    && (before.disposed(request.operation_id()).as_ref() == Some(&after)
-                        || before.abandoned_fresh(request.operation_id()).as_ref() == Some(&after))
-                    || request.expected_pair()
-                        == DraftRootHistoryPairV1::new(
-                            before.published_root(),
-                            before.published_history(),
-                        )
-                        && before.disposed_opening(request.operation_id()).as_ref() == Some(&after))
-                || frontier.reference() != before.newest_history()
-            {
-                return Err(CodecError::InvalidLength("candidate disposal receipt"));
-            }
-            DraftEditorCandidateSessionRecordV1::OpenReceipt(
-                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(
-                    DraftEditorCandidateSessionDisposeReceiptV1::new(
-                        request_bytes,
-                        before,
-                        after,
-                        frontier,
-                    ),
-                ),
-            )
-        }
+        0 => decode_session_head_record(&mut d)?,
+        1 => decode_session_open_receipt(&mut d)?,
+        2 => decode_session_publication_receipt(&mut d)?,
+        3 => decode_session_disposal_receipt(&mut d)?,
         tag => {
             return Err(CodecError::InvalidTag {
                 kind: "draft editor session record",
@@ -1351,6 +1231,141 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
     };
     d.finish()?;
     Ok(value)
+}
+
+fn decode_session_head_record(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
+    Ok(DraftEditorCandidateSessionRecordV1::Head(dec_session_head(
+        d,
+    )?))
+}
+
+fn decode_session_open_receipt(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
+    let request_bytes = d.bytes("draft editor session open request")?.to_vec();
+    let head = dec_session_head(d)?;
+    let request = decode_canonical_session_open_request_bytes(&request_bytes)?;
+    let selector = request.selector();
+    let candidate_generation = selector.history().candidate_generation();
+    let expected_session_generation = candidate_generation.checked_add(1).unwrap_or(0);
+    if head.thread_id() != selector.thread_id()
+        || head.draft_id() != selector.draft_id()
+        || head.session_id() != request.session_id()
+        || head.open_operation_id() != request.operation_id()
+        || head.session_generation() != expected_session_generation
+        || head.durable_base_selector_revision() != selector.selector_revision()
+        || head.durable_base_root() != selector.root()
+        || head.durable_base_history() != selector.history()
+        || head.published_candidate_generation() != candidate_generation
+        || head.published_selector_revision() != selector.selector_revision()
+        || head.published_root() != selector.root()
+        || head.published_history() != selector.history()
+        || head.newest_candidate_generation() != candidate_generation
+        || head.newest_root() != selector.root()
+        || head.newest_history().root() != selector.root()
+        || head.newest_history().key().session_id() != Some(request.session_id())
+        || head.logical_extent() != selector.root().summary().logical_extent()
+        || head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
+        || head.active_operation().is_some()
+    {
+        return Err(CodecError::InvalidLength(
+            "draft editor session open receipt",
+        ));
+    }
+    Ok(DraftEditorCandidateSessionRecordV1::OpenReceipt(
+        DraftEditorCandidateSessionOpenReceiptV1::new(request_bytes, head),
+    ))
+}
+
+fn decode_session_publication_receipt(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
+    let request_bytes = d.bytes("candidate publication request")?.to_vec();
+    let prior = dec_current_selector(d)?;
+    let successor = dec_current_selector(d)?;
+    let before = dec_session_head(d)?;
+    let after = dec_session_head(d)?;
+    let frontier = dec_history_frontier(d)?;
+    let request = decode_candidate_publication_request_bytes(&request_bytes)?;
+    let published_pair =
+        DraftRootHistoryPairV1::new(request.candidate().root(), frontier.reference());
+    if request.selector() != prior
+        || request.candidate_generation() != request.candidate().history().candidate_generation()
+        || frontier.reference().key()
+            != DraftEditHistoryFrontierKeyV1::publication(
+                prior.draft_id(),
+                request.session_id(),
+                request.operation_id(),
+            )
+        || frontier.reference().candidate_generation() != request.candidate_generation()
+        || frontier.reference().root() != request.candidate().root()
+        || successor.thread_id() != prior.thread_id()
+        || successor.thread_revision() != prior.thread_revision()
+        || successor.draft_id() != prior.draft_id()
+        || successor.root() != request.candidate().root()
+        || successor.history() != frontier.reference()
+        || prior.selector_revision().checked_next().ok() != Some(successor.selector_revision())
+        || before.draft_id() != prior.draft_id()
+        || before.session_id() != request.session_id()
+        || before
+            .published(
+                request.candidate_generation(),
+                published_pair,
+                successor.selector_revision(),
+            )
+            .as_ref()
+            != Some(&after)
+    {
+        return Err(CodecError::InvalidLength("candidate publication receipt"));
+    }
+    Ok(DraftEditorCandidateSessionRecordV1::OpenReceipt(
+        DraftEditorCandidateSessionOpenReceiptV1::from_publication(
+            DraftEditorCandidatePublicationReceiptV1::new(
+                request_bytes,
+                prior,
+                successor,
+                before,
+                after,
+                frontier,
+            ),
+        ),
+    ))
+}
+
+fn decode_session_disposal_receipt(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
+    let request_bytes = d.bytes("candidate disposal request")?.to_vec();
+    let before = dec_session_head(d)?;
+    let after = dec_session_head(d)?;
+    let frontier = dec_history_frontier(d)?;
+    let request = decode_candidate_disposal_request_bytes(&request_bytes)?;
+    if request.draft_id() != before.draft_id()
+        || request.session_id() != before.session_id()
+        || request.expected_session_generation() != before.session_generation()
+        || !(request.expected_pair()
+            == DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
+            && (before.disposed(request.operation_id()).as_ref() == Some(&after)
+                || before.abandoned_fresh(request.operation_id()).as_ref() == Some(&after))
+            || request.expected_pair()
+                == DraftRootHistoryPairV1::new(before.published_root(), before.published_history())
+                && before.disposed_opening(request.operation_id()).as_ref() == Some(&after))
+        || frontier.reference() != before.newest_history()
+    {
+        return Err(CodecError::InvalidLength("candidate disposal receipt"));
+    }
+    Ok(DraftEditorCandidateSessionRecordV1::OpenReceipt(
+        DraftEditorCandidateSessionOpenReceiptV1::from_disposal(
+            DraftEditorCandidateSessionDisposeReceiptV1::new(
+                request_bytes,
+                before,
+                after,
+                frontier,
+            ),
+        ),
+    ))
 }
 
 #[cfg(feature = "test-faults")]

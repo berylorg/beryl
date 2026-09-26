@@ -4,6 +4,9 @@ use super::restoration_support::*;
 #[path = "restored_desktop.rs"]
 mod desktop;
 #[cfg(target_os = "windows")]
+#[path = "../support/desktop_placement_native.rs"]
+mod native_retirement;
+#[cfg(target_os = "windows")]
 #[path = "native_selected.rs"]
 mod native_selected;
 use super::*;
@@ -500,4 +503,108 @@ fn expired_restore_attempt_refuses_native_construction_and_returns_original_edit
         }),
         cx,
     );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn native_worker_retires_restored_shell_without_changing_saved_session_or_draft() {
+    retire_restored_shell_on_native_worker(231, None);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn native_worker_retires_restored_shell_with_saved_undo_history() {
+    retire_restored_shell_on_native_worker(232, Some(gpui_text_input::MutationKind::Undo));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn native_worker_retires_restored_shell_with_saved_redo_history() {
+    retire_restored_shell_on_native_worker(233, Some(gpui_text_input::MutationKind::Redo));
+}
+
+#[cfg(target_os = "windows")]
+fn retire_restored_shell_on_native_worker(
+    seed: u8,
+    history: Option<gpui_text_input::MutationKind>,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let (fixture, attempt, service, unpublished, before, draft, selection) =
+        home_support::worker(move || {
+            let PreparedFixture {
+                prepared,
+                attempt,
+                _service,
+                fixture,
+                appearance,
+                seals,
+                snapshot,
+                draft,
+            } = prepared_fixture_with_history(seed, history);
+            let selection = prepared.selection_identity();
+            let prepared = RestoredWindowShellPrepared::prepare(
+                prepared,
+                &attempt,
+                &fixture.process,
+                Box::new(config),
+                seals,
+                submission(),
+                appearance,
+            )
+            .unwrap_or_else(|failure| panic!("{}", failure.error));
+            (
+                fixture,
+                attempt,
+                _service,
+                prepared.into_unpublished(),
+                snapshot,
+                draft,
+                selection,
+            )
+        })
+        .join()
+        .unwrap();
+    let completed = Arc::new(AtomicBool::new(false));
+    let result = completed.clone();
+    gpui::Application::new().run(move |app| {
+        let (control, _) = native_retirement::open(app, "restored-retirement-control");
+        app.spawn(async move |cx| {
+            assert_eq!(fixture.process.main_window_occupancy(), 1);
+            let cancellation = CommandCancellation::new();
+            let retirement = cx
+                .background_executor()
+                .spawn(async move { unpublished.retire(cancellation) })
+                .await;
+            assert!(matches!(retirement, RestoredWindowShellRetirement::Retired));
+            assert_eq!(fixture.process.main_window_occupancy(), 0);
+            cx.background_executor()
+                .spawn(async move {
+                    assert_eq!(snapshot(&fixture), before);
+                    let current = fixture
+                        .storage
+                        .current_draft(
+                            &fixture.store,
+                            selection.claim().thread_id(),
+                            syndic_storage::SyndicPointReadLimit::new(65536).unwrap(),
+                        )
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(current.draft().id(), draft);
+                    assert_eq!(
+                        current.draft().piece_root().summary().logical_utf8_bytes(),
+                        SAVED_TEXT.len() as u64
+                    );
+                    assert!(fixture.store.pending_reconciliations().is_empty());
+                    drop((attempt, service));
+                })
+                .await;
+            result.store(true, Ordering::SeqCst);
+            control
+                .update(cx, |_, window, _| window.remove_window())
+                .unwrap();
+        })
+        .detach();
+    });
+    assert!(completed.load(Ordering::SeqCst));
 }

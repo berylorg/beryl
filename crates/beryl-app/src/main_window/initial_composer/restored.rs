@@ -355,14 +355,7 @@ impl RestoredWindowComposer {
     }
 
     pub fn retire(mut self, cancellation: CommandCancellation) -> RestoredWindowComposerRetirement {
-        self.candidate.retirement_started = true;
-        let result = self.settle_claim_for_retirement().and_then(|settled| {
-            if settled {
-                self.candidate.drive_retirement(cancellation)
-            } else {
-                Ok(false)
-            }
-        });
+        let result = self.drive_retirement(cancellation);
         match result {
             Ok(true) => RestoredWindowComposerRetirement::Retired,
             result => RestoredWindowComposerRetirement::Pending(RestoredWindowComposerFailure {
@@ -372,6 +365,17 @@ impl RestoredWindowComposer {
                     .unwrap_or_else(|| "restored editor retirement remains pending".to_owned()),
             }),
         }
+    }
+
+    pub(in crate::main_window) fn drive_retirement(
+        &mut self,
+        cancellation: CommandCancellation,
+    ) -> Result<bool, String> {
+        self.candidate.retirement_started = true;
+        if !self.settle_claim_for_retirement()? {
+            return Ok(false);
+        }
+        self.candidate.drive_retirement(cancellation)
     }
 }
 

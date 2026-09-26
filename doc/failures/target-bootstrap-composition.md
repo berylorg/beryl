@@ -1514,6 +1514,40 @@ package checks and independent semantic review pass. Reusable shell preparation 
 behavior-named test support module. Whole-set publication, native/transient disposal and process
 transfer retain their separate acceptance boundaries.
 
+## Native Restored Retirement Stack
+
+The native startup-disposal regression completes editor release and native destruction, then
+overflows the ordinary GPUI worker while retiring the original restored candidate. Acquired
+retirement on the same executor passes. Run `5e5bea6a-030b-4e48-853e-8a185181d0f9` reaches the
+pre-retirement snapshot and fails inside retirement; isolating retirement into a task capturing
+only custody and cancellation still fails in `041607c8-8e99-4a9a-83cd-aa9636ceb68d` with Windows
+`0xc00000fd`. Thus the fixture's surrounding snapshot/text assertions do not explain the failure.
+The native worker reserves 1,048,576 bytes. Unoptimized assembly identifies 153,152 bytes in the
+consuming restored-shell retirement wrapper, another 51,216 bytes in consuming composer
+retirement, 147,168 bytes in fresh-abandon preparation and 274,896 bytes in mutation-side history
+authentication. These frames remain live across deeper validation reads. Retaining shell custody
+in place and splitting preparation improves headroom, but run
+`92d2c719-a2f5-438e-b3aa-e8adae5d0979` still overflows in durable-history authentication on both the
+standalone native-worker regression and native-disposal integration regression. Caller-only
+reduction is therefore insufficient; authentication needs separate temporary validation stages.
+After separating mutation-history authentication, the command completes its storage writes and
+commits. Run `060d94f3-f851-4681-83ef-186f89f10ed9` isolates the remaining overflow to committed
+receipt validation beneath a 156,816-byte reconciliation caller. The correction separates command
+resolution, receipt reading and outcome classification so their temporary frames unwind before
+deeper validation. Session-record decoding also separates its four tag variants instead of
+reserving every variant's temporaries in a single 263,216-byte frame.
+
+Clean run `83bc45f5-01eb-4385-abf3-d1f6d01c7bc9` passes all four real-native regressions: isolated
+restored retirement with ordinary, Undo and Redo saved history, and restored native destruction
+followed by original-custody retirement. Independent review finds unchanged read/validation/error
+order, reconciliation custody, storage bytes and bounded retained state. No executor, worker-stack
+size, storage limit or retirement guarantee changed. Run
+`734486f6-cf0b-4894-8830-3a14c9f3061e` passes all 66 affected storage tests, including corruption,
+replay, crash cuts and retention bounds. Run `bfe8c29d-2f85-4972-8038-b8411fcc8e90` passes all 68
+affected app tests, including uncertain retirement and native startup disposal. Default library and
+test-feature all-target checks for both packages pass. The stack correction is accepted; diagnostic
+traces, crash fixtures and emitted assembly artifacts were removed.
+
 ## Startup Editor Release Admission
 
 Reusing ordinary widget release directly for a gated startup composer is invalid. Its slot accepts

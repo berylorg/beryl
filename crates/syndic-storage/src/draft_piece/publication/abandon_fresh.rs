@@ -84,12 +84,7 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
         let request = self.prepared.request;
-        if let Some(record) =
-            point::<DraftEditorCandidateSessionsFamily>(reader, &disposal_key(request))?
-        {
-            let DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) = record else {
-                return Err(SyndicMutationError::IdentityCollision);
-            };
+        if let Some(receipt) = existing_disposal_receipt(reader, request)? {
             validate_disposal_receipt(
                 reader,
                 receipt
@@ -98,51 +93,15 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
             )?;
             return Ok(None);
         }
-        let DraftEditorCandidateSessionRecordV1::Head(head) =
-            required::<DraftEditorCandidateSessionsFamily>(
-                reader,
-                &session_key(request.draft_id(), request.session_id()),
-            )?
-        else {
-            return Err(SyndicMutationError::IdentityCollision);
-        };
-        let DraftEditorCandidateSessionRecordV1::OpenReceipt(open) =
-            required::<DraftEditorCandidateSessionsFamily>(
-                reader,
-                &DraftEditorCandidateSessionRecordKeyV1::open_receipt(
-                    head.draft_id(),
-                    head.session_id(),
-                    head.open_operation_id(),
-                ),
-            )?
-        else {
-            return Err(SyndicMutationError::IdentityCollision);
-        };
-        if head != self.prepared.before_head
-            || open != self.prepared.open_receipt
-            || !request_matches_head_and_open(request, &head, &open)
-        {
+        let Some(head) = matching_fresh_head(reader, &self.prepared)? else {
             return Ok(None);
-        }
+        };
         let newest =
             required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
         if !history_is_exact(reader, &head, &newest)? {
             return Err(SyndicMutationError::IdentityCollision);
         }
-        let after = head
-            .abandoned_fresh(request.operation_id())
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
-            self.prepared.canonical_request,
-            head,
-            after.clone(),
-            newest,
-        );
-        Ok(Some(PreparedAbandonFreshMutation {
-            request,
-            after,
-            receipt,
-        }))
+        finish_fresh_preparation(self.prepared, head, newest).map(Some)
     }
 
     fn reserve_reconciliation(
@@ -172,6 +131,73 @@ impl DomainMutation<SyndicDomain> for AbandonFreshMutation {
         )?;
         Ok(())
     }
+}
+
+fn existing_disposal_receipt(
+    reader: &DomainReader<'_, SyndicDomain>,
+    request: DraftEditorCandidateSessionDisposeRequestV1,
+) -> Result<Option<DraftEditorCandidateSessionOpenReceiptV1>, SyndicMutationError> {
+    match point::<DraftEditorCandidateSessionsFamily>(reader, &disposal_key(request))? {
+        None => Ok(None),
+        Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) => Ok(Some(receipt)),
+        Some(_) => Err(SyndicMutationError::IdentityCollision),
+    }
+}
+
+fn matching_fresh_head(
+    reader: &DomainReader<'_, SyndicDomain>,
+    prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
+) -> Result<Option<DraftEditorCandidateSessionV1>, SyndicMutationError> {
+    let request = prepared.request;
+    let DraftEditorCandidateSessionRecordV1::Head(head) =
+        required::<DraftEditorCandidateSessionsFamily>(
+            reader,
+            &session_key(request.draft_id(), request.session_id()),
+        )?
+    else {
+        return Err(SyndicMutationError::IdentityCollision);
+    };
+    let DraftEditorCandidateSessionRecordV1::OpenReceipt(open) =
+        required::<DraftEditorCandidateSessionsFamily>(
+            reader,
+            &DraftEditorCandidateSessionRecordKeyV1::open_receipt(
+                head.draft_id(),
+                head.session_id(),
+                head.open_operation_id(),
+            ),
+        )?
+    else {
+        return Err(SyndicMutationError::IdentityCollision);
+    };
+    if head != prepared.before_head
+        || open != prepared.open_receipt
+        || !request_matches_head_and_open(request, &head, &open)
+    {
+        return Ok(None);
+    }
+    Ok(Some(head))
+}
+
+fn finish_fresh_preparation(
+    prepared: PreparedDraftEditorCandidateSessionAbandonFreshV1,
+    head: DraftEditorCandidateSessionV1,
+    newest: DraftEditHistoryFrontierV1,
+) -> Result<PreparedAbandonFreshMutation, SyndicMutationError> {
+    let request = prepared.request;
+    let after = head
+        .abandoned_fresh(request.operation_id())
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    let receipt = DraftEditorCandidateSessionDisposeReceiptV1::new(
+        prepared.canonical_request,
+        head,
+        after.clone(),
+        newest,
+    );
+    Ok(PreparedAbandonFreshMutation {
+        request,
+        after,
+        receipt,
+    })
 }
 
 struct PreparedAbandonFreshMutation {
@@ -252,72 +278,111 @@ impl SyndicStorage {
         DraftEditorCandidateSessionAbandonFreshOutcomeV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
-        let committed = match outcome {
-            CommandOutcome::NotCommitted { .. } => false,
-            CommandOutcome::Committed { .. } => true,
-            CommandOutcome::Indeterminate { reconciliation, .. } => committed_from_resolution(
-                store
-                    .reconcile(&reconciliation.install_and_handle())
-                    .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?,
-            )?,
-        };
-        let request = prepared.request;
-        let limit = point_limit();
-        if let Some(record) =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, disposal_key(request), limit)?
-        {
-            let DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) = record else {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            };
-            let receipt = receipt
-                .disposal()
-                .cloned()
-                .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+        let committed = reconcile_command_outcome(store, outcome)?;
+        if let Some(receipt) = read_abandonment_receipt(self, store, prepared.request)? {
             if !validate_disposal_receipt_in_store(self, store, &receipt)? {
                 return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
             }
-            let is_fresh_abandonment = matches!(
-                disposal_receipt_parts(&receipt),
-                Some((_, DisposalTransitionKind::FreshAbandonment))
-            );
-            if receipt.request_bytes() != prepared.canonical_request || !is_fresh_abandonment {
-                return Ok(
-                    DraftEditorCandidateSessionAbandonFreshOutcomeV1::OccupiedIdentityCollision(
-                        DraftEditorCandidateSessionDisposeCollisionProofV1::new(request, receipt),
-                    ),
-                );
-            }
-            return if committed && prepared.initially_absent {
-                Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(
-                    receipt.after_head().clone(),
-                ))
-            } else {
-                Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(receipt))
-            };
+            return Ok(classify_abandonment_receipt(prepared, committed, receipt));
         }
-        let head = match self.draft_editor_candidate_session(
-            store,
-            request.draft_id(),
-            request.session_id(),
-        )? {
-            DraftEditorCandidateSessionReadOutcomeV1::Active(head)
-            | DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => head,
-            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
-        };
-        if head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Disposed {
-            return Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::AlreadyDisposed(head));
-        }
-        if !request_matches_head_and_open(request, &head, &prepared.open_receipt)
-            || head != prepared.before_head
-        {
-            return Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(
-                head,
-            ));
-        }
-        Err(if committed {
-            DraftEditorCandidatePublicationCommandErrorV1::Invariant
-        } else {
-            DraftEditorCandidatePublicationCommandErrorV1::NotCommitted
-        })
+        classify_absent_abandonment(self, store, prepared, committed)
     }
+}
+
+fn reconcile_command_outcome(
+    store: &HomeStore,
+    outcome: CommandOutcome,
+) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
+    match outcome {
+        CommandOutcome::NotCommitted { .. } => Ok(false),
+        CommandOutcome::Committed { .. } => Ok(true),
+        CommandOutcome::Indeterminate { reconciliation, .. } => committed_from_resolution(
+            store
+                .reconcile(&reconciliation.install_and_handle())
+                .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?,
+        ),
+    }
+}
+
+fn read_abandonment_receipt(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    request: DraftEditorCandidateSessionDisposeRequestV1,
+) -> Result<
+    Option<DraftEditorCandidateSessionDisposeReceiptV1>,
+    DraftEditorCandidatePublicationCommandErrorV1,
+> {
+    let Some(record) = storage.point::<DraftEditorCandidateSessionsFamily>(
+        store,
+        disposal_key(request),
+        point_limit(),
+    )?
+    else {
+        return Ok(None);
+    };
+    let DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) = record else {
+        return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+    };
+    let receipt = receipt
+        .disposal()
+        .cloned()
+        .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+    Ok(Some(receipt))
+}
+
+fn classify_abandonment_receipt(
+    prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
+    committed: bool,
+    receipt: DraftEditorCandidateSessionDisposeReceiptV1,
+) -> DraftEditorCandidateSessionAbandonFreshOutcomeV1 {
+    let is_fresh_abandonment = matches!(
+        disposal_receipt_parts(&receipt),
+        Some((_, DisposalTransitionKind::FreshAbandonment))
+    );
+    if receipt.request_bytes() != prepared.canonical_request || !is_fresh_abandonment {
+        return DraftEditorCandidateSessionAbandonFreshOutcomeV1::OccupiedIdentityCollision(
+            DraftEditorCandidateSessionDisposeCollisionProofV1::new(prepared.request, receipt),
+        );
+    }
+    if committed && prepared.initially_absent {
+        DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(receipt.after_head().clone())
+    } else {
+        DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(receipt)
+    }
+}
+
+fn classify_absent_abandonment(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
+    committed: bool,
+) -> Result<
+    DraftEditorCandidateSessionAbandonFreshOutcomeV1,
+    DraftEditorCandidatePublicationCommandErrorV1,
+> {
+    let request = prepared.request;
+    let head = match storage.draft_editor_candidate_session(
+        store,
+        request.draft_id(),
+        request.session_id(),
+    )? {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(head)
+        | DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => head,
+        _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
+    };
+    if head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Disposed {
+        return Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::AlreadyDisposed(head));
+    }
+    if !request_matches_head_and_open(request, &head, &prepared.open_receipt)
+        || head != prepared.before_head
+    {
+        return Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::NotFresh(
+            head,
+        ));
+    }
+    Err(if committed {
+        DraftEditorCandidatePublicationCommandErrorV1::Invariant
+    } else {
+        DraftEditorCandidatePublicationCommandErrorV1::NotCommitted
+    })
 }

@@ -1,7 +1,6 @@
 use super::*;
 use crate::main_window::{
-    RestoredWindowComposer, RestoredWindowComposerPrepared, RestoredWindowComposerRetirement,
-    RestoredWindowPreparationAttempt,
+    RestoredWindowComposer, RestoredWindowComposerPrepared, RestoredWindowPreparationAttempt,
 };
 
 pub struct RestoredWindowShellPrepared {
@@ -31,22 +30,15 @@ impl RestoredWindowShellUnpublished {
         self.composer.window_id()
     }
 
-    pub fn retire(self, cancellation: CommandCancellation) -> RestoredWindowShellRetirement {
-        let Self {
-            composer,
-            reservation,
-        } = self;
-        match composer.retire(cancellation) {
-            RestoredWindowComposerRetirement::Retired => RestoredWindowShellRetirement::Retired,
-            RestoredWindowComposerRetirement::Pending(failure) => {
-                RestoredWindowShellRetirement::Pending {
-                    error: failure.error,
-                    unpublished: Self {
-                        composer: failure.custody,
-                        reservation,
-                    },
-                }
-            }
+    pub fn retire(mut self, cancellation: CommandCancellation) -> RestoredWindowShellRetirement {
+        match self.composer.drive_retirement(cancellation) {
+            Ok(true) => RestoredWindowShellRetirement::Retired,
+            result => RestoredWindowShellRetirement::Pending {
+                error: result
+                    .err()
+                    .unwrap_or_else(|| "restored editor retirement remains pending".to_owned()),
+                unpublished: self,
+            },
         }
     }
 }

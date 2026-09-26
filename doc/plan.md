@@ -87,18 +87,29 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 584: Complete Startup Editor Release Without Polling (finished)
+# Phase 586: Fit Restored Retirement Within Native Worker Stack (finished)
 
-Accepted one event-driven startup editor release with dedicated exact-selection slot admission,
-retained failure gating and observer-independent completion. All 108 affected regressions,
-package checks and independent lifecycle review pass;
-[evidence](failures/target-bootstrap-composition.md#startup-editor-release-admission).
+Accepted borrowed restored retirement and separate storage preparation, authentication, decoding
+and reconciliation frames on the unchanged Windows worker. Ordinary, Undo and Redo native cases,
+66 storage and 68 app regressions, package checks and independent semantic review pass;
+[evidence](failures/target-bootstrap-composition.md#native-restored-retirement-stack).
 
-# Phase 585: Join Startup Member Native Destruction And Retirement (pending)
+# Phase 585: Join Startup Member Native Destruction And Retirement (wip)
 
-Retain each complete startup shell through accepted editor release and its exact native destruction
-receipt, then transfer only its original worker retirement custody. Preserve set-wide publication
-disposition, failure ownership and successful process handoff; no early extraction proves disposal.
+Implement [member disposal](../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership)
+with hidden receipt enrollment retained through desktop placement, irreversible record-preservation
+sealing before enrolled publication, and one consuming GUI continuation. Reuse accepted editor
+release and native destruction proof before extracting original typed worker retirement custody.
+Keep enrolled early cleanup and handle-only handoff closed; retain the complete shell on failure.
+Set membership/publication coordination and process-owner composition remain separate phases.
+
+Verify real hidden and published native windows, threadless reservation timing, acquired pre-exposure
+and sealed preservation custody, restored record preservation, dispatch drain, unexpected native
+loss and duplicate/admission failures. Exercise exact desktop-flight custody and callback delivery;
+run affected native/composer regressions, package checks and independent lifecycle review.
+The native-worker prerequisite is accepted. Member component, native acquired/restored/threadless
+cases, 68 affected app regressions, package checks and independent lifecycle review pass. Complete
+the member acceptance record before proceeding to whole-set coordination.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 
