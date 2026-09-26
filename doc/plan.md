@@ -89,21 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 615: Add Owned Windows Native Confirmation (finished)
+# Phase 617: Publish The Qualified Native Confirmation Dependency Graph (finished)
 
-Accepted bounded requests, exact move-only control/completion and native Cancel-default dialogs.
-Cancellation, duplicate handling, focus restoration, queued/active owner removal and accepted
-native close preserve dialog settlement before parent destruction; missing evidence grants no
-confirmation or disposal authority. All ten focused native confirmation/dispatch/lifecycle tests,
-default app library check and independent lifecycle review pass. Generic prompts remain separate.
-Canonical dependency publication and app mounting remain phases 617 and 595.
-
-# Phase 617: Publish The Qualified Native Confirmation Dependency Graph (pending)
-
-After the fork's native confirmation is accepted, publish matching GPUI and widget dependency
-revisions through Beryl's single canonical graph. Validate manifests/lockfiles and the focused
-canonical build before ordinary close/Exit mounting. Local patched qualification alone does not
-accept this publication boundary.
+Published GPUI `85ae2daa` and matching scrollbar/text-input/settings revisions through the single
+canonical graph. Locked manifest validation, all three widget library checks, the default app
+library check and all ten native confirmation/dispatch/lifecycle tests pass without local patches
+(native run `9cb3511c-020b-494d-b215-8def7401a211`). Independent publication review confirms exact
+revision-only lockfile changes and no extra GPUI instance. Phases 615–616's native operation and
+dispatcher prerequisites are accepted; ordinary app close/Exit mounting remains below.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -120,11 +113,11 @@ blocked cleanup afterward. Include this outcome in ordinary final-close/Exit int
 earlier lock-order and bounded observation prerequisites are accepted in phase 603.
 
 The observed coordinator handoff and graph-owned lifetime integration are accepted in phases
-613–614. Next derive the bounded native confirmation dependency before its app mount. Inspection
-of the owned GPUI Windows prompt found severity-owned titles and no exact dialog handle for
-duplicate reveal or disposal tracking; the feature requires its own title, Cancel-default behavior,
-focus restoration and one retained confirmation. Establish the owning native lifecycle contract
-before implementing that dependency, preserving the separate ordinary-window owner integration.
+613–614. Owned native confirmation and canonical dependency publication are accepted in phases
+615–617, including Cancel default, exact duplicate control, focus restoration, native close vetoes
+and disposal ordering. Next derive the bounded running process window owner from `StartedProcess`
+and its published restore set, then mount confirmation and close/Exit policy through that owner.
+Preserve separate acceptance boundaries for any missing components before final integration.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
