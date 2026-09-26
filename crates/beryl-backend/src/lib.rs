@@ -413,8 +413,8 @@ mod websocket_transport;
 pub mod lifecycle_test_support;
 
 pub use response_work::{
-    ResponseWorkError, ResponseWorkObserver, ResponseWorkReadGuard, ResponseWorkRevision,
-    ResponseWorkSnapshot,
+    ResponseWorkError, ResponseWorkMutation, ResponseWorkMutationObserver, ResponseWorkObserver,
+    ResponseWorkReadGuard, ResponseWorkRevision, ResponseWorkSnapshot,
 };
 #[cfg(feature = "lifecycle-test-support")]
 #[doc(hidden)]

@@ -68,6 +68,20 @@ this outcome only after exact service failure; ordinary approval routing retains
   not wait, perform I/O, reenter this response source or drop response capabilities under the guard.
   Dropping the read guard only releases the mutex; ordinary response owners then resume their
   existing state transitions and notification behavior.
+- Each response source also accepts one passive mutation observer before app publication. The
+  registration serializes with response changes under the response mutex; duplicate registration,
+  poison or unavailable revision refuses without replacing the observer. Changes already completed
+  before registration remain visible in the ordinary response snapshot. The app keeps its enclosing
+  connection change active through registration and publication, closing that initial coverage gap.
+  The retained observer owns only the service's constant-size observation boundary, never response
+  authority, payload, session, home or the service graph. It cannot be replaced or unregistered.
+  Each later bind, response update, capability release or completion-registration change acquires
+  one scoped mutation guard before changing state and releases it after the local update. The guard
+  may use one bounded allocation per concurrent update. Its acquisition may briefly synchronize
+  with local election, but performs no I/O, response-source reentry or execution. Unwinding makes
+  the owning observation boundary unavailable; ordinary response cleanup remains permitted.
+  Completion wakes still run after both the response mutex and mutation guard are released.
+  Passive registration and mutation guards grant no response or dispatch authority.
 - Each response source supports one bounded, non-authorizing completion notification registration.
   Its one-shot wake follows the first successful response write or final response-capability
   release, after the observable state changes and outside the observation lock. Registration racing

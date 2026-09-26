@@ -89,13 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 606: Track Connection Membership And Custody Changes (finished)
+# Phase 608: Register Passive Backend Response Mutations (finished)
 
-Accepted one boundary per service generation, installed before connection workers and covering
-membership, session/cleanup/promotion custody, retirement and closure. All 22 distinct focused
-tests, the default app library check and independent mutation-coverage review pass, including
-workerless mutable owners and failed-retirement inventory beyond worker capacity. Attachment,
-router and backend-response participation remains phase 607.
+Accepted one passive observer per response source, serialized registration and scoped mutation
+guards with completion wakes outside both guards. All 23 focused response tests, the default
+backend library check and independent semantic/concurrency review pass. App mounting remains 607.
 
 # Phase 607: Track Router And Backend Response Work Changes (pending)
 

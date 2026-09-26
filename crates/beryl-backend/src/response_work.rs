@@ -63,6 +63,14 @@ pub enum ResponseWorkError {
     Poisoned,
     #[error("the response completion notification is already registered")]
     CompletionAlreadyRegistered,
+    #[error("the response mutation observer is already registered")]
+    MutationAlreadyRegistered,
+}
+
+pub trait ResponseWorkMutation: std::fmt::Debug {}
+
+pub trait ResponseWorkMutationObserver: std::fmt::Debug + Send + Sync {
+    fn begin_change(&self) -> Box<dyn ResponseWorkMutation + '_>;
 }
 
 #[derive(Debug)]
@@ -73,6 +81,7 @@ struct WorkState {
     retained_capabilities: u8,
     completion_registered: bool,
     completion_waker: Option<Waker>,
+    mutation_observer: Option<Arc<dyn ResponseWorkMutationObserver>>,
 }
 
 impl WorkState {
@@ -108,15 +117,35 @@ impl ResponseWorkReadGuard<'_> {
 }
 
 impl ResponseWorkObserver {
+    pub fn register_mutation_observer(
+        &self,
+        observer: Arc<dyn ResponseWorkMutationObserver>,
+    ) -> Result<(), ResponseWorkError> {
+        let mut state = self.state.lock().map_err(|_| ResponseWorkError::Poisoned)?;
+        if state.mutation_observer.is_some() {
+            return Err(ResponseWorkError::MutationAlreadyRegistered);
+        }
+        state
+            .revision
+            .ok_or(ResponseWorkError::RevisionUnavailable)?;
+        state.mutation_observer = Some(observer);
+        Ok(())
+    }
+
     pub fn register_completion_waker(&self, waker: Waker) -> Result<(), ResponseWorkError> {
         let wake = {
             let mut state = self.state.lock().map_err(|_| ResponseWorkError::Poisoned)?;
             if state.completion_registered {
                 return Err(ResponseWorkError::CompletionAlreadyRegistered);
             }
+            let observer = state.mutation_observer.clone();
+            let change = observer.as_ref().map(|observer| observer.begin_change());
             state.completion_registered = true;
             state.completion_waker = Some(waker);
-            state.take_completion_waker()
+            let wake = state.take_completion_waker();
+            drop(state);
+            drop(change);
+            wake
         };
         if let Some(waker) = wake {
             waker.wake();
@@ -195,6 +224,7 @@ impl ResponseWorkTracker {
                     retained_capabilities,
                     completion_registered: false,
                     completion_waker: None,
+                    mutation_observer: None,
                 })),
             },
         }
@@ -214,6 +244,8 @@ impl ResponseWorkTracker {
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
+        let observer = state.mutation_observer.clone();
+        let _change = observer.as_ref().map(|observer| observer.begin_change());
         let result = bind()?;
         state.session_generation = Some(generation);
         state.changed();
@@ -226,6 +258,8 @@ impl ResponseWorkTracker {
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
+        let observer = state.mutation_observer.clone();
+        let change = observer.as_ref().map(|observer| observer.begin_change());
         store();
         if state.response_written != written {
             state.response_written = written;
@@ -233,6 +267,7 @@ impl ResponseWorkTracker {
         }
         let wake = state.take_completion_waker();
         drop(state);
+        drop(change);
         if let Some(waker) = wake {
             waker.wake();
         }
@@ -244,6 +279,8 @@ impl ResponseWorkTracker {
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
+        let observer = state.mutation_observer.clone();
+        let change = observer.as_ref().map(|observer| observer.begin_change());
         if let Some(remaining) = state.retained_capabilities.checked_sub(1) {
             state.retained_capabilities = remaining;
             state.changed();
@@ -252,6 +289,7 @@ impl ResponseWorkTracker {
         }
         let wake = state.take_completion_waker();
         drop(state);
+        drop(change);
         if let Some(waker) = wake {
             waker.wake();
         }
