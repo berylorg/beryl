@@ -1,4 +1,8 @@
 use super::restoration_support::*;
+
+#[cfg(target_os = "windows")]
+#[path = "native_selected.rs"]
+mod native_selected;
 use super::*;
 use beryl_app::composer_host::*;
 use beryl_app::composer_marker_seal::{DraftMarkerSealService, DraftMarkerSealServiceLimits};
@@ -70,6 +74,13 @@ fn submission() -> MainWindowComposerSubmissionRequestSource {
 }
 
 fn prepared_fixture(seed: u8) -> PreparedFixture {
+    prepared_fixture_with_history(seed, None)
+}
+
+fn prepared_fixture_with_history(
+    seed: u8,
+    history: Option<gpui_text_input::MutationKind>,
+) -> PreparedFixture {
     let fixture = Fixture::new(seed);
     let acquired = fixture.acquire(seed + 1);
     let thread = acquired.thread_id();
@@ -84,7 +95,7 @@ fn prepared_fixture(seed: u8) -> PreparedFixture {
         seed + 2,
         seed + 3,
     );
-    editor::commit_text(
+    let written = editor::commit_text(
         &mut host,
         &fixture.store,
         binding,
@@ -95,6 +106,47 @@ fn prepared_fixture(seed: u8) -> PreparedFixture {
         SAVED_TEXT.len() as u64,
         1,
     );
+    match history {
+        Some(gpui_text_input::MutationKind::Undo) => {
+            let length = SAVED_TEXT.len() as u64;
+            let appended = editor::commit_text(
+                &mut host,
+                &fixture.store,
+                written,
+                2,
+                length,
+                length,
+                "!",
+                length + 1,
+                1,
+            );
+            editor::select_history(
+                &mut host,
+                &fixture.store,
+                appended,
+                3,
+                gpui_text_input::MutationKind::Undo,
+            );
+        }
+        Some(gpui_text_input::MutationKind::Redo) => {
+            let undone = editor::select_history(
+                &mut host,
+                &fixture.store,
+                written,
+                2,
+                gpui_text_input::MutationKind::Undo,
+            );
+            editor::select_history(
+                &mut host,
+                &fixture.store,
+                undone,
+                3,
+                gpui_text_input::MutationKind::Redo,
+            );
+        }
+        None => {}
+        Some(_) => panic!("unsupported native history fixture"),
+    }
     let ComposerHostFlushAdmission::Started { ticket, .. } = host
         .begin_flush(ComposerHostFlushPurpose::WindowClose)
         .unwrap()
@@ -107,7 +159,7 @@ fn prepared_fixture(seed: u8) -> PreparedFixture {
             ticket,
             fixture.state.assets(),
             &seals,
-            editor::operation_id(2),
+            editor::operation_id(if history.is_some() { 20 } else { 2 }),
             None,
             SyndicTimestamp::from_unix_millis(1000),
             &CommandCancellation::new()

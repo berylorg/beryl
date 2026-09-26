@@ -4,6 +4,7 @@ use crate::domain::SyndicDomain;
 use crate::mutation::required;
 use crate::{SyndicMutationError, SyndicReadError, SyndicStorage};
 
+mod frontier;
 mod witness;
 use witness::transition_is_ancestor_of_read;
 pub(super) use witness::{build_ancestor_witness, transition_is_ancestor_of};
@@ -331,130 +332,7 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
     {
         return Ok(false);
     }
-    let floor = match frontier.oldest_eligible() {
-        Some(reference) => {
-            match transition_reference_is_authenticated(storage, store, reference)? {
-                Some(value) => Some(value),
-                None => return Ok(false),
-            }
-        }
-        None => None,
-    };
-    let mut journal = None;
-    let mut undo = None;
-    let mut redo = None;
-    for reference in [
-        frontier.journal_head(),
-        frontier.undo_head(),
-        frontier.redo_head(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let Some(value) = transition_reference_is_authenticated(storage, store, reference)? else {
-            return Ok(false);
-        };
-        if floor.as_ref().is_some_and(|floor| {
-            value.cumulative_encoded_bytes() < floor.cumulative_encoded_bytes()
-        }) || Some(reference) == frontier.journal_head()
-            && value.successor_root() != frontier.reference().root()
-        {
-            return Ok(false);
-        }
-        if Some(reference) == frontier.journal_head() {
-            journal = Some(value.clone());
-        }
-        if Some(reference) == frontier.undo_head() {
-            undo = Some(value.clone());
-        }
-        if Some(reference) == frontier.redo_head() {
-            redo = Some(value);
-        }
-    }
-    if let Some(head) = journal.as_ref() {
-        for member in [floor.as_ref(), undo.as_ref(), redo.as_ref()]
-            .into_iter()
-            .flatten()
-        {
-            if !transition_is_ancestor_of_read(storage, store, head, member)? {
-                return Ok(false);
-            }
-        }
-        if head.successor_root() != frontier.reference().root()
-            || undo
-                .as_ref()
-                .is_some_and(|value| value.successor_root() != frontier.reference().root())
-            || redo
-                .as_ref()
-                .is_some_and(|value| value.successor_root() != frontier.reference().root())
-        {
-            return Ok(false);
-        }
-        let stack_is_exact = match head.kind() {
-            DraftEditHistoryTransitionKindV1::OrdinaryEdit => {
-                frontier.undo_head() == Some(head.reference()) && frontier.redo_head().is_none()
-            }
-            DraftEditHistoryTransitionKindV1::Undo => {
-                let Some(reference) = head.prior_undo() else {
-                    return Ok(false);
-                };
-                let Some(selected) =
-                    transition_reference_is_authenticated(storage, store, reference)?
-                else {
-                    return Ok(false);
-                };
-                frontier.redo_head() == Some(head.reference())
-                    && frontier.undo_head()
-                        == retained_stack_link(floor.as_ref(), selected.prior_undo())
-            }
-            DraftEditHistoryTransitionKindV1::Redo => {
-                let Some(reference) = head.prior_redo() else {
-                    return Ok(false);
-                };
-                let Some(selected) =
-                    transition_reference_is_authenticated(storage, store, reference)?
-                else {
-                    return Ok(false);
-                };
-                frontier.undo_head() == Some(head.reference())
-                    && frontier.redo_head()
-                        == retained_stack_link(floor.as_ref(), selected.prior_redo())
-            }
-        };
-        if !stack_is_exact {
-            return Ok(false);
-        }
-    }
-    let Ok(frontier_charge) = stored_frontier_charge(frontier) else {
-        return Ok(false);
-    };
-    let retained = match (frontier.journal_head(), floor.as_ref()) {
-        (None, None) => frontier_charge,
-        (Some(head), Some(floor)) => {
-            if head.cumulative_encoded_bytes() != frontier.cumulative_encoded_bytes() {
-                return Ok(false);
-            }
-            let Ok(floor_charge) = stored_transition_charge(floor) else {
-                return Ok(false);
-            };
-            let Some(before_floor) = floor.cumulative_encoded_bytes().checked_sub(floor_charge)
-            else {
-                return Ok(false);
-            };
-            let Some(transition_bytes) = frontier
-                .cumulative_encoded_bytes()
-                .checked_sub(before_floor)
-            else {
-                return Ok(false);
-            };
-            let Some(retained) = frontier_charge.checked_add(transition_bytes) else {
-                return Ok(false);
-            };
-            retained
-        }
-        _ => return Ok(false),
-    };
-    Ok(retained == frontier.retained_encoded_bytes() && retained <= frontier.byte_budget())
+    frontier::authenticate_frontier(storage, store, frontier)
 }
 
 fn retained_stack_link(
@@ -507,11 +385,12 @@ fn transition_reference_is_exact(
         reference.key(),
         point_limit(),
     )?;
-    let Some(value) =
-        value.filter(|value| value.reference() == reference && value.is_locally_valid())
-    else {
+    let Some(value) = value else {
         return Ok(None);
     };
+    if value.reference() != reference || !value.is_locally_valid() {
+        return Ok(None);
+    }
     Ok(Some(value))
 }
 

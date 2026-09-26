@@ -6,8 +6,10 @@ use crate::{SyndicMutationError, SyndicReadError};
 
 use super::*;
 
+mod historical;
 mod reader;
 mod saved;
+mod transition;
 
 use reader::{CheckpointReader, StoreCheckpointReader};
 
@@ -166,65 +168,7 @@ fn candidate_transition_is_exact<R: CheckpointReader>(
     if has_opening_identity(head) {
         return opening_is_exact(reader, head, frontier);
     }
-    let Some(journal_head) = frontier.journal_head() else {
-        return Ok(false);
-    };
-    let Some(transition) =
-        reader.point::<DraftEditHistoryTransitionsFamily>(&journal_head.key())?
-    else {
-        return Ok(false);
-    };
-    if transition.reference() != journal_head {
-        return Ok(false);
-    }
-    if transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
-        return historical_is_exact(reader, head, frontier, &transition);
-    }
-    let key = DraftPieceSettlementKeyV1::new(
-        head.draft_id(),
-        head.session_id(),
-        transition.operation_id(),
-    );
-    let settlement = reader.point::<DraftPieceSettlementsFamily>(&key)?;
-    let build = reader.point::<DraftPieceBuildsFamily>(&key)?;
-    let (Some(settlement), Some(build)) = (settlement, build) else {
-        return Ok(false);
-    };
-    let Some(receipt) =
-        reader.point::<DraftPieceBuildProgressFamily>(&build.progress_receipt().key())?
-    else {
-        return Ok(false);
-    };
-    let Some(next_ordinal) = build
-        .progress_receipt()
-        .key()
-        .transition_ordinal()
-        .checked_add(1)
-    else {
-        return Ok(false);
-    };
-    if reader
-        .point::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
-            build.draft_id(),
-            build.session_id(),
-            build.operation_id(),
-            next_ordinal,
-        ))?
-        .is_some()
-        || !progress_receipt_matches_build(&receipt, &build)
-        || !reader.authenticate_progress(&receipt)?
-    {
-        return Ok(false);
-    }
-    let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
-        return Ok(false);
-    };
-    Ok(settlement_closure_is_exact(&settlement)
-        && settlement_terminal_build_is_exact(&settlement, Some(&build))
-        && session::adopted_head_matches_current(adoption.adopted_session(), head)
-        && adoption.adopted_root().reference() == head.newest_root()
-        && adoption.adopted_history() == frontier
-        && adoption.transition() == &transition)
+    transition::transition_is_exact(reader, head, frontier)
 }
 
 fn historical_is_exact<R: CheckpointReader>(
@@ -243,27 +187,8 @@ fn historical_is_exact<R: CheckpointReader>(
     };
     if !settlement.is_locally_valid()
         || !reader.authenticate_frontier(settlement.source_history())?
-        || match settlement.request().direction() {
-            DraftHistoricalRootDirectionV1::Undo => settlement.source_history().undo_head(),
-            DraftHistoricalRootDirectionV1::Redo => settlement.source_history().redo_head(),
-        } != Some(settlement.selected_transition().reference())
-        || reader
-            .point::<DraftEditHistoryTransitionsFamily>(&settlement.selected_transition().key())?
-            .as_ref()
-            != Some(settlement.selected_transition())
-        || reader
-            .point::<DraftPieceRootsFamily>(&settlement.target_root().reference().key())?
-            .as_ref()
-            != Some(settlement.target_root())
     {
         return Ok(false);
     }
-    Ok(
-        settlement.outcome() == DraftHistoricalRootAdoptionSettlementOutcomeV1::Committed
-            && settlement.successor_transition() == Some(transition)
-            && settlement.successor_history() == Some(frontier)
-            && settlement
-                .successor_candidate()
-                .is_some_and(|candidate| session::adopted_head_matches_current(candidate, head)),
-    )
+    historical::references_are_exact(reader, head, frontier, transition, &settlement)
 }

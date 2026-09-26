@@ -1417,6 +1417,39 @@ atomicity or a realtime guarantee against desktop changes. App check and manifes
 the successful Serena refresh followed both. Production worker and app-flight integration remain
 separate implementation work.
 
+## Native Selected Dispatch Stack
+
+Real restored-shell construction under the Windows GPUI executor overflows an unnamed worker's
+stack before the desktop-placement flight starts. A larger fixture-preparation worker and a
+16 MiB GUI runner do not correct it. Holding the existing selected-dispatch test gate permits
+construction and desktop completion; explicitly releasing it immediately reproduces the overflow
+in run `393707b6-1ded-43bf-b7a5-efe71b2cadaf`. This isolates the downstream selected request path,
+not desktop COM work or native shell admission. A separate native threadless fixture passes.
+
+The native worker reports a 1 MiB reserved stack. An outer-dispatch frame reduction is insufficient.
+Run `f2bbc006-a93e-42cb-ac21-226821f3aaab` confirms publication receipt decoding and receipt-parts
+validation complete, with approximately 529 KiB remaining immediately before history authentication.
+The authentication function itself reserves 198,208 bytes in unoptimized assembly; its downstream
+validation then overflows. This is cumulative-frame evidence, not proof of a codec-format defect.
+The correction separates the synchronous dispatch and successor-proof frames, populates the
+existing boxed response directly, and separates history-member, ordinary-checkpoint and historical
+checkpoint validation stages. Borrowed records preserve authentication, error and read ordering;
+the storage format, point limits and native executor remain unchanged. Normal-edit, Undo and Redo
+restoration all pass the real native regression in clean run
+`d0581325-af55-4380-a862-3019a17ce2e9`. Restoring the original dispatcher with the storage fixes alone
+still overflows (`c905a491-1607-40f8-a5c8-f06ddea03b61`), so both reductions are necessary.
+Accepted with temporary tracing removed and independent semantic review. The six affected storage
+targets pass all 69 tests (`e20e8494-bbbb-44b4-91a9-742f78aeeeaa`); initial composer, composer slot,
+composer mount and mounted submission pass all 73 tests
+(`21c98fa1-9df0-4bad-8ef9-9c61b5822709`). Both packages pass all-test-target checks with test faults
+and default-feature checks. Native desktop-placement integration remains a separate acceptance.
+
+Discovery briefly failed with an unqualified Windows access-denied error while test fixtures were
+created and deleted under an unignored `.tmp` directory. The exact denied path was not captured;
+the matching rag-rat walker traverses non-Markdown directories and propagates raw filesystem errors.
+Discovery and reconciliation succeeded after test cleanup. Git-ignoring `/.tmp/` now prunes that
+temporary tree before traversal; a target-file exclusion alone would not do so in the pinned build.
+
 ## Saved Desktop Worker
 
 The Windows worker consumes the exact hidden lease and optional saved identity, converts canonical

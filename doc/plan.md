@@ -87,14 +87,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 578: Implement The Saved Desktop Worker (finished)
+# Phase 579: Bound Selected Composer Native Worker Stack Use (finished)
 
-Accepted exact GUID conversion, one worker-owned COM attempt and bounded saved/default outcomes,
-with COM teardown before native lease release. All seven focused native tests, app all-test/default
-checks and independent semantic review pass;
-[evidence](failures/target-bootstrap-composition.md#saved-desktop-worker).
+Accepted reduced overlapping dispatch and storage-validation frames without changing the executor,
+stack budget, storage format or authentication. Native ordinary/Undo/Redo restoration, 69 storage
+and 73 app regressions, both package checks and independent semantic review pass;
+[evidence](failures/target-bootstrap-composition.md#native-selected-dispatch-stack).
 
-# Phase 571: Integrate Prepared Native Window Placement (pending)
+# Phase 571: Integrate Prepared Native Window Placement (wip)
 
 Compose accepted worker geometry, hidden shell construction and saved-desktop preparation into
 one exact startup member flight. Retain the original shell and typed cleanup custody through
@@ -103,6 +103,13 @@ returns the original disposal path. Verify late completion, cancellation, indepe
 fallback and selected/threadless cleanup without durable restore-record changes. Keep complete-set
 interaction gating/publication and process startup ownership in their following phases. Require
 native-boundary evidence, affected shell regressions and independent review before acceptance.
+
+Implement the [shell desktop placement flight](../crates/beryl-app/doc/design-shell-lifecycle.md#shell-desktop-placement-flight)
+as a consuming admission with original-shell failure and one detached GUI continuation owning the
+required completion callback. Keep pending/rejected and late-cancelled shells unpublishable;
+settlement failure retains cleanup custody rather than pretending native disposal. Verify real
+selected and threadless shell integration, dropped observation, cancellation timing and native
+close/removal using the original cleanup boundaries. Preserve ordinary never-enrolled creation.
 
 The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared monitor facts;
 [investigation](memory/topic/native-window-publication/placement-preparation-boundary.md).
