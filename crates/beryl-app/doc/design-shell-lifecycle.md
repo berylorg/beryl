@@ -50,12 +50,22 @@ graph. They return a typed GPUI window handle or an explicit native-open error. 
 borrows diagnostic text and retains only the feature-capped value in one read-only text input;
 text bindings and built-in appearance are available before ordinary application composition.
 
-The required callback receives `StartupSurfaceEvent::Retry(RetryAttempt)` or `Exit` after local
-admission and outside the surface borrow. `RetryAttempt` identifies the exact surface and attempt;
+The required callback receives `StartupSurfaceEvent::Retry(StartupAttempt)` or `Exit` after local
+admission and outside the surface borrow. `StartupAttempt` identifies the exact surface and attempt;
 `complete_failure` rejects any nonmatching or exited attempt and replaces the same detail input
 without undo history. `request_retry` and `request_exit` share pointer and keyboard admission.
 Native close and the busy countdown request Exit without removing the window or quitting GPUI.
 The process owner retains cleanup custody and removes the surface only through its own lifecycle.
+
+`attempt` snapshots the current surface/sequence identity, including initial startup. Each Retry
+advances that identity. `block_cleanup` accepts only the matching snapshot, including after Retry
+completion or an Exit intent; a later Retry invalidates every earlier snapshot. It retains bounded diagnostics, irreversibly closes
+Retry admission and exposes the feature's explicit Quit Anyway command. Deferred events revalidate
+their surface before delivery. The opaque Quit Anyway request is created only by explicit blocked
+surface activation; consuming it terminates the current process directly on Windows without
+unwinding, GUI shutdown, storage calls or panic-report publication. It grants no graceful disposal
+proof. Native close always remains an orderly Exit request. Process-entry mounting remains owned
+by the executable composition root.
 
 ## Initial Service Preparation And Publication
 
@@ -396,7 +406,10 @@ The process owner retains cleanup custody and removes the surface only through i
 - Once native publication has started, failure or cancellation before whole-set success keeps one disposal owner for every
   attempted member, including possibly visible windows. It closes the entire native set, joins
   transient work and preserves durable restore records and unresolved command custody before
-  presenting startup failure. This disposal is not ordinary window close or prepublication
+  presenting startup failure, except for the feature-defined blocked-cleanup surface when disposal
+  itself cannot settle. That exception retains every unresolved owner and grants no Retry or
+  orderly quit authority; only explicit Quit Anyway may terminate without disposal. This disposal
+  is not ordinary window close or prepublication
   acquisition abandonment and cannot remove a restored session member. No native batch or hide
   operation is treated as evidence that an earlier exposure never happened.
 - Before native publication starts, a genuinely newly acquired runtime-backed fallback uses the

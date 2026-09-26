@@ -112,7 +112,8 @@ Its body remains fully visible at the window's minimum size and does not own scr
 
 #### Slot: home-failure-window.body
 
-This slot fills the home failure window. It is for the bounded startup failure explanation and exact same-home Retry and Exit commands.
+This slot fills the home failure window. It is for the bounded startup failure explanation and
+startup failure commands, including the exceptional blocked-cleanup state.
 
 ## Crash Report Window
 

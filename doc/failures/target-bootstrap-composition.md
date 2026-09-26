@@ -1892,15 +1892,22 @@ presentation when cleanup itself cannot complete. Current `StartupSurface::compl
 reenables Retry; `request_exit` permanently closes local admission and rejects later failure-detail
 updates. Neither is a blocked-cleanup presentation protocol.
 
-An independent readiness review confirmed the authority gap. Recommended Operator decision:
-authorize an explicit blocked-cleanup state on the dedicated startup failure surface even while
-original attempted windows remain retained and gated. Show bounded selectable failure detail,
-keep Retry unavailable, preserve Exit as an intent without claiming cleanup or process termination,
-and never introduce a force-quit or reopen capability. Define the treatment of native close and
-late completions under that state before implementation. This is a proposal, not target authority.
-The alternative of hiding all failure presentation while retaining live attempted windows is not
-silently selected. Phase 568 remains pending for that visible-failure policy decision.
+Operator approved the blocked-cleanup exception and a distinct explicit Quit Anyway action.
+The [feature](../features/beryl-home/design.md#startup-cleanup-blocked) now authorizes bounded
+failure presentation while original attempted windows remain gated and retained. Ordinary Exit
+still requests cleanup; only explicit Quit Anyway terminates without claiming disposal, saving,
+rollback or stopped external work. Native close and timers never authorize forced termination.
 
+The surface snapshots exact entity/sequence identity for cleanup completion, including initial
+startup, completed Retry and Exit that suppresses a queued Retry event. Later Retry invalidates
+earlier snapshots; blocked admission is terminal. The opaque non-clone Quit Anyway request is
+issued once through deferred explicit activation and directly terminates the current Windows
+process. It invokes no storage operation, ordinary shutdown or panic-report publication.
+All 14 selected surface/native/subprocess tests pass (`8abecbe0-6835-4aef-84ef-63489aa39143`),
+including retained native close, stale/foreign attempts, Exit-before-failure, keyboard/pointer
+activation, maximum detail bounds and actual child-process termination without stack destructors.
+Default app-library check and independent admission/termination review pass. Process-owner
+mounting remains a separate acceptance boundary.
 The review also identified a separate technical prerequisite for the next plan slice:
 `ProcessServiceOwner::begin_shutdown` uses CAS ordinary shutdown whose execution capture calls
 `validate_service`, requiring a healthy home. A postpublication persistent storage failure therefore

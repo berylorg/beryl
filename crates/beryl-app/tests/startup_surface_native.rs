@@ -25,7 +25,7 @@ fn native_close_requests_exit_and_retains_surface_until_owner_disposal() {
         .with_quit_on_last_window_close(false)
         .run(move |app| {
             app.spawn(async move |cx| {
-                for busy in [false, true] {
+                for (busy, blocked) in [(false, false), (false, true), (true, false)] {
                     let events = Rc::new(RefCell::new(Vec::new()));
                     let observed = events.clone();
                     let window = cx
@@ -40,8 +40,22 @@ fn native_close_requests_exit_and_retains_surface_until_owner_disposal() {
                             .unwrap()
                         })
                         .unwrap();
-                    let title =
-                        format!("Beryl startup surface native {} {busy}", std::process::id());
+                    let title = format!(
+                        "Beryl startup surface native {} {busy} {blocked}",
+                        std::process::id()
+                    );
+                    if blocked {
+                        window
+                            .update(cx, |surface, window, cx| {
+                                assert!(surface.block_cleanup(
+                                    surface.attempt(cx),
+                                    "Cleanup blocked",
+                                    window,
+                                    cx
+                                ));
+                            })
+                            .unwrap();
+                    }
                     window
                         .update(cx, |_, window, _| window.set_window_title(&title))
                         .unwrap();

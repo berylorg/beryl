@@ -17,15 +17,32 @@ const TRUNCATED: &str = "\n[Detail truncated]";
 const BUSY_DURATION: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RetryAttempt {
+pub struct StartupAttempt {
     surface: EntityId,
     sequence: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum StartupSurfaceEvent {
-    Retry(RetryAttempt),
+    Retry(StartupAttempt),
     Exit,
+    QuitAnyway(QuitAnywayRequest),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct QuitAnywayRequest {
+    surface: EntityId,
+}
+
+impl QuitAnywayRequest {
+    pub fn terminate_process(self) -> ! {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            use windows::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
+            let _ = TerminateProcess(GetCurrentProcess(), 1);
+        }
+        std::process::abort()
+    }
 }
 
 type Handler = Rc<dyn Fn(StartupSurfaceEvent, &mut App)>;
@@ -34,15 +51,25 @@ pub struct StartupSurface {
     detail: Option<Entity<TextInput>>,
     retry_focus: FocusHandle,
     exit_focus: FocusHandle,
+    quit_focus: FocusHandle,
     sequence: u64,
-    pending: Option<RetryAttempt>,
+    pending: Option<StartupAttempt>,
     exited: bool,
+    blocked: bool,
+    quit_requested: bool,
     remaining_seconds: u64,
     timer: Option<Task<()>>,
     handler: Handler,
 }
 
 impl StartupSurface {
+    pub fn attempt(&self, cx: &Context<Self>) -> StartupAttempt {
+        StartupAttempt {
+            surface: cx.entity_id(),
+            sequence: self.sequence,
+        }
+    }
+
     pub fn open_failure(
         detail: &str,
         handler: impl Fn(StartupSurfaceEvent, &mut App) + 'static,
@@ -102,6 +129,7 @@ impl StartupSurface {
     ) -> Self {
         let retry_focus = cx.focus_handle();
         let exit_focus = cx.focus_handle();
+        let quit_focus = cx.focus_handle();
         let detail = detail.map(|detail| {
             cx.new(|cx| {
                 TextInput::new_with_options(
@@ -151,21 +179,24 @@ impl StartupSurface {
             detail,
             retry_focus,
             exit_focus,
+            quit_focus,
             sequence: 0,
             pending: None,
             exited: false,
+            blocked: false,
+            quit_requested: false,
             remaining_seconds: 5,
             timer,
             handler,
         }
     }
 
-    pub fn request_retry(&mut self, cx: &mut Context<Self>) -> Option<RetryAttempt> {
-        if self.detail.is_none() || self.pending.is_some() || self.exited {
+    pub fn request_retry(&mut self, cx: &mut Context<Self>) -> Option<StartupAttempt> {
+        if self.detail.is_none() || self.pending.is_some() || self.exited || self.blocked {
             return None;
         }
         self.sequence = self.sequence.checked_add(1)?;
-        let attempt = RetryAttempt {
+        let attempt = StartupAttempt {
             surface: cx.entity_id(),
             sequence: self.sequence,
         };
@@ -189,11 +220,11 @@ impl StartupSurface {
 
     pub fn complete_failure(
         &mut self,
-        attempt: RetryAttempt,
+        attempt: StartupAttempt,
         detail: &str,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.exited || self.pending != Some(attempt) {
+        if self.exited || self.blocked || self.pending != Some(attempt) {
             return false;
         }
         let Some(input) = &self.detail else {
@@ -208,14 +239,59 @@ impl StartupSurface {
     }
 
     pub fn request_exit(&mut self, cx: &mut Context<Self>) {
-        if self.exited {
+        if self.exited || self.quit_requested {
             return;
         }
         self.exited = true;
-        self.pending = None;
         self.timer = None;
         let handler = self.handler.clone();
         cx.defer(move |cx| handler(StartupSurfaceEvent::Exit, cx));
+        cx.notify();
+    }
+
+    pub fn block_cleanup(
+        &mut self,
+        attempt: StartupAttempt,
+        detail: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.blocked || self.quit_requested || attempt != self.attempt(cx) {
+            return false;
+        }
+        let Some(input) = &self.detail else {
+            return false;
+        };
+        input.update(cx, |input, cx| input.set_text(bounded_detail(detail), cx));
+        input.read(cx).tab_focus_handle().focus(window);
+        self.blocked = true;
+        self.pending = None;
+        cx.notify();
+        true
+    }
+
+    pub fn request_quit_anyway(&mut self, cx: &mut Context<Self>) {
+        if !self.blocked || self.quit_requested {
+            return;
+        }
+        self.quit_requested = true;
+        let weak = cx.weak_entity();
+        cx.defer(move |cx| {
+            let handler = weak
+                .update(cx, |surface, _| {
+                    (surface.blocked && surface.quit_requested).then(|| surface.handler.clone())
+                })
+                .ok()
+                .flatten();
+            if let Some(handler) = handler {
+                handler(
+                    StartupSurfaceEvent::QuitAnyway(QuitAnywayRequest {
+                        surface: weak.entity_id(),
+                    }),
+                    cx,
+                );
+            }
+        });
         cx.notify();
     }
 
@@ -225,14 +301,17 @@ impl StartupSurface {
             return;
         }
         if event.keystroke.key == "tab" {
-            let mut focuses = Vec::with_capacity(3);
+            let mut focuses = Vec::with_capacity(4);
             if let Some(detail) = &self.detail {
                 focuses.push(detail.read(cx).tab_focus_handle());
             }
-            if self.detail.is_some() && self.pending.is_none() && !self.exited {
+            if self.detail.is_some() && self.pending.is_none() && !self.exited && !self.blocked {
                 focuses.push(self.retry_focus.clone());
             }
             focuses.push(self.exit_focus.clone());
+            if self.blocked && !self.quit_requested {
+                focuses.push(self.quit_focus.clone());
+            }
             let current = focuses.iter().position(|focus| focus.is_focused(window));
             let next = match current {
                 Some(index) if modifiers.shift => (index + focuses.len() - 1) % focuses.len(),

@@ -68,6 +68,32 @@ Preserve the user's current window layout and last coherent work surfaces when d
   disposal or earlier Exit cancels that timer. Presentation owns no home, service graph or recovery
   custody and does not start storage work.
 
+## Startup Cleanup Blocked
+
+- If failed startup cannot finish native, editor, command or home cleanup, show the dedicated
+  startup failure window in an explicit blocked state. This is the exception to closing every
+  attempted main window before failure presentation: remaining attempted windows retain their
+  original ownership and stay noninteractive. Never present them as successful restoration.
+- Show `Beryl couldn't finish starting`, bounded selectable diagnostic detail, and explain that
+  cleanup could not finish and Retry is unavailable. Do not claim uncertain writes were saved,
+  cancelled or rolled back, or display continuing progress for a terminal cleanup failure.
+- Retry stays visible and disabled. Exit and native close retain their ordinary orderly-exit
+  intent; they do not discard retained state, authorize another attempt, or force termination.
+  An already requested Exit remains idempotent and does not prevent blocked failure presentation.
+- Only this blocked state adds `Quit Anyway`. It is never the default focused action and requires
+  explicit pointer or keyboard activation. Native close, Escape, timers and cleanup errors cannot
+  activate it. No additional confirmation dialog is required because its consequence is shown
+  beside the command: `Quit Anyway stops Beryl immediately. Unsaved changes may be lost; work
+  already sent may still complete.`
+- Quit Anyway terminates this application process without save, flush, ordinary shutdown or
+  further recovery. It abandons in-memory cleanup and reconciliation custody, not by reporting
+  success or deleting durable records. Existing OS-owned child-process containment still applies;
+  termination does not prove remote work stopped or undo dispatched effects. A later manual launch
+  validates durable state through ordinary startup. It neither restarts Beryl nor creates a panic
+  report for this explicit user-requested termination.
+- The blocked state is terminal for its startup attempt. Stale Retry completions cannot restore
+  admission or overwrite its diagnostics. Quit Anyway admission emits at most one exact request.
+
 ## Persistent Store Failure During A Session
 
 - A persistent state-store failure never closes, removes, replaces, repositions, or changes the virtual-desktop placement of an existing main conversation window.

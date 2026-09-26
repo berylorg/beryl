@@ -38,6 +38,14 @@ The pending Retry command shows progress and explains its unavailable state with
 Tab navigation includes the selectable detail and available commands, and keyboard activation
 uses the same exact pending/Exit admission as pointer activation.
 
+The blocked-cleanup variant uses the same window and detail input, with the heading
+`Beryl couldn't finish starting`. A short explanation above the detail says cleanup could not
+finish and Retry is unavailable. The bottom command group retains disabled Retry and ordinary Exit,
+and adds a non-primary `Quit Anyway` command button. Its consequence text remains visible directly
+above the commands. The fixed window remains large enough to show all controls; detail alone
+scrolls. Entering blocked state moves focus from Retry to the selectable detail, never to Quit
+Anyway. Tab order follows detail, Exit and Quit Anyway; native close remains ordinary Exit.
+
 ## Running Store Notice Contributions
 
 This feature mounts no `main-window notice`. From the failure, reopening, and recovered states owned

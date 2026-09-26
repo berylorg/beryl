@@ -87,12 +87,18 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 592: Qualify Explicit GPUI Application Lifetime (finished)
+# Phase 593: Present Blocked Startup Cleanup And Explicit Quit (finished)
 
-Published and canonically pinned the startup-only last-window quit option and aligned widget
-chain. All 21 selected native/lifecycle cases, local and canonical package checks, single-GPUI
-locked metadata and independent lifecycle review pass. The startup-surface fixture now verifies
-zero-window disposal without a sentinel. [Evidence](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
+Accepted the blocked-cleanup exception, exact surface-attempt snapshots and explicitly activated
+Quit Anyway. All 14 focused GUI/native/subprocess cases, default package check and independent
+admission/termination review pass. [Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
+Process-owner mounting remains in phase 568.
+
+# Phase 594: Retire Failed Published Startup Services (pending)
+
+Compose existing failed-home CAS retirement with complete app-graph worker disposal and home close.
+Preserve exact process fences and outer custody; authorize reopening only after proven retirement.
+Derive the bounded implementation from the existing recovery ownership contract before activation.
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 
@@ -105,16 +111,10 @@ Retry; a stopped GUI executor cannot complete their ownership protocol.
 Use the accepted startup-only `with_quit_on_last_window_close(false)` GPUI lifetime option;
 [the zero-window executor failure](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime)
 must not be concealed by a production sentinel window.
-Blocked on 2026-09-26: readiness review and two passing native retained-failure regressions prove
-that startup cleanup can retain a live gated shell. The current feature requires closing the
-entire attempted set before presenting startup failure, while lifecycle authority forbids dropping
-unsettled custody or claiming successful Retry/Exit. The blocked-cleanup presentation requires an
-Operator decision; proposed behavior and exact evidence are recorded in
-[startup cleanup failure presentation](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
-Do not silently display the ordinary retryable failure state alongside retained attempted windows,
-leave a pending-operation indicator for a terminal failure, or add forced termination.
-After that decision, separately plan the bounded failed-home graph-retirement prerequisite:
-ordinary healthy-home shutdown cannot retire a graph whose home failed after publication.
+
+Operator approved the blocked-cleanup presentation and explicit Quit Anyway exception. Complete
+phases 593 and 594 before this composition; retain original custody until proven disposal or
+explicit user-requested termination. [Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

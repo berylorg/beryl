@@ -179,7 +179,9 @@ Preserve each window's visible identity and placement without requiring auxiliar
   noninteractive until every native publication succeeds. On failure Beryl closes the entire
   attempted set, preserves its durable restore records, and presents startup failure. It neither
   accepts the visible subset as successful restoration nor claims that an observed frame was
-  rolled back. Simultaneous OS compositor painting is not guaranteed.
+  rolled back. Simultaneous OS compositor painting is not guaranteed. If cleanup itself fails,
+  the [blocked startup exception](../beryl-home/design.md#startup-cleanup-blocked) permits the
+  failure surface while exact attempted windows remain retained and noninteractive.
 - Every restored or replacement window becomes visible only when its selected thread and durable
   draft form one coherent first-presentable editor state. Its first composer can display the
   current visible content and accept input without racing unseen persisted text.

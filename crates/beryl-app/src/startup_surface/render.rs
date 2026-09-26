@@ -17,11 +17,16 @@ impl Render for StartupSurface {
             .text_color(rgb(0x1f2937))
             .text_size(px(14.))
             .on_key_down(cx.listener(Self::key))
-            .child(div().text_size(px(20.)).child(if self.detail.is_some() {
+            .child(div().text_size(px(20.)).child(if self.blocked {
+                "Beryl couldn't finish starting"
+            } else if self.detail.is_some() {
                 "Beryl couldn't open its data"
             } else {
                 "Beryl is already open"
             }));
+        if self.blocked {
+            root = root.child("Cleanup could not finish. Retry is unavailable.");
+        }
         if let Some(detail) = &self.detail {
             root = root.child(
                 div()
@@ -48,11 +53,11 @@ impl Render for StartupSurface {
         }
         let mut commands = div().flex().justify_center().gap(px(12.));
         if self.detail.is_some() {
-            let disabled = self.pending.is_some() || self.exited;
+            let disabled = self.pending.is_some() || self.exited || self.blocked;
             let focus = self.retry_focus.clone();
             let mut retry = button(
                 "startup-retry",
-                if self.pending.is_some() {
+                if self.pending.is_some() && !self.exited && !self.blocked {
                     "Retrying…"
                 } else {
                     "Retry"
@@ -68,7 +73,9 @@ impl Render for StartupSurface {
                 retry =
                     retry.on_mouse_down(MouseButton::Left, move |_, window, _| focus.focus(window));
             } else {
-                let explanation = if self.exited {
+                let explanation = if self.blocked {
+                    "Startup cleanup is blocked. Retrying is unavailable."
+                } else if self.exited {
                     "Beryl is exiting."
                 } else {
                     "A retry is already in progress."
@@ -78,13 +85,31 @@ impl Render for StartupSurface {
             commands = commands.child(retry);
         }
         let focus = self.exit_focus.clone();
-        root.child(
-            commands.child(
-                button("startup-exit", "Exit", &focus, false, false)
-                    .on_mouse_down(MouseButton::Left, move |_, window, _| focus.focus(window))
-                    .on_click(cx.listener(|surface, _, _, cx| surface.request_exit(cx))),
-            ),
-        )
+        commands = commands.child(
+            button("startup-exit", "Exit", &focus, false, false)
+                .on_mouse_down(MouseButton::Left, move |_, window, _| focus.focus(window))
+                .on_click(cx.listener(|surface, _, _, cx| surface.request_exit(cx))),
+        );
+        if self.blocked {
+            root = root.child(
+                div().id("startup-quit-warning")
+                    .debug_selector(|| "startup-quit-warning".into())
+                    .child("Quit Anyway stops Beryl immediately. Unsaved changes may be lost; work already sent may still complete."),
+            );
+            let focus = self.quit_focus.clone();
+            commands = commands.child(
+                button(
+                    "startup-quit-anyway",
+                    "Quit Anyway",
+                    &focus,
+                    self.quit_requested,
+                    false,
+                )
+                .on_mouse_down(MouseButton::Left, move |_, window, _| focus.focus(window))
+                .on_click(cx.listener(|surface, _, _, cx| surface.request_quit_anyway(cx))),
+            );
+        }
+        root.child(commands)
     }
 }
 
