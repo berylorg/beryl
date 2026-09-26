@@ -5,8 +5,8 @@ use syndic_storage::{InputGateState, SelectedPathProof};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ShutdownWorkRevision {
-    pub(super) required: RequiredWorkRevision,
-    pub(super) flights: u64,
+    pub(in crate::cas_projection::service::process_work) required: RequiredWorkRevision,
+    pub(in crate::cas_projection::service::process_work) flights: u64,
     pub(super) loaded: u64,
     pub(super) connections: ConnectionCustodyWorkStamp,
 }

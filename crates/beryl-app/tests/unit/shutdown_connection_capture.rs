@@ -8,6 +8,12 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     let connection = Arc::clone(session.connection());
     let before = service.shutdown_work_revision(&sessions).unwrap();
     assert!(!before.requires_connection_cleanup());
+    assert!(
+        !service
+            .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
+            .unwrap()
+            .has_work()
+    );
     let cleanup = connection.acquire_cleanup_owner().unwrap().unwrap();
     assert!(
         service
@@ -16,6 +22,12 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     );
     let revision = service.shutdown_work_revision(&sessions).unwrap();
     assert!(revision.requires_connection_cleanup());
+    assert!(
+        service
+            .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
+            .unwrap()
+            .has_work()
+    );
     let page = service
         .shutdown_work_page(
             &sessions,
@@ -124,6 +136,12 @@ fn shared_loaded_projection_remains_captured_after_one_lease_returns() {
     assert_eq!(page.records[0].thread_id, thread);
     assert_eq!(page.records[0].current_turn_id, None);
     assert!(page.records[0].loaded_projection);
+    assert!(
+        !service
+            .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
+            .unwrap()
+            .has_work()
+    );
     assert!(second.release().is_err());
     assert!(
         service

@@ -15,6 +15,8 @@ pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
 mod shutdown;
 mod shutdown_capture;
+mod shutdown_observation;
+pub(crate) use shutdown_observation::ShutdownWorkObservation;
 mod shutdown_execution;
 pub(crate) use shutdown_capture::{
     ShutdownTerminalCompletion, ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord,

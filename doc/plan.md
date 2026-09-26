@@ -87,13 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 598: Admit The No-Work Shutdown Cut Without Speculative Fencing (finished)
+# Phase 599: Observe Shutdown Confirmation Work Without Side Effects (finished)
 
-Accepted conditional fencing under the shared admission lock, preserving existing execution
-authority on rejected, failed or unsettled validation. All 17 focused admission/window tests,
-the default app-library check and independent concurrency review pass. Phase 595 still owns
-complete work observation and confirmation; callers must validate the exact window lease and
-work observation without reentering the process gate.
+Accepted versioned read-only observation of live custody and durable work sources, excluding idle
+retained projections. All 31 focused work/capture tests, the default app-library check and
+independent concurrency review pass. Queued-input preservation is tested through real admission;
+both durable accepted-input presence probes were independently reviewed. Phase 595 still owns
+atomic admission revalidation, native confirmation and ordinary close/Exit composition.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
