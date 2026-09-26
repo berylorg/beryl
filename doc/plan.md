@@ -111,6 +111,13 @@ feature, GUI and lifecycle authority now distinguish recoverable failure before 
 blocked cleanup afterward. Include this outcome in ordinary final-close/Exit integration. The
 earlier lock-order and bounded observation prerequisites are accepted in phase 603.
 
+The observed coordinator handoff and graph-owned lifetime integration are accepted in phases
+613–614. Next derive the bounded native confirmation dependency before its app mount. Inspection
+of the owned GPUI Windows prompt found severity-owned titles and no exact dialog handle for
+duplicate reveal or disposal tracking; the feature requires its own title, Cancel-default behavior,
+focus restoration and one retained confirmation. Establish the owning native lifecycle contract
+before implementing that dependency, preserving the separate ordinary-window owner integration.
+
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
 Connect normalized fixed-home configuration, complete private domain registration, immutable
