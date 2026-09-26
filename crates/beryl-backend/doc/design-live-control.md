@@ -60,6 +60,14 @@ this outcome only after exact service failure; ordinary approval routing retains
   remain unavailable. Reading or refusing changes no response state, completion registration,
   capability custody or execution authority. The returned snapshot is a point-in-time fact, not
   a retained lock or permission to act after other sources change.
+- Atomic local admission may instead acquire a nonblocking response read guard. It borrows the
+  observer and retains the same exact snapshot and response mutex until dropped; it adds no
+  response capability, completion registration or execution authority. Busy, poison and exhausted
+  revisions refuse without mutation. The caller may only perform bounded local validation and
+  publication while holding it, with nonblocking acquisition of other required guards. It must
+  not wait, perform I/O, reenter this response source or drop response capabilities under the guard.
+  Dropping the read guard only releases the mutex; ordinary response owners then resume their
+  existing state transitions and notification behavior.
 - Each response source supports one bounded, non-authorizing completion notification registration.
   Its one-shot wake follows the first successful response write or final response-capability
   release, after the observable state changes and outside the observation lock. Registration racing

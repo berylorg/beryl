@@ -6,6 +6,11 @@ fn nonblocking_snapshot_preserves_exact_identity_and_all_response_facts() {
     let observer = tracker.observe();
     let before = observer.snapshot().unwrap();
     assert_eq!(observer.try_snapshot().unwrap(), before);
+    let held = observer.try_read().unwrap();
+    assert_eq!(held.snapshot(), &before);
+    assert!(matches!(observer.try_read(), Err(ResponseWorkError::Busy)));
+    drop(held);
+    assert_eq!(observer.try_snapshot().unwrap(), before);
     let foreign = ResponseWorkTracker::new(2, Some(17)).observe();
     assert_ne!(foreign.try_snapshot().unwrap(), before);
     tracker.bind(18, || Ok::<_, ()>(())).unwrap();
@@ -65,6 +70,10 @@ fn poisoned_snapshot_refuses_without_recovering_response_state() {
         .is_err()
     );
     assert_eq!(observer.try_snapshot(), Err(ResponseWorkError::Poisoned));
+    assert!(matches!(
+        observer.try_read(),
+        Err(ResponseWorkError::Poisoned)
+    ));
     let state = observer.state.lock().unwrap_err().into_inner();
     assert_eq!(state.revision, Some(0));
     assert_eq!(state.retained_capabilities, 2);
@@ -92,6 +101,10 @@ fn exhausted_revision_refuses_without_consuming_completion_registration() {
         observer.try_snapshot(),
         Err(ResponseWorkError::RevisionUnavailable)
     );
+    assert!(matches!(
+        observer.try_read(),
+        Err(ResponseWorkError::RevisionUnavailable)
+    ));
     assert_eq!(
         observer.snapshot(),
         Err(ResponseWorkError::RevisionUnavailable)
@@ -103,4 +116,61 @@ fn exhausted_revision_refuses_without_consuming_completion_registration() {
         observer.register_completion_waker(Waker::from(wake)),
         Err(ResponseWorkError::CompletionAlreadyRegistered)
     );
+}
+
+#[test]
+fn retained_read_defers_response_transition_and_wake_until_release() {
+    struct WakeCount(std::sync::atomic::AtomicUsize);
+    impl std::task::Wake for WakeCount {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let tracker = ResponseWorkTracker::new(1, Some(17));
+    let observer = tracker.observe();
+    let before = observer.snapshot().unwrap();
+    let wake = Arc::new(WakeCount(std::sync::atomic::AtomicUsize::new(0)));
+    observer
+        .register_completion_waker(Waker::from(Arc::clone(&wake)))
+        .unwrap();
+    let guard = observer.try_read().unwrap();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+    let writer = std::thread::spawn(move || {
+        started_tx.send(()).unwrap();
+        tracker.record_response(true, || {});
+        tracker.release_capability();
+        finished_tx.send(()).unwrap();
+    });
+    started_rx.recv().unwrap();
+    let early = finished_rx.recv_timeout(std::time::Duration::from_millis(50));
+    assert_eq!(guard.snapshot(), &before);
+    assert_eq!(wake.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    drop(guard);
+    writer.join().unwrap();
+    assert!(matches!(
+        early,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+    ));
+    finished_rx.recv().unwrap();
+    let after = observer.try_read().unwrap();
+    assert!(after.snapshot().response_written());
+    assert_eq!(after.snapshot().retained_capabilities(), 0);
+    assert_ne!(after.snapshot().revision(), before.revision());
+    assert_eq!(wake.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[test]
+fn read_guard_release_alone_preserves_custody_and_completion_registration() {
+    let tracker = ResponseWorkTracker::new(2, Some(17));
+    let observer = tracker.observe();
+    let before = observer.snapshot().unwrap();
+    {
+        let held = observer.try_read().unwrap();
+        assert_eq!(held.snapshot(), &before);
+    }
+    assert_eq!(observer.snapshot().unwrap(), before);
+    let state = observer.state.try_lock().unwrap();
+    assert!(!state.completion_registered);
+    assert!(state.completion_waker.is_none());
 }

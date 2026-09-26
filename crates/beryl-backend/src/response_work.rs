@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::task::Waker;
 
 use thiserror::Error;
@@ -95,6 +95,18 @@ pub struct ResponseWorkObserver {
     state: Arc<Mutex<WorkState>>,
 }
 
+#[derive(Debug)]
+pub struct ResponseWorkReadGuard<'a> {
+    _state: MutexGuard<'a, WorkState>,
+    snapshot: ResponseWorkSnapshot,
+}
+
+impl ResponseWorkReadGuard<'_> {
+    pub fn snapshot(&self) -> &ResponseWorkSnapshot {
+        &self.snapshot
+    }
+}
+
 impl ResponseWorkObserver {
     pub fn register_completion_waker(&self, waker: Waker) -> Result<(), ResponseWorkError> {
         let wake = {
@@ -118,11 +130,19 @@ impl ResponseWorkObserver {
     }
 
     pub fn try_snapshot(&self) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
+        Ok(self.try_read()?.snapshot.clone())
+    }
+
+    pub fn try_read(&self) -> Result<ResponseWorkReadGuard<'_>, ResponseWorkError> {
         let state = self.state.try_lock().map_err(|error| match error {
             TryLockError::WouldBlock => ResponseWorkError::Busy,
             TryLockError::Poisoned(_) => ResponseWorkError::Poisoned,
         })?;
-        self.snapshot_from(&state)
+        let snapshot = self.snapshot_from(&state)?;
+        Ok(ResponseWorkReadGuard {
+            _state: state,
+            snapshot,
+        })
     }
 
     fn snapshot_from(&self, state: &WorkState) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
