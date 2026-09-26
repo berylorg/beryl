@@ -544,6 +544,12 @@ by the executable composition root.
   finally the master command gate before entering connection-work election. Session validation
   checks the command gate briefly before its final retained acquisition. All acquisitions under
   process admission remain nonblocking; publication performs no callbacks into held sources.
+- Process admission supplies a scoped unpublished closing guard only while its gate is open,
+  reservations have settled and a successor epoch is available. Acquiring or dropping it changes
+  neither the epoch nor execution authority. Its consuming publication operation installs the
+  fence while the caller still holds subordinate validation guards. No callback-return gap may
+  separate validation from publication. A published fence keeps prior execution permits stale
+  even after a coherent reopening; failed acquisition or unpublished disposal leaves them valid.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

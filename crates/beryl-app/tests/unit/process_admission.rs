@@ -5,25 +5,90 @@ use crate::window_acquisition::{
 use beryl_model::WindowId;
 
 #[test]
-fn declined_or_failed_no_work_validation_preserves_existing_execution_authority() {
+fn closing_publishes_while_subordinate_validation_is_still_held() {
     let gate = ProcessAdmissionGate::new();
     let permit = gate.execution_permit();
-    assert!(
-        gate.fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(false))
-            .unwrap()
-            .is_none()
+    let source = Mutex::new(7);
+    let closing = gate.prepare_closing().unwrap();
+    let validated = source.try_lock().unwrap();
+    assert_eq!(*validated, 7);
+    let fence = closing.publish();
+    assert!(matches!(
+        source.try_lock(),
+        Err(std::sync::TryLockError::WouldBlock)
+    ));
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
+    drop(validated);
+    fence.reopen_if(true).unwrap();
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Stale));
+}
+
+#[test]
+fn unpublished_closing_excludes_admission_until_disposal() {
+    let gate = ProcessAdmissionGate::new();
+    let permit = gate.execution_permit();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let closing = gate.prepare_closing().unwrap();
+        let admission = scope.spawn(|| {
+            started_tx.send(()).unwrap();
+            let result = permit.commit(|| ());
+            done_tx.send(result).unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err()
+        );
+        drop(closing);
+        assert_eq!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap(),
+            Ok(())
+        );
+        admission.join().unwrap();
+    });
+}
+
+#[test]
+fn exhausted_or_poisoned_closing_authority_never_publishes() {
+    let gate = ProcessAdmissionGate::new();
+    gate.inner.lock().unwrap().epoch = u64::MAX;
+    let permit = gate.execution_permit();
+    assert_eq!(
+        gate.prepare_closing().unwrap_err(),
+        ProcessAdmissionError::Unavailable
     );
     permit.commit(|| ()).unwrap();
-    assert_eq!(
-        gate.fence_if_quiescent(|| Err(ProcessAdmissionError::Stale))
-            .unwrap_err(),
-        ProcessAdmissionError::Stale
+    let gate = ProcessAdmissionGate::new();
+    assert!(
+        std::panic::catch_unwind(|| {
+            let _closing = gate.prepare_closing().unwrap();
+            panic!("inject unpublished closing guard poison");
+        })
+        .is_err()
     );
+    assert_eq!(
+        gate.prepare_closing().unwrap_err(),
+        ProcessAdmissionError::Unavailable
+    );
+    let state = gate.inner.lock().unwrap_err().into_inner();
+    assert_eq!(state.epoch, 1);
+    assert!(!state.fenced);
+}
+
+#[test]
+fn unpublished_closing_preserves_existing_execution_authority() {
+    let gate = ProcessAdmissionGate::new();
+    let permit = gate.execution_permit();
+    drop(gate.prepare_closing().unwrap());
     permit.commit(|| ()).unwrap();
     let reservation = permit.reserve().unwrap();
     assert_eq!(
-        gate.fence_if_quiescent::<ProcessAdmissionError>(|| panic!("unsettled validation"))
-            .unwrap_err(),
+        gate.prepare_closing().unwrap_err(),
         ProcessAdmissionError::Unsettled
     );
     drop(reservation);
@@ -34,14 +99,10 @@ fn declined_or_failed_no_work_validation_preserves_existing_execution_authority(
 fn accepted_no_work_cut_invalidates_old_permits_and_cannot_join_an_existing_fence() {
     let gate = ProcessAdmissionGate::new();
     let permit = gate.execution_permit();
-    let fence = gate
-        .fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(true))
-        .unwrap()
-        .unwrap();
+    let fence = gate.prepare_closing().unwrap().publish();
     assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
     assert_eq!(
-        gate.fence_if_quiescent::<ProcessAdmissionError>(|| panic!("fenced validation"))
-            .unwrap_err(),
+        gate.prepare_closing().unwrap_err(),
         ProcessAdmissionError::Fenced
     );
     fence.reopen_if(true).unwrap();
@@ -68,13 +129,12 @@ fn no_work_cut_observes_publication_of_concurrent_atomic_work() {
         });
         entered_rx.recv().unwrap();
         let closing = scope.spawn(|| {
-            gate.fence_if_quiescent(|| {
-                Ok::<_, ProcessAdmissionError>(!work.load(std::sync::atomic::Ordering::SeqCst))
-            })
+            let closing = gate.prepare_closing().unwrap();
+            (!work.load(std::sync::atomic::Ordering::SeqCst)).then(|| closing.publish())
         });
         finish_tx.send(()).unwrap();
         admission.join().unwrap().unwrap();
-        assert!(closing.join().unwrap().unwrap().is_none());
+        assert!(closing.join().unwrap().is_none());
     });
     permit.commit(|| ()).unwrap();
 }
@@ -91,10 +151,10 @@ fn reservation_and_no_work_cut_have_exactly_one_winner() {
                 permit.reserve()
             });
             start.wait();
-            let closing = gate.fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(true));
+            let closing = gate.prepare_closing().map(ProcessAdmissionClosing::publish);
             let admission = admission.join().unwrap();
             match (closing, admission) {
-                (Ok(Some(fence)), Err(ProcessAdmissionError::Fenced)) => {
+                (Ok(fence), Err(ProcessAdmissionError::Fenced)) => {
                     fence.reopen_if(true).unwrap();
                 }
                 (Err(ProcessAdmissionError::Unsettled), Ok(reservation)) => {
@@ -118,17 +178,18 @@ fn no_work_cut_revalidates_exact_window_lease_before_installing_fence() {
     let lease = registry
         .admit_close(registry.snapshot_for_close(&[id]).unwrap())
         .unwrap();
-    let fence = gate
-        .fence_if_quiescent(|| lease.is_final(id))
-        .unwrap()
-        .unwrap();
+    let closing = gate.prepare_closing().unwrap();
+    assert!(lease.is_final(id).unwrap());
+    let fence = closing.publish();
     fence.reopen_if(true).unwrap();
     let permit = gate.execution_permit();
     drop(resident);
+    let closing = gate.prepare_closing().unwrap();
     assert_eq!(
-        gate.fence_if_quiescent(|| lease.is_final(id)).unwrap_err(),
-        WindowCloseAdmissionError::WindowSetChanged
+        lease.is_final(id),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
     );
+    drop(closing);
     permit.commit(|| ()).unwrap();
     drop(lease);
 }

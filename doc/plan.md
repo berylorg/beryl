@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 610: Retain Fixed Runtime Revision Guards (finished)
+# Phase 611: Prepare Scoped Process Fence Publication (finished)
 
-Accepted opaque nonblocking guards for sessions, shared stop/compaction controls, flights,
-loaded membership and the master command gate. Nine focused tests, the default app library
-check and independent concurrency/semantic review pass. Partial acquisition releases every
-previous guard without mutation; atomic fence publication remains phase 603.
+Accepted an unpublished closing guard that retains the settled process gate until explicit fence
+publication. Disposal preserves execution authority; publication keeps old permits stale after
+reopening. All 13 focused admission tests, the default app library check and independent concurrency
+review pass. Atomic service/home composition remains phase 603.
 # Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
 
 Combine accepted runtime validation and observed coherent home election with process admission.
