@@ -201,6 +201,7 @@ pub mod main_window;
 mod notice_limits;
 pub mod process_admission;
 pub mod runtime_activity_enrollment;
+pub mod startup_surface;
 pub mod theme_runtime;
 pub mod window_acquisition;
 

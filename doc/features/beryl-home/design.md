@@ -55,6 +55,18 @@ Preserve the user's current window layout and last coherent work surfaces when d
 - Closing the home failure window has the same outcome as activating `Exit`.
 - A repeated failure keeps the home failure window and updates its bounded selectable detail. It never offers Reset, Choose Another Home, Take Over, or Continue Without History.
 - Unlike the busy-home surface, unreadable startup does not auto-exit.
+- The startup presentation retains at most 4,096 UTF-8 bytes of failure detail, including a visible
+  truncation suffix when needed. It never retains an additional unbounded copy for display or
+  clipboard use; repeated failure replaces the prior bounded detail without edit history.
+- A Retry activation becomes pending before its event is delivered and carries an exact
+  surface-local attempt identity. Only its matching failure completion may enable Retry and replace
+  detail; stale completions cannot overwrite a newer attempt or revive a surface after Exit.
+  Exit requests are idempotent and remain available while Retry is pending.
+- Startup surfaces emit required Retry/Exit events to the process owner. Closing a surface requests
+  Exit without removing it or quitting the application ahead of process-owned cleanup. Busy-home
+  countdown uses one retained monotonic timer and requests the same Exit event at its deadline;
+  disposal or earlier Exit cancels that timer. Presentation owns no home, service graph or recovery
+  custody and does not start storage work.
 
 ## Persistent Store Failure During A Session
 

@@ -1806,3 +1806,46 @@ store-wide rather than thread-qualified; final worker lifetime checks also have 
 Default-library and test-fault library/test-target checks passed. Independent review found no
 blocking production or revised-test issue. Dedicated failure surfaces and native process entry
 remain separate mounting gates.
+
+## Dedicated Startup Failure Surfaces
+
+The app now mounts dedicated fixed-size busy-home and home-failure windows before home/service
+construction. One read-only multiline input retains at most 4,096 UTF-8 bytes including truncation,
+with text key bindings registered at this entry and no undo history. Required callbacks run after
+local admission and outside the surface borrow. Exact surface/attempt identity rejects stale and
+foreign completions; Exit cancels the monotonic busy timer and suppresses queued Retry delivery.
+Native close requests Exit while retaining the surface for process-owned cleanup.
+
+Run `c315c2e1-d2bd-484f-a1b1-bc08d148af9e` passed eight of nine focused cases, including real
+Windows non-resizability, idempotent native close, retained HWND and owner removal. The remaining
+tooltip test attempted drawing inside an entity update; switching its draw to `App::update_window`
+passed in run `7d3bd471-d951-4ca4-adcf-b5766d3d0d17`. Together the cases cover pointer/keyboard
+admission, select/copy/read-only detail, bounded Unicode replacement, no history, reentrant
+completion, foreign/stale attempts, tooltip mounting, exactly-once deadline delivery and disposal
+cancellation. `cargo +stable check -p beryl-app --locked -j 1` and the equivalent
+`--features test-faults --lib --tests` check pass with no normal debug information. Existing
+unrelated warnings remain. Independent lifecycle/GUI review accepted the corrected primary Retry,
+centered layout, focus ring and tooltip fallback styling. Actual process Retry/Exit remains separate.
+
+## Windows Last-Window Executor Lifetime
+
+The native startup-surface test initially removed the first of two sequential test windows and
+expected its async owner to continue into the next case. Instead `Application::run` returned before
+the completion flag was set. A separate hidden test control window lets the presentation-only
+fixture verify both surfaces; it does not qualify the production controller's executor lifetime.
+
+At owned GPUI revision `936b801fff82e343124237608bf46e4d192f5177`, Windows
+`WindowsPlatformInner::handle_gpui_events` unconditionally calls `PostQuitMessage(0)` when
+`close_one_window` removes the last raw window handle. `WindowsPlatform::run` then exits its message
+loop before invoking the quit callback. No last-window policy or explicit-lifetime override exists
+in the inspected public boundary. Retaining an app entity or scheduling later GUI cleanup cannot
+keep that message loop running.
+
+This blocks native startup failure/Retry integration: complete failed-set disposal must prove
+native destruction before presenting failure, while subsequent transient/service cleanup still
+needs the live GUI executor. The earlier desktop-worker lifetime lesson also excludes relying on
+post-loop shutdown. A dummy production window would conceal this gap rather than satisfy it.
+The clean prerequisite is a fork-owned explicit process-controlled quit boundary, with native
+tests proving zero-window cleanup and reopening, followed by the Beryl startup owner integration.
+The fork contract and implementation are not changed here; phase 568 remains blocked for Operator
+direction under the instruction to stop when a planned step cannot technically work.

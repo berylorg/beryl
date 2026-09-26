@@ -42,6 +42,21 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Settings, busy-home, and home-failure windows are distinct top-level controllers and never receive
   main-window claims or restore records.
 
+## Startup Failure Presentation
+
+`startup_surface::StartupSurface::open_busy` and `open_failure` mount the dedicated windows from
+the [Beryl-home GUI contract](../../../doc/features/beryl-home/gui.md) without a home or service
+graph. They return a typed GPUI window handle or an explicit native-open error. `open_failure`
+borrows diagnostic text and retains only the feature-capped value in one read-only text input;
+text bindings and built-in appearance are available before ordinary application composition.
+
+The required callback receives `StartupSurfaceEvent::Retry(RetryAttempt)` or `Exit` after local
+admission and outside the surface borrow. `RetryAttempt` identifies the exact surface and attempt;
+`complete_failure` rejects any nonmatching or exited attempt and replaces the same detail input
+without undo history. `request_retry` and `request_exit` share pointer and keyboard admission.
+Native close and the busy countdown request Exit without removing the window or quitting GPUI.
+The process owner retains cleanup custody and removes the surface only through its own lifecycle.
+
 ## Initial Service Preparation And Publication
 
 - The app accepts the registration-complete private home candidate, complete Beryl-state and

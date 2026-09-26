@@ -462,6 +462,8 @@
 - [x] Accepted complete native startup-set validation, interaction-gated publication and exact failure disposal/retention; [evidence](../../failures/target-bootstrap-composition.md#complete-native-startup-set). Process Retry/Exit and executable mounting remain separate.
 - [x] Accepted proven-retired initial-service Retry using exact process fences and original recovery custody; [37-case evidence](../../failures/target-bootstrap-composition.md#proven-retired-initial-service-reopening).
 - [x] Accepted graph-derived window services and one registry across Retry, with worker-side restoration and exact retired-source cleanup; [104-case evidence](../../failures/target-bootstrap-composition.md#published-graph-window-services).
+- [x] Accepted dedicated startup failure surfaces with bounded selectable detail, exact Retry/Exit and native close retention; [evidence](../../failures/target-bootstrap-composition.md#dedicated-startup-failure-surfaces).
+- [ ] Compose the native startup owner after resolving GPUI's last-window automatic quit; [blocker](../../failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

@@ -1,0 +1,89 @@
+#![cfg(target_os = "windows")]
+
+use beryl_app::startup_surface::{StartupSurface, StartupSurfaceEvent};
+use gpui::{AppContext, Application};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::{Duration, Instant},
+};
+use windows::{
+    Win32::{
+        Foundation::{LPARAM, WPARAM},
+        UI::WindowsAndMessaging::{
+            FindWindowW, GWL_STYLE, GetWindowLongW, IsWindow, SendMessageW, WM_CLOSE, WS_THICKFRAME,
+        },
+    },
+    core::PCWSTR,
+};
+
+#[test]
+fn native_close_requests_exit_and_retains_surface_until_owner_disposal() {
+    let completed = Rc::new(Cell::new(false));
+    let done = completed.clone();
+    Application::new().run(move |app| {
+        let control = app
+            .open_window(
+                gpui::WindowOptions {
+                    show: false,
+                    focus: false,
+                    ..Default::default()
+                },
+                |_, cx| cx.new(|_| gpui::Empty),
+            )
+            .unwrap();
+        app.spawn(async move |cx| {
+            for busy in [false, true] {
+                let events = Rc::new(RefCell::new(Vec::new()));
+                let observed = events.clone();
+                let window = cx
+                    .update(|app| {
+                        let handler =
+                            move |event, _: &mut gpui::App| observed.borrow_mut().push(event);
+                        if busy {
+                            StartupSurface::open_busy(handler, app)
+                        } else {
+                            StartupSurface::open_failure("Native startup failure", handler, app)
+                        }
+                        .unwrap()
+                    })
+                    .unwrap();
+                let title = format!("Beryl startup surface native {} {busy}", std::process::id());
+                window
+                    .update(cx, |_, window, _| window.set_window_title(&title))
+                    .unwrap();
+                let wide = title.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+                let raw = unsafe { FindWindowW(None, PCWSTR(wide.as_ptr())) }.unwrap();
+                assert_eq!(
+                    unsafe { GetWindowLongW(raw, GWL_STYLE) } as u32 & WS_THICKFRAME.0,
+                    0
+                );
+                for _ in 0..2 {
+                    unsafe { SendMessageW(raw, WM_CLOSE, Some(WPARAM(0)), Some(LPARAM(0))) };
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                    assert!(unsafe { IsWindow(Some(raw)) }.as_bool());
+                }
+                assert_eq!(&*events.borrow(), &[StartupSurfaceEvent::Exit]);
+                window
+                    .update(cx, |_, window, _| window.remove_window())
+                    .unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while unsafe { IsWindow(Some(raw)) }.as_bool() {
+                    assert!(Instant::now() < deadline);
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                }
+            }
+            done.set(true);
+            control
+                .update(cx, |_, window, _| window.remove_window())
+                .unwrap();
+            cx.update(|app| app.quit()).unwrap();
+        })
+        .detach();
+    });
+    assert!(completed.get());
+}

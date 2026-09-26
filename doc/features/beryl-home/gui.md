@@ -14,6 +14,11 @@ The home path is not required as persistent body text. If shown for diagnosis, i
 
 The surface contains no Retry, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls.
 
+Startup surfaces use self-contained built-in appearance defaults and the platform system font
+before home validation. They do not load a theme repository or require ordinary service-graph
+construction. Command controls use the canonical command-button fallback states and keyboard/focus
+behavior. Native close routes to the same required Exit intent as the button.
+
 ## Home Failure Surface
 
 Mount-into: home-failure-window.body
@@ -25,6 +30,13 @@ The surface is a compact centered vertical stack containing the heading `Beryl c
 `Retry` uses the primary `command button` variant. The feature supplies its current label, enabled state, progress state, and the ordinary `Exit` `command button` state from `design.md`.
 
 The surface contains no Reset, Continue, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls. The bounded detail region retains one stable location without stacked notices or window resizing.
+
+The detail uses the registered `text-input` multiline read-only variant, kept enabled for selection
+and copy with no undo history. Its existing internal scrolling stays inside that fixed detail
+region; the window body does not scroll. Truncation is explicit within the design-owned byte cap.
+The pending Retry command shows progress and explains its unavailable state with a tooltip.
+Tab navigation includes the selectable detail and available commands, and keyboard activation
+uses the same exact pending/Exit admission as pointer activation.
 
 ## Running Store Notice Contributions
 

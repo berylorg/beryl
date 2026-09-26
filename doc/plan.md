@@ -87,19 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 590: Build Window Services From The Published Graph (finished)
+# Phase 591: Mount Dedicated Startup Failure Surfaces (finished)
 
-Accepted read-free graph-derived window services, one process registry across Retry, worker-side
-restoration construction and stale-admission/completion rejection with original cleanup custody.
-All 104 selected cases pass across the broad run and corrected focused fixture; package checks
-and independent lifecycle review pass;
-[evidence](failures/target-bootstrap-composition.md#published-graph-window-services).
-
-# Phase 591: Mount Dedicated Startup Failure Surfaces (pending)
-
-Implement the prescribed busy-home and home-failure GUI compositions with bounded selectable
-detail, exact Retry/Exit events, pending-state admission and busy countdown. Keep actual attempt
-and shutdown ownership in the subsequent process controller.
+Accepted bounded read-only detail, exact deferred Retry/Exit admission, cancelled busy countdown,
+canonical controls and retained native close. All nine focused GPUI/native cases pass across the
+broad and corrected-fixture runs; package checks and independent lifecycle/GUI review pass.
+[Evidence](failures/target-bootstrap-composition.md#dedicated-startup-failure-surfaces).
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 
@@ -108,6 +101,15 @@ lifetime owner with serialized same-home Retry/Exit, exact failure surfaces and 
 custody. Preserve the separate process-entry fatal-hook mounting gate.
 Drain native operation flights and deferred GUI destruction before ordinary application quit or
 Retry; a stopped GUI executor cannot complete their ownership protocol.
+
+Blocked on 2026-09-26: Windows GPUI unconditionally posts `WM_QUIT` after destroying the last
+native window, stopping the executor before post-destruction cleanup and failure/Retry continuation.
+The native surface test reproduced this; its unrelated control window isolates presentation
+verification and is not an accepted production workaround. The next clean prerequisite is an
+explicit process-controlled quit boundary in the owned GPUI fork, with native evidence across zero
+open windows, before this controller can be implemented. No such boundary is currently exposed.
+Stopped under the Operator's instruction to report technically invalid plan steps;
+[evidence](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 
