@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 571: Integrate Prepared Native Window Placement (finished)
+# Phase 580: Expose Exact Native Window Destruction Completion (finished)
 
-Accepted consuming desktop flights retaining original shell custody through worker and GUI
-settlement, publication fences and original typed cleanup. Twelve real native scenarios and 80
-affected regressions pass with package checks and independent review;
-[evidence](failures/target-bootstrap-composition.md#shell-desktop-placement-flight).
+Accepted exact-instance terminal destruction receipts with one completion channel, lease deferral
+and explicit failure. Real native scenarios, 59 affected regressions, package checks and independent
+lifecycle review pass. The qualified fork and aligned widget revisions are published;
+[evidence](failures/target-bootstrap-composition.md#native-destruction-completion).
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

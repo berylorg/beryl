@@ -1417,6 +1417,32 @@ atomicity or a realtime guarantee against desktop changes. App check and manifes
 the successful Serena refresh followed both. Production worker and app-flight integration remain
 separate implementation work.
 
+## Native Destruction Completion
+
+Whole-set startup disposal could not use GPUI wrapper removal or the hidden-operation acknowledgement
+as proof that a subsequently published native window was gone. The test destruction observer fires
+before `DestroyWindow`; the old destroyed flag is set during `WM_DESTROY`. The
+[source investigation](../memory/topic/native-window-publication/destruction-completion.md) identifies
+the terminal exact-instance hook and the live-GUI requirement.
+
+Accepted `Window::observe_windows_native_destruction` returns one move-only receipt backed by one
+per-window sender. Success follows `WM_NCDESTROY` handling and native userdata teardown; the sender
+is removed before waking its receiver. Native errors or lost authority return errors. Dropping the
+observer neither retains the window nor cancels disposal, and duplicate registration stays rejected.
+No raw-handle polling, native retry or global waiter collection is introduced.
+
+Native test run `8e515464-ff7b-42f9-a5fd-f7637a6d69d7` passes hidden, published, leased and abandoned
+observer scenarios, including pending-before-destruction and exactly-one destruction attempt.
+Native operation, native placement, desktop worker, shell and restored-editor targets pass 59
+tests (`a1847527-ff01-4d84-82b2-3bb22b7ecafd`). Default GPUI/app, app all-test-target and focused widget
+checks pass with independent lifecycle review. Error delivery, terminal-hook ordering and waker
+reentrancy are source-reviewed rather than fault-injected.
+
+GPUI revision `11e7d5c41d06f6378ec036fd881c7eb18011f0e7` and aligned widget consumers are published.
+Canonical and local locked metadata pass; the canonical dependency tree has one GPUI revision.
+Serena restarted after validation. Set-owned transient cleanup and process quit draining remain
+unaccepted integration boundaries.
+
 ## Shell Desktop Placement Flight
 
 Accepted consuming shell admission and one detached GUI continuation retaining the original shell

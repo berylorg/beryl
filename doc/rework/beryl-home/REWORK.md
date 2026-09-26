@@ -457,6 +457,7 @@
   and balanced COM/native lifetime; [evidence](../../failures/target-bootstrap-composition.md#saved-desktop-worker).
 - [x] Bounded native selected-editor dispatch and authenticated storage-validation stack use; [evidence](../../failures/target-bootstrap-composition.md#native-selected-dispatch-stack).
 - [x] Integrated native desktop placement with original shell custody, cancellation fences and typed cleanup; [evidence](../../failures/target-bootstrap-composition.md#shell-desktop-placement-flight).
+- [x] Exposed exact native destruction receipts for startup disposal; [evidence](../../failures/target-bootstrap-composition.md#native-destruction-completion).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

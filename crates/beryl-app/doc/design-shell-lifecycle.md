@@ -157,6 +157,25 @@ governed by [design.md](design.md). It does not independently declare engineerin
   native disposal, plus independent lifecycle review. Native lease acceptance does not accept the
   desktop COM worker, app cleanup integration or process quit barrier.
 
+## Native Window Destruction Receipt
+
+- Startup may register one move-only destruction receipt for each exact live Windows native
+  window before handing it to native-set ownership. Registration is single-use and rejects a
+  destroyed window. It neither requests close nor changes desktop-operation admission.
+- The receipt reports terminal native destruction of that original window instance, including
+  destruction deferred by an outstanding desktop lease. Removing the GPUI wrapper, requesting
+  destruction, entering `WM_DESTROY`, or observing a reusable numeric HWND is not completion.
+- Native failure or lost completion authority is an error, never successful disposal. The startup
+  owner retains original typed cleanup custody and blocks failure completion or replacement while
+  native disposal remains unproven. No automatic native retry or alternate-handle probe is added.
+- Dropping the receipt does not cancel native disposal or retain a native window. Storage remains
+  one completion channel per admitted window, without waiter lists or global orphan queues.
+  Native destruction and completion delivery stay on the running GUI executor; process shutdown
+  must drain them before stopping that executor.
+- Acceptance requires real native hidden and published removal, deferred removal while leased,
+  duplicate admission refusal, observer abandonment and exactly-once terminal completion, with
+  independent lifecycle review. Startup-set transfer and process quit draining remain separate.
+
 ## Windows Desktop Worker
 
 - Desktop preparation is one synchronous worker operation consuming the exact hidden native lease
