@@ -87,13 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 597: Serialize Close Admission With Window Construction (finished)
+# Phase 598: Admit The No-Work Shutdown Cut Without Speculative Fencing (finished)
 
-Accepted exact resident-set snapshots and one close lease excluding construction and overlapping
-closes, with stale/foreign rejection and cancellation preserving execution authority. Seven new
-close-admission cases and five reservation regressions pass; the default app-library check and
-independent concurrency review pass. Native close, confirmation, and shutdown integration remain
-in phase 595; its owner must retain and revalidate the lease before effects.
+Accepted conditional fencing under the shared admission lock, preserving existing execution
+authority on rejected, failed or unsettled validation. All 17 focused admission/window tests,
+the default app-library check and independent concurrency review pass. Phase 595 still owns
+complete work observation and confirmation; callers must validate the exact window lease and
+work observation without reentering the process gate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

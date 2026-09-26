@@ -5,6 +5,135 @@ use crate::window_acquisition::{
 use beryl_model::WindowId;
 
 #[test]
+fn declined_or_failed_no_work_validation_preserves_existing_execution_authority() {
+    let gate = ProcessAdmissionGate::new();
+    let permit = gate.execution_permit();
+    assert!(
+        gate.fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(false))
+            .unwrap()
+            .is_none()
+    );
+    permit.commit(|| ()).unwrap();
+    assert_eq!(
+        gate.fence_if_quiescent(|| Err(ProcessAdmissionError::Stale))
+            .unwrap_err(),
+        ProcessAdmissionError::Stale
+    );
+    permit.commit(|| ()).unwrap();
+    let reservation = permit.reserve().unwrap();
+    assert_eq!(
+        gate.fence_if_quiescent::<ProcessAdmissionError>(|| panic!("unsettled validation"))
+            .unwrap_err(),
+        ProcessAdmissionError::Unsettled
+    );
+    drop(reservation);
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
+fn accepted_no_work_cut_invalidates_old_permits_and_cannot_join_an_existing_fence() {
+    let gate = ProcessAdmissionGate::new();
+    let permit = gate.execution_permit();
+    let fence = gate
+        .fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(true))
+        .unwrap()
+        .unwrap();
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
+    assert_eq!(
+        gate.fence_if_quiescent::<ProcessAdmissionError>(|| panic!("fenced validation"))
+            .unwrap_err(),
+        ProcessAdmissionError::Fenced
+    );
+    fence.reopen_if(true).unwrap();
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Stale));
+    gate.execution_permit().commit(|| ()).unwrap();
+}
+
+#[test]
+fn no_work_cut_observes_publication_of_concurrent_atomic_work() {
+    let gate = ProcessAdmissionGate::new();
+    let permit = gate.execution_permit();
+    let work = std::sync::atomic::AtomicBool::new(false);
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let permit = &permit;
+        let work = &work;
+        let admission = scope.spawn(move || {
+            permit.commit(|| {
+                entered_tx.send(()).unwrap();
+                finish_rx.recv().unwrap();
+                work.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+        });
+        entered_rx.recv().unwrap();
+        let closing = scope.spawn(|| {
+            gate.fence_if_quiescent(|| {
+                Ok::<_, ProcessAdmissionError>(!work.load(std::sync::atomic::Ordering::SeqCst))
+            })
+        });
+        finish_tx.send(()).unwrap();
+        admission.join().unwrap().unwrap();
+        assert!(closing.join().unwrap().unwrap().is_none());
+    });
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
+fn reservation_and_no_work_cut_have_exactly_one_winner() {
+    for _ in 0..32 {
+        let gate = ProcessAdmissionGate::new();
+        let start = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let admission = scope.spawn(|| {
+                let permit = gate.execution_permit();
+                start.wait();
+                permit.reserve()
+            });
+            start.wait();
+            let closing = gate.fence_if_quiescent(|| Ok::<_, ProcessAdmissionError>(true));
+            let admission = admission.join().unwrap();
+            match (closing, admission) {
+                (Ok(Some(fence)), Err(ProcessAdmissionError::Fenced)) => {
+                    fence.reopen_if(true).unwrap();
+                }
+                (Err(ProcessAdmissionError::Unsettled), Ok(reservation)) => {
+                    drop(reservation);
+                    gate.execution_permit().commit(|| ()).unwrap();
+                }
+                other => panic!("inconsistent admission winners: {other:?}"),
+            }
+        });
+    }
+}
+
+#[test]
+fn no_work_cut_revalidates_exact_window_lease_before_installing_fence() {
+    use crate::window_acquisition::WindowCloseAdmissionError;
+
+    let gate = ProcessAdmissionGate::new();
+    let registry = RuntimeBackedWindowProcessRegistry::new(gate.clone());
+    let id = WindowId::from_bytes([11; 16]);
+    let resident = registry.reserve_main_window(id).unwrap();
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id]).unwrap())
+        .unwrap();
+    let fence = gate
+        .fence_if_quiescent(|| lease.is_final(id))
+        .unwrap()
+        .unwrap();
+    fence.reopen_if(true).unwrap();
+    let permit = gate.execution_permit();
+    drop(resident);
+    assert_eq!(
+        gate.fence_if_quiescent(|| lease.is_final(id)).unwrap_err(),
+        WindowCloseAdmissionError::WindowSetChanged
+    );
+    permit.commit(|| ()).unwrap();
+    drop(lease);
+}
+
+#[test]
 fn closing_invalidates_queued_execution_even_after_reopening() {
     let gate = ProcessAdmissionGate::new();
     let before = gate.execution_permit();

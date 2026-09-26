@@ -130,6 +130,37 @@ impl ProcessAdmissionGate {
         })
     }
 
+    pub(crate) fn fence_if_quiescent<E: From<ProcessAdmissionError>>(
+        &self,
+        validate: impl FnOnce() -> Result<bool, E>,
+    ) -> Result<Option<ProcessAdmissionFence>, E> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| ProcessAdmissionError::Unavailable)?;
+        if state.fenced {
+            return Err(ProcessAdmissionError::Fenced.into());
+        }
+        if state.admissions != 0 {
+            return Err(ProcessAdmissionError::Unsettled.into());
+        }
+        let epoch = state
+            .epoch
+            .checked_add(1)
+            .ok_or(ProcessAdmissionError::Unavailable)?;
+        // Keep validation and publication under the same admission lock. The callback
+        // must only inspect subordinate state and must not reenter this gate.
+        if !validate()? {
+            return Ok(None);
+        }
+        state.epoch = epoch;
+        state.fenced = true;
+        Ok(Some(ProcessAdmissionFence {
+            gate: self.clone(),
+            epoch,
+        }))
+    }
+
     pub(crate) fn settle<T>(&self, settle: impl FnOnce() -> T) -> T {
         let _state = self
             .inner

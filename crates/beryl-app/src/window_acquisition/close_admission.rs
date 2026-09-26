@@ -9,6 +9,12 @@ pub(crate) enum WindowCloseAdmissionError {
     Unavailable,
 }
 
+impl From<ProcessAdmissionError> for WindowCloseAdmissionError {
+    fn from(error: ProcessAdmissionError) -> Self {
+        Self::Process(error)
+    }
+}
+
 pub(crate) struct WindowCloseSnapshot {
     registry: Arc<Mutex<AcquisitionFlights>>,
     revision: Arc<()>,
