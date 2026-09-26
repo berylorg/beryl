@@ -1494,6 +1494,23 @@ the matching rag-rat walker traverses non-Markdown directories and propagates ra
 Discovery and reconciliation succeeded after test cleanup. Git-ignoring `/.tmp/` now prunes that
 temporary tree before traversal; a target-file exclusion alone would not do so in the pinned build.
 
+## Reentrant Native Close Admission
+
+The registered GPUI close callback previously treated an app/window update error as permission
+to close. A synchronous `WM_CLOSE` during a borrowed publication update could bypass the app veto.
+The wrapper now denies that request without queuing it or changing callback-free close behavior.
+The published fork is `936b801fff82e343124237608bf46e4d192f5177`; all three widgets and Beryl use
+that same GPUI revision.
+
+Native run `ca9e217e-030f-482c-9dc2-afa1958d5a98` passes eight tests across close admission, exact
+destruction, native lease, desktop placement and outer geometry. The new regression proves no
+callback execution or destruction while borrowed, ordinary veto afterward, later successful close,
+and the absent-callback default. Missing-window and released-app error cases use the same fallback
+and have source-review coverage. Arbitrary recursive close from inside a callback is outside the
+side-effect-free startup admission contract. GPUI/app and widget checks, app all-test-target check,
+locked metadata, canonical single-GPUI inspection and independent semantic review pass. Serena
+restarted successfully after validation. Complete-set interaction gating remains separate.
+
 ## Acquired Record-Preserving Retirement
 
 The existing acquired-shell cleanup retires its fresh candidate and then exposes acquisition

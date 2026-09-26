@@ -157,6 +157,19 @@ governed by [design.md](design.md). It does not independently declare engineerin
   native disposal, plus independent lifecycle review. Native lease acceptance does not accept the
   desktop COM worker, app cleanup integration or process quit barrier.
 
+## Native Close Admission During Reentrancy
+
+- A registered close callback must execute successfully and explicitly allow close before the
+  native boundary treats it as permission. Failure to access the app or exact window, including
+  temporary reentrant borrowing during publication, denies that request. It does not queue or
+  replay close, install a permanent veto, or change the default for a window without a callback.
+- A later ordinary request can execute the same callback after the current update returns.
+  Startup's callback remains a side-effect-free admission check while interaction is gated;
+  native wrapper removal for failed-startup disposal is a separate owned operation.
+- Qualify a synchronous close during a borrowed native window update, unchanged pending destruction
+  receipt, subsequent successful close, explicit veto and absent-callback default. Require semantic
+  review of the dependency change; complete-set command and editor gating remain separate.
+
 ## Native Window Destruction Receipt
 
 - Startup may register one move-only destruction receipt for each exact live Windows native

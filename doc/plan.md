@@ -87,11 +87,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 581: Preserve Acquired Records Through Transient Retirement (finished)
+# Phase 583: Reject Close When Its Callback Cannot Execute (finished)
 
-Accepted distinct record-preserving cleanup with original candidate/reservation retention through
-uncertainty. Both new tests, 65 regressions, default package check and independent semantic review
-pass; [evidence](failures/target-bootstrap-composition.md#acquired-record-preserving-retirement).
+Accepted callback-error denial with later ordinary close and unchanged callback-free behavior.
+Eight native tests, package checks and independent semantic review pass. Published and aligned
+the single GPUI graph; [evidence](failures/target-bootstrap-composition.md#reentrant-native-close-admission).
 
 # Phase 582: Fence Startup Interaction And Reentrant Close (pending)
 
