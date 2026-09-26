@@ -33,7 +33,37 @@ pub(super) struct ForwardingHub {
 }
 
 pub(super) struct ForwardingHubAttachmentGuard<'a> {
+    state: ForwardingHubStateGuard<'a>,
+}
+
+struct ForwardingHubStateGuard<'a> {
     state: MutexGuard<'a, ForwardingHubState>,
+    work_boundary: &'a crate::cas_projection::connection_work::ConnectionWorkBoundary,
+    change: Option<crate::cas_projection::connection_work::ConnectionWorkMutation>,
+}
+
+impl std::ops::Deref for ForwardingHubStateGuard<'_> {
+    type Target = ForwardingHubState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl std::ops::DerefMut for ForwardingHubStateGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.change
+            .get_or_insert_with(|| self.work_boundary.begin_change());
+        &mut self.state
+    }
+}
+
+impl Drop for ForwardingHubStateGuard<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.work_boundary.invalidate();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -114,7 +144,9 @@ impl ForwardingHub {
         &self,
     ) -> Result<Option<ForwardingHubAttachmentGuard<'_>>, ProjectionCoordinatorError> {
         match self.state.try_lock() {
-            Ok(state) => Ok(Some(ForwardingHubAttachmentGuard { state })),
+            Ok(state) => Ok(Some(ForwardingHubAttachmentGuard {
+                state: self.observe_state(state),
+            })),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),
             Err(std::sync::TryLockError::Poisoned(_)) => {
                 Err(ProjectionCoordinatorError::RegistryPoisoned {
@@ -125,24 +157,32 @@ impl ForwardingHub {
     }
 
     pub(super) fn lock_attachment_for_disposal(&self) -> (ForwardingHubAttachmentGuard<'_>, bool) {
+        let (state, poisoned) = self.lock_state_for_disposal();
+        (ForwardingHubAttachmentGuard { state }, poisoned)
+    }
+
+    fn lock_state_for_disposal(&self) -> (ForwardingHubStateGuard<'_>, bool) {
         let (state, poisoned) = match self.state.lock() {
             Ok(state) => (state, false),
-            Err(poison) => (poison.into_inner(), true),
+            Err(poison) => {
+                self.authority.work_boundary.invalidate();
+                (poison.into_inner(), true)
+            }
         };
-        (ForwardingHubAttachmentGuard { state }, poisoned)
+        (self.observe_state(state), poisoned)
     }
 
     pub(super) fn record_thread_closed(
         &self,
         thread_id: &CasThreadId,
     ) -> Result<ConnectionThreadClosedOutcome, ProjectionCoordinatorError> {
-        let mut state = self.lock_state()?;
+        let state = self.lock_state()?;
         if state.inert {
             return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
         }
         let endpoint = state
             .endpoint
-            .as_mut()
+            .as_ref()
             .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)?;
         super::record_connection_thread_closed(
             &self.authority,
@@ -182,7 +222,7 @@ impl ForwardingHub {
             Option<&ConnectionAttachment>,
         ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError>,
     ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError> {
-        let state = self.state.try_lock()?;
+        let state = self.observe_state(self.state.try_lock()?);
         read(
             state
                 .endpoint
@@ -193,14 +233,25 @@ impl ForwardingHub {
     }
 
     pub(super) fn is_detached(&self) -> bool {
-        self.state
-            .lock()
+        self.lock_state()
             .is_ok_and(|state| state.endpoint.is_none())
     }
 
-    fn lock_state(&self) -> Result<MutexGuard<'_, ForwardingHubState>, ProjectionCoordinatorError> {
+    fn observe_state<'a>(
+        &'a self,
+        state: MutexGuard<'a, ForwardingHubState>,
+    ) -> ForwardingHubStateGuard<'a> {
+        ForwardingHubStateGuard {
+            state,
+            work_boundary: &self.authority.work_boundary,
+            change: None,
+        }
+    }
+
+    fn lock_state(&self) -> Result<ForwardingHubStateGuard<'_>, ProjectionCoordinatorError> {
         self.state
             .lock()
+            .map(|state| self.observe_state(state))
             .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
                 registry: ProjectionRegistryKind::ProjectionConnection,
             })
@@ -232,6 +283,7 @@ impl ForwardingHub {
     pub(super) fn poison_for_test(&self) {
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _change = self.authority.work_boundary.begin_change();
                 let _state = self.state.lock().unwrap();
                 panic!("poison exact forwarding hub for capture test");
             }))
@@ -297,9 +349,8 @@ impl ForwardingHubSink {
     ) -> Result<OrderedTurnStreamCompletion, OrderedTurnStreamSubmitError> {
         let passive = self
             .hub
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
+            .lock_state_for_disposal()
+            .0
             .passive_approval
             .as_ref()
             .is_some_and(|fence| fence.observe());
@@ -315,7 +366,7 @@ impl ForwardingHubSink {
                 )
             });
         }
-        let mut state = match self.hub.state.lock() {
+        let mut state = match self.hub.lock_state() {
             Ok(state) => state,
             Err(_) => {
                 return Err(OrderedTurnStreamSubmitError::new(
@@ -358,8 +409,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
     ) -> Result<beryl_backend::SteeringUserMessageCaptureMode, OrderedTurnStreamSubmitCause> {
         let mut state = self
             .hub
-            .state
-            .lock()
+            .lock_state()
             .map_err(|_| OrderedTurnStreamSubmitCause::Cancelled)?;
         if state.inert {
             return Err(OrderedTurnStreamSubmitCause::Cancelled);
@@ -377,8 +427,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
     ) -> Result<(), OrderedTurnStreamSubmitCause> {
         let mut state = self
             .hub
-            .state
-            .lock()
+            .lock_state()
             .map_err(|_| OrderedTurnStreamSubmitCause::Cancelled)?;
         if state.inert {
             return Err(OrderedTurnStreamSubmitCause::Cancelled);
@@ -400,11 +449,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
         if result.is_ok() {
             return result;
         }
-        let state = self
-            .hub
-            .state
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
+        let state = self.hub.lock_state_for_disposal().0;
         match &state.passive_approval {
             Some(fence) => fence.dispose(result),
             None => result,
@@ -414,7 +459,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
         &mut self,
         selection: SteeringUserMessageSelection,
     ) -> Result<SteeringUserMessageSource, SteeringUserMessageSelectionError> {
-        let mut state = match self.hub.state.lock() {
+        let mut state = match self.hub.lock_state() {
             Ok(state) => state,
             Err(_) => {
                 return Err(SteeringUserMessageSelectionError::new(
@@ -442,7 +487,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
         &mut self,
         message: CheckedSteeringUserMessage,
     ) -> Result<(), CheckedSteeringUserMessageSubmitError> {
-        let mut state = match self.hub.state.lock() {
+        let mut state = match self.hub.lock_state() {
             Ok(state) => state,
             Err(_) => {
                 return Err(CheckedSteeringUserMessageSubmitError::new(
@@ -472,8 +517,7 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
     ) -> Result<(), OrderedTurnStreamSubmitCause> {
         let mut state = self
             .hub
-            .state
-            .lock()
+            .lock_state()
             .map_err(|_| OrderedTurnStreamSubmitCause::Cancelled)?;
         if state.inert {
             return Err(OrderedTurnStreamSubmitCause::Cancelled);
