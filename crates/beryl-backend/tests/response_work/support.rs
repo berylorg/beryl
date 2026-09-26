@@ -95,6 +95,7 @@ impl OrderedTurnStreamSink for ObservationSink {
             OrderedTurnStreamOperation::Approval(request) => {
                 let observer = request.response_work();
                 let before = observer.snapshot().unwrap();
+                assert_eq!(observer.try_snapshot().unwrap(), before);
                 let completion = CompletionProbe::new(&observer);
                 completion.register().unwrap();
                 assert_eq!(before.retained_capabilities(), 2);
@@ -126,6 +127,7 @@ impl OrderedTurnStreamSink for ObservationSink {
             OrderedTurnStreamOperation::DynamicBegin(call) => {
                 let observer = call.response_work();
                 let before = observer.snapshot().unwrap();
+                assert_eq!(observer.try_snapshot().unwrap(), before);
                 let completion = CompletionProbe::new(&observer);
                 completion.register().unwrap();
                 assert_eq!(before.retained_capabilities(), 1);

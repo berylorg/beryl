@@ -55,6 +55,11 @@ this outcome only after exact service failure; ordinary approval routing retains
   release of all response handles is independently observable even when no response was written.
   These local retained facts do not certify session liveness or usable response authority; app
   composition must also validate the exact connection and service generation.
+- Response observations also support a nonblocking snapshot with the same exact-request revision
+  and retained facts. Contention returns a typed busy refusal; poison and exhausted revisions
+  remain unavailable. Reading or refusing changes no response state, completion registration,
+  capability custody or execution authority. The returned snapshot is a point-in-time fact, not
+  a retained lock or permission to act after other sources change.
 - Each response source supports one bounded, non-authorizing completion notification registration.
   Its one-shot wake follows the first successful response write or final response-capability
   release, after the observable state changes and outside the observation lock. Registration racing

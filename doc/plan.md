@@ -89,19 +89,25 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 600: Elect Coherent State From An Exact Home Mutation Observation (finished)
+# Phase 602: Observe Backend Response Work Without Waiting (finished)
 
-Accepted exact observed coherent election with nonblocking mutation, reconciliation and health
-checks held through publication. All 27 focused observation/coherence tests, the default home-store
-check and independent concurrency/integrity review pass. Runtime-source validation and shutdown
-mounting remain separate; this completes the durable-read prerequisite only.
+Accepted the exact nonblocking response snapshot with typed busy/poisoned/unavailable refusal and
+unchanged custody and notification behavior. All 16 focused response tests, the default backend
+check and independent concurrency/side-effect review pass. App source validation and atomic
+shutdown admission remain separate boundaries.
 
 # Phase 601: Validate Shutdown Runtime Sources Without Blocking Admission (pending)
 
-Add exact nonblocking runtime-source revision validation, combine it with observed coherent home
-election, and verify contention against dispatch lock order, stale/foreign evidence, and refusal
-without execution-authority changes. Read complete work facts before admission; keep native
-confirmation and process-owner mounting in phase 595.
+Add exact nonblocking runtime-source revision validation and verify contention against dispatch
+lock order, stale/foreign evidence, and refusal without source mutation. Read complete work facts
+before admission. The backend response reader is phase 602; atomic composition is phase 603.
+
+# Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
+
+Combine accepted runtime validation and observed coherent home election with process admission.
+Publish the fence while the required validation guards remain held; verify contention, stale
+evidence and refusal preserve execution authority. Keep native confirmation and process-owner
+mounting in phase 595.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

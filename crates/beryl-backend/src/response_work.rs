@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::task::Waker;
 
 use thiserror::Error;
@@ -51,6 +51,8 @@ impl ResponseWorkSnapshot {
 
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum ResponseWorkError {
+    #[error("the response work observation lock is busy")]
+    Busy,
     #[error("the response work revision belongs to another request")]
     ForeignRevision,
     #[error("the response work revision is stale")]
@@ -112,6 +114,18 @@ impl ResponseWorkObserver {
 
     pub fn snapshot(&self) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
         let state = self.state.lock().map_err(|_| ResponseWorkError::Poisoned)?;
+        self.snapshot_from(&state)
+    }
+
+    pub fn try_snapshot(&self) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
+        let state = self.state.try_lock().map_err(|error| match error {
+            TryLockError::WouldBlock => ResponseWorkError::Busy,
+            TryLockError::Poisoned(_) => ResponseWorkError::Poisoned,
+        })?;
+        self.snapshot_from(&state)
+    }
+
+    fn snapshot_from(&self, state: &WorkState) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
         Ok(ResponseWorkSnapshot {
             revision: ResponseWorkRevision {
                 owner: Arc::clone(&self.owner),
