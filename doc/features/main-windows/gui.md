@@ -28,8 +28,14 @@ recovery explanation.
 
 During an admitted barrier, the command uses the built-in `loading` state with the label exactly
 `Exiting…`. That loading state is the waiting indication; the command is visibly disabled, and
-its tooltip is `Application Exit is waiting for active work and durable state.` Failure restores the
+its tooltip is `Application Exit is waiting for active work and durable state.` Failure before final teardown restores the
 label `Exit` and its design-owned enabled or disabled state.
+
+After a terminal teardown failure, the same toolbar position shows the text-labeled `Quit Anyway`
+`command button` without a loading indicator. It is not automatically focused. Its native
+confirmation uses title `Quit Beryl anyway?`, the design-owned warning, and `Cancel` and
+`Quit Anyway` buttons with Cancel as default. Duplicate activation reveals the existing dialog.
+This is feature-local composition of the existing command and native dialog contracts.
 
 ## Shutdown Confirmation
 
@@ -57,3 +63,7 @@ persistent home-failure notice and its automatic recovery, which has no manual c
 persistent condition is eligible, the close or Exit-failure record remains commandless without a
 substitute recovery control. Notifications owns admission, priority, persistence, replacement, and
 the sole visible notice instance.
+
+A blocked-shutdown report uses the same commandless notice contribution with title
+`Beryl couldn't finish shutting down` and bounded selectable diagnostic detail. The destructive
+command remains in the toolbar; its warning is visible in the native confirmation before acceptance.

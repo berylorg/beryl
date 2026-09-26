@@ -47,6 +47,14 @@ pub(crate) enum AppServiceShutdownProgress {
     },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum AppServiceFinalizationError {
+    #[error("service teardown was not started: {0}")]
+    Rejected(#[source] AppServiceCloseError),
+    #[error("service teardown could not complete after consumption: {0}")]
+    Consumed(#[source] AppServiceCloseError),
+}
+
 impl ProcessServiceOwner {
     pub(crate) fn begin_shutdown(&mut self) -> Result<(), AppServiceCloseError> {
         let graph = self
@@ -101,7 +109,14 @@ impl ProcessServiceOwner {
         }
     }
 
-    pub(crate) fn finish_shutdown(&mut self) -> Result<(), AppServiceCloseError> {
+    pub(crate) fn finish_shutdown(&mut self) -> Result<(), AppServiceFinalizationError> {
+        self.require_shutdown_finalization()
+            .map_err(AppServiceFinalizationError::Rejected)?;
+        self.consume_shutdown_graph()
+            .map_err(AppServiceFinalizationError::Consumed)
+    }
+
+    fn require_shutdown_finalization(&self) -> Result<(), AppServiceCloseError> {
         let graph = self
             .graph
             .as_ref()
@@ -113,6 +128,10 @@ impl ProcessServiceOwner {
         if self.failed_close.is_some() {
             return Err(AppServiceCloseError::Home);
         }
+        Ok(())
+    }
+
+    fn consume_shutdown_graph(&mut self) -> Result<(), AppServiceCloseError> {
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("ready graph");
         let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();

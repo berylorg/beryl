@@ -15,28 +15,29 @@ proves that result with an injected completion error after real teardown. That i
 evidence of a particular filesystem fault; the production fallible cleanup order is the decisive
 source evidence. Independent lifecycle review confirmed the mismatch.
 
-The [main-window Exit contract](../features/main-windows/design.md#application-exit) requires failed
+At discovery, the [main-window Exit contract](../features/main-windows/design.md#application-exit) required failed
 Exit to preserve windows, claims, resident editors and coherent presentation, remove the interaction
 gate and re-enable previously eligible mutations. The [app lifecycle](../../crates/beryl-app/doc/design-shell-lifecycle.md)
-explicitly excludes startup reopening from cancelled running-session shutdown and grants no fresh
+explicitly excluded startup reopening from cancelled running-session shutdown and granted no fresh
 generation after failed retirement. [Startup Cleanup Blocked](../features/beryl-home/design.md#startup-cleanup-blocked)
-alone currently permits Quit Anyway. Neither restarting consumed services nor extending that command
-to running sessions is authorized by the existing contracts.
+alone permitted Quit Anyway. Neither restarting consumed services nor extending that command
+to running sessions was authorized before the decision below.
 
-## Proposed Decision
+## Accepted Decision
 
-Recommended, pending Operator approval: define an irreversible final teardown boundary after all
+The Operator approved on 2026-09-27 an irreversible final teardown boundary after all
 recoverable work, draft and durable-session obligations have succeeded. Failures before that
 boundary retain the current recoverable Exit behavior. A cleanup failure after it retains the
 surviving windows and resident presentation in a read-only blocked-shutdown state, preserves exact
 remaining custody and diagnostics, and offers explicit Quit Anyway without claiming clean shutdown
-or safe restart. Ordinary Exit never hard-stops implicitly. The new outcome must have authoritative
-feature, lifecycle and GUI contracts before implementation; it is not an accepted exception yet.
+or safe restart. Ordinary Exit never hard-stops implicitly. The main-window feature, GUI and app
+lifecycle now define the accepted outcome; implementation remains split into bounded prerequisites
+and final running-window integration.
 
 Keeping full editable recovery after arbitrary partial teardown instead requires a separately
 designed service reconstruction protocol for surviving windows and unresolved cleanup custody.
 Simply clearing the gate, retaining a partially consumed graph or reusing startup Retry cannot
 satisfy the current ownership guarantees.
 
-Phase 595 remains pending on this product/lifecycle decision. The accepted atomic admission and
-all prior close/flush/stop primitives remain valid; no ordinary native Exit mount was added.
+The product hold is released. The accepted atomic admission and all prior close/flush/stop
+primitives remain valid; no ordinary native Exit mount was added by this authority correction.

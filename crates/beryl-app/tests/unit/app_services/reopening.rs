@@ -118,9 +118,13 @@ fn complete_shutdown_reopens_same_process_but_never_old_restore_sources() {
     let old_marker = owner.graph().unwrap().marker();
     assert!(matches!(
         owner.finish_shutdown(),
-        Err(AppServiceCloseError::NotReady)
+        Err(AppServiceFinalizationError::Rejected(
+            AppServiceCloseError::NotReady
+        ))
     ));
     assert!(owner.graph().is_some());
+    old_permit.commit(|| ()).unwrap();
+    restore.validate_lifetime().unwrap();
     close(&mut owner);
     reopen(&mut owner, &directory).unwrap();
     assert_fresh_graph_works(&mut owner);
@@ -203,6 +207,7 @@ fn stale_retirement_fence_is_never_replaced_by_a_newer_fence() {
 fn consumed_shutdown_failure_never_authorizes_a_fresh_attempt() {
     let (directory, candidate, state, syndic, _) = fixture();
     let mut owner = owner(&candidate);
+    let permit = owner.process.execution_permit();
     owner
         .open_initial(
             candidate,
@@ -231,10 +236,20 @@ fn consumed_shutdown_failure_never_authorizes_a_fresh_attempt() {
     owner.test_fail_shutdown_completion();
     assert!(matches!(
         owner.finish_shutdown(),
-        Err(AppServiceCloseError::PersistentFailure)
+        Err(AppServiceFinalizationError::Consumed(
+            AppServiceCloseError::PersistentFailure
+        ))
     ));
     assert!(owner.graph().is_none());
     assert!(owner.retained_close().is_none());
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
+    assert!(matches!(
+        owner.finish_shutdown(),
+        Err(AppServiceFinalizationError::Rejected(
+            AppServiceCloseError::Unavailable
+        ))
+    ));
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
     let rejected = reopen(&mut owner, &directory).unwrap_err();
     assert!(matches!(
         rejected.error,

@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 603: Publish Shutdown Admission Under Exact Work Validation (finished)
+# Phase 612: Classify Final Service Teardown Failure (finished)
 
-Accepted interval-bracketed shutdown observations and atomic fence publication under fixed runtime,
-connection and coherent-home guards. All 24 focused observation/admission/runtime tests, the default
-app library check and independent concurrency/semantic review pass. Contention, stale or foreign
-proofs and failed home coherence preserve execution authority. No durable read or historical
-connection traversal occurs under process admission. Native policy and mounting remain phase 595.
+Accepted typed per-call rejection versus consumed-teardown failure, preserving original causes,
+installed state on pre-consumption rejection and fenced authority after late failure. All 11 focused
+service/reopening/native-startup tests, the default app library check and independent lifecycle
+review pass. Feature, GUI and lifecycle authority incorporate the approved blocked-shutdown outcome;
+its native presentation and exact Quit Anyway remain phase 595.
+
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
@@ -104,14 +105,11 @@ implement exact side-effect-free native confirmation, preserve ordinary-close ve
 modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
 slices and verification from the main-windows feature and app lifecycle authority before activation.
 
-Blocked on 2026-09-27 by a product/lifecycle decision: accepted final service cleanup can fail after
-consuming the graph, while ordinary Exit promises recoverable windows and restored eligible mutation
-surfaces on failure. Startup reopening and Quit Anyway explicitly do not cover that running-session
-case. Independent review confirmed the [source and contract conflict](failures/running-shutdown-retirement.md).
-Recommend an explicit irreversible final teardown boundary and read-only blocked-shutdown outcome
-with user-requested Quit Anyway for late cleanup failure. This changes running-session behavior and
-requires Operator selection before its feature/lifecycle/GUI authority or mounting is implemented.
-The earlier lock-order and bounded observation prerequisites are accepted in phase 603.
+Operator approved on 2026-09-27 the [irreversible final teardown boundary](failures/running-shutdown-retirement.md)
+and read-only blocked-shutdown outcome with explicit Quit Anyway for late cleanup failure. The
+feature, GUI and lifecycle authority now distinguish recoverable failure before teardown from
+blocked cleanup afterward. Include this outcome in ordinary final-close/Exit integration. The
+earlier lock-order and bounded observation prerequisites are accepted in phase 603.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

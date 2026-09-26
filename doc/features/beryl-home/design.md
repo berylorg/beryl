@@ -80,7 +80,9 @@ Preserve the user's current window layout and last coherent work surfaces when d
 - Retry stays visible and disabled. Exit and native close retain their ordinary orderly-exit
   intent; they do not discard retained state, authorize another attempt, or force termination.
   An already requested Exit remains idempotent and does not prevent blocked failure presentation.
-- Only this blocked state adds `Quit Anyway`. It is never the default focused action and requires
+- Only this blocked startup state adds the startup surface's `Quit Anyway`; running-session final
+  teardown follows the separate [main-window blocked-shutdown contract](../main-windows/design.md#final-teardown-and-blocked-shutdown).
+  It is never the default focused action and requires
   explicit pointer or keyboard activation. Native close, Escape, timers and cleanup errors cannot
   activate it. No additional confirmation dialog is required because its consequence is shown
   beside the command: `Quit Anyway stops Beryl immediately. Unsaved changes may be lost; work

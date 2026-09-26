@@ -565,9 +565,20 @@ by the executable composition root.
   completion rules, and composes resident-preserving draft flush with typed session
   publication. It retains windows and claims until success, then joins service/runtime disposal
   before process exit. Explicit Exit and final ordinary close retain their distinct restore modes.
-- A failed barrier releases interaction gates from the retained coherent state without restoring
+- A failed barrier before final teardown releases interaction gates from the retained coherent state without restoring
   cancelled continuations or repeating possible dispatch. Closing a settings or auxiliary window
   never becomes the final-main-window execution barrier.
+- Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
+  in that call, while failure after consumption is irreversible for that attempt.
+  The process window owner enters final teardown only after work and durable window obligations
+  settle. Late failure preserves surviving resident presentation and exact remaining custody;
+  it cannot reopen execution or use startup Retry. Service completion errors retain their original
+  cause and phase, including errors after all component handles were consumed. Absence of handles
+  is never success proof. Rejection describes the current call, never reopening authority; a later
+  unavailable-call rejection cannot clear an already irreversible attempt. Native destruction after service retirement shares this late-failure
+  policy. The process owner admits at most one exact explicit blocked-shutdown Quit Anyway request;
+  ordinary close, cancellation and stale callbacks cannot mint that authority. Execution remains
+  fenced until ordinary successful quit or explicit immediate process termination.
 
 ## Prepublication Window Abandonment
 

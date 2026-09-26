@@ -37,7 +37,9 @@ mod published;
 mod shutdown;
 mod window_services;
 use attempt::InitialServiceAttemptState;
-pub(crate) use shutdown::{AppServiceCloseError, AppServiceShutdownProgress};
+pub(crate) use shutdown::{
+    AppServiceCloseError, AppServiceFinalizationError, AppServiceShutdownProgress,
+};
 pub(crate) use window_services::{MainWindowServiceInputs, PublishedMainWindowServices};
 
 #[derive(Clone)]

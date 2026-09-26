@@ -78,7 +78,7 @@ Preserve each window's visible identity and placement without requiring auxiliar
   appears while the no-work final-close fast path is being admitted, Beryl asks before effects begin.
 - Concurrent final-close requests serialize behind one close owner and share its confirmation or
   shutdown state. Final-window designation is revalidated under that serialization so Beryl never
-  exits with zero resident windows by race. If confirmation is cancelled or any shutdown, flush, or durable-session obligation
+  exits with zero resident windows by race. If confirmation is cancelled or a shutdown, flush, or durable-session obligation before final teardown
   fails or remains unproven, the final window remains open with its last coherent presentation.
 - Final ordinary close is not the dedicated application Exit command: it records an empty restore
   set, while Exit preserves the current layout for restoration.
@@ -130,7 +130,7 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - When restore-set storage is already unavailable, Exit remains visible but disabled and its
   explanation points to the persistent Beryl-home failure notice and its automatic same-home
   recovery; that notice has no manual command, and Exit activation starts no barrier.
-- If an enabled Exit activation later fails or cannot prove its barrier complete, Beryl does not
+- If an enabled Exit activation fails before final teardown or cannot prove its barrier complete, Beryl does not
   exit or close a subset of windows. Every window, thread claim, resident editor, and last coherent
   presentation remains intact. The affected windows report the blocking turn, draft, session, or
   storage failure through commandless Exit-failure notices.
@@ -151,6 +151,25 @@ Preserve each window's visible identity and placement without requiring auxiliar
   previously eligible mutation surface is re-enabled, and the toolbar label returns to `Exit`; a
   new attempt requires explicit activation
   after the blocking state is coherent again.
+
+## Final Teardown And Blocked Shutdown
+
+- After all recoverable work, draft, session and restore-set obligations succeed, shutdown enters
+  irreversible final teardown. Failures before this boundary retain the recoverable Exit behavior
+  above. After it, Beryl never presents a partially stopped service set as a usable session.
+- A failure during final service or native cleanup keeps surviving windows and resident content
+  readable, selectable and copyable, with editing and other mutations unavailable. Show
+  `Beryl couldn't finish shutting down` and bounded diagnostic detail. Do not show continuing
+  progress, reopen services, retry automatically or claim successful shutdown. Retain unresolved
+  cleanup custody until process termination. This applies to final ordinary close and explicit Exit.
+- The Exit toolbar position exposes `Quit Anyway` in this blocked state. Explicit activation opens
+  a native confirmation explaining `Quit Anyway stops Beryl immediately. Cleanup is incomplete;
+  work already sent may still complete.` Cancel is default; Escape and dismissal cancel.
+  Only explicit confirmation terminates the process, without another save, flush, recovery,
+  restart or panic report. Native close, timers and cleanup errors never force termination.
+- Pending or cancelled Quit Anyway leaves the blocked state unchanged. Repeated activation shares
+  one confirmation and can emit only one exact termination request. A later manual launch uses
+  ordinary durable-state validation; forced termination never reports cleanup as successful.
 
 ## Unexpected Termination
 
