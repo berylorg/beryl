@@ -201,6 +201,14 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   election and checks its exact fence and cancellation before returning ready. A reserved result
   awaiting installation, active mutation or intervening commit cannot be hidden by an empty pending
   handle list or an earlier revision check. Election performs no storage work inside its callback.
+- Side-effect-free shutdown admission observes connection work through a service-generation-owned
+  revision/election boundary. The app brackets membership, connection custody, retirement,
+  attachment and router work changes; backend response observation participates through a passive
+  mutation registration established before the request enters that service's work inventory.
+  Registration and response changes cannot leave an unobserved publication gap. These participants
+  retain no execution capability or service graph and never authorize a response. Exact election
+  spans process-fence publication with constant retained observation state, independently of the
+  historical connection count. Home coherence and other runtime sources retain their own proofs.
 - Every ordinary execution, including direct execution from an already loaded projection, owns one
   ordinary permit from the existing service worker budget before winning process admission. The
   scheduled path reuses its existing permit and admission; nested execution never charges twice.

@@ -89,12 +89,25 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 604: Retain Exact Response Observation Through Admission (finished)
+# Phase 605: Establish The Connection Work Observation Boundary (finished)
 
-Accepted the nonblocking backend response read guard with exact immutable facts, no additional
-capability custody and unchanged completion notification. All 18 focused response tests, the
-default backend library check and independent concurrency review pass. Guarded process admission
-and its source composition remain phase 603.
+Accepted the constant-state boundary with exact weak observations, active mutation intervals and
+nonblocking guarded election. All eight focused tests, the default app library check and independent
+concurrency/authority review pass. Source mutation coverage and shutdown mounting remain separate.
+
+# Phase 606: Track Connection Membership And Custody Changes (pending)
+
+Mount one observation boundary per service generation and cover registry membership, connection
+authority/custody and retirement, including workerless retained owners. Verify changes and cleanup
+invalidate exact observations without growing retained read state with historical registry size.
+Audit complete mutation coverage and failure/poison paths before accepting this source boundary.
+
+# Phase 607: Track Router And Backend Response Work Changes (pending)
+
+Extend the same boundary through attachment/router work and passive backend response mutation
+registration before request publication. Verify registration races, response completion/release,
+retirement and notification behavior; retain no response capability or service graph. Keep final
+process-fence composition in phase 603.
 
 # Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
 
@@ -103,18 +116,11 @@ Publish the fence while the required validation guards remain held; verify conte
 evidence and refusal preserve execution authority. Keep native confirmation and process-owner
 mounting in phase 595.
 
-Architectural blocker identified on 2026-09-26: retaining exact guards for every registered
-connection through publication violates the shutdown bound independent of historical registry
-size. Retired connections can retain mutable cleanup/promotion custody after their workers release,
-so worker capacity and terminal-only classification cannot bound the remaining guard collection.
-Independent concurrency/resource review confirmed the [evidence](failures/shutdown-confirmation-admission.md#retaining-every-source-guard-violates-the-connection-bound).
-The unaccepted prototype was removed; accepted observation primitives remain intact.
-
-Recommend a service-owned connection-work observation/election boundary covering membership and
-custody transitions, so atomic validation retains constant observation state. This introduces a
-shared synchronization boundary requiring Operator architectural direction and owning design
-authority before implementation. Do not substitute a historical-entry quota or pre-confirmation
-retirement/drain. Re-derive bounded verification and publication composition after that decision.
+Operator approved the shared connection-work revision/election boundary on 2026-09-26, resolving
+the [architectural blocker](failures/shutdown-confirmation-admission.md#retaining-every-source-guard-violates-the-connection-bound).
+The app scheduling and CAS-live authorities now define its ownership and mutation coverage.
+Resume atomic composition after the prerequisite boundaries above are accepted; do not restore
+the rejected whole-registry guard collection or introduce a historical-entry quota.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

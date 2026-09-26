@@ -6,7 +6,11 @@ use thiserror::Error;
 
 use super::ProjectionServiceGeneration;
 
+mod observation;
 mod records;
+pub(in crate::cas_projection) use observation::{
+    ConnectionWorkBoundary, ConnectionWorkMutation, ConnectionWorkObservation,
+};
 
 pub use records::{
     ConnectionRequestWorkFact, ConnectionRequestWorkKind, ConnectionRequestWorkStage,

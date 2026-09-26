@@ -103,5 +103,7 @@ election boundary covering membership and custody transitions, allowing exact re
 and publication with constant retained observation state. Its ownership, mutation coverage and
 lock ordering need explicit design authority before implementation. Do not impose an arbitrary
 historical-entry quota, discard failed-join evidence, speculate retirement or drain admission before
-confirmation. Phase 603 is paused for Operator direction on this architectural boundary; ordinary
-close/Exit mounting remains dependent on its acceptance.
+confirmation. The Operator approved this boundary on 2026-09-26. Its target ownership, mutation
+coverage and election constraints are now defined in the app scheduling and CAS-live authorities;
+the root plan separates the primitive, source coverage and final composition. Ordinary close/Exit
+mounting remains dependent on acceptance of the complete boundary.

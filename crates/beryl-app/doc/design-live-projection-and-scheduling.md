@@ -278,6 +278,31 @@ topology and typed execution surfaces.
   removal and reinsertion that restore the same apparent entries. Connection lifecycle calls run
   outside the registry lock. Failed-join evidence remains observable after detachment and cannot
   be dropped or treated as clean to satisfy a traversal bound.
+- Each service generation owns one connection-work observation/election boundary. Its constant
+  state records an exact owner identity, monotonic revision, active mutation count and terminal
+  closure/unavailability. It retains no connection catalog, payload, execution capability or home.
+  An observation weakly names that exact boundary and revision; it cannot pin a retired service or
+  validate another generation. Mutation intervals invalidate earlier observations before changing
+  covered state and remain active through the final local update. Nested/concurrent intervals are
+  counted independently; no-op intervals may conservatively invalidate observations.
+- Membership, connection authority/custody, retirement, attachment, router work and registered
+  backend response facts participate in this boundary, including detached and workerless owners.
+  Source construction and registration establish participation before the source becomes visible.
+  Existing bounded traversal collects facts between observations; no full-registry guard vector
+  or worker-capacity assumption about historical cleanup is needed.
+- Observation and exact election acquire the boundary nonblockingly. Busy, foreign, stale,
+  unavailable or closed evidence refuses without changing source state, notifications, custody or
+  process execution authority. Election requires no active mutation and retains its mutex through
+  the caller's bounded local publication. It must not acquire connection/source locks, perform I/O,
+  wait, invoke source callbacks or reenter the boundary. Other publication guards are acquired
+  nonblockingly; their lock order is explicit at composition. Publication after election returns
+  is not covered by the proof.
+- Mutation admission briefly synchronizes with election, then releases the boundary mutex before
+  changing local state. Cleanup and existing state transitions are never suppressed by observation
+  failure. Poison, counter/revision exhaustion or unwinding an unfinished change permanently make
+  observation unavailable; they do not manufacture a clean source or cancel cleanup. Closing the
+  boundary irrevocably rejects observations while already-owned cleanup may finish. Observers and
+  mutation participants retain only the boundary's constant state, not its owning service graph.
 - Consuming connection disposal continues releasing its retained scope after poisoned ownership,
   unavailable revisions or membership drift, and preserves a failed outcome. Its bounded traversal
   follows immutable connection identity so concurrent removal cannot skip another retained owner;
