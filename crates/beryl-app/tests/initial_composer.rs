@@ -16,6 +16,8 @@ mod restored_cases;
 mod restored_claims;
 #[path = "initial_composer/restored_native.rs"]
 mod restored_native;
+#[path = "initial_composer/shutdown_draft.rs"]
+mod shutdown_draft;
 #[path = "initial_composer/startup_interaction.rs"]
 mod startup_interaction;
 #[path = "initial_composer/startup_release.rs"]

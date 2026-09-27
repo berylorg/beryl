@@ -8,6 +8,8 @@ mod exit_command;
 mod restored;
 mod selected;
 mod shutdown;
+mod shutdown_draft;
+pub use shutdown_draft::{MainWindowShutdownDraft, MainWindowShutdownDraftAdvance};
 mod startup;
 #[cfg(target_os = "windows")]
 mod startup_construction;

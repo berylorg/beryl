@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 666: Retain Exact Running Shutdown Work Readiness (finished)
+# Phase 667: Bind Shell Shutdown Draft Flush To Exact Resident Custody (finished)
 
-The original admitted attempt now retains WorkReady after successful coordinator completion and
-service return, including after result consumption. Ordinary duplicate polling is refused;
-explicit cancellation clears readiness before transfer and preserves coherent recovery. The
-47-case native run passed 44 cases; after correcting three outdated fixture expectations, all
-19 affected cases passed (`b3d3e70c-5e07-45dd-8ae5-6beb92b63e3f`). Default library check,
-formatting and independent semantic review passed. Window durability and teardown remain pending.
+The shell now prepares and polls draft flush through its exact resident close ticket, requiring the
+shutdown gate and rejecting startup or foreign-shell custody. Threadless evidence is explicit;
+editors remain resident and stale results cannot prove readiness. All 19 focused native tests
+passed (`183dc254-2dd1-458f-8c5d-2bdfff0887d5`), with default library check, formatting and
+independent semantic review. Running-owner aggregation and session durability remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -187,6 +186,9 @@ owner-scoped observation. Settings state installation and enabled routing remain
 Phase 666 retains exact work readiness through result consumption and prevents ordinary duplicate
 polling, while preserving explicit cancelled recovery. Next compose resident draft/session
 obligations before admitting final teardown; work readiness alone cannot authorize destruction.
+Phase 667 supplies exact shell/composer draft preparation and polling through retained close
+tickets. Next aggregate those obligations through the running owner and preserve partial admission
+and recovery custody before composing durable session publication.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

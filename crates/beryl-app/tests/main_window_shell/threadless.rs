@@ -359,10 +359,18 @@ fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
     assert!(!cx.window_visibility(shell.window().into()).is_visible);
     shell
         .window()
-        .update(cx, |root, _, cx| {
+        .update(cx, |root, window, cx| {
             let before = root.new_window_disabled_reason(cx);
             let exit_before = root.test_exit_presentation();
+            assert!(root.test_begin_shutdown_draft(window, cx).is_err());
             root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            let draft = root.test_begin_shutdown_draft(window, cx).unwrap();
+            assert!(draft.test_ticket().is_none());
+            assert_eq!(
+                root.test_advance_shutdown_draft(&draft, window, cx)
+                    .unwrap(),
+                beryl_app::main_window::MainWindowShutdownDraftAdvance::Threadless
+            );
             assert_eq!(
                 root.test_exit_presentation(),
                 (

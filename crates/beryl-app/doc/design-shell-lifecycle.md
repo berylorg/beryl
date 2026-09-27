@@ -988,6 +988,14 @@ by the executable composition root.
   result restores it. Waiting, error and failure without reopening never manufacture readiness.
   Coherent reopening releases the original attempt through the existing boundary. No ready state
   completes an Exit request, removes interaction gates, consumes services or grants quit authority.
+- A shutdown draft adapter binds each preparation to the exact shell entity and resident composer
+  close ticket. It requires the shell shutdown interaction gate and rejects startup custody.
+  Selected shells retain their existing editor and close state through worker-backed flush polling;
+  repeated preparation joins that same close ticket. A threadless shell supplies explicit no-draft
+  evidence only while its controller remains threadless and has no composer. Polling revalidates
+  shell and composer identity; missing or replaced custody is failure, never readiness. The caller
+  retains this preparation, including on failure. This adapter grants no session publication,
+  composer disposal, native destruction, gate release or process-quit authority.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations
