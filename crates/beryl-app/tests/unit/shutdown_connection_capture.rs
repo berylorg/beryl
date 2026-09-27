@@ -10,12 +10,11 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     let observed = boundary.try_observe().unwrap();
     let before = service.shutdown_work_revision(&sessions).unwrap();
     assert!(!before.requires_connection_cleanup());
-    assert!(
-        !service
-            .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
-            .unwrap()
-            .has_work()
-    );
+    let idle = service
+        .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
+        .unwrap();
+    assert!(!idle.has_work());
+    assert_eq!(idle.running_threads(), 0);
     let cleanup = connection.acquire_cleanup_owner().unwrap().unwrap();
     assert!(matches!(
         boundary.try_elect(&observed, || ()),
@@ -29,12 +28,11 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     );
     let revision = service.shutdown_work_revision(&sessions).unwrap();
     assert!(revision.requires_connection_cleanup());
-    assert!(
-        service
-            .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
-            .unwrap()
-            .has_work()
-    );
+    let cleaning = service
+        .observe_shutdown_work(&sessions, &ProjectionCancellationToken::new())
+        .unwrap();
+    assert!(cleaning.has_work());
+    assert_eq!(cleaning.running_threads(), 0);
     let page = service
         .shutdown_work_page(
             &sessions,

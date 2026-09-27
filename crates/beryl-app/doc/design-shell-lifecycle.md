@@ -594,6 +594,14 @@ by the executable composition root.
   stale, foreign or unavailable evidence refuses without a fence; a caller must collect fresh
   evidence before retrying. This boundary admits the observed work set; native confirmation and
   final-window policy determine when that admission is authorized.
+- That same observation supplies the shutdown confirmation's distinct running-thread count.
+  Merge exact thread identities from non-idle durable gates, accepted-input indexes, live work
+  facts and projection flights before counting; a thread present in several sources counts once.
+  Attention alone and idle loaded/session/connection custody do not add a running thread. Cleanup
+  custody may still require shutdown even when this count is zero. Read source pages with fixed
+  bounds, reuse the bounded live-work facts, and retain only the scalar count after collection;
+  do not read catalog metadata or accumulate durable thread identities. The count shares the
+  observation's revision, interval, cancellation and failure checks and grants no admission.
 - Running shutdown admission and coordinator installation form one service-owned handoff. The
   coordinator reserves its exclusive empty attempt slot, successor identity and bounded capture
   configuration before publishing the observed process fence. Refusal leaves execution authority

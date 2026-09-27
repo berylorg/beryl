@@ -1,7 +1,5 @@
-use super::super::flight_registry::FlightRegistry;
 use super::super::work_sources::{ProcessWorkRead, ProcessWorkSources};
 use super::*;
-use beryl_home_store::CursorReadLimits;
 
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../../tests/unit/shutdown_work_observation.rs"]
@@ -23,6 +21,7 @@ pub(crate) enum ShutdownWorkError {
 pub(crate) struct ShutdownWorkObservation {
     pub(super) revision: ShutdownWorkRevision,
     has_work: bool,
+    running_threads: u64,
     pub(super) home_interval: beryl_home_store::HomeMutationObservation,
     pub(super) connection_interval:
         crate::cas_projection::connection_work::ConnectionWorkObservation,
@@ -35,6 +34,10 @@ impl ShutdownWorkObservation {
 
     pub(crate) fn has_work(&self) -> bool {
         self.has_work
+    }
+
+    pub(crate) fn running_threads(&self) -> u64 {
+        self.running_threads
     }
 }
 
@@ -95,7 +98,7 @@ impl ProcessWorkSources {
         let read = self.read()?;
         let boundary = read.connections.work_boundary();
         let connection_interval = boundary.try_observe()?;
-        let (revision, has_work) =
+        let (revision, has_work, running_threads) =
             read.collect_shutdown_work_facts(sessions, cancellation, before_validation)?;
         let home = read.home.as_deref().ok_or(ProcessWorkError::Closed)?;
         boundary.try_elect(&connection_interval, || {
@@ -104,6 +107,7 @@ impl ProcessWorkSources {
         Ok(ShutdownWorkObservation {
             revision,
             has_work,
+            running_threads,
             home_interval,
             connection_interval,
         })
@@ -116,47 +120,27 @@ impl ProcessWorkRead {
         sessions: &ScheduledExecutionSessions,
         cancellation: &ProjectionCancellationToken,
         before_validation: impl FnOnce(),
-    ) -> Result<(ShutdownWorkRevision, bool), ProcessWorkError> {
+    ) -> Result<(ShutdownWorkRevision, bool, u64), ProcessWorkError> {
         check_cancelled(cancellation)?;
         let revision = self.shutdown_work_revision(sessions)?;
-        let read = self;
-        let home = read.home.as_deref().ok_or(ProcessWorkError::Closed)?;
-        let mut has_work = revision.requires_connection_cleanup();
-        read.visit_live_facts(sessions, &revision.required, cancellation, |_, facts| {
-            has_work |= facts != ProcessWorkFacts::default();
-        })?;
-        has_work |= !FlightRegistry::work_prefix(
-            read.home_id,
-            read.home_generation,
-            revision.flights,
-            None,
-            1,
-        )?
-        .is_empty();
-
-        // These unfiltered source indexes need only one row to establish presence.
-        let limits = CursorReadLimits::new(1, 65_536).expect("fixed nonzero limits");
-        check_cancelled(cancellation)?;
-        has_work |= !read
-            .storage
-            .non_idle_gate_source_page(home, revision.required.durable, None, limits)?
-            .records()
-            .is_empty();
-        check_cancelled(cancellation)?;
-        has_work |= !read
-            .storage
-            .accepted_next_source_page(home, revision.required.durable, None, limits)?
-            .records()
-            .is_empty();
-        check_cancelled(cancellation)?;
-        has_work |= !read
-            .storage
-            .accepted_ready_source_page(home, revision.required.durable, None, limits)?
-            .records()
-            .is_empty();
+        let live = self.live_facts(sessions, &revision.required, cancellation)?;
+        let mut running_threads = 0_u64;
+        self.scan_work_threads(
+            &revision.required,
+            live,
+            Some(revision.flights),
+            cancellation,
+            |_, _| {
+                running_threads = running_threads
+                    .checked_add(1)
+                    .ok_or(ProcessWorkError::CountOverflow)?;
+                Ok(())
+            },
+        )?;
+        let has_work = revision.requires_connection_cleanup() || running_threads != 0;
         before_validation();
         self.validate_shutdown_work_revision(sessions, &revision)?;
         check_cancelled(cancellation)?;
-        Ok((revision, has_work))
+        Ok((revision, has_work, running_threads))
     }
 }

@@ -1,6 +1,8 @@
 use beryl_home_store::CursorReadLimits;
 use syndic_storage::{InputGateState, SyndicPointReadLimit};
 
+use super::super::{flight_registry::FlightRegistry, work_sources::ProcessWorkRead};
+use super::required::RequiredWorkRevision;
 use super::*;
 
 type Entry = (SyndicThreadId, ProcessWorkFacts);
@@ -67,22 +69,35 @@ impl ProcessWorkInventory<'_> {
         revision: &ProcessWorkRevision,
         live: LiveMap,
         cancellation: &ProjectionCancellationToken,
+        visit: impl FnMut(SyndicThreadId, LiveFacts) -> Result<(), ProcessWorkError>,
+    ) -> Result<(), ProcessWorkError> {
+        self.service
+            .scan_work_threads(&revision.work, live, None, cancellation, visit)
+    }
+}
+
+impl ProcessWorkRead {
+    pub(super) fn scan_work_threads(
+        &self,
+        revision: &RequiredWorkRevision,
+        live: LiveMap,
+        flight_revision: Option<u64>,
+        cancellation: &ProjectionCancellationToken,
         mut visit: impl FnMut(SyndicThreadId, LiveFacts) -> Result<(), ProcessWorkError>,
     ) -> Result<(), ProcessWorkError> {
-        let storage = &self.service.storage;
-        let home = self.home()?;
+        let storage = &self.storage;
+        let home = self.home.as_deref().ok_or(ProcessWorkError::Closed)?;
         let limits = CursorReadLimits::new(256, 65_536).expect("fixed nonzero limits");
         let point_limit = SyndicPointReadLimit::new(65_536).expect("fixed nonzero limit");
         let mut gates = Source::new(|cursor| {
             check_cancelled(cancellation)?;
-            let page =
-                storage.non_idle_gate_source_page(home, revision.work.durable, cursor, limits)?;
+            let page = storage.non_idle_gate_source_page(home, revision.durable, cursor, limits)?;
             let mut rows = Vec::new();
             for source in page.records() {
                 check_cancelled(cancellation)?;
                 let gate = storage.resolve_non_idle_gate_source(
                     home,
-                    revision.work.durable,
+                    revision.durable,
                     *source,
                     point_limit,
                 )?;
@@ -98,8 +113,7 @@ impl ProcessWorkInventory<'_> {
         });
         let mut next = Source::new(|cursor| {
             check_cancelled(cancellation)?;
-            let page =
-                storage.accepted_next_source_page(home, revision.work.durable, cursor, limits)?;
+            let page = storage.accepted_next_source_page(home, revision.durable, cursor, limits)?;
             Ok((
                 page.records()
                     .iter()
@@ -119,7 +133,7 @@ impl ProcessWorkInventory<'_> {
         let mut ready = Source::new(|cursor| {
             check_cancelled(cancellation)?;
             let page =
-                storage.accepted_ready_source_page(home, revision.work.durable, cursor, limits)?;
+                storage.accepted_ready_source_page(home, revision.durable, cursor, limits)?;
             Ok((
                 page.records()
                     .iter()
@@ -136,6 +150,35 @@ impl ProcessWorkInventory<'_> {
                 page.next_cursor(),
             ))
         });
+        let mut flights = Source::new(|cursor| {
+            check_cancelled(cancellation)?;
+            let Some(revision) = flight_revision else {
+                return Ok((Vec::new(), None));
+            };
+            let threads = FlightRegistry::work_prefix(
+                self.home_id,
+                self.home_generation,
+                revision,
+                cursor,
+                256,
+            )?;
+            let next = (threads.len() == 256).then(|| *threads.last().unwrap());
+            Ok((
+                threads
+                    .into_iter()
+                    .map(|thread| {
+                        (
+                            thread,
+                            ProcessWorkFacts {
+                                terminal_settlement: true,
+                                ..Default::default()
+                            },
+                        )
+                    })
+                    .collect(),
+                next,
+            ))
+        });
         let mut live = live.into_iter().peekable();
         loop {
             check_cancelled(cancellation)?;
@@ -143,6 +186,7 @@ impl ProcessWorkInventory<'_> {
                 gates.peek()?,
                 next.peek()?,
                 ready.peek()?,
+                flights.peek()?,
                 live.peek().map(|(id, _)| *id),
             ]
             .into_iter()
@@ -159,6 +203,7 @@ impl ProcessWorkInventory<'_> {
             gates.consume(thread_id, &mut facts.work)?;
             next.consume(thread_id, &mut facts.work)?;
             ready.consume(thread_id, &mut facts.work)?;
+            flights.consume(thread_id, &mut facts.work)?;
             visit(thread_id, facts)?;
         }
         Ok(())

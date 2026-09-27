@@ -1,8 +1,21 @@
 use super::*;
+use beryl_home_store::CursorReadLimits;
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/unit/shutdown_support.rs"
 ));
+
+fn fixture(pending: bool) -> Fixture {
+    let mut fixture = Fixture::with_pending(pending);
+    // Synthetic observations hold work stable; mutation tests change it explicitly.
+    let scheduler = fixture.service.scheduler.take().unwrap();
+    scheduler.request_shutdown();
+    assert!(matches!(
+        scheduler.join().unwrap(),
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerExit::Clean
+    ));
+    fixture
+}
 
 fn observe(fixture: &Fixture) -> ShutdownWorkObservation {
     let job = fixture
@@ -17,12 +30,13 @@ fn observe(fixture: &Fixture) -> ShutdownWorkObservation {
 #[test]
 fn idle_and_hidden_pending_observations_preserve_state_and_execution_authority() {
     for pending in [false, true] {
-        let fixture = Fixture::with_pending(pending);
+        let fixture = fixture(pending);
         let permit = fixture.gate.execution_permit();
         let home = fixture.service.home.as_deref().unwrap();
         let before = home.home_revision().unwrap();
         let observation = observe(&fixture);
         assert_eq!(observation.has_work(), pending);
+        assert_eq!(observation.running_threads(), u64::from(pending));
         fixture
             .service
             .validate_shutdown_work_revision(&fixture.sessions, observation.revision())
@@ -34,7 +48,7 @@ fn idle_and_hidden_pending_observations_preserve_state_and_execution_authority()
 
 #[test]
 fn continuation_and_projection_flight_are_work_without_a_non_idle_gate() {
-    let fixture = Fixture::idle();
+    let fixture = fixture(false);
     let held = fixture
         .service
         .stop_coordinator
@@ -43,6 +57,7 @@ fn continuation_and_projection_flight_are_work_without_a_non_idle_gate() {
         .unwrap();
     let observation = observe(&fixture);
     assert!(observation.has_work());
+    assert_eq!(observation.running_threads(), 1);
     fixture
         .service
         .validate_shutdown_work_revision(&fixture.sessions, observation.revision())
@@ -56,15 +71,15 @@ fn continuation_and_projection_flight_are_work_without_a_non_idle_gate() {
     );
     assert!(!observe(&fixture).has_work());
     let flight = fixture.acquired_projection_flight(fixture.thread);
-    assert!(observe(&fixture).has_work());
+    assert_eq!(observe(&fixture).running_threads(), 1);
     drop(flight);
     assert!(!observe(&fixture).has_work());
 }
 
 #[test]
 fn cancellation_and_foreign_sources_never_produce_an_idle_observation() {
-    let fixture = Fixture::idle();
-    let foreign = Fixture::idle();
+    let foreign = fixture(false);
+    let fixture = fixture(false);
     assert!(matches!(
         fixture
             .service
@@ -91,7 +106,7 @@ fn cancellation_and_foreign_sources_never_produce_an_idle_observation() {
 
 #[test]
 fn work_acquire_release_during_observation_invalidates_the_result() {
-    let fixture = Fixture::idle();
+    let fixture = fixture(false);
     let result = fixture.service.collect_shutdown_observation(
         &fixture.sessions,
         &ProjectionCancellationToken::new(),
@@ -107,7 +122,7 @@ fn work_acquire_release_during_observation_invalidates_the_result() {
 
 #[test]
 fn durable_admission_during_observation_invalidates_the_result() {
-    let fixture = Fixture::idle();
+    let fixture = fixture(false);
     let result = fixture.service.collect_shutdown_observation(
         &fixture.sessions,
         &ProjectionCancellationToken::new(),
@@ -134,7 +149,7 @@ fn durable_admission_during_observation_invalidates_the_result() {
 
 #[test]
 fn hidden_accepted_input_is_preserved_by_confirmation_observation() {
-    let fixture = Fixture::new();
+    let fixture = fixture(true);
     let home = fixture.service.home.as_deref().unwrap();
     let storage = &fixture.service.storage;
     let (kind, _) = submission_fixture::submit_atoms(
@@ -157,7 +172,7 @@ fn hidden_accepted_input_is_preserved_by_confirmation_observation() {
     assert!(!before.records().is_empty());
     let home_revision = home.home_revision().unwrap();
     let permit = fixture.gate.execution_permit();
-    assert!(observe(&fixture).has_work());
+    assert_eq!(observe(&fixture).running_threads(), 1);
     assert_eq!(home.home_revision().unwrap(), home_revision);
     let after = storage
         .accepted_next_source_page(home, revision, None, limits)
@@ -167,8 +182,37 @@ fn hidden_accepted_input_is_preserved_by_confirmation_observation() {
 }
 
 #[test]
+fn overlapping_durable_live_and_flight_work_counts_each_thread_once() {
+    let fixture = fixture(true);
+    let continuation = fixture
+        .service
+        .stop_coordinator
+        .compaction_custody
+        .reserve_continuation(fixture.thread, fixture.turn)
+        .unwrap();
+    let flight = fixture.acquired_projection_flight(fixture.thread);
+    assert_eq!(observe(&fixture).running_threads(), 1);
+    let other = SyndicThreadId::from_bytes([99; 16]);
+    let other_flight = fixture.acquired_projection_flight(other);
+    assert_eq!(observe(&fixture).running_threads(), 2);
+    drop((continuation, flight, other_flight));
+    assert_eq!(observe(&fixture).running_threads(), 1);
+}
+
+#[test]
+fn flight_only_count_crosses_source_page_boundary_without_catalog_metadata() {
+    let fixture = fixture(false);
+    let flights: Vec<_> = (0_u128..260)
+        .map(|id| fixture.acquired_projection_flight(SyndicThreadId::from_bytes(id.to_be_bytes())))
+        .collect();
+    assert_eq!(observe(&fixture).running_threads(), 260);
+    drop(flights);
+    assert_eq!(observe(&fixture).running_threads(), 0);
+}
+
+#[test]
 fn failed_storage_read_cannot_claim_idle() {
-    let fixture = Fixture::idle();
+    let fixture = fixture(false);
     fixture
         .faults
         .fail_next(beryl_home_store::test_faults::FaultPoint::BeforeReadConfirmation);
