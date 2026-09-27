@@ -1,4 +1,5 @@
-use beryl_home_store::HomeStore;
+use crate::read::access::ReadAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 use beryl_model::{DomainRevision, ExecutionBinding, SyndicThreadId, SyndicTurnId};
 
 use crate::draft_piece::{
@@ -94,31 +95,58 @@ impl SyndicStorage {
         thread_id: SyndicThreadId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<SyndicCurrentDraft>, SyndicReadError> {
-        let Some(first) = self.point::<DraftByThreadFamily>(store, thread_id, limit)? else {
-            return match self.point::<DraftByThreadFamily>(store, thread_id, limit)? {
+        self.current_draft_with_access(ReadAccess::Ordinary(store), thread_id, limit)
+    }
+
+    pub fn current_draft_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<SyndicCurrentDraft>, SyndicReadError> {
+        self.current_draft_with_access(ReadAccess::Candidate(store), thread_id, limit)
+    }
+
+    pub(crate) fn current_draft_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<SyndicCurrentDraft>, SyndicReadError> {
+        let Some(first) = self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)?
+        else {
+            return match self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)? {
                 None => Ok(None),
                 Some(_) => Err(concurrent("current-draft read")),
             };
         };
         let index = first.clone();
         let thread = required(
-            self.point::<ThreadsFamily>(store, thread_id, limit)?,
+            self.point_with_access::<ThreadsFamily>(store, thread_id, limit)?,
             "current draft owner thread is missing",
         )?;
         let draft = required(
-            self.point::<DraftsFamily>(store, index.draft_id(), limit)?,
+            self.point_with_access::<DraftsFamily>(store, index.draft_id(), limit)?,
             "current draft record is missing",
         )?;
         let root = required(
-            self.point::<DraftPieceRootsFamily>(store, draft.piece_root().key(), limit)?,
+            self.point_with_access::<DraftPieceRootsFamily>(
+                store,
+                draft.piece_root().key(),
+                limit,
+            )?,
             "current draft piece root is missing",
         )?;
         let history = required(
-            self.point::<DraftEditHistoryFrontiersFamily>(store, draft.history().key(), limit)?,
+            self.point_with_access::<DraftEditHistoryFrontiersFamily>(
+                store,
+                draft.history().key(),
+                limit,
+            )?,
             "current draft edit history is missing",
         )?;
         let second = required(
-            self.point::<DraftByThreadFamily>(store, thread_id, limit)?,
+            self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)?,
             "current draft changed during stabilized read",
         )?;
         if second != index {
@@ -126,7 +154,9 @@ impl SyndicStorage {
         }
         validate_current(&thread, &draft, &root, &index)?;
         if history.reference() != draft.history()
-            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &history)?
+            || !crate::draft_piece::draft_edit_history_frontier_is_authenticated_with_access(
+                self, store, &history,
+            )?
         {
             return Err(SyndicReadError::Invariant(
                 "current draft edit history closure is invalid",

@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 731: Qualify Preserved Widget Resources For Recovery (finished)
+# Phase 733: Read Current Drafts Through Candidate Access (finished)
 
-The [pinned-widget ownership audit](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-ownership.md)
-found no retained old storage capability in the inspected widget ownership. Source identity,
-callback/cleanup paths and app guards passed independent lifecycle review. Quiescence remains a
-live observation; host cleanup, fresh bindings and recovery progress remain separate. No code or
-runtime-test changes were required for this evidence boundary.
+Current-draft reads and bounded history authentication now share ordinary and borrowed candidate
+access. Fresh handles preserve the exact stabilized facts; stale/foreign handles and failed reads
+remain rejected. The library check and 31 focused candidate/history tests passed, as did independent
+persistent-state review. No writes, admission release or resident rebinding were added.
 
 # Phase 732: Observe Saved Draft Checkpoints Through Candidate Access (pending)
 
@@ -105,7 +104,7 @@ stable-observation checks without ordinary admission or writes. Verify fresh mat
 stale handles, changed or absent checkpoint facts and read failure; independently review the
 persistent-state boundary. This supplies storage evidence only, not resident rebinding or gate
 release. Derive the implementation from the storage candidate-access and interrupted-Exit recovery
-contracts before activation.
+contracts before activation. Phase 733 supplies shared candidate current-draft and history reads.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 

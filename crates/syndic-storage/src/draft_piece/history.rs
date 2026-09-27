@@ -32,6 +32,7 @@ pub(crate) use retention::{
     DraftEditHistoryRetentionErrorV1, append_historical_draft_edit_history_with_retention_v1,
     append_ordinary_draft_edit_history_with_retention_v1,
     authenticate_draft_edit_history_frontier_v1, draft_edit_history_frontier_is_authenticated_v1,
+    draft_edit_history_frontier_is_authenticated_with_access,
     ordinary_draft_edit_history_adoption_is_locally_exact,
 };
 #[cfg(feature = "test-faults")]

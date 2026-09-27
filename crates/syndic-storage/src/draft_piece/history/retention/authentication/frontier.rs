@@ -181,7 +181,7 @@ fn authenticate_mutation_retained_bytes(
 
 pub(super) fn authenticate_frontier(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicReadError> {
     let mut members = FrontierMembers::default();
@@ -196,7 +196,7 @@ pub(super) fn authenticate_frontier(
 
 fn read_members(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     frontier: &DraftEditHistoryFrontierV1,
     members: &mut FrontierMembers,
 ) -> Result<bool, SyndicReadError> {
@@ -242,7 +242,7 @@ fn read_members(
 
 fn members_are_exact(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     frontier: &DraftEditHistoryFrontierV1,
     members: &FrontierMembers,
 ) -> Result<bool, SyndicReadError> {
@@ -278,7 +278,7 @@ fn members_are_exact(
 
 fn stack_is_exact(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     frontier: &DraftEditHistoryFrontierV1,
     head: &DraftEditHistoryTransitionV1,
     floor: Option<&DraftEditHistoryTransitionV1>,

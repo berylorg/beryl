@@ -457,6 +457,11 @@ remain invalid, and the read does not release ordinary admission.
 candidate access for source-less recovery publication. It preserves the typed point-read contract;
 the app owns surrounding turn/gate/summary stabilization and event eligibility.
 
+`current_draft_candidate` shares the ordinary current-draft index/draft/index stability proof
+through borrowed candidate recovery access. It preserves exact thread, draft, piece-root and
+bounded edit-history authentication, typed absence/error behavior and fresh-handle requirements.
+This observation grants no editor rebinding, publication, dispatch or cleanup authority.
+
 ## Provider-Operation Finalization Reads
 
 `compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission

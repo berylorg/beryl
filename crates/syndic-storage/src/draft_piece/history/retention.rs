@@ -4,6 +4,7 @@ pub(crate) use authentication::authenticate_root_topology;
 use authentication::transition_is_ancestor_of;
 pub(crate) use authentication::{
     authenticate_draft_edit_history_frontier_v1, draft_edit_history_frontier_is_authenticated_v1,
+    draft_edit_history_frontier_is_authenticated_with_access,
     ordinary_draft_edit_history_adoption_is_locally_exact,
 };
 use authentication::{

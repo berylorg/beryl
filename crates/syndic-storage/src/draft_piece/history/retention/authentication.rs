@@ -1,3 +1,4 @@
+use crate::read::access::ReadAccess;
 use beryl_home_store::{DomainReader, HomeStore};
 
 use crate::domain::SyndicDomain;
@@ -206,6 +207,18 @@ pub(crate) fn draft_edit_history_frontier_is_authenticated_v1(
     store: &HomeStore,
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicReadError> {
+    draft_edit_history_frontier_is_authenticated_with_access(
+        storage,
+        ReadAccess::Ordinary(store),
+        frontier,
+    )
+}
+
+pub(crate) fn draft_edit_history_frontier_is_authenticated_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    frontier: &DraftEditHistoryFrontierV1,
+) -> Result<bool, SyndicReadError> {
     if !frontier.is_locally_valid()
         || !root_pin_is_authenticated(storage, store, frontier.reference().root())?
     {
@@ -228,7 +241,7 @@ fn retained_stack_link(
 
 fn transition_reference_is_authenticated(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     reference: DraftEditHistoryTransitionReferenceV1,
 ) -> Result<Option<DraftEditHistoryTransitionV1>, SyndicReadError> {
     let Some(value) = transition_reference_is_exact(storage, store, reference)? else {
@@ -256,10 +269,10 @@ fn transition_reference_is_authenticated(
 
 fn transition_reference_is_exact(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     reference: DraftEditHistoryTransitionReferenceV1,
 ) -> Result<Option<DraftEditHistoryTransitionV1>, SyndicReadError> {
-    let value = storage.point::<DraftEditHistoryTransitionsFamily>(
+    let value = storage.point_with_access::<DraftEditHistoryTransitionsFamily>(
         store,
         reference.key(),
         point_limit(),
@@ -275,10 +288,11 @@ fn transition_reference_is_exact(
 
 fn root_pin_is_authenticated(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     root: DraftPieceRootReferenceV1,
 ) -> Result<bool, SyndicReadError> {
-    let Some(stored) = storage.point::<DraftPieceRootsFamily>(store, root.key(), point_limit())?
+    let Some(stored) =
+        storage.point_with_access::<DraftPieceRootsFamily>(store, root.key(), point_limit())?
     else {
         return Ok(false);
     };
@@ -286,7 +300,7 @@ fn root_pin_is_authenticated(
         return Ok(false);
     }
     if let Some(id) = root.root_node() {
-        let Some(node) = storage.point::<DraftPieceNodesFamily>(
+        let Some(node) = storage.point_with_access::<DraftPieceNodesFamily>(
             store,
             DraftPieceRecordKeyV1::new(root.key().draft_id(), id),
             point_limit(),
@@ -301,7 +315,7 @@ fn root_pin_is_authenticated(
         return Ok(false);
     }
     if let Some(id) = root.marker_index_root() {
-        let Some(record) = storage.point::<DraftMarkerIdentityIndexFamily>(
+        let Some(record) = storage.point_with_access::<DraftMarkerIdentityIndexFamily>(
             store,
             DraftMarkerIdentityRecordKeyV1::new(
                 root.key().draft_id(),

@@ -1,4 +1,5 @@
-use beryl_home_store::{DomainReader, HomeStore};
+use crate::read::access::ReadAccess;
+use beryl_home_store::DomainReader;
 
 use crate::domain::SyndicDomain;
 use crate::draft_piece::history::witness::{
@@ -72,7 +73,7 @@ pub(crate) fn transition_is_ancestor_of(
 
 pub(super) fn transition_is_ancestor_of_read(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     head: &DraftEditHistoryTransitionV1,
     candidate: &DraftEditHistoryTransitionV1,
 ) -> Result<bool, SyndicReadError> {

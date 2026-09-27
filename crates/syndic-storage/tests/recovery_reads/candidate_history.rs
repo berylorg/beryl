@@ -141,6 +141,7 @@ fn candidate_history_metadata_preserves_exact_values_bounds_and_generation_fence
         }};
     }
     check!(thread, thread_candidate, [id(30)], [id(250)]);
+    check!(current_draft, current_draft_candidate, [id(30)], [id(250)]);
     check!(
         turn,
         turn_candidate,
