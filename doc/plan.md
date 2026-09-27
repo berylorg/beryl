@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 729: Retain Exact Resident Retirement Evidence (finished)
+# Phase 730: Query Exact Resident Retirement Status (finished)
 
-Accepted one-time retention of matching service-retirement evidence after the resident resource
-handoff, returning refused custody and preserving editor/restoration/gates. Library checking,
-58 focused tests (d36af585-cb68-49e5-88b5-2d6184411227) and independent lifecycle review passed.
-Fresh bindings and whole-resident retirement remain separate.
-
+Accepted an exact-ticket retirement-status query that rechecks detached resources, drained work
+and resident fencing without storage access or gate release. Library checking, 58 focused tests
+(693652c1-89f3-4850-ae1a-a959000d4236) and independent lifecycle review passed.
+Fresh bindings and whole-home publication remain separate.
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
 At the admitted session-publication cut, prove exact ready draft-close tickets and drained resident
@@ -118,7 +117,8 @@ retained mutation-failure custody. Phase 727 composes the resource handoffs into
 Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 Phase 728 consumes the bundle for exclusive service retirement and retains refused service custody.
-Phase 729 retains matching retirement evidence in the preserved resident snapshot.
+Phase 729 retains matching retirement evidence in the preserved resident snapshot; phase 730 supplies
+exact live observation of that retained retirement.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

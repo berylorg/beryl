@@ -41,19 +41,46 @@ impl MainWindowComposerMountRecoveryResources {
 }
 
 impl MainWindowConversationComposerMount {
+    pub fn interrupted_exit_retirement_ready(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &Context<Self>,
+    ) -> Result<bool, String> {
+        self.validate_recovery_retirement(ticket, cx)?;
+        self.contribution
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .recovery_retirement_ready(ticket, cx)
+    }
+
     pub fn accept_interrupted_exit_retirement(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
         retired: crate::main_window::MainWindowComposerRetiredClose,
         cx: &mut Context<Self>,
     ) -> Result<(), crate::main_window::MainWindowComposerRetiredClose> {
-        if self
-            .validate_recovery_adapter_detachment(ticket, cx)
-            .is_err()
-            || self.validate_recovery_native_resources().is_err()
-            || !self
-                .window_close
-                .is_some_and(|close| close.resources_detached)
+        if self.validate_recovery_retirement(ticket, cx).is_err() {
+            return Err(retired);
+        }
+        self.contribution
+            .as_ref()
+            .unwrap()
+            .update(cx, |resident, cx| {
+                resident.accept_recovery_retirement(ticket, retired, cx)
+            })
+    }
+
+    fn validate_recovery_retirement(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &Context<Self>,
+    ) -> Result<(), String> {
+        self.validate_recovery_adapter_detachment(ticket, cx)?;
+        self.validate_recovery_native_resources()?;
+        if !self
+            .window_close
+            .is_some_and(|close| close.resources_detached)
             || self.service.is_some()
             || self.configurator.is_some()
             || self.native_lineage_recovery.is_some()
@@ -67,14 +94,9 @@ impl MainWindowConversationComposerMount {
                 .recovery_source()
                 .is_ok_and(|source| source.is_none())
         {
-            return Err(retired);
+            return Err("mount recovery resources are still attached".to_owned());
         }
-        self.contribution
-            .as_ref()
-            .unwrap()
-            .update(cx, |resident, cx| {
-                resident.accept_recovery_retirement(ticket, retired, cx)
-            })
+        Ok(())
     }
 
     pub fn detach_interrupted_exit_resources(

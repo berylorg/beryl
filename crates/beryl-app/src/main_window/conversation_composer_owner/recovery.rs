@@ -40,17 +40,37 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn recovery_retirement_ready(
+        &self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &App,
+    ) -> Result<bool, String> {
+        self.validate_recovery_retirement(close, cx)?;
+        Ok(self.recovery_snapshot.as_ref().unwrap().retired.is_some())
+    }
+
+    fn validate_recovery_retirement(
+        &self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &App,
+    ) -> Result<(), String> {
+        self.validate_recovery_detachment(close, cx)?;
+        if self.service.is_some()
+            || self.clipboard_writer.is_some()
+            || self.last_mutation_admission_failure.is_some()
+        {
+            return Err("resident recovery resources are still attached".to_owned());
+        }
+        Ok(())
+    }
+
     pub(in crate::main_window) fn accept_recovery_retirement(
         &mut self,
         close: MainWindowConversationComposerCloseTicket,
         retired: crate::main_window::MainWindowComposerRetiredClose,
         cx: &Context<Self>,
     ) -> Result<(), crate::main_window::MainWindowComposerRetiredClose> {
-        if self.validate_recovery_detachment(close, cx).is_err()
-            || self.service.is_some()
-            || self.clipboard_writer.is_some()
-            || self.last_mutation_admission_failure.is_some()
-        {
+        if self.validate_recovery_retirement(close, cx).is_err() {
             return Err(retired);
         }
         let snapshot = self.recovery_snapshot.as_mut().unwrap();
@@ -146,7 +166,7 @@ impl MainWindowConversationComposer {
     fn validate_recovery_detachment(
         &self,
         close: MainWindowConversationComposerCloseTicket,
-        cx: &Context<Self>,
+        cx: &App,
     ) -> Result<(), String> {
         if !matches!(
             self.phase,

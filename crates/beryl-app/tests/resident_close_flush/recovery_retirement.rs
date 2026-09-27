@@ -33,6 +33,11 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     let foreign_selection = foreign_evidence.selection();
     let foreign_close = foreign_evidence.close_ticket();
     foreign_evidence = fixture.mount.update(cx, |mount, cx| {
+        assert!(
+            mount
+                .interrupted_exit_retirement_ready(foreign_close, cx)
+                .is_err()
+        );
         mount
             .accept_interrupted_exit_retirement(foreign_close, foreign_evidence, cx)
             .unwrap_err()
@@ -69,10 +74,20 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
         let foreign_evidence = mount
             .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
             .unwrap_err();
+        assert!(
+            mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .is_err()
+        );
         let resources = mount
             .detach_interrupted_exit_resources(close.ticket, cx)
             .unwrap()
             .unwrap();
+        assert!(
+            !mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .unwrap()
+        );
         (resources, foreign_evidence)
     });
     let seed = composer.read_with(cx, |composer, _| {
@@ -106,9 +121,16 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     resources.resident.service = resident_service;
     drop((foreign_service, foreign));
 
-    resources = fixture
-        .service
-        .test_with_close_slot_locked(|| resources.retire().err().unwrap());
+    resources = fixture.service.test_with_close_slot_locked(|| {
+        fixture.mount.update(cx, |mount, cx| {
+            assert!(
+                !mount
+                    .interrupted_exit_retirement_ready(close.ticket, cx)
+                    .unwrap()
+            );
+        });
+        resources.retire().err().unwrap()
+    });
     assert!(Arc::ptr_eq(
         resources.service.as_ref().unwrap(),
         &fixture.service
@@ -160,6 +182,12 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     });
     let stale = CloseTicket::for_test(mount.entity_id(), u64::MAX, selection);
     let (retired, foreign_evidence) = mount.update(cx, |mount, cx| {
+        assert!(
+            !mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .unwrap()
+        );
+        assert!(mount.interrupted_exit_retirement_ready(stale, cx).is_err());
         let foreign_evidence = mount
             .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
             .unwrap_err();
@@ -174,6 +202,12 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
         mount
             .accept_interrupted_exit_retirement(close.ticket, retired, cx)
             .unwrap();
+        assert!(
+            mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .unwrap()
+        );
+        assert!(mount.interrupted_exit_retirement_ready(stale, cx).is_err());
         mount
             .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
             .unwrap_err()
@@ -200,6 +234,11 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     );
     cx.update(|window, app| {
         mount.update(app, |mount, cx| {
+            assert!(
+                mount
+                    .interrupted_exit_retirement_ready(close.ticket, cx)
+                    .unwrap()
+            );
             assert!(
                 mount
                     .release_window_close(close.ticket, window, cx)
