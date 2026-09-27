@@ -11,6 +11,19 @@ pub struct MainWindowConversationComposerCloseTicket {
 }
 
 impl MainWindowConversationComposerCloseTicket {
+    #[cfg(feature = "test-faults")]
+    pub const fn for_test(
+        owner: gpui::EntityId,
+        generation: u64,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Self {
+        Self {
+            owner,
+            generation,
+            selection,
+        }
+    }
+
     pub(in crate::main_window) const fn selection(self) -> MainWindowComposerSelectionIdentity {
         self.selection
     }

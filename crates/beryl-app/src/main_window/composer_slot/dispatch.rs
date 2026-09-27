@@ -111,6 +111,14 @@ pub(super) struct MainWindowComposerDispatcher {
 }
 
 impl MainWindowComposerDispatcher {
+    pub(super) fn is_drained(&self) -> bool {
+        !self.in_dispatch
+            && self.mutation_begin.is_none()
+            && self.mutation_finish.is_none()
+            && self.early_terminal.is_none()
+            && self.publication_capture.is_none()
+    }
+
     pub(super) fn new(binding: crate::composer_host::ComposerHostBinding) -> Self {
         Self {
             binding,

@@ -13,6 +13,7 @@ use crate::composer_host::{
 use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
 mod close;
+mod close_retirement;
 mod dispatch;
 mod lifecycle;
 mod model;
@@ -21,6 +22,7 @@ mod retirement;
 mod state;
 mod submission;
 
+pub use close_retirement::MainWindowComposerRetiredClose;
 pub use dispatch::*;
 pub(in crate::main_window) use dispatch::{
     MainWindowComposerSuccessorProof, MainWindowComposerSuccessorProofLimits,

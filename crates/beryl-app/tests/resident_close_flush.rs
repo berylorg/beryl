@@ -19,5 +19,7 @@ mod release;
 mod retirement;
 #[path = "resident_close_flush/shutdown.rs"]
 mod shutdown;
+#[path = "resident_close_flush/slot_retirement.rs"]
+mod slot_retirement;
 #[path = "resident_close_flush/support.rs"]
 mod support;
