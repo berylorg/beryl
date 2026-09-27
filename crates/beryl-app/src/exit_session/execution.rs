@@ -1,4 +1,4 @@
-use super::{ExitSessionPreparationError, prepare_exit_session_command};
+use super::{ExitSessionPreparationError, ExitSessionPublication, prepare_exit_session_command};
 use beryl_home_store::{
     CommandError, CommandOutcome, CommitReceipt, CommittedLocalFinalization, HomeStore,
     ReconciliationFailure, ReconciliationHandle, ReconciliationResolution,
@@ -11,11 +11,13 @@ use beryl_state::SessionState;
 pub(crate) enum ExitSessionExecution {
     NotCommitted {
         evidence: CommandError,
+        publication: Box<ExitSessionPublication>,
     },
     Committed {
         receipt: CommitReceipt,
         later_failure: Option<CommandError>,
         local_finalization: Option<CommittedLocalFinalization>,
+        publication: Box<ExitSessionPublication>,
     },
     Indeterminate(ExitSessionReconciliation),
 }
@@ -25,6 +27,7 @@ pub(crate) enum ExitSessionExecution {
 pub(crate) struct ExitSessionReconciliation {
     original_failure: CommandError,
     handle: ReconciliationHandle,
+    publication: Box<ExitSessionPublication>,
 }
 
 #[derive(Debug)]
@@ -32,10 +35,12 @@ pub(crate) struct ExitSessionReconciliation {
 pub(crate) enum ExitSessionReconciled {
     ExactOld {
         original_failure: CommandError,
+        publication: Box<ExitSessionPublication>,
     },
     ExactNew {
         original_failure: CommandError,
         receipt: CommitReceipt,
+        publication: Box<ExitSessionPublication>,
     },
     Pending {
         failure: ReconciliationFailure,
@@ -44,6 +49,7 @@ pub(crate) enum ExitSessionReconciled {
     Blocked {
         original_failure: CommandError,
         resolution: ReconciliationResolution,
+        publication: Box<ExitSessionPublication>,
     },
 }
 
@@ -52,16 +58,19 @@ pub(crate) fn execute_exit_session(
     session: &SessionState,
     placements: Vec<(WindowId, WindowPlacement)>,
 ) -> Result<ExitSessionExecution, ExitSessionPreparationError> {
-    let command = prepare_exit_session_command(home, session, placements)?;
-    Ok(match home.execute(command) {
-        CommandOutcome::NotCommitted { evidence } => {
-            ExitSessionExecution::NotCommitted { evidence }
-        }
+    let prepared = prepare_exit_session_command(home, session, placements)?;
+    let publication = prepared.publication;
+    Ok(match home.execute(prepared.command) {
+        CommandOutcome::NotCommitted { evidence } => ExitSessionExecution::NotCommitted {
+            evidence,
+            publication,
+        },
         CommandOutcome::Committed {
             receipt,
             later_failure,
             local_finalization,
         } => ExitSessionExecution::Committed {
+            publication,
             receipt,
             later_failure,
             local_finalization,
@@ -70,6 +79,7 @@ pub(crate) fn execute_exit_session(
             failure,
             reconciliation,
         } => ExitSessionExecution::Indeterminate(ExitSessionReconciliation {
+            publication,
             handle: reconciliation.install_and_handle(),
             original_failure: failure,
         }),
@@ -77,16 +87,23 @@ pub(crate) fn execute_exit_session(
 }
 
 impl ExitSessionReconciliation {
+    pub(crate) fn publication(&self) -> &ExitSessionPublication {
+        &self.publication
+    }
+
     pub(crate) fn reconcile(self, home: &HomeStore) -> ExitSessionReconciled {
         match home.reconcile(&self.handle) {
             Ok(ReconciliationResolution::ExactOld) => ExitSessionReconciled::ExactOld {
+                publication: self.publication,
                 original_failure: self.original_failure,
             },
             Ok(ReconciliationResolution::ExactNew { receipt }) => ExitSessionReconciled::ExactNew {
+                publication: self.publication,
                 original_failure: self.original_failure,
                 receipt,
             },
             Ok(resolution) => ExitSessionReconciled::Blocked {
+                publication: self.publication,
                 original_failure: self.original_failure,
                 resolution,
             },
@@ -94,6 +111,28 @@ impl ExitSessionReconciliation {
                 failure,
                 reconciliation: self,
             },
+        }
+    }
+}
+
+impl ExitSessionExecution {
+    pub(crate) fn publication(&self) -> &ExitSessionPublication {
+        match self {
+            Self::NotCommitted { publication, .. } | Self::Committed { publication, .. } => {
+                publication
+            }
+            Self::Indeterminate(pending) => pending.publication(),
+        }
+    }
+}
+
+impl ExitSessionReconciled {
+    pub(crate) fn publication(&self) -> &ExitSessionPublication {
+        match self {
+            Self::ExactOld { publication, .. }
+            | Self::ExactNew { publication, .. }
+            | Self::Blocked { publication, .. } => publication,
+            Self::Pending { reconciliation, .. } => reconciliation.publication(),
         }
     }
 }

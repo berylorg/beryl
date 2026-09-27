@@ -13,10 +13,11 @@ impl RunningShutdownSession {
                 receipt,
                 later_failure: None,
                 local_finalization: None,
+                ..
             }))
             | Self::Reconciled(ExitSessionReconciled::ExactNew { receipt, .. }) => receipt,
             Self::Settled(Err(error)) => return Err(error.to_string()),
-            Self::Settled(Ok(ExitSessionExecution::NotCommitted { evidence })) => {
+            Self::Settled(Ok(ExitSessionExecution::NotCommitted { evidence, .. })) => {
                 return Err(format!("Exit session was not committed: {evidence}"));
             }
             Self::Settled(Ok(ExitSessionExecution::Committed {

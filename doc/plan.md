@@ -89,21 +89,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 692: Add The Exact Interrupted Exit Resume Contribution (finished)
+# Phase 693: Retain Immutable Exit Session Publication Evidence (finished)
 
-Accepted ResumeSessionAfterExit: exact bounded membership and revision checks change only the
-OrderlyExit header to Running, preserving all windows, placements and paired claims. All 19 focused
-Exit/session/restart tests passed in `c391b43a-c65a-457c-8cc0-9ab371ae1ed3`, the default state library
-check passed, and independent persistence review found no issues. This primitive grants no app
-reopening or gate-release authority; same-home composition remains pending.
+Accepted bounded configured-home, complete source and predicted result evidence retained before
+execution and through every ordinary outcome/reconciliation. Predictions match actual 1/3/256-window
+publications; receipts, failures, capabilities and readiness fences remain intact. All 27 focused
+session/native tests passed (`04929719-f538-4213-a53a-77465b8af39d` and
+`fe9bae56-d8f6-4729-9e03-50fc5e56ecfd`), the default app library check passed, and independent
+lifecycle/persistence review found no blocking issues. Replacement validation and recovery remain pending.
 
-# Phase 693: Retain Immutable Exit Session Publication Evidence (pending)
+# Phase 694: Validate Retained Exit Evidence Against Fresh Session State (pending)
 
-Retain the complete bounded expected source/result session and window revisions and placements
-before publication under the app interrupted-Exit ownership contract. Preserve that evidence with
-actual command outcomes without granting replacement-generation authority. Verify preparation
-refusal, commit, later failure and ambiguous custody; keep replacement validation and resume execution
-as separate acceptance boundaries.
+Under the interrupted-Exit recovery contracts, validate the retained configured home and exact
+complete source/result facts using fresh typed handles. Refuse changed membership, revisions,
+placements and unproven outcomes without adopting newer facts or accepting old receipts as authority.
+Keep this read-only validation separate from resume execution, graph publication and gate release.
+
+# Phase 695: Retain Interrupted Exit Resume Execution Outcomes (pending)
+
+Compose the accepted header-only resume contribution after exact source validation, preserving its
+own noncommit, committed-with-later-failure and ambiguous reconciliation custody. Do not repeat a
+known commit or infer coherent reopening; supervisor transfer and resident rebinding remain separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

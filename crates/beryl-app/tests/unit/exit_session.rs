@@ -136,9 +136,24 @@ fn exit_session_preparation_binds_shuffled_complete_set_without_writing() {
         let command = prepare_exit_session_command(&home, &session, placements(count)).unwrap();
         assert_eq!(home.home_revision().unwrap(), revision);
         assert_eq!(session.minimal_bootstrap(&home).unwrap().unwrap(), before);
-        committed(home.execute(command));
+        assert_eq!(command.publication.source, before);
+        assert_eq!(command.publication.configured_home, home.configured_path());
+        let publication = command.publication;
+        committed(home.execute(command.command));
         let after = session.minimal_bootstrap(&home).unwrap().unwrap();
         assert_eq!(after.header().exit_intent(), SessionExitIntent::OrderlyExit);
+        assert_eq!(
+            publication.result_session_revision,
+            after.header().revision()
+        );
+        assert_eq!(
+            publication.result_windows,
+            after
+                .windows()
+                .iter()
+                .map(|w| (w.window_id(), w.revision(), w.placement().clone()))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             after.header().revision(),
             before.header().revision().checked_next().unwrap()
@@ -225,7 +240,7 @@ fn exit_session_preparation_preserves_original_revision_at_writer() {
     );
     let changed = session.minimal_bootstrap(&home).unwrap();
     assert!(matches!(
-        home.execute(command),
+        home.execute(command.command),
         CommandOutcome::NotCommitted { .. }
     ));
     assert_eq!(session.minimal_bootstrap(&home).unwrap(), changed);

@@ -47,6 +47,7 @@ async fn exercise_session(
                         receipt,
                         later_failure,
                         local_finalization,
+                        ..
                     })) => {
                         assert!(!unwind);
                         assert!(later_failure.is_none());

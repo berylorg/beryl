@@ -7,6 +7,8 @@ use beryl_state::{
 
 mod execution;
 pub(crate) use execution::*;
+mod evidence;
+pub(crate) use evidence::{ExitSessionPublication, PreparedExitSession};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitSessionPreparationError {
@@ -28,7 +30,7 @@ pub(crate) fn prepare_exit_session_command(
     home: &HomeStore,
     session: &SessionState,
     mut placements: Vec<(WindowId, WindowPlacement)>,
-) -> Result<HomeCommand, ExitSessionPreparationError> {
+) -> Result<PreparedExitSession, ExitSessionPreparationError> {
     use ExitSessionPreparationError as Error;
 
     if placements.is_empty() || placements.len() > MAX_RESTORABLE_WINDOWS {
@@ -60,6 +62,7 @@ pub(crate) fn prepare_exit_session_command(
     {
         return Err(Error::WindowSet);
     }
+    let publication = ExitSessionPublication::prepare(home, snapshot.clone(), &placements)?;
     let windows = snapshot
         .windows()
         .iter()
@@ -73,13 +76,16 @@ pub(crate) fn prepare_exit_session_command(
     {
         return Err(Error::Changed);
     }
-    let publication = PublishExitSession::new(snapshot.header().revision(), windows)
+    let mutation = PublishExitSession::new(snapshot.header().revision(), windows)
         .map_err(|error| Error::Command(error.to_string()))?;
     let mut command = HomeCommand::new(home_revision);
     command
-        .add(session.publish_exit(domain_revision, publication))
+        .add(session.publish_exit(domain_revision, mutation))
         .map_err(|error| Error::Command(error.to_string()))?;
-    Ok(command)
+    Ok(PreparedExitSession {
+        command,
+        publication,
+    })
 }
 
 #[cfg(all(test, feature = "test-faults"))]

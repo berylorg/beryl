@@ -7,11 +7,16 @@ use beryl_home_store::{
 fn exit_session_execution_commits_complete_set_once() {
     let (_directory, home, session) = open(3);
     let before = session.revision(&home).unwrap();
+    let expected = prepare_exit_session_command(&home, &session, placements(3))
+        .unwrap()
+        .publication;
     let result = execute_exit_session(&home, &session, placements(3)).unwrap();
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionExecution::Committed {
         receipt,
         later_failure,
         local_finalization,
+        ..
     } = result
     else {
         panic!("{result:?}");
@@ -51,8 +56,12 @@ fn exit_session_execution_preserves_definitive_noncommit() {
     let (directory, home, session) = open_with_faults(1, faults.clone());
     let before = format!("{:?}", session.minimal_bootstrap(&home).unwrap());
     let revision = home.home_revision().unwrap();
+    let expected = prepare_exit_session_command(&home, &session, placements(1))
+        .unwrap()
+        .publication;
     faults.fail_next(FaultPoint::BeforeCommit);
     let result = execute_exit_session(&home, &session, placements(1)).unwrap();
+    assert_eq!(result.publication(), &*expected);
     assert!(
         matches!(result, ExitSessionExecution::NotCommitted { .. }),
         "{result:?}"
@@ -85,8 +94,12 @@ fn exit_session_execution_preserves_postcommit_failure_and_capability() {
     for kind in [std::io::ErrorKind::Other, std::io::ErrorKind::StorageFull] {
         let faults = FaultController::new();
         let (directory, home, session) = open_with_faults(1, faults.clone());
+        let expected = prepare_exit_session_command(&home, &session, placements(1))
+            .unwrap()
+            .publication;
         faults.fail_next_with_kind(FaultPoint::AfterPersist, kind);
         let result = execute_exit_session(&home, &session, placements(1)).unwrap();
+        assert_eq!(result.publication(), &*expected);
         let ExitSessionExecution::Committed {
             later_failure,
             local_finalization,
@@ -130,13 +143,18 @@ fn exit_session_execution_installs_ambiguity_and_retains_failed_reconciliation()
     let faults = FaultController::new();
     let (_directory, home, session) = open_with_faults(3, faults.clone());
     let (_foreign_directory, foreign, _) = open(1);
+    let expected = prepare_exit_session_command(&home, &session, placements(3))
+        .unwrap()
+        .publication;
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let result = execute_exit_session(&home, &session, placements(3)).unwrap();
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionExecution::Indeterminate(reconciliation) = result else {
         panic!("{result:?}");
     };
     assert_eq!(home.pending_reconciliations().len(), 1);
     let result = reconciliation.reconcile(&foreign);
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionReconciled::Pending { reconciliation, .. } = result else {
         panic!("{result:?}");
     };
@@ -144,6 +162,7 @@ fn exit_session_execution_installs_ambiguity_and_retains_failed_reconciliation()
     assert!(foreign.pending_reconciliations().is_empty());
     faults.fail_next(FaultPoint::BeforeReconciliationSnapshot);
     let result = reconciliation.reconcile(&home);
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionReconciled::Pending {
         reconciliation,
         failure,
@@ -153,6 +172,7 @@ fn exit_session_execution_installs_ambiguity_and_retains_failed_reconciliation()
     };
     let failure = failure.to_string();
     let result = reconciliation.reconcile(&home);
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionReconciled::Pending {
         reconciliation,
         failure: memoized,
@@ -167,9 +187,11 @@ fn exit_session_execution_installs_ambiguity_and_retains_failed_reconciliation()
         ReconciliationResolution::ExactNew { .. }
     ));
     let result = reconciliation.reconcile(&home);
+    assert_eq!(result.publication(), &*expected);
     let ExitSessionReconciled::ExactNew {
         receipt,
         original_failure,
+        ..
     } = result
     else {
         panic!("{result:?}");

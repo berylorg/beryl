@@ -34,7 +34,12 @@ fn exit_session_readiness_requires_current_home_and_session_receipt() {
 fn exit_session_readiness_rejects_nonpublication_and_unsupported_outcomes() {
     let (_directory, home, session) = open(1);
     let clean = execute_exit_session(&home, &session, placements(1)).unwrap();
-    let ExitSessionExecution::Committed { receipt, .. } = clean else {
+    let ExitSessionExecution::Committed {
+        receipt,
+        publication,
+        ..
+    } = clean
+    else {
         panic!("clean commit")
     };
     let outcomes = [
@@ -43,16 +48,20 @@ fn exit_session_readiness_rejects_nonpublication_and_unsupported_outcomes() {
         RunningShutdownSession::Unwound,
         RunningShutdownSession::Settled(Err(ExitSessionPreparationError::Changed)),
         RunningShutdownSession::Settled(Ok(ExitSessionExecution::NotCommitted {
+            publication: publication.clone(),
             evidence: CommandError::CancelledBeforeAdmission,
         })),
         RunningShutdownSession::Reconciled(ExitSessionReconciled::ExactOld {
+            publication: publication.clone(),
             original_failure: CommandError::CancelledBeforeAdmission,
         }),
         RunningShutdownSession::Reconciled(ExitSessionReconciled::Blocked {
+            publication: publication.clone(),
             original_failure: CommandError::CancelledBeforeAdmission,
             resolution: ReconciliationResolution::Collision,
         }),
         RunningShutdownSession::Reconciled(ExitSessionReconciled::Blocked {
+            publication: publication.clone(),
             original_failure: CommandError::CancelledBeforeAdmission,
             resolution: ReconciliationResolution::ExactSuccessor { receipt },
         }),
@@ -100,8 +109,9 @@ fn exit_session_readiness_preserves_postcommit_failure_and_capability() {
 fn exit_session_readiness_rechecks_health_and_rejects_unaffected_domain() {
     let faults = FaultController::new();
     let (_directory, home, session) = open_with_faults(1, faults.clone());
-    let clean =
-        RunningShutdownSession::Settled(execute_exit_session(&home, &session, placements(1)));
+    let clean_result = execute_exit_session(&home, &session, placements(1)).unwrap();
+    let publication = Box::new(clean_result.publication().clone());
+    let clean = RunningShutdownSession::Settled(Ok(clean_result));
     assert!(clean.require_ready(&home, &session).is_ok());
     let settings = BerylState::reacquire(&home).unwrap().settings();
     let mut command = HomeCommand::new(home.home_revision().unwrap());
@@ -122,6 +132,7 @@ fn exit_session_readiness_rechecks_health_and_rejects_unaffected_domain() {
         panic!("settings commit")
     };
     let unrelated = RunningShutdownSession::Settled(Ok(ExitSessionExecution::Committed {
+        publication,
         receipt,
         later_failure: None,
         local_finalization: None,

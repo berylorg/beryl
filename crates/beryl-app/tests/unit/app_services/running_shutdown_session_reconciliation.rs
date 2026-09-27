@@ -78,6 +78,7 @@ pub(super) async fn exercise(
             let Some(RunningShutdownSession::Reconciled(ExitSessionReconciled::ExactNew {
                 receipt,
                 original_failure,
+                ..
             })) = borrowed.shutdown_session()
             else {
                 panic!("expected exact new")
