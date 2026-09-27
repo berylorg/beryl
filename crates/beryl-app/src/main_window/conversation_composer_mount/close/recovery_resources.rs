@@ -41,6 +41,42 @@ impl MainWindowComposerMountRecoveryResources {
 }
 
 impl MainWindowConversationComposerMount {
+    pub fn accept_interrupted_exit_retirement(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        retired: crate::main_window::MainWindowComposerRetiredClose,
+        cx: &mut Context<Self>,
+    ) -> Result<(), crate::main_window::MainWindowComposerRetiredClose> {
+        if self
+            .validate_recovery_adapter_detachment(ticket, cx)
+            .is_err()
+            || self.validate_recovery_native_resources().is_err()
+            || !self
+                .window_close
+                .is_some_and(|close| close.resources_detached)
+            || self.service.is_some()
+            || self.configurator.is_some()
+            || self.native_lineage_recovery.is_some()
+            || self.native_lineage_refresh_task.is_some()
+            || !self
+                .autosave
+                .recovery_adapters()
+                .is_ok_and(|adapters| adapters.is_none())
+            || !self
+                .submission
+                .recovery_source()
+                .is_ok_and(|source| source.is_none())
+        {
+            return Err(retired);
+        }
+        self.contribution
+            .as_ref()
+            .unwrap()
+            .update(cx, |resident, cx| {
+                resident.accept_recovery_retirement(ticket, retired, cx)
+            })
+    }
+
     pub fn detach_interrupted_exit_resources(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,

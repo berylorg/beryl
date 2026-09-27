@@ -37,3 +37,25 @@ pub fn ready(fixture: &Fixture, slot: &mut MainWindowComposerSlot, flush: Compos
         ComposerHostFlushCapture::State(ComposerHostFlushState::CloseReady)
     );
 }
+
+pub fn retired(
+    fixture: &Fixture,
+    owner: gpui::EntityId,
+) -> beryl_app::main_window::MainWindowComposerRetiredClose {
+    use beryl_app::{
+        composer_host::{ComposerHostFlushAdmission, ComposerHostFlushPurpose},
+        main_window::MainWindowConversationComposerCloseTicket,
+    };
+    let mut slot = slot(fixture);
+    let selection = slot.selected_identity().unwrap();
+    let close = MainWindowConversationComposerCloseTicket::for_test(owner, 1, selection);
+    slot.test_begin_window_close_gate(close).unwrap();
+    let ComposerHostFlushAdmission::Started { ticket: flush, .. } = slot
+        .begin_selected_flush(selection, ComposerHostFlushPurpose::WindowClose)
+        .unwrap()
+    else {
+        panic!("expected new close");
+    };
+    ready(fixture, &mut slot, flush);
+    slot.retire_clean_window_close(close, flush).ok().unwrap()
+}

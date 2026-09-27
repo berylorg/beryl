@@ -1,5 +1,8 @@
 use super::support::{self, drive_until};
-use beryl_app::main_window::MainWindowConversationComposerCloseAdvance as Advance;
+use beryl_app::main_window::{
+    MainWindowConversationComposerCloseAdvance as Advance,
+    MainWindowConversationComposerCloseTicket as CloseTicket,
+};
 use gpui::TestAppContext;
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
@@ -23,6 +26,17 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
         .read_with(cx, |mount, _| mount.contribution())
         .unwrap();
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    let foreign_evidence_fixture =
+        super::widget_support::fixture::Fixture::new("foreign-retirement-evidence", 187);
+    let mut foreign_evidence =
+        support::slot_close::retired(&foreign_evidence_fixture, fixture.mount.entity_id());
+    let foreign_selection = foreign_evidence.selection();
+    let foreign_close = foreign_evidence.close_ticket();
+    foreign_evidence = fixture.mount.update(cx, |mount, cx| {
+        mount
+            .accept_interrupted_exit_retirement(foreign_close, foreign_evidence, cx)
+            .unwrap_err()
+    });
     let close = cx.update(|window, app| {
         fixture
             .mount
@@ -46,16 +60,20 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
             composer.test_set_shutdown_interaction_gated(true, cx)
         })
         .unwrap();
-    let mut resources = fixture.mount.update(cx, |mount, cx| {
+    let (mut resources, foreign_evidence) = fixture.mount.update(cx, |mount, cx| {
         assert!(
             mount
                 .fence_interrupted_exit_resident(close.ticket, cx)
                 .unwrap()
         );
-        mount
+        let foreign_evidence = mount
+            .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
+            .unwrap_err();
+        let resources = mount
             .detach_interrupted_exit_resources(close.ticket, cx)
             .unwrap()
-            .unwrap()
+            .unwrap();
+        (resources, foreign_evidence)
     });
     let seed = composer.read_with(cx, |composer, _| {
         composer.recovery_snapshot().unwrap().restoration().clone()
@@ -134,10 +152,41 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     assert_eq!(retired.selection(), selection);
     composer.read_with(cx, |composer, _| {
         let snapshot = composer.recovery_snapshot().unwrap();
+        assert!(snapshot.retired_close().is_none());
         assert_eq!(retired.host().close_ticket(), snapshot.flush_ticket());
         assert_eq!(snapshot.restoration(), &seed);
         assert_eq!(composer.gpui_input().entity_id(), input.entity_id());
         assert!(!composer.test_widget_released());
+    });
+    let stale = CloseTicket::for_test(mount.entity_id(), u64::MAX, selection);
+    let (retired, foreign_evidence) = mount.update(cx, |mount, cx| {
+        let foreign_evidence = mount
+            .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
+            .unwrap_err();
+        let retired = mount
+            .accept_interrupted_exit_retirement(stale, retired, cx)
+            .unwrap_err();
+        (retired, foreign_evidence)
+    });
+    assert_eq!(retired.close_ticket(), close.ticket);
+    assert_eq!(retired.selection(), selection);
+    let foreign_evidence = mount.update(cx, |mount, cx| {
+        mount
+            .accept_interrupted_exit_retirement(close.ticket, retired, cx)
+            .unwrap();
+        mount
+            .accept_interrupted_exit_retirement(close.ticket, foreign_evidence, cx)
+            .unwrap_err()
+    });
+    assert_eq!(foreign_evidence.close_ticket(), foreign_close);
+    assert_eq!(foreign_evidence.selection(), foreign_selection);
+    composer.read_with(cx, |composer, _| {
+        let snapshot = composer.recovery_snapshot().unwrap();
+        let retired = snapshot.retired_close().unwrap();
+        assert_eq!(retired.close_ticket(), close.ticket);
+        assert_eq!(retired.selection(), selection);
+        assert_eq!(retired.host().close_ticket(), snapshot.flush_ticket());
+        assert_eq!(snapshot.restoration(), &seed);
     });
     cx.simulate_keystrokes("x ctrl-z ctrl-v");
     support::drive(cx, 12);

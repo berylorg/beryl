@@ -8,6 +8,7 @@ pub struct MainWindowComposerRecoverySnapshot {
     close: MainWindowConversationComposerCloseTicket,
     flush: ComposerHostFlushTicket,
     restoration: RangeRestorationSeed,
+    retired: Option<crate::main_window::MainWindowComposerRetiredClose>,
 }
 
 pub struct MainWindowComposerRecoveryResources {
@@ -17,6 +18,10 @@ pub struct MainWindowComposerRecoveryResources {
 }
 
 impl MainWindowComposerRecoverySnapshot {
+    pub fn retired_close(&self) -> Option<&crate::main_window::MainWindowComposerRetiredClose> {
+        self.retired.as_ref()
+    }
+
     pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
     }
@@ -35,6 +40,32 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn accept_recovery_retirement(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        retired: crate::main_window::MainWindowComposerRetiredClose,
+        cx: &Context<Self>,
+    ) -> Result<(), crate::main_window::MainWindowComposerRetiredClose> {
+        if self.validate_recovery_detachment(close, cx).is_err()
+            || self.service.is_some()
+            || self.clipboard_writer.is_some()
+            || self.last_mutation_admission_failure.is_some()
+        {
+            return Err(retired);
+        }
+        let snapshot = self.recovery_snapshot.as_mut().unwrap();
+        if snapshot.retired.is_some()
+            || retired.close_ticket() != snapshot.close
+            || retired.selection() != snapshot.selection
+            || retired.host().close_ticket() != snapshot.flush
+            || retired.host().binding() != snapshot.selection.binding()
+        {
+            return Err(retired);
+        }
+        snapshot.retired = Some(retired);
+        Ok(())
+    }
+
     pub(in crate::main_window) fn detach_recovery_resources(
         &mut self,
         close: MainWindowConversationComposerCloseTicket,
@@ -190,6 +221,7 @@ impl MainWindowConversationComposer {
             close,
             flush,
             restoration,
+            retired: None,
         });
         self.phase = MainWindowConversationComposerPhase::RecoveryFenced;
         self.admitted_positions = None;
