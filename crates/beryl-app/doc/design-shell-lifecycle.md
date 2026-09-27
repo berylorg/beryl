@@ -570,6 +570,16 @@ by the executable composition root.
   Routing does not complete requests, refresh observations, consume positive confirmation, advance
   shutdown progress or quit.
 
+- Routed Exit confirmation retains the exact originating request identity with its native
+  operation. Result consumption first validates the active request, original live invoking window,
+  application-Exit intent and operation association. A stale, foreign or successor request cannot
+  consume that result. Pending settlement returns pending without changing custody. Cancellation
+  returns cancelled without a lease or fence; changed window evidence refuses confirmation.
+  A valid positive result consumes the original snapshot into the existing retained confirmed
+  intent and returns awaiting observation. Native failures preserve the existing proven-clean
+  versus unresolved-cleanup distinction. This boundary neither completes the request nor schedules
+  observation, shutdown progress or quit; the caller retains responsibility for coherent completion.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

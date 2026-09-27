@@ -7,6 +7,12 @@ pub(crate) struct RunningExitRequest {
     invoking: Option<WindowId>,
 }
 
+impl RunningExitRequest {
+    pub(crate) fn identity(&self) -> Rc<()> {
+        self.identity.clone()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct RunningWindowExit {
     commands: StartupCommands,

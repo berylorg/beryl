@@ -14,6 +14,7 @@ pub(super) async fn exercise(
     request: &mut startup_owner::RunningExitRequest,
     stale: crate::cas_projection::ShutdownWorkObservation,
     confirm: bool,
+    replace_request: Option<bool>,
     cx: &mut AsyncApp,
 ) {
     let (invoking, main, permit) = {
@@ -73,8 +74,7 @@ pub(super) async fn exercise(
                 callback_calls.set(callback_calls.get() + 1);
                 assert!(owner.borrow().exit_requested());
                 assert!(owner.borrow().shutdown_status().is_none());
-                *completion.borrow_mut() = owner.borrow_mut().take_shutdown_confirmation().unwrap();
-                assert!(completion.borrow().is_some());
+                *completion.borrow_mut() = Some(());
             },
         ))
         .unwrap()
@@ -82,6 +82,12 @@ pub(super) async fn exercise(
         ExitWorkRoute::Confirming
     );
     assert!(delivered.borrow().is_none());
+    assert_eq!(
+        cx.update(|app| owner.borrow_mut().consume_exit_confirmation(request, app))
+            .unwrap()
+            .unwrap(),
+        None
+    );
     assert!(owner.borrow().shutdown_status().is_none());
     permit.commit(|| ()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -134,20 +140,76 @@ pub(super) async fn exercise(
     }
     wait(&delivered, cx).await;
     assert_eq!(calls.get(), 1);
-    match delivered.borrow_mut().take().unwrap() {
-        ShutdownConfirmationResult::Confirmed(context) if confirm => {
-            assert_eq!(context.invoking(), invoking);
-            assert_eq!(context.intent(), ShutdownIntent::ApplicationExit);
-            assert_eq!(context.observation().running_threads(), 1);
-            assert!(context.observation().has_work());
-            owner
-                .borrow()
-                .test_services()
-                .inspect_close_confirmation(context.snapshot(), invoking)
+    if let Some(replace) = replace_request {
+        if replace {
+            assert!(RunningProcessOwner::finish_exit(owner, request));
+            command.request_exit();
+            let mut successor = next_request(owner, cx).await;
+            assert!(matches!(
+                cx.update(|app| owner.borrow_mut().consume_exit_confirmation(request, app))
+                    .unwrap(),
+                Err(ExitConfirmationError::Request(_))
+            ));
+            assert!(matches!(
+                cx.update(|app| owner
+                    .borrow_mut()
+                    .consume_exit_confirmation(&mut successor, app))
+                    .unwrap(),
+                Err(ExitConfirmationError::Unrelated)
+            ));
+            assert!(matches!(
+                owner.borrow_mut().take_shutdown_confirmation().unwrap(),
+                Some(ShutdownConfirmationResult::Confirmed(_))
+            ));
+            *request = successor;
+        } else {
+            let result = cx
+                .update(|app| owner.borrow_mut().consume_exit_confirmation(request, app))
+                .unwrap()
                 .unwrap();
+            assert_eq!(
+                result,
+                Some(if confirm {
+                    ExitConfirmationRoute::AwaitingObservation
+                } else {
+                    ExitConfirmationRoute::Cancelled
+                })
+            );
+            assert_eq!(
+                cx.update(|app| owner.borrow_mut().consume_exit_confirmation(request, app))
+                    .unwrap()
+                    .unwrap(),
+                None
+            );
+            permit.commit(|| ()).unwrap();
+            if confirm {
+                assert_eq!(
+                    owner.borrow().shutdown_status(),
+                    Some((
+                        invoking,
+                        ShutdownIntent::ApplicationExit,
+                        RunningShutdownStatus::AwaitingObservation
+                    ))
+                );
+                owner.borrow_mut().end_unadmitted_shutdown().unwrap();
+            }
         }
-        ShutdownConfirmationResult::Cancelled if !confirm => {}
-        _ => panic!("unexpected Exit confirmation outcome"),
+    } else {
+        match owner
+            .borrow_mut()
+            .take_shutdown_confirmation()
+            .unwrap()
+            .unwrap()
+        {
+            ShutdownConfirmationResult::Confirmed(context) if confirm => {
+                assert_eq!(context.invoking(), invoking);
+                assert_eq!(context.intent(), ShutdownIntent::ApplicationExit);
+                assert_eq!(context.observation().running_threads(), 1);
+                assert!(context.observation().has_work());
+            }
+            ShutdownConfirmationResult::Cancelled if !confirm => {}
+            _ => panic!("unexpected Exit confirmation outcome"),
+        }
     }
     cx.update(|app| {
         assert_eq!(

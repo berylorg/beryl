@@ -43,7 +43,8 @@ pub(crate) enum ShutdownConfirmationResult {
 pub(super) struct RunningConfirmation {
     identity: Rc<()>,
     control: Rc<WindowsNativeConfirmation>,
-    context: ShutdownConfirmationContext,
+    pub(super) context: ShutdownConfirmationContext,
+    pub(super) exit_request: Option<Rc<()>>,
     settled: Option<Result<WindowsNativeConfirmationOutcome, String>>,
 }
 
@@ -160,6 +161,7 @@ impl RunningProcessOwner {
         let control = Rc::new(control);
         owner.borrow_mut().confirmation = Some(RunningConfirmation {
             identity: identity.clone(),
+            exit_request: None,
             control: control.clone(),
             context: ShutdownConfirmationContext {
                 invoking,

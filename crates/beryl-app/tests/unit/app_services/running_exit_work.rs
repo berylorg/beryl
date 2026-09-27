@@ -1,6 +1,7 @@
 use crate::running_owner::{
-    ExitWorkClassification, ExitWorkError, ExitWorkRoute, RunningProcessOwner,
-    RunningShutdownStatus, ShutdownConfirmationResult, ShutdownIntent,
+    ExitConfirmationError, ExitConfirmationRoute, ExitWorkClassification, ExitWorkError,
+    ExitWorkRoute, RunningProcessOwner, RunningShutdownStatus, ShutdownConfirmationResult,
+    ShutdownIntent,
 };
 
 mod confirmation_route {
@@ -13,25 +14,40 @@ mod confirmation_route {
 
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
-    run(false, None);
+    run(false, None, None);
 }
 
 #[test]
 fn native_exit_new_work_requires_confirmation_after_stale_idle_refusal() {
-    run(true, None);
+    run(true, None, None);
 }
 
 #[test]
 fn native_exit_work_routes_confirmation_and_preserves_positive_context() {
-    run(true, Some(true));
+    run(true, Some(true), None);
 }
 
 #[test]
 fn native_exit_work_routes_cancel_without_admission_or_request_completion() {
-    run(true, Some(false));
+    run(true, Some(false), None);
 }
 
-fn run(new_work: bool, confirm: Option<bool>) {
+#[test]
+fn native_exit_confirmation_establishes_original_intent_without_fencing() {
+    run(true, Some(true), Some(false));
+}
+
+#[test]
+fn native_exit_confirmation_cancel_consumes_once_without_completing_request() {
+    run(true, Some(false), Some(false));
+}
+
+#[test]
+fn native_exit_confirmation_rejects_stale_and_successor_requests() {
+    run(true, Some(true), Some(true));
+}
+
+fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -140,6 +156,7 @@ fn run(new_work: bool, confirm: Option<bool>) {
                                     &mut successor,
                                     fresh,
                                     confirm,
+                                    replace_request,
                                     cx,
                                 )
                                 .await;

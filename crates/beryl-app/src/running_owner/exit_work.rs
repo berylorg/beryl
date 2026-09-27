@@ -61,6 +61,12 @@ impl RunningProcessOwner {
                     completed,
                 )
                 .map_err(ExitWorkError::Confirmation)?;
+                owner
+                    .borrow_mut()
+                    .confirmation
+                    .as_mut()
+                    .unwrap()
+                    .exit_request = Some(request.identity());
                 Ok(ExitWorkRoute::Confirming)
             }
         }
