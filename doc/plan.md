@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 646: Drive Admitted Exit Through Waiting Progress (finished)
+# Phase 647: Connect Initial Exit Routing To Progress (finished)
 
-The Exit driver retains the original request and owner through delayed Waiting passes and returns
-one terminal outcome without completing the command or beginning teardown. The library check,
-28 distinct focused tests and independent semantic review passed. A blocked real home mutation
-proves Waiting and resumed readiness; its final focused run passed
-(`111a2e85-f7a2-4693-ac9c-9b30d9de3208`). Initial routing integration, visible gates, outcome
-presentation and final teardown remain pending.
+The composed Exit attempt retains one request through initial routing and admitted progress,
+returning cancellation or failure without releasing custody or completing the command. The library
+check, independent semantic review and all 33 focused lifecycle tests passed
+(`05e1ca08-3214-4607-adba-6217223f7cac`). Visible mounting, coherent outcome handling and final
+teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -153,8 +152,8 @@ unadmitted intent or obtain proven reopening before completion. Automatic outcom
 unmounted.
 
 Phase 646 supplies automatic delayed progress polling while Waiting, with exact request retention
-and terminal delivery. Connect it to admitted initial routing and coherent outcome handling during
-ordinary policy integration; it grants no teardown or quit authority.
+and terminal delivery. Phase 647 connects admitted initial routing to that driver under one retained
+attempt. Coherent outcome handling remains pending; neither boundary grants teardown or quit authority.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

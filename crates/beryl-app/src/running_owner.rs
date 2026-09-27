@@ -11,6 +11,7 @@ use crate::{
 
 mod admission;
 mod confirmation;
+mod exit_attempt;
 mod exit_confirmation;
 mod exit_delivery;
 mod exit_observation;
@@ -24,6 +25,7 @@ pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
+pub(crate) use exit_attempt::{ExitAttemptCompletion, ExitAttemptError};
 pub(crate) use exit_confirmation::{ExitConfirmationError, ExitConfirmationRoute};
 pub(crate) use exit_observation::ExitObservationError;
 pub(crate) use exit_progress::ExitProgressError;

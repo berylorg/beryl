@@ -637,6 +637,15 @@ by the executable composition root.
   The driver never retries a failure, completes the command, releases retained intent, starts
   teardown or quits; those remain explicit policy actions on the returned outcome.
 
+- The composed Exit attempt connects initial routing to the progress driver. Only an admitted
+  routing result starts progress, using the same request and cancellation token. Cancelled
+  confirmation, cancelled confirmed observation and routing failures return unchanged in meaning;
+  they never start progress. Once initial observation is scheduled, even a refused driver start
+  returns through the one required GUI completion callback with the original request. Initial
+  observation refusal remains synchronous without callback. Completion runs outside owner borrows
+  and preserves all existing intent, service and native-cleanup custody. This composition performs
+  no automatic command completion, unadmitted-intent release, retry, presentation, teardown or quit.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task
