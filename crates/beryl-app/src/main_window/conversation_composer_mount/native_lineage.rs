@@ -347,7 +347,7 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) {
         let service = self.service.clone();
-        let validation = cx.background_executor().spawn(async move {
+        let worker = self.native_lineage_workers.track_future(async move {
             let result = service.validate_native_lineage_restoration(selection, seed);
             #[cfg(feature = "test-faults")]
             if let Some(gate) = service.take_test_native_lineage_seed_validation_gate() {
@@ -355,6 +355,7 @@ impl MainWindowConversationComposerMount {
             }
             result
         });
+        let validation = cx.background_executor().spawn(worker);
         self.native_lineage_validation_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = validation.await;
             let _ = this.update_in(cx, |this, window, cx| {

@@ -20,10 +20,7 @@ impl WorkerLifetime {
         }
     }
 
-    pub(super) fn track_future<F: Future<Output = ()>>(
-        &self,
-        future: F,
-    ) -> ResourceWorker<Pin<Box<F>>> {
+    pub(super) fn track_future<F: Future>(&self, future: F) -> ResourceWorker<Pin<Box<F>>> {
         self.track(Box::pin(future))
     }
 }
@@ -34,10 +31,10 @@ pub(super) struct ResourceWorker<F> {
     _lifetime: Arc<()>,
 }
 
-impl<F: Future<Output = ()>> Future for ResourceWorker<Pin<Box<F>>> {
-    type Output = ();
+impl<F: Future> Future for ResourceWorker<Pin<Box<F>>> {
+    type Output = F::Output;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.get_mut().job.as_mut().unwrap().as_mut().poll(cx)
     }
 }

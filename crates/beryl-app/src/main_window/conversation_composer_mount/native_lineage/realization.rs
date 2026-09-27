@@ -274,7 +274,7 @@ impl MainWindowConversationComposerMount {
         let service = self.service.clone();
         let source_for_task = source.clone();
         cx.background_executor()
-            .spawn(async move {
+            .spawn(self.native_lineage_workers.track_future(async move {
                 let (token, result) = match work {
                     MainWindowNativeLineagePrepublicationWork::Validation { token, request } => {
                         #[cfg(feature = "test-faults")]
@@ -347,7 +347,7 @@ impl MainWindowConversationComposerMount {
                     }
                 };
                 source_for_task.finish(token, result);
-            })
+            }))
             .detach();
         self.native_lineage_host_result = Some(NativeLineageHostResult::Settled {
             route,

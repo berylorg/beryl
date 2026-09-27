@@ -348,11 +348,23 @@ fn canceled_validation_cannot_publish_or_cancel_replacement_route(cx: &mut gpui:
         gate.is_blocked()
     });
     assert!(!fixture.service.test_native_lineage_suspension_active());
+    assert_eq!(
+        fixture
+            .mount
+            .read_with(cx, |mount, _| mount.test_native_lineage_retained_workers()),
+        1
+    );
     fixture.control.cancel(old_key).unwrap();
     let replacement = install(&fixture);
     assert_ne!(replacement, old_key);
     gate.release();
     prompt(&fixture, cx);
+    wait(cx, &fixture.mount, "validation resources released", |cx| {
+        fixture
+            .mount
+            .read_with(cx, |mount, _| mount.test_native_lineage_retained_workers())
+            == 0
+    });
     assert_eq!(
         fixture
             .control

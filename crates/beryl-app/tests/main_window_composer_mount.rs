@@ -2746,6 +2746,11 @@ fn prove_native_lineage_late_flight_cleanup(
 
     control.cancel(key).unwrap();
     wait_for_native_lineage_composer(cx, mount, "late-flight cancellation restoration");
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.test_native_lineage_retained_workers()),
+        1,
+        "{flight:?}: cancelled route lost its worker custody"
+    );
     wait_for_native_lineage_source_count(cx, service, 1);
     let diagnostics = service.test_native_lineage_cleanup_diagnostics();
     assert_eq!(diagnostics.sources, 1, "{flight:?}: {diagnostics:?}");
@@ -2769,6 +2774,16 @@ fn prove_native_lineage_late_flight_cleanup(
 
     gate.release();
     wait_for_native_lineage_cleanup_drain(cx, service);
+    for _ in 0..64 {
+        if mount.read_with(cx, |mount, _| mount.test_native_lineage_retained_workers()) == 0 {
+            break;
+        }
+        drive(cx, 2);
+    }
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.test_native_lineage_retained_workers()),
+        0
+    );
 }
 
 fn prove_native_lineage_host_failure_cleanup(
