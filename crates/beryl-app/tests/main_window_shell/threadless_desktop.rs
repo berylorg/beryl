@@ -12,7 +12,7 @@ mod flight;
 use flight::{Case, native};
 
 #[test]
-fn native_startup_shell_ignores_close_until_interaction_release() {
+fn native_startup_shell_keeps_close_veto_after_interaction_release() {
     let (mut fixture, prepared, geometry, before) = support::worker(|| {
         let mut fixture = Fixture::with_placement(190, placement());
         fixture.coordinator = Some(AppearanceCoordinator::new(
@@ -76,6 +76,7 @@ fn native_startup_shell_ignores_close_until_interaction_release() {
             })
             .unwrap()
             .unwrap();
+            let window = shell.window();
             cx.update(|app| shell.release_published_handle(app))
                 .unwrap()
                 .unwrap_or_else(|_| panic!("ordinary shell handoff"));
@@ -87,6 +88,12 @@ fn native_startup_shell_ignores_close_until_interaction_release() {
                     Some(windows::Win32::Foundation::LPARAM(0)),
                 );
             }
+            native::pump(cx).await;
+            assert!(native::alive(raw));
+            assert_eq!(fixture.process.main_window_occupancy(), 1);
+            window
+                .update(cx, |_, window, _| window.remove_window())
+                .unwrap();
             flight::wait_destroyed(raw, cx).await;
             assert_eq!(fixture.process.main_window_occupancy(), 0);
             cx.background_executor()

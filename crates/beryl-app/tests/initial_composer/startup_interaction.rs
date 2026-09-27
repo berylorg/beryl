@@ -61,14 +61,13 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
         .unwrap();
     let composer = mount.read_with(cx, |mount, _| mount.contribution().unwrap());
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
-    composer.update(cx, |composer, cx| {
-        composer
-            .test_set_shutdown_interaction_gated(true, cx)
-            .unwrap();
-        composer
-            .test_set_shutdown_interaction_gated(false, cx)
-            .unwrap();
-    });
+    shell
+        .window()
+        .update(cx, |root, _, cx| {
+            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            root.test_set_shutdown_interaction_gated(false, cx).unwrap();
+        })
+        .unwrap();
     shell
         .window()
         .update(cx, |root, window, cx| {
@@ -173,11 +172,16 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
         .err()
         .expect("gated shell retains startup custody");
     let window = shell.window();
-    composer.update(cx, |composer, cx| {
-        composer
-            .test_set_shutdown_interaction_gated(true, cx)
-            .unwrap();
-    });
+    shell
+        .window()
+        .update(cx, |root, _, cx| {
+            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            assert_eq!(
+                root.new_window_disabled_reason(cx).as_deref(),
+                Some("Application Exit is waiting for active work and durable state.")
+            );
+        })
+        .unwrap();
     cx.update(|app| {
         MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
     })
@@ -200,11 +204,30 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
             .iter()
             .all(|page| page.text().is_empty())
     }));
-    composer.update(cx, |composer, cx| {
-        composer
-            .test_set_shutdown_interaction_gated(false, cx)
-            .unwrap();
-    });
+    shell
+        .window()
+        .update(cx, |root, window, cx| {
+            composer.update(cx, |composer, cx| {
+                composer.begin_widget_release_fence(window, cx).unwrap();
+            });
+            assert!(root.test_set_shutdown_interaction_gated(false, cx).is_err());
+            assert!(root.test_set_shutdown_interaction_gated(true, cx).is_err());
+            assert_eq!(
+                root.new_window_disabled_reason(cx).as_deref(),
+                Some("Application Exit is waiting for active work and durable state.")
+            );
+            composer.update(cx, |composer, cx| {
+                composer
+                    .resume_after_widget_release_fence(window, cx)
+                    .unwrap();
+            });
+            root.test_set_shutdown_interaction_gated(false, cx).unwrap();
+            assert_ne!(
+                root.new_window_disabled_reason(cx).as_deref(),
+                Some("Application Exit is waiting for active work and durable state.")
+            );
+        })
+        .unwrap();
     window
         .update(cx, |root, window, cx| {
             assert!(!root.startup_interaction_gated());

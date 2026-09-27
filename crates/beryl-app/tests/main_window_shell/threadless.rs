@@ -357,6 +357,19 @@ fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
         .unwrap()
     });
     assert!(!cx.window_visibility(shell.window().into()).is_visible);
+    shell
+        .window()
+        .update(cx, |root, _, cx| {
+            let before = root.new_window_disabled_reason(cx);
+            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            assert_eq!(
+                root.new_window_disabled_reason(cx).as_deref(),
+                Some("Application Exit is waiting for active work and durable state.")
+            );
+            root.test_set_shutdown_interaction_gated(false, cx).unwrap();
+            assert_eq!(root.new_window_disabled_reason(cx), before);
+        })
+        .unwrap();
     assert!(cx.update(|app| shell.ready_to_publish(app)));
     let minimum = shell
         .window()

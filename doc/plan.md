@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 657: Preserve Resident Composer Interaction During Shutdown (finished)
+# Phase 658: Connect The Shell Shutdown Interaction Gate (finished)
 
-The resident composer now has an independent shutdown mutation gate. Edits, cut, marker mutation,
-paste and submission are blocked while selection, scrolling and copy remain available. Startup,
-close and pending-promotion transitions preserve the remaining gates and already admitted edits.
-All 72 focused tests, default library check, formatting and independent review passed
-(`a5bc4697-1d77-4691-bed9-30ffb55e89b5`, `ee87959f-c9a2-498e-a354-7606d655ede9`).
-Process-wide gate installation and visible toolbar state remain pending.
+The shell now forwards shutdown gating to its resident composer and blocks New Window with the
+required waiting reason. Failed transitions retain the shell gate; startup and threadless cases
+preserve their independent state. Native close remains vetoed after startup release; its stale
+test expectation was corrected. All 71 focused cases passed across the suite and correction rerun
+(`a406932d-22fb-4539-bfdd-261d0e523145`, `ad8f589a-ae39-4a86-bb1b-4e3fbf7fcc45`), with the default
+library check, formatting and independent review passing. Process-wide installation remains pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -173,7 +173,8 @@ Phase 655 preserves typed close-preparation failures through idle classification
 remaining error provenance needed for initial-evidence refresh. Phase 656 connects that refresh
 to initial Exit routing, reserving successor reads and reclassifying fresh work before confirmation.
 Phase 657 supplies the resident-composer shutdown mutation gate, including independent gate release
-and read-only interaction. Install it through the process owner with the remaining visible barrier
+and read-only interaction. Phase 658 supplies the shell adapter and New Window gate.
+Install them through the process owner with the remaining visible barrier
 controls before ordinary Exit mounting; it grants no shutdown or reopening authority itself.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)

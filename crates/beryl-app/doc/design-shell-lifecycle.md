@@ -533,6 +533,13 @@ by the executable composition root.
   close, flush or service-reopening authority; process-wide installation and coherent release are
   separate owner obligations.
 
+- The shell exposes a local shutdown interaction gate to the process owner. It forwards the gate
+  to its exact resident composer and rejects New Window activation with the application-wide
+  waiting reason. Threadless shells require no composer; a selected shell with missing controller
+  or resident composer cannot report a successful transition. Failed installation retains the
+  shell gate, and failed release cannot reopen the shell. Startup gating remains independent.
+  This local adapter does not install a process-wide barrier or grant coherent reopening authority.
+
 - Successful startup transfers one move-only running Exit consumer alongside the complete graph
   and published windows. Existing startup command producers remain valid for deferred Exit events,
   including after removal of the old startup surface. One pending bit and one exact active request

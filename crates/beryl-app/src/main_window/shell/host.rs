@@ -6,6 +6,7 @@ pub use threadless::*;
 mod construction;
 mod restored;
 mod selected;
+mod shutdown;
 mod startup;
 #[cfg(target_os = "windows")]
 mod startup_construction;
@@ -537,6 +538,7 @@ impl MainWindowShell {
 
 pub struct MainWindowShellRoot {
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
+    shutdown_interaction_gated: bool,
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,

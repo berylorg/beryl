@@ -13,6 +13,7 @@ impl MainWindowShellRoot {
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
             startup_interaction: None,
+            shutdown_interaction_gated: false,
             controller: Some(controller),
             construction_error,
             composer_observer: None,
@@ -56,6 +57,11 @@ impl MainWindowShellRoot {
     }
 
     pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {
+        if self.shutdown_interaction_gated {
+            return Some(
+                "Application Exit is waiting for active work and durable state.".to_owned(),
+            );
+        }
         if self.startup_interaction_gated() {
             return Some("Beryl is preparing its windows.".to_owned());
         }
