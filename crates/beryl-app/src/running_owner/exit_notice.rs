@@ -4,15 +4,13 @@ use gpui::App;
 use std::{cell::RefCell, fmt, rc::Rc};
 
 impl RunningProcessOwner {
-    pub(super) fn report_exit_preparation_failure(
+    pub(super) fn report_exit_delivery_failure(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         outcome: &ExitAttemptOutcome,
         app: &mut App,
     ) {
-        let Err(error @ (ExitAttemptError::Observation(_) | ExitAttemptError::Routing(_))) =
-            &outcome.result
-        else {
+        let Some(error) = delivery_error(outcome) else {
             return;
         };
         let Some(invoking) = request.invoking_window() else {
@@ -46,6 +44,25 @@ impl RunningProcessOwner {
             app,
         );
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_report_exit_delivery_failure(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        error: ExitAttemptError,
+        command_completed: bool,
+        app: &mut App,
+    ) {
+        let outcome = ExitAttemptOutcome {
+            result: Err(error),
+            command_completed,
+        };
+        Self::report_exit_delivery_failure(owner, request, &outcome, app);
+    }
+}
+
+fn delivery_error(outcome: &ExitAttemptOutcome) -> Option<&ExitAttemptError> {
+    outcome.result.as_ref().err()
 }
 
 fn failure_content(error: &impl fmt::Display) -> NoticeContent {

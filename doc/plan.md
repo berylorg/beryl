@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 650: Report Running Exit Preparation Failures (finished)
+# Phase 651: Report Running Exit Progress-Delivery Errors (finished)
 
-The running consumer now contributes bounded commandless preparation errors to the original
-invoking window's notice arbiter, preserving outcomes and custody through omission or window loss.
-Default library check and independent review passed. The 45 focused cases passed after correcting
-one fixture assertion: base run `4d056fbf-a588-4ea8-86a9-96e291c1e6c3` and five-case consumer rerun
-`124df21b-9414-416f-babf-fc2ef64456a7`. Progress reporting, toolbar mounting and teardown remain pending.
+Typed progress-delivery errors now use the existing bounded commandless invoking-window notice
+path without changing result, completion or retained shutdown custody. Default library check,
+independent semantic review and all 13 focused cases passed (run
+`d09e3499-9ec7-4b5a-a3f1-412c90e77e33`). Coordinator failure attribution, toolbar mounting and
+final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -160,6 +160,8 @@ Phase 649 connects one retained command wait to that policy, including initial s
 delivery and guarded completion. Successor waits remain explicit; ordinary mounting stays pending.
 Phase 650 reports preparation errors through the existing invoking-window notice arbiter without
 altering policy outcomes. Progress and final-teardown reporting remain separate from that contribution.
+Phase 651 extends that contribution to typed progress-delivery errors while retaining unresolved
+admission. Coordinator failure results still require their own affected-window attribution.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

@@ -6,20 +6,25 @@ use beryl_state::{
 
 #[test]
 fn native_exit_driver_returns_ready_with_original_custody() {
-    run_driver(false, false);
+    run_driver(false, false, false);
 }
 
 #[test]
 fn native_exit_driver_returns_cancelled_with_proven_reopening() {
-    run_driver(true, false);
+    run_driver(true, false, false);
 }
 
 #[test]
 fn native_exit_driver_waits_for_home_mutation_then_resumes() {
-    run_driver(false, true);
+    run_driver(false, true, false);
 }
 
-fn run_driver(cancelled: bool, waiting: bool) {
+#[test]
+fn native_exit_progress_delivery_notice_preserves_unconsumed_progress_and_admission() {
+    run_driver(false, false, true);
+}
+
+fn run_driver(cancelled: bool, waiting: bool, report_refusal: bool) {
     let directory = support::native_home();
     let faults = FaultController::new();
     let opening_faults = faults.clone();
@@ -57,13 +62,14 @@ fn run_driver(cancelled: bool, waiting: bool) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::start(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     command.request_exit();
                     app.spawn(async move |cx| {
                         let request = next_request(&owner, cx).await;
                         let identity = request.identity();
-                        let (request, error) = cx
+                        let (mut request, error) = cx
                             .update(|app| {
                                 RunningProcessOwner::drive_exit(
                                     &owner,
@@ -92,6 +98,78 @@ fn run_driver(cancelled: bool, waiting: bool) {
                         })
                         .unwrap()
                         .unwrap();
+                        if report_refusal {
+                            let settled = Rc::new(Cell::new(false));
+                            let signalled = settled.clone();
+                            cx.update(|app| {
+                                RunningProcessOwner::advance_shutdown(
+                                    &owner,
+                                    ProjectionCancellationToken::new(),
+                                    app,
+                                    move |_, _| signalled.set(true),
+                                )
+                            })
+                            .unwrap()
+                            .unwrap();
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            while !settled.get() {
+                                assert!(Instant::now() < deadline);
+                                cx.background_executor()
+                                    .timer(Duration::from_millis(1))
+                                    .await;
+                            }
+                            let (returned, error) = cx
+                                .update(|app| {
+                                    RunningProcessOwner::drive_exit(
+                                        &owner,
+                                        request,
+                                        ProjectionCancellationToken::new(),
+                                        app,
+                                        |_, _, _, _| panic!("refused progress must not notify"),
+                                    )
+                                })
+                                .unwrap()
+                                .err()
+                                .unwrap();
+                            request = returned;
+                            assert!(matches!(&error, ExitProgressError::Scheduling(_)));
+                            let command_completed =
+                                RunningProcessOwner::finish_exit(&owner, &request);
+                            assert!(!command_completed);
+                            cx.update(|app| {
+                                RunningProcessOwner::test_report_exit_delivery_failure(
+                                    &owner,
+                                    &request,
+                                    crate::running_owner::ExitAttemptError::Progress(error),
+                                    command_completed,
+                                    app,
+                                );
+                                let root = window.read(app).unwrap();
+                                let notice = root.notice_projection().unwrap();
+                                assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
+                                assert!(
+                                    notice
+                                        .content
+                                        .detail()
+                                        .as_str()
+                                        .contains("unconsumed result")
+                                );
+                                assert_eq!(notice.content.commands().count(), 0);
+                                assert_eq!(root.notice_diagnostics().retained_records, 1);
+                            })
+                            .unwrap();
+                            assert!(Rc::ptr_eq(&identity, &request.identity()));
+                            assert!(owner.borrow().exit_requested());
+                            assert!(owner.borrow().test_shutdown_progress_settled());
+                            assert!(!owner.borrow().test_services_on_worker());
+                            assert!(matches!(owner.borrow().shutdown_status(),
+                                Some((window, ShutdownIntent::ApplicationExit,
+                                    RunningShutdownStatus::Admitted)) if window == invoking));
+                            assert!(matches!(
+                                owner.borrow_mut().take_shutdown_progress(),
+                                Some(Ok(AppServiceShutdownProgress::Ready))
+                            ));
+                        }
                         let mutation = if waiting {
                             let (home, command) = {
                                 let owner = owner.borrow();

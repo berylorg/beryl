@@ -667,16 +667,19 @@ by the executable composition root.
   owner borrows on the GUI executor. The callback may explicitly arm a successor wait, but no
   successor activation, retry, teardown or quit is implicit in this boundary.
 
-- Before its completion callback, the running Exit consumer contributes initial observation or
-  routing failure to the original invoking surviving window's Notifications arbiter. The record
+- Before its completion callback, the running Exit consumer contributes initial observation,
+  routing or progress-delivery errors to the original invoking surviving window's Notifications arbiter. The record
   is a dismissible commandless error with the feature-owned title and a byte-bounded diagnostic
   projection produced without first allocating the complete formatted error. Each delivered
   attempt contributes once with its own condition identity; duplicate activations contribute no
   additional record. Missing original windows have no replacement destination. Notice omission or
   refusal changes neither the original result nor command completion, custody or quit authority.
   Cancellation outcomes and successful admission contribute no failure record. This boundary
-  does not report progress or final-teardown outcomes, infer persistent backend/home conditions,
+  does not report coordinator failure results or final-teardown outcomes, infer persistent backend/home conditions,
   select threads, move focus or arm successor waits.
+  Progress-delivery errors include refused scheduling, invalid request/intent, unavailable settled
+  results and service errors. Reporting preserves the original error and any unresolved admitted
+  intent; it cannot prove reopening, release a gate or authorize command completion.
 
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
