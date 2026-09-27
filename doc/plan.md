@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 678: Protect Published Native Desktop Observation (finished)
+# Phase 679: Publish The Protected Native Observation Dependency (finished)
 
-GPUI `d2665f256d` supplies distinct published-window leases with deferred GUI destruction,
-ordinary close admission, sequential reuse and confirmation exclusion. All 12 focused native
-tests passed (`90c22a0a-3904-4e6a-8f20-0cb2c300b077`), as did the default app library check and
-independent lifecycle review. The [default-close correction](failures/published-native-lease-close.md)
-is retained. Canonical dependency publication, COM observation and Exit composition remain pending.
+Published GPUI `d2665f256d`, scrollbar `3b476227`, text-input `8667c11a` and settings-window
+`2b8aaf85` through Beryl's canonical pins. Isolated locked metadata proved one GPUI graph;
+all widget/app library checks and 12 canonical native tests passed
+(`7658a26e-3c10-4a14-913b-945c97f5f01d`). Independent publication review found no issues;
+local validation, analyzer refresh and temporary-checkout cleanup completed. Desktop COM
+observation and exact Exit-owner binding remain next.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -213,6 +214,8 @@ Phase 677 supplies the pure physical-to-durable placement converter. Virtual-des
 and binding both observations to the original window remain prerequisites to session publication.
 Phase 678 supplies the published native lifetime lease required by that observation. Publish its
 canonical GPUI/widget pins before implementing the desktop COM worker and exact Exit-owner binding.
+Phase 679 completes that publication. Next implement the worker desktop observation under the
+accepted published-window lease, then compose exact Exit-owner placement/session custody.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
