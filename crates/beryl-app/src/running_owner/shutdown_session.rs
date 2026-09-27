@@ -6,6 +6,8 @@ use std::panic::AssertUnwindSafe;
 
 mod readiness;
 mod reconciliation;
+mod recovery;
+pub(super) use recovery::InterruptedExitRecovery;
 
 #[derive(Debug)]
 pub(crate) enum RunningShutdownSession {
@@ -14,6 +16,7 @@ pub(crate) enum RunningShutdownSession {
     Reconciling,
     Reconciled(ExitSessionReconciled),
     Unwound,
+    RecoveryOwned,
 }
 
 impl RunningProcessOwner {

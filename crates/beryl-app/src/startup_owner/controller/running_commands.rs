@@ -56,6 +56,11 @@ pub(crate) struct RunningExitRequest {
 }
 
 impl RunningExitRequest {
+    #[cfg(test)]
+    pub(crate) fn test_foreign(&self) -> Self {
+        Self { identity: Rc::new(()), invoking: self.invoking }
+    }
+
     pub(crate) fn invoking_window(&self) -> Option<WindowId> {
         self.invoking
     }
@@ -131,7 +136,7 @@ impl RunningExitCommands {
         request.invoking
     }
 
-    fn is_active(&self, request: &RunningExitRequest) -> bool {
+    pub(crate) fn is_active(&self, request: &RunningExitRequest) -> bool {
         self.0
             .0
             .borrow()

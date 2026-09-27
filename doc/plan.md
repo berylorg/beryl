@@ -89,20 +89,21 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 697: Retry Proven Noncommitted Session Resumption (finished)
+# Phase 698: Retain Interrupted Exit Recovery Custody In The Process Supervisor (finished)
 
-Accepted fresh validated retries only after proven noncommit, with prior outcome custody handed
-to an empty caller-owned slot before dispatch. Preparation refusal preserves evidence; committed
-and uncertain outcomes cannot repeat. All 26 focused tests passed
-(`91a056c5-ef31-42c5-aa8b-b3a6c44e65aa`), along with the default library check and independent
-persistence/lifecycle review. No recovery scheduling or interaction reopening is mounted.
+Accepted exact-request cancellation before session-failure reporting and settled outcome transfer
+into process-owned recovery custody, preserving original evidence and the attempt fence. Foreign,
+duplicate and unreported transfers refuse; late ExactNew remains cancelled even with a valid receipt.
+All eight focused native tests passed (`236b2d17-f668-410b-ad8d-46fa57481e52`), together with the
+default library check and independent lifecycle review. Candidate settlement remains separate.
 
-# Phase 698: Retain Interrupted Exit Recovery Custody In The Process Supervisor (pending)
+# Phase 699: Settle Retained Interrupted Exit Evidence Through Candidate Recovery (pending)
 
-Connect retained session outcomes to the exact reported-failed Exit request outside replaceable
-service graphs. Preserve cancellation and original evidence through recovery handoff, refusing
-duplicate or stale request transfer. Keep candidate settlement, replacement publication and resident
-rebinding separate; derive the concrete slice from the approved interrupted-Exit recovery contract.
+Connect supervisor-retained original outcomes to fresh candidate validation and eligible exact-handle
+reconciliation before session resumption. Preserve cancelled request identity and original failure
+custody, refuse uncertain or changed state, and retain every settlement outcome. Derive the bounded
+candidate adapter from the approved interrupted-Exit recovery contract; replacement publication and
+resident rebinding remain separate prerequisites.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

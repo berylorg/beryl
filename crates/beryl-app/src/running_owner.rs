@@ -64,6 +64,7 @@ pub(crate) struct RunningProcessOwner {
     observing_initial_work: bool,
     waiting_for_exit: bool,
     exit_availability: Option<gpui::Task<()>>,
+    interrupted_exit: Option<shutdown_session::InterruptedExitRecovery>,
     #[cfg(test)]
     exit_waiting_passes: usize,
     #[cfg(test)]
@@ -103,6 +104,7 @@ impl RunningProcessOwner {
             observing_initial_work: false,
             waiting_for_exit: false,
             exit_availability: None,
+            interrupted_exit: None,
             #[cfg(test)]
             exit_waiting_passes: 0,
             #[cfg(test)]

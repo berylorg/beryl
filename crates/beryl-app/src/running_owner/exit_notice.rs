@@ -12,6 +12,9 @@ impl RunningProcessOwner {
         outcome: &ExitAttemptOutcome,
         app: &mut App,
     ) {
+        if matches!(&outcome.result, Err(ExitAttemptError::SessionPublication(_))) {
+            owner.borrow_mut().retain_reported_exit_failure(request);
+        }
         let (thread, content) = if let Some(error) = delivery_error(outcome) {
             (None, failure_content(error))
         } else if let Some((thread, reason)) = coordinator_failure(outcome) {

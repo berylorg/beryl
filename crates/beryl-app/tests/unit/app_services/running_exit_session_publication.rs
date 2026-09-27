@@ -302,6 +302,33 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                         assert!(matches!(error, ExitProgressError::SessionPublication(_)));
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
                         assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                        if consumer && fault.is_some() {
+                            if matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                                let (sender, receiver) = futures_channel::oneshot::channel();
+                                cx.update(|app| RunningProcessOwner::reconcile_shutdown_session(
+                                    &owner, app, move |_, _| { sender.send(()).unwrap(); }
+                                )).unwrap().unwrap();
+                                receiver.await.unwrap();
+                                let borrowed = owner.borrow();
+                                let graph = borrowed.test_services().graph().unwrap();
+                                assert!(borrowed.shutdown_session().unwrap().require_ready(graph.home(), &graph.state().session()).is_ok());
+                                assert!(borrowed.require_shutdown_session_ready().is_err());
+                            }
+                            let before = format!("{:?}", owner.borrow().shutdown_session().unwrap());
+                            let foreign = request.test_foreign();
+                            assert!(owner.borrow_mut().retain_interrupted_exit_session(&foreign).is_err());
+                            assert!(owner.borrow().interrupted_exit_session().is_none());
+                            assert_eq!(before, format!("{:?}", owner.borrow().shutdown_session().unwrap()));
+                            owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
+                            assert!(matches!(owner.borrow().shutdown_session(), Some(RunningShutdownSession::RecoveryOwned)));
+                            assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
+                            assert!(owner.borrow().require_shutdown_session_ready().is_err());
+                            assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                        } else {
+                            assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
+                            assert!(owner.borrow().interrupted_exit_session().is_none());
+                        }
                         let cancelled = ProjectionCancellationToken::new();
                         cancelled.cancel();
                         assert!(
@@ -315,7 +342,7 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                             .is_err()
                         );
                         // Settle only the fixture's installed store operation before disposing its native windows.
-                        if matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                        if !consumer && matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
                             let home = owner
                                 .borrow()
                                 .test_services()

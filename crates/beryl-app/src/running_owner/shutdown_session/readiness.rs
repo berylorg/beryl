@@ -40,6 +40,9 @@ impl RunningShutdownSession {
 
 impl RunningProcessOwner {
     pub(crate) fn require_shutdown_session_ready(&self) -> Result<(), String> {
+        if self.interrupted_exit.is_some() {
+            return Err("The reported failed Exit is cancelled".into());
+        }
         self.shutdown_placements()?;
         let graph = self
             .process
