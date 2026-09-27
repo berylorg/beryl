@@ -28,6 +28,32 @@ pub(crate) struct WindowCloseLease {
 }
 
 impl RuntimeBackedWindowProcessRegistry {
+    pub(crate) fn inspect_close_snapshot(
+        &self,
+        snapshot: &WindowCloseSnapshot,
+        invoking: WindowId,
+    ) -> Result<bool, WindowCloseAdmissionError> {
+        if !Arc::ptr_eq(&self.flights, &snapshot.registry) || !snapshot.members.contains(&invoking)
+        {
+            return Err(WindowCloseAdmissionError::WindowSetChanged);
+        }
+        self.process_admission
+            .admit(|| {
+                let registry = self
+                    .flights
+                    .lock()
+                    .map_err(|_| WindowCloseAdmissionError::Unavailable)?;
+                if registry.close_owner.is_some() {
+                    return Err(WindowCloseAdmissionError::Busy);
+                }
+                if !Arc::ptr_eq(&registry.membership_revision, &snapshot.revision) {
+                    return Err(WindowCloseAdmissionError::WindowSetChanged);
+                }
+                Ok(snapshot.members.len() == 1)
+            })
+            .map_err(WindowCloseAdmissionError::Process)?
+    }
+
     pub(crate) fn snapshot_for_close(
         &self,
         resident_windows: &[WindowId],

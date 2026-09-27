@@ -6,6 +6,73 @@ fn id(value: u8) -> WindowId {
 }
 
 #[test]
+fn inspection_preserves_execution_and_construction_and_cannot_authorize_later_close() {
+    let process = crate::process_admission::ProcessAdmissionGate::new();
+    let permit = process.execution_permit();
+    let registry = RuntimeBackedWindowProcessRegistry::new(process);
+    let _resident = registry.reserve_main_window(id(1)).unwrap();
+    let snapshot = registry.snapshot_for_close(&[id(1)]).unwrap();
+    assert_eq!(registry.inspect_close_snapshot(&snapshot, id(1)), Ok(true));
+    assert_eq!(permit.commit(|| 42), Ok(42));
+    let second = registry.reserve_main_window(id(2)).unwrap();
+    assert_eq!(
+        registry.inspect_close_snapshot(&snapshot, id(1)),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    let both = registry.snapshot_for_close(&[id(1), id(2)]).unwrap();
+    assert_eq!(registry.inspect_close_snapshot(&both, id(1)), Ok(false));
+    assert_eq!(registry.inspect_close_snapshot(&both, id(2)), Ok(false));
+    drop(second);
+    assert_eq!(
+        registry.inspect_close_snapshot(&snapshot, id(1)),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    assert!(matches!(
+        registry.admit_close(snapshot),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    ));
+    assert_eq!(permit.commit(|| 43), Ok(43));
+}
+
+#[test]
+fn inspection_refuses_foreign_absent_busy_and_fenced_authority_without_changing_it() {
+    let process = crate::process_admission::ProcessAdmissionGate::new();
+    let permit = process.execution_permit();
+    let registry = RuntimeBackedWindowProcessRegistry::new(process.clone());
+    let foreign = RuntimeBackedWindowProcessRegistry::new(Default::default());
+    let _resident = registry.reserve_main_window(id(1)).unwrap();
+    let _foreign = foreign.reserve_main_window(id(1)).unwrap();
+    let snapshot = registry.snapshot_for_close(&[id(1)]).unwrap();
+    assert_eq!(
+        foreign.inspect_close_snapshot(&snapshot, id(1)),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    assert_eq!(
+        registry.inspect_close_snapshot(&snapshot, id(2)),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id(1)]).unwrap())
+        .unwrap();
+    assert_eq!(
+        registry.inspect_close_snapshot(&snapshot, id(1)),
+        Err(WindowCloseAdmissionError::Busy)
+    );
+    assert_eq!(lease.is_final(id(1)), Ok(true));
+    assert_eq!(permit.commit(|| ()), Ok(()));
+    drop(lease);
+    assert_eq!(registry.inspect_close_snapshot(&snapshot, id(1)), Ok(true));
+    let _fence = process.fence().unwrap();
+    assert_eq!(
+        registry.inspect_close_snapshot(&snapshot, id(1)),
+        Err(WindowCloseAdmissionError::Process(
+            ProcessAdmissionError::Fenced
+        ))
+    );
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
+}
+
+#[test]
 fn pending_construction_and_incomplete_resident_sets_cannot_designate_final() {
     let registry = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let _resident = registry.reserve_main_window(id(1)).unwrap();

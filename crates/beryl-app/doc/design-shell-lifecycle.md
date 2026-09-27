@@ -560,6 +560,14 @@ by the executable composition root.
   admitting shutdown or durably removing it; overlapping closes cannot each assume another
   window will survive. Confirmation carries exact attempt, window-set, and work revisions and
   owns no stop or mutation authority until the shared shutdown coordinator admits the barrier.
+- Before confirmation, the process window registry may inspect an exact close snapshot and
+  invoking member under its existing process/construction serialization. Inspection validates
+  registry identity, membership revision, open process admission and absence of an admitted close
+  owner, then reports whether that member is final. It installs no lease, fence or interaction gate;
+  construction and execution remain available afterward. The result is point-in-time evidence,
+  so later close admission still consumes and validates the original snapshot. Membership ABA,
+  foreign snapshots, absent invoking members, competing close ownership and process shutdown
+  refuse inspection without changing authority or reopening anything.
 - Shutdown runtime revision validation uses nonblocking read-only checks of every nested source.
   Busy, poisoned, closed, exhausted or changed sources refuse validation without altering source
   custody, notification, execution authority or failure state. Complete facts and durable reads

@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 622: Count Distinct Threads In Shutdown Observations (finished)
+# Phase 623: Inspect Close Snapshots Without Admission (finished)
 
-Worker observations now count distinct durable/live/flight thread identities with bounded pages,
-without catalog reads. Cleanup presence remains independent. Inventory, admission and owner
-regressions passed; all ten count/observation/cleanup tests passed after stabilizing synthetic
-scheduler fixtures (`e82c1e8f-624d-4685-81d0-12f216dde8b8`). Default app library check and
-independent semantic/custody review passed.
+Read-only registry inspection now validates exact invoking membership and returns final-member
+evidence without a lease or fence. Construction remains available and later admission rejects stale
+snapshots. All 22 close/process-admission tests passed (`ad52342c-1362-4b3d-b879-e4f41ff55cb5`),
+as did the default app library check and independent concurrency/authority review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -115,8 +114,8 @@ The observed coordinator handoff and graph-owned lifetime integration are accept
 613–614. Owned native confirmation and canonical dependency publication are accepted in phases
 615–617, including Cancel default, exact duplicate control, focus restoration, native close vetoes
 and disposal ordering. The complete running owner and auxiliary cleanup are accepted in phase 620;
-worker-owned shutdown observation and its distinct-thread count are accepted in phases 621–622.
-Next mount confirmation and ordinary
+worker-owned shutdown observation and its distinct-thread count are accepted in phases 621–622;
+read-only invoking-window snapshot inspection is accepted in phase 623. Next mount confirmation and ordinary
 close/Exit policy through that owner, retaining exact published native destruction custody.
 Preserve separate acceptance boundaries for any missing components before final integration.
 
