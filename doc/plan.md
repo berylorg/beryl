@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 682: Recover Exact Exit Placement Preparation Failures (finished)
+# Phase 683: Connect Exit Attempts To Placement Preparation (finished)
 
-Accepted exact-request placement preparation with retained success and automatic settled-failure
-recovery, preserving the original cause and separate recovery evidence. All 61 focused lifecycle
-cases passed (`b88aa932-b774-42fc-91ae-bf3dfc12bc00`), along with the default app library check and
-independent lifecycle review. Durable session publication and ordinary consumer integration remain
-separate subsequent boundaries.
+Accepted placement preparation after draft readiness in the ordinary Exit attempt consumer, with
+complete retained placements and original failure/recovery evidence through guarded completion and
+commandless notices. All 63 focused lifecycle cases passed
+(`f4a0aafb-36d6-4188-8f32-90da0d3d2c98`), along with the default app library check and independent
+lifecycle review. Durable session publication and final teardown remain separate boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -224,6 +224,9 @@ owner, and connect capture failure to exact recovery before enabling ordinary sh
 Phase 682 supplies exact-request placement preparation and settled-failure recovery, preserving
 original capture errors alongside recovery evidence. Next bind captured placements to original
 durable revisions and compose session publication/reconciliation before ordinary consumer mounting.
+Phase 683 connects placement preparation to the ordinary attempt consumer after draft readiness.
+Complete placements retain the attempt; capture failure and refusal use the existing completion and
+notice paths. Durable session publication/reconciliation and enabled toolbar mounting remain pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

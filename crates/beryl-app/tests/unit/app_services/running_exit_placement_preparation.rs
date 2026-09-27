@@ -4,20 +4,30 @@ use crate::running_owner::{
 
 #[test]
 fn native_exit_placement_preparation_retains_ready_attempt() {
-    run(false, false);
+    run(false, false, false);
 }
 
 #[test]
 fn native_exit_placement_preparation_recovers_original_capture_failure() {
-    run(true, false);
+    run(true, false, false);
 }
 
 #[test]
 fn native_exit_placement_preparation_preserves_both_failures_and_custody() {
-    run(true, true);
+    run(true, true, false);
 }
 
-fn run(capture_failure: bool, recovery_failure: bool) {
+#[test]
+fn native_exit_attempt_retains_complete_placements_and_refuses_duplicate_capture() {
+    run(false, false, true);
+}
+
+#[test]
+fn native_exit_attempt_reports_capture_failure_after_recovery() {
+    run(true, false, true);
+}
+
+fn run(capture_failure: bool, recovery_failure: bool, consumer: bool) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -77,12 +87,12 @@ fn run(capture_failure: bool, recovery_failure: bool) {
                 let (sender, receiver) = futures_channel::oneshot::channel();
                 let weak = Rc::downgrade(&owner);
                 let thread = std::thread::current().id();
-                assert!(cx.update(|app| RunningProcessOwner::prepare_exit_placements(
-                    &owner, request, app, move |owner, request, result, app| {
+                assert!(cx.update(|app| {
+                    let completed = move |owner: &Rc<RefCell<RunningProcessOwner>>, request, result, app: &mut gpui::App| {
                         assert_eq!(thread, std::thread::current().id());
                         assert!(owner.try_borrow_mut().is_ok());
                         assert!(!owner.borrow().test_services_on_worker());
-                        assert!(owner.borrow().exit_requested());
+                        assert_eq!(owner.borrow().exit_requested(), !consumer || !capture_failure || recovery_failure);
                         match result {
                             ExitPlacementPreparationCompletion::Ready => {
                                 assert!(!capture_failure);
@@ -107,12 +117,39 @@ fn run(capture_failure: bool, recovery_failure: bool) {
                                     }));
                                     assert!(owner.borrow().shutdown_status().is_none());
                                     assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app), original_reason);
-                                    assert!(RunningProcessOwner::finish_exit(owner, &request));
+                                    assert_eq!(RunningProcessOwner::finish_exit(owner, &request), !consumer);
                                 }
                             }
                         }
                         sender.send((owner.clone(), request)).ok().unwrap();
-                    })).unwrap().is_ok());
+                    };
+                    if consumer {
+                        RunningProcessOwner::test_complete_exit_work(&owner, request, app,
+                            move |owner, request, outcome, app| {
+                                assert_eq!(outcome.command_completed, capture_failure && !recovery_failure);
+                                let root = window.read(app).unwrap();
+                                if capture_failure {
+                                    let notice = root.notice_projection().unwrap();
+                                    assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
+                                    assert_eq!(notice.content.commands().count(), 0);
+                                    assert_eq!(notice.report_count, 1);
+                                    assert_eq!(notice.content.detail().as_str(), outcome.result.as_ref().unwrap_err().to_string());
+                                } else {
+                                    assert!(root.notice_projection().is_none());
+                                }
+                                let result = match outcome.result {
+                                    Ok(crate::running_owner::ExitAttemptCompletion::PlacementsReady) => ExitPlacementPreparationCompletion::Ready,
+                                    Err(crate::running_owner::ExitAttemptError::PlacementPreparation { preparation, recovery }) =>
+                                        ExitPlacementPreparationCompletion::Failed { preparation, recovery },
+                                    other => panic!("unexpected placement outcome: {other:?}"),
+                                };
+                                completed(owner, request, result, app);
+                            });
+                        Ok(())
+                    } else {
+                        RunningProcessOwner::prepare_exit_placements(&owner, request, app, completed)
+                    }
+                }).unwrap().is_ok());
                 drop(owner);
                 assert!(weak.upgrade().is_some());
                 let (owner, mut request) = receiver.await.unwrap();
@@ -123,6 +160,26 @@ fn run(capture_failure: bool, recovery_failure: bool) {
                         windows::Win32::UI::WindowsAndMessaging::SW_SHOWNOACTIVATE) };
                 }
                 if !capture_failure || recovery_failure {
+                    if consumer {
+                        let (sender, receiver) = futures_channel::oneshot::channel();
+                        cx.update(|app| RunningProcessOwner::test_complete_exit_work(&owner, request, app,
+                            move |owner, request, outcome, app| {
+                                assert!(owner.try_borrow_mut().is_ok());
+                                assert!(!outcome.command_completed);
+                                assert!(matches!(outcome.result,
+                                    Err(crate::running_owner::ExitAttemptError::Progress(ExitProgressError::PlacementPreparation(_)))));
+                                assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
+                                assert_eq!(owner.borrow().shutdown_placements().unwrap().len(), 1);
+                                assert!(owner.borrow().exit_requested());
+                                let notice = window.read(app).unwrap().notice_projection().unwrap();
+                                assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
+                                assert_eq!(notice.content.commands().count(), 0);
+                                assert_eq!(notice.report_count, 1);
+                                sender.send(request).ok().unwrap();
+                            })).unwrap();
+                        request = receiver.await.unwrap();
+                        assert!(Rc::ptr_eq(&identity, &request.identity()));
+                    }
                     let (returned, error) = cx.update(|app| RunningProcessOwner::prepare_exit_placements(
                         &owner, request, app, |_, _, _, _| panic!("duplicate capture")))
                         .unwrap().err().unwrap();

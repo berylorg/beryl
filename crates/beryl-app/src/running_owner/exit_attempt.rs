@@ -1,6 +1,6 @@
 use super::{
-    ExitDraftPreparationCompletion, ExitObservationError, ExitProgressError, ExitRoutingCompletion,
-    ExitRoutingError, RunningProcessOwner,
+    ExitDraftPreparationCompletion, ExitObservationError, ExitPlacementPreparationCompletion,
+    ExitProgressError, ExitRoutingCompletion, ExitRoutingError, RunningProcessOwner,
 };
 use crate::{
     app_services::AppServiceShutdownProgress, cas_projection::ProjectionCancellationToken,
@@ -13,7 +13,7 @@ use std::{cell::RefCell, rc::Rc};
 pub(crate) enum ExitAttemptCompletion {
     Cancelled,
     ConfirmedObservationCancelled,
-    DraftsReady,
+    PlacementsReady,
     Progress(AppServiceShutdownProgress),
 }
 
@@ -27,6 +27,11 @@ pub(crate) enum ExitAttemptError {
     Progress(#[from] ExitProgressError),
     #[error("Exit draft preparation failed: {preparation}; recovery: {recovery:?}")]
     DraftPreparation {
+        preparation: String,
+        recovery: Result<AppServiceShutdownProgress, ExitProgressError>,
+    },
+    #[error("Exit placement preparation failed: {preparation}; recovery: {recovery:?}")]
+    PlacementPreparation {
         preparation: String,
         recovery: Result<AppServiceShutdownProgress, ExitProgressError>,
     },
@@ -149,7 +154,7 @@ impl RunningProcessOwner {
             }
             let can_complete = !matches!(
                 &result,
-                Ok(ExitAttemptCompletion::DraftsReady)
+                Ok(ExitAttemptCompletion::PlacementsReady)
                     | Ok(ExitAttemptCompletion::Progress(
                         AppServiceShutdownProgress::Ready | AppServiceShutdownProgress::Waiting
                     ))
@@ -178,9 +183,11 @@ impl RunningProcessOwner {
                 request,
                 app,
                 move |owner, request, result, app| {
+                    let settle = delivered.borrow_mut().take().unwrap();
                     let result = match result {
                         ExitDraftPreparationCompletion::Ready => {
-                            Ok(ExitAttemptCompletion::DraftsReady)
+                            Self::prepare_exit_attempt_placements(owner, request, app, settle);
+                            return;
                         }
                         ExitDraftPreparationCompletion::Failed {
                             preparation,
@@ -190,7 +197,6 @@ impl RunningProcessOwner {
                             recovery,
                         }),
                     };
-                    let settle = delivered.borrow_mut().take().unwrap();
                     settle(owner, request, result, app);
                 },
             ) {
@@ -199,6 +205,45 @@ impl RunningProcessOwner {
             }
         } else {
             settle(owner, request, result, app);
+        }
+    }
+
+    fn prepare_exit_attempt_placements(
+        owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            RunningExitRequest,
+            Result<ExitAttemptCompletion, ExitAttemptError>,
+            &mut App,
+        ) + 'static,
+    ) {
+        let delivery = Rc::new(RefCell::new(Some(completed)));
+        let delivered = delivery.clone();
+        if let Err((request, error)) = Self::prepare_exit_placements(
+            owner,
+            request,
+            app,
+            move |owner, request, result, app| {
+                let result = match result {
+                    ExitPlacementPreparationCompletion::Ready => {
+                        Ok(ExitAttemptCompletion::PlacementsReady)
+                    }
+                    ExitPlacementPreparationCompletion::Failed {
+                        preparation,
+                        recovery,
+                    } => Err(ExitAttemptError::PlacementPreparation {
+                        preparation,
+                        recovery,
+                    }),
+                };
+                let completed = delivered.borrow_mut().take().unwrap();
+                completed(owner, request, result, app);
+            },
+        ) {
+            let completed = delivery.borrow_mut().take().unwrap();
+            completed(owner, request, Err(ExitAttemptError::Progress(error)), app);
         }
     }
 

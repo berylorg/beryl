@@ -160,7 +160,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                                                 assert_eq!(root.notice_projection().map(|notice| notice.report_count),
                                                     if missing { None } else { Some(1) });
                                                 assert!(matches!(outcome.result,
-                                                    Ok(ExitAttemptCompletion::DraftsReady)));
+                                                    Ok(ExitAttemptCompletion::PlacementsReady)));
                                                 assert_eq!(owner.borrow().resolve_exit_window(
                                                     &mut request, app).unwrap(), invoking);
                                                 assert!(!owner.borrow().test_services_on_worker());

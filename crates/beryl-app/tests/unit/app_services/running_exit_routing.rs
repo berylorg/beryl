@@ -438,7 +438,7 @@ fn route(
                     Ok(ExitRoutingCompletion::Admitted)
                 }
                 Ok(ExitAttemptCompletion::Cancelled) => Ok(ExitRoutingCompletion::Cancelled),
-                Ok(ExitAttemptCompletion::DraftsReady) => {
+                Ok(ExitAttemptCompletion::PlacementsReady) => {
                     assert!(settle);
                     assert!(!RunningProcessOwner::finish_exit(owner, &request));
                     Ok(ExitRoutingCompletion::Admitted)
@@ -460,7 +460,7 @@ fn route(
             move |owner, request, outcome, app| {
                 let expected = !matches!(
                     &outcome.result,
-                    Ok(ExitAttemptCompletion::Progress(_) | ExitAttemptCompletion::DraftsReady)
+                    Ok(ExitAttemptCompletion::Progress(_) | ExitAttemptCompletion::PlacementsReady)
                 );
                 assert_eq!(outcome.command_completed, expected);
                 completed(owner, request, outcome.result, app);

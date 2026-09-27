@@ -1156,14 +1156,20 @@ by the executable composition root.
   outside owner borrows, retaining the owner even if the caller drops it. This policy does not
   complete the command, publish session state, dispose residents or authorize quit; the attempt
   consumer must interpret the result and use the existing guarded completion boundary.
-- The ordinary Exit attempt consumer follows work Ready with exact-request draft preparation.
-  It reports DraftsReady only after that policy succeeds, retaining the command, original attempt
-  and gates for durable session obligations. Preparation failure remains a typed attempt error
+- The ordinary Exit attempt consumer follows work Ready with exact-request draft preparation,
+  then follows draft readiness with exact-request placement preparation. It reports PlacementsReady
+  only after complete capture succeeds, retaining the command, original attempt, placements, drafts
+  and gates for durable session obligations. Either preparation failure remains a distinct typed attempt error
   containing its original cause and separate recovery evidence; recovery cancellation cannot
   replace the failure. Scheduling refusal is a progress error and preserves unresolved custody.
   All outcomes pass through the existing guarded completion and invoking-window notice boundaries;
   only proven settled custody permits command completion. Delivery remains once, outside owner
-  borrows, with owner retention through the accepted draft driver. This integration neither
+  borrows, with owner retention through both accepted preparation policies. Placement capture failure
+  uses its settled recovery policy before guarded completion; unresolved native or recovery custody
+  keeps the command active. Verify successful complete placement retention, original capture errors
+  with coherent recovery and commandless notice delivery, scheduling refusal without command
+  completion, and existing draft failure handling. Independently review lifecycle integration.
+  This integration neither
   publishes session state nor authorizes disposal, native destruction or quit.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
