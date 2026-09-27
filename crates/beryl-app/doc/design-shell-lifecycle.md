@@ -304,6 +304,28 @@ by the executable composition root.
   or foreign sets, absent/already-exiting state, no preparation writes and writer rejection after
   durable revision drift. Independently review this persistence preparation boundary.
 
+## Exit Session Execution Outcome Custody
+
+- A worker prepares and executes the complete Exit session command once. Preparation refusal
+  performs no write. Definitive noncommit retains its typed evidence; durable commit retains its
+  receipt, optional later failure and optional local-finalization capability without translating
+  a later failure into noncommit or discarding its capability.
+- An indeterminate result synchronously installs its sole reconciliation custody before returning
+  an app-owned pending outcome. That outcome retains the original command failure and exact
+  registry handle. Abandoning the returned value leaves the installed home-store gate intact.
+- An explicit worker reconciliation pass consumes that pending owner and uses only its original
+  handle. ExactOld proves nonpublication; ExactNew returns the original durable receipt. Both
+  preserve the original failure. A failed pass returns the same pending owner with the separate
+  reconciliation failure. Collision and the unsupported successor classification remain blocked;
+  neither is publication or recovery evidence. No pass executes a replacement command, clears a
+  gate, retries automatically or switches home identity. Same-home recovery owns any required
+  health restoration and exact-handle retrigger before a later pass can observe its result.
+- This worker boundary grants no running-attempt readiness, draft release, service reopening,
+  native disposal or quit authority. Its caller must retain the outcome under the original attempt
+  and separately compose those transitions. Verify complete-set commit, definitive refusal,
+  postcommit failure preservation, installed ambiguity, failed/foreign reconciliation retaining
+  custody, exact-new resolution and abandonment. Independently review outcome and custody mapping.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

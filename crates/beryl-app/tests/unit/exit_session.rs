@@ -37,11 +37,18 @@ fn execute(home: &HomeStore, contribution: MutationContribution) {
 }
 
 fn open(count: usize) -> (tempfile::TempDir, HomeStore, SessionState) {
+    open_with_faults(count, FaultController::new())
+}
+
+fn open_with_faults(
+    count: usize,
+    faults: FaultController,
+) -> (tempfile::TempDir, HomeStore, SessionState) {
     let directory = tempfile::tempdir().unwrap();
-    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
-        directory.path(),
-        HomeSchemaVersion::CURRENT,
-    ))
+    let mut candidate = HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults,
+    )
     .unwrap();
     let state = BerylState::register(&mut candidate).unwrap();
     let home = candidate

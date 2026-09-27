@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 684: Prepare The Revision-Bound Exit Session Command (finished)
+# Phase 685: Retain Exit Session Execution Outcomes (finished)
 
-Accepted bounded, write-free preparation of one complete Exit session command using original
-home/domain/session/window revisions. All six focused tests passed, including 1/3/256 windows and
-writer rejection after intervening mutation (`b6493a20-87b9-4e20-be46-d092d5b9a9e4`); the default
-app library check and independent persistence review passed. Running-owner execution and
-reconciliation remain separate boundaries.
+Accepted one-shot worker execution with exact outcome/capability preservation, synchronous
+ambiguity installation and retained explicit reconciliation. All 11 focused tests passed
+(`3afdbfa2-0790-485d-a5b9-8cddd632b14d`); the default app library check and independent persistence
+review passed. Running-attempt admission and recovery integration remain separate boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -230,6 +229,9 @@ notice paths. Durable session publication/reconciliation and enabled toolbar mou
 Phase 684 supplies revision-bound command preparation from complete placements. Next retain
 execution and ambiguous-outcome reconciliation under the original running attempt before consuming
 session readiness or admitting final teardown.
+Phase 685 supplies worker execution and explicit reconciliation outcome custody. Next admit and
+retain that worker under the original running Exit attempt, fencing recovery while publication is
+unsettled and composing proven session readiness before final teardown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

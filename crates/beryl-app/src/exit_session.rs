@@ -5,6 +5,9 @@ use beryl_state::{
     SessionState,
 };
 
+mod execution;
+pub(crate) use execution::*;
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitSessionPreparationError {
     #[error("Exit placements do not match the complete session window set")]
@@ -84,5 +87,9 @@ mod tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/exit_session.rs"
+    ));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/exit_session_execution.rs"
     ));
 }
