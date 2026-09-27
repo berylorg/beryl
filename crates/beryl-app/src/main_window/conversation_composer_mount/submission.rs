@@ -196,10 +196,16 @@ impl MainWindowConversationComposerSubmission {
     pub(super) fn detach_recovery_source(
         &mut self,
     ) -> Result<Option<MainWindowComposerSubmissionRequestSource>, String> {
+        Ok(self.recovery_source()?.take())
+    }
+
+    pub(super) fn recovery_source(
+        &mut self,
+    ) -> Result<&mut Option<MainWindowComposerSubmissionRequestSource>, String> {
         if self.active.is_some() || self.task.is_some() || !self.workers_drained() {
             return Err("conversation composer submission work is not drained".to_owned());
         }
-        Ok(self.request_source.take())
+        Ok(&mut self.request_source)
     }
 
     fn clear_active(&mut self, status: MainWindowConversationComposerSubmissionStatus) {

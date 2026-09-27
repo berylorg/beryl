@@ -48,7 +48,7 @@ pub(in crate::main_window) use prepublication::{
     MainWindowNativeLineagePrepublicationWork,
 };
 pub use realization::*;
-pub use recovery::MainWindowComposerRecoverySnapshot;
+pub use recovery::{MainWindowComposerRecoveryResources, MainWindowComposerRecoverySnapshot};
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowConversationComposerService;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;

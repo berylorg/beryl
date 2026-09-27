@@ -2,7 +2,10 @@ use super::*;
 use crate::composer_host::{ComposerHostFlushAdvance, ComposerHostFlushFailure};
 
 mod recovery;
+mod recovery_resources;
 mod work;
+
+pub use recovery_resources::MainWindowComposerMountRecoveryResources;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MainWindowConversationComposerCloseTicket {
@@ -77,6 +80,7 @@ pub(super) struct ActiveWindowClose {
     disposal_captured: bool,
     release_requested: bool,
     recovery_fenced: bool,
+    resources_detached: bool,
     restore_enabled: Option<bool>,
     #[cfg(feature = "test-faults")]
     cancel_disposal: bool,
@@ -153,6 +157,7 @@ impl MainWindowConversationComposerMount {
             disposal_captured: false,
             release_requested: false,
             recovery_fenced: false,
+            resources_detached: false,
             restore_enabled: None,
             #[cfg(feature = "test-faults")]
             cancel_disposal: false,

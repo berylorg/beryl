@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 #[path = "support/host_close.rs"]
 pub mod host_close;
+#[path = "support/recovery_resources.rs"]
+pub mod recovery_resources;
 #[path = "support/slot_close.rs"]
 pub mod slot_close;
 

@@ -29,6 +29,14 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<Option<Arc<MainWindowConversationComposerService>>, String> {
         self.validate_recovery_adapter_detachment(ticket, cx)?;
+        self.validate_recovery_native_resources()?;
+        if self.native_lineage_refresh_task.is_some() {
+            return Err("mount native lineage refresh is not drained".to_owned());
+        }
+        Ok(self.service.take())
+    }
+
+    pub(super) fn validate_recovery_native_resources(&self) -> Result<(), String> {
         if self.native_lineage_config.is_some()
             || self.native_lineage_environment.is_some()
             || self.native_lineage_session.is_some()
@@ -36,11 +44,11 @@ impl MainWindowConversationComposerMount {
             || !self.native_lineage_effects.is_empty()
             || self.native_lineage_cleanup.is_some()
             || self.native_lineage_source.is_some()
-            || self.native_lineage_refresh_task.is_some()
+            || self.native_lineage_host_result.is_some()
         {
             return Err("mount native lineage resources are not drained".to_owned());
         }
-        Ok(self.service.take())
+        Ok(())
     }
 
     #[cfg(feature = "test-faults")]
@@ -193,7 +201,7 @@ impl MainWindowConversationComposerMount {
         self.autosave.detach_recovery_adapters()
     }
 
-    fn validate_recovery_adapter_detachment(
+    pub(super) fn validate_recovery_adapter_detachment(
         &self,
         ticket: MainWindowConversationComposerCloseTicket,
         cx: &Context<Self>,

@@ -10,6 +10,12 @@ pub struct MainWindowComposerRecoverySnapshot {
     restoration: RangeRestorationSeed,
 }
 
+pub struct MainWindowComposerRecoveryResources {
+    pub service: Option<Arc<MainWindowConversationComposerService>>,
+    pub clipboard_writer: Option<ComposerClipboardWriter>,
+    pub mutation_failure: Option<Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>>,
+}
+
 impl MainWindowComposerRecoverySnapshot {
     pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
@@ -29,6 +35,19 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn detach_recovery_resources(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowComposerRecoveryResources, String> {
+        self.validate_recovery_detachment(close, cx)?;
+        Ok(MainWindowComposerRecoveryResources {
+            service: self.service.take(),
+            clipboard_writer: self.clipboard_writer.take(),
+            mutation_failure: self.last_mutation_admission_failure.take(),
+        })
+    }
+
     pub(super) fn write_clipboard(&mut self, text: &str, cx: &mut App) -> ClipboardWriteOutcome {
         match self.clipboard_writer.as_mut() {
             Some(writer) => writer(text, cx),

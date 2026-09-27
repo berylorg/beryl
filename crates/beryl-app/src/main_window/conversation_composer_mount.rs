@@ -38,8 +38,9 @@ mod realization;
 
 pub use autosave::*;
 pub use close::{
-    MainWindowConversationComposerCloseAdmission, MainWindowConversationComposerCloseAdvance,
-    MainWindowConversationComposerCloseRelease, MainWindowConversationComposerCloseTicket,
+    MainWindowComposerMountRecoveryResources, MainWindowConversationComposerCloseAdmission,
+    MainWindowConversationComposerCloseAdvance, MainWindowConversationComposerCloseRelease,
+    MainWindowConversationComposerCloseTicket,
 };
 #[cfg(feature = "test-faults")]
 pub use submission::{

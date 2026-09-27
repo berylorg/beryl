@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 726: Transfer Recovery-Fenced Resident Failure Custody (finished)
+# Phase 727: Compose Recovery-Fenced Resident Resource Handoff (finished)
 
-Accepted exact, drained ownership transfer of retained mutation failure without interpreting opaque
-sources or changing resident presentation and gates. Library checking, 45 focused tests
-(a57db0a3-2e29-4c58-995a-1855aa9d5139) and independent lifecycle review passed. Coordinated
-whole-resident retirement and fresh binding remain separate.
+Accepted one exact, prevalidated handoff of resident and mount adapters into retained resource
+custody, preserving the editor and gates. Library checking, 55 existing focused tests, the two
+corrected bundle cases (c1bb52ef-5dfb-466d-81ed-53feccb9fc48) and independent lifecycle review passed.
+Exclusive retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -114,7 +114,7 @@ evidence; phase 721 supplies pending-activation cleanup lifetime evidence and ph
 native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
 detached mount drop behavior. Phase 724 supplies native-lineage control detachment and refresh-timer
 cancellation. Phase 725 supplies resident clipboard callback detachment and phase 726 transfers
-retained mutation-failure custody.
+retained mutation-failure custody. Phase 727 composes the resource handoffs into one bundle.
 Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 

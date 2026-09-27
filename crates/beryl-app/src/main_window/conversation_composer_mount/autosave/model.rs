@@ -136,13 +136,19 @@ impl MainWindowConversationComposerAutosave {
     pub(in crate::main_window) fn detach_recovery_adapters(
         &mut self,
     ) -> Result<Option<(AssetState, DraftMarkerSealService)>, String> {
+        Ok(self.recovery_adapters()?.take())
+    }
+
+    pub(in crate::main_window) fn recovery_adapters(
+        &mut self,
+    ) -> Result<&mut Option<(AssetState, DraftMarkerSealService)>, String> {
         if !matches!(self.state, AutosaveState::Idle)
             || self.task.is_some()
             || !self.workers_drained()
         {
             return Err("conversation composer autosave work is not drained".to_owned());
         }
-        Ok(self.adapters.take())
+        Ok(&mut self.adapters)
     }
 
     pub(in crate::main_window) fn workers_drained(&self) -> bool {
