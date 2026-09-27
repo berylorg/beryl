@@ -89,18 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 625: Expose Exact Native Confirmation Cleanup Evidence (finished)
+# Phase 626: Release Proven-Clean Failed Confirmation Attempts (finished)
 
-GPUI control cleanup evidence now shares the exact native owner-release boundary. All six native
-tests passed against canonical pins (`d4d064fc-fc72-4d47-acb8-d06260f5726f`), with independent
-lifecycle review, all three widget checks and the default app library check. Published GPUI
-`49db3ce857` and widget/Beryl pins preserve one canonical GPUI dependency.
-
-# Phase 626: Release Proven-Clean Failed Confirmation Attempts (pending)
-
-Use exact native cleanup evidence in the running owner to release only proven-clean failed dialog
-operations, restore logical focus and permit a fresh explicit attempt. Keep uncertain cleanup
-retained. Verify failure followed by a new native confirmation without shutdown admission.
+The running owner releases failed confirmation slots only with exact native cleanup evidence,
+restores logical focus and permits a fresh activation. Uncertain destruction retains original custody.
+All five native confirmation-owner tests passed (`9e5674b0-804c-4ff3-8447-d11dd1bdcff4`), with
+the default app library check and independent lifecycle review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -124,8 +118,10 @@ worker-owned shutdown observation and its distinct-thread count are accepted in 
 read-only invoking-window snapshot inspection is accepted in phase 623. Next mount confirmation and ordinary
 close/Exit policy through that owner, retaining exact published native destruction custody.
 Preserve separate acceptance boundaries for any missing components before final integration.
-The confirmation custody adapter and exact native cleanup evidence are accepted in phases 624–625.
-Phase 626 consumes that evidence for recoverable failures before ordinary command routing.
+The confirmation custody adapter, exact native cleanup evidence and proven-clean failure recovery
+are accepted in phases 624–626. GPUI `49db3ce857` and published widget pins retain a single canonical
+GPUI graph. Ordinary close/Exit command routing, confirmed-intent work refresh/admission and exact
+published-window teardown remain unmounted; integrate them through the persistent running owner.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

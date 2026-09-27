@@ -35,7 +35,7 @@ fn native_running_confirmation_rejects_membership_aba() {
     run(Choice::MembershipAba);
 }
 #[test]
-fn native_running_confirmation_retains_creation_failure() {
+fn native_running_confirmation_clean_failure_allows_fresh_attempt() {
     run(Choice::OpenFailure);
 }
 #[test]
@@ -107,6 +107,13 @@ fn run(choice: Choice) {
                         })
                         .unwrap()
                         .unwrap();
+                        if choice == Choice::OpenFailure {
+                            main.update(cx, |_, window, cx| {
+                                window.focus(&cx.focus_handle());
+                                assert!(!focus.is_focused(window));
+                            })
+                            .unwrap();
+                        }
                         assert!(
                             owner
                                 .borrow_mut()
@@ -228,7 +235,78 @@ fn run(choice: Choice) {
                                 result,
                                 Ok(Some(ShutdownConfirmationResult::WindowSetChanged))
                             )),
-                            Choice::OpenFailure | Choice::SettlementFailure => {
+                            Choice::OpenFailure => {
+                                assert!(result.is_err());
+                                assert!(
+                                    owner
+                                        .borrow_mut()
+                                        .take_shutdown_confirmation()
+                                        .unwrap()
+                                        .is_none()
+                                );
+                                main.update(cx, |_, window, _| assert!(focus.is_focused(window)))
+                                    .unwrap();
+                                permit.commit(|| ()).unwrap();
+                                restore.validate_lifetime().unwrap();
+                                let job = owner
+                                    .borrow()
+                                    .test_process()
+                                    .services
+                                    .prepare_shutdown_observation()
+                                    .unwrap();
+                                let observation = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        job.collect(&ProjectionCancellationToken::new()).unwrap()
+                                    })
+                                    .await;
+                                cx.update(|app| {
+                                    RunningProcessOwner::begin_shutdown_confirmation(
+                                        &owner,
+                                        invoking,
+                                        ShutdownIntent::ApplicationExit,
+                                        observation,
+                                        app,
+                                    )
+                                })
+                                .unwrap()
+                                .unwrap();
+                                let retry_deadline = Instant::now() + Duration::from_secs(5);
+                                loop {
+                                    if unsafe { GetWindow(native, GW_ENABLEDPOPUP) }
+                                        .is_ok_and(|dialog| dialog != native)
+                                    {
+                                        break;
+                                    }
+                                    assert!(
+                                        Instant::now() < retry_deadline,
+                                        "fresh dialog did not appear"
+                                    );
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(10))
+                                        .await;
+                                }
+                                RunningProcessOwner::cancel_shutdown_confirmation(&owner).unwrap();
+                                loop {
+                                    let result =
+                                        owner.borrow_mut().take_shutdown_confirmation().unwrap();
+                                    if let Some(result) = result {
+                                        assert!(matches!(
+                                            result,
+                                            ShutdownConfirmationResult::Cancelled
+                                        ));
+                                        break;
+                                    }
+                                    assert!(
+                                        Instant::now() < retry_deadline,
+                                        "fresh cancellation did not settle"
+                                    );
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(10))
+                                        .await;
+                                }
+                            }
+                            Choice::SettlementFailure => {
                                 assert!(result.is_err());
                                 assert!(owner.borrow_mut().take_shutdown_confirmation().is_err());
                                 assert!(

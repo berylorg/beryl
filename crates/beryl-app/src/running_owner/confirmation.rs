@@ -119,9 +119,10 @@ impl RunningProcessOwner {
             .map_err(|error| error.to_string())?
             .map_err(|error| error.to_string())?;
         let identity = Rc::new(());
+        let control = Rc::new(control);
         owner.borrow_mut().confirmation = Some(RunningConfirmation {
             identity: identity.clone(),
-            control: Rc::new(control),
+            control: control.clone(),
             context: ShutdownConfirmationContext {
                 invoking,
                 intent,
@@ -133,7 +134,9 @@ impl RunningProcessOwner {
         let retained = owner.clone();
         app.spawn(async move |cx| {
             let result = completion.await.map_err(|error| error.to_string());
-            if matches!(result, Ok(WindowsNativeConfirmationOutcome::Cancelled)) {
+            if matches!(result, Ok(WindowsNativeConfirmationOutcome::Cancelled))
+                || (result.is_err() && control.cleanup_settled())
+            {
                 if let Some(focus) = focus {
                     let _ = window.update(cx, |_, window, _| window.focus(&focus));
                 }
@@ -186,8 +189,16 @@ impl RunningProcessOwner {
         let Some(result) = &operation.settled else {
             return Ok(None);
         };
-        // A native error may lack destruction evidence. Keep its original custody.
-        let outcome = result.as_ref().map_err(Clone::clone)?;
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                let error = error.clone();
+                if operation.control.cleanup_settled() {
+                    self.confirmation.take();
+                }
+                return Err(error);
+            }
+        };
         let valid = self
             .process
             .services
