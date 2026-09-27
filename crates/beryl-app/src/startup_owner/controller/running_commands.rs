@@ -16,37 +16,49 @@ impl RunningExitCommands {
     }
 
     pub(crate) async fn next_exit(&mut self) -> RunningExitRequest {
-        std::future::poll_fn(|cx| {
-            let mut state = self.0.0.borrow_mut();
-            if state.exit && state.active_exit.is_none() {
-                state.exit = false;
-                let request = Rc::new(());
-                state.active_exit = Some(request.clone());
-                state.wake = None;
-                return Poll::Ready(RunningExitRequest(request));
-            }
-            state.wake = Some(cx.waker().clone());
-            Poll::Pending
-        })
-        .await
+        std::future::poll_fn(|cx| self.poll_exit(cx)).await
+    }
+
+    pub(crate) fn poll_exit(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<RunningExitRequest> {
+        let mut state = self.0.0.borrow_mut();
+        if state.exit && state.active_exit.is_none() {
+            state.exit = false;
+            let request = Rc::new(());
+            state.active_exit = Some(request.clone());
+            state.wake = None;
+            return Poll::Ready(RunningExitRequest(request));
+        }
+        state.wake = Some(cx.waker().clone());
+        Poll::Pending
     }
 
     pub(crate) fn finish_exit(&mut self, request: &RunningExitRequest) -> bool {
+        let Ok(wake) = self.finish_exit_deferred_wake(request) else {
+            return false;
+        };
+        if let Some(wake) = wake {
+            wake.wake();
+        }
+        true
+    }
+
+    pub(crate) fn finish_exit_deferred_wake(
+        &mut self,
+        request: &RunningExitRequest,
+    ) -> Result<Option<Waker>, ()> {
         let mut state = self.0.0.borrow_mut();
         if !state
             .active_exit
             .as_ref()
             .is_some_and(|active| Rc::ptr_eq(active, &request.0))
         {
-            return false;
+            return Err(());
         }
         state.active_exit = None;
-        let wake = state.wake.take();
-        drop(state);
-        if let Some(wake) = wake {
-            wake.wake();
-        }
-        true
+        Ok(state.wake.take())
     }
 }
 

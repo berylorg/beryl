@@ -1,5 +1,13 @@
 use crate::running_owner::{RunningProcessOwner, StartupCleanup};
 
+mod exit_delivery {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_delivery.rs"
+    ));
+}
+
 #[test]
 fn native_running_owner_without_auxiliary_is_settled() {
     run(false, false);

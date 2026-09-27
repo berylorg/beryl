@@ -15,7 +15,7 @@ mod controller;
 mod surface;
 mod worker;
 
-pub(crate) use controller::RunningExitCommands;
+pub(crate) use controller::{RunningExitCommands, RunningExitRequest};
 pub(crate) use controller::{StartedProcess, StartupCommands, StartupCompletion, start};
 pub(crate) use surface::OwnedStartupSurface;
 

@@ -530,6 +530,15 @@ by the executable composition root.
   Duplicates during that request cannot become a later attempt; ending the exact request after
   cancellation or failure requires a fresh activation for another attempt. A foreign or stale
   completion cannot end a successor request. Wake delivery occurs outside command-state borrows.
+  The running owner may arm one detached GUI wait for that consumer. The wait retains the complete
+  owner and releases every owner borrow between polls. A second pending wait is refused without
+  replacing its callback. Delivery clears the wait slot before calling the required GUI callback
+  with the move-only exact request, outside owner borrows; the callback may arm its successor.
+  The active request continues coalescing duplicate activations until its exact explicit completion.
+  Completion wakes a pending waiter only after both command-state and owner borrows have ended.
+  The policy consumer retains the request until cancellation or failure has coherently settled;
+  dropping it does not complete it. Waiting or delivery alone selects no invoking window, observes
+  no work, admits no barrier and grants no quit authority.
 
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.

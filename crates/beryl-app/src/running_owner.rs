@@ -11,6 +11,7 @@ use crate::{
 
 mod admission;
 mod confirmation;
+mod exit_delivery;
 mod initial_observation;
 mod observation;
 mod progress;
@@ -34,6 +35,7 @@ pub(crate) struct RunningProcessOwner {
     shutdown: Option<admission::RunningShutdownAttempt>,
     progress: Option<progress::RunningShutdownProgress>,
     observing_initial_work: bool,
+    waiting_for_exit: bool,
 }
 
 pub(crate) struct RunningProcess {
@@ -59,6 +61,7 @@ impl RunningProcessOwner {
             shutdown: None,
             progress: None,
             observing_initial_work: false,
+            waiting_for_exit: false,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {
@@ -109,6 +112,7 @@ impl RunningProcessOwner {
         assert_ne!(self.startup_cleanup, StartupCleanup::Pending);
         assert!(self.progress.is_none());
         assert!(!self.observing_initial_work);
+        assert!(!self.waiting_for_exit);
         StartedProcess {
             services: self.process.services.expect("services retained on GUI"),
             windows: self.process.windows,
