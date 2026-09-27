@@ -29,6 +29,8 @@ mod recovery_close_worker;
 mod recovery_configurator;
 #[path = "resident_close_flush/recovery_mount_service.rs"]
 mod recovery_mount_service;
+#[path = "resident_close_flush/recovery_mutation_failure.rs"]
+mod recovery_mutation_failure;
 #[path = "resident_close_flush/recovery_native_control.rs"]
 mod recovery_native_control;
 #[path = "resident_close_flush/recovery_native_lineage.rs"]

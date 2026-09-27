@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 725: Detach The Recovery-Fenced Resident Clipboard Writer (finished)
+# Phase 726: Transfer Recovery-Fenced Resident Failure Custody (finished)
 
-Accepted exact, drained clipboard callback ownership transfer through shared resident recovery
-admission, preserving the editor and restoration facts. Library checking, 44 focused tests
-(3cc32e7c-22c0-489a-8079-0503b690b7c1) and independent lifecycle review passed. Coordinated
+Accepted exact, drained ownership transfer of retained mutation failure without interpreting opaque
+sources or changing resident presentation and gates. Library checking, 45 focused tests
+(a57db0a3-2e29-4c58-995a-1855aa9d5139) and independent lifecycle review passed. Coordinated
 whole-resident retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
@@ -113,7 +113,8 @@ unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage wor
 evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
 native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
 detached mount drop behavior. Phase 724 supplies native-lineage control detachment and refresh-timer
-cancellation. Phase 725 supplies resident clipboard callback detachment.
+cancellation. Phase 725 supplies resident clipboard callback detachment and phase 726 transfers
+retained mutation-failure custody.
 Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 

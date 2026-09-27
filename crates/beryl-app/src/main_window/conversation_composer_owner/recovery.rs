@@ -71,6 +71,28 @@ impl MainWindowConversationComposer {
         Ok(self.clipboard_writer.take())
     }
 
+    pub fn detach_recovery_mutation_failure(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>>, String>
+    {
+        self.validate_recovery_detachment(close, cx)?;
+        Ok(self.last_mutation_admission_failure.take())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_set_mutation_admission_failure(
+        &mut self,
+        failure: Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>,
+    ) {
+        assert!(matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::Live
+        ));
+        self.last_mutation_admission_failure = Some(failure);
+    }
+
     fn validate_recovery_detachment(
         &self,
         close: MainWindowConversationComposerCloseTicket,
