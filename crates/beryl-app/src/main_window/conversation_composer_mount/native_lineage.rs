@@ -286,7 +286,7 @@ impl MainWindowConversationComposerMount {
                 self.start_native_lineage_validation(key, selection, current_seed, window, cx);
                 return Ok(());
             }
-            let config = match (self.configurator)(selection) {
+            let config = match self.configure_selection(selection) {
                 Ok(config) => config,
                 Err(error) => return self.fail_native_lineage_mount(error, window, cx),
             };

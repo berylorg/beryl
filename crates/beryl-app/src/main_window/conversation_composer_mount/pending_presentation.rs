@@ -21,7 +21,7 @@ impl MainWindowConversationComposerMount {
             .pending_identity(receipt)
             .ok_or_else(|| "pending composer activation receipt is stale".to_owned())?;
         if self.pending_presentation.is_none() {
-            let config = match (self.configurator)(selection) {
+            let config = match self.configure_selection(selection) {
                 Ok(config) => config,
                 Err(error) => {
                     self.retire_failed_pending(receipt, cx)?;

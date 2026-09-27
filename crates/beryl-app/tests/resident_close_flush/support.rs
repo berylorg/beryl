@@ -94,6 +94,15 @@ pub fn mounted<'a>(
     name: &str,
     seed: u8,
 ) -> (Mounted, &'a mut gpui::VisualTestContext) {
+    mounted_with_configurator(cx, name, seed, Box::new(configure))
+}
+
+pub fn mounted_with_configurator<'a>(
+    cx: &'a mut gpui::TestAppContext,
+    name: &str,
+    seed: u8,
+    configurator: beryl_app::main_window::MainWindowConversationComposerConfigurator,
+) -> (Mounted, &'a mut gpui::VisualTestContext) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let fixture = Fixture::new(name, seed);
     let claim = fixture.claims().0;
@@ -124,7 +133,7 @@ pub fn mounted<'a>(
         let mount = cx.new(|cx| {
             MainWindowConversationComposerMount::new(
                 mounted_service,
-                Box::new(configure),
+                configurator,
                 mounted_seals,
                 submission_source(),
                 window,
@@ -151,7 +160,7 @@ pub fn mounted<'a>(
     )
 }
 
-fn configure(
+pub fn configure(
     selection: MainWindowComposerSelectionIdentity,
 ) -> Result<MainWindowConversationComposerConfig, String> {
     let mut config = widget_support::widget_config(

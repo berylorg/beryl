@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 712: Detach Fenced Mount Publication Adapters (finished)
+# Phase 713: Detach Fenced Mount Configuration Callback (finished)
 
-Accepted exact recovery-fenced asset and marker adapter handoff with idle/no-task admission,
-single-transfer custody, unchanged resident presentation and unavailable detached publication.
-Library checking, all 54 resident-close, mounted-submission and composer-mount tests
-(`afcac04d-0124-4a84-b5d5-139e0073c7d8`) and independent lifecycle review passed.
-Whole-mount retirement, worker draining and fresh binding remain separate.
+Accepted exact recovery-fenced configurator transfer, preserved callback custody on refusal,
+single transfer and unavailable detached configuration, with unchanged resident and close gate.
+Library checking, all 42 resident-close and composer-mount tests
+(`2b935530-b833-4c1d-9689-0a1ee65667e2`) and independent lifecycle review passed.
+Whole-mount service retirement and fresh rebinding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -108,7 +108,7 @@ substitute native-lineage unmounting or startup cleanup for resident retirement 
 supplies the consuming host primitive, phase 708 the enclosing slot primitive and phase 709 the
 exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
 Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
-adapter handoff. Worker-reference draining, configurator and mount service detachment, and fresh
+adapter handoff; phase 713 supplies configurator detachment. Worker-reference draining, mount service detachment, and fresh
 widget bindings remain here. Mount drop still follows ordinary close cleanup and cannot substitute
 for the required recovery retirement boundary.
 

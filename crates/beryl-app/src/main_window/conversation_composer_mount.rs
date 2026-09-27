@@ -154,7 +154,7 @@ pub struct MainWindowNativeLineageDisposalDiagnostics {
 
 pub struct MainWindowConversationComposerMount {
     service: Arc<MainWindowConversationComposerService>,
-    configurator: MainWindowConversationComposerConfigurator,
+    configurator: Option<MainWindowConversationComposerConfigurator>,
     contribution: Option<Entity<MainWindowConversationComposer>>,
     pending_presentation: Option<MainWindowConversationComposerPendingPresentation>,
     autosave: autosave::MainWindowConversationComposerAutosave,
@@ -375,7 +375,7 @@ impl MainWindowConversationComposerMount {
     ) -> Self {
         Self {
             service,
-            configurator,
+            configurator: Some(configurator),
             contribution: Some(contribution),
             pending_presentation: None,
             autosave: autosave::MainWindowConversationComposerAutosave::new(assets, marker_seals),
