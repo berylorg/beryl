@@ -182,7 +182,7 @@ impl MainWindowConversationComposer {
             pending_realizer: None,
             residency_bound,
             activation_seeds,
-            clipboard_writer,
+            clipboard_writer: Some(clipboard_writer),
             proof_limits,
             clipboard_limits,
             mutation_limits,

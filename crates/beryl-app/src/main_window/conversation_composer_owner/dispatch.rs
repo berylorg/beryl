@@ -792,7 +792,7 @@ impl MainWindowConversationComposer {
             }
             MainWindowComposerDispatchOutcome::ClipboardWrite(write) => {
                 let key = write.key();
-                let outcome = (self.clipboard_writer)(write.text(), cx);
+                let outcome = self.write_clipboard(write.text(), cx);
                 input
                     .update(cx, |input, cx| {
                         input.settle_clipboard_write(key, outcome, cx)

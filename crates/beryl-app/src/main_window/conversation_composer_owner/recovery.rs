@@ -29,6 +29,22 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(super) fn write_clipboard(&mut self, text: &str, cx: &mut App) -> ClipboardWriteOutcome {
+        match self.clipboard_writer.as_mut() {
+            Some(writer) => writer(text, cx),
+            None => ClipboardWriteOutcome::Failed,
+        }
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_set_clipboard_writer(&mut self, writer: ComposerClipboardWriter) {
+        assert!(matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::Live
+        ));
+        self.clipboard_writer = Some(writer);
+    }
+
     pub(super) fn bound_service(
         &self,
     ) -> Result<Arc<MainWindowConversationComposerService>, String> {
@@ -42,6 +58,24 @@ impl MainWindowConversationComposer {
         close: MainWindowConversationComposerCloseTicket,
         cx: &mut Context<Self>,
     ) -> Result<Option<Arc<MainWindowConversationComposerService>>, String> {
+        self.validate_recovery_detachment(close, cx)?;
+        Ok(self.service.take())
+    }
+
+    pub fn detach_recovery_clipboard_writer(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<ComposerClipboardWriter>, String> {
+        self.validate_recovery_detachment(close, cx)?;
+        Ok(self.clipboard_writer.take())
+    }
+
+    fn validate_recovery_detachment(
+        &self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &Context<Self>,
+    ) -> Result<(), String> {
         if !matches!(
             self.phase,
             MainWindowConversationComposerPhase::RecoveryFenced
@@ -52,7 +86,7 @@ impl MainWindowConversationComposer {
                 .is_some_and(|snapshot| snapshot.close == close)
             || self.window_close != Some(close)
         {
-            return Err("resident service detachment requires its exact recovery fence".to_owned());
+            return Err("resident detachment requires its exact recovery fence".to_owned());
         }
         if self.active_flight.is_some()
             || self.pending_dispatch.is_some()
@@ -67,9 +101,9 @@ impl MainWindowConversationComposer {
             || self.startup_release_completion.is_some()
             || !self.input.read(cx).is_quiescent()
         {
-            return Err("resident service detachment is waiting for editor work".to_owned());
+            return Err("resident detachment is waiting for editor work".to_owned());
         }
-        Ok(self.service.take())
+        Ok(())
     }
 
     pub fn recovery_snapshot(&self) -> Option<&MainWindowComposerRecoverySnapshot> {

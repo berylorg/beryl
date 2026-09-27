@@ -135,7 +135,7 @@ pub struct MainWindowConversationComposer {
     pending_realizer: Option<MainWindowConversationComposerPendingRealizer>,
     residency_bound: MainWindowComposerResidencyBound,
     activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
-    clipboard_writer: ComposerClipboardWriter,
+    clipboard_writer: Option<ComposerClipboardWriter>,
     proof_limits: super::MainWindowComposerSuccessorProofLimits,
     clipboard_limits: ClipboardLimits,
     mutation_limits: MutationLimits,
@@ -544,7 +544,7 @@ impl MainWindowConversationComposer {
             }
             clipboard::PropagatedClipboardAction::Write(write) => {
                 let key = write.key();
-                let outcome = (self.clipboard_writer)(write.text(), cx);
+                let outcome = self.write_clipboard(write.text(), cx);
                 let completion = self
                     .propagated_clipboard
                     .as_mut()

@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 724: Detach The Recovery-Fenced Native Lineage Control (finished)
+# Phase 725: Detach The Recovery-Fenced Resident Clipboard Writer (finished)
 
-Accepted exact, drained native-lineage control transfer, refresh-timer cancellation and rejection
-of late attachment while retaining the fenced editor and its restoration facts. Library checking,
-56 focused tests (b2a61592-1b9a-4fd2-bf90-e23a6004efde) and independent lifecycle review passed.
-Coordinated whole-mount retirement and fresh binding remain separate.
+Accepted exact, drained clipboard callback ownership transfer through shared resident recovery
+admission, preserving the editor and restoration facts. Library checking, 44 focused tests
+(3cc32e7c-22c0-489a-8079-0503b690b7c1) and independent lifecycle review passed. Coordinated
+whole-resident retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -113,7 +113,8 @@ unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage wor
 evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
 native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
 detached mount drop behavior. Phase 724 supplies native-lineage control detachment and refresh-timer
-cancellation. Coordinated retirement of all remaining generation-bound handles
+cancellation. Phase 725 supplies resident clipboard callback detachment.
+Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)

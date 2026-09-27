@@ -17,6 +17,8 @@ mod mutation;
 mod recovery;
 #[path = "resident_close_flush/recovery_autosave.rs"]
 mod recovery_autosave;
+#[path = "resident_close_flush/recovery_clipboard.rs"]
+mod recovery_clipboard;
 #[path = "resident_close_flush/recovery_close_cleanup.rs"]
 mod recovery_close_cleanup;
 #[path = "resident_close_flush/recovery_close_completion.rs"]
