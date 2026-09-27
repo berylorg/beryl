@@ -19,7 +19,9 @@ use std::{
 };
 
 mod running_commands;
-pub(crate) use running_commands::{RunningExitCommands, RunningExitRequest, RunningWindowExit};
+pub(crate) use running_commands::{
+    RunningExitCommands, RunningExitGate, RunningExitRequest, RunningWindowExit,
+};
 
 #[derive(Clone)]
 enum Stage {
@@ -38,6 +40,7 @@ struct Commands {
     retry: Option<StartupAttempt>,
     wake: Option<Waker>,
     active_exit: Option<Rc<()>>,
+    exit_gates: running_commands::RunningExitGates,
 }
 
 #[derive(Clone)]
@@ -53,7 +56,9 @@ impl StartupCommands {
         if invoking.is_some() && !matches!(state.stage, Stage::Running) {
             return;
         }
-        if matches!(state.stage, Stage::Running) && state.active_exit.is_some() {
+        if matches!(state.stage, Stage::Running)
+            && (state.active_exit.is_some() || state.exit_gates.disabled_reason().is_some())
+        {
             return;
         }
         if !state.exit {
@@ -152,6 +157,7 @@ pub(crate) fn start(
         retry: None,
         wake: None,
         active_exit: None,
+        exit_gates: Default::default(),
     })));
     let owner = Controller {
         configuration: Arc::new(configuration),

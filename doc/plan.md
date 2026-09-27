@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 662: Mount The Exit Waiting Presentation (finished)
+# Phase 663: Gate Running Exit Activations Without Deferred Replay (finished)
 
-The Exit toolbar position now shows its disabled unavailable/startup explanation or the admitted
-shutdown gate's `Exiting…` loading presentation and exact waiting tooltip. Both labels reserve
-stable geometry using the current font. Focused GUI verification passed all five cases
-(`d2867dcf-13f6-4929-99ad-ec15661dd1b7`), with the default library check, formatting and independent
-semantic review passing. Enabled routing and final teardown remain pending.
+Running Exit producers now share independent availability gates and disabled explanations.
+Blocked activations cannot queue or wake; clearing gates preserves other gates and requires fresh
+activation. Accepted requests and startup cancellation retain their custody. All 13 focused command
+and native delivery tests passed (`1979e2e2-998d-416c-865d-4f16db94a218`), as did the default library
+check, formatting and independent semantic review. Feature-state installation and toolbar routing
+remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -177,6 +178,8 @@ Phase 659 supplies admitted-only installation across the published set; phase 66
 proven-reopening release. Phase 661 connects both to exact-request Exit progress. Remaining
 visible barrier controls and ordinary Exit mounting stay pending. Phase 662 mounts the disabled
 Exit waiting presentation; enabled routing and final teardown remain pending.
+Phase 663 supplies independent shared command availability gates without deferred replay;
+installing current feature gates and exposing enabled toolbar routing remain pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

@@ -1,5 +1,43 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+pub(crate) enum RunningExitGate {
+    Unavailable,
+    SettingsReconciliation,
+    HomeUnavailable,
+}
+
+#[derive(Default)]
+pub(super) struct RunningExitGates {
+    unavailable: bool,
+    settings_reconciliation: bool,
+    home_unavailable: bool,
+}
+
+impl RunningExitGates {
+    fn set(&mut self, gate: RunningExitGate, blocked: bool) {
+        *match gate {
+            RunningExitGate::Unavailable => &mut self.unavailable,
+            RunningExitGate::SettingsReconciliation => &mut self.settings_reconciliation,
+            RunningExitGate::HomeUnavailable => &mut self.home_unavailable,
+        } = blocked;
+    }
+
+    pub(super) fn disabled_reason(&self) -> Option<&'static str> {
+        if self.home_unavailable {
+            Some(
+                "The Beryl home store is unavailable. See the Beryl-home failure notice for automatic recovery.",
+            )
+        } else if self.settings_reconciliation {
+            Some("Application Exit is waiting for Settings reconciliation.")
+        } else if self.unavailable {
+            Some("Application Exit is not available.")
+        } else {
+            None
+        }
+    }
+}
+
 pub(crate) struct RunningExitCommands(StartupCommands);
 
 pub(crate) struct RunningExitRequest {
@@ -24,12 +62,20 @@ pub(crate) struct RunningWindowExit {
 }
 
 impl RunningWindowExit {
+    pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
+        self.commands.0.borrow().exit_gates.disabled_reason()
+    }
+
     pub(crate) fn request_exit(&self) {
         self.commands.request_exit_from(Some(self.invoking));
     }
 }
 
 impl RunningExitCommands {
+    pub(crate) fn set_gate(&self, gate: RunningExitGate, blocked: bool) {
+        self.0.0.borrow_mut().exit_gates.set(gate, blocked);
+    }
+
     pub(super) fn new(commands: StartupCommands) -> Self {
         assert!(matches!(commands.0.borrow().stage, Stage::Running));
         Self(commands)

@@ -38,6 +38,23 @@ fn run_delivery(pending: bool, unavailable: bool) {
                     let owner = RunningProcessOwner::start(running, app);
                     assert!(owner.borrow().window_exit_command(absent, app).is_err());
                     let window_command = owner.borrow().window_exit_command(invoking, app).unwrap();
+                    owner
+                        .borrow()
+                        .set_exit_gate(startup_owner::RunningExitGate::HomeUnavailable, true);
+                    assert!(
+                        window_command
+                            .disabled_reason()
+                            .unwrap()
+                            .contains("Beryl-home failure notice")
+                    );
+                    window_command.request_exit();
+                    producer.request_exit();
+                    assert!(!owner.borrow().exit_requested());
+                    owner
+                        .borrow()
+                        .set_exit_gate(startup_owner::RunningExitGate::HomeUnavailable, false);
+                    assert_eq!(window_command.disabled_reason(), None);
+                    assert!(!owner.borrow().exit_requested());
                     if pending {
                         producer.request_exit();
                     }

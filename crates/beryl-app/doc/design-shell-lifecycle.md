@@ -600,6 +600,20 @@ by the executable composition root.
   also validates its published member. These checks grant no close lease or execution fence;
   confirmation and admission must still validate their original window and work evidence.
 
+- The running Exit channel shares independent availability gates across all producer clones.
+  The process owner sets and clears unavailable-routing, Settings-reconciliation and home-store
+  failure gates from their owning feature state. Home failure takes explanation precedence over
+  Settings reconciliation, then unavailable routing. A gate blocks new running-stage activations,
+  including retained startup producers, before changing pending origin or waking a consumer.
+  Clearing one gate preserves the others and neither creates an intent nor wakes a waiter.
+  Already accepted pending or active requests retain their original custody and completion rules;
+  startup-stage cancellation and deferred intents accepted before handoff remain unchanged.
+  This channel primitive begins with no feature gates and supplies no toolbar mounting or readiness
+  authority. The shell remains independently unavailable until ordinary routing is mounted, and
+  that mount must install current feature gates before exposing an enabled command. Availability
+  projection reads the same shared gate state used by activation; service admission still revalidates
+  current evidence. Gate changes alone never reopen services, release shutdown custody or quit.
+
 - Exit work classification consumes a settled initial observation result while retaining the exact
   active request with its caller. It revalidates the original published invoking window and refuses
   competing observation, confirmation or shutdown custody. Failed or cancelled collection never

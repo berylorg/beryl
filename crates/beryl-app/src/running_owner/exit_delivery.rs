@@ -1,10 +1,14 @@
 use super::RunningProcessOwner;
-use crate::startup_owner::{RunningExitRequest, RunningWindowExit};
+use crate::startup_owner::{RunningExitGate, RunningExitRequest, RunningWindowExit};
 use beryl_model::WindowId;
 use gpui::App;
 use std::{cell::RefCell, rc::Rc};
 
 impl RunningProcessOwner {
+    pub(crate) fn set_exit_gate(&self, gate: RunningExitGate, blocked: bool) {
+        self.process.commands.set_gate(gate, blocked);
+    }
+
     pub(crate) fn window_exit_command(
         &self,
         invoking: WindowId,

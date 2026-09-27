@@ -13,6 +13,7 @@ fn producer() -> StartupCommands {
         retry: None,
         wake: None,
         active_exit: None,
+        exit_gates: Default::default(),
     })))
 }
 
@@ -177,4 +178,134 @@ fn deferred_exit_wakes_outside_borrow_and_survives_cancelled_wait() {
     assert!(running.finish_exit(&request));
     assert!(!running.exit_requested());
     REENTRANT.with(|slot| *slot.borrow_mut() = None);
+}
+
+#[test]
+fn running_gates_share_precedence_and_clear_independently() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    let command = running.window_command(WindowId::from_bytes([35; 16]));
+    let retained = command.clone();
+    for mask in 0..8 {
+        running.set_gate(RunningExitGate::Unavailable, mask & 1 != 0);
+        running.set_gate(RunningExitGate::SettingsReconciliation, mask & 2 != 0);
+        running.set_gate(RunningExitGate::HomeUnavailable, mask & 4 != 0);
+        let expected = if mask & 4 != 0 {
+            Some(
+                "The Beryl home store is unavailable. See the Beryl-home failure notice for automatic recovery.",
+            )
+        } else if mask & 2 != 0 {
+            Some("Application Exit is waiting for Settings reconciliation.")
+        } else if mask & 1 != 0 {
+            Some("Application Exit is not available.")
+        } else {
+            None
+        };
+        assert_eq!(command.disabled_reason(), expected);
+        assert_eq!(retained.disabled_reason(), expected);
+        retained.request_exit();
+        assert_eq!(running.exit_requested(), mask == 0);
+        if mask == 0 {
+            let request = take(&mut running);
+            assert!(running.finish_exit(&request));
+        }
+    }
+    running.set_gate(RunningExitGate::HomeUnavailable, false);
+    running.set_gate(RunningExitGate::HomeUnavailable, false);
+    assert_eq!(
+        retained.disabled_reason(),
+        Some("Application Exit is waiting for Settings reconciliation.")
+    );
+    assert!(!running.exit_requested());
+}
+
+#[test]
+fn disabled_activations_and_reopening_neither_queue_nor_wake() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    let command = running.window_command(WindowId::from_bytes([36; 16]));
+    let observer = Arc::new(ObserveWake(std::sync::atomic::AtomicUsize::new(0)));
+    let wake = Waker::from(observer.clone());
+    REENTRANT.with(|slot| *slot.borrow_mut() = Some(producer.clone()));
+    assert!(
+        running
+            .poll_exit(&mut Context::from_waker(&wake))
+            .is_pending()
+    );
+    running.set_gate(RunningExitGate::SettingsReconciliation, true);
+    command.request_exit();
+    producer.request_exit();
+    producer.clone().request_exit();
+    assert!(!running.exit_requested());
+    assert!(producer.0.borrow().exit_window.is_none());
+    assert_eq!(observer.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    running.set_gate(RunningExitGate::SettingsReconciliation, false);
+    assert!(!running.exit_requested());
+    assert_eq!(observer.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(
+        running
+            .poll_exit(&mut Context::from_waker(&wake))
+            .is_pending()
+    );
+    command.request_exit();
+    assert_eq!(observer.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let request = take(&mut running);
+    assert_eq!(request.invoking_window(), Some(command.invoking));
+    assert!(running.finish_exit(&request));
+    REENTRANT.with(|slot| *slot.borrow_mut() = None);
+}
+
+#[test]
+fn gates_preserve_pending_origin_and_active_request_until_exact_completion() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    let first = running.window_command(WindowId::from_bytes([37; 16]));
+    let second = running.window_command(WindowId::from_bytes([38; 16]));
+    first.request_exit();
+    running.set_gate(RunningExitGate::HomeUnavailable, true);
+    second.request_exit();
+    producer.request_exit();
+    let request = take(&mut running);
+    assert_eq!(request.invoking_window(), Some(first.invoking));
+    running.set_gate(RunningExitGate::HomeUnavailable, false);
+    second.request_exit();
+    running.set_gate(RunningExitGate::Unavailable, true);
+    assert!(running.finish_exit(&request));
+    second.request_exit();
+    assert!(!running.exit_requested());
+    running.set_gate(RunningExitGate::Unavailable, false);
+    assert!(!running.exit_requested());
+    second.request_exit();
+    let successor = take(&mut running);
+    assert_eq!(successor.invoking_window(), Some(second.invoking));
+    assert!(!running.finish_exit(&request));
+    assert!(running.finish_exit(&successor));
+}
+
+#[test]
+fn running_gates_do_not_suppress_startup_cancellation_or_accepted_handoff() {
+    let producer = producer();
+    producer
+        .0
+        .borrow_mut()
+        .exit_gates
+        .set(RunningExitGate::Unavailable, true);
+    let cancellation = MainWindowNativeRestoreSetCancellation::test_with_waiter(Waker::noop());
+    producer.0.borrow_mut().stage = Stage::Native(cancellation.clone());
+    producer.request_exit();
+    assert!(cancellation.is_cancelled());
+    let mut running = handoff(&producer);
+    let command = running.window_command(WindowId::from_bytes([39; 16]));
+    command.request_exit();
+    let request = take(&mut running);
+    assert_eq!(request.invoking_window(), None);
+    assert!(running.finish_exit(&request));
+    producer.request_exit();
+    assert!(!running.exit_requested());
+    running.set_gate(RunningExitGate::Unavailable, false);
+    assert!(!running.exit_requested());
+    producer.request_exit();
+    let request = take(&mut running);
+    assert_eq!(request.invoking_window(), None);
+    assert!(running.finish_exit(&request));
 }
