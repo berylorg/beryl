@@ -89,22 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 699: Settle Retained Interrupted Exit Evidence Through Candidate Recovery (finished)
+# Phase 700: Hand Interrupted Exit Custody To Candidate Settlement Workers (finished)
 
-Accepted transferable outcome settlement through exact candidate reconciliation and fresh complete
-state validation. Original outcomes and candidate results remain retained; known outcomes never
-redispatch, and foreign, stale or uncertain state refuses. Existing 34 focused pure/native tests
-passed; both new candidate tests passed after fixture correction
-(`408403c7-9407-47ed-963a-ada6e2bc9269`). Final library check and independent review passed.
-The GUI owner adapter was removed during review; worker handoff is the next explicit boundary.
-
-# Phase 700: Hand Interrupted Exit Custody To Candidate Settlement Workers (pending)
-
-Connect supervisor-retained original outcomes to the candidate settlement primitive through exact
-request-tagged worker admission and return. Preserve cancellation and all candidate/outcome custody
-through refusal, unwind and stale completion; perform no blocking storage work while borrowing the
-GUI owner. Keep the attempt fenced until worker settlement returns. Verify native owner admission
-and failure paths and independently review lifecycle composition.
+Accepted exact-request worker admission with retained original outcome and candidate return slots.
+Refusal, duplicate admission, stale request identity and unwind preserve custody and cancellation;
+storage settlement runs outside GUI owner borrows. Eight native tests passed
+(`2e880b00-9fb4-40b3-bd61-6eba5bc61581`); library check and independent lifecycle review passed.
+Resume composition and replacement publication remain pending.
 
 # Phase 701: Compose Interrupted Exit Resume Settlement (pending)
 

@@ -7,6 +7,7 @@ use std::panic::AssertUnwindSafe;
 mod readiness;
 mod reconciliation;
 mod recovery;
+pub(crate) use recovery::InterruptedExitCandidate;
 pub(super) use recovery::InterruptedExitRecovery;
 
 #[derive(Debug)]

@@ -1,9 +1,13 @@
 use super::*;
 use crate::startup_owner::RunningExitRequest;
 
+mod settlement;
+pub(crate) use settlement::InterruptedExitCandidate;
+
 pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,
-    session: Option<RunningShutdownSession>,
+    session: Rc<RefCell<Option<RunningShutdownSession>>>,
+    settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
 }
 
 impl RunningProcessOwner {
@@ -19,7 +23,8 @@ impl RunningProcessOwner {
         }
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
-            session: None,
+            session: Rc::new(RefCell::new(None)),
+            settlement: Rc::new(RefCell::new(None)),
         });
     }
 
@@ -36,7 +41,7 @@ impl RunningProcessOwner {
         {
             return Err("Interrupted Exit request changed".into());
         }
-        if recovery.session.is_some() {
+        if recovery.session.borrow().is_some() || recovery.settlement.borrow().is_some() {
             return Err("Interrupted Exit session is already retained".into());
         }
         if !matches!(
@@ -55,12 +60,17 @@ impl RunningProcessOwner {
             .unwrap()
             .session
             .replace(RunningShutdownSession::RecoveryOwned);
-        self.interrupted_exit.as_mut().unwrap().session = session;
+        *self.interrupted_exit.as_ref().unwrap().session.borrow_mut() = session;
         Ok(())
     }
 
-    pub(crate) fn interrupted_exit_session(&self) -> Option<&RunningShutdownSession> {
-        self.interrupted_exit.as_ref()?.session.as_ref()
+    pub(crate) fn interrupted_exit_session(
+        &self,
+    ) -> Option<std::cell::Ref<'_, RunningShutdownSession>> {
+        std::cell::Ref::filter_map(self.interrupted_exit.as_ref()?.session.borrow(), |slot| {
+            slot.as_ref()
+        })
+        .ok()
     }
 }
 

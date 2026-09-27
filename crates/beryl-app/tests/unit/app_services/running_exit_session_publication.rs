@@ -43,6 +43,35 @@ fn native_exit_attempt_session_publication_reports_indeterminate() {
     run(Some(FaultPoint::AfterCommitBeforePersist), true);
 }
 
+fn foreign_recovery_candidate() -> (
+    tempfile::TempDir,
+    crate::running_owner::InterruptedExitCandidate,
+) {
+    let directory = support::native_home();
+    let faults = FaultController::new();
+    let mut candidate = HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    BerylState::register(&mut candidate).unwrap();
+    let home = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(home.home_revision().is_err());
+    let candidate = home.recover_same_home().unwrap();
+    let session = BerylState::reacquire_candidate(&candidate)
+        .unwrap()
+        .session();
+    (
+        directory,
+        crate::running_owner::InterruptedExitCandidate { candidate, session },
+    )
+}
+
 fn run(fault: Option<FaultPoint>, consumer: bool) {
     let directory = support::native_home();
     let faults = FaultController::new();
@@ -325,6 +354,47 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                             assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                            let (directory, candidate) = cx.background_executor().spawn(async {
+                                foreign_recovery_candidate()
+                            }).await;
+                            let mut candidate = Some(candidate);
+                            let (sender, receiver) = futures_channel::oneshot::channel();
+                            cx.update(|app| {
+                                assert!(RunningProcessOwner::settle_interrupted_exit_candidate(
+                                    &owner, &foreign, &mut candidate, app, |_, _| panic!("foreign admission")
+                                ).is_err());
+                                assert!(candidate.is_some());
+                                assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
+                                RunningProcessOwner::test_settle_interrupted_exit_candidate(
+                                    &owner, &request, &mut candidate, app,
+                                    move |_, _| { sender.send(()).unwrap(); },
+                                    move || {
+                                        if matches!(fault, Some(FaultPoint::AfterPersist)) {
+                                            panic!("injected settlement unwind");
+                                        }
+                                    },
+                                ).unwrap();
+                                assert!(candidate.is_none());
+                                assert!(owner.borrow().interrupted_exit_session().is_none());
+                                assert!(owner.borrow().interrupted_exit_candidate_result(&request).is_err());
+                                assert!(RunningProcessOwner::settle_interrupted_exit_candidate(
+                                    &owner, &request, &mut candidate, app, |_, _| panic!("duplicate settlement")
+                                ).is_err());
+                                owner.borrow_mut().test_replace_interrupted_exit_request(&foreign);
+                            }).unwrap();
+                            receiver.await.unwrap();
+                            assert!(owner.borrow().interrupted_exit_candidate_result(&request).unwrap_err().contains("request changed"));
+                            owner.borrow_mut().test_replace_interrupted_exit_request(&request);
+                            let result = owner.borrow().interrupted_exit_candidate_result(&request).unwrap_err();
+                            assert!(result.contains(if matches!(fault, Some(FaultPoint::AfterPersist)) { "unwound" } else { "ForeignHome" }));
+                            assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
+                            assert!(owner.borrow().require_shutdown_session_ready().is_err());
+                            assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                            let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+                            cx.background_executor().spawn(async move {
+                                candidate.candidate.abort().close().unwrap();
+                                drop(directory);
+                            }).await;
                         } else {
                             assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
                             assert!(owner.borrow().interrupted_exit_session().is_none());

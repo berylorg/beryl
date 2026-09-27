@@ -46,6 +46,7 @@ pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
+pub(crate) use shutdown_session::InterruptedExitCandidate;
 pub(crate) use shutdown_session::RunningShutdownSession;
 
 #[derive(Debug, PartialEq, Eq)]
