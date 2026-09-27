@@ -2,6 +2,23 @@ use super::*;
 
 impl MainWindowConversationComposerMount {
     #[cfg(feature = "test-faults")]
+    pub fn test_native_disposal_worker(
+        &self,
+        run: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let service = self.service.clone();
+        Box::pin(self.native_disposal_workers.track_future(async move {
+            let _service = service;
+            run.await;
+        }))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_disposal_retained_workers(&self) -> usize {
+        self.native_disposal_workers.retained()
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_pending_cleanup_worker(
         &self,
         run: impl std::future::Future<Output = ()> + Send + 'static,
@@ -145,6 +162,7 @@ impl MainWindowConversationComposerMount {
             || self.native_lineage_validation_task.is_some()
             || self.native_lineage_workers.retained() != 0
             || self.pending_cleanup_workers.retained() != 0
+            || self.native_disposal_workers.retained() != 0
             || self.native_lineage_disposal_active
             || self.native_lineage_disposal_task.is_some()
             || self.native_lineage_disposal_flush.is_some()

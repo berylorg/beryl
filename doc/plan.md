@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 721: Retain Pending Activation Cleanup Resources (finished)
+# Phase 722: Retain Native Disposal Resources (finished)
 
-Accepted failed-pending-activation cleanup custody across queueing, suspension, completion,
-cancellation and unwind. Recovery adapter handoff waits for captured service release while the
-resident snapshot and fences remain intact. Library checking, 50 focused tests
-(2112b5d2-6e87-421d-8120-67ac4597d636) and independent lifecycle review passed. Whole-mount retirement
+Accepted native-disposal resource custody across background work, GUI completion and unmounted
+cleanup, including cancellation and unwind. Recovery adapter handoff waits for captured resource
+release while resident state and fences remain intact. Library checking, 51 focused tests
+(32d214c9-2e60-4dbb-8f02-b96fae6ac185) and independent lifecycle review passed. Whole-mount retirement
 and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
@@ -111,7 +111,8 @@ Phase 711 supplies the resident service-reference handoff and phase 712 the moun
 adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
 handoff. Phases 715–719 supply autosave, submission, close background-worker, close GUI completion and
 unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage worker lifetime
-evidence; phase 721 supplies pending-activation cleanup lifetime evidence. Remaining worker-reference draining, mount service
+evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
+native-disposal lifetime evidence. Remaining worker-reference draining, mount service
 detachment and fresh widget bindings remain here. Mount drop still follows ordinary close cleanup
 and cannot substitute for the required recovery retirement boundary.
 

@@ -45,3 +45,6 @@ mod shutdown;
 mod slot_retirement;
 #[path = "resident_close_flush/support.rs"]
 mod support;
+
+#[path = "resident_close_flush/recovery_native_disposal.rs"]
+mod recovery_native_disposal;

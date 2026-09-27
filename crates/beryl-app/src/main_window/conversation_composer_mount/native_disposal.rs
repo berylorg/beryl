@@ -23,7 +23,7 @@ impl MainWindowConversationComposerMount {
             let assets = self.submission_assets()?;
             let seals = self.submission_marker_seals()?;
             let executor = cx.background_executor().clone();
-            let task = executor.spawn(async move {
+            let worker = self.native_disposal_workers.track(move || {
                 service.advance_native_lineage_disposal(
                     selection,
                     flush,
@@ -33,10 +33,32 @@ impl MainWindowConversationComposerMount {
                     &worker_cancellation,
                 )
             });
+            let task = executor.spawn(async move { worker.run() });
             let service = self.service.clone();
             let assets = self.submission_assets()?;
             let seals = self.submission_marker_seals()?;
             let task_cancellation = cancellation.clone();
+            let cleanup_workers = self.native_disposal_workers.clone();
+            let completion = self.native_disposal_workers.track(
+                move |(applied, next_selection): (bool, MainWindowComposerSelectionIdentity)| {
+                    if !applied {
+                        task_cancellation.cancel();
+                        let cleanup = drain_unmounted_native_disposal(
+                            service,
+                            next_selection,
+                            flush,
+                            release,
+                            assets,
+                            seals,
+                            task_cancellation,
+                            executor.clone(),
+                        );
+                        executor
+                            .spawn(cleanup_workers.track_future(cleanup))
+                            .detach();
+                    }
+                },
+            );
             let task = cx.spawn_in(window, async move |this, cx| {
                 let result = task.await;
                 let next_selection = result.as_ref().ok().and_then(|(_, _, selection)| *selection).unwrap_or(selection);
@@ -73,12 +95,7 @@ impl MainWindowConversationComposerMount {
                     cx.notify();
                     true
                 });
-                if !matches!(applied, Ok(true)) {
-                    task_cancellation.cancel();
-                    executor.clone().spawn(async move {
-                        drain_unmounted_native_disposal(service, next_selection, flush, release, assets, seals, task_cancellation, executor).await;
-                    }).detach();
-                }
+                completion.run_with((matches!(applied, Ok(true)), next_selection));
             });
             self.native_lineage_disposal_task = Some(task);
         }
@@ -119,7 +136,7 @@ impl MainWindowConversationComposerMount {
         let executor = self.submission.executor();
         executor
             .clone()
-            .spawn(async move {
+            .spawn(self.native_disposal_workers.track_future(async move {
                 drain_unmounted_native_disposal(
                     service,
                     selection,
@@ -131,7 +148,7 @@ impl MainWindowConversationComposerMount {
                     executor,
                 )
                 .await;
-            })
+            }))
             .detach();
         true
     }
