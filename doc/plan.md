@@ -89,21 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 693: Retain Immutable Exit Session Publication Evidence (finished)
+# Phase 694: Validate Retained Exit Evidence Against Fresh Session State (finished)
 
-Accepted bounded configured-home, complete source and predicted result evidence retained before
-execution and through every ordinary outcome/reconciliation. Predictions match actual 1/3/256-window
-publications; receipts, failures, capabilities and readiness fences remain intact. All 27 focused
-session/native tests passed (`04929719-f538-4213-a53a-77465b8af39d` and
-`fe9bae56-d8f6-4729-9e03-50fc5e56ecfd`), the default app library check passed, and independent
-lifecycle/persistence review found no blocking issues. Replacement validation and recovery remain pending.
-
-# Phase 694: Validate Retained Exit Evidence Against Fresh Session State (pending)
-
-Under the interrupted-Exit recovery contracts, validate the retained configured home and exact
-complete source/result facts using fresh typed handles. Refuse changed membership, revisions,
-placements and unproven outcomes without adopting newer facts or accepting old receipts as authority.
-Keep this read-only validation separate from resume execution, graph publication and gate release.
+Accepted read-only validation against fresh private same-home candidate handles: known noncommit
+requires the complete original snapshot; known commit requires exact predicted revisions, placements
+and preserved selection/fallback facts. Foreign, stale, missing, pending and terminal-conflict state
+refuses validation. Candidate reads retain bounded header/window consistency and grant no ordinary
+admission. All 39 focused app/state tests passed (`70dbe2f6-31a7-4806-992b-52ea574660d4` and
+`09c06cd7-4dba-48e7-80c3-47e64e583dba`), default app library check passed, and independent
+lifecycle/persistence review accepted. Resume execution and coherent reopening remain pending.
 
 # Phase 695: Retain Interrupted Exit Resume Execution Outcomes (pending)
 
@@ -115,8 +109,9 @@ known commit or infer coherent reopening; supervisor transfer and resident rebin
 
 Operator approved interrupted-Exit recovery on 2026-09-27. Phase 691 resolves the target contract;
 a reported failed Exit remains cancelled through same-home recovery and requires fresh activation.
-Phase 692 supplies the exact header-only state resume contribution. Immutable publication evidence
-and replacement composition remain prerequisites to enabled mounting.
+Phases 692–694 supply the exact header-only resume contribution, immutable publication evidence
+and fresh candidate validation. Resume execution and replacement composition remain prerequisites
+to enabled mounting.
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
 ordinary process window owner. Share serialized final-window designation with construction,

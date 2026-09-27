@@ -405,6 +405,13 @@ impl SessionState {
         bootstrap::read(&self.handle, store)
     }
 
+    pub fn minimal_bootstrap_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<Option<MinimalSessionBootstrap>, SessionReadError> {
+        bootstrap::read_candidate(&self.handle, access)
+    }
+
     pub(crate) fn acquisition_source(
         &self,
         store: &HomeStore,

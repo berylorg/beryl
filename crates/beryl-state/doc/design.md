@@ -57,6 +57,11 @@ This entry point governs these bounded normative supplements:
   candidate recovery access. It preserves exact home/generation handle qualification and read
   confirmation failures; it neither grants ordinary admission nor publishes the candidate.
 
+- `SessionState::minimal_bootstrap_candidate` reads the bounded session header and exactly its
+  referenced windows through borrowed explicit candidate recovery access, then rereads the header
+  to reject mixed publication. It preserves the ordinary snapshot reader's identity/revision checks,
+  typed home/generation qualification and read failures without granting ordinary admission.
+
 ## Outcomes, Reconciliation, And Validation
 
 - Commands preserve `NotCommitted { evidence }`, `Committed { receipt, later_failure }`, and
