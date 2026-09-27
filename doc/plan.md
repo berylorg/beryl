@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 648: Settle Unsuccessful Running Exit Attempts (finished)
+# Phase 649: Connect Running Exit Delivery To Attempt Policy (finished)
 
-The running Exit policy completes coherently settled unsuccessful attempts and returns the original
-result with explicit completion status. Unresolved custody and readiness retain the request.
-Default library check, independent semantic review and all 38 focused lifecycle tests passed
-(`2b2a9d2a-42a3-4fd1-b33d-725616d9e9df`). Visible failure reporting, toolbar mounting and final
+The retained one-command consumer now runs the accepted Exit policy and delivers scheduling
+refusal through the same typed callback with guarded completion status. Successor waits remain
+explicit. Default library check, independent semantic review and all 41 focused lifecycle tests
+passed (`47de4d2d-4348-49db-a409-d425d5845d00`). Visible reporting, toolbar mounting and final
 teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
@@ -156,6 +156,8 @@ and terminal delivery. Phase 647 connects admitted initial routing to that drive
 attempt. Phase 648 settles unsuccessful outcomes through exact guarded command completion, ending
 only the returned settled unadmitted intent. Readiness and unresolved custody remain retained.
 Visible outcome reporting and final teardown remain pending; these boundaries grant no quit authority.
+Phase 649 connects one retained command wait to that policy, including initial scheduling refusal
+delivery and guarded completion. Successor waits remain explicit; ordinary mounting stays pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

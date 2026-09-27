@@ -44,6 +44,14 @@ mod progress_driver {
     ));
 }
 
+mod command_consumer {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_consumer.rs"
+    ));
+}
+
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
     run(false, None, None);

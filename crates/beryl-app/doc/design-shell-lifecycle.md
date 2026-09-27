@@ -658,6 +658,15 @@ by the executable composition root.
   grants quit authority. Initial scheduling refusal still returns the request synchronously for
   explicit guarded completion by its caller.
 
+- One running Exit consumer activation composes the detached command wait with that attempt
+  policy. It retains the complete owner, cancellation token and required completion callback
+  before command delivery and through the attempt. A duplicate pending wait refuses synchronously
+  without invoking or replacing callbacks. Once a command arrives, initial scheduling refusal
+  also delivers its original request and typed error through that callback, after guarded exact
+  completion; unresolved custody still prevents completion. Every delivered outcome runs outside
+  owner borrows on the GUI executor. The callback may explicitly arm a successor wait, but no
+  successor activation, retry, presentation, teardown or quit is implicit in this boundary.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

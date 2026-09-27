@@ -19,6 +19,8 @@ pub(crate) enum ExitAttemptCompletion {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitAttemptError {
     #[error(transparent)]
+    Observation(#[from] ExitObservationError),
+    #[error(transparent)]
     Routing(#[from] ExitRoutingError),
     #[error(transparent)]
     Progress(#[from] ExitProgressError),
@@ -31,6 +33,41 @@ pub(crate) struct ExitAttemptOutcome {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn wait_for_exit_attempt(
+        owner: &Rc<RefCell<Self>>,
+        cancellation: ProjectionCancellationToken,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, RunningExitRequest, ExitAttemptOutcome, &mut App)
+        + 'static,
+    ) -> Result<(), String> {
+        Self::wait_for_exit(owner, app, move |owner, request, app| {
+            let delivery = Rc::new(RefCell::new(Some(completed)));
+            let settled = delivery.clone();
+            if let Err((request, error)) = Self::run_exit_attempt(
+                owner,
+                request,
+                cancellation,
+                app,
+                move |owner, request, outcome, app| {
+                    let completed = settled.borrow_mut().take().unwrap();
+                    completed(owner, request, outcome, app);
+                },
+            ) {
+                let command_completed = Self::finish_exit(owner, &request);
+                let completed = delivery.borrow_mut().take().unwrap();
+                completed(
+                    owner,
+                    request,
+                    ExitAttemptOutcome {
+                        result: Err(ExitAttemptError::Observation(error)),
+                        command_completed,
+                    },
+                    app,
+                );
+            }
+        })
+    }
+
     pub(crate) fn run_exit_attempt(
         owner: &Rc<RefCell<Self>>,
         request: RunningExitRequest,
