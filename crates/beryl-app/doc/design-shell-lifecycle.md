@@ -370,6 +370,25 @@ by the executable composition root.
   delivery, retained failed passes, explicit same-handle resolution, terminal refusal and unwind.
   Independently review the original-attempt ownership and persistent outcome boundary.
 
+## Retained Exit Session Readiness
+
+- Session readiness is derived from the original attempt's retained result while its complete
+  services, work, drafts and placement set remain ready. A clean committed result, or exact-new
+  reconciliation, must supply a receipt accepted by that current healthy home's typed session
+  handle and affecting the session domain. Foreign, stale, unavailable or unaffected-domain
+  receipts refuse readiness. This inspection performs no durable read or write.
+- Preparation failure, definitive noncommit, pending execution or reconciliation, exact-old,
+  collision, unsupported successor and unwind cannot establish readiness. A commit with a later
+  failure or local-finalization capability remains blocked for separate failure handling; neither
+  its durable receipt nor that capability silently converts the failed attempt into success.
+- Inspection borrows and preserves the exact outcome, original failures, receipt and capabilities.
+  Readiness is not cached across service transfers or home availability changes. It releases no
+  draft, coordinator or interaction fence and grants no window destruction or process quit.
+  The later final-teardown policy must compose this proof with its remaining obligations.
+- Verify clean and reconciled readiness, current-home/session receipt provenance, unavailable
+  health, all non-ready outcome classes, retained failure/capability custody, and native original-
+  attempt readiness with unchanged recovery fences. Independently review this persistence boundary.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

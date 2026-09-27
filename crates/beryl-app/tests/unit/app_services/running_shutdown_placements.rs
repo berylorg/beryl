@@ -27,6 +27,7 @@ async fn exercise_session(
     let (release, parked) = std::sync::mpsc::sync_channel(1);
     let (sender, receiver) = futures_channel::oneshot::channel();
     let gui_thread = std::thread::current().id();
+    assert!(owner.borrow().require_shutdown_session_ready().is_err());
     cx.update(|app| {
         RunningProcessOwner::test_publish_shutdown_session(
             &owner,
@@ -64,6 +65,10 @@ async fn exercise_session(
                     other => panic!("unexpected session result: {other:?}"),
                 }
                 assert_session_fenced(owner, app);
+                assert_eq!(
+                    owner.borrow().require_shutdown_session_ready().is_ok(),
+                    !unwind
+                );
                 assert!(
                     RunningProcessOwner::reconcile_shutdown_session(owner, app, |_, _| {
                         panic!("commit and unwind are not pending reconciliation")
@@ -80,6 +85,7 @@ async fn exercise_session(
         )
         .unwrap();
         assert!(owner.borrow().test_services_on_worker());
+        assert!(owner.borrow().require_shutdown_session_ready().is_err());
         assert!(matches!(
             owner.borrow().shutdown_session(),
             Some(RunningShutdownSession::Pending)
@@ -200,6 +206,7 @@ fn run_with_reconciliation(
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
             let owner = RunningProcessOwner::start(running, app);
+            assert!(owner.borrow().require_shutdown_session_ready().is_err());
             assert!(RunningProcessOwner::reconcile_shutdown_session(&owner, app,
                 |_, _| panic!("unadmitted reconciliation")).is_err());
             assert!(RunningProcessOwner::publish_shutdown_session(&owner, app,
@@ -223,6 +230,7 @@ fn run_with_reconciliation(
                 }
                 cx.update(|app| RunningProcessOwner::install_shutdown_interaction_gate(&owner, app)).unwrap().unwrap();
                 prepare_work(&owner, cx).await;
+                assert!(owner.borrow().require_shutdown_session_ready().is_err());
                 let original_attempt = owner.borrow().test_services().graph().unwrap().shutdown;
                 cx.update(|app| assert!(RunningProcessOwner::publish_shutdown_session(&owner, app,
                     |_, _| panic!("session requires drafts and placements")).is_err())).unwrap();

@@ -92,4 +92,8 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/exit_session_execution.rs"
     ));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/exit_session_readiness.rs"
+    ));
 }

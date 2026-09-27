@@ -18,6 +18,7 @@ pub(super) async fn exercise(
     cx: &mut AsyncApp,
 ) -> Rc<RefCell<RunningProcessOwner>> {
     cx.update(|app| {
+        assert!(owner.borrow().require_shutdown_session_ready().is_err());
         assert!(
             RunningProcessOwner::reconcile_shutdown_session(&owner, app, |_, _| panic!(
                 "no session outcome"
@@ -30,6 +31,7 @@ pub(super) async fn exercise(
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {
         RunningProcessOwner::publish_shutdown_session(&owner, app, move |owner, _| {
+            assert!(owner.borrow().require_shutdown_session_ready().is_err());
             assert!(matches!(
                 owner.borrow().shutdown_session(),
                 Some(RunningShutdownSession::Settled(Ok(
@@ -90,6 +92,7 @@ pub(super) async fn exercise(
                     .is_some()
             );
             assert!(graph.home().pending_reconciliations().is_empty());
+            assert!(borrowed.require_shutdown_session_ready().is_ok());
         }
         assert_terminal(&owner, cx);
         return owner;
@@ -110,6 +113,7 @@ pub(super) async fn exercise(
 
 fn pending_failure(owner: &Rc<RefCell<RunningProcessOwner>>) -> String {
     let borrowed = owner.borrow();
+    assert!(borrowed.require_shutdown_session_ready().is_err());
     let Some(RunningShutdownSession::Reconciled(ExitSessionReconciled::Pending {
         failure, ..
     })) = borrowed.shutdown_session()
@@ -167,6 +171,7 @@ async fn pass(
         )
         .unwrap();
         assert!(owner.borrow().test_services_on_worker());
+        assert!(owner.borrow().require_shutdown_session_ready().is_err());
         assert!(matches!(
             owner.borrow().shutdown_session(),
             Some(RunningShutdownSession::Reconciling)
