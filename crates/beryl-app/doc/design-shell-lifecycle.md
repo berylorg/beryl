@@ -283,6 +283,27 @@ by the executable composition root.
   successful recovery, failed release preserving both causes and custody, and caller abandonment.
   Independently review the lifecycle and recovery boundary.
 
+## Exit Session Command Preparation
+
+- A worker prepares one session command from the retained complete Exit placement set and the
+  original home's typed session handle. Preparation performs no write and grants no readiness,
+  recovery, disposal or quit authority. The running owner remains responsible for admitting this
+  work only after exact work, draft and placement readiness.
+- Before reading durable state, reject empty, duplicate or over-capacity captured sets. Read the
+  home revision, session domain revision and minimal session snapshot, requiring Running intent
+  and exact identity equality with the captured set. Bind each placement by window identity to
+  that snapshot's record revision; input order has no significance.
+- Recheck the home revision after the bounded reads. Drift, absent session, read failure or set
+  mismatch returns an error without preparing a replacement from newer facts. Build one
+  HomeCommand using the original home/domain/session/window revisions and the complete typed
+  Exit contribution. The serialized writer retains responsibility for rejecting later drift.
+- The move-only command is returned to its caller without execution, retry or retained background
+  work. Its later executor must preserve ordinary command outcomes and reconciliation custody;
+  command preparation alone cannot complete the running Exit attempt.
+- Verify threadless and multi-window identity binding, shuffled order, capacity, rejected incomplete
+  or foreign sets, absent/already-exiting state, no preparation writes and writer rejection after
+  durable revision drift. Independently review this persistence preparation boundary.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

@@ -194,6 +194,7 @@ pub mod discussion_creation;
 pub mod discussion_settlement;
 pub mod discussion_handoff_limits;
 mod dynamic_tool_namespace;
+mod exit_session;
 pub mod input_admission;
 pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;

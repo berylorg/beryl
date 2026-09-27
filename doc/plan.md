@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 683: Connect Exit Attempts To Placement Preparation (finished)
+# Phase 684: Prepare The Revision-Bound Exit Session Command (finished)
 
-Accepted placement preparation after draft readiness in the ordinary Exit attempt consumer, with
-complete retained placements and original failure/recovery evidence through guarded completion and
-commandless notices. All 63 focused lifecycle cases passed
-(`f4a0aafb-36d6-4188-8f32-90da0d3d2c98`), along with the default app library check and independent
-lifecycle review. Durable session publication and final teardown remain separate boundaries.
+Accepted bounded, write-free preparation of one complete Exit session command using original
+home/domain/session/window revisions. All six focused tests passed, including 1/3/256 windows and
+writer rejection after intervening mutation (`b6493a20-87b9-4e20-be46-d092d5b9a9e4`); the default
+app library check and independent persistence review passed. Running-owner execution and
+reconciliation remain separate boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -227,6 +227,9 @@ durable revisions and compose session publication/reconciliation before ordinary
 Phase 683 connects placement preparation to the ordinary attempt consumer after draft readiness.
 Complete placements retain the attempt; capture failure and refusal use the existing completion and
 notice paths. Durable session publication/reconciliation and enabled toolbar mounting remain pending.
+Phase 684 supplies revision-bound command preparation from complete placements. Next retain
+execution and ambiguous-outcome reconciliation under the original running attempt before consuming
+session readiness or admitting final teardown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
