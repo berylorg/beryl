@@ -540,6 +540,7 @@ impl MainWindowShell {
 pub struct MainWindowShellRoot {
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,
+    exit_disabled_reason: Option<&'static str>,
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,

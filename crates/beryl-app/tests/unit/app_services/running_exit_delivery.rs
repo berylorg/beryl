@@ -13,6 +13,87 @@ fn native_unavailable_exit_origin_is_not_replaced_with_surviving_window() {
     run_delivery(false, true);
 }
 
+#[test]
+fn native_exit_availability_updates_tooltips_without_replay_or_owner_retention() {
+    use startup_owner::RunningExitGate as Gate;
+    let directory = support::native_home();
+    let input = input(directory.path(), |path, _| support::open(path));
+    let finished = Rc::new(Cell::new(false));
+    let observed = finished.clone();
+    Application::new()
+        .with_quit_on_last_window_close(false)
+        .run(move |app| {
+            startup_owner::start(
+                input,
+                move |result, app| {
+                    let StartupCompletion::Running(running) = result else {
+                        panic!("startup failed")
+                    };
+                    running.commands.set_gate(Gate::SettingsReconciliation, true);
+                    let main = running.windows.shells()[0].window();
+                    let owner = RunningProcessOwner::start(running, app);
+                    assert_eq!(
+                        main.read(app).unwrap().test_exit_presentation(),
+                        ("Exit", "Application Exit is waiting for Settings reconciliation.")
+                    );
+                    let notifications = Rc::new(Cell::new(0));
+                    let notified = notifications.clone();
+                    let root = main.root(app).unwrap();
+                    let observer = app.observe(&root, move |_, _| {
+                        notified.set(notified.get() + 1);
+                    });
+                    let weak = Rc::downgrade(&owner);
+                    app.spawn(async move |cx| {
+                        for (gate, blocked, expected) in [
+                            (Gate::HomeUnavailable, true, "The Beryl home store is unavailable. See the Beryl-home failure notice for automatic recovery."),
+                            (Gate::SettingsReconciliation, false, "The Beryl home store is unavailable. See the Beryl-home failure notice for automatic recovery."),
+                            (Gate::HomeUnavailable, false, "Application Exit is not available."),
+                            (Gate::SettingsReconciliation, true, "Application Exit is waiting for Settings reconciliation."),
+                        ] {
+                            owner.borrow().set_exit_gate(gate, blocked);
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            loop {
+                                cx.background_executor().timer(Duration::from_millis(25)).await;
+                                let actual = main.update(cx, |root, _, _| root.test_exit_presentation()).unwrap();
+                                if actual == ("Exit", expected) {
+                                    break;
+                                }
+                                assert!(Instant::now() < deadline, "availability projection did not update");
+                            }
+                            assert!(!owner.borrow().exit_requested());
+                        }
+                        main.update(cx, |root, _, cx| {
+                            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+                        }).unwrap();
+                        owner.borrow().set_exit_gate(Gate::HomeUnavailable, true);
+                        cx.background_executor().timer(Duration::from_millis(250)).await;
+                        main.update(cx, |root, _, cx| {
+                            assert_eq!(root.test_exit_presentation(), ("Exiting…", "Application Exit is waiting for active work and durable state."));
+                            root.test_set_shutdown_interaction_gated(false, cx).unwrap();
+                            assert!(root.test_exit_presentation().1.contains("Beryl-home failure notice"));
+                        }).unwrap();
+                        cx.background_executor().timer(Duration::from_millis(250)).await;
+                        let settled_notifications = notifications.get();
+                        cx.background_executor().timer(Duration::from_millis(350)).await;
+                        assert_eq!(notifications.get(), settled_notifications, "unchanged availability must not notify");
+                        assert!(!owner.borrow().exit_requested());
+                        drop(observer);
+                        drop(root);
+                        let running = Rc::try_unwrap(owner).ok().expect("observer must hold only a weak owner").into_inner().test_into_process();
+                        assert!(weak.upgrade().is_none());
+                        support::dispose_running(running, cx).await;
+                        observed.set(true);
+                        cx.update(|app| app.quit()).unwrap();
+                    }).detach();
+                },
+                app,
+            );
+            support::watchdog(app);
+        });
+    assert!(finished.get());
+    assert_reopens(&directory);
+}
+
 fn run_delivery(pending: bool, unavailable: bool) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));

@@ -622,6 +622,16 @@ by the executable composition root.
   generation; replacement services require their own channel. The reference grants no home-close
   authority. Reading health performs no storage I/O, and final admission still revalidates evidence.
 
+  The running owner projects that shared disabled reason into every published shell, initially
+  and through one owner-scoped GUI observation task. Each delayed pass reads only in-memory
+  availability, snapshots the bounded published handles under a short owner borrow, then updates
+  shells outside that borrow. Unchanged reasons do not notify or redraw. The task holds a weak
+  owner reference and is cancelled when the owner is released. Missing native shells are skipped
+  only for presentation; their absence supplies no destruction or shutdown evidence. The shell's
+  admitted shutdown and startup explanations retain precedence. With no shared reason, an unbound
+  toolbar still explains unavailable routing and stays disabled. Observation never activates Exit,
+  consumes a request, installs feature gates or grants final teardown authority.
+
 - Exit work classification consumes a settled initial observation result while retaining the exact
   active request with its caller. It revalidates the original published invoking window and refuses
   competing observation, confirmation or shutdown custody. Failed or cancelled collection never

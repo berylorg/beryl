@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 664: Bind Running Exit Availability To Its Home Generation (finished)
+# Phase 665: Project Shared Exit Availability Into Published Shells (finished)
 
-Running-owner construction now binds Exit producers to their published home generation. Current
-health and generation checks reject new activations after failure or retirement without replay,
-while retaining accepted request custody. All 14 focused command and native delivery tests passed
-(`ce381d24-e9dd-453e-9e9c-6e0c63b97947`), together with the default library check, formatting and
-independent semantic review. Settings state installation and enabled toolbar routing remain pending.
+The running owner now projects shared Exit gate reasons into disabled toolbar tooltips, with one
+cancellable weak-owner observer and notifications only on changes. Shutdown/startup precedence,
+unavailable routing and exact command custody remain intact. All 19 focused native delivery,
+command/home gate and shell presentation tests passed (`88a9064b-ca7f-4e06-85f7-ea88cd37f7f1`),
+alongside the default library check, formatting and independent semantic review. Settings state
+installation and enabled routing remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -181,6 +182,8 @@ Phase 663 supplies independent shared command availability gates without deferre
 installing current feature gates and exposing enabled toolbar routing remain pending.
 Phase 664 binds those producers to current home health and the original published generation;
 Settings state installation, toolbar notification and enabled routing remain pending.
+Phase 665 supplies automatic shared availability projection and toolbar notification with bounded,
+owner-scoped observation. Settings state installation and enabled routing remain pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

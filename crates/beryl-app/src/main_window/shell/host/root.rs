@@ -14,6 +14,7 @@ impl MainWindowShellRoot {
         let mut root = Self {
             startup_interaction: None,
             shutdown_interaction_gated: false,
+            exit_disabled_reason: None,
             controller: Some(controller),
             construction_error,
             composer_observer: None,

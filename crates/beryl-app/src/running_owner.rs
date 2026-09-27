@@ -12,6 +12,7 @@ use crate::{
 mod admission;
 mod confirmation;
 mod exit_attempt;
+mod exit_availability;
 mod exit_confirmation;
 mod exit_delivery;
 mod exit_notice;
@@ -51,6 +52,7 @@ pub(crate) struct RunningProcessOwner {
     progress: Option<progress::RunningShutdownProgress>,
     observing_initial_work: bool,
     waiting_for_exit: bool,
+    exit_availability: Option<gpui::Task<()>>,
     #[cfg(test)]
     exit_waiting_passes: usize,
     #[cfg(test)]
@@ -89,6 +91,7 @@ impl RunningProcessOwner {
             progress: None,
             observing_initial_work: false,
             waiting_for_exit: false,
+            exit_availability: None,
             #[cfg(test)]
             exit_waiting_passes: 0,
             #[cfg(test)]
@@ -99,6 +102,7 @@ impl RunningProcessOwner {
                 StartupCleanup::Settled
             },
         }));
+        Self::observe_exit_availability(&owner, app);
         if let Some(mut surface) = surface {
             let retained = owner.clone();
             app.spawn(async move |cx| {

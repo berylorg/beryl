@@ -5,6 +5,17 @@ use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, AnyView, InteractiveElement, StatefulInteractiveElement};
 
 impl MainWindowShellRoot {
+    pub(crate) fn set_exit_disabled_reason(
+        &mut self,
+        reason: Option<&'static str>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.exit_disabled_reason != reason {
+            self.exit_disabled_reason = reason;
+            cx.notify();
+        }
+    }
+
     fn exit_presentation(&self) -> (&'static str, &'static str) {
         if self.shutdown_interaction_gated {
             (
@@ -14,7 +25,11 @@ impl MainWindowShellRoot {
         } else if self.startup_interaction_gated() {
             ("Exit", "Beryl is preparing its windows.")
         } else {
-            ("Exit", "Application Exit is not available.")
+            (
+                "Exit",
+                self.exit_disabled_reason
+                    .unwrap_or("Application Exit is not available."),
+            )
         }
     }
 

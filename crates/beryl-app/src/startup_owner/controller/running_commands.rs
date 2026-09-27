@@ -82,6 +82,10 @@ impl RunningWindowExit {
 }
 
 impl RunningExitCommands {
+    pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
+        self.0.0.borrow().exit_gates.disabled_reason()
+    }
+
     pub(crate) fn bind_home(&self, home: beryl_home_store::HomeServiceReference) {
         let mut state = self.0.0.borrow_mut();
         assert!(
