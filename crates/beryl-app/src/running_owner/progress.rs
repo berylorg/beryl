@@ -14,14 +14,16 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         cancellation: ProjectionCancellationToken,
         app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
-        Self::advance_shutdown_with(owner, cancellation, app, || {})
+        Self::advance_shutdown_with(owner, cancellation, app, completed, || {})
     }
 
     fn advance_shutdown_with(
         owner: &Rc<RefCell<Self>>,
         cancellation: ProjectionCancellationToken,
         app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_poll: impl FnOnce() + Send + 'static,
     ) -> Result<(), String> {
         let mut services = {
@@ -50,17 +52,20 @@ impl RunningProcessOwner {
             let result = services.poll_shutdown(&cancellation);
             (services, result)
         });
-        app.spawn(async move |_| {
+        app.spawn(async move |cx| {
             let (services, result) = work.await;
-            let mut owner = retained.borrow_mut();
-            owner.process.services = Some(services);
-            if matches!(
-                result,
-                Ok(AppServiceShutdownProgress::Failed { reopened: true, .. })
-            ) {
-                owner.shutdown.take();
+            {
+                let mut owner = retained.borrow_mut();
+                owner.process.services = Some(services);
+                if matches!(
+                    result,
+                    Ok(AppServiceShutdownProgress::Failed { reopened: true, .. })
+                ) {
+                    owner.shutdown.take();
+                }
+                owner.progress = Some(RunningShutdownProgress::Settled(result));
             }
-            owner.progress = Some(RunningShutdownProgress::Settled(result));
+            let _ = cx.update(|app| completed(&retained, app));
         })
         .detach();
         Ok(())
@@ -83,9 +88,10 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         cancellation: ProjectionCancellationToken,
         app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_poll: impl FnOnce() + Send + 'static,
     ) -> Result<(), String> {
-        Self::advance_shutdown_with(owner, cancellation, app, before_poll)
+        Self::advance_shutdown_with(owner, cancellation, app, completed, before_poll)
     }
 
     #[cfg(test)]

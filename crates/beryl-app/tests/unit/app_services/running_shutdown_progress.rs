@@ -76,11 +76,58 @@ pub(super) async fn exercise(
     let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let started = entered.clone();
     let gui_thread = std::thread::current().id();
+    let notifications = Rc::new(Cell::new(0));
+    let delivered = notifications.clone();
+    let callback_cancellation = cancellation.clone();
     cx.update(|app| {
         RunningProcessOwner::test_advance_shutdown_with(
             &owner,
             cancellation.clone(),
             app,
+            move |owner, app| {
+                assert_eq!(std::thread::current().id(), gui_thread);
+                assert!(!owner.borrow().test_services_on_worker());
+                assert!(owner.borrow().test_shutdown_progress_settled());
+                window
+                    .update(app, |root, _, _| {
+                        assert_eq!(root.controller().unwrap().window_id(), invoking);
+                    })
+                    .unwrap();
+                delivered.set(delivered.get() + 1);
+                assert!(
+                    RunningProcessOwner::advance_shutdown(
+                        owner,
+                        callback_cancellation.clone(),
+                        app,
+                        |_, _| panic!("refused progress must not notify"),
+                    )
+                    .is_err()
+                );
+                if ready_first {
+                    let result = owner
+                        .borrow_mut()
+                        .take_shutdown_progress()
+                        .unwrap()
+                        .unwrap();
+                    assert!(matches!(
+                        result,
+                        AppServiceShutdownProgress::Ready | AppServiceShutdownProgress::Waiting
+                    ));
+                    assert!(owner.borrow_mut().take_shutdown_progress().is_none());
+                    RunningProcessOwner::advance_shutdown(
+                        owner,
+                        callback_cancellation,
+                        app,
+                        move |owner, _| {
+                            assert_eq!(std::thread::current().id(), gui_thread);
+                            assert!(!owner.borrow().test_services_on_worker());
+                            assert!(owner.borrow().test_shutdown_progress_settled());
+                            delivered.set(delivered.get() + 1);
+                        },
+                    )
+                    .unwrap();
+                }
+            },
             move || {
                 assert_ne!(std::thread::current().id(), gui_thread);
                 started.store(true, Ordering::SeqCst);
@@ -93,10 +140,16 @@ pub(super) async fn exercise(
     assert!(owner.borrow().test_services_on_worker());
     assert!(owner.borrow_mut().take_shutdown_progress().is_none());
     assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
+    assert_eq!(notifications.get(), 0);
     assert!(
-        cx.update(|app| RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app))
-            .unwrap()
-            .is_err()
+        cx.update(|app| RunningProcessOwner::advance_shutdown(
+            &owner,
+            cancellation.clone(),
+            app,
+            |_, _| panic!("pending progress must not notify")
+        ))
+        .unwrap()
+        .is_err()
     );
     let weak = Rc::downgrade(&owner);
     drop(owner);
@@ -122,10 +175,16 @@ pub(super) async fn exercise(
     );
     release.send(()).unwrap();
     settled(&owner, cx).await;
+    assert_eq!(notifications.get(), if ready_first { 2 } else { 1 });
     assert!(
-        cx.update(|app| RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app))
-            .unwrap()
-            .is_err()
+        cx.update(|app| RunningProcessOwner::advance_shutdown(
+            &owner,
+            cancellation.clone(),
+            app,
+            |_, _| {}
+        ))
+        .unwrap()
+        .is_err()
     );
     let mut result = owner
         .borrow_mut()
@@ -141,7 +200,12 @@ pub(super) async fn exercise(
                 AppServiceShutdownProgress::Waiting => {
                     assert!(Instant::now() < deadline);
                     cx.update(|app| {
-                        RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app)
+                        RunningProcessOwner::advance_shutdown(
+                            &owner,
+                            cancellation.clone(),
+                            app,
+                            |_, _| {},
+                        )
                     })
                     .unwrap()
                     .unwrap();
@@ -166,9 +230,11 @@ pub(super) async fn exercise(
         assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
         window.update(cx, |_, _, _| ()).unwrap();
         cancellation.cancel();
-        cx.update(|app| RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app))
-            .unwrap()
-            .unwrap();
+        cx.update(|app| {
+            RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app, |_, _| {})
+        })
+        .unwrap()
+        .unwrap();
         settled(&owner, cx).await;
         result = owner
             .borrow_mut()
@@ -186,7 +252,12 @@ pub(super) async fn exercise(
                 assert!(Instant::now() < deadline);
                 assert!(owner.borrow().shutdown_status().is_some());
                 cx.update(|app| {
-                    RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app)
+                    RunningProcessOwner::advance_shutdown(
+                        &owner,
+                        cancellation.clone(),
+                        app,
+                        |_, _| {},
+                    )
                 })
                 .unwrap()
                 .unwrap();
@@ -275,9 +346,11 @@ pub(super) async fn exercise(
     );
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        cx.update(|app| RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app))
-            .unwrap()
-            .unwrap();
+        cx.update(|app| {
+            RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app, |_, _| {})
+        })
+        .unwrap()
+        .unwrap();
         settled(&owner, cx).await;
         match owner
             .borrow_mut()

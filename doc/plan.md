@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 631: Schedule Confirmed Observation Through The Retained Running Owner (finished)
+# Phase 632: Deliver Running Shutdown Progress Completion (finished)
 
-Confirmed observation now retains the complete running owner across worker collection and exact
-GUI admission or cancellation, with one callback outside the owner borrow. All 21 focused tests
-passed (`207c3459-187a-47af-b1d6-9c04a9d8677d`), including three new native handoff cases;
-the default library check and independent semantic review passed.
+Each admitted progress pass now delivers one GUI callback after restoring service custody and
+publishing its result, outside the owner borrow. All 17 focused native tests passed
+(`e19c153e-4ee2-4610-a008-3f9c695abda4`), including reentrant result consumption and successor
+scheduling. The default library check and independent semantic review passed.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -129,7 +129,9 @@ unmounted; integrate them through the persistent running owner. Successful admis
 original lease and intent. Phase 630 accepts a worker-owned progress pass with complete service
 custody and proven reopening. Phase 631 connects a confirmed worker observation to exact GUI
 admission or cancellation through a retained continuation. Initial observation, policy-driven
-refresh/progress scheduling and normal process quit remain unmounted.
+refresh/progress scheduling and normal process quit remain unmounted. Phase 632 supplies required
+GUI completion notification after each worker progress pass; result consumption and subsequent
+policy actions remain explicit.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

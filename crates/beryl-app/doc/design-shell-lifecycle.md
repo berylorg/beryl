@@ -687,6 +687,12 @@ by the executable composition root.
   coordinator's explicit coherent-reopening result releases them. Cancellation goes through that
   coordinator, never through dropping a worker or inferring completion from missing services.
   One pass neither retries automatically nor grants final teardown, window destruction or quit.
+  Each admitted pass delivers one required completion callback on the GUI executor after restoring
+  service custody and publishing its result, outside the running-owner borrow. The callback may
+  consume the result and explicitly schedule a successor pass or handle coherent reopening; an
+  unconsumed result continues to exclude new progress and intent. A refused scheduling request
+  delivers no callback. Completion delivery retains the owner and is not controlled by a caller-held
+  task handle. Delivery itself neither consumes the result nor advances shutdown policy.
 - A failed barrier before final teardown releases interaction gates from the retained coherent state without restoring
   cancelled continuations or repeating possible dispatch. Closing a settings or auxiliary window
   never becomes the final-main-window execution barrier.

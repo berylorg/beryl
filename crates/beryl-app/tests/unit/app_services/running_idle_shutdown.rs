@@ -58,7 +58,8 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                         RunningProcessOwner::advance_shutdown(
                             &owner,
                             ProjectionCancellationToken::new(),
-                            app
+                            app,
+                            |_, _| panic!("unadmitted progress must not notify"),
                         )
                         .is_err()
                     );
