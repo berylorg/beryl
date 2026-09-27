@@ -223,6 +223,10 @@ fn run_with_missing_window(
                                 cx.update(|app| {
                                     assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
                                     assert!(owner.borrow().test_shutdown_progress_settled());
+                                    if owner.borrow().shutdown_status().is_none() {
+                                        assert!(matches!(RunningProcessOwner::take_exit_progress(&owner, app), Err(crate::running_owner::ExitProgressError::Interaction(_))));
+                                        assert!(owner.borrow().test_shutdown_progress_settled());
+                                    }
                                 }).unwrap();
                                 let result = owner.borrow_mut().take_shutdown_progress().unwrap().unwrap();
                                 if matches!(result, AppServiceShutdownProgress::Failed { reopened: true, .. }) {

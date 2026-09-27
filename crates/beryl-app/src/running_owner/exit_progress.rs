@@ -15,6 +15,8 @@ pub(crate) enum ExitProgressError {
     Intent,
     #[error("Exit progress could not be scheduled: {0}")]
     Scheduling(String),
+    #[error("Exit interaction could not transition: {0}")]
+    Interaction(String),
     #[error("settled Exit progress is unavailable")]
     Unavailable,
     #[error(transparent)]
@@ -120,14 +122,13 @@ impl RunningProcessOwner {
                 return Err((request, ExitProgressError::Intent));
             }
         }
+        if let Err(error) = Self::install_shutdown_interaction_gate(owner, app) {
+            return Err((request, ExitProgressError::Interaction(error)));
+        }
         let delivery = Rc::new(RefCell::new(Some((request, completed))));
         let settled = delivery.clone();
         match Self::advance_shutdown(owner, cancellation, app, move |owner, app| {
-            let result = owner
-                .borrow_mut()
-                .take_shutdown_progress()
-                .ok_or(ExitProgressError::Unavailable)
-                .and_then(|result| result.map_err(ExitProgressError::Service));
+            let result = Self::take_exit_progress(owner, app);
             let (request, completed) = settled.borrow_mut().take().unwrap();
             completed(owner, request, result, app);
         }) {
@@ -137,5 +138,26 @@ impl RunningProcessOwner {
                 Err((request, ExitProgressError::Scheduling(error)))
             }
         }
+    }
+
+    pub(crate) fn take_exit_progress(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+    ) -> Result<AppServiceShutdownProgress, ExitProgressError> {
+        let reopened = matches!(
+            owner.borrow().progress,
+            Some(super::progress::RunningShutdownProgress::Settled(Ok(
+                AppServiceShutdownProgress::Failed { reopened: true, .. }
+            )))
+        );
+        if reopened {
+            Self::release_shutdown_interaction_gate(owner, app)
+                .map_err(ExitProgressError::Interaction)?;
+        }
+        owner
+            .borrow_mut()
+            .take_shutdown_progress()
+            .ok_or(ExitProgressError::Unavailable)
+            .and_then(|result| result.map_err(ExitProgressError::Service))
     }
 }

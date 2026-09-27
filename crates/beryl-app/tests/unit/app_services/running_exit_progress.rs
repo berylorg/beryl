@@ -25,6 +25,8 @@ fn exercise(ordinary_close: bool) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let window = running.windows.shells()[0].window();
+                    let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
                     let permit = running.services.process.execution_permit();
                     let owner = RunningProcessOwner::start(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
@@ -46,6 +48,7 @@ fn exercise(ordinary_close: bool) {
                             .err()
                             .unwrap();
                         assert!(matches!(error, ExitProgressError::Intent));
+                        cx.update(|app| assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app), original_reason)).unwrap();
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
                         assert!(!owner.borrow().test_services_on_worker());
                         permit.commit(|| ()).unwrap();
@@ -200,6 +203,7 @@ fn exercise(ordinary_close: bool) {
                                 );
                                 assert!(owner.borrow().test_services_on_worker());
                                 assert!(owner.borrow().exit_requested());
+                                assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app).as_deref(), Some("Application Exit is waiting for active work and durable state."));
                                 command.request_exit();
                             })
                             .unwrap();
@@ -213,6 +217,14 @@ fn exercise(ordinary_close: bool) {
                                 assert!(Instant::now() < deadline, "Exit progress did not settle");
                                 assert!(Rc::ptr_eq(&identity, &request.identity()));
                                 assert!(owner.borrow().exit_requested());
+                                cx.update(|app| {
+                                    let reason = window.read(app).unwrap().new_window_disabled_reason(app);
+                                    if matches!(result, AppServiceShutdownProgress::Failed { reopened: true, .. }) {
+                                        assert_eq!(reason, original_reason);
+                                    } else {
+                                        assert_eq!(reason.as_deref(), Some("Application Exit is waiting for active work and durable state."));
+                                    }
+                                }).unwrap();
                                 match result {
                                     AppServiceShutdownProgress::Ready => {
                                         assert!(!RunningProcessOwner::finish_exit(

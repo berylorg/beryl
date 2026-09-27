@@ -8,6 +8,7 @@ fn progress_delivery_errors_preserve_diagnostics_without_claiming_reopening() {
             ExitProgressError::Request("original request".into()),
             ExitProgressError::Intent,
             ExitProgressError::Scheduling("original scheduling refusal".into()),
+            ExitProgressError::Interaction("original interaction refusal".into()),
             ExitProgressError::Unavailable,
             ExitProgressError::Service(AppServiceCloseError::NotReady),
         ] {

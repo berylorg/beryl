@@ -667,8 +667,16 @@ by the executable composition root.
 - Exit progress retains the exact active request through one worker-owned shutdown progress pass.
   Scheduling requires its original live invoking window and an admitted application-Exit intent
   for that window. Refusal returns the unchanged request without callback or service transfer.
+  After that validation and before service transfer, each pass installs the accepted shell gates.
+  Installation failure returns an explicit interaction error and retains admitted custody and
+  every successfully installed gate. On returned coherent-reopening evidence, progress releases
+  all shell gates before consuming that evidence. Failed release returns an explicit interaction
+  error while retaining the settled result, gates and active command; it cannot complete the
+  attempt or start another pass. Other results retain the gates. These transitions run outside
+  owner borrows and preserve independent startup and ordinary-close gates.
   Scheduled progress returns the same request exactly once on the GUI executor, after complete
-  service custody is restored and the settled progress result is consumed, outside owner borrows.
+  service custody is restored and, except for failed gate release, the settled progress result is
+  consumed, outside owner borrows.
   Waiting, readiness, failed progress with its exact reopening evidence, and service errors remain
   distinct. Missing settled evidence is an explicit error. Only the underlying proven-reopening
   boundary releases shutdown intent; delivery itself neither completes the Exit request nor
