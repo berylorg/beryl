@@ -607,13 +607,14 @@ by the executable composition root.
   boundary. Missing settled evidence is an explicit failure, never cancellation or positive intent.
   Failed request/operation identity validation or unresolved native cleanup preserves the original
   confirmation custody; stale window snapshots and rejected confirmed intent retain their existing
-  consumption semantics. A valid positive result schedules one confirmed worker observation using
-  the same cancellation token and retained request. Its existing exact admission/discard boundary
-  settles before delivery. Scheduling refusal, collection failure or cancelled confirmed observation
+  consumption semantics. A valid positive result schedules one confirmed worker observation at a
+  time using the same cancellation token and retained request, including the changed-evidence
+  refresh defined below. Its existing exact admission/discard boundary settles before delivery.
+  Scheduling refusal, non-refreshable collection failure or cancelled confirmed observation
   retains the original unadmitted intent and lease for explicit completion; cancelled confirmation
   remains distinct because it creates no intent. Observation cancellation or failure never routes
   idle admission. Duplicate activations continue coalescing throughout this operation. Routing
-  performs no automatic retry, request completion, progress scheduling or quit; its caller still
+  performs no other automatic retry, request completion, progress scheduling or quit; its caller still
   owns coherent completion of the request.
 
 - Exit progress retains the exact active request through one worker-owned shutdown progress pass.
@@ -712,6 +713,13 @@ by the executable composition root.
   settlement and fresh validation of its exact process/window/work intent; it is not itself an
   execution fence. Ordinary work changes permit a fresh observation under the same confirmed
   shutdown intent without repeating confirmation, as required by the feature's admission policy.
+  The Exit consumer refreshes explicitly changed work evidence through one worker read at a time,
+  delayed by 50 milliseconds between passes. It reserves the next tagged observation before
+  yielding, retaining the original confirmed intent and window lease throughout the delay.
+  Cancellation settles that exact observation without admission. Only typed work-revision or
+  mutation-interval changes permit refresh; busy, unavailable, foreign, stale-attempt and
+  window-custody failures remain terminal delivery. Refresh does not reopen confirmation, replace
+  window evidence, finish the command or begin shutdown progress before admission.
   Normal quit waits for confirmation settlement as well as other native cleanup.
   Native failure recovery uses the retained control's exact cleanup-settlement evidence. A failed
   operation whose native cleanup is proven complete may release its dialog slot, restore logical

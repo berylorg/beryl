@@ -64,7 +64,7 @@ impl RunningProcessOwner {
                             }
                             Ok(Some(ExitConfirmationRoute::AwaitingObservation)) => {
                                 let observed = settled.clone();
-                                match Self::observe_confirmed_shutdown(
+                                match Self::observe_and_refresh_confirmed_shutdown(
                                     owner,
                                     cancellation,
                                     app,

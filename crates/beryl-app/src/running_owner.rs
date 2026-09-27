@@ -51,6 +51,8 @@ pub(crate) struct RunningProcessOwner {
     waiting_for_exit: bool,
     #[cfg(test)]
     exit_waiting_passes: usize,
+    #[cfg(test)]
+    confirmed_refreshes: usize,
 }
 
 pub(crate) struct RunningProcess {
@@ -79,6 +81,8 @@ impl RunningProcessOwner {
             waiting_for_exit: false,
             #[cfg(test)]
             exit_waiting_passes: 0,
+            #[cfg(test)]
+            confirmed_refreshes: 0,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {

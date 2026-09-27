@@ -21,6 +21,8 @@ enum Choice {
     AdmissionCancel,
     AdmissionAba,
     WorkerAdmission,
+    WorkerRefresh,
+    WorkerRefreshCancel,
     WorkerCancelBefore,
     WorkerCancelAfter,
     Cancel,
@@ -43,6 +45,16 @@ mod observation {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/app_services/running_confirmed_observation.rs"
     ));
+}
+
+#[test]
+fn native_confirmed_worker_refreshes_changed_work_without_reconfirmation() {
+    run(Choice::WorkerRefresh);
+}
+
+#[test]
+fn native_confirmed_worker_cancellation_during_refresh_preserves_unadmitted_intent() {
+    run(Choice::WorkerRefreshCancel);
 }
 
 #[test]
@@ -331,6 +343,8 @@ fn run(choice: Choice) {
                             | Choice::AdmissionExit
                             | Choice::AdmissionCancel
                             | Choice::AdmissionAba
+                            | Choice::WorkerRefresh
+                            | Choice::WorkerRefreshCancel
                             | Choice::WorkerAdmission
                             | Choice::WorkerCancelBefore
                             | Choice::WorkerCancelAfter => {
@@ -349,7 +363,9 @@ fn run(choice: Choice) {
                                     .unwrap();
                                 if matches!(
                                     choice,
-                                    Choice::WorkerAdmission
+                                    Choice::WorkerRefresh
+                                        | Choice::WorkerRefreshCancel
+                                        | Choice::WorkerAdmission
                                         | Choice::WorkerCancelBefore
                                         | Choice::WorkerCancelAfter
                                 ) {
@@ -450,6 +466,7 @@ fn run(choice: Choice) {
                             choice,
                             Choice::AdmissionRefresh
                                 | Choice::AdmissionExit
+                                | Choice::WorkerRefresh
                                 | Choice::WorkerAdmission
                         ) {
                             assert_eq!(
@@ -498,6 +515,7 @@ fn run(choice: Choice) {
                                 choice,
                                 Choice::AdmissionRefresh
                                     | Choice::AdmissionExit
+                                    | Choice::WorkerRefresh
                                     | Choice::WorkerAdmission
                             ) {
                                 running.services = cx

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 653: Report Unattributed Exit Coordinator Failures (finished)
+# Phase 654: Refresh Changed Work Under Confirmed Exit Intent (finished)
 
-SourceUnavailable, StopFailed and CleanupFailed now contribute bounded commandless notices only to
-the original invoking survivor, preserving outcomes and custody. Default library check, independent
-review and all 20 focused cases passed across runs `47f2f475-1d9c-483d-93e4-bfbac42e0757` and
-`24ebd099-1a41-4042-af16-d5f0fe45fb0f`, after correcting one stale exclusion expectation.
-Persistent-condition guidance, toolbar mounting and final teardown remain pending.
+Confirmed Exit now refreshes changed observation/admission evidence with a delayed, reserved tagged
+worker while retaining the original intent and window lease. Cancellation and other errors remain
+terminal; explicit single-pass callers are unchanged. Default library check, independent review
+and 44 focused tests passed (`c7cad5a4-0df6-4a35-8165-27f118bab380`); six modified cases passed again
+with deterministic refresh retention (`48bdd3e3-38cf-4e98-8ccc-49e8c025b6d2`). Toolbar and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -165,6 +165,9 @@ admission. Coordinator failure results still require their own affected-window a
 Phase 652 supplies exact thread-specific coordinator reporting, including unviewed-work attribution;
 phase 653 supplies original-invoker reporting for unattributed coordinator failures. Eligible
 persistent-condition guidance remains pending.
+Phase 654 refreshes explicitly changed confirmed observation/admission evidence without repeating
+confirmation, preserving the original tagged intent through each delay. Idle-path retries remain
+separate; other failures still complete through the existing policy and notice path.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

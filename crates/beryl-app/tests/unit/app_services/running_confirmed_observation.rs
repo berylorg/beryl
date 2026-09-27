@@ -1,11 +1,19 @@
 use crate::running_owner::{ConfirmedShutdownAdmission, RunningShutdownStatus};
 
+mod refresh {
+    use super::*;
+    include!("running_confirmed_refresh.rs");
+}
+
 pub(super) async fn exercise(
     owner: Rc<RefCell<RunningProcessOwner>>,
     context: crate::running_owner::ShutdownConfirmationContext,
     choice: Choice,
     cx: &mut AsyncApp,
 ) -> Rc<RefCell<RunningProcessOwner>> {
+    if matches!(choice, Choice::WorkerRefresh | Choice::WorkerRefreshCancel) {
+        return refresh::exercise(owner, context, choice == Choice::WorkerRefreshCancel, cx).await;
+    }
     let invoking = context.invoking();
     let intent = context.intent();
     let main = owner.borrow().test_process().windows.shells()[0].window();
@@ -68,6 +76,7 @@ pub(super) async fn exercise(
                     *completed.borrow_mut() = Some((owner.clone(), result));
                 }
             },
+            false,
             move || {
                 assert_ne!(std::thread::current().id(), gui_thread);
                 if choice != Choice::WorkerCancelAfter {
@@ -83,6 +92,7 @@ pub(super) async fn exercise(
                     after_wait.recv_timeout(Duration::from_secs(10)).unwrap();
                 }
             },
+            || {},
         )
     })
     .unwrap()
