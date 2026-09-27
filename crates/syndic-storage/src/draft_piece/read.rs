@@ -11,7 +11,9 @@ use crate::{SyndicReadError, SyndicStorage};
 use super::*;
 
 mod marker_receipts;
-pub(super) use marker_receipts::progress_receipt_closure_is_exact;
+pub(super) use marker_receipts::{
+    progress_receipt_closure_is_exact, progress_receipt_closure_is_exact_with_access,
+};
 
 #[derive(Debug)]
 pub enum DraftPieceCommandReconciliationErrorV1 {

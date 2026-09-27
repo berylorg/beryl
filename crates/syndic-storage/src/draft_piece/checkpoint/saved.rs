@@ -1,4 +1,6 @@
 use super::*;
+use crate::read::access::ReadAccess;
+use beryl_home_store::HomeCandidateRecoveryAccess;
 
 impl SyndicStorage {
     pub fn draft_editor_candidate_is_saved(
@@ -7,7 +9,34 @@ impl SyndicStorage {
         candidate: DraftEditorCandidateActivationBindingV1,
         selector: DraftEditorCurrentSelectorV1,
     ) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
-        self.revision(store).map_err(SyndicReadError::Read)?;
+        self.draft_editor_candidate_is_saved_with_access(
+            ReadAccess::Ordinary(store),
+            candidate,
+            selector,
+        )
+    }
+
+    pub fn draft_editor_candidate_is_saved_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        candidate: DraftEditorCandidateActivationBindingV1,
+        selector: DraftEditorCurrentSelectorV1,
+    ) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
+        self.draft_editor_candidate_is_saved_with_access(
+            ReadAccess::Candidate(store),
+            candidate,
+            selector,
+        )
+    }
+
+    fn draft_editor_candidate_is_saved_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        candidate: DraftEditorCandidateActivationBindingV1,
+        selector: DraftEditorCurrentSelectorV1,
+    ) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
+        self.revision_with_access(store)
+            .map_err(SyndicReadError::Read)?;
         if current_selector(self, store, selector.thread_id())? != selector {
             return Err(SyndicReadError::ConcurrentChange {
                 operation: "saved candidate checkpoint observation",
@@ -19,7 +48,11 @@ impl SyndicStorage {
             candidate.session_id(),
         );
         let Some(DraftEditorCandidateSessionRecordV1::Head(head)) =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, key, point_limit())?
+            self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                store,
+                key,
+                point_limit(),
+            )?
         else {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         };
@@ -36,12 +69,15 @@ impl SyndicStorage {
         if head.active_operation().is_some() {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
         }
-        if !session::candidate_session_closure_is_exact_in_store(self, store, &head)? {
+        if !session::idle_candidate_closure_is_exact_with_access(self, store, &head)? {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
         let saved = has_saved_identity(&head);
-        let last_head =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, key, point_limit())?;
+        let last_head = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            key,
+            point_limit(),
+        )?;
         if last_head.as_ref() != Some(&DraftEditorCandidateSessionRecordV1::Head(head))
             || current_selector(self, store, selector.thread_id())? != selector
         {
@@ -56,11 +92,11 @@ impl SyndicStorage {
 
 fn current_selector(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     thread: beryl_model::SyndicThreadId,
 ) -> Result<DraftEditorCurrentSelectorV1, DraftEditorCandidatePublicationCommandErrorV1> {
     let current = storage
-        .current_draft(store, thread, point_limit())?
+        .current_draft_with_access(store, thread, point_limit())?
         .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
     Ok(DraftEditorCurrentSelectorV1::new(
         current.thread().id(),

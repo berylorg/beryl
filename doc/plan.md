@@ -89,22 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 733: Read Current Drafts Through Candidate Access (finished)
+# Phase 732: Observe Saved Draft Checkpoints Through Candidate Access (finished)
 
-Current-draft reads and bounded history authentication now share ordinary and borrowed candidate
-access. Fresh handles preserve the exact stabilized facts; stale/foreign handles and failed reads
-remain rejected. The library check and 31 focused candidate/history tests passed, as did independent
-persistent-state review. No writes, admission release or resident rebinding were added.
-
-# Phase 732: Observe Saved Draft Checkpoints Through Candidate Access (pending)
-
-Provide the existing exact saved-checkpoint observation through borrowed home recovery-candidate
-access and fresh Syndic handles. Preserve selector, candidate-session, root/history closure and
-stable-observation checks without ordinary admission or writes. Verify fresh matching evidence,
-stale handles, changed or absent checkpoint facts and read failure; independently review the
-persistent-state boundary. This supplies storage evidence only, not resident rebinding or gate
-release. Derive the implementation from the storage candidate-access and interrupted-Exit recovery
-contracts before activation. Phase 733 supplies shared candidate current-draft and history reads.
+Saved-checkpoint observations now share exact selector, idle session, publication, root/history and
+progress-receipt validation through ordinary or fresh candidate access. The library check, 57
+checkpoint/adoption/history tests and the tightened corruption-case rerun passed. Independent
+persistent-state review found no blocking issues. This supplies read-only storage evidence;
+resident rebinding, gate release and whole-graph publication remain separate boundaries.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 

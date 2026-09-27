@@ -1,6 +1,7 @@
 use super::*;
 use crate::draft_piece::build_mapping::{DraftPieceBuildMappingFamily, model::MapRoot};
 use crate::draft_piece::mutation::mapping_custody;
+use crate::read::access::ReadAccess;
 
 #[derive(Default)]
 struct Evidence {
@@ -15,7 +16,7 @@ impl Evidence {
     fn mapping(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         receipt: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
@@ -49,7 +50,8 @@ impl Evidence {
             if self.mapping.len() >= 3 {
                 return Ok(false);
             }
-            let Some(node) = storage.point::<DraftPieceBuildMappingFamily>(store, key, limit)?
+            let Some(node) =
+                storage.point_with_access::<DraftPieceBuildMappingFamily>(store, key, limit)?
             else {
                 return Ok(false);
             };
@@ -64,7 +66,7 @@ impl Evidence {
     fn sequence(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         draft: SyndicDraftId,
         value: DraftPieceSequenceDescriptorV1,
         limit: crate::SyndicPointReadLimit,
@@ -87,7 +89,7 @@ impl Evidence {
         }
         let key = DraftPieceRecordKeyV1::new(draft, id);
         if storage
-            .point::<DraftPieceNodesFamily>(store, key, limit)?
+            .point_with_access::<DraftPieceNodesFamily>(store, key, limit)?
             .is_none_or(|node| {
                 node.key() != key || validate_sequence_root_node(node, value.summary).is_err()
             })
@@ -101,7 +103,7 @@ impl Evidence {
     fn identity(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         draft: SyndicDraftId,
         value: DraftPieceIdentityDescriptorV1,
         limit: crate::SyndicPointReadLimit,
@@ -128,7 +130,7 @@ impl Evidence {
             id,
         );
         if storage
-            .point::<DraftMarkerIdentityIndexFamily>(store, key, limit)?
+            .point_with_access::<DraftMarkerIdentityIndexFamily>(store, key, limit)?
             .is_none_or(|node| {
                 node.key() != key || validate_index_root_record(node, value.summary).is_err()
             })
@@ -142,7 +144,7 @@ impl Evidence {
     fn roots(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         draft: SyndicDraftId,
         roots: DraftPieceBuildRootsV1,
         limit: crate::SyndicPointReadLimit,
@@ -188,7 +190,7 @@ impl Evidence {
         let key =
             DraftMarkerOrderRecordKeyV1::new(draft, DraftMarkerOrderRecordKindV1::Internal, id);
         if storage
-            .point::<DraftMarkerOrderCommitmentsFamily>(store, key, limit)?
+            .point_with_access::<DraftMarkerOrderCommitmentsFamily>(store, key, limit)?
             .is_none_or(|node| {
                 node.key() != key || validate_marker_order_root_record(node, roots).is_err()
             })
@@ -202,7 +204,7 @@ impl Evidence {
     fn fragment(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         key: DraftPieceBuildFragmentKeyV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<Option<&DraftPieceBuildFragmentV1>, SyndicReadError> {
@@ -216,7 +218,8 @@ impl Evidence {
         if self.fragments.len() >= 4 {
             return Ok(None);
         }
-        let Some(fragment) = storage.point::<DraftPieceBuildFragmentsFamily>(store, key, limit)?
+        let Some(fragment) =
+            storage.point_with_access::<DraftPieceBuildFragmentsFamily>(store, key, limit)?
         else {
             return Ok(None);
         };
@@ -230,7 +233,7 @@ impl Evidence {
     fn effects(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         receipt: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
@@ -296,7 +299,7 @@ impl Evidence {
     fn transition(
         &mut self,
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         previous: &DraftPieceBuildProgressReceiptV1,
         current: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
@@ -324,9 +327,9 @@ impl Evidence {
     }
 }
 
-pub(in crate::draft_piece) fn progress_receipt_closure_is_exact(
+pub(in crate::draft_piece) fn progress_receipt_closure_is_exact_with_access(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     current: &DraftPieceBuildProgressReceiptV1,
     previous: Option<&DraftPieceBuildProgressReceiptV1>,
     limit: crate::SyndicPointReadLimit,
@@ -343,4 +346,20 @@ pub(in crate::draft_piece) fn progress_receipt_closure_is_exact(
         }
     }
     evidence.effects(storage, store, current, limit)
+}
+
+pub(in crate::draft_piece) fn progress_receipt_closure_is_exact(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    current: &DraftPieceBuildProgressReceiptV1,
+    previous: Option<&DraftPieceBuildProgressReceiptV1>,
+    limit: crate::SyndicPointReadLimit,
+) -> Result<bool, SyndicReadError> {
+    progress_receipt_closure_is_exact_with_access(
+        storage,
+        ReadAccess::Ordinary(store),
+        current,
+        previous,
+        limit,
+    )
 }

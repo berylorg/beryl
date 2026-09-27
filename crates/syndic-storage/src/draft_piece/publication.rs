@@ -454,7 +454,21 @@ fn captured_adoption_is_exact_in_store(
     captured: &DraftEditorCandidateSessionV1,
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicReadError> {
-    checkpoint::candidate_is_exact_in_store(storage, store, captured, frontier)
+    captured_adoption_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        captured,
+        frontier,
+    )
+}
+
+fn captured_adoption_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    captured: &DraftEditorCandidateSessionV1,
+    frontier: &DraftEditHistoryFrontierV1,
+) -> Result<bool, SyndicReadError> {
+    checkpoint::candidate_is_exact_with_access(storage, store, captured, frontier)
 }
 
 fn validate_publication_receipt(
@@ -632,10 +646,24 @@ pub(super) fn candidate_session_publication_is_exact_in_store(
     store: &HomeStore,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
-    if !candidate_session_publication_history_is_exact_in_store(storage, store, head)? {
+    candidate_session_publication_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        head,
+    )
+}
+
+pub(super) fn candidate_session_publication_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    if !candidate_session_publication_history_is_exact_with_access(storage, store, head)? {
         return Ok(false);
     }
-    let Some(current) = storage.current_draft(store, head.thread_id(), point_limit())? else {
+    let Some(current) =
+        storage.current_draft_with_access(store, head.thread_id(), point_limit())?
+    else {
         return Ok(false);
     };
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -652,6 +680,18 @@ pub(super) fn candidate_session_publication_is_exact_in_store(
 fn candidate_session_publication_history_is_exact_in_store(
     storage: &SyndicStorage,
     store: &HomeStore,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    candidate_session_publication_history_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        head,
+    )
+}
+
+fn candidate_session_publication_history_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
     let published_key = head.published_history().key();
@@ -671,14 +711,18 @@ fn candidate_session_publication_history_is_exact_in_store(
         operation_id,
     );
     let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(record)) =
-        storage.point::<DraftEditorCandidateSessionsFamily>(store, key, point_limit())?
+        storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            key,
+            point_limit(),
+        )?
     else {
         return Ok(false);
     };
     let Some(receipt) = record.publication() else {
         return Ok(false);
     };
-    if !validate_publication_receipt_history_in_store(storage, store, receipt)? {
+    if !validate_publication_receipt_history_with_access(storage, store, receipt)? {
         return Ok(false);
     }
     let same_session = publication_session_id == head.session_id();
@@ -705,16 +749,28 @@ fn validate_publication_receipt_history_in_store(
     store: &HomeStore,
     receipt: &DraftEditorCandidatePublicationReceiptV1,
 ) -> Result<bool, SyndicReadError> {
+    validate_publication_receipt_history_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        receipt,
+    )
+}
+
+fn validate_publication_receipt_history_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    receipt: &DraftEditorCandidatePublicationReceiptV1,
+) -> Result<bool, SyndicReadError> {
     let (_, captured, source_frontier) = match publication_receipt_parts(receipt) {
         Some(parts) => parts,
         None => return Ok(false),
     };
-    let frontier = storage.point::<DraftEditHistoryFrontiersFamily>(
+    let frontier = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
         store,
         receipt.captured_frontier().reference().key(),
         point_limit(),
     )?;
-    let open_receipt = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let open_receipt = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         DraftEditorCandidateSessionRecordKeyV1::open_receipt(
             receipt.before_head().draft_id(),
@@ -723,7 +779,7 @@ fn validate_publication_receipt_history_in_store(
         ),
         point_limit(),
     )?;
-    let head = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let head = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         session_key(
             receipt.after_head().draft_id(),
@@ -738,12 +794,12 @@ fn validate_publication_receipt_history_in_store(
         return Ok(false);
     };
     Ok(frontier.as_ref() == Some(receipt.captured_frontier())
-        && draft_edit_history_frontier_is_authenticated_v1(
+        && draft_edit_history_frontier_is_authenticated_with_access(
             storage,
             store,
             receipt.captured_frontier(),
         )?
-        && captured_adoption_is_exact_in_store(storage, store, &captured, &source_frontier)?
+        && captured_adoption_is_exact_with_access(storage, store, &captured, &source_frontier)?
         && session::receipt_matches_head(&open_receipt, receipt.before_head())
         && session_descends_from_publication(&head, receipt.after_head()))
 }

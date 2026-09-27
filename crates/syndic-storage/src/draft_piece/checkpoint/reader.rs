@@ -18,7 +18,7 @@ pub(super) trait CheckpointReader {
 
 pub(super) struct StoreCheckpointReader<'a> {
     pub storage: &'a SyndicStorage,
-    pub store: &'a HomeStore,
+    pub store: crate::read::access::ReadAccess<'a>,
 }
 
 impl CheckpointReader for StoreCheckpointReader<'_> {
@@ -26,21 +26,21 @@ impl CheckpointReader for StoreCheckpointReader<'_> {
 
     fn point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, Self::Error> {
         self.storage
-            .point::<F>(self.store, key.clone(), point_limit())
+            .point_with_access::<F>(self.store, key.clone(), point_limit())
     }
 
     fn authenticate_frontier(
         &self,
         frontier: &DraftEditHistoryFrontierV1,
     ) -> Result<bool, Self::Error> {
-        draft_edit_history_frontier_is_authenticated_v1(self.storage, self.store, frontier)
+        draft_edit_history_frontier_is_authenticated_with_access(self.storage, self.store, frontier)
     }
 
     fn authenticate_progress(
         &self,
         receipt: &DraftPieceBuildProgressReceiptV1,
     ) -> Result<bool, Self::Error> {
-        session::progress_receipt_closure_is_exact(self.storage, self.store, receipt)
+        session::progress_receipt_closure_is_exact_with_access(self.storage, self.store, receipt)
     }
 }
 

@@ -15,6 +15,8 @@ mod checkpoint;
 mod disposal;
 #[path = "editor_checkpoint/publication.rs"]
 mod publication;
+#[path = "editor_checkpoint/recovery.rs"]
+mod recovery;
 
 #[path = "submission_disposal/fixture.rs"]
 #[allow(dead_code)]

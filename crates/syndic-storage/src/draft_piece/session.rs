@@ -216,7 +216,19 @@ pub(super) fn candidate_session_adoption_is_exact(
     {
         return Ok(false);
     }
-    let Some(frontier) = storage.point::<DraftEditHistoryFrontiersFamily>(
+    candidate_checkpoint_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        head,
+    )
+}
+
+fn candidate_checkpoint_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    let Some(frontier) = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
         store,
         head.newest_history().key(),
         point_limit(),
@@ -225,17 +237,17 @@ pub(super) fn candidate_session_adoption_is_exact(
         return Ok(false);
     };
     if checkpoint::has_opening_identity(head) {
-        return checkpoint::candidate_is_exact_in_store(storage, store, head, &frontier);
+        return checkpoint::candidate_is_exact_with_access(storage, store, head, &frontier);
     }
     if head.newest_candidate_generation() == head.published_candidate_generation()
         && head.newest_root() == head.published_root()
     {
-        let root = storage.point::<DraftPieceRootsFamily>(
+        let root = storage.point_with_access::<DraftPieceRootsFamily>(
             store,
             head.newest_root().key(),
             point_limit(),
         )?;
-        let published = storage.point::<DraftEditHistoryFrontiersFamily>(
+        let published = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
             store,
             head.published_history().key(),
             point_limit(),
@@ -244,7 +256,9 @@ pub(super) fn candidate_session_adoption_is_exact(
             root.reference() == head.newest_root()
                 && draft_piece_root_reference_is_locally_exact_v1(root.reference())
         }) && frontier.reference() == head.newest_history()
-            && draft_edit_history_frontier_is_authenticated_v1(storage, store, &frontier)?
+            && draft_edit_history_frontier_is_authenticated_with_access(
+                storage, store, &frontier,
+            )?
             && published.as_ref().is_some_and(|published| {
                 published.reference() == head.published_history()
                     && (published == &frontier
@@ -254,7 +268,7 @@ pub(super) fn candidate_session_adoption_is_exact(
                         || published.fork_session(head.session_id()).as_ref() == Some(&frontier))
             }));
     }
-    checkpoint::candidate_is_exact_in_store(storage, store, head, &frontier)
+    checkpoint::candidate_is_exact_with_access(storage, store, head, &frontier)
 }
 
 pub(super) fn candidate_session_closure_is_exact_in_store(
@@ -262,17 +276,11 @@ pub(super) fn candidate_session_closure_is_exact_in_store(
     store: &HomeStore,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
-    let receipt_key = DraftEditorCandidateSessionRecordKeyV1::open_receipt(
-        head.draft_id(),
-        head.session_id(),
-        head.open_operation_id(),
-    );
-    let receipt =
-        storage.point::<DraftEditorCandidateSessionsFamily>(store, receipt_key, point_limit())?;
-    let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) = receipt else {
-        return Ok(false);
-    };
-    if !receipt_matches_head(&receipt, head) {
+    if !opening_receipt_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        head,
+    )? {
         return Ok(false);
     }
     match head.lifecycle() {
@@ -283,6 +291,43 @@ pub(super) fn candidate_session_closure_is_exact_in_store(
             publication::candidate_session_disposal_is_exact_in_store(storage, store, head)
         }
     }
+}
+
+pub(super) fn idle_candidate_closure_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    Ok(
+        head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
+            && head.active_operation().is_none()
+            && opening_receipt_is_exact_with_access(storage, store, head)?
+            && publication::candidate_session_publication_is_exact_with_access(
+                storage, store, head,
+            )?
+            && candidate_checkpoint_is_exact_with_access(storage, store, head)?,
+    )
+}
+
+fn opening_receipt_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    let receipt_key = DraftEditorCandidateSessionRecordKeyV1::open_receipt(
+        head.draft_id(),
+        head.session_id(),
+        head.open_operation_id(),
+    );
+    let receipt = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+        store,
+        receipt_key,
+        point_limit(),
+    )?;
+    let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) = receipt else {
+        return Ok(false);
+    };
+    Ok(receipt_matches_head(&receipt, head))
 }
 
 fn active_operation_custody_is_exact(
@@ -377,12 +422,27 @@ pub(super) fn progress_receipt_closure_is_exact(
     store: &HomeStore,
     receipt: &DraftPieceBuildProgressReceiptV1,
 ) -> Result<bool, SyndicReadError> {
+    progress_receipt_closure_is_exact_with_access(
+        storage,
+        crate::read::access::ReadAccess::Ordinary(store),
+        receipt,
+    )
+}
+
+pub(super) fn progress_receipt_closure_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Result<bool, SyndicReadError> {
     if !progress_receipt_is_exact(receipt) {
         return Ok(false);
     }
     let previous = if let Some(previous) = receipt.previous() {
-        let Some(stored) =
-            storage.point::<DraftPieceBuildProgressFamily>(store, previous.key(), point_limit())?
+        let Some(stored) = storage.point_with_access::<DraftPieceBuildProgressFamily>(
+            store,
+            previous.key(),
+            point_limit(),
+        )?
         else {
             return Ok(false);
         };
@@ -393,7 +453,7 @@ pub(super) fn progress_receipt_closure_is_exact(
     } else {
         None
     };
-    super::read::progress_receipt_closure_is_exact(
+    super::read::progress_receipt_closure_is_exact_with_access(
         storage,
         store,
         receipt,

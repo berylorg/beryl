@@ -462,6 +462,13 @@ through borrowed candidate recovery access. It preserves exact thread, draft, pi
 bounded edit-history authentication, typed absence/error behavior and fresh-handle requirements.
 This observation grants no editor rebinding, publication, dispatch or cleanup authority.
 
+`draft_editor_candidate_is_saved_candidate` shares the ordinary saved-checkpoint observation
+through borrowed candidate recovery access and a fresh storage handle. It requires the exact
+current selector and active idle session binding, authenticates the opening, publication and
+candidate root/history closure, and confirms the mutable head and selector. A valid unsaved
+candidate remains distinct from missing or inconsistent authority. This read performs no writes
+and grants no resident rebinding, gate release or service-publication authority.
+
 ## Provider-Operation Finalization Reads
 
 `compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission
