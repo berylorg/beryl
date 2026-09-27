@@ -1,5 +1,13 @@
 use super::*;
 
+mod driver {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_shutdown_draft_driver.rs"
+    ));
+}
+
 mod partial {
     use super::*;
     include!(concat!(

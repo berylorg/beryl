@@ -37,7 +37,7 @@ pub(crate) use exit_progress::ExitProgressError;
 pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
-pub(crate) use shutdown_drafts::RunningShutdownDraftProgress;
+pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartupCleanup {

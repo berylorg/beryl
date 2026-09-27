@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 669: Retain Running Shutdown Draft Obligations (finished)
+# Phase 670: Drive Retained Shutdown Draft Obligations (finished)
 
-The work-ready attempt now retains every admitted draft preparation across partial failures and
-refuses service progress until exact release completes. Recovery cannot restart draft preparation.
-All 38 focused native owner, Exit and resident tests passed (`0d4baa0c-dae2-48cd-965e-6d3bf0142871`);
-the two-window partial-preparation regression passed (`40773ade-b487-4b00-9bc1-b30b4c14cf20`).
-Default library check, formatting and independent semantic review passed. Session durability,
-automatic draft progression and ordinary shutdown mounting remain pending.
+The automatic preparation/release driver retains the original owner and obligation set, excludes
+concurrent operations, delays pending polls and delivers one terminal result outside all borrows.
+All 41 focused native owner, Exit and resident tests passed (`ed7407d3-03c8-4325-abf2-bd3b519f484e`).
+Default library check, formatting and independent semantic review passed. Durable session
+publication and integration with Exit recovery policy remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -196,6 +195,8 @@ partially admitted obligation until recovery or final teardown settles it.
 Phase 669 supplies that retained aggregate and excludes coordinator recovery until every admitted
 preparation releases exactly. Next compose durable session obligations and connect draft polling
 and recovery through the existing Exit driver before enabling ordinary shutdown.
+Phase 670 supplies automatic draft preparation/release polling with exact retained custody.
+Next compose durable session publication and connect the draft drivers to Exit recovery policy.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

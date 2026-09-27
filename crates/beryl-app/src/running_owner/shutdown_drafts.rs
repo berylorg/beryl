@@ -13,11 +13,15 @@ pub(crate) enum RunningShutdownDraftProgress {
     Released,
 }
 
+mod driver;
+pub(crate) use driver::RunningShutdownDraftAction;
+
 pub(super) struct RunningShutdownDrafts {
     windows: Vec<(
         WindowHandle<MainWindowShellRoot>,
         Result<MainWindowShutdownDraft, String>,
     )>,
+    driving: bool,
     prepared: bool,
     releasing: bool,
     released: bool,
@@ -25,7 +29,7 @@ pub(super) struct RunningShutdownDrafts {
 
 impl RunningShutdownDrafts {
     pub(super) fn released(&self) -> bool {
-        self.released
+        self.released && !self.driving
     }
 }
 
@@ -83,6 +87,7 @@ impl RunningProcessOwner {
         }
         let drafts = Rc::new(RefCell::new(RunningShutdownDrafts {
             windows,
+            driving: false,
             prepared: false,
             releasing: false,
             released: false,
@@ -95,10 +100,21 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         app: &mut App,
     ) -> Result<RunningShutdownDraftProgress, String> {
+        Self::advance_shutdown_drafts_inner(owner, app, false)
+    }
+
+    fn advance_shutdown_drafts_inner(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+        driving: bool,
+    ) -> Result<RunningShutdownDraftProgress, String> {
         let retained = Self::shutdown_drafts(owner, true)?;
         let mut drafts = retained
             .try_borrow_mut()
             .map_err(|_| "shutdown drafts are being updated")?;
+        if drafts.driving != driving {
+            return Err("shutdown draft driver owns progression".into());
+        }
         if drafts.releasing {
             return Err("shutdown draft recovery has already started".into());
         }
@@ -158,10 +174,21 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         app: &mut App,
     ) -> Result<RunningShutdownDraftProgress, String> {
+        Self::release_shutdown_drafts_inner(owner, app, false)
+    }
+
+    fn release_shutdown_drafts_inner(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+        driving: bool,
+    ) -> Result<RunningShutdownDraftProgress, String> {
         let retained = Self::shutdown_drafts(owner, false)?;
         let mut drafts = retained
             .try_borrow_mut()
             .map_err(|_| "shutdown drafts are being updated")?;
+        if drafts.driving != driving {
+            return Err("shutdown draft driver owns progression".into());
+        }
         drafts.releasing = true;
         drafts.released = false;
         let mut failure = None;

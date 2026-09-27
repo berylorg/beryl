@@ -1017,6 +1017,15 @@ by the executable composition root.
   attempt, lease, window set and interaction gates remain retained throughout. Released drafts
   alone neither reopen services nor release interaction gates. This aggregation supplies no
   session durability, final teardown, native destruction or quit authority.
+- Automatic draft progression retains the running owner and the exact captured obligation set
+  until one GUI completion delivery. A single driver owns either preparation polling or release
+  polling; overlapping drivers and manual draft operations refuse while it is active. Pending
+  results schedule another bounded delayed GUI pass, never a tight loop. Each pass revalidates
+  original attempt custody. Readiness, exact release or failure ends polling and releases driver
+  exclusivity before delivering outside owner and obligation borrows. Refused scheduling delivers
+  no callback. Dropping a caller-held handle cannot cancel this custody. Errors keep the original
+  obligations and interaction gates. Release completion alone grants no coordinator recovery,
+  session durability, native teardown or quit; the caller must compose those separate boundaries.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations
