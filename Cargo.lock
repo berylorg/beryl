@@ -1123,7 +1123,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "indexmap",
  "rustc-hash 2.1.2",
@@ -1585,7 +1585,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2400,7 +2400,7 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.2"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "anyhow",
  "as-raw-xcb-connection",
@@ -2497,7 +2497,7 @@ dependencies = [
 [[package]]
 name = "gpui-scrollbar"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-scrollbar.git?rev=0edb28da709b77b76dcbdab50c3a0b17e41f7990#0edb28da709b77b76dcbdab50c3a0b17e41f7990"
+source = "git+https://github.com/berylorg/gpui-scrollbar.git?rev=162d42a6bb1aaf34dfdf49a1fa3fc58e85e012e1#162d42a6bb1aaf34dfdf49a1fa3fc58e85e012e1"
 dependencies = [
  "gpui",
 ]
@@ -2505,7 +2505,7 @@ dependencies = [
 [[package]]
 name = "gpui-settings-window"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-settings-window.git?rev=70c84117353645f75e36971d2403b9df2058b754#70c84117353645f75e36971d2403b9df2058b754"
+source = "git+https://github.com/berylorg/gpui-settings-window.git?rev=92e89cddc69d877ee5e407a11bd90db812a28f80#92e89cddc69d877ee5e407a11bd90db812a28f80"
 dependencies = [
  "gpui",
  "gpui-scrollbar",
@@ -2517,7 +2517,7 @@ dependencies = [
 [[package]]
 name = "gpui-text-input"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-text-input.git?rev=840be40e51e2e9f12fe7f6abbe82c7daea2dd996#840be40e51e2e9f12fe7f6abbe82c7daea2dd996"
+source = "git+https://github.com/berylorg/gpui-text-input.git?rev=980fe2fd808f5538a4e675450b5010255c01dd3c#980fe2fd808f5538a4e675450b5010255c01dd3c"
 dependencies = [
  "gpui",
  "gpui-scrollbar",
@@ -2527,7 +2527,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -3355,7 +3355,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -4081,7 +4081,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "collections",
  "serde",
@@ -4579,7 +4579,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "derive_refineable",
 ]
@@ -4894,7 +4894,7 @@ checksum = "b12e76d157a900eb52e81bc6e9f3069344290341720e9178cde2407113ac8d89"
 [[package]]
 name = "semantic_version"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "anyhow",
  "serde",
@@ -5316,7 +5316,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "arrayvec",
  "log",
@@ -6182,7 +6182,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "anyhow",
  "async-fs",
@@ -6220,7 +6220,7 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/zed-fork.git?rev=49db3ce8570fd26a08e511f201b77377e9b73b4d#49db3ce8570fd26a08e511f201b77377e9b73b4d"
+source = "git+https://github.com/berylorg/zed-fork.git?rev=a7c54e82d69badc83ac4740c2df1da0d26959cc1#a7c54e82d69badc83ac4740c2df1da0d26959cc1"
 dependencies = [
  "perf",
  "quote",

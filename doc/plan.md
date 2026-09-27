@@ -89,18 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 675: Capture Owned Native Exit Geometry (finished)
+# Phase 676: Publish Native Exit Geometry Dependency (finished)
 
-GPUI `a7c54e82d6` now captures checked normal outer geometry, restore state and monitor facts from
-an exact live published window, including minimized normal/maximized intent. All 14 focused
-native/placement tests passed (`92e511ae-8505-4fc0-9d4a-1405c08cf0ef`), including visibility and
-removal rejection without activation. Default app library check, scoped formatting and independent
-coordinate/lifetime review passed. Canonical publication and app composition remain separate.
-
-# Phase 676: Publish Native Exit Geometry Dependency (pending)
-
-Publish the accepted owned GPUI revision through the canonical single dependency graph and verify
-locked canonical app/native capture checks before app consumers adopt the capture API.
+GPUI `a7c54e82d6` is published through scrollbar `162d42a`, text-input `980fe2f` and
+settings-window `92e89cd`, with one canonical GPUI source. Isolated locked widget/app library
+checks and the 14 focused native/placement tests passed; exact diff validation proved only the
+intended dependency revisions changed. Local app validation and semantic-server restart passed.
+Native capture passed independent coordinate/lifetime review in phase 675. Temporary checkouts
+are removed; virtual-desktop capture and app durable Exit composition remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -211,6 +207,9 @@ Phase 673 connects preparation and recovery outcomes to the ordinary attempt con
 compose durable session obligations before enabling ordinary shutdown or entering final teardown.
 Phase 674 supplies the complete-set atomic Exit session contribution. Next capture exact native
 placement facts and compose durable publication/reconciliation through the retained running owner.
+Phases 675–676 supply accepted native outer-geometry/restore-state capture and its canonical GPUI
+publication. Next capture virtual-desktop identity, convert the complete native placement facts
+to durable session inputs, and compose publication/reconciliation through the running owner.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
