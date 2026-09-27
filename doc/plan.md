@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 618: Preserve Native Close Ownership Across Startup Release (finished)
+# Phase 619: Transfer Persistent Exit Intent To Running Ownership (finished)
 
-Startup interaction release now preserves the native-close veto until process-owned cleanup.
-The real restored/threadless success test proves post-publication close preserves native, resident,
-reservation and durable custody while explicit disposal still settles. All twelve focused native
-restore-set/startup tests, the default app library check and independent semantic review pass.
-Ordinary close/Exit command routing remains below.
+Successful startup transfers one move-only Exit consumer. Pending and late intents survive the
+handoff; active duplicates coalesce and stale/foreign completion cannot retire a successor.
+Native cancellation and direct notification wake outside command-state borrows. All ten focused
+protocol/startup tests, the default app library check and independent semantic review pass
+(run `0139da7f-8f38-42d9-90ae-972c4812cdcb`). Phase 618's native-close veto is also accepted.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

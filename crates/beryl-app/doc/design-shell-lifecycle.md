@@ -523,6 +523,14 @@ by the executable composition root.
   the exact close intent and still vetoes default destruction. Successful owned cleanup removes
   the window explicitly through its retained native destruction authority.
 
+- Successful startup transfers one move-only running Exit consumer alongside the complete graph
+  and published windows. Existing startup command producers remain valid for deferred Exit events,
+  including after removal of the old startup surface. One pending bit and one exact active request
+  coalesce repeated delivery without a queue. Consuming an intent grants no shutdown authority.
+  Duplicates during that request cannot become a later attempt; ending the exact request after
+  cancellation or failure requires a fresh activation for another attempt. A foreign or stale
+  completion cannot end a successor request. Wake delivery occurs outside command-state borrows.
+
 - The running process window owner retains one native confirmation control and its completion,
   bound to the invoking window, shutdown intent and exact observation. Windows uses the owned
   GPUI native confirmation boundary, with feature-owned strings and Cancel-default behavior.

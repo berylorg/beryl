@@ -18,6 +18,10 @@ use std::{
     task::{Poll, Waker},
 };
 
+mod running_commands;
+pub(crate) use running_commands::{RunningExitCommands, RunningExitRequest};
+
+#[derive(Clone)]
 enum Stage {
     Preparing(PreparationCancellation),
     Native(MainWindowNativeRestoreSetCancellation),
@@ -32,6 +36,7 @@ struct Commands {
     exit: bool,
     retry: Option<StartupAttempt>,
     wake: Option<Waker>,
+    active_exit: Option<Rc<()>>,
 }
 
 #[derive(Clone)]
@@ -40,13 +45,19 @@ pub(crate) struct StartupCommands(Rc<RefCell<Commands>>);
 impl StartupCommands {
     pub(crate) fn request_exit(&self) {
         let mut state = self.0.borrow_mut();
+        if matches!(state.stage, Stage::Running) && state.active_exit.is_some() {
+            return;
+        }
         state.exit = true;
-        match &state.stage {
+        let stage = state.stage.clone();
+        let wake = state.wake.take();
+        drop(state);
+        match stage {
             Stage::Preparing(cancellation) => cancellation.cancel(),
             Stage::Native(cancellation) => cancellation.cancel(),
             _ => {}
         }
-        if let Some(wake) = state.wake.take() {
+        if let Some(wake) = wake {
             wake.wake();
         }
     }
@@ -63,7 +74,9 @@ impl StartupCommands {
                 let mut state = self.0.borrow_mut();
                 if !state.exit && matches!(state.stage, Stage::Waiting) && state.retry.is_none() {
                     state.retry = Some(attempt);
-                    if let Some(wake) = state.wake.take() {
+                    let wake = state.wake.take();
+                    drop(state);
+                    if let Some(wake) = wake {
                         wake.wake();
                     }
                 }
@@ -92,7 +105,7 @@ pub(crate) struct StartedProcess {
     pub(crate) windows: PublishedMainWindowRestoreSet,
     pub(crate) appearance: Entity<GpuiAppearanceWindowSet>,
     pub(crate) startup_surface: Option<OwnedStartupSurface>,
-    pub(crate) commands: StartupCommands,
+    pub(crate) commands: RunningExitCommands,
 }
 
 pub(crate) enum StartupCompletion {
@@ -126,6 +139,7 @@ pub(crate) fn start(
         exit: false,
         retry: None,
         wake: None,
+        active_exit: None,
     })));
     let owner = Controller {
         configuration: Arc::new(configuration),
@@ -195,7 +209,7 @@ impl Controller {
                                             windows,
                                             appearance,
                                             startup_surface: surface,
-                                            commands,
+                                            commands: RunningExitCommands::new(commands),
                                         };
                                         completion
                                             .borrow_mut()

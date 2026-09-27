@@ -106,6 +106,24 @@ pub struct MainWindowNativeRestoreSetCancellation {
 }
 
 impl MainWindowNativeRestoreSetCancellation {
+    #[cfg(test)]
+    pub(crate) fn test_with_waiter(waiter: &std::task::Waker) -> Self {
+        use std::future::Future;
+        let wake = Arc::new(signal::StartupWake::default());
+        {
+            let mut wait = std::pin::pin!(wake.wait(wake.version()));
+            assert!(
+                wait.as_mut()
+                    .poll(&mut std::task::Context::from_waker(waiter))
+                    .is_pending()
+            );
+        }
+        Self {
+            cancellation: CommandCancellation::new(),
+            wake,
+        }
+    }
+
     pub fn cancel(&self) {
         self.cancellation.cancel();
         self.wake.notify();

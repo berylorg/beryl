@@ -81,6 +81,9 @@ fn native_success_hands_off_the_complete_graph_and_late_exit_with_auxiliary_cust
                             running.commands.exit_requested(),
                             "deferred Exit survives native surface removal"
                         );
+                        let request = running.commands.next_exit().await;
+                        assert!(running.commands.finish_exit(&request));
+                        assert!(!running.commands.exit_requested());
                         support::dispose_running(running, cx).await;
                         observed.set(true);
                         cx.update(|app| app.quit()).unwrap();
