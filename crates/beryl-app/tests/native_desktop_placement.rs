@@ -4,8 +4,10 @@
 mod native;
 
 use beryl_app::main_window::{
+    WindowsDesktopObservationFailure, WindowsDesktopObservationStage,
     WindowsDesktopPlacementFailure, WindowsDesktopPlacementOutcome, WindowsDesktopPlacementStage,
-    prepare_windows_desktop_placement, windows_desktop_id_from_guid, windows_desktop_id_to_guid,
+    observe_windows_desktop, prepare_windows_desktop_placement, windows_desktop_id_from_guid,
+    windows_desktop_id_to_guid,
 };
 use beryl_model::VirtualDesktopId;
 use gpui::{
@@ -19,11 +21,12 @@ use std::{
 };
 use windows::{
     Win32::{
+        Foundation::RECT,
         System::Com::{
             APTTYPE, APTTYPEQUALIFIER, COINIT, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED,
             CoGetApartmentType, CoInitializeEx,
         },
-        UI::WindowsAndMessaging::GetForegroundWindow,
+        UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect},
     },
     core::GUID,
 };
@@ -217,6 +220,59 @@ async fn scenario(
         alive(raw) && visible(raw) && unsafe { GetForegroundWindow() } == foreground,
         format!("{name}: publication changed activation or native visibility"),
     );
+    for mode in [
+        None,
+        Some(COINIT_MULTITHREADED),
+        Some(COINIT_APARTMENTTHREADED),
+    ] {
+        let mut before_rect = RECT::default();
+        unsafe { GetWindowRect(native::hwnd(raw), &mut before_rect) }.unwrap();
+        let (lease, released) = window
+            .update(cx, |_, window, _| window.lease_published_windows_window())
+            .unwrap()
+            .unwrap();
+        let worker = std::thread::spawn(move || {
+            let initial = apartment();
+            let owner = mode.map(|mode| {
+                unsafe { CoInitializeEx(None, mode) }.ok().unwrap();
+                Apartment
+            });
+            let before = apartment();
+            let result = observe_windows_desktop(lease);
+            let after = apartment();
+            drop(owner);
+            (result, initial == apartment(), before == after)
+        });
+        while !worker.is_finished() {
+            pump(cx).await;
+        }
+        let report = worker.join().unwrap();
+        let settled = released.await.unwrap();
+        let expected = if mode == Some(COINIT_APARTMENTTHREADED) {
+            Err(WindowsDesktopObservationFailure {
+                stage: WindowsDesktopObservationStage::InitializeCom,
+                hresult: CHANGED_MODE,
+            })
+        } else {
+            Ok(windows_desktop_id_from_guid(expected_desktop))
+        };
+        require(
+            failures,
+            report.0 == expected && report.1 && report.2,
+            format!("{name}: desktop observation {mode:?}: {report:?}, expected {expected:?}"),
+        );
+        let mut after_rect = RECT::default();
+        unsafe { GetWindowRect(native::hwnd(raw), &mut after_rect) }.unwrap();
+        require(
+            failures,
+            !settled.native_destroyed
+                && alive(raw)
+                && visible(raw)
+                && before_rect == after_rect
+                && unsafe { GetForegroundWindow() } == foreground,
+            format!("{name}: desktop observation changed native state"),
+        );
+    }
     dispose(cx, window, raw).await;
     raw
 }

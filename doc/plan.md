@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 679: Publish The Protected Native Observation Dependency (finished)
+# Phase 680: Observe The Published Window Desktop (finished)
 
-Published GPUI `d2665f256d`, scrollbar `3b476227`, text-input `8667c11a` and settings-window
-`2b8aaf85` through Beryl's canonical pins. Isolated locked metadata proved one GPUI graph;
-all widget/app library checks and 12 canonical native tests passed
-(`7658a26e-3c10-4a14-913b-945c97f5f01d`). Independent publication review found no issues;
-local validation, analyzer refresh and temporary-checkout cleanup completed. Desktop COM
-observation and exact Exit-owner binding remain next.
+Accepted the read-only COM worker with exact published-window lease ownership, canonical desktop
+identity and staged HRESULT failures. Native tests passed all 3 cases, including 18 observations
+and the accepted lease lifetime suite (`23ccfd5c-9954-4248-959f-b1198e7e97cf`); the default app
+library check and independent semantic review passed. Exact Exit-owner placement/session custody
+and GUI settlement remain next.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -216,6 +215,8 @@ Phase 678 supplies the published native lifetime lease required by that observat
 canonical GPUI/widget pins before implementing the desktop COM worker and exact Exit-owner binding.
 Phase 679 completes that publication. Next implement the worker desktop observation under the
 accepted published-window lease, then compose exact Exit-owner placement/session custody.
+Phase 680 supplies that desktop worker. Next bind geometry and desktop observations to the original
+Exit attempt and retain every native settlement before session publication or recovery.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

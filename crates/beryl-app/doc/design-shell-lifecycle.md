@@ -228,6 +228,22 @@ by the executable composition root.
   close veto and allowed close, explicit removal, observer abandonment, worker unwind and exactly-once
   destruction on the GUI executor, plus independent lifecycle review.
 
+## Published Desktop Observation
+
+- The app worker consumes the published native lease and reads only that window's desktop with
+  the public `IVirtualDesktopManager::GetWindowDesktopId` operation. It initializes a worker COM
+  apartment and releases the manager and its own apartment reference before releasing the lease,
+  including on failure or unwind. Existing compatible COM initialization remains balanced.
+- Return the exact canonical `VirtualDesktopId` on success. Initialization, manager creation and
+  query failures retain their distinct stage and HRESULT. Do not turn failure into absent or saved
+  desktop identity, retry, enumerate desktops, move a window or switch the active desktop.
+- This synchronous worker entry point schedules no work itself. Its caller owns off-GUI execution,
+  exact window/result association and the separate GUI lease-settlement receipt. A returned desktop
+  result alone grants no recovery, publication, destruction or quit authority.
+- Verify real published-window identity against an independent native read, unchanged activation
+  and placement, fresh and existing compatible apartments, incompatible-apartment failure, balanced
+  COM lifetime and sequential lease reuse. Review native and COM ownership independently.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

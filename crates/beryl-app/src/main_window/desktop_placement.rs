@@ -1,5 +1,5 @@
 use beryl_model::VirtualDesktopId;
-use gpui::WindowsHiddenWindowLease;
+use gpui::{WindowsHiddenWindowLease, WindowsPublishedWindowLease};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -61,6 +61,50 @@ pub fn prepare_windows_desktop_placement(
 }
 
 struct ComApartment;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WindowsDesktopObservationStage {
+    InitializeCom,
+    CreateManager,
+    QueryWindow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WindowsDesktopObservationFailure {
+    pub stage: WindowsDesktopObservationStage,
+    pub hresult: i32,
+}
+
+pub fn observe_windows_desktop(
+    lease: WindowsPublishedWindowLease,
+) -> Result<VirtualDesktopId, WindowsDesktopObservationFailure> {
+    let result = read_window_desktop(lease.raw_handle());
+    drop(lease);
+    result
+}
+
+fn read_window_desktop(raw: usize) -> Result<VirtualDesktopId, WindowsDesktopObservationFailure> {
+    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE) }
+        .ok()
+        .map_err(|error| WindowsDesktopObservationFailure {
+            stage: WindowsDesktopObservationStage::InitializeCom,
+            hresult: error.code().0,
+        })?;
+    let _apartment = ComApartment;
+    let manager: IVirtualDesktopManager = unsafe {
+        CoCreateInstance(&VirtualDesktopManager, None, CLSCTX_ALL)
+    }
+    .map_err(|error| WindowsDesktopObservationFailure {
+        stage: WindowsDesktopObservationStage::CreateManager,
+        hresult: error.code().0,
+    })?;
+    unsafe { manager.GetWindowDesktopId(HWND(raw as *mut _)) }
+        .map(windows_desktop_id_from_guid)
+        .map_err(|error| WindowsDesktopObservationFailure {
+            stage: WindowsDesktopObservationStage::QueryWindow,
+            hresult: error.code().0,
+        })
+}
 
 impl Drop for ComApartment {
     fn drop(&mut self) {
