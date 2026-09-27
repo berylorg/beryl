@@ -646,6 +646,18 @@ by the executable composition root.
   and preserves all existing intent, service and native-cleanup custody. This composition performs
   no automatic command completion, unadmitted-intent release, retry, presentation, teardown or quit.
 
+- The running Exit policy wraps that composed attempt and reports its original result together
+  with whether the exact command completed. Before delivering a cancelled or failed attempt, it
+  ends only the settled unadmitted application-Exit intent returned by that attempt's confirmed
+  observation, then uses guarded exact command completion. Request identity and original invoking
+  identity must still match before releasing that intent. Other retained intents, pending native
+  cleanup, observation, progress or missing service custody prevent completion. A progress failure
+  completes only after the coordinator has proven reopening and released its intent. Ready and
+  Waiting never complete the command. The policy delivers outside owner borrows and preserves the
+  original result even when custody prevents completion; it never retries, destroys windows or
+  grants quit authority. Initial scheduling refusal still returns the request synchronously for
+  explicit guarded completion by its caller.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

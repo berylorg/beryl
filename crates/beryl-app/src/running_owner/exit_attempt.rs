@@ -24,7 +24,72 @@ pub(crate) enum ExitAttemptError {
     Progress(#[from] ExitProgressError),
 }
 
+#[derive(Debug)]
+pub(crate) struct ExitAttemptOutcome {
+    pub(crate) result: Result<ExitAttemptCompletion, ExitAttemptError>,
+    pub(crate) command_completed: bool,
+}
+
 impl RunningProcessOwner {
+    pub(crate) fn run_exit_attempt(
+        owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        cancellation: ProjectionCancellationToken,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, RunningExitRequest, ExitAttemptOutcome, &mut App)
+        + 'static,
+    ) -> Result<(), (RunningExitRequest, ExitObservationError)> {
+        Self::observe_and_drive_exit(
+            owner,
+            request,
+            cancellation,
+            app,
+            move |owner, mut request, result, app| {
+                let release_unadmitted = matches!(
+                    &result,
+                    Ok(ExitAttemptCompletion::ConfirmedObservationCancelled)
+                        | Err(ExitAttemptError::Routing(
+                            ExitRoutingError::ObservationScheduling(_)
+                                | ExitRoutingError::ConfirmedObservation(_)
+                        ))
+                );
+                if release_unadmitted {
+                    let mut owner = owner.borrow_mut();
+                    let invoking = owner
+                        .process
+                        .commands
+                        .bind_invoking_window(&mut request, None);
+                    if owner
+                        .shutdown_status()
+                        .is_some_and(|(window, intent, status)| {
+                            invoking == Some(window)
+                                && intent == super::ShutdownIntent::ApplicationExit
+                                && status == super::RunningShutdownStatus::AwaitingObservation
+                        })
+                    {
+                        let _ = owner.end_unadmitted_shutdown();
+                    }
+                }
+                let can_complete = !matches!(
+                    &result,
+                    Ok(ExitAttemptCompletion::Progress(
+                        AppServiceShutdownProgress::Ready | AppServiceShutdownProgress::Waiting
+                    ))
+                );
+                let command_completed = can_complete && Self::finish_exit(owner, &request);
+                completed(
+                    owner,
+                    request,
+                    ExitAttemptOutcome {
+                        result,
+                        command_completed,
+                    },
+                    app,
+                );
+            },
+        )
+    }
+
     pub(crate) fn observe_and_drive_exit(
         owner: &Rc<RefCell<Self>>,
         request: RunningExitRequest,

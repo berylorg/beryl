@@ -12,52 +12,52 @@ use windows::{
 
 #[test]
 fn native_initial_exit_routes_idle_after_cancelled_observation() {
-    exercise(None, ObservationOutcome::Admitted, false);
+    exercise(None, ObservationOutcome::Admitted, false, false);
 }
 
 #[test]
 fn native_initial_exit_retains_request_until_confirmation_cancel() {
-    exercise(Some(false), ObservationOutcome::Admitted, false);
+    exercise(Some(false), ObservationOutcome::Admitted, false, false);
 }
 
 #[test]
 fn native_initial_exit_retains_request_until_confirmed_admission() {
-    exercise(Some(true), ObservationOutcome::Admitted, false);
+    exercise(Some(true), ObservationOutcome::Admitted, false, false);
 }
 
 #[test]
 fn native_initial_exit_retains_intent_after_confirmed_observation_cancel() {
-    exercise(Some(true), ObservationOutcome::Cancelled, false);
+    exercise(Some(true), ObservationOutcome::Cancelled, false, false);
 }
 
 #[test]
 fn native_initial_exit_retains_intent_after_confirmed_admission_refusal() {
-    exercise(Some(true), ObservationOutcome::Refused, false);
+    exercise(Some(true), ObservationOutcome::Refused, false, false);
 }
 
 #[test]
 fn native_exit_attempt_drives_idle_admission_to_ready() {
-    exercise(None, ObservationOutcome::Admitted, true);
+    exercise(None, ObservationOutcome::Admitted, true, false);
 }
 
 #[test]
 fn native_exit_attempt_drives_confirmed_admission_to_ready() {
-    exercise(Some(true), ObservationOutcome::Admitted, true);
+    exercise(Some(true), ObservationOutcome::Admitted, true, false);
 }
 
 #[test]
 fn native_exit_attempt_does_not_drive_cancelled_confirmation() {
-    exercise(Some(false), ObservationOutcome::Admitted, true);
+    exercise(Some(false), ObservationOutcome::Admitted, true, false);
 }
 
 #[test]
 fn native_exit_attempt_does_not_drive_cancelled_confirmed_observation() {
-    exercise(Some(true), ObservationOutcome::Cancelled, true);
+    exercise(Some(true), ObservationOutcome::Cancelled, true, false);
 }
 
 #[test]
 fn native_exit_attempt_does_not_drive_refused_confirmed_admission() {
-    exercise(Some(true), ObservationOutcome::Refused, true);
+    exercise(Some(true), ObservationOutcome::Refused, true, false);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -67,9 +67,35 @@ enum ObservationOutcome {
     Refused,
 }
 
-fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
+#[test]
+fn native_exit_policy_retains_idle_readiness() {
+    exercise(None, ObservationOutcome::Admitted, true, true);
+}
+
+#[test]
+fn native_exit_policy_retains_confirmed_readiness() {
+    exercise(Some(true), ObservationOutcome::Admitted, true, true);
+}
+
+#[test]
+fn native_exit_policy_completes_cancelled_confirmation() {
+    exercise(Some(false), ObservationOutcome::Admitted, true, true);
+}
+
+#[test]
+fn native_exit_policy_completes_cancelled_confirmed_observation() {
+    exercise(Some(true), ObservationOutcome::Cancelled, true, true);
+}
+
+#[test]
+fn native_exit_policy_completes_refused_confirmed_admission() {
+    exercise(Some(true), ObservationOutcome::Refused, true, true);
+}
+
+fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool, settle: bool) {
     let cancel_observation = outcome == ObservationOutcome::Cancelled;
     let admitted = outcome == ObservationOutcome::Admitted;
+    let command_completed = settle && confirm.is_some() && (confirm == Some(false) || !admitted);
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -99,6 +125,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                         assert!(
                             cx.update(|app| route(
                                 drive,
+                                false,
                                 &owner,
                                 request,
                                 token,
@@ -114,6 +141,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                     assert!(
                                         route(
                                             drive,
+                                            false,
                                             owner,
                                             request,
                                             token,
@@ -159,6 +187,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                         assert!(
                             cx.update(|app| route(
                                 drive,
+                                settle,
                                 &owner,
                                 request,
                                 observation_cancellation.clone(),
@@ -166,6 +195,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                 move |owner, mut request, result, app| {
                                     assert_eq!(std::thread::current().id(), gui_thread);
                                     assert!(Rc::ptr_eq(&callback_identity, &request.identity()));
+                                    if !command_completed {
                                     assert_eq!(
                                         owner
                                             .borrow()
@@ -173,7 +203,8 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                             .unwrap(),
                                         invoking
                                     );
-                                    assert!(owner.borrow().exit_requested());
+                                    }
+                                    assert_eq!(owner.borrow().exit_requested(), !command_completed);
                                     if let Some(confirm) = confirm {
                                         if confirm && outcome == ObservationOutcome::Refused {
                                             assert!(matches!(result, Err(ExitRoutingError::ConfirmedObservation(_))));
@@ -189,6 +220,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                             }
                                         );
                                         }
+                                        if !command_completed {
                                         assert_eq!(
                                             owner
                                                 .borrow_mut()
@@ -196,7 +228,8 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                                 .unwrap(),
                                             None
                                         );
-                                        if confirm {
+                                        }
+                                        if confirm && !command_completed {
                                             assert_eq!(
                                                 owner.borrow().shutdown_status(),
                                                 Some((
@@ -290,7 +323,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                             owner
                         };
                         assert!(owner.borrow().shutdown_status().is_none());
-                        assert!(RunningProcessOwner::finish_exit(&owner, &request));
+                        assert_eq!(RunningProcessOwner::finish_exit(&owner, &request), !command_completed);
                         assert!(!owner.borrow().exit_requested());
                         if drive {
                             let (request, _) = cx.update(|app| {
@@ -302,6 +335,32 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
                                     |_, _, _, _| panic!("refused attempt called completion"),
                                 )
                             }).unwrap().unwrap_err();
+                            assert!(Rc::ptr_eq(&identity, &request.identity()));
+                        }
+                        if settle {
+                            command.request_exit();
+                            let request = next_request(&owner, cx).await;
+                            assert!(!Rc::ptr_eq(&identity, &request.identity()));
+                            let slot = Rc::new(RefCell::new(None));
+                            let delivered = slot.clone();
+                            let cancellation = ProjectionCancellationToken::new();
+                            cancellation.cancel();
+                            assert!(cx.update(|app| RunningProcessOwner::run_exit_attempt(
+                                &owner, request, cancellation, app,
+                                move |owner, request, outcome, _| {
+                                    assert!(outcome.command_completed);
+                                    assert!(matches!(outcome.result, Err(crate::running_owner::ExitAttemptError::Routing(ExitRoutingError::Work(ExitWorkError::Observation(_))))));
+                                    assert!(!owner.borrow().exit_requested());
+                                    *delivered.borrow_mut() = Some(request);
+                                },
+                            )).unwrap().is_ok());
+                            wait(&slot, cx).await;
+                            let request = slot.borrow_mut().take().unwrap();
+                            let identity = request.identity();
+                            let (request, _) = cx.update(|app| RunningProcessOwner::run_exit_attempt(
+                                &owner, request, ProjectionCancellationToken::new(), app,
+                                |_, _, _, _| panic!("stale policy attempt called completion"),
+                            )).unwrap().unwrap_err();
                             assert!(Rc::ptr_eq(&identity, &request.identity()));
                         }
                         let running = Rc::try_unwrap(owner)
@@ -325,6 +384,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool) {
 
 fn route(
     drive: bool,
+    settle: bool,
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: startup_owner::RunningExitRequest,
     cancellation: ProjectionCancellationToken,
@@ -352,12 +412,8 @@ fn route(
             completed,
         );
     }
-    RunningProcessOwner::observe_and_drive_exit(
-        owner,
-        request,
-        cancellation,
-        app,
-        move |owner, request, result, app| {
+    let completed =
+        move |owner: &Rc<RefCell<RunningProcessOwner>>, request, result, app: &mut gpui::App| {
             assert!(!owner.borrow().test_services_on_worker());
             assert!(owner.borrow_mut().take_shutdown_progress().is_none());
             let result = match result {
@@ -377,6 +433,20 @@ fn route(
                 Err(error) => panic!("unexpected attempt progress failure: {error}"),
             };
             completed(owner, request, result, app);
-        },
-    )
+        };
+    if settle {
+        RunningProcessOwner::run_exit_attempt(
+            owner,
+            request,
+            cancellation,
+            app,
+            move |owner, request, outcome, app| {
+                let expected = !matches!(&outcome.result, Ok(ExitAttemptCompletion::Progress(_)));
+                assert_eq!(outcome.command_completed, expected);
+                completed(owner, request, outcome.result, app);
+            },
+        )
+    } else {
+        RunningProcessOwner::observe_and_drive_exit(owner, request, cancellation, app, completed)
+    }
 }
