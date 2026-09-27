@@ -8,6 +8,12 @@ use beryl_home_store::{
 use beryl_model::SessionRevision;
 use beryl_state::{ResumeSessionAfterExit, SessionState};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ResumeSessionValidation {
+    UnchangedExit,
+    ResumedRunning,
+}
+
 #[derive(Debug)]
 pub(crate) enum InterruptedExit {
     Executed(ExitSessionExecution),
@@ -40,6 +46,24 @@ pub(crate) enum ResumeSessionOutcome {
     },
 }
 
+impl ResumeSessionOutcome {
+    pub(super) fn known_commit(&self) -> Option<bool> {
+        match self {
+            Self::NotCommitted { .. } => Some(false),
+            Self::Committed { .. } => Some(true),
+            Self::Indeterminate {
+                reconciliation: Some(Ok(ReconciliationResolution::ExactOld)),
+                ..
+            } => Some(false),
+            Self::Indeterminate {
+                reconciliation: Some(Ok(ReconciliationResolution::ExactNew { .. })),
+                ..
+            } => Some(true),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct InterruptedExitResume {
@@ -67,6 +91,37 @@ impl InterruptedExitResume {
 
     pub(crate) fn result_revision(&self) -> Option<SessionRevision> {
         self.result_revision
+    }
+
+    pub(crate) fn validate_candidate(
+        &self,
+        candidate: &mut HomeRecoveryCandidate,
+        session: &SessionState,
+    ) -> Result<ResumeSessionValidation, super::ExitSessionValidationError> {
+        use super::ExitSessionValidationError as Error;
+        use beryl_state::SessionExitIntent;
+        let result_revision = self.result_revision.ok_or(Error::Unproven)?;
+        let committed = self
+            .outcome
+            .as_ref()
+            .and_then(ResumeSessionOutcome::known_commit)
+            .ok_or(Error::Unproven)?;
+        let evidence = self.exit.publication();
+        let (intent, revision, validated) = if committed {
+            (
+                SessionExitIntent::Running,
+                result_revision,
+                ResumeSessionValidation::ResumedRunning,
+            )
+        } else {
+            (
+                SessionExitIntent::OrderlyExit,
+                evidence.result_session_revision,
+                ResumeSessionValidation::UnchangedExit,
+            )
+        };
+        super::validation::validate_published(evidence, intent, revision, candidate, session)?;
+        Ok(validated)
     }
 
     pub(crate) fn execute(

@@ -58,6 +58,29 @@ fn validate(
     candidate: &mut HomeRecoveryCandidate,
     session: &SessionState,
 ) -> Result<ExitSessionValidation, ExitSessionValidationError> {
+    if committed {
+        validate_published(
+            evidence,
+            SessionExitIntent::OrderlyExit,
+            evidence.result_session_revision,
+            candidate,
+            session,
+        )?;
+        return Ok(ExitSessionValidation::CommittedExit);
+    }
+    let snapshot = read_candidate(evidence, candidate, session)?;
+    if snapshot == evidence.source {
+        Ok(ExitSessionValidation::UnchangedRunning)
+    } else {
+        Err(ExitSessionValidationError::Changed)
+    }
+}
+
+fn read_candidate(
+    evidence: &ExitSessionPublication,
+    candidate: &mut HomeRecoveryCandidate,
+    session: &SessionState,
+) -> Result<beryl_state::MinimalSessionBootstrap, ExitSessionValidationError> {
     use ExitSessionValidationError as Error;
     if candidate.service_reference().configured_path() != evidence.configured_home {
         return Err(Error::ForeignHome);
@@ -65,20 +88,24 @@ fn validate(
     let access = candidate
         .recovery_access()
         .map_err(|e| Error::Read(e.to_string()))?;
-    let snapshot = session
+    session
         .minimal_bootstrap_candidate(&access)
         .map_err(|e| Error::Read(e.to_string()))?
-        .ok_or(Error::Changed)?;
-    if !committed {
-        return if snapshot == evidence.source {
-            Ok(ExitSessionValidation::UnchangedRunning)
-        } else {
-            Err(Error::Changed)
-        };
-    }
+        .ok_or(Error::Changed)
+}
+
+pub(super) fn validate_published(
+    evidence: &ExitSessionPublication,
+    intent: SessionExitIntent,
+    revision: beryl_model::SessionRevision,
+    candidate: &mut HomeRecoveryCandidate,
+    session: &SessionState,
+) -> Result<(), ExitSessionValidationError> {
+    use ExitSessionValidationError as Error;
+    let snapshot = read_candidate(evidence, candidate, session)?;
     let header = snapshot.header();
-    if header.exit_intent() != SessionExitIntent::OrderlyExit
-        || header.revision() != evidence.result_session_revision
+    if header.exit_intent() != intent
+        || header.revision() != revision
         || header.fallback() != evidence.source.header().fallback()
         || snapshot.windows().len() != evidence.result_windows.len()
         || snapshot.windows().len() != evidence.source.windows().len()
@@ -97,5 +124,5 @@ fn validate(
     {
         return Err(Error::Changed);
     }
-    Ok(ExitSessionValidation::CommittedExit)
+    Ok(())
 }

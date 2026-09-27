@@ -89,20 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 695: Retain Interrupted Exit Resume Execution Outcomes (finished)
+# Phase 696: Validate Retained Resume Outcomes Against Fresh Session State (finished)
 
-Accepted move-owned resume attempts with fresh candidate validation, revision-bound header-only
-execution, retained original and separate resume outcomes, installed ambiguous custody and exact
-handle reconciliation. Duplicate execution and terminal reconciliation repetition are refused.
-All 23 focused tests passed (`aac6461b-6fdf-49c0-9ddc-d495ba67a59b`), including 1/3/256-window
-preservation and precommit/postcommit/ambiguous recovery; default app library check and independent
-lifecycle/persistence review passed. No interaction reopening or supervisor transfer is inferred.
-
-# Phase 696: Validate Retained Resume Outcomes Against Fresh Session State (pending)
-
-Validate known resume outcomes against exact fresh candidate state: noncommit retains the committed
-Exit source, commit requires its predicted Running result, and pending or terminal uncertainty stays
-unavailable. Preserve original evidence and all outcome custody; grant no interaction admission.
+Accepted fresh candidate validation of retained resume outcomes: noncommit and exact-old require
+unchanged committed Exit state; commit and exact-new require predicted Running state. Pending,
+failed and terminal uncertainty stay unavailable. Shared complete-state checks preserve custody
+and grant no write or interaction authority. All 25 focused tests passed
+(`106799fb-b03d-40a3-a9a7-ec9b61689646`); default app library check and independent
+lifecycle/persistence review passed.
 
 # Phase 697: Retry Proven Noncommitted Session Resumption (pending)
 

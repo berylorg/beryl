@@ -12,7 +12,9 @@ pub(crate) use evidence::{ExitSessionPublication, PreparedExitSession};
 mod validation;
 pub(crate) use validation::{ExitSessionValidation, ExitSessionValidationError};
 mod resume;
-pub(crate) use resume::{InterruptedExit, InterruptedExitResume, ResumeSessionOutcome};
+pub(crate) use resume::{
+    InterruptedExit, InterruptedExitResume, ResumeSessionOutcome, ResumeSessionValidation,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitSessionPreparationError {
