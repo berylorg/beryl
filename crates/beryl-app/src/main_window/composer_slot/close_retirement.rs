@@ -29,6 +29,14 @@ impl MainWindowComposerSlot {
         close: MainWindowConversationComposerCloseTicket,
         flush: ComposerHostFlushTicket,
     ) -> Result<MainWindowComposerRetiredClose, Box<Self>> {
+        self.take_clean_window_close(close, flush).ok_or(self)
+    }
+
+    pub(in crate::main_window) fn take_clean_window_close(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        flush: ComposerHostFlushTicket,
+    ) -> Option<MainWindowComposerRetiredClose> {
         if self.disposed
             || !self.window_close_is_current(close)
             || self.pending.is_some()
@@ -41,7 +49,7 @@ impl MainWindowComposerSlot {
                     || selected.dispatcher.binding != selected.identity.binding()
             })
         {
-            return Err(self);
+            return None;
         }
         let SelectedComposer {
             identity,
@@ -50,11 +58,14 @@ impl MainWindowComposerSlot {
             host,
         } = self.selected.take().unwrap();
         match Box::new(host).retire_clean_window_close(flush) {
-            Ok(host) => Ok(MainWindowComposerRetiredClose {
-                selection: identity,
-                close,
-                host,
-            }),
+            Ok(host) => {
+                self.disposed = true;
+                Some(MainWindowComposerRetiredClose {
+                    selection: identity,
+                    close,
+                    host,
+                })
+            }
             Err(host) => {
                 self.selected = Some(SelectedComposer {
                     identity,
@@ -62,7 +73,7 @@ impl MainWindowComposerSlot {
                     draft_state,
                     host: *host,
                 });
-                Err(self)
+                None
             }
         }
     }

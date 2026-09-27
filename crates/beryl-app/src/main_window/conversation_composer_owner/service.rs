@@ -23,6 +23,7 @@ use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease
 use crate::main_window::MainWindowComposerSlot;
 
 mod close;
+mod retirement;
 mod close_cleanup;
 mod native_disposal;
 

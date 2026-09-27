@@ -1,51 +1,11 @@
-use super::widget_support::fixture::{Fixture, operation_id};
+use super::support::slot_close::{ready, slot};
+use super::widget_support::fixture::Fixture;
 use beryl_app::{
-    composer_host::{
-        ComposerHostFlushAdmission, ComposerHostFlushCapture, ComposerHostFlushPurpose,
-        ComposerHostFlushState, ComposerHostFlushTicket,
-    },
-    main_window::{
-        MainWindowComposerMarkerMetadataAuthority, MainWindowComposerSlot,
-        MainWindowConversationComposerCloseTicket,
-    },
+    composer_host::{ComposerHostFlushAdmission, ComposerHostFlushPurpose},
+    main_window::MainWindowConversationComposerCloseTicket,
 };
-use beryl_home_store::{CommandCancellation, HomeHealthState, test_faults::FaultPoint};
+use beryl_home_store::{HomeHealthState, test_faults::FaultPoint};
 use gpui::{AppContext, TestAppContext};
-use syndic_storage::SyndicTimestamp;
-
-fn slot(fixture: &Fixture) -> Box<MainWindowComposerSlot> {
-    let claim = fixture.claims().0;
-    Box::new(
-        MainWindowComposerSlot::new(
-            fixture.window_id,
-            claim,
-            fixture.activated_host(fixture.selected_thread, 221, 222, 1),
-            fixture.storage.clone(),
-            MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
-        )
-        .unwrap(),
-    )
-}
-
-fn ready(fixture: &Fixture, slot: &mut MainWindowComposerSlot, flush: ComposerHostFlushTicket) {
-    let selection = slot.selected_identity().unwrap();
-    assert_eq!(
-        slot.capture_selected_flush_publication(
-            &fixture.store,
-            selection,
-            flush,
-            fixture.assets(),
-            &fixture.marker_seals(),
-            operation_id(223),
-            None,
-            SyndicTimestamp::from_unix_millis(5),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostFlushCapture::State(ComposerHostFlushState::CloseReady)
-    );
-}
-
 #[gpui::test]
 fn clean_slot_retirement_preserves_exact_evidence_after_home_failure(cx: &mut TestAppContext) {
     let fixture = Fixture::new("clean-slot-retirement", 201);

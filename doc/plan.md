@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 708: Retire The Clean Composer Slot (finished)
+# Phase 709: Retire The Clean Composer Service (finished)
 
-Accepted consuming exact close-gated slot retirement with immutable selection/checkpoint evidence,
-drained local dispatch custody and complete slot return on refusal. Library checking and independent
-lifecycle review passed. All 18 existing resident-close tests passed; both new slot tests passed
-after correcting test setup order (`ef4cf96e-9c2a-469d-9125-ea24dd1150de`). This component performs
-no durable disposal and supplies no worker-completion, fresh-binding or reopening authority.
+Accepted exclusively owned service retirement with exact close/slot evidence, reference-drain
+checks and original service return on refusal, without durable cleanup. Library checking, all 22
+resident-close tests and independent lifecycle review passed. After moving shared helpers to a
+support module, all four affected tests passed again (`f0475d21-f88f-4db9-a82f-1199cc165800`).
+Resident detachment, fresh rebinding and whole-resident completion remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -105,8 +105,8 @@ checkpoint/history facts without durable cleanup through the Failed store. Fresh
 must precede rebinding; changed or unresolved evidence stays unavailable. General dirty or ambiguous
 save recovery is outside this cut because it cannot satisfy session-publication admission. Do not
 substitute native-lineage unmounting or startup cleanup for resident retirement proof. Phase 707
-supplies the consuming host primitive and phase 708 the enclosing slot primitive; service workers
-and preserved widget bindings remain here.
+supplies the consuming host primitive, phase 708 the enclosing slot primitive and phase 709 the
+exclusive service primitive. Worker-reference draining and preserved widget bindings remain here.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
