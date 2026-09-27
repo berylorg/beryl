@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 688: Derive Readiness From The Retained Exit Session Outcome (finished)
+# Phase 689: Bind Exit Session Publication To Its Exact Request (finished)
 
-Accepted original-attempt readiness from clean or exact-new session receipts under current healthy
-home authority, preserving all outcome custody and recovery fences. All 28 focused cases have passing
-evidence: 27 in `113c9b57-ce2b-4def-a4fe-4ab64186e0f3`, plus the corrected health-probe test in
-`ce6913b6-c64e-4f45-85ac-3aea63a63728`. Default app library check and independent persistence/lifecycle
-review passed. Same-home recovery and ordinary Exit consumer integration remain separate.
+Accepted exact active-request validation, retained publication delivery and fresh readiness inspection
+without consuming typed outcome custody or releasing fences. All 32 focused cases have passing
+evidence: 30 in `d2d381dc-2ae4-43de-b4b5-f8ceb935b9f6`, plus two corrected failed-home fixture cleanup
+cases in `d512320b-51e9-4fc1-a5e1-d9da5210e641`. Default app library check and independent
+lifecycle/persistence review passed. Consumer integration and same-home recovery remain separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -242,6 +242,9 @@ still fence draft release and coordinator recovery until their proof is explicit
 Phase 688 supplies uncached session readiness from the retained clean or exact-new receipt under
 current healthy home/session authority. Next integrate the ordinary consumer and same-home failure
 recovery; readiness inspection preserves all custody and grants no teardown or quit authority.
+Phase 689 supplies the exact-request publication handoff with retained outcomes and current readiness
+delivery. Next compose ordinary consumer and same-home failure policy; delivery alone neither
+completes the command nor releases recovery fences.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

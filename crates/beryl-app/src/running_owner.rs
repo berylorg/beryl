@@ -23,6 +23,7 @@ mod exit_placement_preparation;
 mod exit_progress;
 mod exit_refresh;
 mod exit_routing;
+mod exit_session_publication;
 mod exit_work;
 mod initial_observation;
 mod observation;

@@ -389,6 +389,22 @@ by the executable composition root.
   health, all non-ready outcome classes, retained failure/capability custody, and native original-
   attempt readiness with unchanged recovery fences. Independently review this persistence boundary.
 
+## Exact-Request Exit Session Publication
+
+- The Exit publication handoff validates the active request and its original work-ready Application
+  Exit intent before admitting the retained session worker. Draft and complete placement readiness
+  remain required by that worker. Refusal returns the original request without callback or write.
+- Accepted scheduling retains the exact request until service return and outcome retention, then
+  delivers once on the GUI executor outside owner borrows. Delivery derives readiness through the
+  retained outcome's current home/session check; it never caches readiness or consumes its proof.
+- Failed readiness delivers a diagnostic while the original typed outcome, receipt, capability or
+  reconciliation custody remains in the attempt. It starts no reconciliation, replacement write,
+  draft release or coordinator recovery. The caller must separately compose failure recovery;
+  delivery alone cannot finish the command, release interaction gates, dispose windows or quit.
+- Verify exact request identity through success and failure, refused early and duplicate scheduling,
+  caller abandonment, complete service return, durable commit, definitive noncommit, postcommit
+  failure and indeterminate custody with unchanged fences. Independently review this handoff.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

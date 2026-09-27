@@ -23,6 +23,8 @@ pub(crate) enum ExitProgressError {
     DraftPreparation(String),
     #[error("Exit placement preparation could not be scheduled: {0}")]
     PlacementPreparation(String),
+    #[error("Exit session publication could not be scheduled: {0}")]
+    SessionPublication(String),
     #[error("settled Exit progress is unavailable")]
     Unavailable,
     #[error(transparent)]
