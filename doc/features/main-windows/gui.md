@@ -56,6 +56,8 @@ Exit-failure report for an affected window, the feature contributes one owner-co
 with a stable notice identity, bounded title and detail, and an empty owner-command set to the
 Notifications per-window arbiter.
 
+An Exit preparation failure uses the title `Couldn't exit Beryl` and bounded diagnostic detail.
+
 For a qualifying backend-unavailable condition, the bounded detail points to the separately owned
 persistent backend-unavailable notice; it does not duplicate that notice's `Retry` `command button`.
 For a qualifying persistent Beryl-home store failure, the detail points to the separately owned

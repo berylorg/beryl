@@ -49,21 +49,19 @@ impl RunningProcessOwner {
                 cancellation,
                 app,
                 move |owner, request, outcome, app| {
+                    Self::report_exit_preparation_failure(owner, &request, &outcome, app);
                     let completed = settled.borrow_mut().take().unwrap();
                     completed(owner, request, outcome, app);
                 },
             ) {
                 let command_completed = Self::finish_exit(owner, &request);
+                let outcome = ExitAttemptOutcome {
+                    result: Err(ExitAttemptError::Observation(error)),
+                    command_completed,
+                };
+                Self::report_exit_preparation_failure(owner, &request, &outcome, app);
                 let completed = delivery.borrow_mut().take().unwrap();
-                completed(
-                    owner,
-                    request,
-                    ExitAttemptOutcome {
-                        result: Err(ExitAttemptError::Observation(error)),
-                        command_completed,
-                    },
-                    app,
-                );
+                completed(owner, request, outcome, app);
             }
         })
     }

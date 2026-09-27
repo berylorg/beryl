@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 649: Connect Running Exit Delivery To Attempt Policy (finished)
+# Phase 650: Report Running Exit Preparation Failures (finished)
 
-The retained one-command consumer now runs the accepted Exit policy and delivers scheduling
-refusal through the same typed callback with guarded completion status. Successor waits remain
-explicit. Default library check, independent semantic review and all 41 focused lifecycle tests
-passed (`47de4d2d-4348-49db-a409-d425d5845d00`). Visible reporting, toolbar mounting and final
-teardown remain pending.
+The running consumer now contributes bounded commandless preparation errors to the original
+invoking window's notice arbiter, preserving outcomes and custody through omission or window loss.
+Default library check and independent review passed. The 45 focused cases passed after correcting
+one fixture assertion: base run `4d056fbf-a588-4ea8-86a9-96e291c1e6c3` and five-case consumer rerun
+`124df21b-9414-416f-babf-fc2ef64456a7`. Progress reporting, toolbar mounting and teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -158,6 +158,8 @@ only the returned settled unadmitted intent. Readiness and unresolved custody re
 Visible outcome reporting and final teardown remain pending; these boundaries grant no quit authority.
 Phase 649 connects one retained command wait to that policy, including initial scheduling refusal
 delivery and guarded completion. Successor waits remain explicit; ordinary mounting stays pending.
+Phase 650 reports preparation errors through the existing invoking-window notice arbiter without
+altering policy outcomes. Progress and final-teardown reporting remain separate from that contribution.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

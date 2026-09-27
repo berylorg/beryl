@@ -14,6 +14,7 @@ mod confirmation;
 mod exit_attempt;
 mod exit_confirmation;
 mod exit_delivery;
+mod exit_notice;
 mod exit_observation;
 mod exit_progress;
 mod exit_routing;

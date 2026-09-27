@@ -8,6 +8,10 @@ pub(crate) struct RunningExitRequest {
 }
 
 impl RunningExitRequest {
+    pub(crate) fn invoking_window(&self) -> Option<WindowId> {
+        self.invoking
+    }
+
     pub(crate) fn identity(&self) -> Rc<()> {
         self.identity.clone()
     }

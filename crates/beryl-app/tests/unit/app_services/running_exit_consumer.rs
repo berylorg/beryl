@@ -1,3 +1,7 @@
+use crate::main_window::{
+    NOTICE_GENERAL_CAPACITY, NoticeConditionId, NoticeContent, NoticeDismissal, NoticeKind,
+    NoticeRecord, NoticeVariant,
+};
 use crate::running_owner::{ExitAttemptCompletion, ExitAttemptError, ExitRoutingError};
 
 #[test]
@@ -15,7 +19,21 @@ fn native_exit_consumer_reports_scheduling_refusal_and_retains_custody() {
     run_consumer(false, true);
 }
 
+#[test]
+fn native_exit_consumer_preserves_outcome_when_notice_capacity_is_full() {
+    run_consumer_with_notices(false, false, true, false);
+}
+
+#[test]
+fn native_exit_consumer_does_not_redirect_an_unavailable_invoking_window() {
+    run_consumer_with_notices(false, false, false, true);
+}
+
 fn run_consumer(deferred: bool, refusal: bool) {
+    run_consumer_with_notices(deferred, refusal, false, false);
+}
+
+fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing: bool) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -32,6 +50,24 @@ fn run_consumer(deferred: bool, refusal: bool) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let window = running.windows.shells()[0].window();
+                    let missing_command = missing.then(|| running.commands.window_command(
+                        beryl_model::WindowId::from_bytes([249; 16]),
+                    ));
+                    if full {
+                        let ingress = window.update(app, |root, window, cx|
+                            root.notice_ingress(window, cx)).unwrap();
+                        for _ in 0..NOTICE_GENERAL_CAPACITY {
+                            let _ = ingress.admit(NoticeRecord {
+                                window_id: invoking,
+                                condition: NoticeConditionId::new(),
+                                revision: 1,
+                                kind: NoticeKind::Error,
+                                content: NoticeContent::new(NoticeVariant::Error,
+                                    NoticeDismissal::Dismissible, "Existing error", "Existing detail"),
+                            }, app);
+                        }
+                    }
                     let owner = RunningProcessOwner::start(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     app.spawn(async move |cx| {
@@ -71,6 +107,21 @@ fn run_consumer(deferred: bool, refusal: bool) {
                                     assert!(!owner.borrow().test_services_on_worker());
                                     assert_eq!(outcome.command_completed, !refusal);
                                     assert_eq!(owner.borrow().exit_requested(), refusal);
+                                    let root = window.read(app).unwrap();
+                                    assert_eq!(root.notice_diagnostics().retained_records,
+                                        if full { NOTICE_GENERAL_CAPACITY } else { usize::from(!missing) });
+                                    if missing {
+                                        assert!(root.notice_projection().is_none());
+                                    } else {
+                                        let notice = root.notice_projection().unwrap();
+                                        assert_eq!(notice.kind, NoticeKind::Error);
+                                        assert_eq!(notice.report_count, 1);
+                                        assert_eq!(notice.content.commands().count(), 0);
+                                        assert_eq!(notice.content.dismissal, NoticeDismissal::Dismissible);
+                                        assert_eq!(notice.content.title().as_str(),
+                                            if full { "Existing error" } else { "Couldn't exit Beryl" });
+                                        assert_eq!(root.notice_diagnostics().omitted, u64::from(full));
+                                    }
                                     if refusal {
                                         assert!(matches!(
                                             outcome.result,
@@ -84,12 +135,14 @@ fn run_consumer(deferred: bool, refusal: bool) {
                                                 RunningShutdownStatus::Admitted)) if window == invoking
                                         ));
                                     } else {
-                                        assert!(matches!(
+                                        assert!(if missing { matches!(outcome.result,
+                                            Err(ExitAttemptError::Observation(ExitObservationError::Request(_))))
+                                        } else { matches!(
                                             outcome.result,
                                             Err(ExitAttemptError::Routing(ExitRoutingError::Work(
                                                 ExitWorkError::Observation(_)
                                             )))
-                                        ));
+                                        ) });
                                         assert!(owner.borrow().shutdown_status().is_none());
                                         let previous = request.identity();
                                         RunningProcessOwner::wait_for_exit_attempt(
@@ -100,6 +153,12 @@ fn run_consumer(deferred: bool, refusal: bool) {
                                                 assert_eq!(std::thread::current().id(), gui_thread);
                                                 assert!(!Rc::ptr_eq(&previous, &request.identity()));
                                                 assert!(!outcome.command_completed);
+                                                let root = window.read(app).unwrap();
+                                                assert_eq!(root.notice_diagnostics().retained_records,
+                                                    if full { NOTICE_GENERAL_CAPACITY } else { usize::from(!missing) });
+                                                assert_eq!(root.notice_diagnostics().omitted, u64::from(full));
+                                                assert_eq!(root.notice_projection().map(|notice| notice.report_count),
+                                                    if missing { None } else { Some(1) });
                                                 assert!(matches!(outcome.result,
                                                     Ok(ExitAttemptCompletion::Progress(
                                                         AppServiceShutdownProgress::Ready
@@ -120,7 +179,7 @@ fn run_consumer(deferred: bool, refusal: bool) {
                                 |_, _, _, _| panic!("duplicate wait must not notify"),
                             ).is_err());
                             if !deferred {
-                                command.request_exit();
+                                missing_command.as_ref().unwrap_or(&command).request_exit();
                             }
                             command.request_exit();
                             command.request_exit();

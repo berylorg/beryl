@@ -665,7 +665,18 @@ by the executable composition root.
   also delivers its original request and typed error through that callback, after guarded exact
   completion; unresolved custody still prevents completion. Every delivered outcome runs outside
   owner borrows on the GUI executor. The callback may explicitly arm a successor wait, but no
-  successor activation, retry, presentation, teardown or quit is implicit in this boundary.
+  successor activation, retry, teardown or quit is implicit in this boundary.
+
+- Before its completion callback, the running Exit consumer contributes initial observation or
+  routing failure to the original invoking surviving window's Notifications arbiter. The record
+  is a dismissible commandless error with the feature-owned title and a byte-bounded diagnostic
+  projection produced without first allocating the complete formatted error. Each delivered
+  attempt contributes once with its own condition identity; duplicate activations contribute no
+  additional record. Missing original windows have no replacement destination. Notice omission or
+  refusal changes neither the original result nor command completion, custody or quit authority.
+  Cancellation outcomes and successful admission contribute no failure record. This boundary
+  does not report progress or final-teardown outcomes, infer persistent backend/home conditions,
+  select threads, move focus or arm successor waits.
 
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
