@@ -155,6 +155,12 @@ fn run(choice: Choice) {
                                 focus
                             })
                             .unwrap();
+                        let delivered = Rc::new(RefCell::new(None));
+                        let completion_result = delivered.clone();
+                        let calls = Rc::new(Cell::new(0));
+                        let callback_calls = calls.clone();
+                        let gui_thread = std::thread::current().id();
+                        let callback_focus = focus.clone();
                         cx.update(|app| {
                             RunningProcessOwner::test_begin_shutdown_confirmation(
                                 &owner,
@@ -163,6 +169,31 @@ fn run(choice: Choice) {
                                 observation,
                                 app,
                                 fault,
+                                move |owner, app| {
+                                    assert_eq!(std::thread::current().id(), gui_thread);
+                                    callback_calls.set(callback_calls.get() + 1);
+                                    let result = owner.borrow_mut().take_shutdown_confirmation();
+                                    assert!(!matches!(result, Ok(None)));
+                                    if matches!(choice, Choice::Cancel | Choice::OpenFailure) {
+                                        main.update(app, |_, window, _| {
+                                            assert!(callback_focus.is_focused(window))
+                                        })
+                                        .unwrap();
+                                        RunningProcessOwner::observe_shutdown_work(
+                                            owner,
+                                            ProjectionCancellationToken::new(),
+                                            app,
+                                            move |owner, result, _| {
+                                                assert_eq!(std::thread::current().id(), gui_thread);
+                                                assert!(!result.unwrap().has_work());
+                                                assert!(owner.borrow().shutdown_status().is_none());
+                                                callback_calls.set(callback_calls.get() + 1);
+                                            },
+                                        )
+                                        .unwrap();
+                                    }
+                                    *completion_result.borrow_mut() = Some(result);
+                                },
                             )
                         })
                         .unwrap()
@@ -220,6 +251,9 @@ fn run(choice: Choice) {
                                         ShutdownIntent::ApplicationExit,
                                         duplicate,
                                         app,
+                                        |_, _| {
+                                            panic!("duplicate reveal must not replace completion")
+                                        },
                                     )
                                 })
                                 .unwrap();
@@ -267,8 +301,8 @@ fn run(choice: Choice) {
                             }
                         }
                         let result = loop {
-                            let result = owner.borrow_mut().take_shutdown_confirmation();
-                            if !matches!(result, Ok(None)) {
+                            let result = delivered.borrow_mut().take();
+                            if let Some(result) = result {
                                 break result;
                             }
                             assert!(Instant::now() < deadline, "confirmation did not settle");
@@ -276,6 +310,21 @@ fn run(choice: Choice) {
                                 .timer(Duration::from_millis(10))
                                 .await;
                         };
+                        let expected_calls =
+                            if matches!(choice, Choice::Cancel | Choice::OpenFailure) {
+                                2
+                            } else {
+                                1
+                            };
+                        while calls.get() != expected_calls {
+                            assert!(
+                                Instant::now() < deadline,
+                                "reentrant observation did not settle"
+                            );
+                            cx.background_executor()
+                                .timer(Duration::from_millis(10))
+                                .await;
+                        }
                         match choice {
                             Choice::Confirm
                             | Choice::AdmissionRefresh
@@ -348,6 +397,7 @@ fn run(choice: Choice) {
                                         ShutdownIntent::ApplicationExit,
                                         observation,
                                         app,
+                                        |_, _| {},
                                     )
                                 })
                                 .unwrap()

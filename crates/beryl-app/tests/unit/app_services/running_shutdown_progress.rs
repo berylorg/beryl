@@ -39,7 +39,7 @@ async fn settled(owner: &Rc<RefCell<RunningProcessOwner>>, cx: &mut AsyncApp) {
                 invoking,
                 ShutdownIntent::ApplicationExit,
                 &observation,
-                app
+                app,
             ))
             .unwrap(),
             Err(crate::running_owner::IdleShutdownError::IntentBusy)
@@ -50,7 +50,8 @@ async fn settled(owner: &Rc<RefCell<RunningProcessOwner>>, cx: &mut AsyncApp) {
                 invoking,
                 ShutdownIntent::ApplicationExit,
                 observation,
-                app
+                app,
+                |_, _| panic!("refused confirmation must not notify")
             ))
             .unwrap()
             .is_err()

@@ -49,6 +49,7 @@ pub(super) async fn exercise(
             ShutdownIntent::ApplicationExit,
             duplicate_observation,
             app,
+            |_, _| panic!("refused confirmation must not notify"),
         ))
         .unwrap()
         .is_err()

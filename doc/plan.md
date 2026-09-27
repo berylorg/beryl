@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 633: Deliver Initial Running Shutdown Observation (finished)
+# Phase 634: Deliver Native Shutdown Confirmation Completion (finished)
 
-The running owner now delivers an initial worker observation through a retained GUI continuation,
-excluding overlapping intent and rechecking cancellation before its borrow-free callback. All 21
-focused native tests passed (`2d457cf1-6ae6-45e1-9ebe-6bb169461d11`), including owner retention,
-responsiveness, early/late cancellation and reentrant scheduling. The default library check and
-independent semantic review passed.
+Native confirmation now notifies its original caller on the GUI executor after exact settlement
+and focus restoration, outside owner borrows. Duplicate reveal and refusal do not notify another
+caller. All 21 focused native tests passed (`19c50878-b9ab-4708-ad8d-2b0311132d33`), including
+callback result consumption, failure custody and reentrant observation. The default library check
+and independent semantic review passed.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -134,6 +134,8 @@ refresh/progress scheduling and normal process quit remain unmounted. Phase 632 
 GUI completion notification after each worker progress pass; result consumption and subsequent
 policy actions remain explicit. Phase 633 supplies initial worker observation and GUI delivery;
 choosing confirmation or idle admission and binding it to ordinary commands remain unmounted.
+Phase 634 supplies native confirmation completion notification; result consumption and subsequent
+policy actions remain explicit.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

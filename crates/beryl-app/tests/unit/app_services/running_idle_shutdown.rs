@@ -151,7 +151,12 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                         ));
                         assert!(
                             cx.update(|app| RunningProcessOwner::begin_shutdown_confirmation(
-                                &owner, invoking, intent, admitted, app
+                                &owner,
+                                invoking,
+                                intent,
+                                admitted,
+                                app,
+                                |_, _| panic!("refused confirmation must not notify")
                             ))
                             .unwrap()
                             .is_err()

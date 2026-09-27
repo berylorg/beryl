@@ -110,7 +110,7 @@ fn run(outcome: Outcome) {
                         |_, _, _| panic!("refused observation must not notify")).is_err());
                     assert!(matches!(owner.borrow_mut().try_begin_idle_shutdown(invoking, ShutdownIntent::FinalWindowClose, &idle, app),
                         Err(IdleShutdownError::IntentBusy)));
-                    assert!(RunningProcessOwner::begin_shutdown_confirmation(&owner, invoking, ShutdownIntent::ApplicationExit, idle, app).is_err());
+                    assert!(RunningProcessOwner::begin_shutdown_confirmation(&owner, invoking, ShutdownIntent::ApplicationExit, idle, app, |_, _| panic!("refused confirmation must not notify")).is_err());
                 }).unwrap();
                 let weak = Rc::downgrade(&owner);
                 drop(owner);

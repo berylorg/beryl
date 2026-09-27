@@ -56,6 +56,7 @@ impl RunningProcessOwner {
         observation: ShutdownWorkObservation,
         app: &mut App,
         fault: Option<gpui::WindowsNativeConfirmationTestFault>,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
         Self::begin_confirmation(
             owner,
@@ -63,6 +64,7 @@ impl RunningProcessOwner {
             intent,
             observation,
             app,
+            completed,
             |request| match fault {
                 Some(fault) => request.with_fault_for_test(fault),
                 None => request,
@@ -76,8 +78,17 @@ impl RunningProcessOwner {
         intent: ShutdownIntent,
         observation: ShutdownWorkObservation,
         app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
-        Self::begin_confirmation(owner, invoking, intent, observation, app, |request| request)
+        Self::begin_confirmation(
+            owner,
+            invoking,
+            intent,
+            observation,
+            app,
+            completed,
+            |request| request,
+        )
     }
 
     fn begin_confirmation(
@@ -86,6 +97,7 @@ impl RunningProcessOwner {
         intent: ShutdownIntent,
         observation: ShutdownWorkObservation,
         app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         configure: impl FnOnce(WindowsNativeConfirmationRequest) -> WindowsNativeConfirmationRequest,
     ) -> Result<(), String> {
         if owner.borrow().observing_initial_work
@@ -167,14 +179,18 @@ impl RunningProcessOwner {
                     let _ = window.update(cx, |_, window, _| window.focus(&focus));
                 }
             }
-            let mut owner = retained.borrow_mut();
-            if let Some(operation) = owner
-                .confirmation
-                .as_mut()
-                .filter(|operation| Rc::ptr_eq(&operation.identity, &identity))
             {
+                let mut owner = retained.borrow_mut();
+                let Some(operation) = owner
+                    .confirmation
+                    .as_mut()
+                    .filter(|operation| Rc::ptr_eq(&operation.identity, &identity))
+                else {
+                    return;
+                };
                 operation.settled = Some(result);
             }
+            let _ = cx.update(|app| completed(&retained, app));
         })
         .detach();
         Ok(())

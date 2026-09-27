@@ -555,6 +555,12 @@ by the executable composition root.
   focus and end that attempt; another attempt requires a fresh explicit activation. Failure without
   that proof retains the original control and context and blocks clean quit. Neither an error
   string nor an absent native handle establishes cleanup, and cleanup evidence never confirms intent.
+  After publishing the exact operation's settled result and restoring applicable focus, its
+  retained GUI continuation invokes the required completion callback outside owner borrows.
+  The callback may consume that result and explicitly schedule the next operation. An unconsumed
+  result retains the original slot. Duplicate reveal requests neither replace the original
+  callback nor receive another completion; scheduling refusal delivers no callback. The adapter
+  does not consume results, retry, admit shutdown or select policy automatically.
 
 - Before choosing confirmation or idle admission, the running owner schedules at most one initial
   work observation on a worker. A detached GUI continuation retains the complete owner until the
