@@ -14,7 +14,12 @@ fn native_idle_exit_retains_exact_admitted_intent() {
 
 #[test]
 fn native_shutdown_gate_reports_a_missing_published_window_without_releasing_intent() {
-    run_with_missing_window(ShutdownIntent::ApplicationExit, false, None, true);
+    run_with_missing_window(ShutdownIntent::ApplicationExit, false, None, true, false);
+}
+
+#[test]
+fn native_missing_prepared_draft_refuses_recovery_and_retains_the_attempt() {
+    run_with_missing_window(ShutdownIntent::ApplicationExit, false, None, true, true);
 }
 
 #[test]
@@ -37,7 +42,7 @@ async fn observe(
 }
 
 pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: Option<bool>) {
-    run_with_missing_window(intent, new_work, progress_ready_first, false);
+    run_with_missing_window(intent, new_work, progress_ready_first, false, false);
 }
 
 fn run_with_missing_window(
@@ -45,6 +50,7 @@ fn run_with_missing_window(
     new_work: bool,
     progress_ready_first: Option<bool>,
     missing: bool,
+    missing_draft: bool,
 ) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
@@ -74,6 +80,8 @@ fn run_with_missing_window(
                     let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
                     assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
                     assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());
+                    assert!(RunningProcessOwner::advance_shutdown_drafts(&owner, app).is_err());
+                    assert!(RunningProcessOwner::release_shutdown_drafts(&owner, app).is_err());
                     assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app), original_reason);
                     assert!(
                         RunningProcessOwner::advance_shutdown(
@@ -202,15 +210,41 @@ fn run_with_missing_window(
                             Some((invoking, intent, RunningShutdownStatus::Admitted)));
                         assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
                         if missing {
+                            if missing_draft {
+                                let deadline = Instant::now() + Duration::from_secs(5);
+                                loop {
+                                    cx.update(|app| RunningProcessOwner::advance_shutdown(&owner, ProjectionCancellationToken::new(), app, |_, _| {})).unwrap().unwrap();
+                                    while !owner.borrow().test_shutdown_progress_settled() {
+                                        assert!(Instant::now() < deadline);
+                                        cx.background_executor().timer(Duration::from_millis(10)).await;
+                                    }
+                                    match owner.borrow_mut().take_shutdown_progress().unwrap().unwrap() {
+                                        AppServiceShutdownProgress::Ready => break,
+                                        AppServiceShutdownProgress::Waiting => assert!(Instant::now() < deadline),
+                                        other => panic!("unexpected work readiness: {other:?}"),
+                                    }
+                                }
+                                cx.update(|app| assert_eq!(RunningProcessOwner::advance_shutdown_drafts(&owner, app).unwrap(), crate::running_owner::RunningShutdownDraftProgress::Ready)).unwrap();
+                            }
                             cx.update(|app| {
                                 window.update(app, |_, window, _| window.remove_window()).unwrap();
                                 assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());
                             }).unwrap();
                             assert_eq!(owner.borrow().shutdown_status(),
-                                Some((invoking, intent, RunningShutdownStatus::Admitted)));
+                                Some((invoking, intent, if missing_draft { RunningShutdownStatus::WorkReady } else { RunningShutdownStatus::Admitted })));
                             assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
                             let cancelled = ProjectionCancellationToken::new();
                             cancelled.cancel();
+                            if missing_draft {
+                                cx.update(|app| {
+                                    assert!(RunningProcessOwner::advance_shutdown_drafts(&owner, app).is_err());
+                                    assert!(RunningProcessOwner::release_shutdown_drafts(&owner, app).is_err());
+                                    assert!(RunningProcessOwner::advance_shutdown(&owner, cancelled.clone(), app, |_, _| panic!("missing draft cannot authorize recovery")).is_err());
+                                    assert!(!owner.borrow().test_services_on_worker());
+                                    assert!(owner.borrow().shutdown_status().is_some());
+                                    assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
+                                }).unwrap();
+                            } else {
                             let deadline = Instant::now() + Duration::from_secs(5);
                             loop {
                                 cx.update(|app| RunningProcessOwner::advance_shutdown(
@@ -234,6 +268,7 @@ fn run_with_missing_window(
                                 }
                                 assert!(matches!(result, AppServiceShutdownProgress::Failed { reopened: false, .. }));
                                 assert!(Instant::now() < deadline);
+                            }
                             }
                         }
                         assert!(

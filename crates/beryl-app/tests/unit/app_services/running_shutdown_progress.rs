@@ -1,6 +1,14 @@
-use crate::running_owner::{RunningProcessOwner, RunningShutdownStatus, ShutdownIntent};
+use crate::running_owner::{
+    RunningProcessOwner, RunningShutdownDraftProgress, RunningShutdownStatus, ShutdownIntent,
+};
 use beryl_model::WindowId;
 
+mod drafts {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_shutdown_drafts.rs"
+    ));
+}
 #[test]
 fn native_cancelled_progress_retains_owner_until_coherent_reopening() {
     super::running_idle_shutdown::run(ShutdownIntent::FinalWindowClose, false, Some(false));
@@ -24,6 +32,8 @@ async fn settled(owner: &Rc<RefCell<RunningProcessOwner>>, cx: &mut AsyncApp) {
     }
     assert!(!owner.borrow().test_services_on_worker());
     cx.update(|app| {
+        assert!(RunningProcessOwner::advance_shutdown_drafts(owner, app).is_err());
+        assert!(RunningProcessOwner::release_shutdown_drafts(owner, app).is_err());
         let window = owner.borrow().test_process().windows.shells()[0].window();
         let reopened = owner.borrow().shutdown_status().is_none();
         for _ in 0..2 {
@@ -288,6 +298,7 @@ pub(super) async fn exercise(
         );
         window.update(cx, |_, _, _| ()).unwrap();
         cancellation.cancel();
+        drafts::exercise_ready(&owner, invoking, intent, &cancellation, cx);
         cx.update(|app| {
             RunningProcessOwner::advance_shutdown(&owner, cancellation.clone(), app, |_, _| {})
         })
@@ -414,6 +425,9 @@ pub(super) async fn exercise(
     cx.update(|app| RunningProcessOwner::install_shutdown_interaction_gate(&owner, app))
         .unwrap()
         .unwrap();
+    if ready_first {
+        drafts::exercise_preparation_failure(&owner, cx).await;
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         cx.update(|app| {

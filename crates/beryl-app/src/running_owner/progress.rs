@@ -46,6 +46,15 @@ impl RunningProcessOwner {
             {
                 return Err("shutdown work is already ready".into());
             }
+            if owner.shutdown.as_ref().is_some_and(|attempt| {
+                attempt.drafts.as_ref().is_some_and(|drafts| {
+                    !drafts.try_borrow().is_ok_and(|drafts| drafts.released())
+                })
+            }) {
+                return Err(
+                    "shutdown draft obligations must release before service progress".into(),
+                );
+            }
             let services = owner
                 .process
                 .services

@@ -1004,6 +1004,19 @@ by the executable composition root.
   threadless release requires the same explicit no-composer evidence. Errors retain the preparation
   and cannot authorize interaction-gate release. Draft release preserves independent shutdown and
   startup gates and grants no service reopening, session publication, disposal or quit authority.
+- After retained work readiness and result consumption, the running attempt owns one draft
+  obligation set captured from its published windows. Capture precedes shell updates; updates run
+  outside the running-owner borrow. Every successful preparation remains retained even when another
+  window refuses preparation. Failed preparation is not retried or replaced within that set.
+  Polling visits every admitted preparation; only exact resident Ready or explicit threadless
+  evidence contributes readiness. Missing custody, unsatisfied flush and disposal/release states
+  cannot count as ready. Recovery irreversibly changes this set to release mode and visits every
+  admitted preparation, including after partial failure. Only exact release completion of all
+  admitted preparations permits a cancelled coordinator pass; an unprepared window has no draft
+  gate to release. Until then, service transfer and attempt removal are refused. The original
+  attempt, lease, window set and interaction gates remain retained throughout. Released drafts
+  alone neither reopen services nor release interaction gates. This aggregation supplies no
+  session durability, final teardown, native destruction or quit authority.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations

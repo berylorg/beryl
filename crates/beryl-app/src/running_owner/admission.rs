@@ -44,6 +44,7 @@ pub(super) struct RunningShutdownAttempt {
     pending: Option<Arc<()>>,
     pub(super) admitted: bool,
     pub(super) work_ready: bool,
+    pub(super) drafts: Option<Rc<RefCell<super::shutdown_drafts::RunningShutdownDrafts>>>,
 }
 
 pub(crate) struct PreparedConfirmedShutdownObservation {
@@ -142,6 +143,7 @@ impl RunningProcessOwner {
             pending: None,
             admitted: true,
             work_ready: false,
+            drafts: None,
         });
         Ok(())
     }
@@ -174,6 +176,7 @@ impl RunningProcessOwner {
             pending: None,
             admitted: false,
             work_ready: false,
+            drafts: None,
         });
         Ok(())
     }

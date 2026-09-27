@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 668: Prove Exact Resident Shutdown Draft Release (finished)
+# Phase 669: Retain Running Shutdown Draft Obligations (finished)
 
-Release now distinguishes pending work from exact completion after service/editor gate release
-and autosave resumption. Shell preparations retain the original editor identity; replacement,
-foreign and superseded custody cannot prove completion. All 19 focused native tests passed
-(`b7a19851-2dda-416d-8b41-db45e018f130`), and the strengthened edit-rejection regression passed
-(`c1c5f516-dcc3-45a0-8011-15de4d939b8b`). Default library check, formatting and independent
-semantic review passed. Running-owner aggregation and session durability remain pending.
+The work-ready attempt now retains every admitted draft preparation across partial failures and
+refuses service progress until exact release completes. Recovery cannot restart draft preparation.
+All 38 focused native owner, Exit and resident tests passed (`0d4baa0c-dae2-48cd-965e-6d3bf0142871`);
+the two-window partial-preparation regression passed (`40773ade-b487-4b00-9bc1-b30b4c14cf20`).
+Default library check, formatting and independent semantic review passed. Session durability,
+automatic draft progression and ordinary shutdown mounting remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -193,6 +193,9 @@ and recovery custody before composing durable session publication.
 Phase 668 supplies exact resident release completion for recoverable draft cleanup. Next aggregate
 preparation, polling and release under the original running shutdown attempt, retaining every
 partially admitted obligation until recovery or final teardown settles it.
+Phase 669 supplies that retained aggregate and excludes coordinator recovery until every admitted
+preparation releases exactly. Next compose durable session obligations and connect draft polling
+and recovery through the existing Exit driver before enabling ordinary shutdown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
