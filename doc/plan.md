@@ -89,20 +89,21 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 700: Hand Interrupted Exit Custody To Candidate Settlement Workers (finished)
+# Phase 701: Compose Interrupted Exit Resume Settlement (finished)
 
-Accepted exact-request worker admission with retained original outcome and candidate return slots.
-Refusal, duplicate admission, stale request identity and unwind preserve custody and cancellation;
-storage settlement runs outside GUI owner borrows. Eight native tests passed
-(`2e880b00-9fb4-40b3-bd61-6eba5bc61581`); library check and independent lifecycle review passed.
-Resume composition and replacement publication remain pending.
+Accepted worker composition of original settlement, retained resume execution/reconciliation and
+fresh Running validation. Noncommit performs no inverse write; committed resume is never repeated,
+and failures retain original and resume custody behind unchanged fences. All 37 focused tests
+passed (`c54eb351-260d-48b4-8aef-fb2f08adaf58`), including eight native tests; library check and
+independent lifecycle/persistence review passed. Graph recovery composition remains pending.
 
-# Phase 701: Compose Interrupted Exit Resume Settlement (pending)
+# Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
-Compose accepted original outcome settlement with retained resume execution and fresh result
-validation before candidate convergence. Preserve known noncommit and known commit, retain each
-failed/ambiguous resume outcome, and keep interaction fenced. Whole-graph publication and resident
-rebinding remain later prerequisites to recovery completion.
+Connect process-supervisor Exit custody to the existing whole-graph retirement and same-home
+candidate recovery boundary. Admit candidate session settlement only after exact old-resource
+retirement, retaining failed recovery and resume outcomes without reopening interaction. Preserve
+the original cancelled request and bounded worker custody. Whole-graph publication, fresh resident
+bindings and exact draft/work settlement remain prerequisites to recovery completion.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

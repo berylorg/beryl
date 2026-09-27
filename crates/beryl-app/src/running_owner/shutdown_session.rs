@@ -16,6 +16,7 @@ pub(crate) enum RunningShutdownSession {
     Settled(Result<ExitSessionExecution, ExitSessionPreparationError>),
     Reconciling,
     Reconciled(ExitSessionReconciled),
+    Resuming(crate::exit_session::InterruptedExitResume),
     Unwound,
     RecoveryOwned,
 }

@@ -1,5 +1,4 @@
 use super::*;
-use crate::exit_session::ExitSessionValidation;
 use beryl_home_store::HomeRecoveryCandidate;
 use beryl_state::SessionState;
 
@@ -12,7 +11,7 @@ pub(super) enum CandidateSettlement {
     Pending,
     Returned {
         candidate: InterruptedExitCandidate,
-        result: Result<ExitSessionValidation, String>,
+        result: Result<(), String>,
     },
 }
 
@@ -72,9 +71,7 @@ impl RunningProcessOwner {
         let work = app.background_executor().spawn(async move {
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 before_settle();
-                original
-                    .settle_candidate(&mut candidate.candidate, &candidate.session)
-                    .map_err(|error| format!("{error:?}"))
+                original.converge_candidate(&mut candidate.candidate, &candidate.session)
             }))
             .unwrap_or_else(|_| Err("Interrupted Exit candidate settlement unwound".into()));
             (original, candidate, result)
@@ -93,7 +90,7 @@ impl RunningProcessOwner {
     pub(crate) fn interrupted_exit_candidate_result(
         &self,
         request: &RunningExitRequest,
-    ) -> Result<ExitSessionValidation, String> {
+    ) -> Result<(), String> {
         let recovery = self
             .interrupted_exit
             .as_ref()

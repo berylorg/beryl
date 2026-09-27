@@ -1,6 +1,7 @@
 use super::*;
 use crate::startup_owner::RunningExitRequest;
 
+mod resume;
 mod settlement;
 pub(crate) use settlement::InterruptedExitCandidate;
 

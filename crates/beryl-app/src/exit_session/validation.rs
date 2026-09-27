@@ -29,7 +29,7 @@ impl ExitSessionExecution {
         let committed = match self {
             Self::NotCommitted { .. } => false,
             Self::Committed { .. } => true,
-            Self::Indeterminate(_) => return Err(ExitSessionValidationError::Unproven),
+            Self::Indeterminate(pending) => candidate_commit(pending)?,
         };
         validate(self.publication(), committed, candidate, session)
     }
@@ -44,11 +44,23 @@ impl ExitSessionReconciled {
         let committed = match self {
             Self::ExactOld { .. } => false,
             Self::ExactNew { .. } => true,
-            Self::Pending { .. } | Self::Blocked { .. } => {
+            Self::Pending { reconciliation, .. } => candidate_commit(reconciliation)?,
+            Self::Blocked { .. } => {
                 return Err(ExitSessionValidationError::Unproven);
             }
         };
         validate(self.publication(), committed, candidate, session)
+    }
+}
+
+fn candidate_commit(
+    pending: &super::ExitSessionReconciliation,
+) -> Result<bool, ExitSessionValidationError> {
+    use beryl_home_store::ReconciliationResolution;
+    match pending.candidate_resolution() {
+        Some(Ok(ReconciliationResolution::ExactOld)) => Ok(false),
+        Some(Ok(ReconciliationResolution::ExactNew { .. })) => Ok(true),
+        _ => Err(ExitSessionValidationError::Unproven),
     }
 }
 

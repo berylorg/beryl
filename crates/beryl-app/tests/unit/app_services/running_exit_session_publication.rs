@@ -386,7 +386,7 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                             assert!(owner.borrow().interrupted_exit_candidate_result(&request).unwrap_err().contains("request changed"));
                             owner.borrow_mut().test_replace_interrupted_exit_request(&request);
                             let result = owner.borrow().interrupted_exit_candidate_result(&request).unwrap_err();
-                            assert!(result.contains(if matches!(fault, Some(FaultPoint::AfterPersist)) { "unwound" } else { "ForeignHome" }));
+                            assert!(result.contains(if matches!(fault, Some(FaultPoint::AfterPersist)) { "unwound" } else { "different configured home" }));
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));

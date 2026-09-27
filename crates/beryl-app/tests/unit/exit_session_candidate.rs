@@ -1,4 +1,102 @@
 #[test]
+fn interrupted_exit_convergence_preserves_outcomes_and_never_repeats_resume() {
+    use crate::running_owner::RunningShutdownSession;
+    for exit_fault in [
+        FaultPoint::BeforeCommit,
+        FaultPoint::AfterPersist,
+        FaultPoint::AfterCommitBeforePersist,
+    ] {
+        for resume_fault in [
+            None,
+            Some(FaultPoint::BeforeCommit),
+            Some(FaultPoint::AfterPersist),
+            Some(FaultPoint::AfterCommitBeforePersist),
+        ] {
+            let faults = FaultController::new();
+            let (_directory, home, old) = open_with_faults(3, faults.clone());
+            faults.fail_next(exit_fault);
+            let outcome = execute_exit_session(&home, &old, placements(3)).unwrap();
+            let evidence = outcome.publication().clone();
+            if home.home_revision().is_ok() {
+                faults.fail_next(FaultPoint::BeforeReadConfirmation);
+                assert!(home.home_revision().is_err());
+            }
+            let (mut candidate, fresh) = recover_session(home);
+            let mut retained = RunningShutdownSession::Settled(Ok(outcome));
+            let before = fresh
+                .minimal_bootstrap_candidate(&candidate.recovery_access().unwrap())
+                .unwrap()
+                .unwrap();
+            if let Some(fault) = resume_fault {
+                faults.fail_next(fault);
+            }
+            let result = retained.converge_candidate(&mut candidate, &fresh);
+            let noncommit = matches!(exit_fault, FaultPoint::BeforeCommit);
+            let succeeds = noncommit
+                || resume_fault.is_none()
+                || matches!(resume_fault, Some(FaultPoint::AfterCommitBeforePersist));
+            assert_eq!(
+                result.is_ok(),
+                succeeds,
+                "{exit_fault:?}, {resume_fault:?}: {result:?}"
+            );
+            if noncommit {
+                assert!(matches!(
+                    &retained,
+                    RunningShutdownSession::Settled(Ok(ExitSessionExecution::NotCommitted { .. }))
+                ));
+            } else {
+                let RunningShutdownSession::Resuming(resume) = &retained else {
+                    panic!()
+                };
+                assert_eq!(resume.exit().publication(), &evidence);
+                assert!(resume.outcome().is_some());
+                match resume_fault {
+                    Some(FaultPoint::BeforeCommit) => assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::NotCommitted { .. })
+                    )),
+                    Some(FaultPoint::AfterPersist) => assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::Committed {
+                            later_failure: Some(_),
+                            ..
+                        })
+                    )),
+                    Some(FaultPoint::AfterCommitBeforePersist) => assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::Indeterminate {
+                            reconciliation: Some(Ok(ReconciliationResolution::ExactNew { .. })),
+                            ..
+                        })
+                    )),
+                    _ => {}
+                }
+            }
+            let retained_before = format!("{retained:?}");
+            assert_eq!(
+                retained.converge_candidate(&mut candidate, &fresh).is_ok(),
+                succeeds
+            );
+            assert_eq!(format!("{retained:?}"), retained_before);
+            if succeeds {
+                let after = fresh
+                    .minimal_bootstrap_candidate(&candidate.recovery_access().unwrap())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(after.header().exit_intent(), SessionExitIntent::Running);
+                assert_eq!(after.windows(), before.windows());
+                assert_eq!(after.header().fallback(), before.header().fallback());
+                if noncommit {
+                    assert_eq!(after, before);
+                }
+            }
+            candidate.abort().close().unwrap();
+        }
+    }
+}
+
+#[test]
 fn interrupted_exit_candidate_settlement_retains_original_and_revalidates() {
     use crate::running_owner::RunningShutdownSession;
     for fault in [
