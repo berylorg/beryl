@@ -191,6 +191,21 @@ by the executable composition root.
   maximized and minimized-window capture without activation, rejection before publication and
   after removal, and independent review of coordinate and native lifetime handling.
 
+## Durable Exit Geometry Conversion
+
+- The app converts captured physical normal outer bounds and monitor work area using the exact
+  captured monitor scale. The durable model stores integer logical origins and dimensions; round
+  each component to nearest integer, with halfway values away from zero. Preserve negative origins.
+  Reject nonfinite values, nonpositive dimensions, rounded zero dimensions and values outside the
+  durable integer ranges before casting. Do not clamp, substitute geometry or mutate native state.
+- Preserve normal/maximized restore intent and the captured monitor UUID in canonical string form.
+  A separately observed optional virtual-desktop identity is passed through unchanged; this pure
+  conversion neither observes desktops nor treats an absent identity as a newly observed desktop.
+  The caller remains responsible for binding both observations to the exact original window.
+- Conversion is fallible and all-or-nothing, with no durable write, shutdown transition or cleanup
+  authority. Verify fractional scales, negative origins, rounding boundaries and range rejection,
+  plus native-capture conversion and preservation of monitor, display state and desktop facts.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

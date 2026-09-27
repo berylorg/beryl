@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 676: Publish Native Exit Geometry Dependency (finished)
+# Phase 677: Convert Captured Geometry To Durable Placement (finished)
 
-GPUI `a7c54e82d6` is published through scrollbar `162d42a`, text-input `980fe2f` and
-settings-window `92e89cd`, with one canonical GPUI source. Isolated locked widget/app library
-checks and the 14 focused native/placement tests passed; exact diff validation proved only the
-intended dependency revisions changed. Local app validation and semantic-server restart passed.
-Native capture passed independent coordinate/lifetime review in phase 675. Temporary checkouts
-are removed; virtual-desktop capture and app durable Exit composition remain pending.
+The pure app converter produces checked integer logical normal bounds and monitor work area from
+captured physical geometry, preserving monitor UUID, restore intent and supplied desktop identity.
+All 18 focused placement tests passed (`cc814574-a35b-456c-af5f-59f050d1946f`), including real native
+normal/maximized/minimized conversion; the default app library check and independent semantic
+review passed. Virtual-desktop observation, exact-window binding and session publication remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -210,6 +209,8 @@ placement facts and compose durable publication/reconciliation through the retai
 Phases 675–676 supply accepted native outer-geometry/restore-state capture and its canonical GPUI
 publication. Next capture virtual-desktop identity, convert the complete native placement facts
 to durable session inputs, and compose publication/reconciliation through the running owner.
+Phase 677 supplies the pure physical-to-durable placement converter. Virtual-desktop observation
+and binding both observations to the original window remain prerequisites to session publication.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

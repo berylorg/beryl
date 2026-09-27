@@ -205,6 +205,61 @@ fn exercise_native(cx: &mut App, monitor: WindowsWindowPlacementMonitor, maximiz
                 assert_eq!(captured.normal_outer_bounds(), expected.screen_bounds());
                 assert_eq!(captured.maximized(), maximized);
                 assert_eq!(captured.monitor(), monitor);
+                for desktop in [
+                    None,
+                    Some(beryl_model::VirtualDesktopId::from_bytes([47; 16])),
+                ] {
+                    let saved = beryl_app::main_window::windows_window_placement_from_capture(
+                        captured, desktop,
+                    )
+                    .unwrap();
+                    let scale = f64::from(monitor.scale_factor());
+                    let physical = expected.screen_bounds();
+                    assert_eq!(
+                        saved.bounds().x(),
+                        (f64::from(physical.origin.x.0) / scale).round() as i32
+                    );
+                    assert_eq!(
+                        saved.bounds().y(),
+                        (f64::from(physical.origin.y.0) / scale).round() as i32
+                    );
+                    assert_eq!(
+                        saved.bounds().width(),
+                        (f64::from(physical.size.width.0) / scale).round() as u32
+                    );
+                    assert_eq!(
+                        saved.bounds().height(),
+                        (f64::from(physical.size.height.0) / scale).round() as u32
+                    );
+                    assert_eq!(
+                        saved.display_state(),
+                        if maximized {
+                            beryl_model::WindowDisplayState::Maximized
+                        } else {
+                            beryl_model::WindowDisplayState::Normal
+                        }
+                    );
+                    let hint = saved.monitor().unwrap();
+                    assert_eq!(hint.id().as_str(), monitor.uuid().to_string());
+                    let work = monitor.work_area();
+                    assert_eq!(
+                        hint.work_area().x(),
+                        (f64::from(work.origin.x.0) / scale).round() as i32
+                    );
+                    assert_eq!(
+                        hint.work_area().y(),
+                        (f64::from(work.origin.y.0) / scale).round() as i32
+                    );
+                    assert_eq!(
+                        hint.work_area().width(),
+                        (f64::from(work.size.width.0) / scale).round() as u32
+                    );
+                    assert_eq!(
+                        hint.work_area().height(),
+                        (f64::from(work.size.height.0) / scale).round() as u32
+                    );
+                    assert_eq!(saved.virtual_desktop(), desktop);
+                }
             })
             .unwrap();
         assert_eq!(unsafe { GetForegroundWindow() }, foreground);

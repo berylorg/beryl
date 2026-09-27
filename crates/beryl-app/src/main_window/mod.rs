@@ -10,6 +10,8 @@ mod initial_composer;
 mod marker_metadata_authority;
 mod notices;
 mod placement;
+#[cfg(target_os = "windows")]
+mod placement_capture;
 mod restoration;
 mod shell;
 
@@ -25,5 +27,7 @@ pub use initial_composer::*;
 pub use marker_metadata_authority::*;
 pub use notices::*;
 pub use placement::*;
+#[cfg(target_os = "windows")]
+pub use placement_capture::*;
 pub use restoration::*;
 pub use shell::*;
