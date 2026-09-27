@@ -129,7 +129,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerPendingRealizerT
 
 pub struct MainWindowConversationComposer {
     input: Entity<RangeTextInput>,
-    service: Arc<MainWindowConversationComposerService>,
+    service: Option<Arc<MainWindowConversationComposerService>>,
     selection: MainWindowComposerSelectionIdentity,
     route: MainWindowConversationComposerRoute,
     pending_realizer: Option<MainWindowConversationComposerPendingRealizer>,
@@ -478,7 +478,7 @@ impl MainWindowConversationComposer {
         };
         match action {
             clipboard::PropagatedClipboardAction::Request(request) => {
-                let flight = match self.begin_flight() {
+                let (flight, service) = match self.begin_flight() {
                     Ok(flight) => flight,
                     Err(error) => {
                         self.finish_propagated_clipboard_without_cut(cx);
@@ -486,7 +486,6 @@ impl MainWindowConversationComposer {
                         return;
                     }
                 };
-                let service = self.service.clone();
                 let selection = self.selection;
                 let cancellation = self
                     .propagated_clipboard
@@ -519,7 +518,11 @@ impl MainWindowConversationComposer {
                         }
                         if this.propagated_clipboard.is_none()
                             || this.selection != selection
-                            || this.service.selected_identity() != Some(selection)
+                            || this
+                                .service
+                                .as_ref()
+                                .and_then(|service| service.selected_identity())
+                                != Some(selection)
                         {
                             return;
                         }
@@ -616,14 +619,13 @@ impl MainWindowConversationComposer {
         if !self.is_live() {
             return;
         }
-        let flight = match self.begin_flight() {
+        let (flight, service) = match self.begin_flight() {
             Ok(flight) => flight,
             Err(error) => {
                 self.last_error = Some(error);
                 return;
             }
         };
-        let service = self.service.clone();
         let selection = self.selection;
         let proof_limits = self.proof_limits;
         let mutation_limits = self.mutation_limits;
@@ -651,7 +653,11 @@ impl MainWindowConversationComposer {
                     return;
                 }
                 if this.selection != selection
-                    || this.service.selected_identity() != Some(selection)
+                    || this
+                        .service
+                        .as_ref()
+                        .and_then(|service| service.selected_identity())
+                        != Some(selection)
                 {
                     return;
                 }
@@ -688,7 +694,13 @@ impl MainWindowConversationComposer {
         });
     }
 
-    fn begin_flight(&mut self) -> Result<u64, String> {
+    fn begin_flight(
+        &mut self,
+    ) -> Result<(u64, Arc<MainWindowConversationComposerService>), String> {
+        if !self.can_pump() {
+            return Err("composer lifecycle is unavailable for dispatch".to_owned());
+        }
+        let service = self.bound_service()?;
         if self.active_flight.is_some() {
             return Err("another composer operation already owns the lifecycle lane".to_owned());
         }
@@ -698,7 +710,7 @@ impl MainWindowConversationComposer {
             .checked_add(1)
             .ok_or_else(|| "composer lifecycle generation exhausted".to_owned())?;
         self.active_flight = Some(flight);
-        Ok(flight)
+        Ok((flight, service))
     }
 
     fn settle_flight(&mut self, flight: u64) -> bool {

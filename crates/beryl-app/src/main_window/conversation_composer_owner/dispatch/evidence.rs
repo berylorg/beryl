@@ -183,8 +183,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        let flight = self.begin_flight()?;
-        let service = self.service.clone();
+        let (flight, service) = self.begin_flight()?;
         let selection = self.selection;
         let route = self.route;
         let task = cx.background_executor().spawn(async move {
@@ -246,8 +245,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        let flight = self.begin_flight()?;
-        let service = self.service.clone();
+        let (flight, service) = self.begin_flight()?;
         let selection = self.selection;
         let route = self.route;
         let task = cx.background_executor().spawn(async move {

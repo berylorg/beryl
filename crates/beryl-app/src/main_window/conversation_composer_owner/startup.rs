@@ -51,7 +51,13 @@ impl MainWindowConversationComposer {
     pub(super) fn advance_startup_release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.fail_startup_release_if_needed();
         if self.startup_release_completion.is_some() && self.widget_release_ready(cx) {
-            let service = self.service.clone();
+            let service = match self.bound_service() {
+                Ok(service) => service,
+                Err(error) => {
+                    self.complete_startup_release(Err(error));
+                    return;
+                }
+            };
             let selection = self.selection;
             let result = self.release_widget_with(window, cx, |requests| {
                 service.release_startup_widget_work(selection, requests)

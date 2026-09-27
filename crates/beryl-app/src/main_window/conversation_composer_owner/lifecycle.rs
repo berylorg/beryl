@@ -57,7 +57,11 @@ impl MainWindowConversationComposer {
         !self.is_pending_target()
             && self.is_live()
             && self.last_error.is_none()
-            && self.service.selected_identity() == Some(self.selection)
+            && self
+                .service
+                .as_ref()
+                .and_then(|service| service.selected_identity())
+                == Some(self.selection)
             && self
                 .input
                 .read_with(cx, |input, _| input.is_surface_current_and_interactive())
@@ -82,7 +86,9 @@ impl MainWindowConversationComposer {
     pub fn test_block_next_selected_dispatch(
         &self,
     ) -> super::service::MainWindowComposerPendingDispatchTestRelease {
-        self.service.test_block_next_selected_dispatch()
+        self.bound_service()
+            .expect("test composer service is bound")
+            .test_block_next_selected_dispatch()
     }
 
     #[cfg(feature = "test-faults")]
@@ -206,7 +212,12 @@ impl MainWindowConversationComposer {
         if self.selection != selection {
             return Err("pending composer promotion selection was stale".to_owned());
         }
-        if self.service.selected_identity() != Some(selection) {
+        if self
+            .service
+            .as_ref()
+            .and_then(|service| service.selected_identity())
+            != Some(selection)
+        {
             return Err("pending composer promotion service selection was stale".to_owned());
         }
         if !self.pending_surface_ready(cx) {
@@ -251,7 +262,7 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowComposerWidgetRelease, String> {
-        let service = self.service.clone();
+        let service = self.bound_service()?;
         let selection = self.selection;
         self.release_widget_with(window, cx, |requests| {
             service.release_widget_work(selection, requests)
@@ -267,7 +278,7 @@ impl MainWindowConversationComposer {
         if !self.native_lineage_release_ready(cx) {
             return Ok(None);
         }
-        let service = self.service.clone();
+        let service = self.bound_service()?;
         let selection = self.selection;
         let mut slot = service
             .slot

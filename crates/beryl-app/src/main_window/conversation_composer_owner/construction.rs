@@ -176,7 +176,7 @@ impl MainWindowConversationComposer {
         }
         let mut this = Self {
             input,
-            service,
+            service: Some(service),
             selection,
             route,
             pending_realizer: None,

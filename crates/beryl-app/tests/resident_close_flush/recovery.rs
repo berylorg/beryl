@@ -163,3 +163,116 @@ fn recovery_fence_preserves_the_exact_resident_and_refuses_ordinary_release(
     drop((composer, input));
     support::finish(fixture, cx);
 }
+
+#[gpui::test]
+fn recovery_detachment_transfers_one_service_reference_and_keeps_the_editor(
+    cx: &mut TestAppContext,
+) {
+    let (fixture, cx) = support::mounted(cx, "resident-service-detachment", 250);
+    let composer = fixture
+        .mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    let close = cx
+        .update(|window, app| {
+            fixture
+                .mount
+                .update(app, |mount, cx| mount.begin_window_close(window, cx))
+        })
+        .unwrap();
+    assert!(
+        composer
+            .update(cx, |composer, cx| composer
+                .detach_recovery_service(close.ticket, cx))
+            .is_err()
+    );
+    drive_until(cx, "close becomes ready for detachment", |cx| {
+        cx.update(|window, app| {
+            fixture.mount.update(app, |mount, cx| {
+                mount.advance_window_close(close.ticket, window, cx)
+            })
+        })
+        .unwrap()
+            == Advance::Ready
+    });
+    drive_until(cx, "editor settles before detachment", |cx| {
+        input.read_with(cx, |input, _| input.is_quiescent())
+    });
+    composer
+        .update(cx, |composer, cx| {
+            composer.test_set_shutdown_interaction_gated(true, cx)
+        })
+        .unwrap();
+    assert!(
+        fixture
+            .mount
+            .update(cx, |mount, cx| mount
+                .fence_interrupted_exit_resident(close.ticket, cx))
+            .unwrap()
+    );
+    let selection = composer.read_with(cx, |composer, _| composer.selection_identity());
+    let stale = Ticket::for_test(fixture.mount.entity_id(), 99, selection);
+    let before = composer.read_with(cx, |composer, _| {
+        composer.recovery_snapshot().unwrap().restoration().clone()
+    });
+    let count = std::sync::Arc::strong_count(&fixture.service);
+    fixture.service.test_with_close_slot_locked(|| {
+        composer.update(cx, |composer, cx| {
+            assert!(composer.detach_recovery_service(stale, cx).is_err());
+            assert_eq!(std::sync::Arc::strong_count(&fixture.service), count);
+            let service = composer
+                .detach_recovery_service(close.ticket, cx)
+                .unwrap()
+                .unwrap();
+            assert!(std::sync::Arc::ptr_eq(&service, &fixture.service));
+            assert_eq!(std::sync::Arc::strong_count(&fixture.service), count);
+            assert!(
+                composer
+                    .detach_recovery_service(close.ticket, cx)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(composer.detach_recovery_service(stale, cx).is_err());
+            drop(service);
+            assert_eq!(std::sync::Arc::strong_count(&fixture.service), count - 1);
+        });
+    });
+    cx.update(|window, app| {
+        composer.update(app, |composer, cx| {
+            assert!(composer.release_widget(window, cx).is_err());
+            assert!(composer.begin_widget_release_fence(window, cx).is_err());
+            assert!(
+                composer
+                    .resume_after_widget_release_fence(window, cx)
+                    .is_err()
+            );
+            assert!(
+                composer
+                    .test_set_shutdown_interaction_gated(false, cx)
+                    .is_err()
+            );
+            assert!(!composer.selected_first_presentable(cx));
+        })
+    });
+    cx.simulate_keystrokes("backspace ctrl-z ctrl-v ctrl-a");
+    drive(cx, 12);
+    composer.read_with(cx, |composer, _| {
+        assert_eq!(composer.gpui_input().entity_id(), input.entity_id());
+        assert_eq!(composer.recovery_snapshot().unwrap().restoration(), &before);
+        assert!(!composer.test_widget_released());
+    });
+    assert_eq!(
+        input
+            .update(cx, |input, _| input.export_restoration(Some(
+                selection.binding().range_history_frontier()
+            )))
+            .unwrap(),
+        before
+    );
+    assert!(!input.read_with(cx, |input, _| input.is_enabled()));
+    assert_eq!(fixture.service.selected_identity(), Some(selection));
+    assert!(fixture.service.test_window_close_is_current(close.ticket));
+    drop((composer, input));
+    support::finish(fixture, cx);
+}

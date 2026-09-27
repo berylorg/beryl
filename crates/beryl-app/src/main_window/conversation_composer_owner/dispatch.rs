@@ -176,7 +176,8 @@ impl MainWindowConversationComposer {
         if let MainWindowConversationComposerRoute::Pending(receipt) = self.route
             && !self
                 .service
-                .pending_request_is_admitted(receipt, self.selection)
+                .as_ref()
+                .is_some_and(|service| service.pending_request_is_admitted(receipt, self.selection))
         {
             return;
         }
@@ -233,14 +234,13 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let flight = match self.begin_flight() {
+        let (flight, service) = match self.begin_flight() {
             Ok(flight) => flight,
             Err(error) => {
                 self.last_error = Some(error);
                 return;
             }
         };
-        let service = self.service.clone();
         let (selection, route, marker_metadata, cancellation) =
             if let Some(pending) = &self.pending_dispatch {
                 (
@@ -258,7 +258,7 @@ impl MainWindowConversationComposer {
                 let cancellation = CommandCancellation::new();
                 #[cfg(feature = "test-faults")]
                 if matches!(request, RangeTextInputRequest::MutationCommit(_))
-                    && self.service.take_test_mutation_commit_cancellation()
+                    && service.take_test_mutation_commit_cancellation()
                 {
                     cancellation.cancel();
                 }
@@ -448,14 +448,13 @@ impl MainWindowConversationComposer {
             return;
         }
         self.admitted_positions = Some(positions);
-        let flight = match self.begin_flight() {
+        let (flight, service) = match self.begin_flight() {
             Ok(flight) => flight,
             Err(error) => {
                 self.last_error = Some(error);
                 return;
             }
         };
-        let service = self.service.clone();
         let limits = self.proof_limits;
         let task = cx.background_executor().spawn(async move {
             let mut slot = service.slot.lock().map_err(|_| {
@@ -512,25 +511,31 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        let route_is_current = |service: &MainWindowConversationComposerService,
-                                initiated: MainWindowConversationComposerRoute,
-                                current: MainWindowConversationComposerRoute,
-                                selection| match (initiated, current)
-        {
-            (
-                MainWindowConversationComposerRoute::Selected,
-                MainWindowConversationComposerRoute::Selected,
-            ) => service.selected_identity() == Some(selection),
-            (
-                MainWindowConversationComposerRoute::Pending(receipt),
-                MainWindowConversationComposerRoute::Pending(current_receipt),
-            ) if receipt == current_receipt => service.pending_identity(receipt) == Some(selection),
-            (
-                MainWindowConversationComposerRoute::Pending(_),
-                MainWindowConversationComposerRoute::Selected,
-            ) => service.selected_identity() == Some(selection),
-            _ => false,
-        };
+        let route_is_current =
+            |service: &Option<std::sync::Arc<MainWindowConversationComposerService>>,
+             initiated: MainWindowConversationComposerRoute,
+             current: MainWindowConversationComposerRoute,
+             selection| {
+                service
+                    .as_ref()
+                    .is_some_and(|service| match (initiated, current) {
+                        (
+                            MainWindowConversationComposerRoute::Selected,
+                            MainWindowConversationComposerRoute::Selected,
+                        ) => service.selected_identity() == Some(selection),
+                        (
+                            MainWindowConversationComposerRoute::Pending(receipt),
+                            MainWindowConversationComposerRoute::Pending(current_receipt),
+                        ) if receipt == current_receipt => {
+                            service.pending_identity(receipt) == Some(selection)
+                        }
+                        (
+                            MainWindowConversationComposerRoute::Pending(_),
+                            MainWindowConversationComposerRoute::Selected,
+                        ) => service.selected_identity() == Some(selection),
+                        _ => false,
+                    })
+            };
         let result = match result {
             Ok(result) => result,
             Err(MainWindowConversationComposerTaskError::RouteNotAdmitted) => return Ok(()),
