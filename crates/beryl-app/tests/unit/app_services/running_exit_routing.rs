@@ -12,20 +12,39 @@ use windows::{
 
 #[test]
 fn native_initial_exit_routes_idle_after_cancelled_observation() {
-    exercise(None);
+    exercise(None, ObservationOutcome::Admitted);
 }
 
 #[test]
 fn native_initial_exit_retains_request_until_confirmation_cancel() {
-    exercise(Some(false));
+    exercise(Some(false), ObservationOutcome::Admitted);
 }
 
 #[test]
-fn native_initial_exit_retains_request_until_positive_confirmation() {
-    exercise(Some(true));
+fn native_initial_exit_retains_request_until_confirmed_admission() {
+    exercise(Some(true), ObservationOutcome::Admitted);
 }
 
-fn exercise(confirm: Option<bool>) {
+#[test]
+fn native_initial_exit_retains_intent_after_confirmed_observation_cancel() {
+    exercise(Some(true), ObservationOutcome::Cancelled);
+}
+
+#[test]
+fn native_initial_exit_retains_intent_after_confirmed_admission_refusal() {
+    exercise(Some(true), ObservationOutcome::Refused);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ObservationOutcome {
+    Admitted,
+    Cancelled,
+    Refused,
+}
+
+fn exercise(confirm: Option<bool>, outcome: ObservationOutcome) {
+    let cancel_observation = outcome == ObservationOutcome::Cancelled;
+    let admitted = outcome == ObservationOutcome::Admitted;
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -94,7 +113,7 @@ fn exercise(confirm: Option<bool>) {
                         let request = cancelled.borrow_mut().take().unwrap();
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
                         permit.commit(|| ()).unwrap();
-                        let work = confirm.map(|_| {
+                        let mut work = confirm.map(|_| {
                             crate::cas_projection::test_faults::retain_projection_work(
                                 owner.borrow().test_services().graph().unwrap().cas(),
                                 beryl_model::SyndicThreadId::from_bytes([247; 16]),
@@ -109,11 +128,12 @@ fn exercise(confirm: Option<bool>) {
                         let delivered = slot.clone();
                         let gui_thread = std::thread::current().id();
                         let callback_identity = identity.clone();
+                        let observation_cancellation = ProjectionCancellationToken::new();
                         assert!(
                             cx.update(|app| RunningProcessOwner::observe_and_route_exit(
                                 &owner,
                                 request,
-                                ProjectionCancellationToken::new(),
+                                observation_cancellation.clone(),
                                 app,
                                 move |owner, mut request, result, app| {
                                     assert_eq!(std::thread::current().id(), gui_thread);
@@ -127,14 +147,20 @@ fn exercise(confirm: Option<bool>) {
                                     );
                                     assert!(owner.borrow().exit_requested());
                                     if let Some(confirm) = confirm {
+                                        if confirm && outcome == ObservationOutcome::Refused {
+                                            assert!(matches!(result, Err(ExitRoutingError::ConfirmedObservation(_))));
+                                        } else {
                                         assert_eq!(
                                             result.unwrap(),
-                                            if confirm {
-                                                ExitRoutingCompletion::AwaitingObservation
+                                            if confirm && cancel_observation {
+                                                ExitRoutingCompletion::ConfirmedObservationCancelled
+                                            } else if confirm {
+                                                ExitRoutingCompletion::Admitted
                                             } else {
                                                 ExitRoutingCompletion::Cancelled
                                             }
                                         );
+                                        }
                                         assert_eq!(
                                             owner
                                                 .borrow_mut()
@@ -148,10 +174,19 @@ fn exercise(confirm: Option<bool>) {
                                                 Some((
                                                     invoking,
                                                     ShutdownIntent::ApplicationExit,
-                                                    RunningShutdownStatus::AwaitingObservation,
+                                                    if admitted {
+                                                        RunningShutdownStatus::Admitted
+                                                    } else {
+                                                        RunningShutdownStatus::AwaitingObservation
+                                                    },
                                                 ))
                                             );
-                                            owner.borrow_mut().end_unadmitted_shutdown().unwrap();
+                                            if !admitted {
+                                                owner
+                                                    .borrow_mut()
+                                                    .end_unadmitted_shutdown()
+                                                    .unwrap();
+                                            }
                                         } else {
                                             assert!(owner.borrow().shutdown_status().is_none());
                                         }
@@ -187,7 +222,13 @@ fn exercise(confirm: Option<bool>) {
                             assert!(slot.borrow().is_none());
                             permit.commit(|| ()).unwrap();
                             command.request_exit();
+                            if cancel_observation {
+                                observation_cancellation.cancel();
+                            }
                             if confirm {
+                                if admitted {
+                                    drop(work.take());
+                                }
                                 unsafe {
                                     PostMessageW(
                                         Some(dialog),
@@ -204,7 +245,9 @@ fn exercise(confirm: Option<bool>) {
                         wait(&slot, cx).await;
                         let request = slot.borrow_mut().take().unwrap();
                         drop(work);
-                        let owner = if confirm.is_none() {
+                        let owner = if confirm.is_none()
+                            || (confirm == Some(true) && admitted)
+                        {
                             assert!(permit.commit(|| ()).is_err());
                             super::super::running_shutdown_progress::exercise(
                                 owner,
