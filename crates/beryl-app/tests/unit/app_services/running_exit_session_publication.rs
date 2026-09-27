@@ -3,6 +3,11 @@ use crate::running_owner::{
     ExitProgressError, RunningShutdownDraftProgress, RunningShutdownSession,
 };
 
+mod graph_retirement_support {
+    use super::*;
+    include!("interrupted_exit_graph_retirement_support.rs");
+}
+
 #[test]
 fn native_exit_session_publication_delivers_exact_ready_request() {
     run(None, false);
@@ -358,6 +363,7 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                                 foreign_recovery_candidate()
                             }).await;
                             let mut candidate = Some(candidate);
+                            graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
                             let (sender, receiver) = futures_channel::oneshot::channel();
                             cx.update(|app| {
                                 assert!(RunningProcessOwner::settle_interrupted_exit_candidate(
@@ -477,6 +483,10 @@ async fn dispose_failed_fixture(mut running: startup_owner::StartedProcess, cx: 
         .unwrap();
     cx.background_executor()
         .spawn(async move {
+            if running.services.graph().is_none() {
+                running.services.test_retired_service_home().unwrap().close().unwrap();
+                return;
+            }
             assert_eq!(
                 running.services.graph().unwrap().home().health().state(),
                 HomeHealthState::Failed

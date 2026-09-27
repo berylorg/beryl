@@ -89,11 +89,21 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 704: Retain Marker Drives During Service Graph Retirement (finished)
+# Phase 705: Retain Worker-Owned Interrupted Exit Graph Retirement (finished)
 
-Accepted retained marker-drive custody and exact-generation retirement completion without gate
-release or production reopening authority. Library check, all 13 focused tests
-(`21bba098-61c6-4e62-9491-a7b692f21b13`) and independent lifecycle review passed.
+Accepted exact-request worker retirement with original service custody returned before completion,
+including failure and unwind. Library check, independent lifecycle review, 13 graph/custody tests
+(`a42b3a2e-04c6-4ccb-8fbe-3e3e21801231`) and eight native Exit tests
+(`34293a4c-cb1b-44b0-ab17-4db3cfa1bfc0`) passed. No reopening authority is granted.
+
+# Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
+
+At the admitted session-publication cut, prove exact ready draft-close tickets and drained resident
+work before retiring generation-bound editor adapters. Preserve resident presentation and bounded
+checkpoint/history facts without durable cleanup through the Failed store. Fresh exact validation
+must precede rebinding; changed or unresolved evidence stays unavailable. General dirty or ambiguous
+save recovery is outside this cut because it cannot satisfy session-publication admission. Do not
+substitute native-lineage unmounting or startup cleanup for resident retirement proof.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -103,9 +113,8 @@ retirement, retaining failed recovery and resume outcomes without reopening inte
 the original cancelled request and bounded worker custody. Whole-graph publication, fresh resident
 bindings and exact draft/work settlement remain prerequisites to recovery completion.
 
-Phases 703–704 supply service-graph recovery custody and retain active marker drives until their
-settlement. Resident workers must still join and release their old-generation handles before
-reopening; service-graph completion alone does not prove whole-resident retirement.
+Phases 703–705 supply retained service-graph retirement and its worker handoff. Phase 706 supplies
+resident retirement; service-graph completion alone does not prove whole-resident retirement.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

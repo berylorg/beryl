@@ -2,6 +2,7 @@ use super::*;
 use crate::startup_owner::RunningExitRequest;
 
 mod resume;
+mod retirement;
 mod settlement;
 pub(crate) use settlement::InterruptedExitCandidate;
 
@@ -9,6 +10,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
+    retirement: Rc<RefCell<Option<retirement::GraphRetirement>>>,
 }
 
 impl RunningProcessOwner {
@@ -26,6 +28,7 @@ impl RunningProcessOwner {
             request: request.identity(),
             session: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),
+            retirement: Rc::new(RefCell::new(None)),
         });
     }
 

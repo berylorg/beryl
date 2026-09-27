@@ -55,6 +55,12 @@ impl RunningProcessOwner {
             if recovery.settlement.borrow().is_some() {
                 return Err("Interrupted Exit candidate settlement is already retained".into());
             }
+            if matches!(
+                recovery.retirement.borrow().as_ref(),
+                Some(retirement::GraphRetirement::Pending)
+            ) {
+                return Err("Interrupted Exit graph retirement is on a worker".into());
+            }
             if recovery.session.borrow().is_none() || candidate.is_none() {
                 return Err("Interrupted Exit candidate or original outcome is unavailable".into());
             }
