@@ -590,6 +590,16 @@ by the executable composition root.
   versus unresolved-cleanup distinction. This boundary neither completes the request nor schedules
   observation, shutdown progress or quit; the caller retains responsibility for coherent completion.
 
+- Initial Exit routing connects request-retaining worker observation to the existing work route.
+  It returns the original request on scheduling refusal, with no completion callback. Once
+  scheduled, it retains that request through observation and any native confirmation, delivering
+  it exactly once with idle admission, settled confirmation, or routing failure on the GUI executor
+  outside owner borrows. Confirmation settlement is notification, not positive intent or successful
+  cleanup; its exact result remains owned until explicit consumption. Observation cancellation or
+  failure never routes idle admission. Duplicate activations continue coalescing throughout this
+  operation. Routing performs no automatic retry, confirmation consumption, request completion,
+  confirmed refresh, progress scheduling or quit.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

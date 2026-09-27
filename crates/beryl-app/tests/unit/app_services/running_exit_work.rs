@@ -20,6 +20,14 @@ mod confirmation_route {
     ));
 }
 
+mod initial_routing {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_routing.rs"
+    ));
+}
+
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
     run(false, None, None);
@@ -82,7 +90,7 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                         let mut successor = next_request(&owner, cx).await;
                         request = cx
                             .update(|app| {
-                                match RunningProcessOwner::observe_exit_work(
+                                match RunningProcessOwner::observe_and_route_exit(
                                     &owner,
                                     request,
                                     ProjectionCancellationToken::new(),
@@ -137,18 +145,23 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                                     move |_, result, _| *delivered.borrow_mut() = Some(result),
                                 )
                                 .unwrap();
-                                let mut successor = match RunningProcessOwner::observe_exit_work(
-                                    &owner,
-                                    successor,
-                                    ProjectionCancellationToken::new(),
-                                    app,
-                                    |_, _, _, _| {
-                                        panic!("busy scheduling must not receive completion")
-                                    },
-                                ) {
-                                    Err((request, ExitObservationError::Scheduling(_))) => request,
-                                    _ => panic!("busy scheduling must return the original request"),
-                                };
+                                let mut successor =
+                                    match RunningProcessOwner::observe_and_route_exit(
+                                        &owner,
+                                        successor,
+                                        ProjectionCancellationToken::new(),
+                                        app,
+                                        |_, _, _, _| {
+                                            panic!("busy scheduling must not receive completion")
+                                        },
+                                    ) {
+                                        Err((request, ExitObservationError::Scheduling(_))) => {
+                                            request
+                                        }
+                                        _ => panic!(
+                                            "busy scheduling must return the original request"
+                                        ),
+                                    };
                                 assert!(matches!(
                                     RunningProcessOwner::route_exit_work(
                                         &owner,
