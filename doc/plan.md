@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 677: Convert Captured Geometry To Durable Placement (finished)
+# Phase 678: Protect Published Native Desktop Observation (finished)
 
-The pure app converter produces checked integer logical normal bounds and monitor work area from
-captured physical geometry, preserving monitor UUID, restore intent and supplied desktop identity.
-All 18 focused placement tests passed (`cc814574-a35b-456c-af5f-59f050d1946f`), including real native
-normal/maximized/minimized conversion; the default app library check and independent semantic
-review passed. Virtual-desktop observation, exact-window binding and session publication remain pending.
+GPUI `d2665f256d` supplies distinct published-window leases with deferred GUI destruction,
+ordinary close admission, sequential reuse and confirmation exclusion. All 12 focused native
+tests passed (`90c22a0a-3904-4e6a-8f20-0cb2c300b077`), as did the default app library check and
+independent lifecycle review. The [default-close correction](failures/published-native-lease-close.md)
+is retained. Canonical dependency publication, COM observation and Exit composition remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -211,6 +211,8 @@ publication. Next capture virtual-desktop identity, convert the complete native 
 to durable session inputs, and compose publication/reconciliation through the running owner.
 Phase 677 supplies the pure physical-to-durable placement converter. Virtual-desktop observation
 and binding both observations to the original window remain prerequisites to session publication.
+Phase 678 supplies the published native lifetime lease required by that observation. Publish its
+canonical GPUI/widget pins before implementing the desktop COM worker and exact Exit-owner binding.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

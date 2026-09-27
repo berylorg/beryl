@@ -206,6 +206,28 @@ by the executable composition root.
   authority. Verify fractional scales, negative origins, rounding boundaries and range rejection,
   plus native-capture conversion and preservation of monitor, display state and desktop facts.
 
+## Published Native Observation Lifetime
+
+- A desktop observation worker consumes a distinct move-only lease for one exact published,
+  visible, unremoved Windows window. Admission rejects a hidden, unpublished, closing, destroyed,
+  fullscreen or already leased window, and a window with an active native confirmation. Hidden
+  startup-operation admission keeps its separate single-use contract.
+- The lease protects the original native instance until the worker completes or unwinds. Explicit
+  removal and an admitted ordinary close defer native destruction to GUI settlement. Ordinary close
+  callbacks still decide admission; an active observation does not grant close permission or latch
+  hidden-startup close intent. No raw-handle probe substitutes for this owned lifetime.
+- One operation and one GUI completion continuation may be retained per window. Abandoning the
+  completion observer cannot release the worker's lease. Completion reports native destruction or
+  failure; a surviving window may admit a later observation after exact GUI settlement, allowing a
+  later Exit attempt. No waiter queue, retry or worker-side destruction is introduced.
+- The worker uses the handle only for desktop observation and retains its lease through COM
+  teardown. The owning Exit attempt must retain shell custody and drain GUI settlement before
+  recovery, final teardown or normal quit. This primitive grants no desktop, durable-session or
+  shutdown-completion authority.
+- Acceptance requires native evidence for admission refusal, duplicate exclusion, sequential reuse,
+  close veto and allowed close, explicit removal, observer abandonment, worker unwind and exactly-once
+  destruction on the GUI executor, plus independent lifecycle review.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

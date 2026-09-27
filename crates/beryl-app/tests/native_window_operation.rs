@@ -2,13 +2,14 @@
 
 use gpui::{
     App, AppContext, Application, AsyncApp, Empty, TitlebarOptions, WindowBounds, WindowHandle,
-    WindowOptions, WindowsHiddenWindowLease, bounds, point, px, size,
-    with_windows_window_destruction_observer_for_test,
+    WindowOptions, bounds, point, px, size, with_windows_window_destruction_observer_for_test,
 };
 use std::{
+    cell::Cell,
     future::{Future, poll_fn},
     panic::{AssertUnwindSafe, catch_unwind},
     pin::pin,
+    rc::Rc,
     sync::{Arc, Mutex, mpsc},
     task::Poll,
     time::{Duration, Instant},
@@ -18,7 +19,8 @@ use windows::{
         Foundation::{HWND, LPARAM, WPARAM},
         UI::WindowsAndMessaging::{
             FindWindowW, GetForegroundWindow, IsWindow, IsWindowVisible, IsZoomed, SC_MAXIMIZE,
-            SC_MINIMIZE, SC_RESTORE, SendMessageW, WM_CLOSE, WM_SYSCOMMAND,
+            SC_MINIMIZE, SC_RESTORE, SW_HIDE, SW_SHOWNOACTIVATE, SendMessageW, ShowWindow,
+            WM_CLOSE, WM_SYSCOMMAND,
         },
     },
     core::PCWSTR,
@@ -65,12 +67,12 @@ fn open(cx: &mut App, name: &str, maximized: bool) -> (WindowHandle<Empty>, usiz
 }
 
 fn hold_on_worker(
-    token: WindowsHiddenWindowLease,
+    token: impl Send + 'static,
+    raw: usize,
     unwind: bool,
 ) -> (mpsc::Sender<()>, std::thread::JoinHandle<()>) {
     let (release, wait) = mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let raw = token.raw_handle();
         assert!(alive(raw));
         let _ = wait.recv();
         assert!(alive(raw));
@@ -105,7 +107,7 @@ async fn removal_during_worker(cx: &mut AsyncApp, unwind: bool, drop_observer: b
         .unwrap()
         .unwrap();
     assert_eq!(token.raw_handle(), raw);
-    let (release, worker) = hold_on_worker(token, unwind);
+    let (release, worker) = hold_on_worker(token, raw, unwind);
     window
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();
@@ -143,7 +145,7 @@ async fn close_intent_retains_root(cx: &mut AsyncApp) -> usize {
             lease
         })
         .unwrap();
-    let (release, worker) = hold_on_worker(token, false);
+    let (release, worker) = hold_on_worker(token, raw, false);
     for command in [SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE] {
         unsafe {
             SendMessageW(
@@ -207,7 +209,7 @@ async fn release_allows_publication(cx: &mut AsyncApp, maximized: bool) -> usize
             lease
         })
         .unwrap();
-    let (release, worker) = hold_on_worker(token, false);
+    let (release, worker) = hold_on_worker(token, raw, false);
     release.send(()).unwrap();
     let settled = released.await.unwrap();
     worker.join().unwrap();
@@ -229,6 +231,94 @@ async fn release_allows_publication(cx: &mut AsyncApp, maximized: bool) -> usize
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();
     removed(cx, raw).await;
+    raw
+}
+
+async fn published_observation(
+    cx: &mut AsyncApp,
+    unwind: bool,
+    drop_observer: bool,
+    ordinary_close: bool,
+) -> usize {
+    let (window, raw) = cx
+        .update(|cx| open(cx, "published-observation", false))
+        .unwrap();
+    let allowed = Rc::new(Cell::new(false));
+    let calls = Rc::new(Cell::new(0));
+    let callback_allowed = allowed.clone();
+    let callback_calls = calls.clone();
+    let foreground = unsafe { GetForegroundWindow() };
+    let (token, released) = window
+        .update(cx, |_, window, _| {
+            assert!(window.lease_published_windows_window().is_err());
+            window.lease_hidden_windows_window().unwrap()
+        })
+        .unwrap();
+    drop(token);
+    assert!(!released.await.unwrap().native_destroyed);
+    window
+        .update(cx, |_, window, cx| {
+            window.on_window_should_close(cx, move |_, _| {
+                callback_calls.set(callback_calls.get() + 1);
+                callback_allowed.get()
+            });
+            window.publish(cx).unwrap();
+            unsafe { ShowWindow(hwnd(raw), SW_HIDE) };
+            assert!(window.lease_published_windows_window().is_err());
+            unsafe { ShowWindow(hwnd(raw), SW_SHOWNOACTIVATE) };
+        })
+        .unwrap();
+    for _ in 0..2 {
+        let (token, released) = window
+            .update(cx, |_, window, _| {
+                let lease = window.lease_published_windows_window().unwrap();
+                assert!(window.lease_published_windows_window().is_err());
+                assert!(window.lease_hidden_windows_window().is_err());
+                lease
+            })
+            .unwrap();
+        assert_eq!(token.raw_handle(), raw);
+        drop(token);
+        assert!(!released.await.unwrap().native_destroyed);
+    }
+    let (token, released) = window
+        .update(cx, |_, window, _| window.lease_published_windows_window())
+        .unwrap()
+        .unwrap();
+    let (release, worker) = hold_on_worker(token, raw, unwind);
+    unsafe { SendMessageW(hwnd(raw), WM_CLOSE, Some(WPARAM(0)), Some(LPARAM(0))) };
+    assert_eq!(calls.get(), 1);
+    assert!(window.update(cx, |_, _, _| ()).is_ok());
+    assert!(alive(raw));
+    if ordinary_close {
+        allowed.set(true);
+        unsafe { SendMessageW(hwnd(raw), WM_CLOSE, Some(WPARAM(0)), Some(LPARAM(0))) };
+        assert_eq!(calls.get(), 2);
+    } else {
+        window
+            .update(cx, |_, window, _| {
+                window.remove_window();
+                assert!(window.lease_published_windows_window().is_err());
+            })
+            .unwrap();
+    }
+    pump(cx).await;
+    assert!(alive(raw));
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    if drop_observer {
+        drop(released);
+        pump(cx).await;
+        assert!(alive(raw));
+        release.send(()).unwrap();
+        removed(cx, raw).await;
+    } else {
+        release.send(()).unwrap();
+        assert!(released.await.unwrap().native_destroyed);
+        assert!(!alive(raw));
+    }
+    assert_eq!(worker.join().is_err(), unwind);
+    pump(cx).await;
+    assert!(window.update(cx, |_, _, _| ()).is_err());
     raw
 }
 
@@ -258,7 +348,7 @@ async fn bounded_catch<F: Future>(
 }
 
 #[test]
-fn hidden_native_operations_preserve_exact_lifetime_and_disposal() {
+fn native_operations_preserve_exact_lifetime_and_disposal() {
     let result = Arc::new(Mutex::new(None));
     let captured = result.clone();
     let destroyed = Arc::new(Mutex::new(Vec::new()));
@@ -285,6 +375,10 @@ fn hidden_native_operations_preserve_exact_lifetime_and_disposal() {
                             expected.push(close_intent_retains_root(cx).await);
                             expected.push(release_allows_publication(cx, false).await);
                             expected.push(release_allows_publication(cx, true).await);
+                            expected.push(published_observation(cx, false, false, false).await);
+                            expected.push(published_observation(cx, true, false, false).await);
+                            expected.push(published_observation(cx, false, true, false).await);
+                            expected.push(published_observation(cx, false, false, true).await);
                             let (ordinary, raw) =
                                 cx.update(|cx| open(cx, "ordinary", false)).unwrap();
                             ordinary

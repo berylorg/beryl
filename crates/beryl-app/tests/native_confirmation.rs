@@ -110,9 +110,20 @@ fn native_confirmation_preserves_exact_dialog_and_cancel_authority() {
                 .unwrap();
             app.spawn(async move |cx| {
                 for action in 0..8 {
+                    let (lease, settled) = owner
+                        .update(cx, |_, window, _| {
+                            let lease = window.lease_published_windows_window().unwrap();
+                            assert!(window.begin_windows_native_confirmation(request()).is_err());
+                            lease
+                        })
+                        .unwrap();
+                    drop(lease);
+                    assert!(!settled.await.unwrap().native_destroyed);
                     let (control, completion) = owner
                         .update(cx, |_, window, _| {
-                            window.begin_windows_native_confirmation(request())
+                            let confirmation = window.begin_windows_native_confirmation(request());
+                            assert!(window.lease_published_windows_window().is_err());
+                            confirmation
                         })
                         .unwrap()
                         .unwrap();
