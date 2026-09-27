@@ -4,6 +4,7 @@ use crate::main_window::{MainWindowCreationOwner, NewWindow};
 mod threadless;
 pub use threadless::*;
 mod construction;
+mod exit_command;
 mod restored;
 mod selected;
 mod shutdown;

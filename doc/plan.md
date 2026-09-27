@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 661: Connect Interaction Gates To Exit Progress (finished)
+# Phase 662: Mount The Exit Waiting Presentation (finished)
 
-Exit progress now installs shell gates before service transfer and releases them from retained
-coherent-reopening evidence before consuming the result. Transition failures report explicitly
-and preserve custody; failed release retains the settled evidence and prevents command completion.
-All 45 focused native cases passed (`8e1230a4-4f88-43f1-9041-74d88472f371`), as did the focused
-error-reporting case (`85ff2293-d850-4275-91d9-179d475c5ede`), default library check, formatting
-and independent semantic review. Toolbar mounting and final teardown remain pending.
+The Exit toolbar position now shows its disabled unavailable/startup explanation or the admitted
+shutdown gate's `Exiting…` loading presentation and exact waiting tooltip. Both labels reserve
+stable geometry using the current font. Focused GUI verification passed all five cases
+(`d2867dcf-13f6-4929-99ad-ec15661dd1b7`), with the default library check, formatting and independent
+semantic review passing. Enabled routing and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -176,7 +175,8 @@ Phase 657 supplies the resident-composer shutdown mutation gate, including indep
 and read-only interaction. Phase 658 supplies the shell adapter and New Window gate.
 Phase 659 supplies admitted-only installation across the published set; phase 660 supplies
 proven-reopening release. Phase 661 connects both to exact-request Exit progress. Remaining
-visible barrier controls and ordinary Exit mounting stay pending.
+visible barrier controls and ordinary Exit mounting stay pending. Phase 662 mounts the disabled
+Exit waiting presentation; enabled routing and final teardown remain pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

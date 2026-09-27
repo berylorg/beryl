@@ -361,13 +361,22 @@ fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
         .window()
         .update(cx, |root, _, cx| {
             let before = root.new_window_disabled_reason(cx);
+            let exit_before = root.test_exit_presentation();
             root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            assert_eq!(
+                root.test_exit_presentation(),
+                (
+                    "Exiting…",
+                    "Application Exit is waiting for active work and durable state."
+                )
+            );
             assert_eq!(
                 root.new_window_disabled_reason(cx).as_deref(),
                 Some("Application Exit is waiting for active work and durable state.")
             );
             root.test_set_shutdown_interaction_gated(false, cx).unwrap();
             assert_eq!(root.new_window_disabled_reason(cx), before);
+            assert_eq!(root.test_exit_presentation(), exit_before);
         })
         .unwrap();
     assert!(cx.update(|app| shell.ready_to_publish(app)));

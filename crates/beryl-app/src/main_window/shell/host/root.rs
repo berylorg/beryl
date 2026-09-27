@@ -129,6 +129,7 @@ impl Render for MainWindowShellRoot {
             .min((window.viewport_size().height * 0.5).max(minimum_panel_height));
         let command = (self.creation.is_some() || controller.is_threadless())
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
+        let exit = exit_command::render(self, window, cx);
         let input_panel = composer.map(|composer| {
             div()
                 .id("main-window-user-input-panel")
@@ -161,10 +162,12 @@ impl Render for MainWindowShellRoot {
                     .flex()
                     .items_center()
                     .justify_end()
+                    .gap(px(6.))
                     .px(px(12.))
                     .flex_none()
                     .bg(appearance.toolbar)
-                    .children(command),
+                    .children(command)
+                    .child(exit),
             )
             .child(
                 div()

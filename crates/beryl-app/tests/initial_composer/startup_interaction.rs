@@ -73,6 +73,10 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
         .update(cx, |root, window, cx| {
             assert!(root.startup_interaction_gated());
             assert_eq!(
+                root.test_exit_presentation(),
+                ("Exit", "Beryl is preparing its windows.")
+            );
+            assert_eq!(
                 root.new_window_disabled_reason(cx).as_deref(),
                 Some("Beryl is preparing its windows.")
             );
@@ -213,6 +217,13 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
             assert!(root.test_set_shutdown_interaction_gated(false, cx).is_err());
             assert!(root.test_set_shutdown_interaction_gated(true, cx).is_err());
             assert_eq!(
+                root.test_exit_presentation(),
+                (
+                    "Exiting…",
+                    "Application Exit is waiting for active work and durable state."
+                )
+            );
+            assert_eq!(
                 root.new_window_disabled_reason(cx).as_deref(),
                 Some("Application Exit is waiting for active work and durable state.")
             );
@@ -225,6 +236,10 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
             assert_ne!(
                 root.new_window_disabled_reason(cx).as_deref(),
                 Some("Application Exit is waiting for active work and durable state.")
+            );
+            assert_eq!(
+                root.test_exit_presentation(),
+                ("Exit", "Application Exit is not available.")
             );
         })
         .unwrap();
@@ -248,6 +263,103 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
     }));
     cx.update(|app| shell.release_published_handle(app))
         .unwrap_or_else(|_| panic!("released ordinary shell"));
+    window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+}
+
+#[gpui::test]
+fn exit_toolbar_keeps_its_mount_and_explains_waiting_without_accepting_input(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(gpui_text_input::ensure_text_input_bindings);
+    let (_fixture, mut shell) = shell(cx, 91);
+    cx.update(|app| shell.gate_startup_interaction(app))
+        .unwrap();
+    drive(&shell, cx);
+    cx.update(|app| shell.publish(app)).unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(shell.window().into(), cx);
+    let mut previous_bounds = None;
+    for waiting in [false, true, false] {
+        shell
+            .window()
+            .update(cx, |root, _, cx| {
+                root.test_set_shutdown_interaction_gated(waiting, cx)
+                    .unwrap();
+                let expected = if waiting {
+                    (
+                        "Exiting…",
+                        "Application Exit is waiting for active work and durable state.",
+                    )
+                } else {
+                    ("Exit", "Beryl is preparing its windows.")
+                };
+                assert_eq!(root.test_exit_presentation(), expected);
+            })
+            .unwrap();
+        drive(&shell, cx);
+        let bounds = visual
+            .debug_bounds("main-window-exit")
+            .expect("Exit toolbar mount");
+        if let Some(previous) = previous_bounds {
+            assert_eq!(
+                bounds, previous,
+                "Exit retains its toolbar position and geometry"
+            );
+        }
+        previous_bounds = Some(bounds);
+        visual.simulate_mouse_move(bounds.center(), None, gpui::Modifiers::none());
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(501));
+        drive(&shell, cx);
+        assert!(visual.debug_bounds("main-window-exit-tooltip").is_some());
+        visual.simulate_mouse_down(
+            bounds.center(),
+            gpui::MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        visual.simulate_mouse_up(
+            bounds.center(),
+            gpui::MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        visual.simulate_keystrokes("enter space");
+        drive(&shell, cx);
+        shell
+            .window()
+            .update(cx, |root, _, cx| {
+                let mount = root.controller().unwrap().composer_mount().unwrap();
+                let composer = mount.read(cx).contribution().unwrap();
+                assert!(!composer.read(cx).gpui_input().read(cx).is_enabled());
+                assert_eq!(
+                    root.test_exit_presentation().0,
+                    if waiting { "Exiting…" } else { "Exit" }
+                );
+            })
+            .unwrap();
+        visual.simulate_mouse_move(
+            gpui::point(gpui::px(0.), gpui::px(100.)),
+            None,
+            gpui::Modifiers::none(),
+        );
+    }
+    cx.update(|app| {
+        MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
+    })
+    .unwrap();
+    drive(&shell, cx);
+    shell
+        .window()
+        .read_with(cx, |root, _| {
+            assert_eq!(
+                root.test_exit_presentation(),
+                ("Exit", "Application Exit is not available.")
+            );
+        })
+        .unwrap();
+    let window = shell.window();
+    cx.update(|app| shell.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("released shell"));
     window
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();

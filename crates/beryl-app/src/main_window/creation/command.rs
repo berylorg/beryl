@@ -115,7 +115,7 @@ pub(in crate::main_window) fn render(
     button.into_any_element()
 }
 
-fn theme_color(
+pub(in crate::main_window) fn theme_color(
     generation: &crate::theme_runtime::AppearanceGeneration,
     role: &str,
     property: Property,
@@ -136,13 +136,13 @@ fn theme_color(
     }
 }
 
-struct CreationFont {
-    family: Option<SharedString>,
-    size: f32,
-    weight: f32,
+pub(in crate::main_window) struct CreationFont {
+    pub(in crate::main_window) family: Option<SharedString>,
+    pub(in crate::main_window) size: f32,
+    pub(in crate::main_window) weight: f32,
 }
 
-fn theme_font(
+pub(in crate::main_window) fn theme_font(
     generation: &crate::theme_runtime::AppearanceGeneration,
     role: &str,
     size: f32,
