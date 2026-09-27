@@ -27,6 +27,21 @@ pub(crate) struct PublishedMainWindowServices {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn admit_close_confirmation(
+        &self,
+        snapshot: crate::window_acquisition::WindowCloseSnapshot,
+        invoking: WindowId,
+        require_final: bool,
+    ) -> Result<crate::window_acquisition::WindowCloseLease, String> {
+        let final_member = self.inspect_close_confirmation(&snapshot, invoking)?;
+        if require_final && !final_member {
+            return Err("the invoking main window is no longer final".into());
+        }
+        self.windows
+            .admit_close(snapshot)
+            .map_err(|error| format!("close admission unavailable: {error}"))
+    }
+
     pub(crate) fn prepare_close_confirmation(
         &self,
         members: &[WindowId],

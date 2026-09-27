@@ -39,6 +39,7 @@ mod window_services;
 use attempt::InitialServiceAttemptState;
 pub(crate) use shutdown::{
     AppServiceCloseError, AppServiceFinalizationError, AppServiceShutdownProgress,
+    PreparedShutdownObservation,
 };
 pub(crate) use window_services::{MainWindowServiceInputs, PublishedMainWindowServices};
 

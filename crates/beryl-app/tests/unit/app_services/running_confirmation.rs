@@ -16,10 +16,39 @@ use windows::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Choice {
     Confirm,
+    AdmissionRefresh,
+    AdmissionExit,
+    AdmissionCancel,
+    AdmissionAba,
     Cancel,
     MembershipAba,
     OpenFailure,
     SettlementFailure,
+}
+
+mod admission {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_confirmation_admission.rs"
+    ));
+}
+
+#[test]
+fn native_confirmed_intent_refreshes_work_and_admits_once() {
+    run(Choice::AdmissionRefresh);
+}
+#[test]
+fn native_confirmed_application_exit_preserves_its_shutdown_mode() {
+    run(Choice::AdmissionExit);
+}
+#[test]
+fn native_confirmed_intent_can_end_after_cancelled_worker_settles() {
+    run(Choice::AdmissionCancel);
+}
+#[test]
+fn native_confirmed_intent_rejects_membership_aba_before_lease_admission() {
+    run(Choice::AdmissionAba);
 }
 
 #[test]
@@ -60,6 +89,11 @@ fn run(choice: Choice) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let intent = if choice == Choice::AdmissionExit {
+                        ShutdownIntent::ApplicationExit
+                    } else {
+                        ShutdownIntent::FinalWindowClose
+                    };
                     let main = running.windows.shells()[0].window();
                     let title = format!("running-confirmation-{}", std::process::id());
                     main.update(app, |_, window, _| window.set_window_title(&title))
@@ -99,7 +133,7 @@ fn run(choice: Choice) {
                             RunningProcessOwner::test_begin_shutdown_confirmation(
                                 &owner,
                                 invoking,
-                                ShutdownIntent::FinalWindowClose,
+                                intent,
                                 observation,
                                 app,
                                 fault,
@@ -211,21 +245,28 @@ fn run(choice: Choice) {
                                 .await;
                         };
                         match choice {
-                            Choice::Confirm => {
+                            Choice::Confirm
+                            | Choice::AdmissionRefresh
+                            | Choice::AdmissionExit
+                            | Choice::AdmissionCancel
+                            | Choice::AdmissionAba => {
                                 let Ok(Some(ShutdownConfirmationResult::Confirmed(context))) =
                                     result
                                 else {
                                     panic!("expected confirmation evidence")
                                 };
-                                assert_eq!(context.invoking, invoking);
-                                assert_eq!(context.intent, ShutdownIntent::FinalWindowClose);
-                                assert_eq!(context.observation.running_threads(), 0);
+                                assert_eq!(context.invoking(), invoking);
+                                assert_eq!(context.intent(), intent);
+                                assert_eq!(context.observation().running_threads(), 0);
                                 owner
                                     .borrow()
                                     .test_process()
                                     .services
-                                    .inspect_close_confirmation(&context.snapshot, invoking)
+                                    .inspect_close_confirmation(context.snapshot(), invoking)
                                     .unwrap();
+                                if choice != Choice::Confirm {
+                                    admission::exercise(&owner, context, choice, cx).await;
+                                }
                             }
                             Choice::Cancel => assert!(matches!(
                                 result,
@@ -315,33 +356,59 @@ fn run(choice: Choice) {
                                 );
                             }
                         }
-                        permit.commit(|| ()).unwrap();
-                        if choice == Choice::Cancel {
-                            main.update(cx, |_, window, _| assert!(focus.is_focused(window)))
-                                .unwrap();
+                        if matches!(choice, Choice::AdmissionRefresh | Choice::AdmissionExit) {
+                            assert_eq!(
+                                permit.commit(|| ()),
+                                Err(crate::process_admission::ProcessAdmissionError::Fenced)
+                            );
+                            assert!(restore.validate_lifetime().is_err());
+                            assert!(
+                                owner
+                                    .borrow()
+                                    .test_process()
+                                    .services
+                                    .graph()
+                                    .unwrap()
+                                    .shutdown
+                                    .is_some()
+                            );
+                        } else {
+                            permit.commit(|| ()).unwrap();
+                            if choice == Choice::Cancel {
+                                main.update(cx, |_, window, _| assert!(focus.is_focused(window)))
+                                    .unwrap();
+                            }
+                            restore.validate_lifetime().unwrap();
+                            assert!(
+                                owner
+                                    .borrow()
+                                    .test_process()
+                                    .services
+                                    .graph()
+                                    .unwrap()
+                                    .shutdown
+                                    .is_none()
+                            );
                         }
-                        restore.validate_lifetime().unwrap();
-                        assert!(
-                            owner
-                                .borrow()
-                                .test_process()
-                                .services
-                                .graph()
-                                .unwrap()
-                                .shutdown
-                                .is_none()
-                        );
                         main.update(cx, |root, _, _| assert!(!root.startup_interaction_gated()))
                             .unwrap();
                         if choice == Choice::SettlementFailure {
                             // The isolated test ends with native custody deliberately unresolved.
                             *failed_owner.borrow_mut() = Some(owner);
                         } else {
-                            let running = Rc::try_unwrap(owner)
+                            let mut running = Rc::try_unwrap(owner)
                                 .ok()
                                 .expect("settled task released owner")
                                 .into_inner()
                                 .test_into_process();
+                            if matches!(choice, Choice::AdmissionRefresh | Choice::AdmissionExit) {
+                                running.services = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        admission::reopen_for_disposal(running.services)
+                                    })
+                                    .await;
+                            }
                             support::dispose_running(running, cx).await;
                         }
                         observed.set(true);

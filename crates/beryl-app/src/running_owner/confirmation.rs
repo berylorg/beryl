@@ -13,10 +13,25 @@ pub(crate) enum ShutdownIntent {
 }
 
 pub(crate) struct ShutdownConfirmationContext {
-    pub(crate) invoking: WindowId,
-    pub(crate) intent: ShutdownIntent,
-    pub(crate) snapshot: WindowCloseSnapshot,
-    pub(crate) observation: ShutdownWorkObservation,
+    pub(super) invoking: WindowId,
+    pub(super) intent: ShutdownIntent,
+    pub(super) snapshot: WindowCloseSnapshot,
+    pub(super) observation: ShutdownWorkObservation,
+}
+
+impl ShutdownConfirmationContext {
+    pub(crate) fn invoking(&self) -> WindowId {
+        self.invoking
+    }
+    pub(crate) fn intent(&self) -> ShutdownIntent {
+        self.intent
+    }
+    pub(crate) fn snapshot(&self) -> &WindowCloseSnapshot {
+        &self.snapshot
+    }
+    pub(crate) fn observation(&self) -> &ShutdownWorkObservation {
+        &self.observation
+    }
 }
 
 pub(crate) enum ShutdownConfirmationResult {
@@ -73,6 +88,9 @@ impl RunningProcessOwner {
         app: &mut App,
         configure: impl FnOnce(WindowsNativeConfirmationRequest) -> WindowsNativeConfirmationRequest,
     ) -> Result<(), String> {
+        if owner.borrow().confirmed.is_some() {
+            return Err("the running owner already retains a confirmed shutdown intent".into());
+        }
         if owner.borrow().confirmation.is_some() {
             return Self::reveal_shutdown_confirmation(owner);
         }

@@ -582,6 +582,17 @@ by the executable composition root.
   window evidence through fence publication. Refusal leaves the coordinator and execution authority
   unchanged. Work refresh retains the original lease and window evidence; it never substitutes a
   new window snapshot under an earlier confirmation. This check grants no confirmation authority.
+- After a settled positive confirmation, the running owner consumes its original snapshot into
+  one retained close lease and preserves the invoking member and ordinary-close versus Exit mode.
+  Only that confirmed attempt may prepare one worker observation at a time. Completion carries
+  exact attempt identity; stale or duplicate completion cannot admit a successor. Failed collection
+  or refused admission retains the original attempt without a fence; another work observation may
+  refresh it without another dialog. Ending an unadmitted attempt releases its lease only after
+  its worker result has settled. Successful admission retains the lease and intent with the running
+  owner through the separately owned shutdown lifecycle. A new confirmation cannot replace this
+  custody, and neither an observation job nor confirmation alone starts shutdown progress.
+  Cancellation may discard an exact settled worker result without admission, including successful
+  collection delivered after cancellation. Discarding a stale result cannot settle another worker.
 - Shutdown runtime revision validation uses nonblocking read-only checks of every nested source.
   Busy, poisoned, closed, exhausted or changed sources refuse validation without altering source
   custody, notification, execution authority or failure state. Complete facts and durable reads

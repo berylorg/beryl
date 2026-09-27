@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 627: Validate Window Custody Inside Observed Shutdown Admission (finished)
+# Phase 628: Retain Confirmed Intent Through Worker Refresh And Admission (finished)
 
-The graph-owned observed handoff now validates exact close custody under unpublished process
-closing. Refusal preserves execution and the caller's original lease for work refresh. All 36
-focused window, admission, coordinator and graph tests passed
-(`298455f8-e3fd-4c3c-b367-210effa05e65`), with the default library check and independent review.
+Sealed native-positive evidence now becomes owner-retained close custody. Exact tagged worker
+completion admits through the window-validated graph handoff; refusal preserves intent, and late
+cancellation can discard its exact result without admission. Nine final native tests passed
+(`0ab56f0c-8128-48d0-98b1-8beee7523596`), following the 17-test native/graph run, with the default
+library check and independent lifecycle review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -120,9 +121,12 @@ close/Exit policy through that owner, retaining exact published native destructi
 Preserve separate acceptance boundaries for any missing components before final integration.
 The confirmation custody adapter, exact native cleanup evidence and proven-clean failure recovery
 are accepted in phases 624–626. GPUI `49db3ce857` and published widget pins retain a single canonical
-GPUI graph. Ordinary close/Exit command routing, confirmed-intent work refresh/admission and exact
-published-window teardown remain unmounted; integrate them through the persistent running owner.
-Phase 627 accepts exact window-custody validation inside the observed admission boundary.
+GPUI graph. Phases 627–628 accept exact window-custody validation inside observed admission and
+owner-retained confirmed intent through tagged worker refresh, refusal and late cancellation.
+Ordinary close/Exit command routing, automatic refresh scheduling, the revalidated no-work path,
+visible barrier gating, coherent failure completion and exact published-window teardown remain
+unmounted; integrate them through the persistent running owner. Successful admission retains its
+original lease and intent; it does not yet drive shutdown progress or normal process quit.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
