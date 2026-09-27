@@ -17,6 +17,8 @@ mod mutation;
 mod recovery;
 #[path = "resident_close_flush/recovery_configurator.rs"]
 mod recovery_configurator;
+#[path = "resident_close_flush/recovery_submission.rs"]
+mod recovery_submission;
 #[path = "resident_close_flush/release.rs"]
 mod release;
 #[path = "resident_close_flush/retirement.rs"]

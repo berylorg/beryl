@@ -117,7 +117,7 @@ impl MainWindowComposerSubmissionRequestSource {
 }
 
 pub(super) struct MainWindowConversationComposerSubmission {
-    request_source: MainWindowComposerSubmissionRequestSource,
+    request_source: Option<MainWindowComposerSubmissionRequestSource>,
     executor: BackgroundExecutor,
     generation: u64,
     status: MainWindowConversationComposerSubmissionStatus,
@@ -172,7 +172,7 @@ impl MainWindowConversationComposerSubmission {
         executor: BackgroundExecutor,
     ) -> Self {
         Self {
-            request_source,
+            request_source: Some(request_source),
             executor,
             generation: 0,
             status: MainWindowConversationComposerSubmissionStatus::Idle,
@@ -189,6 +189,15 @@ impl MainWindowConversationComposerSubmission {
 
     pub(super) const fn status(&self) -> MainWindowConversationComposerSubmissionStatus {
         self.status
+    }
+
+    pub(super) fn detach_recovery_source(
+        &mut self,
+    ) -> Result<Option<MainWindowComposerSubmissionRequestSource>, String> {
+        if self.active.is_some() || self.task.is_some() {
+            return Err("conversation composer submission work is not drained".to_owned());
+        }
+        Ok(self.request_source.take())
     }
 
     fn clear_active(&mut self, status: MainWindowConversationComposerSubmissionStatus) {
@@ -319,6 +328,10 @@ impl MainWindowConversationComposerMount {
         let prepared = self
             .submission
             .request_source
+            .as_mut()
+            .ok_or_else(|| {
+                "conversation composer submission source is detached for recovery".to_owned()
+            })?
             .prepare(selection, capture_requirement)?;
         let request = prepared.request.clone();
         let active = self.submission.active.as_mut().unwrap();

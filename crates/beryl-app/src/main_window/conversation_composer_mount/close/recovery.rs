@@ -1,6 +1,15 @@
 use super::*;
 
 impl MainWindowConversationComposerMount {
+    pub fn detach_interrupted_exit_submission_source(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<MainWindowComposerSubmissionRequestSource>, String> {
+        self.validate_recovery_adapter_detachment(ticket, cx)?;
+        self.submission.detach_recovery_source()
+    }
+
     pub fn detach_interrupted_exit_configurator(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,

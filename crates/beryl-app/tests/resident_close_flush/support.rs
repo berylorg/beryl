@@ -103,6 +103,16 @@ pub fn mounted_with_configurator<'a>(
     seed: u8,
     configurator: beryl_app::main_window::MainWindowConversationComposerConfigurator,
 ) -> (Mounted, &'a mut gpui::VisualTestContext) {
+    mounted_with_sources(cx, name, seed, configurator, |_| submission_source())
+}
+
+pub fn mounted_with_sources<'a>(
+    cx: &'a mut gpui::TestAppContext,
+    name: &str,
+    seed: u8,
+    configurator: beryl_app::main_window::MainWindowConversationComposerConfigurator,
+    submission_source: impl FnOnce(&HomeStore) -> MainWindowComposerSubmissionRequestSource,
+) -> (Mounted, &'a mut gpui::VisualTestContext) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let fixture = Fixture::new(name, seed);
     let claim = fixture.claims().0;
@@ -123,6 +133,7 @@ pub fn mounted_with_configurator<'a>(
         MainWindowComposerSlot::new(window_id, claim, host, storage.clone(), marker_authority)
             .unwrap();
     let store = Arc::new(store);
+    let submission_source = submission_source(&store);
     let service = Arc::new(MainWindowConversationComposerService::new(
         store.service_reference(),
         slot,
@@ -135,7 +146,7 @@ pub fn mounted_with_configurator<'a>(
                 mounted_service,
                 configurator,
                 mounted_seals,
-                submission_source(),
+                submission_source,
                 window,
                 cx,
             )
