@@ -4,6 +4,9 @@ use gpui::App;
 
 use crate::startup_owner::StartedProcess;
 
+mod confirmation;
+pub(crate) use confirmation::{ShutdownConfirmationResult, ShutdownIntent};
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartupCleanup {
     Pending,
@@ -14,6 +17,7 @@ pub(crate) enum StartupCleanup {
 pub(crate) struct RunningProcessOwner {
     process: StartedProcess,
     startup_cleanup: StartupCleanup,
+    confirmation: Option<confirmation::RunningConfirmation>,
 }
 
 impl RunningProcessOwner {
@@ -21,6 +25,7 @@ impl RunningProcessOwner {
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
             process,
+            confirmation: None,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {

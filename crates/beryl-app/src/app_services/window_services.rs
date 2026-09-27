@@ -27,6 +27,42 @@ pub(crate) struct PublishedMainWindowServices {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn prepare_close_confirmation(
+        &self,
+        members: &[WindowId],
+        invoking: WindowId,
+        observation: &crate::cas_projection::ShutdownWorkObservation,
+    ) -> Result<(crate::window_acquisition::WindowCloseSnapshot, bool), String> {
+        let graph = self
+            .graph()
+            .ok_or("the complete service graph is unavailable")?;
+        if graph.shutdown.is_some() {
+            return Err("the service graph already owns a shutdown attempt".into());
+        }
+        graph
+            .cas
+            .as_ref()
+            .ok_or("the runtime service is unavailable")?
+            .try_validate_shutdown_runtime(&graph.sessions, observation.revision())
+            .map_err(|error| error.to_string())?;
+        let snapshot = self
+            .windows
+            .snapshot_for_close(members)
+            .map_err(|error| format!("close snapshot unavailable: {error:?}"))?;
+        let final_member = self.inspect_close_confirmation(&snapshot, invoking)?;
+        Ok((snapshot, final_member))
+    }
+
+    pub(crate) fn inspect_close_confirmation(
+        &self,
+        snapshot: &crate::window_acquisition::WindowCloseSnapshot,
+        invoking: WindowId,
+    ) -> Result<bool, String> {
+        self.windows
+            .inspect_close_snapshot(snapshot, invoking)
+            .map_err(|error| format!("close snapshot unavailable: {error:?}"))
+    }
+
     pub(crate) fn window_services(
         &self,
         inputs: MainWindowServiceInputs,

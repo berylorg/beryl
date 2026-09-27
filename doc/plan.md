@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 623: Inspect Close Snapshots Without Admission (finished)
+# Phase 624: Retain Running Shutdown Confirmation (finished)
 
-Read-only registry inspection now validates exact invoking membership and returns final-member
-evidence without a lease or fence. Construction remains available and later admission rejects stale
-snapshots. All 22 close/process-admission tests passed (`ad52342c-1362-4b3d-b879-e4f41ff55cb5`),
-as did the default app library check and independent concurrency/authority review.
+The running owner retains exact native confirmation custody and returns only settled, member-checked
+evidence. Cancel restores retained logical focus; errors retain custody without fencing execution.
+Eight native owner/confirmation tests passed (`d26a893e-14cd-4d8f-ab5e-aee260d604f6`), as did
+the strengthened uncertain-destruction teardown test, default library check and independent review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -118,6 +118,9 @@ worker-owned shutdown observation and its distinct-thread count are accepted in 
 read-only invoking-window snapshot inspection is accepted in phase 623. Next mount confirmation and ordinary
 close/Exit policy through that owner, retaining exact published native destruction custody.
 Preserve separate acceptance boundaries for any missing components before final integration.
+The confirmation custody adapter is accepted in phase 624. Before routing recoverable failures,
+expose exact native cleanup disposition so proven-clean errors can release their operation for a
+fresh explicit attempt while uncertain settlement remains retained; never classify error strings.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
