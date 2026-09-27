@@ -1,5 +1,13 @@
 use super::*;
 
+mod placements {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_shutdown_placements.rs"
+    ));
+}
+
 mod driver {
     use super::*;
     include!(concat!(

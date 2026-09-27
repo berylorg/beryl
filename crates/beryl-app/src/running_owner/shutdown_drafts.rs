@@ -25,9 +25,14 @@ pub(super) struct RunningShutdownDrafts {
     prepared: bool,
     releasing: bool,
     released: bool,
+    ready: bool,
 }
 
 impl RunningShutdownDrafts {
+    pub(super) fn ready(&self) -> bool {
+        self.ready && !self.driving && !self.releasing
+    }
+
     pub(super) fn released(&self) -> bool {
         self.released && !self.driving
     }
@@ -91,6 +96,7 @@ impl RunningProcessOwner {
             prepared: false,
             releasing: false,
             released: false,
+            ready: false,
         }));
         owner.shutdown.as_mut().unwrap().drafts = Some(drafts.clone());
         Ok(drafts)
@@ -163,6 +169,7 @@ impl RunningProcessOwner {
                 }
             }
         }
+        drafts.ready = failure.is_none() && !pending;
         match failure {
             Some(error) => Err(error),
             None if pending => Ok(RunningShutdownDraftProgress::Pending),
@@ -182,6 +189,7 @@ impl RunningProcessOwner {
         app: &mut App,
         driving: bool,
     ) -> Result<RunningShutdownDraftProgress, String> {
+        Self::require_shutdown_placements_settled(owner)?;
         let retained = Self::shutdown_drafts(owner, false)?;
         let mut drafts = retained
             .try_borrow_mut()

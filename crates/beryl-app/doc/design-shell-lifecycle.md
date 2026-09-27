@@ -244,6 +244,29 @@ by the executable composition root.
   and placement, fresh and existing compatible apartments, incompatible-apartment failure, balanced
   COM lifetime and sequential lease reuse. Review native and COM ownership independently.
 
+## Retained Exit Placement Capture
+
+- After work and resident drafts are ready, the original Application Exit attempt admits one
+  placement capture of its complete published main-window set. It retains the original window
+  identities, native handles through owned leases, shells and interaction gates. Duplicate capture
+  refuses; final ordinary close does not capture an Exit restore set.
+- Capture each window's geometry and admit its desktop lease in the same GUI update, validating
+  the original window identity. Desktop reads run off the GUI executor. Process the bounded set
+  sequentially, retaining at most one worker and native settlement continuation at a time. Every
+  admitted lease is drained even after another capture fails; no failed member is retried or
+  replaced and no partial placement set is published.
+- Retain the complete converted result or original capture failure in the attempt. Worker unwind
+  is a capture failure and still requires its exact GUI settlement. Missing settlement keeps
+  recovery fenced; desktop failure alone does not lose settlement custody. Draft release and
+  coordinator recovery refuse until the capture has drained all admitted native operations.
+- A retained GUI continuation owns the running owner through one completion callback outside
+  owner borrows. Caller abandonment cannot cancel that custody. Results are available only for
+  that original work-ready attempt while drafts remain ready; release invalidates their use.
+  Capture completion grants no durable publication, window destruction or quit authority.
+- Verify real native capture and exact identity association, duplicate/refused admission, delayed
+  worker ownership and recovery exclusion, failure/unwind with settlement, and original-attempt
+  recovery after drainage. Independently review lifecycle and partial-failure handling.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

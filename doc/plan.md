@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 680: Observe The Published Window Desktop (finished)
+# Phase 681: Retain Exit Placement Capture Through Native Settlement (finished)
 
-Accepted the read-only COM worker with exact published-window lease ownership, canonical desktop
-identity and staged HRESULT failures. Native tests passed all 3 cases, including 18 observations
-and the accepted lease lifetime suite (`23ccfd5c-9954-4248-959f-b1198e7e97cf`); the default app
-library check and independent semantic review passed. Exact Exit-owner placement/session custody
-and GUI settlement remain next.
+Accepted exact-attempt placement capture with sequential desktop workers, retained native settlement,
+all-or-nothing results and recovery fences. All 58 focused lifecycle cases passed
+(`4d2b12fa-b10e-4358-bcfa-66fb5696b33f`); the final-source four capture cases
+(`bc1ca85c-8eb6-4f29-bdc0-cb2fb7307496`), default app library check and independent lifecycle review
+passed. Durable session publication/reconciliation and ordinary consumer integration remain next.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -217,6 +217,9 @@ Phase 679 completes that publication. Next implement the worker desktop observat
 accepted published-window lease, then compose exact Exit-owner placement/session custody.
 Phase 680 supplies that desktop worker. Next bind geometry and desktop observations to the original
 Exit attempt and retain every native settlement before session publication or recovery.
+Phase 681 supplies that retained capture and recovery fence. Next bind the complete captured set to
+the original durable session revisions, compose publication/reconciliation through the retained
+owner, and connect capture failure to exact recovery before enabling ordinary shutdown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

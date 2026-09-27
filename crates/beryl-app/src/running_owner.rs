@@ -28,6 +28,7 @@ mod observation;
 mod progress;
 mod shutdown_drafts;
 mod shutdown_interaction;
+mod shutdown_placements;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
