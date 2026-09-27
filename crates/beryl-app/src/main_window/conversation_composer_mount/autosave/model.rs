@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use super::super::worker::{ResourceWorker, WorkerLifetime};
 
 use beryl_state::AssetState;
 use gpui::Task;
@@ -75,7 +75,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerAutosave {
     pub(super) state: AutosaveState,
     pub(super) generation: u64,
     pub(super) task: Option<Task<()>>,
-    workers: Arc<()>,
+    workers: WorkerLifetime,
     pub(super) fenced: bool,
     pub(super) adapters: Option<(AssetState, DraftMarkerSealService)>,
     pub(super) settings: Option<(u64, ComposerHostAutosaveInterval)>,
@@ -93,7 +93,7 @@ impl MainWindowConversationComposerAutosave {
             state: AutosaveState::Idle,
             generation: 0,
             task: None,
-            workers: Arc::new(()),
+            workers: Default::default(),
             fenced: false,
             adapters: Some((assets, marker_seals)),
             settings: None,
@@ -117,7 +117,7 @@ impl MainWindowConversationComposerAutosave {
             },
             generation: self.generation,
             retained_tasks: usize::from(self.task.is_some()),
-            retained_workers: Arc::strong_count(&self.workers) - 1,
+            retained_workers: self.workers.retained(),
             fenced: self.fenced,
             last_error: self.last_error.clone(),
         }
@@ -146,14 +146,11 @@ impl MainWindowConversationComposerAutosave {
     }
 
     pub(in crate::main_window) fn workers_drained(&self) -> bool {
-        Arc::strong_count(&self.workers) == 1
+        self.workers.retained() == 0
     }
 
-    pub(super) fn track_worker<F>(&self, job: F) -> AutosaveWorker<F> {
-        AutosaveWorker {
-            job: Some(job),
-            _lifetime: self.workers.clone(),
-        }
+    pub(super) fn track_worker<F>(&self, job: F) -> ResourceWorker<F> {
+        self.workers.track(job)
     }
 
     pub(super) fn advance_generation(&mut self) -> Result<u64, String> {
@@ -188,20 +185,5 @@ impl MainWindowConversationComposerAutosave {
             AutosaveState::Idle => false,
             _ => false,
         }
-    }
-}
-
-pub(super) struct AutosaveWorker<F> {
-    // Captured resources drop before the lifetime witness, including unstarted work.
-    job: Option<F>,
-    _lifetime: Arc<()>,
-}
-
-impl<F> AutosaveWorker<F> {
-    pub(super) fn run<R>(mut self) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        self.job.take().unwrap()()
     }
 }

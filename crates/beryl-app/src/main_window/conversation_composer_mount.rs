@@ -31,6 +31,7 @@ mod native_disposal;
 mod native_lineage;
 mod pending_presentation;
 mod submission;
+mod worker;
 
 use pending_presentation::MainWindowConversationComposerPendingPresentation;
 mod realization;

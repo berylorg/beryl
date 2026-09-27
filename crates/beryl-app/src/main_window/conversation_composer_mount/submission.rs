@@ -123,6 +123,7 @@ pub(super) struct MainWindowConversationComposerSubmission {
     status: MainWindowConversationComposerSubmissionStatus,
     active: Option<Box<ActiveMountedSubmission>>,
     task: Option<Task<()>>,
+    workers: super::worker::WorkerLifetime,
     #[cfg(feature = "test-faults")]
     test_advance_gate: Option<test_faults::SubmissionAdvanceTestGate>,
     #[cfg(feature = "test-faults")]
@@ -178,6 +179,7 @@ impl MainWindowConversationComposerSubmission {
             status: MainWindowConversationComposerSubmissionStatus::Idle,
             active: None,
             task: None,
+            workers: Default::default(),
             #[cfg(feature = "test-faults")]
             test_advance_gate: None,
             #[cfg(feature = "test-faults")]
@@ -194,7 +196,7 @@ impl MainWindowConversationComposerSubmission {
     pub(super) fn detach_recovery_source(
         &mut self,
     ) -> Result<Option<MainWindowComposerSubmissionRequestSource>, String> {
-        if self.active.is_some() || self.task.is_some() {
+        if self.active.is_some() || self.task.is_some() || !self.workers_drained() {
             return Err("conversation composer submission work is not drained".to_owned());
         }
         Ok(self.request_source.take())
@@ -205,9 +207,35 @@ impl MainWindowConversationComposerSubmission {
         self.task = None;
         self.status = status;
     }
+
+    pub(super) fn workers_drained(&self) -> bool {
+        self.workers.retained() == 0
+    }
 }
 
 impl MainWindowConversationComposerMount {
+    #[cfg(feature = "test-faults")]
+    pub fn test_submission_worker(
+        &self,
+        run: impl FnOnce() + Send + 'static,
+    ) -> Result<Box<dyn FnOnce() + Send>, String> {
+        let resources = (
+            self.service.clone(),
+            self.submission_assets()?,
+            self.submission_marker_seals()?,
+        );
+        let worker = self.submission.workers.track(move || {
+            let _resources = resources;
+            run();
+        });
+        Ok(Box::new(move || worker.run()))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_submission_retained_workers(&self) -> usize {
+        self.submission.workers.retained()
+    }
+
     pub(super) fn cancel_mounted_submission(&mut self) -> bool {
         let Some(active) = self.submission.active.as_mut() else {
             return false;
@@ -377,11 +405,7 @@ impl MainWindowConversationComposerMount {
         let test_gate = self.submission.test_advance_gate.take();
         #[cfg(feature = "test-faults")]
         let test_advance = self.submission.test_advance.take();
-        let task = cx.background_executor().spawn(async move {
-            #[cfg(feature = "test-faults")]
-            if let Some(gate) = test_gate {
-                gate.await;
-            }
+        let worker = self.submission.workers.track(move || {
             let result = service.advance_submission(
                 selection,
                 ticket,
@@ -410,6 +434,13 @@ impl MainWindowConversationComposerMount {
                 );
             }
             result
+        });
+        let task = cx.background_executor().spawn(async move {
+            #[cfg(feature = "test-faults")]
+            if let Some(gate) = test_gate {
+                gate.await;
+            }
+            worker.run()
         });
         self.submission.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = task.await;

@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 715: Retain Autosave Worker Lifetime Through Recovery (finished)
+# Phase 716: Retain Submission Worker Lifetime Through Recovery (finished)
 
-Accepted autosave worker lifetime custody independent of GUI continuation cancellation. Adapter
-detachment waits until captured resources drop, including completion, unwind and unstarted
-abandonment, while retaining the fenced editor and close ticket. Library checking, all 44
-resident-close and mounted-composer tests (`8142a54e-2eef-4af0-b875-14b67d061d13`) and independent
-lifecycle review passed. Other mount workers and whole-resident retirement remain separate.
+Accepted submission worker lifetime custody independent of GUI task custody, using the shared
+resource guard also retained by autosave. All recovery adapter handoffs wait for captured resources
+to drop through completion, abandonment and unwind while preserving the fenced resident. Library
+checking, all 58 resident-close, mounted-submission and mount tests
+(`b38e8e9d-3614-4196-9090-ffe9f3bb263c`), and independent lifecycle review passed. Whole-mount
+retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -109,7 +110,7 @@ supplies the consuming host primitive, phase 708 the enclosing slot primitive an
 exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
 Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
 adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
-handoff. Phase 715 supplies autosave worker lifetime evidence. Remaining worker-reference
+handoff. Phases 715–716 supply autosave and submission worker lifetime evidence. Remaining worker-reference
 draining, mount service detachment, and fresh
 widget bindings remain here. Mount drop still follows ordinary close cleanup and cannot substitute
 for the required recovery retirement boundary.
