@@ -172,6 +172,25 @@ by the executable composition root.
   review covers the native lifetime and coordinate boundary. Beryl-owned authority for this fork
   requirement remains here; no fork Markdown or document index is required.
 
+## Native Exit Geometry Capture
+
+- Exit obtains normal outer screen geometry, normal/maximized restore state and current monitor
+  identity/work area/scale from a fallible owned GPUI window operation on the GUI executor. The
+  bounded capture reads the exact published, unremoved native window without transferring a raw
+  handle or lifetime to a worker. It does not enumerate monitors, mutate placement or activate a
+  window. Hidden, removed, closing, destroyed and fullscreen windows are rejected.
+- Native normal placement is converted from Windows workspace coordinates to physical screen
+  coordinates with checked top/left work-area offsets, including negative coordinates and tool
+  windows. A minimized window retains its normal rectangle and pre-minimize maximized restore
+  intent. The returned monitor facts must agree with current window DPI; native failures and
+  changed monitor facts are errors, never zero/default geometry or a replacement monitor.
+- Capture returns physical geometry with the exact monitor scale; the app owns conversion into
+  its durable logical placement model. Virtual-desktop observation and complete-set publication
+  remain separate obligations. This snapshot grants neither destruction nor shutdown authority.
+- Acceptance requires round-trip conversion and overflow rejection, real published normal,
+  maximized and minimized-window capture without activation, rejection before publication and
+  after removal, and independent review of coordinate and native lifetime handling.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

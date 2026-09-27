@@ -89,14 +89,18 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 674: Publish The Complete Exit Session Atomically (finished)
+# Phase 675: Capture Owned Native Exit Geometry (finished)
 
-The typed complete-set Exit command now atomically publishes 1–256 exact window placements and
-orderly-Exit intent, preserving selections, claims and fallback. All 18 focused state/session
-regressions passed (`273553d3-e0c2-433b-8aa8-4158e1c3d180`), including maximum capacity, stale-input
-rejection, reopening and ambiguous-outcome reconciliation. State/app library checks, scoped
-formatting and independent persistent-state review passed. Native capture, app integration and
-final teardown remain pending.
+GPUI `a7c54e82d6` now captures checked normal outer geometry, restore state and monitor facts from
+an exact live published window, including minimized normal/maximized intent. All 14 focused
+native/placement tests passed (`92e511ae-8505-4fc0-9d4a-1405c08cf0ef`), including visibility and
+removal rejection without activation. Default app library check, scoped formatting and independent
+coordinate/lifetime review passed. Canonical publication and app composition remain separate.
+
+# Phase 676: Publish Native Exit Geometry Dependency (pending)
+
+Publish the accepted owned GPUI revision through the canonical single dependency graph and verify
+locked canonical app/native capture checks before app consumers adopt the capture API.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

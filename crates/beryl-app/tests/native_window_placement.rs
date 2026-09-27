@@ -15,7 +15,8 @@ use windows::{
         Foundation::RECT,
         UI::WindowsAndMessaging::{
             FindWindowW, GetForegroundWindow, GetWindowPlacement, GetWindowRect, IsWindow,
-            IsWindowVisible, IsZoomed, WINDOWPLACEMENT,
+            IsWindowVisible, IsZoomed, SW_HIDE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, ShowWindow,
+            WINDOWPLACEMENT,
         },
     },
     core::PCWSTR,
@@ -46,14 +47,50 @@ fn outer_conversion_preserves_negative_coordinates_and_work_area_offsets() {
         let outer = WindowsOuterWindowPlacement::new(bounds, scale, monitor, work, false).unwrap();
         assert_eq!(outer.screen_bounds(), physical(-1800, -900, 900, 600));
         assert_eq!(outer.workspace_bounds(), physical(-1848, -940, 900, 600));
+        assert_eq!(
+            WindowsOuterWindowPlacement::from_workspace_bounds(
+                outer.workspace_bounds(),
+                monitor,
+                work,
+                false,
+            )
+            .unwrap(),
+            outer,
+        );
         let tool = WindowsOuterWindowPlacement::new(bounds, scale, monitor, work, true).unwrap();
         assert_eq!(tool.workspace_bounds(), tool.screen_bounds());
+        assert_eq!(
+            WindowsOuterWindowPlacement::from_workspace_bounds(
+                tool.workspace_bounds(),
+                monitor,
+                work,
+                true,
+            )
+            .unwrap(),
+            tool,
+        );
     }
 }
 
 #[test]
 fn outer_conversion_rejects_invalid_geometry_before_native_use() {
     let monitor = physical(0, 0, 1920, 1080);
+    for bounds in [
+        physical(0, 0, 0, 10),
+        physical(0, 0, 10, -1),
+        physical(i32::MAX - 10, 0, 20, 20),
+        physical(i32::MAX - 20, 0, 20, 20),
+    ] {
+        assert!(
+            WindowsOuterWindowPlacement::from_workspace_bounds(
+                bounds,
+                monitor,
+                physical(48, 40, 1872, 1040),
+                false,
+            )
+            .is_err()
+        );
+    }
     for bounds in [
         logical(f32::NAN, 0.0, 800.0, 600.0),
         logical(0.0, f32::INFINITY, 800.0, 600.0),
@@ -135,7 +172,10 @@ fn exercise_native(cx: &mut App, monitor: WindowsWindowPlacementMonitor, maximiz
     assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
     assert_eq!(unsafe { GetForegroundWindow() }, foreground);
     window
-        .update(cx, |_, window, _| assert_eq!(window.scale_factor(), scale))
+        .update(cx, |_, window, _| {
+            assert_eq!(window.scale_factor(), scale);
+            assert!(window.capture_windows_window_placement().is_err());
+        })
         .unwrap();
     let mut rect = RECT::default();
     unsafe { GetWindowRect(hwnd, &mut rect) }.unwrap();
@@ -155,14 +195,40 @@ fn exercise_native(cx: &mut App, monitor: WindowsWindowPlacementMonitor, maximiz
     assert!(unsafe { IsWindowVisible(hwnd) }.as_bool());
     assert_eq!(unsafe { IsZoomed(hwnd) }.as_bool(), maximized);
     assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    for minimized in [false, true] {
+        if minimized {
+            let _ = unsafe { ShowWindow(hwnd, SW_SHOWMINNOACTIVE) };
+        }
+        window
+            .update(cx, |_, window, _| {
+                let captured = window.capture_windows_window_placement().unwrap();
+                assert_eq!(captured.normal_outer_bounds(), expected.screen_bounds());
+                assert_eq!(captured.maximized(), maximized);
+                assert_eq!(captured.monitor(), monitor);
+            })
+            .unwrap();
+        assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    }
     window
         .update(cx, |_, window, cx| window.publish(cx))
         .unwrap()
         .unwrap();
     assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
     window
-        .update(cx, |_, window, _| window.remove_window())
+        .update(cx, |_, window, _| {
+            assert!(window.capture_windows_window_placement().is_err());
+        })
         .unwrap();
+    let _ = unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE) };
+    window
+        .update(cx, |_, window, _| {
+            assert!(window.capture_windows_window_placement().is_ok());
+            window.remove_window();
+            assert!(window.capture_windows_window_placement().is_err());
+        })
+        .unwrap();
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground);
     hwnd.0 as usize
 }
 
