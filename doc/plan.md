@@ -89,12 +89,24 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 730: Query Exact Resident Retirement Status (finished)
+# Phase 731: Qualify Preserved Widget Resources For Recovery (finished)
 
-Accepted an exact-ticket retirement-status query that rechecks detached resources, drained work
-and resident fencing without storage access or gate release. Library checking, 58 focused tests
-(693652c1-89f3-4850-ae1a-a959000d4236) and independent lifecycle review passed.
-Fresh bindings and whole-home publication remain separate.
+The [pinned-widget ownership audit](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-ownership.md)
+found no retained old storage capability in the inspected widget ownership. Source identity,
+callback/cleanup paths and app guards passed independent lifecycle review. Quiescence remains a
+live observation; host cleanup, fresh bindings and recovery progress remain separate. No code or
+runtime-test changes were required for this evidence boundary.
+
+# Phase 732: Observe Saved Draft Checkpoints Through Candidate Access (pending)
+
+Provide the existing exact saved-checkpoint observation through borrowed home recovery-candidate
+access and fresh Syndic handles. Preserve selector, candidate-session, root/history closure and
+stable-observation checks without ordinary admission or writes. Verify fresh matching evidence,
+stale handles, changed or absent checkpoint facts and read failure; independently review the
+persistent-state boundary. This supplies storage evidence only, not resident rebinding or gate
+release. Derive the implementation from the storage candidate-access and interrupted-Exit recovery
+contracts before activation.
+
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
 At the admitted session-publication cut, prove exact ready draft-close tickets and drained resident
@@ -118,7 +130,8 @@ Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 Phase 728 consumes the bundle for exclusive service retirement and retains refused service custody.
 Phase 729 retains matching retirement evidence in the preserved resident snapshot; phase 730 supplies
-exact live observation of that retained retirement.
+exact live observation of that retained retirement. Phase 731 records the remaining widget ownership
+qualification; phase 732 supplies fresh candidate checkpoint observation.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
