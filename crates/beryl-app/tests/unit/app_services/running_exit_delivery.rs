@@ -188,6 +188,14 @@ fn run_delivery(pending: bool, unavailable: bool) {
                             .into_inner()
                             .test_into_process();
                         support::dispose_running(running, cx).await;
+                        assert!(
+                            window_command
+                                .disabled_reason()
+                                .unwrap()
+                                .contains("Beryl-home failure notice")
+                        );
+                        window_command.request_exit();
+                        producer.request_exit();
                         observed.set(true);
                         cx.update(|app| app.quit()).unwrap();
                     })

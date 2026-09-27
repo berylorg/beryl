@@ -12,6 +12,10 @@ pub(super) struct RunningExitGates {
     unavailable: bool,
     settings_reconciliation: bool,
     home_unavailable: bool,
+    home: Option<(
+        beryl_home_store::HomeServiceReference,
+        Option<beryl_home_store::HomeGeneration>,
+    )>,
 }
 
 impl RunningExitGates {
@@ -24,7 +28,13 @@ impl RunningExitGates {
     }
 
     pub(super) fn disabled_reason(&self) -> Option<&'static str> {
-        if self.home_unavailable {
+        let home_unavailable = self.home.as_ref().is_some_and(|(home, generation)| {
+            let health = home.health();
+            health.state() != beryl_home_store::HomeHealthState::Healthy
+                || generation.is_none()
+                || health.generation() != *generation
+        });
+        if self.home_unavailable || home_unavailable {
             Some(
                 "The Beryl home store is unavailable. See the Beryl-home failure notice for automatic recovery.",
             )
@@ -72,6 +82,16 @@ impl RunningWindowExit {
 }
 
 impl RunningExitCommands {
+    pub(crate) fn bind_home(&self, home: beryl_home_store::HomeServiceReference) {
+        let mut state = self.0.0.borrow_mut();
+        assert!(
+            state.exit_gates.home.is_none(),
+            "Exit home is already bound"
+        );
+        let generation = home.health().generation();
+        state.exit_gates.home = Some((home, generation));
+    }
+
     pub(crate) fn set_gate(&self, gate: RunningExitGate, blocked: bool) {
         self.0.0.borrow_mut().exit_gates.set(gate, blocked);
     }

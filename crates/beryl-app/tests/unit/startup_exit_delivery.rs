@@ -309,3 +309,84 @@ fn running_gates_do_not_suppress_startup_cancellation_or_accepted_handoff() {
     assert_eq!(request.invoking_window(), None);
     assert!(running.finish_exit(&request));
 }
+
+#[test]
+fn bound_home_failure_and_recovery_cannot_revive_retained_exit_producers() {
+    use beryl_home_store::{
+        HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+        test_faults::{FaultController, FaultPoint},
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut candidate = HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let _state = beryl_state::BerylState::register(&mut candidate).unwrap();
+    let home = candidate
+        .prepare_publication(beryl_state::BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    let producer = producer();
+    let mut running = handoff(&producer);
+    let command = running.window_command(WindowId::from_bytes([40; 16]));
+    let retained = command.clone();
+    running.bind_home(home.service_reference());
+    assert_eq!(retained.disabled_reason(), None);
+    command.request_exit();
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(home.home_revision().is_err());
+    assert_eq!(home.health().state(), HomeHealthState::Failed);
+    running.set_gate(RunningExitGate::Unavailable, true);
+    running.set_gate(RunningExitGate::SettingsReconciliation, true);
+    assert!(
+        retained
+            .disabled_reason()
+            .unwrap()
+            .contains("Beryl-home failure notice")
+    );
+    running.set_gate(RunningExitGate::HomeUnavailable, false);
+    running.set_gate(RunningExitGate::SettingsReconciliation, false);
+    running.set_gate(RunningExitGate::Unavailable, false);
+    producer.request_exit();
+    let request = take(&mut running);
+    assert_eq!(request.invoking_window(), Some(command.invoking));
+    assert!(running.finish_exit(&request));
+    let observer = Arc::new(ObserveWake(std::sync::atomic::AtomicUsize::new(0)));
+    let wake = Waker::from(observer.clone());
+    assert!(
+        running
+            .poll_exit(&mut Context::from_waker(&wake))
+            .is_pending()
+    );
+    retained.request_exit();
+    producer.request_exit();
+    assert!(!running.exit_requested());
+    assert!(producer.0.borrow().exit_window.is_none());
+    assert_eq!(observer.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let candidate = home.recover_same_home().unwrap();
+    assert!(retained.disabled_reason().is_some());
+    retained.request_exit();
+    assert!(!running.exit_requested());
+    let home = candidate.publish().unwrap();
+    assert_eq!(home.health().state(), HomeHealthState::Healthy);
+    assert!(retained.disabled_reason().is_some());
+    retained.request_exit();
+    producer.request_exit();
+    assert!(!running.exit_requested());
+    assert_eq!(observer.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let fresh_producer = self::producer();
+    let mut fresh = handoff(&fresh_producer);
+    fresh.bind_home(home.service_reference());
+    let fresh_command = fresh.window_command(command.invoking);
+    assert_eq!(fresh_command.disabled_reason(), None);
+    fresh_command.request_exit();
+    let request = take(&mut fresh);
+    assert!(fresh.finish_exit(&request));
+    home.close().unwrap();
+    assert!(fresh_command.disabled_reason().is_some());
+    fresh_command.request_exit();
+    assert!(!fresh.exit_requested());
+}

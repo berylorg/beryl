@@ -67,6 +67,14 @@ pub(crate) struct RunningProcess {
 
 impl RunningProcessOwner {
     pub(crate) fn start(mut process: StartedProcess, app: &mut App) -> Rc<RefCell<Self>> {
+        process.commands.bind_home(
+            process
+                .services
+                .graph()
+                .expect("running service graph")
+                .home()
+                .service_reference(),
+        );
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
             process: RunningProcess {

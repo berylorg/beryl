@@ -614,6 +614,14 @@ by the executable composition root.
   projection reads the same shared gate state used by activation; service admission still revalidates
   current evidence. Gate changes alone never reopen services, release shutdown custody or quit.
 
+  Running-owner construction binds the channel once to a non-owning service reference for its
+  published home generation. Availability and each new activation read that home's current health;
+  a non-healthy or different generation supplies the home-unavailable reason ahead of manual gates.
+  This binding survives worker transfer of services and is shared by previously retained producers.
+  Clearing a manual gate cannot override it. Recovery never revives producers from a retired
+  generation; replacement services require their own channel. The reference grants no home-close
+  authority. Reading health performs no storage I/O, and final admission still revalidates evidence.
+
 - Exit work classification consumes a settled initial observation result while retaining the exact
   active request with its caller. It revalidates the original published invoking window and refuses
   competing observation, confirmation or shutdown custody. Failed or cancelled collection never
