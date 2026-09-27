@@ -12,6 +12,7 @@ use crate::{
 mod admission;
 mod confirmation;
 mod exit_delivery;
+mod exit_work;
 mod initial_observation;
 mod observation;
 mod progress;
@@ -19,6 +20,7 @@ pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
+pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 
 #[derive(Debug, PartialEq, Eq)]

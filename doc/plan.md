@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 636: Preserve And Resolve The Invoking Exit Window (finished)
+# Phase 637: Classify Observed Work For The Exact Exit Request (finished)
 
-Exit producers retain their original published window through duplicate delivery. Exact active
-requests resolve without replacing unavailable named windows; deferred startup requests bind once
-in restore-set order. All 12 focused tests passed (`abc4f4d7-7e60-4e8e-900b-859ca681ff32`), including
-native delivery and unavailable-origin refusal. The default library check and independent semantic
-review passed.
+Exact active Exit requests now classify settled worker observations: work requires confirmation;
+idle evidence uses atomic application-Exit admission. Failed/cancelled reads, stale requests and
+competing custody refuse without a new fence. All 15 focused native tests passed
+(`6b695006-6938-4ed8-b0fe-049a07399658`), including new-work invalidation and reclassification.
+The default library check and independent semantic review passed.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -137,7 +137,9 @@ choosing confirmation or idle admission and binding it to ordinary commands rema
 Phase 634 supplies native confirmation completion notification; result consumption and subsequent
 policy actions remain explicit.
 Phases 635–636 supply owner-retained GUI delivery, exact completion and invoking-window binding of
-the running Exit consumer. Ordinary toolbar mounting and shutdown policy routing remain unmounted.
+the running Exit consumer. Phase 637 supplies exact-request work classification and idle admission;
+work-bearing observations remain explicit inputs to native confirmation. Ordinary toolbar mounting,
+automatic confirmation/refresh/progress routing and request completion remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

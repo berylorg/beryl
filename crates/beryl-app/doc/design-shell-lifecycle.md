@@ -549,6 +549,15 @@ by the executable composition root.
   also validates its published member. These checks grant no close lease or execution fence;
   confirmation and admission must still validate their original window and work evidence.
 
+- Exit work classification consumes a settled initial observation result while retaining the exact
+  active request with its caller. It revalidates the original published invoking window and refuses
+  competing observation, confirmation or shutdown custody. Failed or cancelled collection never
+  supplies idle evidence. Work-bearing evidence returns the original observation and invoking
+  identity for native confirmation, without acquiring a lease or fencing execution. Idle evidence
+  enters the existing atomic idle admission with application-Exit intent; stale evidence refuses
+  without a fence. Every refreshed result is classified again. Classification neither completes
+  the Exit request nor retries, opens a dialog, advances progress or grants quit authority.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

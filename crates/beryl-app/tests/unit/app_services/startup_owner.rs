@@ -75,6 +75,14 @@ mod running_initial_observation {
     ));
 }
 
+mod running_exit_work {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_work.rs"
+    ));
+}
+
 #[test]
 fn native_success_hands_off_the_complete_graph_and_late_exit_with_auxiliary_custody() {
     let directory = support::native_home();
