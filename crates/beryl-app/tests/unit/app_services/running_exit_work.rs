@@ -205,19 +205,48 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                         pending.borrow_mut().take().unwrap().unwrap();
                         permit.commit(|| ()).unwrap();
                         if new_work {
+                            let idle = observe(&owner, ProjectionCancellationToken::new(), cx)
+                                .await
+                                .unwrap();
+                            {
+                                use crate::app_services::CloseConfirmationPreparationError;
+                                let retained = owner.borrow();
+                                let services = retained.test_services();
+                                let (snapshot, final_member) = services
+                                    .prepare_close_confirmation(&[invoking], invoking, &idle)
+                                    .unwrap();
+                                assert!(final_member);
+                                drop(snapshot);
+                                assert!(matches!(
+                                    services.prepare_close_confirmation(
+                                        &[invoking],
+                                        beryl_model::WindowId::from_bytes([239; 16]),
+                                        &idle,
+                                    ),
+                                    Err(CloseConfirmationPreparationError::Window(_))
+                                ));
+                                assert!(retained.shutdown_status().is_none());
+                                permit.commit(|| ()).unwrap();
+                            }
                             let work = crate::cas_projection::test_faults::retain_projection_work(
                                 owner.borrow().test_services().graph().unwrap().cas(),
                                 beryl_model::SyndicThreadId::from_bytes([244; 16]),
                             );
-                            assert!(
+                            assert!(matches!(
                                 cx.update(|app| owner.borrow_mut().classify_exit_work(
                                     &mut successor,
                                     Ok(idle.clone()),
                                     app
                                 ))
-                                .unwrap()
-                                .is_err()
-                            );
+                                .unwrap(),
+                                Err(ExitWorkError::Admission(
+                                    crate::running_owner::IdleShutdownError::Preparation(
+                                        crate::app_services::CloseConfirmationPreparationError::Runtime(
+                                            crate::cas_projection::RuntimeWorkError::Stale
+                                        )
+                                    )
+                                ))
+                            ));
                             assert!(owner.borrow().shutdown_status().is_none());
                             permit.commit(|| ()).unwrap();
                             let fresh = observe(&owner, ProjectionCancellationToken::new(), cx)

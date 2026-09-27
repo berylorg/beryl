@@ -41,7 +41,9 @@ pub(crate) use shutdown::{
     AppServiceCloseError, AppServiceFinalizationError, AppServiceShutdownProgress,
     PreparedShutdownObservation,
 };
-pub(crate) use window_services::{MainWindowServiceInputs, PublishedMainWindowServices};
+pub(crate) use window_services::{
+    CloseConfirmationPreparationError, MainWindowServiceInputs, PublishedMainWindowServices,
+};
 
 #[derive(Clone)]
 pub(crate) struct AppServiceConfiguration {

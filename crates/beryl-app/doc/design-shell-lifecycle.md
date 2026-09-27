@@ -565,6 +565,11 @@ by the executable composition root.
   enters the existing atomic idle admission with application-Exit intent; stale evidence refuses
   without a fence. Every refreshed result is classified again. Classification neither completes
   the Exit request nor retries, opens a dialog, advances progress or grants quit authority.
+  Close-confirmation preparation preserves typed runtime-validation failures separately from
+  unavailable services, an already admitted shutdown and invalid window evidence. Idle admission
+  carries that distinction through classification so later policy can recognize changed evidence
+  without parsing displayed error text. Native confirmation setup may format the error for its
+  existing failure-delivery boundary; preparation still acquires no lease or execution fence.
 
 - Initial Exit observation takes custody of the move-only active request after resolving its
   original invoking window. It uses the existing single worker observation slot and returns the
@@ -599,6 +604,13 @@ by the executable composition root.
   observation, shutdown progress or quit; the caller retains responsibility for coherent completion.
 
 - Initial Exit routing connects request-retaining worker observation to the existing work route.
+  Explicitly changed initial collection or idle-admission evidence schedules a fresh worker read
+  after a 50 ms delay. The owner reserves that read before yielding and retains the original
+  request and cancellation token. Every result is classified anew: newly observed work requires
+  native confirmation and cannot inherit permission from an earlier idle result. Only the typed
+  work-change errors eligible for confirmed refresh qualify; busy, unavailable, foreign, window
+  and request failures remain terminal. Cancellation is checked again before classification.
+  Each refreshed result validates the original invoking window; no replacement is selected.
   It returns the original request on scheduling refusal, with no completion callback. Once
   scheduled, it retains that request through observation and any native confirmation, delivering
   it exactly once with admission, cancelled confirmation, cancelled confirmed observation, or a

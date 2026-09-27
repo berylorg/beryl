@@ -26,6 +26,18 @@ pub(crate) struct PublishedMainWindowServices {
     restored_activation: RestoredWindowActivationSource,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CloseConfirmationPreparationError {
+    #[error("the complete shutdown services are unavailable")]
+    Unavailable,
+    #[error("the service graph already owns a shutdown attempt")]
+    AlreadyShuttingDown,
+    #[error(transparent)]
+    Runtime(#[from] crate::cas_projection::RuntimeWorkError),
+    #[error("{0}")]
+    Window(String),
+}
+
 impl ProcessServiceOwner {
     pub(crate) fn admit_close_confirmation(
         &self,
@@ -47,24 +59,29 @@ impl ProcessServiceOwner {
         members: &[WindowId],
         invoking: WindowId,
         observation: &crate::cas_projection::ShutdownWorkObservation,
-    ) -> Result<(crate::window_acquisition::WindowCloseSnapshot, bool), String> {
+    ) -> Result<
+        (crate::window_acquisition::WindowCloseSnapshot, bool),
+        CloseConfirmationPreparationError,
+    > {
         let graph = self
             .graph()
-            .ok_or("the complete service graph is unavailable")?;
+            .ok_or(CloseConfirmationPreparationError::Unavailable)?;
         if graph.shutdown.is_some() {
-            return Err("the service graph already owns a shutdown attempt".into());
+            return Err(CloseConfirmationPreparationError::AlreadyShuttingDown);
         }
         graph
             .cas
             .as_ref()
-            .ok_or("the runtime service is unavailable")?
-            .try_validate_shutdown_runtime(&graph.sessions, observation.revision())
-            .map_err(|error| error.to_string())?;
-        let snapshot = self
-            .windows
-            .snapshot_for_close(members)
-            .map_err(|error| format!("close snapshot unavailable: {error:?}"))?;
-        let final_member = self.inspect_close_confirmation(&snapshot, invoking)?;
+            .ok_or(CloseConfirmationPreparationError::Unavailable)?
+            .try_validate_shutdown_runtime(&graph.sessions, observation.revision())?;
+        let snapshot = self.windows.snapshot_for_close(members).map_err(|error| {
+            CloseConfirmationPreparationError::Window(format!(
+                "close snapshot unavailable: {error:?}"
+            ))
+        })?;
+        let final_member = self
+            .inspect_close_confirmation(&snapshot, invoking)
+            .map_err(CloseConfirmationPreparationError::Window)?;
         Ok((snapshot, final_member))
     }
 

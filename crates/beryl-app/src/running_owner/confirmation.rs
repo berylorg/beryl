@@ -136,7 +136,8 @@ impl RunningProcessOwner {
                     owner.process.windows.window_ids(),
                     invoking,
                     &observation,
-                )?;
+                )
+                .map_err(|error| error.to_string())?;
             if intent == ShutdownIntent::FinalWindowClose && !final_member {
                 return Err("the invoking main window is no longer final".into());
             }

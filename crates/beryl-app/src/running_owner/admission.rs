@@ -31,6 +31,8 @@ pub(crate) enum IdleShutdownError {
     #[error("shutdown window custody is unavailable: {0}")]
     Window(String),
     #[error(transparent)]
+    Preparation(#[from] crate::app_services::CloseConfirmationPreparationError),
+    #[error(transparent)]
     Service(#[from] AppServiceCloseError),
 }
 
@@ -109,8 +111,7 @@ impl RunningProcessOwner {
             .services
             .as_ref()
             .ok_or(AppServiceCloseError::Unavailable)?
-            .prepare_close_confirmation(self.process.windows.window_ids(), invoking, observation)
-            .map_err(IdleShutdownError::Window)?;
+            .prepare_close_confirmation(self.process.windows.window_ids(), invoking, observation)?;
         let lease = self
             .process
             .services

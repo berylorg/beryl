@@ -89,13 +89,26 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 654: Refresh Changed Work Under Confirmed Exit Intent (finished)
+# Phase 655: Preserve Typed Close Preparation Failures (finished)
 
-Confirmed Exit now refreshes changed observation/admission evidence with a delayed, reserved tagged
-worker while retaining the original intent and window lease. Cancellation and other errors remain
-terminal; explicit single-pass callers are unchanged. Default library check, independent review
-and 44 focused tests passed (`c7cad5a4-0df6-4a35-8165-27f118bab380`); six modified cases passed again
-with deterministic refresh retention (`48bdd3e3-38cf-4e98-8ccc-49e8c025b6d2`). Toolbar and final teardown remain pending.
+Close preparation now preserves typed runtime failures through idle Exit classification,
+separately from service and window failures. Native confirmation retains formatted delivery.
+Default library check, independent semantic review and 46 focused native tests passed
+(`6209f12b-5446-4372-83d2-d97a938fa6b2`, `fb59622f-19af-4ddc-ae2e-af25522220c8`).
+Automatic initial-evidence refresh remains phase 656.
+
+# Phase 656: Reclassify Changed Initial Exit Evidence (pending)
+
+Connect initial Exit routing to delayed worker refresh for explicitly changed collection or
+idle-admission evidence, following the app lifecycle authority. Reserve each successor before
+yielding, retain the original request, owner and cancellation token, and classify every new result.
+New work must require confirmation; errors outside the typed change set remain terminal.
+
+Verify real idle evidence invalidation, newly arriving work, cancellation during retained refresh,
+exact request identity, duplicate exclusion and callback delivery outside owner borrows. Run the
+default library check and focused native lifecycle tests, and obtain independent semantic review
+before acceptance. Single-pass observation and classification callers remain unchanged. Toolbar
+mounting and final teardown remain separate boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -168,6 +181,8 @@ persistent-condition guidance remains pending.
 Phase 654 refreshes explicitly changed confirmed observation/admission evidence without repeating
 confirmation, preserving the original tagged intent through each delay. Idle-path retries remain
 separate; other failures still complete through the existing policy and notice path.
+Phase 655 preserves typed close-preparation failures through idle classification, supplying the
+remaining error provenance needed for initial-evidence refresh.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
