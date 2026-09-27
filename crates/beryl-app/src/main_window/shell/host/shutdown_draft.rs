@@ -1,13 +1,14 @@
 use super::*;
 use crate::main_window::{
-    MainWindowConversationComposerCloseAdvance, MainWindowConversationComposerCloseTicket,
-    MainWindowConversationComposerMount,
+    MainWindowConversationComposerCloseAdvance, MainWindowConversationComposerCloseRelease,
+    MainWindowConversationComposerCloseTicket, MainWindowConversationComposerMount,
 };
 
 pub struct MainWindowShutdownDraft {
     root: gpui::EntityId,
     composer: Option<(
         Entity<MainWindowConversationComposerMount>,
+        gpui::EntityId,
         MainWindowConversationComposerCloseTicket,
     )>,
 }
@@ -16,6 +17,12 @@ pub struct MainWindowShutdownDraft {
 pub enum MainWindowShutdownDraftAdvance {
     Threadless,
     Resident(MainWindowConversationComposerCloseAdvance),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowShutdownDraftRelease {
+    Pending,
+    Released,
 }
 
 impl MainWindowShellRoot {
@@ -57,8 +64,13 @@ impl MainWindowShellRoot {
     ) -> Result<MainWindowShutdownDraft, String> {
         let composer = match self.shutdown_draft_mount(cx)? {
             Some(mount) => {
+                let editor = mount
+                    .read(cx)
+                    .contribution()
+                    .ok_or("shutdown shell lost its resident editor")?
+                    .entity_id();
                 let close = mount.update(cx, |mount, cx| mount.begin_window_close(window, cx))?;
-                Some((mount, close.ticket))
+                Some((mount, editor, close.ticket))
             }
             None => None,
         };
@@ -79,7 +91,13 @@ impl MainWindowShellRoot {
         }
         match (self.shutdown_draft_mount(cx)?, &draft.composer) {
             (None, None) => Ok(MainWindowShutdownDraftAdvance::Threadless),
-            (Some(current), Some((mount, ticket))) if current.entity_id() == mount.entity_id() => {
+            (Some(current), Some((mount, editor, ticket)))
+                if current.entity_id() == mount.entity_id()
+                    && current
+                        .read(cx)
+                        .contribution()
+                        .is_some_and(|resident| resident.entity_id() == *editor) =>
+            {
                 mount
                     .update(cx, |mount, cx| {
                         mount.advance_window_close(*ticket, window, cx)
@@ -88,6 +106,52 @@ impl MainWindowShellRoot {
             }
             _ => Err("shutdown draft composer custody changed".into()),
         }
+    }
+
+    pub(crate) fn release_shutdown_draft(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowShutdownDraftRelease, String> {
+        if draft.root != cx.entity_id() {
+            return Err("shutdown draft belongs to another shell".into());
+        }
+        match (self.shutdown_draft_mount(cx)?, &draft.composer) {
+            (None, None) => Ok(MainWindowShutdownDraftRelease::Released),
+            (Some(current), Some((mount, editor, ticket)))
+                if current.entity_id() == mount.entity_id()
+                    && current
+                        .read(cx)
+                        .contribution()
+                        .is_some_and(|resident| resident.entity_id() == *editor) =>
+            {
+                match mount.update(cx, |mount, cx| {
+                    mount.release_window_close_with_evidence(*ticket, window, cx)
+                })? {
+                    MainWindowConversationComposerCloseRelease::Pending => {
+                        Ok(MainWindowShutdownDraftRelease::Pending)
+                    }
+                    MainWindowConversationComposerCloseRelease::Released => {
+                        Ok(MainWindowShutdownDraftRelease::Released)
+                    }
+                    MainWindowConversationComposerCloseRelease::Stale => {
+                        Err("shutdown draft release lost its exact close ticket".into())
+                    }
+                }
+            }
+            _ => Err("shutdown draft composer custody changed".into()),
+        }
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_release_shutdown_draft(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowShutdownDraftRelease, String> {
+        self.release_shutdown_draft(draft, window, cx)
     }
 
     #[cfg(feature = "test-faults")]
@@ -113,6 +177,6 @@ impl MainWindowShellRoot {
 impl MainWindowShutdownDraft {
     #[cfg(feature = "test-faults")]
     pub fn test_ticket(&self) -> Option<MainWindowConversationComposerCloseTicket> {
-        self.composer.as_ref().map(|(_, ticket)| *ticket)
+        self.composer.as_ref().map(|(_, _, ticket)| *ticket)
     }
 }

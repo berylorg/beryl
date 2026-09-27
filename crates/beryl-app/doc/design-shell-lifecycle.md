@@ -996,6 +996,14 @@ by the executable composition root.
   shell and composer identity; missing or replaced custody is failure, never readiness. The caller
   retains this preparation, including on failure. This adapter grants no session publication,
   composer disposal, native destruction, gate release or process-quit authority.
+- Recoverable shutdown draft release uses the retained exact shell/composer preparation. Release
+  requested or pending is not completion. The resident mount records exact-ticket completion only
+  after the service and editor close gates release and autosave resumption succeeds. A later close
+  admission invalidates that evidence; missing, foreign or superseded tickets cannot prove release.
+  The shell revalidates its identity and resident composer while requesting or polling release;
+  threadless release requires the same explicit no-composer evidence. Errors retain the preparation
+  and cannot authorize interaction-gate release. Draft release preserves independent shutdown and
+  startup gates and grants no service reopening, session publication, disposal or quit authority.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations

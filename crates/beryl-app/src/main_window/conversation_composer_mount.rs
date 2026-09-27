@@ -38,7 +38,7 @@ mod realization;
 pub use autosave::*;
 pub use close::{
     MainWindowConversationComposerCloseAdmission, MainWindowConversationComposerCloseAdvance,
-    MainWindowConversationComposerCloseTicket,
+    MainWindowConversationComposerCloseRelease, MainWindowConversationComposerCloseTicket,
 };
 #[cfg(feature = "test-faults")]
 pub use submission::{
@@ -162,6 +162,7 @@ pub struct MainWindowConversationComposerMount {
     contribution_subscription: Option<Subscription>,
     window_close: Option<close::ActiveWindowClose>,
     window_close_generation: u64,
+    window_close_released: Option<MainWindowConversationComposerCloseTicket>,
     window_close_task: Option<Task<()>>,
     native_lineage_recovery: Option<crate::cas_projection::NativeLineageRecoveryControl>,
     native_lineage_snapshot: Option<crate::cas_projection::NativeLineageRecoverySnapshot>,
@@ -383,6 +384,7 @@ impl MainWindowConversationComposerMount {
             contribution_subscription: None,
             window_close: None,
             window_close_generation: 0,
+            window_close_released: None,
             window_close_task: None,
             native_lineage_recovery: None,
             native_lineage_snapshot: None,

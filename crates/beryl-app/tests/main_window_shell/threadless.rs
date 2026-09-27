@@ -372,6 +372,11 @@ fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
                 beryl_app::main_window::MainWindowShutdownDraftAdvance::Threadless
             );
             assert_eq!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .unwrap(),
+                beryl_app::main_window::MainWindowShutdownDraftRelease::Released
+            );
+            assert_eq!(
                 root.test_exit_presentation(),
                 (
                     "Exiting…",

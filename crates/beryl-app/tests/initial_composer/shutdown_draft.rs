@@ -37,6 +37,10 @@ fn shutdown_draft_preserves_exact_resident_ticket_through_flush_and_release(
                 root.test_advance_shutdown_draft(&draft, window, cx)
                     .is_err()
             );
+            assert!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .is_err()
+            );
         })
         .unwrap();
     let mut ready = false;
@@ -78,37 +82,91 @@ fn shutdown_draft_preserves_exact_resident_ticket_through_flush_and_release(
             .iter()
             .any(|page| page.text() == "retained shutdown draft")
     }));
-    shell
-        .window()
-        .update(cx, |_, window, cx| {
-            assert!(
-                mount
-                    .update(cx, |mount, cx| mount
-                        .release_window_close(ticket, window, cx))
-                    .unwrap()
-            );
-        })
-        .unwrap();
     let mut released = false;
     for _ in 0..512 {
         startup_interaction::drive(&shell, cx);
         let state = shell
             .window()
             .update(cx, |root, window, cx| {
-                root.test_advance_shutdown_draft(&draft, window, cx)
+                root.test_release_shutdown_draft(&draft, window, cx)
                     .unwrap()
             })
             .unwrap();
-        if state
-            == MainWindowShutdownDraftAdvance::Resident(
-                MainWindowConversationComposerCloseAdvance::Stale,
-            )
-        {
+        if state == MainWindowShutdownDraftRelease::Released {
             released = true;
             break;
         }
     }
     assert!(released, "resident close ticket did not release");
+    shell
+        .window()
+        .update(cx, |_, window, cx| {
+            input.update(cx, |input, cx| {
+                input.replace_text_in_range(None, "must remain rejected", window, cx);
+            });
+        })
+        .unwrap();
+    startup_interaction::drive(&shell, cx);
+    assert!(input.read_with(cx, |input, _| {
+        input
+            .surface()
+            .unwrap()
+            .pages()
+            .iter()
+            .any(|page| page.text() == "retained shutdown draft")
+    }));
+    let other_resident = other
+        .window()
+        .read_with(cx, |root, cx| {
+            root.controller()
+                .unwrap()
+                .composer_mount()
+                .unwrap()
+                .read(cx)
+                .contribution()
+                .unwrap()
+        })
+        .unwrap();
+    shell
+        .window()
+        .update(cx, |root, window, cx| {
+            assert_eq!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .unwrap(),
+                MainWindowShutdownDraftRelease::Released
+            );
+            assert!(!composer.read(cx).test_widget_released());
+            let original = mount.update(cx, |mount, _| {
+                mount
+                    .test_replace_window_close_resident(other_resident)
+                    .unwrap()
+            });
+            assert!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .is_err()
+            );
+            assert!(
+                root.test_advance_shutdown_draft(&draft, window, cx)
+                    .is_err()
+            );
+            mount.update(cx, |mount, _| {
+                mount.test_replace_window_close_resident(original);
+            });
+            assert_eq!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .unwrap(),
+                MainWindowShutdownDraftRelease::Released
+            );
+            let successor = root.test_begin_shutdown_draft(window, cx).unwrap();
+            assert_ne!(successor.test_ticket(), Some(ticket));
+            assert!(
+                root.test_release_shutdown_draft(&draft, window, cx)
+                    .is_err()
+            );
+            root.test_release_shutdown_draft(&successor, window, cx)
+                .unwrap();
+        })
+        .unwrap();
     for shell in [&shell, &other] {
         shell
             .window()

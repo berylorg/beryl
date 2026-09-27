@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 667: Bind Shell Shutdown Draft Flush To Exact Resident Custody (finished)
+# Phase 668: Prove Exact Resident Shutdown Draft Release (finished)
 
-The shell now prepares and polls draft flush through its exact resident close ticket, requiring the
-shutdown gate and rejecting startup or foreign-shell custody. Threadless evidence is explicit;
-editors remain resident and stale results cannot prove readiness. All 19 focused native tests
-passed (`183dc254-2dd1-458f-8c5d-2bdfff0887d5`), with default library check, formatting and
-independent semantic review. Running-owner aggregation and session durability remain pending.
+Release now distinguishes pending work from exact completion after service/editor gate release
+and autosave resumption. Shell preparations retain the original editor identity; replacement,
+foreign and superseded custody cannot prove completion. All 19 focused native tests passed
+(`b7a19851-2dda-416d-8b41-db45e018f130`), and the strengthened edit-rejection regression passed
+(`c1c5f516-dcc3-45a0-8011-15de4d939b8b`). Default library check, formatting and independent
+semantic review passed. Running-owner aggregation and session durability remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -189,6 +190,9 @@ obligations before admitting final teardown; work readiness alone cannot authori
 Phase 667 supplies exact shell/composer draft preparation and polling through retained close
 tickets. Next aggregate those obligations through the running owner and preserve partial admission
 and recovery custody before composing durable session publication.
+Phase 668 supplies exact resident release completion for recoverable draft cleanup. Next aggregate
+preparation, polling and release under the original running shutdown attempt, retaining every
+partially admitted obligation until recovery or final teardown settles it.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

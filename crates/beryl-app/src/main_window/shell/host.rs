@@ -9,7 +9,9 @@ mod restored;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
-pub use shutdown_draft::{MainWindowShutdownDraft, MainWindowShutdownDraftAdvance};
+pub use shutdown_draft::{
+    MainWindowShutdownDraft, MainWindowShutdownDraftAdvance, MainWindowShutdownDraftRelease,
+};
 mod startup;
 #[cfg(target_os = "windows")]
 mod startup_construction;

@@ -1,4 +1,5 @@
 use super::support::{self, Mounted, drive_until};
+use beryl_app::main_window::MainWindowConversationComposerCloseRelease;
 
 #[gpui::test]
 fn busy_slot_release_finishes_in_background_and_stale_release_preserves_the_next_close(
@@ -21,17 +22,24 @@ fn busy_slot_release_finishes_in_background_and_stale_release_preserves_the_next
     super::mounted::ready(&fixture, first.ticket, cx);
     cx.update(|_, app| input.update(app, |input, cx| input.set_enabled(false, cx)));
     fixture.service.test_with_close_slot_locked(|| {
-        assert!(
+        assert_eq!(
             cx.update(|window, app| fixture.mount.update(app, |mount, cx| {
-                mount.release_window_close(first.ticket, window, cx)
+                mount.release_window_close_with_evidence(first.ticket, window, cx)
             }))
-            .unwrap()
+            .unwrap(),
+            MainWindowConversationComposerCloseRelease::Pending
         );
         assert!(fixture.service.test_window_close_is_current(first.ticket));
         assert!(!input.read_with(cx, |input, _| input.is_enabled()));
     });
-    drive_until(cx, "background close release", |_| {
-        !fixture.service.test_window_close_is_current(first.ticket)
+    drive_until(cx, "background close release", |cx| {
+        cx.update(|window, app| {
+            fixture.mount.update(app, |mount, cx| {
+                mount.release_window_close_with_evidence(first.ticket, window, cx)
+            })
+        })
+        .unwrap()
+            == MainWindowConversationComposerCloseRelease::Released
     });
     assert_eq!(fixture.service.selected_identity(), Some(resident));
     assert!(!input.read_with(cx, |input, _| input.is_enabled()));
@@ -43,6 +51,13 @@ fn busy_slot_release_finishes_in_background_and_stale_release_preserves_the_next
         })
         .unwrap();
     assert_ne!(first.ticket, second.ticket);
+    assert_eq!(
+        cx.update(|window, app| fixture.mount.update(app, |mount, cx| {
+            mount.release_window_close_with_evidence(first.ticket, window, cx)
+        }))
+        .unwrap(),
+        MainWindowConversationComposerCloseRelease::Stale
+    );
     super::mounted::ready(&fixture, second.ticket, cx);
     assert!(
         !cx.update(|window, app| fixture.mount.update(app, |mount, cx| {

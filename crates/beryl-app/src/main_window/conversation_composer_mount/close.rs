@@ -47,6 +47,13 @@ pub enum MainWindowConversationComposerCloseAdvance {
     Stale,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowConversationComposerCloseRelease {
+    Pending,
+    Released,
+    Stale,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct ActiveWindowClose {
     ticket: MainWindowConversationComposerCloseTicket,
@@ -61,6 +68,14 @@ pub(super) struct ActiveWindowClose {
 }
 
 impl MainWindowConversationComposerMount {
+    #[cfg(feature = "test-faults")]
+    pub fn test_replace_window_close_resident(
+        &mut self,
+        resident: Entity<MainWindowConversationComposer>,
+    ) -> Option<Entity<MainWindowConversationComposer>> {
+        self.contribution.replace(resident)
+    }
+
     pub fn begin_window_close(
         &mut self,
         window: &mut Window,
@@ -111,6 +126,7 @@ impl MainWindowConversationComposerMount {
             return Err(error);
         }
         self.window_close_generation = generation;
+        self.window_close_released = None;
         self.window_close = Some(ActiveWindowClose {
             ticket,
             flush: None,
@@ -290,6 +306,28 @@ impl MainWindowConversationComposerMount {
         Ok(true)
     }
 
+    pub fn release_window_close_with_evidence(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowConversationComposerCloseRelease, String> {
+        if ticket.owner != cx.entity_id() || ticket.generation != self.window_close_generation {
+            return Ok(MainWindowConversationComposerCloseRelease::Stale);
+        }
+        if self.window_close_released == Some(ticket) {
+            return Ok(MainWindowConversationComposerCloseRelease::Released);
+        }
+        if !self.release_window_close(ticket, window, cx)? {
+            return Ok(MainWindowConversationComposerCloseRelease::Stale);
+        }
+        Ok(if self.window_close_released == Some(ticket) {
+            MainWindowConversationComposerCloseRelease::Released
+        } else {
+            MainWindowConversationComposerCloseRelease::Pending
+        })
+    }
+
     pub fn authorize_window_close_disposal(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
@@ -382,6 +420,7 @@ impl MainWindowConversationComposerMount {
         }
         self.window_close = None;
         self.refresh_autosave(window, cx)?;
+        self.window_close_released = Some(ticket);
         cx.notify();
         Ok(())
     }
