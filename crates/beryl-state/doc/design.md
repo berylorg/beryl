@@ -57,6 +57,8 @@ This entry point governs these bounded normative supplements:
   candidate recovery access. It preserves exact home/generation handle qualification and read
   confirmation failures; it neither grants ordinary admission nor publishes the candidate.
 
+- `SessionState::revision_candidate` reads the session domain revision through explicit candidate
+  recovery access, retaining typed home and generation checks without ordinary read admission.
 - `SessionState::minimal_bootstrap_candidate` reads the bounded session header and exactly its
   referenced windows through borrowed explicit candidate recovery access, then rereads the header
   to reject mixed publication. It preserves the ordinary snapshot reader's identity/revision checks,

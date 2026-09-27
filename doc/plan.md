@@ -89,29 +89,34 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 694: Validate Retained Exit Evidence Against Fresh Session State (finished)
+# Phase 695: Retain Interrupted Exit Resume Execution Outcomes (finished)
 
-Accepted read-only validation against fresh private same-home candidate handles: known noncommit
-requires the complete original snapshot; known commit requires exact predicted revisions, placements
-and preserved selection/fallback facts. Foreign, stale, missing, pending and terminal-conflict state
-refuses validation. Candidate reads retain bounded header/window consistency and grant no ordinary
-admission. All 39 focused app/state tests passed (`70dbe2f6-31a7-4806-992b-52ea574660d4` and
-`09c06cd7-4dba-48e7-80c3-47e64e583dba`), default app library check passed, and independent
-lifecycle/persistence review accepted. Resume execution and coherent reopening remain pending.
+Accepted move-owned resume attempts with fresh candidate validation, revision-bound header-only
+execution, retained original and separate resume outcomes, installed ambiguous custody and exact
+handle reconciliation. Duplicate execution and terminal reconciliation repetition are refused.
+All 23 focused tests passed (`aac6461b-6fdf-49c0-9ddc-d495ba67a59b`), including 1/3/256-window
+preservation and precommit/postcommit/ambiguous recovery; default app library check and independent
+lifecycle/persistence review passed. No interaction reopening or supervisor transfer is inferred.
 
-# Phase 695: Retain Interrupted Exit Resume Execution Outcomes (pending)
+# Phase 696: Validate Retained Resume Outcomes Against Fresh Session State (pending)
 
-Compose the accepted header-only resume contribution after exact source validation, preserving its
-own noncommit, committed-with-later-failure and ambiguous reconciliation custody. Do not repeat a
-known commit or infer coherent reopening; supervisor transfer and resident rebinding remain separate.
+Validate known resume outcomes against exact fresh candidate state: noncommit retains the committed
+Exit source, commit requires its predicted Running result, and pending or terminal uncertainty stays
+unavailable. Preserve original evidence and all outcome custody; grant no interaction admission.
+
+# Phase 697: Retry Proven Noncommitted Session Resumption (pending)
+
+Permit a later automatic recovery attempt only after proven noncommit and fresh unchanged-source
+validation. Preserve prior outcomes and refuse repeat after known commit or unresolved ambiguity.
+Keep whole-graph transfer and resident rebinding separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Operator approved interrupted-Exit recovery on 2026-09-27. Phase 691 resolves the target contract;
 a reported failed Exit remains cancelled through same-home recovery and requires fresh activation.
-Phases 692–694 supply the exact header-only resume contribution, immutable publication evidence
-and fresh candidate validation. Resume execution and replacement composition remain prerequisites
-to enabled mounting.
+Phases 692–695 supply the exact header-only resume contribution, immutable publication evidence,
+fresh candidate validation and retained resume execution. Resume settlement and replacement
+composition remain prerequisites to enabled mounting.
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
 ordinary process window owner. Share serialized final-window designation with construction,

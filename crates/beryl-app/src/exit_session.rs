@@ -11,6 +11,8 @@ mod evidence;
 pub(crate) use evidence::{ExitSessionPublication, PreparedExitSession};
 mod validation;
 pub(crate) use validation::{ExitSessionValidation, ExitSessionValidationError};
+mod resume;
+pub(crate) use resume::{InterruptedExit, InterruptedExitResume, ResumeSessionOutcome};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitSessionPreparationError {
@@ -107,5 +109,9 @@ mod tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/exit_session_validation.rs"
+    ));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/exit_session_resume.rs"
     ));
 }
