@@ -31,7 +31,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let service = self.service.clone();
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         let (Ok(assets), Ok(seals)) = (self.submission_assets(), self.submission_marker_seals())
         else {
             self.record_window_close_state(
@@ -49,7 +51,9 @@ impl MainWindowConversationComposerMount {
             (result, selection)
         });
         let task = executor.spawn(async move { worker.run() });
-        let service = self.service.clone();
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         let cleanup_workers = self.window_close_workers.clone();
         let completion =
             self.window_close_workers
@@ -114,7 +118,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let service = self.service.clone();
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         let worker = self
             .window_close_workers
             .track(move || service.release_window_close_gate_wait(close.ticket, close.flush));
@@ -160,7 +166,7 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if !self.service.window_close_is_current(close.ticket) {
+        if !self.bound_service()?.window_close_is_current(close.ticket) {
             return Ok(());
         }
         if let Some(selection) = selection {
@@ -230,7 +236,7 @@ impl MainWindowConversationComposerMount {
             Ok(WindowCloseWorkOutcome::DisposalAdvance(advance)) => {
                 match self.finish_disposal_advance(advance, window, cx)? {
                     MainWindowConversationComposerMountDisposalAdvance::Disposed => {
-                        self.service.finish_window_close_gate(close.ticket);
+                        self.bound_service()?.finish_window_close_gate(close.ticket);
                         self.record_window_close_state(
                             MainWindowConversationComposerCloseAdvance::Disposed,
                             cx,
@@ -278,6 +284,9 @@ impl MainWindowConversationComposerMount {
     }
 
     pub(in crate::main_window) fn release_window_close_on_drop(&mut self) {
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         let Some(close) = self.window_close.take() else {
             return;
         };
@@ -288,7 +297,7 @@ impl MainWindowConversationComposerMount {
             task.detach();
         } else {
             let executor = self.submission.executor();
-            let cleanup = self.service.clone().cleanup_unmounted_window_close(
+            let cleanup = service.cleanup_unmounted_window_close(
                 close.ticket,
                 close.flush,
                 close.disposing,

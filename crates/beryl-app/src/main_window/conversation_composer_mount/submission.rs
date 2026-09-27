@@ -220,7 +220,7 @@ impl MainWindowConversationComposerMount {
         run: impl FnOnce() + Send + 'static,
     ) -> Result<Box<dyn FnOnce() + Send>, String> {
         let resources = (
-            self.service.clone(),
+            self.bound_service()?.clone(),
             self.submission_assets()?,
             self.submission_marker_seals()?,
         );
@@ -268,7 +268,7 @@ impl MainWindowConversationComposerMount {
         {
             return Ok(());
         }
-        if self.service.selected_identity() != Some(selection) {
+        if self.selected_identity() != Some(selection) {
             return Ok(());
         }
         let generation =
@@ -349,10 +349,12 @@ impl MainWindowConversationComposerMount {
             }));
             return Ok(());
         }
-        if self.service.selected_identity() != Some(selection) {
+        if self.selected_identity() != Some(selection) {
             return Err("conversation composer submission selection is stale".to_owned());
         }
-        let capture_requirement = self.service.autosave_capture_requirement(selection)?;
+        let capture_requirement = self
+            .bound_service()?
+            .autosave_capture_requirement(selection)?;
         let prepared = self
             .submission
             .request_source
@@ -365,7 +367,7 @@ impl MainWindowConversationComposerMount {
         let active = self.submission.active.as_mut().unwrap();
         active.selection = selection;
         active.prepared = Some(prepared);
-        match self.service.begin_submission(selection, request) {
+        match self.bound_service()?.begin_submission(selection, request) {
             Ok(ticket) => {
                 self.submission.active.as_mut().unwrap().ticket = Some(ticket);
                 self.submission.status = MainWindowConversationComposerSubmissionStatus::Pending(
@@ -398,7 +400,7 @@ impl MainWindowConversationComposerMount {
             "conversation composer submission ticket has no prepared request".to_owned()
         })?;
         let cancellation = active.cancellation.clone();
-        let service = self.service.clone();
+        let service = self.bound_service()?.clone();
         let assets = self.submission_assets()?;
         let marker_seals = self.submission_marker_seals()?;
         #[cfg(feature = "test-faults")]
@@ -473,7 +475,7 @@ impl MainWindowConversationComposerMount {
         {
             return Ok(());
         }
-        if let Some(current) = self.service.selected_identity() {
+        if let Some(current) = self.selected_identity() {
             let previous = self.submission.active.as_ref().unwrap().selection;
             if current.window_id() != previous.window_id()
                 || current.claim() != previous.claim()
@@ -699,7 +701,7 @@ impl MainWindowConversationComposerMount {
             composer.release_widget(window, composer_cx)
         })?;
         let selected = self
-            .service
+            .bound_service()?
             .complete_submission_successor_after_widget_release(successor.receipt, &release)?;
         if selected != successor.successor {
             return Err("conversation composer successor identity changed".to_owned());
@@ -735,6 +737,9 @@ impl MainWindowConversationComposerMount {
 
 impl Drop for MainWindowConversationComposerMount {
     fn drop(&mut self) {
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         self.release_window_close_on_drop();
         self.cancel_native_lineage_on_drop();
         if let Some(task) = self.submission.task.take()
@@ -750,7 +755,6 @@ impl Drop for MainWindowConversationComposerMount {
             return;
         };
         active.cancellation.cancel();
-        let service = self.service.clone();
         let assets = self
             .submission_assets()
             .expect("active submission retains publication adapters");

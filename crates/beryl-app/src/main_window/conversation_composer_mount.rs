@@ -128,7 +128,7 @@ pub struct MainWindowNativeLineagePromptDiagnostics {
 }
 
 #[cfg(feature = "test-faults")]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MainWindowNativeLineageDisposalDiagnostics {
     pub mount_release_present: bool,
     pub mount_contribution_present: bool,
@@ -154,7 +154,7 @@ pub struct MainWindowNativeLineageDisposalDiagnostics {
 }
 
 pub struct MainWindowConversationComposerMount {
-    service: Arc<MainWindowConversationComposerService>,
+    service: Option<Arc<MainWindowConversationComposerService>>,
     configurator: Option<MainWindowConversationComposerConfigurator>,
     contribution: Option<Entity<MainWindowConversationComposer>>,
     pending_presentation: Option<MainWindowConversationComposerPendingPresentation>,
@@ -217,7 +217,10 @@ impl MainWindowConversationComposerMount {
     pub fn test_native_lineage_disposal_diagnostics(
         &self,
     ) -> MainWindowNativeLineageDisposalDiagnostics {
-        let mut diagnostics = self.service.test_native_lineage_disposal_diagnostics();
+        let mut diagnostics = self.service.as_ref().map_or_else(
+            MainWindowNativeLineageDisposalDiagnostics::default,
+            |service| service.test_native_lineage_disposal_diagnostics(),
+        );
         diagnostics.mount_release_present = self.native_lineage_widget_release.is_some();
         diagnostics.mount_contribution_present = self.contribution.is_some();
         diagnostics.mount_subscription_present = self.contribution_subscription.is_some();
@@ -379,7 +382,7 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
-            service,
+            service: Some(service),
             configurator: Some(configurator),
             contribution: Some(contribution),
             pending_presentation: None,
@@ -477,7 +480,9 @@ impl MainWindowConversationComposerMount {
     }
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
-        self.service.selected_identity()
+        self.service
+            .as_ref()
+            .and_then(|service| service.selected_identity())
     }
 
     pub fn realization_diagnostics(
@@ -505,7 +510,7 @@ impl MainWindowConversationComposerMount {
         if self.native_lineage_snapshot.is_some() && !self.native_lineage_prompt_published {
             return Err("native lineage recovery presentation is still preparing".to_owned());
         }
-        if let Some(receipt) = self.service.pending_receipt() {
+        if let Some(receipt) = self.bound_service()?.pending_receipt() {
             match self.retire_pending(receipt, cx)? {
                 MainWindowComposerRetirementAdvance::Retired => {}
                 MainWindowComposerRetirementAdvance::Pending => {
@@ -516,8 +521,12 @@ impl MainWindowConversationComposerMount {
                 }
             }
         }
-        self.service
-            .begin_activation(claim, request, retirement_operation_id, cancellation)
+        self.bound_service()?.begin_activation(
+            claim,
+            request,
+            retirement_operation_id,
+            cancellation,
+        )
     }
 
     pub fn retire_pending(
@@ -525,7 +534,7 @@ impl MainWindowConversationComposerMount {
         receipt: MainWindowComposerActivationReceipt,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowComposerRetirementAdvance, String> {
-        let advance = self.service.retire_pending(receipt);
+        let advance = self.bound_service()?.retire_pending(receipt);
         self.detach_pending_presentation(receipt, cx)?;
         advance
     }
@@ -542,7 +551,7 @@ impl MainWindowConversationComposerMount {
         if !self.ensure_pending_composer(receipt, window, cx)? {
             return Ok(MainWindowConversationComposerMountFlushStart::TargetPriming(receipt));
         }
-        let expected = match self.service.publish_preflight(receipt) {
+        let expected = match self.bound_service()?.publish_preflight(receipt) {
             Ok(expected) => expected,
             Err(error) => {
                 self.retire_failed_pending(receipt, cx)?;
@@ -555,7 +564,7 @@ impl MainWindowConversationComposerMount {
         {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
         }
-        match self.service.begin_publish(receipt) {
+        match self.bound_service()?.begin_publish(receipt) {
             Ok(admission) => Ok(MainWindowConversationComposerMountFlushStart::Started(
                 admission,
             )),
@@ -576,7 +585,7 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountPublishAdvance, String> {
-        let advance = match self.service.advance_publish(receipt) {
+        let advance = match self.bound_service()?.advance_publish(receipt) {
             Ok(advance) => advance,
             Err(error) => {
                 self.resume_contribution(window, cx)?;
@@ -651,7 +660,7 @@ impl MainWindowConversationComposerMount {
         } else {
             None
         };
-        if let Err(error) = self.service.begin_final_publish(receipt, expected) {
+        if let Err(error) = self.bound_service()?.begin_final_publish(receipt, expected) {
             self.resume_contribution(window, cx)?;
             self.refresh_autosave(window, cx)?;
             self.retire_failed_pending(receipt, cx)?;
@@ -664,7 +673,7 @@ impl MainWindowConversationComposerMount {
             })?,
         };
         let published = self
-            .service
+            .bound_service()?
             .complete_publish_after_widget_release(receipt, &release)?;
         let MainWindowComposerPublishAdvance::Published(selection) = published else {
             return Ok(MainWindowConversationComposerMountPublishAdvance::Retained(
@@ -695,7 +704,7 @@ impl MainWindowConversationComposerMount {
         operation_id: DraftPieceOperationIdV1,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostFlushCapture, String> {
-        self.service
+        self.bound_service()?
             .capture_flush_disposal(selection, flush, operation_id, cancellation)
     }
 
@@ -711,7 +720,7 @@ impl MainWindowConversationComposerMount {
         published_at: syndic_storage::SyndicTimestamp,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostFlushCapture, String> {
-        self.service.capture_flush_publication(
+        self.bound_service()?.capture_flush_publication(
             selection,
             flush,
             assets,
@@ -741,7 +750,7 @@ impl MainWindowConversationComposerMount {
         if !self.native_lineage_disposal_active {
             self.detach_native_lineage_for_lifecycle(window, cx)?;
         }
-        let expected = match self.service.disposal_preflight() {
+        let expected = match self.bound_service()?.disposal_preflight() {
             Ok(expected) => expected,
             Err(error) => {
                 self.preserve_native_lineage_disposal_failure(
@@ -775,7 +784,7 @@ impl MainWindowConversationComposerMount {
         if self.contribution.is_some() && !fenced {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
         }
-        match self.service.begin_disposal() {
+        match self.bound_service()?.begin_disposal() {
             Ok(admission) => {
                 self.native_lineage_failure = None;
                 if self.native_lineage_widget_release.is_some()
@@ -848,7 +857,7 @@ impl MainWindowConversationComposerMount {
         if self.native_lineage_disposal_flush.is_some() {
             return self.advance_native_lineage_disposal_task(window, cx);
         }
-        let advance = self.service.advance_disposal()?;
+        let advance = self.bound_service()?.advance_disposal()?;
         self.finish_disposal_advance(advance, window, cx)
     }
 
@@ -876,11 +885,13 @@ impl MainWindowConversationComposerMount {
             .as_ref()
             .is_some_and(|release| release.selection() == expected)
         {
-            let completion = self.service.complete_disposal_after_widget_release(
-                self.native_lineage_widget_release
-                    .as_ref()
-                    .expect("matching native-lineage widget release exists"),
-            )?;
+            let completion = self
+                .bound_service()?
+                .complete_disposal_after_widget_release(
+                    self.native_lineage_widget_release
+                        .as_ref()
+                        .expect("matching native-lineage widget release exists"),
+                )?;
             return match completion {
                 MainWindowComposerDisposalAdvance::Disposed => {
                     self.native_lineage_widget_release = None;
@@ -919,7 +930,7 @@ impl MainWindowConversationComposerMount {
             composer.release_widget(window, composer_cx)
         })?;
         match self
-            .service
+            .bound_service()?
             .complete_disposal_after_widget_release(&release)?
         {
             MainWindowComposerDisposalAdvance::Disposed => {
@@ -958,7 +969,7 @@ impl MainWindowConversationComposerMount {
 
     fn resume_contribution(&self, window: &Window, cx: &mut Context<Self>) -> Result<(), String> {
         if self.contribution.is_none()
-            && let Some(selection) = self.service.selected_identity()
+            && let Some(selection) = self.selected_identity()
             && self.suspended_native_lineage_release(selection)?.is_some()
         {
             return Ok(());
@@ -975,7 +986,6 @@ impl MainWindowConversationComposerMount {
 
     fn synchronize_contribution_selection(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         let successor = self
-            .service
             .selected_identity()
             .ok_or_else(|| "composer service has no selected lifecycle identity".to_owned())?;
         if self.suspended_native_lineage_release(successor)?.is_some() {
@@ -1023,7 +1033,7 @@ impl MainWindowConversationComposerMount {
                     }
                     super::MainWindowConversationComposerEvent::RichPastePropagated {
                         selection,
-                    } if this.service.selected_identity() == Some(selection) => {
+                    } if this.selected_identity() == Some(selection) => {
                         cx.emit(
                             MainWindowConversationComposerMountEvent::RichPastePropagated {
                                 selection,
@@ -1032,7 +1042,7 @@ impl MainWindowConversationComposerMount {
                     }
                     super::MainWindowConversationComposerEvent::ClipboardLimitExceeded {
                         selection,
-                    } if this.service.selected_identity() == Some(selection) => {
+                    } if this.selected_identity() == Some(selection) => {
                         cx.emit(
                             MainWindowConversationComposerMountEvent::ClipboardLimitExceeded {
                                 selection,
@@ -1040,7 +1050,7 @@ impl MainWindowConversationComposerMount {
                         );
                     }
                     super::MainWindowConversationComposerEvent::SubmitPropagated { selection }
-                        if this.service.selected_identity() == Some(selection) =>
+                        if this.selected_identity() == Some(selection) =>
                     {
                         if this
                             .begin_mounted_submission(selection, window, cx)

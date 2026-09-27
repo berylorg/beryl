@@ -74,7 +74,7 @@ impl MainWindowConversationComposerMount {
                 cleanup,
             );
             match self
-                .service
+                .bound_service()?
                 .retain_native_lineage_source(source.clone(), cx.background_executor().clone())
             {
                 Ok(()) => {}
@@ -157,13 +157,14 @@ impl MainWindowConversationComposerMount {
         let selection = self
             .native_lineage_selection
             .ok_or_else(|| "native lineage recovery selection is unavailable".to_owned())?;
+        let service = self.bound_service()?.clone();
         let config = self
             .native_lineage_config
             .as_ref()
             .ok_or_else(|| "composer recovery configuration is unavailable".to_owned())?;
         let proposed = config.native_lineage_current();
         let current = self
-            .service
+            .bound_service()?
             .attest_native_lineage_prepublication_current(selection, proposed)?;
         let environment = self
             .native_lineage_environment
@@ -201,7 +202,7 @@ impl MainWindowConversationComposerMount {
         let restored = cx.new(|composer_cx| {
             MainWindowConversationComposer::new_restored(
                 config,
-                self.service.clone(),
+                service,
                 environment,
                 candidate,
                 current,
@@ -211,7 +212,7 @@ impl MainWindowConversationComposerMount {
             )
             .expect("prechecked prepublication composer adoption")
         });
-        self.service
+        self.bound_service()?
             .complete_native_lineage_restoration(selection)?;
         self.native_lineage_widget_release = None;
         self.contribution = Some(restored.clone());
@@ -271,7 +272,7 @@ impl MainWindowConversationComposerMount {
                 token, generation, ..
             } => (*token, *generation),
         };
-        let service = self.service.clone();
+        let service = self.bound_service()?.clone();
         let source_for_task = source.clone();
         cx.background_executor()
             .spawn(self.native_lineage_workers.track_future(async move {
@@ -456,7 +457,7 @@ impl MainWindowConversationComposerMount {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        self.service.drive_native_lineage_cleanup_sources();
+        self.bound_service()?.drive_native_lineage_cleanup_sources();
         if self
             .native_lineage_source
             .as_ref()
@@ -464,7 +465,7 @@ impl MainWindowConversationComposerMount {
         {
             self.native_lineage_source = None;
             self.native_lineage_cleanup = None;
-            self.service.retire_native_lineage_sources();
+            self.bound_service()?.retire_native_lineage_sources();
             return Ok(());
         }
         Ok(())

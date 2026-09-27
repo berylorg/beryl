@@ -47,12 +47,13 @@ impl MainWindowConversationComposerMount {
     ) -> Result<ComposerHostAutosaveSettingsCompletion, String> {
         self.autosave.adapters()?;
         let selection = self
-            .service
             .selected_identity()
             .ok_or_else(|| "conversation composer autosave has no selected slot".to_owned())?;
-        let completion =
-            self.service
-                .publish_autosave_interval(selection, settings_generation, interval)?;
+        let completion = self.bound_service()?.publish_autosave_interval(
+            selection,
+            settings_generation,
+            interval,
+        )?;
         if matches!(
             completion,
             ComposerHostAutosaveSettingsCompletion::Published(_)
@@ -74,7 +75,10 @@ impl MainWindowConversationComposerMount {
         &self,
         run: impl FnOnce() + Send + 'static,
     ) -> Result<Box<dyn FnOnce() + Send>, String> {
-        let resources = (self.service.clone(), self.autosave.adapters()?.clone());
+        let resources = (
+            self.bound_service()?.clone(),
+            self.autosave.adapters()?.clone(),
+        );
         let worker = self.autosave.track_worker(move || {
             let _resources = resources;
             run();
@@ -88,11 +92,13 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if let Some((settings_generation, interval)) = self.autosave.settings
-            && let Some(selection) = self.service.selected_identity()
+            && let Some(selection) = self.selected_identity()
         {
-            let _ =
-                self.service
-                    .publish_autosave_interval(selection, settings_generation, interval)?;
+            let _ = self.bound_service()?.publish_autosave_interval(
+                selection,
+                settings_generation,
+                interval,
+            )?;
         }
         self.refresh_autosave(window, cx)
     }
@@ -108,7 +114,7 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if self.service.selected_identity() != Some(current) {
+        if self.selected_identity() != Some(current) {
             return Ok(());
         }
         if self.autosave.selection_advanced(previous, current) {
@@ -129,14 +135,17 @@ impl MainWindowConversationComposerMount {
             return Ok(());
         }
         self.autosave.fenced = false;
-        let Some(selection) = self.service.selected_identity() else {
+        let Some(selection) = self.selected_identity() else {
             return Ok(());
         };
-        if let Some(ticket) = self.service.selected_autosave_publication(selection)? {
+        if let Some(ticket) = self
+            .bound_service()?
+            .selected_autosave_publication(selection)?
+        {
             self.autosave.state = AutosaveState::Publishing { selection, ticket };
             return self.schedule_autosave_advance(window, cx);
         }
-        let Some(timer) = self.service.selected_autosave_timer(selection)? else {
+        let Some(timer) = self.bound_service()?.selected_autosave_timer(selection)? else {
             return Ok(());
         };
         self.schedule_autosave_timer(selection, timer, window, cx)
@@ -184,7 +193,9 @@ impl MainWindowConversationComposerMount {
             } if expected == timer => selection,
             _ => return Ok(()),
         };
-        let requirement = self.service.autosave_capture_requirement(selection)?;
+        let requirement = self
+            .bound_service()?
+            .autosave_capture_requirement(selection)?;
         if requirement == MainWindowComposerAutosaveCaptureRequirement::Clean {
             return self.refresh_autosave(window, cx);
         }
@@ -198,7 +209,7 @@ impl MainWindowConversationComposerMount {
         };
         let published_at = current_timestamp()?;
         self.autosave.last_error = None;
-        let service = self.service.clone();
+        let service = self.bound_service()?.clone();
         let (assets, marker_seals) = self.autosave.adapters()?.clone();
         let cancellation = CommandCancellation::new();
         let worker = self.autosave.track_worker(move || {
@@ -248,7 +259,7 @@ impl MainWindowConversationComposerMount {
         }
         match result {
             Ok(ComposerHostAutosaveCapture::Captured(ticket)) => {
-                let selection = self.service.selected_identity().ok_or_else(|| {
+                let selection = self.selected_identity().ok_or_else(|| {
                     "conversation composer selection disappeared after autosave capture".to_owned()
                 })?;
                 self.autosave.state = AutosaveState::Publishing { selection, ticket };
@@ -279,12 +290,16 @@ impl MainWindowConversationComposerMount {
             }
             _ => return Ok(()),
         };
-        if !self.autosave.fenced && self.service.autosave_publication_ready(selection, ticket)? {
+        if !self.autosave.fenced
+            && self
+                .bound_service()?
+                .autosave_publication_ready(selection, ticket)?
+        {
             self.autosave.state = AutosaveState::Ready { selection, ticket };
             return self.drive_autosave_ready(selection, ticket, window, cx);
         }
         let generation = self.autosave.generation;
-        let service = self.service.clone();
+        let service = self.bound_service()?.clone();
         let worker = self
             .autosave
             .track_worker(move || service.advance_autosave(selection, ticket));
@@ -320,7 +335,7 @@ impl MainWindowConversationComposerMount {
         {
             return Ok(());
         }
-        let current = self.service.selected_identity();
+        let current = self.selected_identity();
         match result {
             Ok(ComposerHostAutosaveAdvance::Progress)
             | Ok(ComposerHostAutosaveAdvance::ReconciliationPending) => {
@@ -355,7 +370,11 @@ impl MainWindowConversationComposerMount {
                     self.resume_autosave_fence(window, cx)?;
                     return self.refresh_autosave(window, cx);
                 };
-                if self.service.selected_autosave_publication(selection)? == Some(ticket) {
+                if self
+                    .bound_service()?
+                    .selected_autosave_publication(selection)?
+                    == Some(ticket)
+                {
                     self.autosave.state = if self.autosave.fenced {
                         AutosaveState::Ready { selection, ticket }
                     } else {
@@ -375,7 +394,11 @@ impl MainWindowConversationComposerMount {
                     self.resume_autosave_fence(window, cx)?;
                     return self.refresh_autosave(window, cx);
                 };
-                if self.service.selected_autosave_publication(selection)? != Some(ticket) {
+                if self
+                    .bound_service()?
+                    .selected_autosave_publication(selection)?
+                    != Some(ticket)
+                {
                     self.resume_autosave_fence(window, cx)?;
                     return self.refresh_autosave(window, cx);
                 }

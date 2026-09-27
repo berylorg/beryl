@@ -56,7 +56,7 @@ impl MainWindowConversationComposerMount {
     ) -> super::MainWindowNativeLineageMountDiagnostics {
         super::MainWindowNativeLineageMountDiagnostics {
             snapshot_present: self.native_lineage_snapshot.is_some(),
-            selection_current: self.native_lineage_selection == self.service.selected_identity(),
+            selection_current: self.native_lineage_selection == self.selected_identity(),
             seed_present: self.native_lineage_seed.is_some(),
             config_present: self.native_lineage_config.is_some(),
             validation_task_present: self.native_lineage_validation_task.is_some(),
@@ -96,7 +96,7 @@ impl MainWindowConversationComposerMount {
         if self.window_close.is_some() {
             return Ok(false);
         }
-        if self.service.pending_receipt().is_some() {
+        if self.bound_service()?.pending_receipt().is_some() {
             return Ok(self.native_lineage_snapshot.is_some());
         }
         if let Err(error) = self.finish_native_lineage_host_result(window, cx) {
@@ -114,7 +114,7 @@ impl MainWindowConversationComposerMount {
             return Ok(true);
         }
         if let Some(blocked_epoch) = self.native_lineage_capacity_blocked_epoch {
-            if self.service.native_lineage_capacity_epoch() == blocked_epoch {
+            if self.bound_service()?.native_lineage_capacity_epoch() == blocked_epoch {
                 return Ok(true);
             }
             self.native_lineage_capacity_blocked_epoch = None;
@@ -125,7 +125,7 @@ impl MainWindowConversationComposerMount {
         let Some(control) = self.native_lineage_recovery.clone() else {
             return Ok(false);
         };
-        let current_selection = self.service.selected_identity();
+        let current_selection = self.selected_identity();
         if let Some(expected) = self.native_lineage_selection
             && current_selection != Some(expected)
         {
@@ -223,7 +223,7 @@ impl MainWindowConversationComposerMount {
         if self.native_lineage_prompt_published
             || self.native_lineage_seed.is_some()
             || self.native_lineage_selection != Some(previous)
-            || self.service.selected_identity() != Some(current)
+            || self.selected_identity() != Some(current)
         {
             return;
         }
@@ -346,7 +346,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let service = self.service.clone();
+        let Some(service) = self.service.clone() else {
+            return;
+        };
         let worker = self.native_lineage_workers.track_future(async move {
             let result = service.validate_native_lineage_restoration(selection, seed);
             #[cfg(feature = "test-faults")]
@@ -375,7 +377,7 @@ impl MainWindowConversationComposerMount {
         selection: MainWindowComposerSelectionIdentity,
     ) -> bool {
         self.native_lineage_selection == Some(selection)
-            && self.service.selected_identity() == Some(selection)
+            && self.selected_identity() == Some(selection)
             && self.native_lineage_snapshot.map(|snapshot| snapshot.key()) == Some(key)
             && self
                 .native_lineage_recovery
@@ -401,7 +403,7 @@ impl MainWindowConversationComposerMount {
                 return Ok(());
             };
             self.cancel_native_lineage_realization();
-            self.service
+            self.bound_service()?
                 .complete_native_lineage_restoration(selection)?;
             control.acknowledge_leaving(snapshot.key()).map_err(|_| {
                 "native lineage recovery route changed before continuation".to_owned()
@@ -431,7 +433,7 @@ impl MainWindowConversationComposerMount {
             return Ok(());
         };
         if !self.native_lineage_prompt_published {
-            if self.service.selected_identity() == Some(selection)
+            if self.selected_identity() == Some(selection)
                 && let Ok(contribution) = self.native_lineage_contribution(selection, cx)
             {
                 contribution.update(cx, |composer, composer_cx| {
@@ -494,7 +496,7 @@ impl MainWindowConversationComposerMount {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        let retirement_epoch = self.service.native_lineage_capacity_epoch();
+        let retirement_epoch = self.bound_service()?.native_lineage_capacity_epoch();
         self.cancel_native_lineage_realization();
         self.native_lineage_capacity_blocked_epoch = Some(retirement_epoch);
         self.native_lineage_failure = Some(message);
@@ -510,9 +512,10 @@ impl MainWindowConversationComposerMount {
         let preserve_prompt = self.native_lineage_prompt_published;
         self.cancel_native_lineage_realization();
         if let Some(selection) = self.native_lineage_selection {
-            self.service.cancel_native_lineage_suspension(selection)?;
+            self.bound_service()?
+                .cancel_native_lineage_suspension(selection)?;
             if !preserve_prompt
-                && self.service.selected_identity() == Some(selection)
+                && self.selected_identity() == Some(selection)
                 && let Ok(contribution) = self.native_lineage_contribution(selection, cx)
             {
                 let _ = contribution.update(cx, |composer, composer_cx| {
@@ -544,8 +547,11 @@ impl MainWindowConversationComposerMount {
     pub(super) fn cancel_native_lineage_on_drop(&mut self) {
         let disposal_cleanup_pending = self.cancel_native_lineage_disposal_on_drop();
         self.cancel_native_lineage_realization();
-        if !disposal_cleanup_pending && let Some(selection) = self.native_lineage_selection {
-            let _ = self.service.cancel_native_lineage_suspension(selection);
+        if !disposal_cleanup_pending
+            && let Some(selection) = self.native_lineage_selection
+            && let Some(service) = self.service.as_ref()
+        {
+            let _ = service.cancel_native_lineage_suspension(selection);
         }
         self.native_lineage_validation_task = None;
         self.native_lineage_refresh_task = None;
@@ -594,7 +600,7 @@ impl MainWindowConversationComposerMount {
                 self.native_lineage_prompt_published
                     && self.native_lineage_snapshot.is_some()
                     && self.native_lineage_selection == Some(release.selection())
-                    && self.service.selected_identity() == Some(selection)
+                    && self.selected_identity() == Some(selection)
                     && Self::native_lineage_successor_is_exact(release.selection(), selection)
             })
             .ok_or_else(|| {

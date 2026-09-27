@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 722: Retain Native Disposal Resources (finished)
+# Phase 723: Detach The Recovery-Fenced Mount Service (finished)
 
-Accepted native-disposal resource custody across background work, GUI completion and unmounted
-cleanup, including cancellation and unwind. Recovery adapter handoff waits for captured resource
-release while resident state and fences remain intact. Library checking, 51 focused tests
-(32d214c9-2e60-4dbb-8f02-b96fae6ac185) and independent lifecycle review passed. Whole-mount retirement
-and fresh binding remain separate.
+Accepted exact, drained mount service-reference transfer while retaining the recovery-fenced
+editor and restoration facts. Detached service access refuses work and mount drop skips ordinary
+service cleanup. Library checking, 68 focused tests (f2cfe30f-0622-47d4-ba6b-73e6aad79389) and
+independent lifecycle review passed. Whole-mount retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -112,9 +111,9 @@ adapter handoff; phase 713 supplies configurator detachment and phase 714 the su
 handoff. Phases 715–719 supply autosave, submission, close background-worker, close GUI completion and
 unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage worker lifetime
 evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
-native-disposal lifetime evidence. Remaining worker-reference draining, mount service
-detachment and fresh widget bindings remain here. Mount drop still follows ordinary close cleanup
-and cannot substitute for the required recovery retirement boundary.
+native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
+detached mount drop behavior. Coordinated retirement of all remaining generation-bound handles
+and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

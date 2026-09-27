@@ -1,12 +1,43 @@
 use super::*;
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn bound_service(
+        &self,
+    ) -> Result<&Arc<MainWindowConversationComposerService>, String> {
+        self.service.as_ref().ok_or_else(|| {
+            "conversation composer mount service is detached for recovery".to_owned()
+        })
+    }
+
+    pub fn detach_interrupted_exit_service(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<Arc<MainWindowConversationComposerService>>, String> {
+        self.validate_recovery_adapter_detachment(ticket, cx)?;
+        if self.native_lineage_config.is_some()
+            || self.native_lineage_environment.is_some()
+            || self.native_lineage_session.is_some()
+            || self.native_lineage_candidate.is_some()
+            || !self.native_lineage_effects.is_empty()
+            || self.native_lineage_cleanup.is_some()
+            || self.native_lineage_source.is_some()
+            || self.native_lineage_refresh_task.is_some()
+        {
+            return Err("mount native lineage resources are not drained".to_owned());
+        }
+        Ok(self.service.take())
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_native_disposal_worker(
         &self,
         run: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-        let service = self.service.clone();
+        let service = self
+            .bound_service()
+            .expect("test requires a bound mount")
+            .clone();
         Box::pin(self.native_disposal_workers.track_future(async move {
             let _service = service;
             run.await;
@@ -23,7 +54,10 @@ impl MainWindowConversationComposerMount {
         &self,
         run: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-        let service = self.service.clone();
+        let service = self
+            .bound_service()
+            .expect("test requires a bound mount")
+            .clone();
         Box::pin(self.pending_cleanup_workers.track_future(async move {
             let _service = service;
             run.await;
@@ -40,7 +74,10 @@ impl MainWindowConversationComposerMount {
         &self,
         run: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-        let service = self.service.clone();
+        let service = self
+            .bound_service()
+            .expect("test requires a bound mount")
+            .clone();
         Box::pin(self.native_lineage_workers.track_future(async move {
             let _service = service;
             run.await;
@@ -57,7 +94,10 @@ impl MainWindowConversationComposerMount {
         &self,
         run: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-        let service = self.service.clone();
+        let service = self
+            .bound_service()
+            .expect("test requires a bound mount")
+            .clone();
         Box::pin(self.window_close_workers.track_future(async move {
             let _service = service;
             run.await;
@@ -69,7 +109,10 @@ impl MainWindowConversationComposerMount {
         &self,
         run: impl FnOnce() + Send + 'static,
     ) -> Box<dyn FnOnce() + Send> {
-        let service = self.service.clone();
+        let service = self
+            .bound_service()
+            .expect("test requires a bound mount")
+            .clone();
         let completion = self.window_close_workers.track(move |()| {
             let _service = service;
             run();
@@ -83,7 +126,7 @@ impl MainWindowConversationComposerMount {
         run: impl FnOnce() + Send + 'static,
     ) -> Result<Box<dyn FnOnce() + Send>, String> {
         let resources = (
-            self.service.clone(),
+            self.bound_service()?.clone(),
             self.submission_assets()?,
             self.submission_marker_seals()?,
         );

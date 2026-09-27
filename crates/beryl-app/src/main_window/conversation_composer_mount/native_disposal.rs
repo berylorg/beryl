@@ -19,7 +19,7 @@ impl MainWindowConversationComposerMount {
                 .get_or_insert_with(CommandCancellation::new)
                 .clone();
             let worker_cancellation = cancellation.clone();
-            let service = self.service.clone();
+            let service = self.bound_service()?.clone();
             let assets = self.submission_assets()?;
             let seals = self.submission_marker_seals()?;
             let executor = cx.background_executor().clone();
@@ -34,7 +34,7 @@ impl MainWindowConversationComposerMount {
                 )
             });
             let task = executor.spawn(async move { worker.run() });
-            let service = self.service.clone();
+            let service = self.bound_service()?.clone();
             let assets = self.submission_assets()?;
             let seals = self.submission_marker_seals()?;
             let task_cancellation = cancellation.clone();
@@ -111,6 +111,9 @@ impl MainWindowConversationComposerMount {
     }
 
     pub(super) fn cancel_native_lineage_disposal_on_drop(&mut self) -> bool {
+        let Some(service) = self.service.clone() else {
+            return false;
+        };
         let cancellation = self
             .native_lineage_disposal_cancellation
             .take()
@@ -126,7 +129,6 @@ impl MainWindowConversationComposerMount {
         let Some(release) = self.native_lineage_widget_release else {
             return false;
         };
-        let service = self.service.clone();
         let assets = self
             .submission_assets()
             .expect("native disposal retains publication adapters");

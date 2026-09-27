@@ -17,7 +17,7 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
         let selection = self
-            .service
+            .bound_service()?
             .pending_identity(receipt)
             .ok_or_else(|| "pending composer activation receipt is stale".to_owned())?;
         if self.pending_presentation.is_none() {
@@ -29,7 +29,7 @@ impl MainWindowConversationComposerMount {
                 }
             };
             let target_residency_bound = config.residency_bound()?;
-            let service = self.service.clone();
+            let service = self.bound_service()?.clone();
             let residency_bound = if let Some(selected) = self.contribution.as_ref() {
                 selected
                     .read(cx)
@@ -171,7 +171,6 @@ impl MainWindowConversationComposerMount {
                 .and_then(|usage| usage.admit(presentation.residency_bound)))
         } else {
             let selection = self
-                .service
                 .selected_identity()
                 .ok_or_else(|| "selected composer identity is missing".to_owned())?;
             self.suspended_native_lineage_release(selection)?;
@@ -185,17 +184,17 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         self.detach_pending_presentation(receipt, cx)?;
-        if self.service.pending_receipt() != Some(receipt) {
+        if self.bound_service()?.pending_receipt() != Some(receipt) {
             return Ok(());
         }
-        match self.service.release_failed_pending(receipt)? {
+        match self.bound_service()?.release_failed_pending(receipt)? {
             MainWindowComposerRetirementAdvance::Retired => return Ok(()),
             MainWindowComposerRetirementAdvance::Pending => {}
             MainWindowComposerRetirementAdvance::DepartedFreshBoundary => {
                 return Err("failed composer target departed fresh state".to_owned());
             }
         }
-        let service = self.service.clone();
+        let service = self.bound_service()?.clone();
         let executor = cx.background_executor().clone();
         let retirement_executor = executor.clone();
         executor

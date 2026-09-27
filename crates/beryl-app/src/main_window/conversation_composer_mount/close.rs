@@ -129,18 +129,18 @@ impl MainWindowConversationComposerMount {
             generation,
             selection,
         };
-        self.service.begin_window_close_gate(ticket)?;
+        self.bound_service()?.begin_window_close_gate(ticket)?;
         if let Err(error) = contribution.update(cx, |composer, cx| {
             composer.begin_window_close_gate(ticket, window, cx)
         }) {
-            self.service.finish_window_close_gate(ticket);
+            self.bound_service()?.finish_window_close_gate(ticket);
             return Err(error);
         }
         if let Err(error) = self.suspend_autosave() {
             contribution.update(cx, |composer, cx| {
                 composer.release_window_close_gate(ticket, window, cx)
             })?;
-            self.service.finish_window_close_gate(ticket);
+            self.bound_service()?.finish_window_close_gate(ticket);
             return Err(error);
         }
         self.window_close_generation = generation;
@@ -195,7 +195,7 @@ impl MainWindowConversationComposerMount {
             self.window_close = None;
             return Ok(MainWindowConversationComposerCloseAdvance::Disposed);
         }
-        if !self.service.window_close_is_current(ticket) {
+        if !self.bound_service()?.window_close_is_current(ticket) {
             return Ok(MainWindowConversationComposerCloseAdvance::Stale);
         }
         if close.release_requested {
@@ -261,7 +261,7 @@ impl MainWindowConversationComposerMount {
             }
             Ok(true) => {}
         }
-        let Some(admission) = self.service.begin_window_close_flush(ticket)? else {
+        let Some(admission) = self.bound_service()?.begin_window_close_flush(ticket)? else {
             return Ok(MainWindowConversationComposerCloseAdvance::Preparing);
         };
         match admission {
@@ -305,11 +305,11 @@ impl MainWindowConversationComposerMount {
             );
             return Ok(true);
         }
-        if !self.service.window_close_is_current(ticket) {
+        if !self.bound_service()?.window_close_is_current(ticket) {
             return Ok(false);
         }
         match self
-            .service
+            .bound_service()?
             .release_window_close_gate(ticket, close.flush)?
         {
             Some(false) => return Ok(false),
@@ -365,7 +365,7 @@ impl MainWindowConversationComposerMount {
         if close.recovery_fenced {
             return Err("window close is retained for recovery".to_owned());
         }
-        if !self.service.window_close_is_current(ticket) {
+        if !self.bound_service()?.window_close_is_current(ticket) {
             return Ok(MainWindowConversationComposerCloseAdvance::Stale);
         }
         if close.disposing {
@@ -393,7 +393,7 @@ impl MainWindowConversationComposerMount {
             return Ok(MainWindowConversationComposerCloseAdvance::WidgetReleasePending);
         }
         let advance = self
-            .service
+            .bound_service()?
             .authorize_window_close_disposal(ticket, close.flush.unwrap());
         match advance {
             Ok(Some(ComposerHostFlushAdvance::Progress(
