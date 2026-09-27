@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 720: Retain Native Lineage Worker Resources (finished)
+# Phase 721: Retain Pending Activation Cleanup Resources (finished)
 
-Accepted native-lineage validation and prepublication resource custody across suspension,
-completion, cancellation and unwind, with recovery adapter handoff blocked until workers drain.
-Library checking, 49 resident-close and mount tests (a22dc6b3-6d10-4d50-b3a2-36395cc4eef7), four
-production-path checks (8543113b-84b1-4478-b115-ea7314917b66), and independent review passed.
-Whole-mount retirement and fresh binding remain separate.
+Accepted failed-pending-activation cleanup custody across queueing, suspension, completion,
+cancellation and unwind. Recovery adapter handoff waits for captured service release while the
+resident snapshot and fences remain intact. Library checking, 50 focused tests
+(2112b5d2-6e87-421d-8120-67ac4597d636) and independent lifecycle review passed. Whole-mount retirement
+and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -111,7 +111,7 @@ Phase 711 supplies the resident service-reference handoff and phase 712 the moun
 adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
 handoff. Phases 715–719 supply autosave, submission, close background-worker, close GUI completion and
 unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage worker lifetime
-evidence. Remaining worker-reference draining, mount service
+evidence; phase 721 supplies pending-activation cleanup lifetime evidence. Remaining worker-reference draining, mount service
 detachment and fresh widget bindings remain here. Mount drop still follows ordinary close cleanup
 and cannot substitute for the required recovery retirement boundary.
 

@@ -199,7 +199,7 @@ impl MainWindowConversationComposerMount {
         let executor = cx.background_executor().clone();
         let retirement_executor = executor.clone();
         executor
-            .spawn(async move {
+            .spawn(self.pending_cleanup_workers.track_future(async move {
                 let mut delay = Duration::from_millis(1);
                 loop {
                     retirement_executor.timer(delay).await;
@@ -215,7 +215,7 @@ impl MainWindowConversationComposerMount {
                         }
                     }
                 }
-            })
+            }))
             .detach();
         Ok(())
     }

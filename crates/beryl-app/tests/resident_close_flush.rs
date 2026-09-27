@@ -27,6 +27,8 @@ mod recovery_close_worker;
 mod recovery_configurator;
 #[path = "resident_close_flush/recovery_native_lineage.rs"]
 mod recovery_native_lineage;
+#[path = "resident_close_flush/recovery_pending_cleanup.rs"]
+mod recovery_pending_cleanup;
 #[path = "resident_close_flush/recovery_submission.rs"]
 mod recovery_submission;
 #[path = "resident_close_flush/recovery_submission_worker.rs"]
