@@ -550,6 +550,11 @@ by the executable composition root.
   execution fence. Ordinary work changes permit a fresh observation under the same confirmed
   shutdown intent without repeating confirmation, as required by the feature's admission policy.
   Normal quit waits for confirmation settlement as well as other native cleanup.
+  Native failure recovery uses the retained control's exact cleanup-settlement evidence. A failed
+  operation whose native cleanup is proven complete may release its dialog slot, restore logical
+  focus and end that attempt; another attempt requires a fresh explicit activation. Failure without
+  that proof retains the original control and context and blocks clean quit. Neither an error
+  string nor an absent native handle establishes cleanup, and cleanup evidence never confirms intent.
 
 - [Fatal crash reporting](../../../doc/systems/crash-reporting/design.md) bypasses this ordinary
   shutdown coordinator. Its separate process initializes only a report surface with fixed

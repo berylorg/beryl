@@ -116,6 +116,7 @@ fn native_confirmation_preserves_exact_dialog_and_cancel_authority() {
                         })
                         .unwrap()
                         .unwrap();
+                    assert!(!control.cleanup_settled());
                     assert!(
                         owner
                             .update(cx, |_, window, _| window
@@ -127,9 +128,11 @@ fn native_confirmation_preserves_exact_dialog_and_cancel_authority() {
                     if action == 0 {
                         control.cancel().unwrap();
                         assert_eq!(completion.await.unwrap(), Outcome::Cancelled);
+                        assert!(control.cleanup_settled());
                         continue;
                     }
                     let popup = dialog(raw, cx).await;
+                    assert!(!control.cleanup_settled());
                     let mut title = [0u16; 256];
                     let len = unsafe { GetWindowTextW(popup, &mut title) };
                     assert_eq!(
@@ -195,7 +198,8 @@ fn native_confirmation_preserves_exact_dialog_and_cancel_authority() {
                     native::pump(cx).await;
                 }
                 native::pump(cx).await;
-                let (_control, completion) = owner
+                assert!(control.cleanup_settled());
+                let (failed_control, completion) = owner
                     .update(cx, |_, window, _| {
                         window.begin_windows_native_confirmation(
                             request().with_fault_for_test(Fault::NativeOpen),
@@ -204,6 +208,18 @@ fn native_confirmation_preserves_exact_dialog_and_cancel_authority() {
                     .unwrap()
                     .unwrap();
                 assert!(completion.await.is_err());
+                assert!(failed_control.cleanup_settled());
+                let (confirmed_control, completion) = owner
+                    .update(cx, |_, window, _| {
+                        window.begin_windows_native_confirmation(request())
+                    })
+                    .unwrap()
+                    .unwrap();
+                assert!(!confirmed_control.cleanup_settled());
+                let popup = dialog(raw, cx).await;
+                choose(popup, IDOK.0);
+                assert_eq!(completion.await.unwrap(), Outcome::Confirmed);
+                assert!(confirmed_control.cleanup_settled());
                 native::dispose(cx, owner, raw).await;
                 completed.set(true);
                 cx.update(|app| app.quit()).unwrap();
@@ -285,6 +301,7 @@ fn missing_native_settlement_never_grants_confirmation_or_parent_disposal() {
                 let popup = dialog(raw, cx).await;
                 choose(popup, IDOK.0);
                 assert!(completion.await.is_err());
+                assert!(!control.cleanup_settled());
                 assert!(control.reveal().is_err());
                 owner
                     .update(cx, |_, window, _| window.remove_window())
