@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod session_exit;
 pub mod state_fixture;
 
 use std::path::Path;

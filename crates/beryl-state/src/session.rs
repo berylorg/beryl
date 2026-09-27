@@ -28,7 +28,7 @@ pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
     ExitWindowPlacement, InitializeThreadlessWindow, MarkOrderlyExit, PublishExitSession,
-    RemoveSessionWindow, ReplaceWindowClaim, UpdateWindowPlacement,
+    RemoveSessionWindow, ReplaceWindowClaim, ResumeSessionAfterExit, UpdateWindowPlacement,
 };
 
 /// Hard upper bound on main windows represented by one durable restore set.
@@ -508,6 +508,15 @@ impl SessionState {
         &self,
         expected_revision: beryl_model::DomainRevision,
         command: PublishExitSession,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    #[must_use]
+    pub fn resume_after_exit(
+        &self,
+        expected_revision: beryl_model::DomainRevision,
+        command: ResumeSessionAfterExit,
     ) -> MutationContribution {
         self.handle.contribution(expected_revision, command)
     }

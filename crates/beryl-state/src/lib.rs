@@ -168,11 +168,11 @@ pub use session::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
     ExitWindowPlacement, InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit,
     MinimalSessionBootstrap, PublishExitSession, RememberedTarget, RemoveSessionWindow,
-    ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES, SessionExitIntent,
-    SessionHeader, SessionMutationError, SessionReadError, SessionState, SessionWindowRecord,
-    SessionWindowReference, ThreadClaimCatalogSource, ThreadClaimCatalogSourceError,
-    ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement, WindowClaimCatalogSource,
-    WindowClaimSelection,
+    ReplaceWindowClaim, ResumeSessionAfterExit, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
+    SessionWindowRecord, SessionWindowReference, ThreadClaimCatalogSource,
+    ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement,
+    WindowClaimCatalogSource, WindowClaimSelection,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,

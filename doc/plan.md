@@ -89,24 +89,28 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 691: Define Interrupted Exit Recovery (finished)
+# Phase 692: Add The Exact Interrupted Exit Resume Contribution (finished)
 
-Accepted the Operator-approved reported-failure cancellation and same-home session resumption
-contract across feature, system, state and app authority. Independent persistence/lifecycle review
-found no blocking issues; links and scoped diff checks passed and the documentation index is Current.
-The exact state resume contribution is architecture-ready; running recovery composition remains pending.
+Accepted ResumeSessionAfterExit: exact bounded membership and revision checks change only the
+OrderlyExit header to Running, preserving all windows, placements and paired claims. All 19 focused
+Exit/session/restart tests passed in `c391b43a-c65a-457c-8cc0-9ab371ae1ed3`, the default state library
+check passed, and independent persistence review found no issues. This primitive grants no app
+reopening or gate-release authority; same-home composition remains pending.
 
-# Phase 692: Add The Exact Interrupted Exit Resume Contribution (pending)
+# Phase 693: Retain Immutable Exit Session Publication Evidence (pending)
 
-Implement the state-owned header-only resume contribution from the accepted session contract.
-Verify complete-set/revision refusal, unchanged windows and paired claims, ordinary command outcomes
-and durable reopening, with independent persistence review. App recovery composition remains pending.
+Retain the complete bounded expected source/result session and window revisions and placements
+before publication under the app interrupted-Exit ownership contract. Preserve that evidence with
+actual command outcomes without granting replacement-generation authority. Verify preparation
+refusal, commit, later failure and ambiguous custody; keep replacement validation and resume execution
+as separate acceptance boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Operator approved interrupted-Exit recovery on 2026-09-27. Phase 691 resolves the target contract;
 a reported failed Exit remains cancelled through same-home recovery and requires fresh activation.
-Implement its bounded state, evidence and replacement prerequisites before enabled mounting.
+Phase 692 supplies the exact header-only state resume contribution. Immutable publication evidence
+and replacement composition remain prerequisites to enabled mounting.
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
 ordinary process window owner. Share serialized final-window designation with construction,
