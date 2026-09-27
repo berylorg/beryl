@@ -25,6 +25,43 @@ fn native_exit_progress_delivery_notice_preserves_unconsumed_progress_and_admiss
 }
 
 fn run_driver(cancelled: bool, waiting: bool, report_refusal: bool) {
+    run_driver_with_work_failure(cancelled, waiting, report_refusal, None);
+}
+
+#[test]
+fn native_exit_unviewed_execution_failure_preserves_admission() {
+    run_driver_with_work_failure(
+        false,
+        false,
+        false,
+        Some(crate::cas_projection::ShutdownFailure::UnprovenExecution {
+            thread: beryl_model::SyndicThreadId::from_bytes([211; 16]),
+            turn: beryl_model::SyndicTurnId::from_bytes([212; 16]),
+        }),
+    );
+}
+
+#[test]
+fn native_exit_unviewed_compaction_failure_preserves_admission() {
+    run_driver_with_work_failure(
+        false,
+        false,
+        false,
+        Some(crate::cas_projection::ShutdownFailure::UnprovenCompaction {
+            operation: syndic_storage::CompactionOperationId::new(
+                beryl_model::SyndicThreadId::from_bytes([213; 16]),
+                syndic_storage::CompactionOperationNonce::from_bytes([214; 16]),
+            ),
+        }),
+    );
+}
+
+fn run_driver_with_work_failure(
+    cancelled: bool,
+    waiting: bool,
+    report_refusal: bool,
+    work_failure: Option<crate::cas_projection::ShutdownFailure>,
+) {
     let directory = support::native_home();
     let faults = FaultController::new();
     let opening_faults = faults.clone();
@@ -98,6 +135,23 @@ fn run_driver(cancelled: bool, waiting: bool, report_refusal: bool) {
                         })
                         .unwrap()
                         .unwrap();
+                        if let Some(reason) = work_failure {
+                            cx.update(|app| {
+                                RunningProcessOwner::test_report_exit_work_failure(&owner, &request, reason, false, app);
+                                let root = window.read(app).unwrap();
+                                assert!(root.controller().unwrap().is_threadless());
+                                let notice = root.notice_projection().unwrap();
+                                assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
+                                assert!(notice.content.detail().as_str().contains(&format!("{reason:?}")));
+                                assert_eq!(notice.content.commands().count(), 0);
+                                assert_eq!(root.notice_diagnostics().retained_records, 1);
+                                assert!(Rc::ptr_eq(&identity, &request.identity()));
+                                assert!(owner.borrow().exit_requested());
+                                assert!(matches!(owner.borrow().shutdown_status(), Some((window, ShutdownIntent::ApplicationExit, RunningShutdownStatus::Admitted)) if window == invoking));
+                                assert!(!owner.borrow().test_services_on_worker());
+                                assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                            }).unwrap();
+                        }
                         if report_refusal {
                             let settled = Rc::new(Cell::new(false));
                             let signalled = settled.clone();

@@ -50,6 +50,66 @@ fn coordinator_outcomes_are_not_delivery_errors() {
             command_completed: false,
         };
         assert!(delivery_error(&outcome).is_none());
+        assert!(work_failure(&outcome).is_none());
+    }
+}
+
+#[test]
+fn work_failure_routes_only_to_viewing_windows_or_original_invoker() {
+    use beryl_model::SyndicTurnId;
+    use syndic_storage::{CompactionOperationId, CompactionOperationNonce};
+    let thread = SyndicThreadId::from_bytes([41; 16]);
+    let other = SyndicThreadId::from_bytes([42; 16]);
+    let invoking = WindowId::from_bytes([43; 16]);
+    let viewing = WindowId::from_bytes([44; 16]);
+    let second_view = WindowId::from_bytes([45; 16]);
+    for reopened in [false, true] {
+        for reason in [
+            ShutdownFailure::UnprovenExecution {
+                thread,
+                turn: SyndicTurnId::from_bytes([46; 16]),
+            },
+            ShutdownFailure::UnprovenCompaction {
+                operation: CompactionOperationId::new(
+                    thread,
+                    CompactionOperationNonce::from_bytes([47; 16]),
+                ),
+            },
+        ] {
+            let outcome = ExitAttemptOutcome {
+                result: Ok(super::super::ExitAttemptCompletion::Progress(
+                    AppServiceShutdownProgress::Failed { reason, reopened },
+                )),
+                command_completed: reopened,
+            };
+            let (target, original) = work_failure(&outcome).unwrap();
+            assert_eq!(target, thread);
+            assert_eq!(*original, reason);
+            let windows = vec![
+                (invoking, Some(other), 1),
+                (viewing, Some(thread), 2),
+                (second_view, Some(thread), 3),
+            ];
+            assert_eq!(
+                failure_destinations(windows.clone(), Some(target), Some(invoking)),
+                vec![(viewing, 2), (second_view, 3)]
+            );
+            assert_eq!(
+                failure_destinations(windows, Some(target), None),
+                vec![(viewing, 2), (second_view, 3)]
+            );
+            let unviewed = vec![(invoking, None, 1), (viewing, Some(other), 2)];
+            assert_eq!(
+                failure_destinations(unviewed.clone(), Some(target), Some(invoking)),
+                vec![(invoking, 1)]
+            );
+            assert!(
+                failure_destinations(unviewed.clone(), Some(target), Some(second_view)).is_empty()
+            );
+            assert!(failure_destinations(unviewed, Some(target), None).is_empty());
+            assert!(failure_destinations::<()>(vec![], Some(target), Some(invoking)).is_empty());
+            assert_eq!(outcome.command_completed, reopened);
+        }
     }
 }
 

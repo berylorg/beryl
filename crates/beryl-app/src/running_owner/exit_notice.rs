@@ -1,48 +1,68 @@
 use super::{ExitAttemptError, RunningProcessOwner, exit_attempt::ExitAttemptOutcome};
+use crate::{app_services::AppServiceShutdownProgress, cas_projection::ShutdownFailure};
 use crate::{main_window::*, startup_owner::RunningExitRequest};
+use beryl_model::{SyndicThreadId, WindowId};
 use gpui::App;
 use std::{cell::RefCell, fmt, rc::Rc};
 
 impl RunningProcessOwner {
-    pub(super) fn report_exit_delivery_failure(
+    pub(super) fn report_exit_failure(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         outcome: &ExitAttemptOutcome,
         app: &mut App,
     ) {
-        let Some(error) = delivery_error(outcome) else {
+        let (thread, content) = if let Some(error) = delivery_error(outcome) {
+            (None, failure_content(error))
+        } else if let Some((thread, reason)) = work_failure(outcome) {
+            (
+                Some(thread),
+                failure_content(&format_args!(
+                    "Shutdown could not prove that work settled: {reason:?}"
+                )),
+            )
+        } else {
             return;
         };
-        let Some(invoking) = request.invoking_window() else {
-            return;
-        };
-        let window = {
+        let windows = {
             let owner = owner.borrow();
-            owner.process.windows.shells().iter().find_map(|shell| {
-                let window = shell.window();
-                window
-                    .read(app)
-                    .ok()
-                    .and_then(|root| root.controller())
-                    .is_some_and(|controller| controller.window_id() == invoking)
-                    .then_some(window)
-            })
+            owner
+                .process
+                .windows
+                .shells()
+                .iter()
+                .filter_map(|shell| {
+                    let window = shell.window();
+                    let controller = window.read(app).ok()?.controller()?;
+                    let selected = controller
+                        .composer_mount()
+                        .and_then(|mount| mount.read(app).contribution())
+                        .map(|composer| {
+                            composer.read(app).selection_identity().claim().thread_id()
+                        });
+                    Some((controller.window_id(), selected, window))
+                })
+                .collect()
         };
-        let Some(window) = window else { return };
-        let Ok(ingress) = window.update(app, |root, window, cx| root.notice_ingress(window, cx))
-        else {
-            return;
-        };
-        let _ = ingress.admit(
-            NoticeRecord {
-                window_id: invoking,
-                condition: NoticeConditionId::new(),
-                revision: 1,
-                kind: NoticeKind::Error,
-                content: failure_content(error),
-            },
-            app,
-        );
+        for (destination, window) in
+            failure_destinations(windows, thread, request.invoking_window())
+        {
+            let Ok(ingress) =
+                window.update(app, |root, window, cx| root.notice_ingress(window, cx))
+            else {
+                continue;
+            };
+            let _ = ingress.admit(
+                NoticeRecord {
+                    window_id: destination,
+                    condition: NoticeConditionId::new(),
+                    revision: 1,
+                    kind: NoticeKind::Error,
+                    content: content.clone(),
+                },
+                app,
+            );
+        }
     }
 
     #[cfg(test)]
@@ -57,8 +77,63 @@ impl RunningProcessOwner {
             result: Err(error),
             command_completed,
         };
-        Self::report_exit_delivery_failure(owner, request, &outcome, app);
+        Self::report_exit_failure(owner, request, &outcome, app);
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_report_exit_work_failure(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        reason: ShutdownFailure,
+        reopened: bool,
+        app: &mut App,
+    ) {
+        let outcome = ExitAttemptOutcome {
+            result: Ok(super::ExitAttemptCompletion::Progress(
+                AppServiceShutdownProgress::Failed { reason, reopened },
+            )),
+            command_completed: false,
+        };
+        Self::report_exit_failure(owner, request, &outcome, app);
+    }
+}
+
+fn work_failure(outcome: &ExitAttemptOutcome) -> Option<(SyndicThreadId, &ShutdownFailure)> {
+    let Ok(super::ExitAttemptCompletion::Progress(AppServiceShutdownProgress::Failed {
+        reason,
+        ..
+    })) = &outcome.result
+    else {
+        return None;
+    };
+    let thread = match reason {
+        ShutdownFailure::UnprovenExecution { thread, .. } => *thread,
+        ShutdownFailure::UnprovenCompaction { operation } => operation.thread_id(),
+        ShutdownFailure::Cancelled
+        | ShutdownFailure::SourceUnavailable
+        | ShutdownFailure::StopFailed
+        | ShutdownFailure::CleanupFailed => return None,
+    };
+    Some((thread, reason))
+}
+
+fn failure_destinations<T>(
+    windows: Vec<(WindowId, Option<SyndicThreadId>, T)>,
+    thread: Option<SyndicThreadId>,
+    invoking: Option<WindowId>,
+) -> Vec<(WindowId, T)> {
+    let viewed = thread.is_some() && windows.iter().any(|(_, selected, _)| *selected == thread);
+    windows
+        .into_iter()
+        .filter_map(|(id, selected, window)| {
+            let affected = if viewed {
+                selected == thread
+            } else {
+                Some(id) == invoking
+            };
+            affected.then_some((id, window))
+        })
+        .collect()
 }
 
 fn delivery_error(outcome: &ExitAttemptOutcome) -> Option<&ExitAttemptError> {

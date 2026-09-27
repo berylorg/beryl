@@ -675,11 +675,20 @@ by the executable composition root.
   additional record. Missing original windows have no replacement destination. Notice omission or
   refusal changes neither the original result nor command completion, custody or quit authority.
   Cancellation outcomes and successful admission contribute no failure record. This boundary
-  does not report coordinator failure results or final-teardown outcomes, infer persistent backend/home conditions,
+  does not report unattributed coordinator failure results or final-teardown outcomes, infer persistent backend/home conditions,
   select threads, move focus or arm successor waits.
   Progress-delivery errors include refused scheduling, invalid request/intent, unavailable settled
   results and service errors. Reporting preserves the original error and any unresolved admitted
   intent; it cannot prove reopening, release a gate or authorize command completion.
+
+- A coordinator failure identifying an unproven execution or compaction contributes the same
+  commandless Exit-failure notice to surviving published windows whose current resident composer
+  selects that exact thread. Compaction attribution uses the thread embedded in its operation ID;
+  reporting performs no storage lookup. If no surviving window views that thread, only the original
+  invoking surviving window receives the report. Missing destinations are not replaced. Attribution
+  is collected on the GUI executor before notice delivery, outside asynchronous work; delivery runs
+  outside owner borrows. Both proven reopening and retained admission preserve their original
+  result, completion and custody. Cancellation, Waiting and Ready produce no coordinator notice.
 
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 651: Report Running Exit Progress-Delivery Errors (finished)
+# Phase 652: Report Thread-Specific Exit Coordinator Failures (finished)
 
-Typed progress-delivery errors now use the existing bounded commandless invoking-window notice
-path without changing result, completion or retained shutdown custody. Default library check,
-independent semantic review and all 13 focused cases passed (run
-`d09e3499-9ec7-4b5a-a3f1-412c90e77e33`). Coordinator failure attribution, toolbar mounting and
-final teardown remain pending.
+Unproven execution and compaction results now contribute bounded commandless notices to surviving
+viewing windows, or the original invoking survivor for unviewed work, preserving result and custody.
+Default library check, independent semantic review and all 16 focused cases passed (run
+`b1d744fd-96f2-4aa6-ab0d-6a581270ce6c`). Unattributed coordinator failures, persistent-condition
+guidance, toolbar mounting and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -162,6 +162,8 @@ Phase 650 reports preparation errors through the existing invoking-window notice
 altering policy outcomes. Progress and final-teardown reporting remain separate from that contribution.
 Phase 651 extends that contribution to typed progress-delivery errors while retaining unresolved
 admission. Coordinator failure results still require their own affected-window attribution.
+Phase 652 supplies exact thread-specific coordinator reporting, including unviewed-work attribution;
+unattributed coordinator failures and eligible persistent-condition guidance remain pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
