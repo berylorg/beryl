@@ -13,6 +13,11 @@ fn native_idle_exit_retains_exact_admitted_intent() {
 }
 
 #[test]
+fn native_shutdown_gate_reports_a_missing_published_window_without_releasing_intent() {
+    run_with_missing_window(ShutdownIntent::ApplicationExit, false, None, true);
+}
+
+#[test]
 fn native_idle_admission_refuses_new_work_and_requires_confirmation() {
     run(ShutdownIntent::FinalWindowClose, true, None);
 }
@@ -32,10 +37,21 @@ async fn observe(
 }
 
 pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: Option<bool>) {
+    run_with_missing_window(intent, new_work, progress_ready_first, false);
+}
+
+fn run_with_missing_window(
+    intent: ShutdownIntent,
+    new_work: bool,
+    progress_ready_first: Option<bool>,
+    missing: bool,
+) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
     let observed = finished.clone();
+    let retained_failure = Rc::new(RefCell::new(None));
+    let failed_process = retained_failure.clone();
     Application::new()
         .with_quit_on_last_window_close(false)
         .run(move |app| {
@@ -46,6 +62,7 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let window = running.windows.shells()[0].window();
                     let permit = running.services.process.execution_permit();
                     let restore = running
                         .services
@@ -54,6 +71,9 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                         .restored_window_attempt()
                         .unwrap();
                     let owner = RunningProcessOwner::start(running, app);
+                    let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
+                    assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());
+                    assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app), original_reason);
                     assert!(
                         RunningProcessOwner::advance_shutdown(
                             &owner,
@@ -166,6 +186,28 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                             attempt
                         );
                         assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
+                        cx.update(|app| {
+                            for _ in 0..2 {
+                                RunningProcessOwner::install_shutdown_interaction_gate(&owner, app)
+                                    .unwrap();
+                                assert_eq!(
+                                    window.read(app).unwrap().new_window_disabled_reason(app).as_deref(),
+                                    Some("Application Exit is waiting for active work and durable state.")
+                                );
+                            }
+                        }).unwrap();
+                        assert_eq!(owner.borrow().shutdown_status(),
+                            Some((invoking, intent, RunningShutdownStatus::Admitted)));
+                        assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
+                        if missing {
+                            cx.update(|app| {
+                                window.update(app, |_, window, _| window.remove_window()).unwrap();
+                                assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());
+                            }).unwrap();
+                            assert_eq!(owner.borrow().shutdown_status(),
+                                Some((invoking, intent, RunningShutdownStatus::Admitted)));
+                            assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
+                        }
                         assert!(
                             owner
                                 .borrow_mut()
@@ -222,7 +264,11 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
                                 })
                                 .await;
                         }
-                        support::dispose_running(running, cx).await;
+                        if missing {
+                            *failed_process.borrow_mut() = Some(running);
+                        } else {
+                            support::dispose_running(running, cx).await;
+                        }
                         observed.set(true);
                         cx.update(|app| app.quit()).unwrap();
                     })
@@ -233,6 +279,19 @@ pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: 
             support::watchdog(app);
         });
     assert!(finished.get());
+    if let Some(running) = retained_failure.borrow_mut().take() {
+        let startup_owner::StartedProcess {
+            mut services,
+            windows,
+            appearance,
+            ..
+        } = running;
+        drop(windows);
+        drop(appearance);
+        std::thread::spawn(move || close(&mut services))
+            .join()
+            .unwrap();
+    }
     assert_reopens(&directory);
 }
 

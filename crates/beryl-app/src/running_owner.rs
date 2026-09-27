@@ -23,6 +23,7 @@ mod exit_work;
 mod initial_observation;
 mod observation;
 mod progress;
+mod shutdown_interaction;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,

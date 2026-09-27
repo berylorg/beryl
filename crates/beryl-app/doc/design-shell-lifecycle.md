@@ -540,6 +540,14 @@ by the executable composition root.
   shell gate, and failed release cannot reopen the shell. Startup gating remains independent.
   This local adapter does not install a process-wide barrier or grant coherent reopening authority.
 
+- The running owner installs those local gates only after shutdown admission, for either final
+  close or application Exit. It snapshots all published shell handles under a short owner borrow,
+  then gates them on the GUI executor without holding that borrow. Every captured shell is visited
+  even when an earlier transition fails. Missing windows and failed local transitions are explicit
+  failures; installation never rolls back a successful gate, releases shutdown custody or treats
+  an empty published set as success. Repeated installation is idempotent. This boundary grants no
+  progress, teardown or reopening authority; coherent gate removal remains a separate obligation.
+
 - Successful startup transfers one move-only running Exit consumer alongside the complete graph
   and published windows. Existing startup command producers remain valid for deferred Exit events,
   including after removal of the old startup surface. One pending bit and one exact active request
