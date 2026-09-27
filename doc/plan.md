@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 709: Retire The Clean Composer Service (finished)
+# Phase 710: Preserve The Clean Resident Behind A Recovery Fence (finished)
 
-Accepted exclusively owned service retirement with exact close/slot evidence, reference-drain
-checks and original service return on refusal, without durable cleanup. Library checking, all 22
-resident-close tests and independent lifecycle review passed. After moving shared helpers to a
-support module, all four affected tests passed again (`f0475d21-f88f-4db9-a82f-1199cc165800`).
-Resident detachment, fresh rebinding and whole-resident completion remain separate.
+Accepted exact ready-close recovery fencing with bounded restoration facts, preserved resident
+entities and blocked dispatch, ordinary release and disposal. Library checking, all 23 resident-close
+tests and independent lifecycle review passed (`b39f5727-2ff5-460d-9ecb-702b14e860c7`).
+Old service custody remains retained; adapter retirement and fresh rebinding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -106,7 +105,8 @@ must precede rebinding; changed or unresolved evidence stays unavailable. Genera
 save recovery is outside this cut because it cannot satisfy session-publication admission. Do not
 substitute native-lineage unmounting or startup cleanup for resident retirement proof. Phase 707
 supplies the consuming host primitive, phase 708 the enclosing slot primitive and phase 709 the
-exclusive service primitive. Worker-reference draining and preserved widget bindings remain here.
+exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
+Worker-reference draining, adapter detachment and fresh widget bindings remain here.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

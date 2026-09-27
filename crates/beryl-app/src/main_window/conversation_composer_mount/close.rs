@@ -1,6 +1,7 @@
 use super::*;
 use crate::composer_host::{ComposerHostFlushAdvance, ComposerHostFlushFailure};
 
+mod recovery;
 mod work;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,6 +76,7 @@ pub(super) struct ActiveWindowClose {
     disposing: bool,
     disposal_captured: bool,
     release_requested: bool,
+    recovery_fenced: bool,
     restore_enabled: Option<bool>,
     #[cfg(feature = "test-faults")]
     cancel_disposal: bool,
@@ -95,6 +97,9 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerCloseAdmission, String> {
         if let Some(close) = self.window_close {
+            if close.recovery_fenced {
+                return Err("window close is retained for recovery".to_owned());
+            }
             return Ok(MainWindowConversationComposerCloseAdmission {
                 ticket: close.ticket,
                 state: close.state,
@@ -147,6 +152,7 @@ impl MainWindowConversationComposerMount {
             disposing: false,
             disposal_captured: false,
             release_requested: false,
+            recovery_fenced: false,
             restore_enabled: None,
             #[cfg(feature = "test-faults")]
             cancel_disposal: false,
@@ -179,6 +185,9 @@ impl MainWindowConversationComposerMount {
         else {
             return Ok(MainWindowConversationComposerCloseAdvance::Stale);
         };
+        if close.recovery_fenced {
+            return Err("window close is retained for recovery".to_owned());
+        }
         if self.window_close_task.is_some() {
             return Ok(close.state);
         }
@@ -285,8 +294,8 @@ impl MainWindowConversationComposerMount {
         else {
             return Ok(false);
         };
-        if close.disposing {
-            return Err("window close disposal is already authorized".to_owned());
+        if close.disposing || close.recovery_fenced {
+            return Err("window close is retained for disposal or recovery".to_owned());
         }
         if self.window_close_task.is_some() {
             self.window_close.as_mut().unwrap().release_requested = true;
@@ -353,6 +362,9 @@ impl MainWindowConversationComposerMount {
         else {
             return Ok(MainWindowConversationComposerCloseAdvance::Stale);
         };
+        if close.recovery_fenced {
+            return Err("window close is retained for recovery".to_owned());
+        }
         if !self.service.window_close_is_current(ticket) {
             return Ok(MainWindowConversationComposerCloseAdvance::Stale);
         }

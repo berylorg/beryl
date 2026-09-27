@@ -34,6 +34,7 @@ mod dispatch;
 mod lifecycle;
 mod prepublication;
 mod realization;
+mod recovery;
 mod render;
 mod selected_preparation;
 mod service;
@@ -47,6 +48,7 @@ pub(in crate::main_window) use prepublication::{
     MainWindowNativeLineagePrepublicationWork,
 };
 pub use realization::*;
+pub use recovery::MainWindowComposerRecoverySnapshot;
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowConversationComposerService;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
@@ -98,6 +100,7 @@ pub enum MainWindowConversationComposerEvent {
 enum MainWindowConversationComposerPhase {
     Live,
     Fencing,
+    RecoveryFenced,
     Releasing,
     Released(MainWindowComposerWidgetRelease),
     ReleaseFailed,
@@ -157,6 +160,7 @@ pub struct MainWindowConversationComposer {
     phase: MainWindowConversationComposerPhase,
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
+    recovery_snapshot: Option<MainWindowComposerRecoverySnapshot>,
     startup_interaction_gated: bool,
     shutdown_interaction_gated: bool,
     startup_release_started: bool,

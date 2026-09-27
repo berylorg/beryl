@@ -203,6 +203,7 @@ impl MainWindowConversationComposer {
             phase: MainWindowConversationComposerPhase::Live,
             release_fence_requires_restoration: false,
             window_close: None,
+            recovery_snapshot: None,
             startup_interaction_gated: false,
             shutdown_interaction_gated: false,
             startup_release_started: false,

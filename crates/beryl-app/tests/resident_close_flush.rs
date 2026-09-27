@@ -13,15 +13,17 @@ mod host;
 mod mounted;
 #[path = "resident_close_flush/mutation.rs"]
 mod mutation;
+#[path = "resident_close_flush/recovery.rs"]
+mod recovery;
 #[path = "resident_close_flush/release.rs"]
 mod release;
 #[path = "resident_close_flush/retirement.rs"]
 mod retirement;
+#[path = "resident_close_flush/service_retirement.rs"]
+mod service_retirement;
 #[path = "resident_close_flush/shutdown.rs"]
 mod shutdown;
 #[path = "resident_close_flush/slot_retirement.rs"]
 mod slot_retirement;
-#[path = "resident_close_flush/service_retirement.rs"]
-mod service_retirement;
 #[path = "resident_close_flush/support.rs"]
 mod support;
