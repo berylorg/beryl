@@ -68,6 +68,14 @@ mod draft_preparation {
     ));
 }
 
+mod placement_preparation {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_placement_preparation.rs"
+    ));
+}
+
 mod command_consumer {
     use super::*;
     include!(concat!(

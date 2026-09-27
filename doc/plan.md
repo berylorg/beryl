@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 681: Retain Exit Placement Capture Through Native Settlement (finished)
+# Phase 682: Recover Exact Exit Placement Preparation Failures (finished)
 
-Accepted exact-attempt placement capture with sequential desktop workers, retained native settlement,
-all-or-nothing results and recovery fences. All 58 focused lifecycle cases passed
-(`4d2b12fa-b10e-4358-bcfa-66fb5696b33f`); the final-source four capture cases
-(`bc1ca85c-8eb6-4f29-bdc0-cb2fb7307496`), default app library check and independent lifecycle review
-passed. Durable session publication/reconciliation and ordinary consumer integration remain next.
+Accepted exact-request placement preparation with retained success and automatic settled-failure
+recovery, preserving the original cause and separate recovery evidence. All 61 focused lifecycle
+cases passed (`b88aa932-b774-42fc-91ae-bf3dfc12bc00`), along with the default app library check and
+independent lifecycle review. Durable session publication and ordinary consumer integration remain
+separate subsequent boundaries.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -220,6 +220,10 @@ Exit attempt and retain every native settlement before session publication or re
 Phase 681 supplies that retained capture and recovery fence. Next bind the complete captured set to
 the original durable session revisions, compose publication/reconciliation through the retained
 owner, and connect capture failure to exact recovery before enabling ordinary shutdown.
+
+Phase 682 supplies exact-request placement preparation and settled-failure recovery, preserving
+original capture errors alongside recovery evidence. Next bind captured placements to original
+durable revisions and compose session publication/reconciliation before ordinary consumer mounting.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

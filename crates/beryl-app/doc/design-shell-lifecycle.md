@@ -267,6 +267,22 @@ by the executable composition root.
   worker ownership and recovery exclusion, failure/unwind with settlement, and original-attempt
   recovery after drainage. Independently review lifecycle and partial-failure handling.
 
+## Exit Placement Preparation Policy
+
+- Placement preparation validates the exact active Exit request and original work-ready Application
+  Exit attempt, then schedules its retained complete-set capture. Ready delivery preserves the
+  request, attempt, drafts and interaction gates for durable session obligations.
+- A terminal capture failure uses the exact draft recovery handoff only after native settlement.
+  Deliver both the original capture failure and the separate recovery result or error. Missing
+  settlement refuses recovery and retains custody; recovery cancellation cannot replace the cause.
+- Scheduling refusal returns the original request without callback or recovery. Accepted scheduling
+  retains the owner and request through exactly one terminal callback outside owner borrows, even
+  when the caller abandons its handle. Duplicate capture remains refused without a retry.
+- This policy neither completes the command nor publishes session state, destroys windows or
+  authorizes quit. Verify readiness/request refusal, exact result retention, capture failure with
+  successful recovery, failed release preserving both causes and custody, and caller abandonment.
+  Independently review the lifecycle and recovery boundary.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never
