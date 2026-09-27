@@ -39,6 +39,8 @@ mod recovery_native_lineage;
 mod recovery_pending_cleanup;
 #[path = "resident_close_flush/recovery_resources.rs"]
 mod recovery_resources;
+#[path = "resident_close_flush/recovery_retirement.rs"]
+mod recovery_retirement;
 #[path = "resident_close_flush/recovery_submission.rs"]
 mod recovery_submission;
 #[path = "resident_close_flush/recovery_submission_worker.rs"]

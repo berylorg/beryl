@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 727: Compose Recovery-Fenced Resident Resource Handoff (finished)
+# Phase 728: Consume Detached Resident Resources For Exclusive Retirement (finished)
 
-Accepted one exact, prevalidated handoff of resident and mount adapters into retained resource
-custody, preserving the editor and gates. Library checking, 55 existing focused tests, the two
-corrected bundle cases (c1bb52ef-5dfb-466d-81ed-53feccb9fc48) and independent lifecycle review passed.
-Exclusive retirement and fresh binding remain separate.
+Accepted captured-ticket retirement of detached adapters and their exclusive composer service,
+with returned custody for refused retirement and preserved resident editor/gates. Library checking,
+58 focused tests (875d208b-eb46-45fe-93d8-9a61180e368a) and independent lifecycle review passed.
+Whole-resident proof and fresh bindings remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -117,6 +117,7 @@ cancellation. Phase 725 supplies resident clipboard callback detachment and phas
 retained mutation-failure custody. Phase 727 composes the resource handoffs into one bundle.
 Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
+Phase 728 consumes the bundle for exclusive service retirement and retains refused service custody.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
