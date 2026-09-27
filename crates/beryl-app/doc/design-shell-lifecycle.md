@@ -558,6 +558,18 @@ by the executable composition root.
   without a fence. Every refreshed result is classified again. Classification neither completes
   the Exit request nor retries, opens a dialog, advances progress or grants quit authority.
 
+- Exit work routing composes that classification with the owned native confirmation boundary in
+  one GUI call. Idle admission returns an admitted outcome; work-bearing evidence opens the
+  application-Exit confirmation for the exact invoking window and returns a confirming outcome.
+  It releases the owner borrow before native setup. Native setup revalidates the original evidence;
+  refusal neither opens a replacement dialog nor calls the completion callback. Only a scheduled
+  confirmation invokes that callback, after native settlement, using the existing retained owner
+  and exact confirmation custody. The caller keeps the active Exit request and explicitly consumes
+  the confirmation result. Repeated routing while confirmation is retained refuses without
+  replacing its callback; command duplicates still coalesce under the same active request.
+  Routing does not complete requests, refresh observations, consume positive confirmation, advance
+  shutdown progress or quit.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

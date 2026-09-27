@@ -5,6 +5,13 @@ use crate::{
 };
 use beryl_model::WindowId;
 use gpui::App;
+use std::{cell::RefCell, rc::Rc};
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ExitWorkRoute {
+    Admitted,
+    Confirming,
+}
 
 pub(crate) enum ExitWorkClassification {
     Admitted,
@@ -24,9 +31,41 @@ pub(crate) enum ExitWorkError {
     Observation(#[from] AppServiceCloseError),
     #[error(transparent)]
     Admission(#[from] IdleShutdownError),
+    #[error("Exit confirmation could not start: {0}")]
+    Confirmation(String),
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn route_exit_work(
+        owner: &Rc<RefCell<Self>>,
+        request: &mut RunningExitRequest,
+        result: Result<ShutdownWorkObservation, AppServiceCloseError>,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<ExitWorkRoute, ExitWorkError> {
+        let classified = owner
+            .borrow_mut()
+            .classify_exit_work(request, result, app)?;
+        match classified {
+            ExitWorkClassification::Admitted => Ok(ExitWorkRoute::Admitted),
+            ExitWorkClassification::ConfirmationRequired {
+                invoking,
+                observation,
+            } => {
+                Self::begin_shutdown_confirmation(
+                    owner,
+                    invoking,
+                    ShutdownIntent::ApplicationExit,
+                    observation,
+                    app,
+                    completed,
+                )
+                .map_err(ExitWorkError::Confirmation)?;
+                Ok(ExitWorkRoute::Confirming)
+            }
+        }
+    }
+
     pub(crate) fn classify_exit_work(
         &mut self,
         request: &mut RunningExitRequest,

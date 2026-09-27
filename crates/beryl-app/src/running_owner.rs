@@ -20,7 +20,7 @@ pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
-pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError};
+pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 
 #[derive(Debug, PartialEq, Eq)]

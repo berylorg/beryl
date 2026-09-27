@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 637: Classify Observed Work For The Exact Exit Request (finished)
+# Phase 638: Route Exit Work To Its Native Confirmation (finished)
 
-Exact active Exit requests now classify settled worker observations: work requires confirmation;
-idle evidence uses atomic application-Exit admission. Failed/cancelled reads, stale requests and
-competing custody refuse without a new fence. All 15 focused native tests passed
-(`6b695006-6938-4ed8-b0fe-049a07399658`), including new-work invalidation and reclassification.
-The default library check and independent semantic review passed.
+Exact-request work routing now opens the owned application-Exit confirmation or returns idle
+admission. Refusal and duplicate routing preserve original custody and callbacks. All 20 focused
+native tests passed (`0458a4af-979a-41ee-94b3-085c646041fe`), including real Cancel/positive outcomes,
+stale work and idle routing. The default library check and independent semantic review passed.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -138,8 +137,9 @@ Phase 634 supplies native confirmation completion notification; result consumpti
 policy actions remain explicit.
 Phases 635–636 supply owner-retained GUI delivery, exact completion and invoking-window binding of
 the running Exit consumer. Phase 637 supplies exact-request work classification and idle admission;
-work-bearing observations remain explicit inputs to native confirmation. Ordinary toolbar mounting,
-automatic confirmation/refresh/progress routing and request completion remain unmounted.
+phase 638 connects work-bearing observations to owned native confirmation. Ordinary toolbar
+mounting, initial command-to-observation scheduling, confirmation-result policy, automatic
+refresh/progress routing and request completion remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

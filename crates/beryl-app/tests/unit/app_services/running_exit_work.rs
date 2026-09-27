@@ -1,19 +1,37 @@
 use crate::running_owner::{
-    ExitWorkClassification, ExitWorkError, RunningProcessOwner, RunningShutdownStatus,
-    ShutdownIntent,
+    ExitWorkClassification, ExitWorkError, ExitWorkRoute, RunningProcessOwner,
+    RunningShutdownStatus, ShutdownConfirmationResult, ShutdownIntent,
 };
+
+mod confirmation_route {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_confirmation.rs"
+    ));
+}
 
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
-    run(false);
+    run(false, None);
 }
 
 #[test]
 fn native_exit_new_work_requires_confirmation_after_stale_idle_refusal() {
-    run(true);
+    run(true, None);
 }
 
-fn run(new_work: bool) {
+#[test]
+fn native_exit_work_routes_confirmation_and_preserves_positive_context() {
+    run(true, Some(true));
+}
+
+#[test]
+fn native_exit_work_routes_cancel_without_admission_or_request_completion() {
+    run(true, Some(false));
+}
+
+fn run(new_work: bool, confirm: Option<bool>) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -42,10 +60,12 @@ fn run(new_work: bool) {
                         command.request_exit();
                         let mut successor = next_request(&owner, cx).await;
                         assert!(matches!(
-                            cx.update(|app| owner.borrow_mut().classify_exit_work(
+                            cx.update(|app| RunningProcessOwner::route_exit_work(
+                                &owner,
                                 &mut request,
                                 Ok(idle.clone()),
-                                app
+                                app,
+                                |_, _| panic!("stale request must not receive completion"),
                             ))
                             .unwrap(),
                             Err(ExitWorkError::Request(_))
@@ -56,10 +76,12 @@ fn run(new_work: bool) {
                             cancelled_result(&owner, cx).await,
                         ] {
                             assert!(matches!(
-                                cx.update(|app| owner.borrow_mut().classify_exit_work(
+                                cx.update(|app| RunningProcessOwner::route_exit_work(
+                                    &owner,
                                     &mut successor,
                                     Err(failure),
-                                    app
+                                    app,
+                                    |_, _| panic!("failed observation must not receive completion"),
                                 ))
                                 .unwrap(),
                                 Err(ExitWorkError::Observation(_))
@@ -78,10 +100,12 @@ fn run(new_work: bool) {
                             )
                             .unwrap();
                             assert!(matches!(
-                                owner.borrow_mut().classify_exit_work(
+                                RunningProcessOwner::route_exit_work(
+                                    &owner,
                                     &mut successor,
                                     Ok(idle.clone()),
-                                    app
+                                    app,
+                                    |_, _| panic!("busy owner must not receive completion"),
                                 ),
                                 Err(ExitWorkError::IntentBusy)
                             ));
@@ -110,26 +134,37 @@ fn run(new_work: bool) {
                                 .await
                                 .unwrap();
                             assert!(fresh.has_work());
-                            let classified = cx
-                                .update(|app| {
-                                    owner.borrow_mut().classify_exit_work(
-                                        &mut successor,
-                                        Ok(fresh),
-                                        app,
-                                    )
-                                })
-                                .unwrap()
-                                .unwrap();
-                            let ExitWorkClassification::ConfirmationRequired {
-                                invoking: original,
-                                observation,
-                            } = classified
-                            else {
-                                panic!("work must require confirmation")
-                            };
-                            assert_eq!(original, invoking);
-                            assert_eq!(observation.running_threads(), 1);
-                            assert!(observation.has_work());
+                            if let Some(confirm) = confirm {
+                                confirmation_route::exercise(
+                                    &owner,
+                                    &mut successor,
+                                    fresh,
+                                    confirm,
+                                    cx,
+                                )
+                                .await;
+                            } else {
+                                let classified = cx
+                                    .update(|app| {
+                                        owner.borrow_mut().classify_exit_work(
+                                            &mut successor,
+                                            Ok(fresh),
+                                            app,
+                                        )
+                                    })
+                                    .unwrap()
+                                    .unwrap();
+                                let ExitWorkClassification::ConfirmationRequired {
+                                    invoking: original,
+                                    observation,
+                                } = classified
+                                else {
+                                    panic!("work must require confirmation")
+                                };
+                                assert_eq!(original, invoking);
+                                assert_eq!(observation.running_threads(), 1);
+                                assert!(observation.has_work());
+                            }
                             assert!(owner.borrow().shutdown_status().is_none());
                             assert!(owner.borrow().exit_requested());
                             permit.commit(|| ()).unwrap();
@@ -152,15 +187,17 @@ fn run(new_work: bool) {
                                 .unwrap();
                             let result = cx
                                 .update(|app| {
-                                    owner.borrow_mut().classify_exit_work(
+                                    RunningProcessOwner::route_exit_work(
+                                        &owner,
                                         &mut successor,
                                         Ok(fresh),
                                         app,
+                                        |_, _| panic!("idle routing must not receive completion"),
                                     )
                                 })
                                 .unwrap();
                             match result {
-                                Ok(ExitWorkClassification::Admitted) => break,
+                                Ok(ExitWorkRoute::Admitted) => break,
                                 Ok(_) => panic!("idle work unexpectedly requires confirmation"),
                                 Err(error) => {
                                     permit.commit(|| ()).unwrap();
