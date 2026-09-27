@@ -204,6 +204,7 @@ impl MainWindowConversationComposer {
             release_fence_requires_restoration: false,
             window_close: None,
             startup_interaction_gated: false,
+            shutdown_interaction_gated: false,
             startup_release_started: false,
             startup_release_completion: None,
             scheduled: false,
@@ -461,7 +462,7 @@ impl MainWindowConversationComposer {
                     this.begin_propagated_clipboard(ClipboardKind::Cut, window, cx)
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Paste) => {
-                    if this.startup_interaction_gated || this.window_close.is_some() {
+                    if this.mutation_gated() {
                         return;
                     }
                     cx.emit(MainWindowConversationComposerEvent::RichPastePropagated {
@@ -469,7 +470,7 @@ impl MainWindowConversationComposer {
                     });
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Enter) => {
-                    if this.startup_interaction_gated || this.window_close.is_some() {
+                    if this.mutation_gated() {
                         return;
                     }
                     cx.emit(MainWindowConversationComposerEvent::SubmitPropagated {

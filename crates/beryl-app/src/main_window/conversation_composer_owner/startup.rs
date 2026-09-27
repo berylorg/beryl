@@ -106,7 +106,6 @@ impl MainWindowConversationComposer {
         cx: &mut Context<Self>,
     ) {
         self.startup_interaction_gated = false;
-        self.input
-            .update(cx, |input, input_cx| input.set_read_only(false, input_cx));
+        self.sync_mutation_gate(cx);
     }
 }

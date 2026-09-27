@@ -61,6 +61,14 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
         .unwrap();
     let composer = mount.read_with(cx, |mount, _| mount.contribution().unwrap());
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    composer.update(cx, |composer, cx| {
+        composer
+            .test_set_shutdown_interaction_gated(true, cx)
+            .unwrap();
+        composer
+            .test_set_shutdown_interaction_gated(false, cx)
+            .unwrap();
+    });
     shell
         .window()
         .update(cx, |root, window, cx| {
@@ -165,12 +173,38 @@ fn startup_gate_blocks_mutation_commands_and_lifecycle_reenable_then_restores_ed
         .err()
         .expect("gated shell retains startup custody");
     let window = shell.window();
+    composer.update(cx, |composer, cx| {
+        composer
+            .test_set_shutdown_interaction_gated(true, cx)
+            .unwrap();
+    });
     cx.update(|app| {
         MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
     })
     .unwrap();
     cx.update(|app| ingress.dispatch(MainWindowNoticeWidgetEvent::Dismiss(visible), app))
         .unwrap();
+    window
+        .update(cx, |_, window, cx| {
+            input.update(cx, |input, cx| {
+                input.replace_text_in_range(None, "blocked", window, cx)
+            });
+        })
+        .unwrap();
+    drive(&shell, cx);
+    assert!(input.read_with(cx, |input, _| {
+        input
+            .surface()
+            .unwrap()
+            .pages()
+            .iter()
+            .all(|page| page.text().is_empty())
+    }));
+    composer.update(cx, |composer, cx| {
+        composer
+            .test_set_shutdown_interaction_gated(false, cx)
+            .unwrap();
+    });
     window
         .update(cx, |root, window, cx| {
             assert!(!root.startup_interaction_gated());

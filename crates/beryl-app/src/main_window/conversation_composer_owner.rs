@@ -37,6 +37,7 @@ mod realization;
 mod render;
 mod selected_preparation;
 mod service;
+mod shutdown;
 mod startup;
 
 #[cfg(feature = "test-faults")]
@@ -157,6 +158,7 @@ pub struct MainWindowConversationComposer {
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     startup_interaction_gated: bool,
+    shutdown_interaction_gated: bool,
     startup_release_started: bool,
     startup_release_completion:
         Option<futures_channel::oneshot::Sender<Result<MainWindowComposerWidgetRelease, String>>>,
@@ -261,8 +263,8 @@ impl MainWindowConversationComposer {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
-        if self.startup_interaction_gated || self.window_close.is_some() {
-            return Err("conversation composer is waiting for window close".to_owned());
+        if self.mutation_gated() {
+            return Err("conversation composer mutation is gated".to_owned());
         }
         let anchor = self
             .image_surfaces
@@ -298,11 +300,7 @@ impl MainWindowConversationComposer {
         order: gpui_text_input::InlineObjectOrder,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
-        if !self.is_live()
-            || self.startup_interaction_gated
-            || self.window_close.is_some()
-            || self.pending_marker_metadata.is_some()
-        {
+        if !self.is_live() || self.mutation_gated() || self.pending_marker_metadata.is_some() {
             return Err("composer marker insertion lane is busy".to_owned());
         }
         let retained_bytes = metadata.retained_bytes();
@@ -425,7 +423,7 @@ impl MainWindowConversationComposer {
         {
             return;
         }
-        if kind == ClipboardKind::Cut && self.window_close.is_some() {
+        if kind == ClipboardKind::Cut && self.mutation_gated() {
             return;
         }
         let Some(selected_range) = self.input.update(cx, |input, _| {

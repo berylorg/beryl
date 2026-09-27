@@ -222,7 +222,7 @@ impl MainWindowConversationComposerMount {
             || self
                 .contribution
                 .as_ref()
-                .is_some_and(|composer| composer.read(cx).startup_interaction_gated())
+                .is_some_and(|composer| composer.read(cx).mutation_gated())
             || self.submission.active.is_some()
             || matches!(
                 self.submission.status,
@@ -243,7 +243,7 @@ impl MainWindowConversationComposerMount {
             .as_ref()
             .filter(|contribution| {
                 let composer = contribution.read(cx);
-                composer.selection_identity() == selection && !composer.startup_interaction_gated()
+                composer.selection_identity() == selection && !composer.mutation_gated()
             })
             .ok_or_else(|| "conversation composer submission editor is stale".to_owned())?
             .entity_id();

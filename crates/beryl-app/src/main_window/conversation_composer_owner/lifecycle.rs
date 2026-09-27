@@ -214,8 +214,8 @@ impl MainWindowConversationComposer {
         }
         self.activation_seeds.clear();
         self.route = MainWindowConversationComposerRoute::Selected;
+        self.sync_mutation_gate(cx);
         self.input.update(cx, |input, input_cx| {
-            input.set_read_only(self.startup_interaction_gated, input_cx);
             input.set_enabled(!self.startup_interaction_gated, input_cx);
         });
         self.install_interactive_subscription(window, cx);

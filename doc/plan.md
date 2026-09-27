@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 656: Reclassify Changed Initial Exit Evidence (finished)
+# Phase 657: Preserve Resident Composer Interaction During Shutdown (finished)
 
-Initial Exit routing now refreshes explicitly changed collection or idle-admission evidence after
-50 ms, reserving each successor before yielding and reclassifying under the original request.
-New work requires confirmation; cancellation and other failures remain terminal. Default library
-check, independent semantic review and all 51 focused tests passed
-(`d16cf5dd-5f7b-48a5-82c3-4aaa618ebd54`). Ordinary mounting and final teardown remain pending.
+The resident composer now has an independent shutdown mutation gate. Edits, cut, marker mutation,
+paste and submission are blocked while selection, scrolling and copy remain available. Startup,
+close and pending-promotion transitions preserve the remaining gates and already admitted edits.
+All 72 focused tests, default library check, formatting and independent review passed
+(`a5bc4697-1d77-4691-bed9-30ffb55e89b5`, `ee87959f-c9a2-498e-a354-7606d655ede9`).
+Process-wide gate installation and visible toolbar state remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -171,6 +172,9 @@ separate; other failures still complete through the existing policy and notice p
 Phase 655 preserves typed close-preparation failures through idle classification, supplying the
 remaining error provenance needed for initial-evidence refresh. Phase 656 connects that refresh
 to initial Exit routing, reserving successor reads and reclassifying fresh work before confirmation.
+Phase 657 supplies the resident-composer shutdown mutation gate, including independent gate release
+and read-only interaction. Install it through the process owner with the remaining visible barrier
+controls before ordinary Exit mounting; it grants no shutdown or reopening authority itself.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

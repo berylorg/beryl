@@ -56,9 +56,7 @@ impl MainWindowConversationComposer {
             return Err("conversation composer close disposal is already active".to_owned());
         }
         self.window_close = None;
-        self.input.update(cx, |input, cx| {
-            input.set_read_only(self.startup_interaction_gated, cx)
-        });
+        self.sync_mutation_gate(cx);
         self.schedule_pump(window, cx);
         Ok(true)
     }

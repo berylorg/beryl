@@ -226,6 +226,11 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
             .unwrap();
         if let Some(pending) = mount.read_with(cx, |mount, _| mount.test_pending_contribution()) {
             pending_id = Some(pending.entity_id());
+            pending.update(cx, |composer, cx| {
+                composer
+                    .test_set_shutdown_interaction_gated(true, cx)
+                    .unwrap();
+            });
         }
         match start {
             MainWindowConversationComposerMountFlushStart::TargetPriming(_) => drive(cx, 1),
@@ -298,6 +303,19 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
     drive(cx, 16);
     let promoted_input = promoted.read_with(cx, |composer, _| composer.gpui_input());
     cx.update(|window, app| promoted_input.update(app, |input, _| input.focus(window)));
+    cx.update(|window, app| {
+        promoted_input.update(app, |input, cx| {
+            input.replace_and_mark_text_in_range(None, "blocked", None, window, cx);
+        });
+    });
+    drive(cx, 16);
+    assert_eq!(service.selected_identity(), Some(published));
+    assert!(promoted_input.read_with(cx, |input, _| input.is_enabled()));
+    promoted.update(cx, |composer, cx| {
+        composer
+            .test_set_shutdown_interaction_gated(false, cx)
+            .unwrap();
+    });
     cx.update(|window, app| {
         promoted_input.update(app, |input, input_cx| {
             input.replace_and_mark_text_in_range(None, "x", None, window, input_cx)

@@ -523,6 +523,16 @@ by the executable composition root.
   the exact close intent and still vetoes default destruction. Successful owned cleanup removes
   the window explicitly through its retained native destruction authority.
 
+- The resident composer has a separate shutdown mutation gate, controlled by the process owner.
+  Setting or clearing that gate preserves the resident entity, selection, scroll and read-only
+  interaction. It blocks new edits, rich paste, submission, cut and image-marker mutation while
+  allowing copy and inspection. Already admitted edits continue settling through their existing
+  custody. Startup and ordinary-close gates remain independent: releasing either cannot clear
+  shutdown read-only state, and clearing shutdown cannot release another active gate. Pending
+  editor promotion also preserves the shutdown gate. This local gate grants no shutdown admission,
+  close, flush or service-reopening authority; process-wide installation and coherent release are
+  separate owner obligations.
+
 - Successful startup transfers one move-only running Exit consumer alongside the complete graph
   and published windows. Existing startup command producers remain valid for deferred Exit events,
   including after removal of the old startup surface. One pending bit and one exact active request
