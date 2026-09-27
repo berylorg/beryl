@@ -15,6 +15,7 @@ mod exit_attempt;
 mod exit_availability;
 mod exit_confirmation;
 mod exit_delivery;
+mod exit_draft_recovery;
 mod exit_notice;
 mod exit_observation;
 mod exit_progress;

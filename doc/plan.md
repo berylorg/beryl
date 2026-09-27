@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 670: Drive Retained Shutdown Draft Obligations (finished)
+# Phase 671: Recover Exit After Exact Draft Release (finished)
 
-The automatic preparation/release driver retains the original owner and obligation set, excludes
-concurrent operations, delays pending polls and delivers one terminal result outside all borrows.
-All 41 focused native owner, Exit and resident tests passed (`ed7407d3-03c8-4325-abf2-bd3b519f484e`).
-Default library check, formatting and independent semantic review passed. Durable session
-publication and integration with Exit recovery policy remain pending.
+The exact active Exit request now has a retained recovery handoff from draft release to cancelled
+coordinator progression. Release failure preserves custody; only proven reopening releases
+interaction gates. All 33 focused native regressions passed (`e6015e59-89c8-4937-ac5c-8c53513bcecc`),
+as did the final ordinary-close refusal assertion (`91273387-3c2d-4e62-b2fe-449fa0c44913`). Default
+library check, formatting and independent lifecycle review passed. Preparation policy integration,
+durable session publication and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -196,7 +197,9 @@ Phase 669 supplies that retained aggregate and excludes coordinator recovery unt
 preparation releases exactly. Next compose durable session obligations and connect draft polling
 and recovery through the existing Exit driver before enabling ordinary shutdown.
 Phase 670 supplies automatic draft preparation/release polling with exact retained custody.
-Next compose durable session publication and connect the draft drivers to Exit recovery policy.
+Phase 671 supplies the exact-request recovery handoff from draft release through cancelled
+coordinator progression. Next compose durable session publication and connect preparation failure
+policy to that handoff before enabling ordinary shutdown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

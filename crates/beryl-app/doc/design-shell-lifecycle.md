@@ -1026,6 +1026,15 @@ by the executable composition root.
   no callback. Dropping a caller-held handle cannot cancel this custody. Errors keep the original
   obligations and interaction gates. Release completion alone grants no coordinator recovery,
   session durability, native teardown or quit; the caller must compose those separate boundaries.
+- Exit draft recovery binds the exact active Exit request to its original work-ready Application
+  Exit attempt before admitting release. It retains that request and owner through automatic exact
+  draft release, then drives an explicitly cancelled coordinator pass only after Released evidence.
+  Release failure or refusal transfers no services and preserves the attempt and interaction gates.
+  Coordinator progress uses the existing exact-request validation and proven-reopening gate release;
+  neither release alone nor a failed recovery result completes the command. The caller receives
+  one terminal callback outside owner borrows after successful scheduling, or its original request
+  on synchronous refusal with no callback. This handoff does not initiate preparation, discard the
+  original obligation failure, complete an Exit command, publish session state or authorize quit.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations

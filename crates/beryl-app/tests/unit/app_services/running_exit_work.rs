@@ -52,6 +52,14 @@ mod progress_driver {
     ));
 }
 
+mod draft_recovery {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_draft_recovery.rs"
+    ));
+}
+
 mod command_consumer {
     use super::*;
     include!(concat!(

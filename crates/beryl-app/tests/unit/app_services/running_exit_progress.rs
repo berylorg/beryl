@@ -74,6 +74,20 @@ fn exercise(ordinary_close: bool) {
                         if ordinary_close {
                             let (returned, error) = cx
                                 .update(|app| {
+                                    RunningProcessOwner::recover_exit_drafts(
+                                        &owner,
+                                        request,
+                                        app,
+                                        |_, _, _, _| panic!("ordinary close cannot recover as Exit"),
+                                    )
+                                })
+                                .unwrap()
+                                .err()
+                                .unwrap();
+                            request = returned;
+                            assert!(matches!(error, ExitProgressError::Intent));
+                            let (returned, error) = cx
+                                .update(|app| {
                                     RunningProcessOwner::advance_exit(
                                         &owner,
                                         request,

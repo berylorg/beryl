@@ -17,6 +17,8 @@ pub(crate) enum ExitProgressError {
     Scheduling(String),
     #[error("Exit interaction could not transition: {0}")]
     Interaction(String),
+    #[error("Exit draft release could not complete: {0}")]
+    DraftRelease(String),
     #[error("settled Exit progress is unavailable")]
     Unavailable,
     #[error(transparent)]
