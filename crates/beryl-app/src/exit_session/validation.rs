@@ -52,7 +52,7 @@ impl ExitSessionReconciled {
     }
 }
 
-fn validate(
+pub(super) fn validate(
     evidence: &ExitSessionPublication,
     committed: bool,
     candidate: &mut HomeRecoveryCandidate,

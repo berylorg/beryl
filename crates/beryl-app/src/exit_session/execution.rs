@@ -6,6 +6,8 @@ use beryl_home_store::{
 use beryl_model::{WindowId, WindowPlacement};
 use beryl_state::SessionState;
 
+mod candidate;
+
 #[derive(Debug)]
 #[must_use]
 pub(crate) enum ExitSessionExecution {
@@ -28,6 +30,7 @@ pub(crate) struct ExitSessionReconciliation {
     original_failure: CommandError,
     handle: ReconciliationHandle,
     publication: Box<ExitSessionPublication>,
+    candidate_resolution: Option<Result<ReconciliationResolution, ReconciliationFailure>>,
 }
 
 #[derive(Debug)]
@@ -79,6 +82,7 @@ pub(crate) fn execute_exit_session(
             failure,
             reconciliation,
         } => ExitSessionExecution::Indeterminate(ExitSessionReconciliation {
+            candidate_resolution: None,
             publication,
             handle: reconciliation.install_and_handle(),
             original_failure: failure,

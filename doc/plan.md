@@ -89,21 +89,29 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 698: Retain Interrupted Exit Recovery Custody In The Process Supervisor (finished)
+# Phase 699: Settle Retained Interrupted Exit Evidence Through Candidate Recovery (finished)
 
-Accepted exact-request cancellation before session-failure reporting and settled outcome transfer
-into process-owned recovery custody, preserving original evidence and the attempt fence. Foreign,
-duplicate and unreported transfers refuse; late ExactNew remains cancelled even with a valid receipt.
-All eight focused native tests passed (`236b2d17-f668-410b-ad8d-46fa57481e52`), together with the
-default library check and independent lifecycle review. Candidate settlement remains separate.
+Accepted transferable outcome settlement through exact candidate reconciliation and fresh complete
+state validation. Original outcomes and candidate results remain retained; known outcomes never
+redispatch, and foreign, stale or uncertain state refuses. Existing 34 focused pure/native tests
+passed; both new candidate tests passed after fixture correction
+(`408403c7-9407-47ed-963a-ada6e2bc9269`). Final library check and independent review passed.
+The GUI owner adapter was removed during review; worker handoff is the next explicit boundary.
 
-# Phase 699: Settle Retained Interrupted Exit Evidence Through Candidate Recovery (pending)
+# Phase 700: Hand Interrupted Exit Custody To Candidate Settlement Workers (pending)
 
-Connect supervisor-retained original outcomes to fresh candidate validation and eligible exact-handle
-reconciliation before session resumption. Preserve cancelled request identity and original failure
-custody, refuse uncertain or changed state, and retain every settlement outcome. Derive the bounded
-candidate adapter from the approved interrupted-Exit recovery contract; replacement publication and
-resident rebinding remain separate prerequisites.
+Connect supervisor-retained original outcomes to the candidate settlement primitive through exact
+request-tagged worker admission and return. Preserve cancellation and all candidate/outcome custody
+through refusal, unwind and stale completion; perform no blocking storage work while borrowing the
+GUI owner. Keep the attempt fenced until worker settlement returns. Verify native owner admission
+and failure paths and independently review lifecycle composition.
+
+# Phase 701: Compose Interrupted Exit Resume Settlement (pending)
+
+Compose accepted original outcome settlement with retained resume execution and fresh result
+validation before candidate convergence. Preserve known noncommit and known commit, retain each
+failed/ambiguous resume outcome, and keep interaction fenced. Whole-graph publication and resident
+rebinding remain later prerequisites to recovery completion.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

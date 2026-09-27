@@ -98,6 +98,10 @@ pub(crate) fn prepare_exit_session_command(
 mod tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/exit_session_candidate.rs"
+    ));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/exit_session.rs"
     ));
     include!(concat!(

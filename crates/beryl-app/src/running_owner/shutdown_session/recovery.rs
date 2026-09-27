@@ -63,3 +63,25 @@ impl RunningProcessOwner {
         self.interrupted_exit.as_ref()?.session.as_ref()
     }
 }
+
+impl RunningShutdownSession {
+    pub(crate) fn settle_candidate(
+        &mut self,
+        candidate: &mut beryl_home_store::HomeRecoveryCandidate,
+        session: &beryl_state::SessionState,
+    ) -> Result<
+        crate::exit_session::ExitSessionValidation,
+        crate::exit_session::ExitSessionValidationError,
+    > {
+        match self {
+            Self::Settled(Ok(ExitSessionExecution::Indeterminate(pending)))
+            | Self::Reconciled(ExitSessionReconciled::Pending {
+                reconciliation: pending,
+                ..
+            }) => pending.settle_candidate(candidate, session),
+            Self::Settled(Ok(outcome)) => outcome.validate_candidate(candidate, session),
+            Self::Reconciled(outcome) => outcome.validate_candidate(candidate, session),
+            _ => Err(crate::exit_session::ExitSessionValidationError::Unproven),
+        }
+    }
+}
