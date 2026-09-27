@@ -1,8 +1,16 @@
 use crate::running_owner::{
-    ExitConfirmationError, ExitConfirmationRoute, ExitWorkClassification, ExitWorkError,
-    ExitWorkRoute, RunningProcessOwner, RunningShutdownStatus, ShutdownConfirmationResult,
-    ShutdownIntent,
+    ExitConfirmationError, ExitConfirmationRoute, ExitObservationError, ExitWorkClassification,
+    ExitWorkError, ExitWorkRoute, RunningProcessOwner, RunningShutdownStatus,
+    ShutdownConfirmationResult, ShutdownIntent,
 };
+
+mod exit_observation {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_observation.rs"
+    ));
+}
 
 mod confirmation_route {
     use super::*;
@@ -67,14 +75,27 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     command.request_exit();
                     app.spawn(async move |cx| {
-                        let mut request = next_request(&owner, cx).await;
-                        let idle = observe(&owner, ProjectionCancellationToken::new(), cx)
-                            .await
-                            .unwrap();
+                        let (mut request, idle) = exit_observation::delivered(&owner, cx).await;
                         assert!(!idle.has_work());
                         assert!(RunningProcessOwner::finish_exit(&owner, &request));
                         command.request_exit();
                         let mut successor = next_request(&owner, cx).await;
+                        request = cx
+                            .update(|app| {
+                                match RunningProcessOwner::observe_exit_work(
+                                    &owner,
+                                    request,
+                                    ProjectionCancellationToken::new(),
+                                    app,
+                                    |_, _, _, _| {
+                                        panic!("stale request must not receive observation")
+                                    },
+                                ) {
+                                    Err((request, ExitObservationError::Request(_))) => request,
+                                    _ => panic!("stale request must be returned on refusal"),
+                                }
+                            })
+                            .unwrap();
                         assert!(matches!(
                             cx.update(|app| RunningProcessOwner::route_exit_work(
                                 &owner,
@@ -107,26 +128,40 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                         }
                         let pending = Rc::new(RefCell::new(None));
                         let delivered = pending.clone();
-                        cx.update(|app| {
-                            RunningProcessOwner::observe_shutdown_work(
-                                &owner,
-                                ProjectionCancellationToken::new(),
-                                app,
-                                move |_, result, _| *delivered.borrow_mut() = Some(result),
-                            )
-                            .unwrap();
-                            assert!(matches!(
-                                RunningProcessOwner::route_exit_work(
+                        successor = cx
+                            .update(|app| {
+                                RunningProcessOwner::observe_shutdown_work(
                                     &owner,
-                                    &mut successor,
-                                    Ok(idle.clone()),
+                                    ProjectionCancellationToken::new(),
                                     app,
-                                    |_, _| panic!("busy owner must not receive completion"),
-                                ),
-                                Err(ExitWorkError::IntentBusy)
-                            ));
-                        })
-                        .unwrap();
+                                    move |_, result, _| *delivered.borrow_mut() = Some(result),
+                                )
+                                .unwrap();
+                                let mut successor = match RunningProcessOwner::observe_exit_work(
+                                    &owner,
+                                    successor,
+                                    ProjectionCancellationToken::new(),
+                                    app,
+                                    |_, _, _, _| {
+                                        panic!("busy scheduling must not receive completion")
+                                    },
+                                ) {
+                                    Err((request, ExitObservationError::Scheduling(_))) => request,
+                                    _ => panic!("busy scheduling must return the original request"),
+                                };
+                                assert!(matches!(
+                                    RunningProcessOwner::route_exit_work(
+                                        &owner,
+                                        &mut successor,
+                                        Ok(idle.clone()),
+                                        app,
+                                        |_, _| panic!("busy owner must not receive completion"),
+                                    ),
+                                    Err(ExitWorkError::IntentBusy)
+                                ));
+                                successor
+                            })
+                            .unwrap();
                         wait(&pending, cx).await;
                         pending.borrow_mut().take().unwrap().unwrap();
                         permit.commit(|| ()).unwrap();

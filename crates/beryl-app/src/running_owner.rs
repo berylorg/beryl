@@ -13,6 +13,7 @@ mod admission;
 mod confirmation;
 mod exit_confirmation;
 mod exit_delivery;
+mod exit_observation;
 mod exit_work;
 mod initial_observation;
 mod observation;
@@ -22,6 +23,7 @@ pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
 pub(crate) use exit_confirmation::{ExitConfirmationError, ExitConfirmationRoute};
+pub(crate) use exit_observation::ExitObservationError;
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 

@@ -558,6 +558,16 @@ by the executable composition root.
   without a fence. Every refreshed result is classified again. Classification neither completes
   the Exit request nor retries, opens a dialog, advances progress or grants quit authority.
 
+- Initial Exit observation takes custody of the move-only active request after resolving its
+  original invoking window. It uses the existing single worker observation slot and returns the
+  same request with the result to a required GUI callback, outside owner borrows. Refused request
+  validation or scheduling returns the request to the caller and never invokes that callback.
+  Cancellation and collection failure also return the original request, with no idle evidence.
+  Pending work retains the complete owner and keeps duplicate activations coalesced. Completion
+  releases the observation slot before callback delivery, permitting explicit successor scheduling.
+  This boundary does not complete the request, classify evidence or admit shutdown; subsequent
+  routing still revalidates the request, original invoking window and observed evidence.
+
 - Exit work routing composes that classification with the owned native confirmation boundary in
   one GUI call. Idle admission returns an admitted outcome; work-bearing evidence opens the
   application-Exit confirmation for the exact invoking window and returns a confirming outcome.

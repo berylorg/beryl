@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    app_services::AppServiceCloseError,
+    app_services::{AppServiceCloseError, PreparedShutdownObservation},
     cas_projection::{
         ProcessWorkError, ProjectionCancellationToken, ShutdownWorkError, ShutdownWorkObservation,
     },
@@ -34,28 +34,57 @@ impl RunningProcessOwner {
         + Send
         + 'static,
     ) -> Result<(), String> {
-        let job = {
-            let mut owner = owner.borrow_mut();
-            if owner.observing_initial_work
-                || owner.confirmation.is_some()
-                || owner.shutdown.is_some()
-                || owner.progress.is_some()
-            {
-                return Err(
-                    "the running owner already retains shutdown observation or intent custody"
-                        .into(),
-                );
-            }
-            let job = owner
-                .process
-                .services
-                .as_ref()
-                .ok_or("the complete service owner is on a worker")?
-                .prepare_shutdown_observation()
-                .map_err(|error| error.to_string())?;
-            owner.observing_initial_work = true;
-            job
-        };
+        let job = owner.borrow_mut().prepare_initial_observation()?;
+        Self::spawn_initial_observation(
+            owner,
+            job,
+            cancellation,
+            app,
+            completed,
+            before_collect,
+            after_collect,
+        );
+        Ok(())
+    }
+
+    pub(super) fn prepare_initial_observation(
+        &mut self,
+    ) -> Result<PreparedShutdownObservation, String> {
+        if self.observing_initial_work
+            || self.confirmation.is_some()
+            || self.shutdown.is_some()
+            || self.progress.is_some()
+        {
+            return Err(
+                "the running owner already retains shutdown observation or intent custody".into(),
+            );
+        }
+        let job = self
+            .process
+            .services
+            .as_ref()
+            .ok_or("the complete service owner is on a worker")?
+            .prepare_shutdown_observation()
+            .map_err(|error| error.to_string())?;
+        self.observing_initial_work = true;
+        Ok(job)
+    }
+
+    pub(super) fn spawn_initial_observation(
+        owner: &Rc<RefCell<Self>>,
+        job: PreparedShutdownObservation,
+        cancellation: ProjectionCancellationToken,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            Result<ShutdownWorkObservation, AppServiceCloseError>,
+            &mut App,
+        ) + 'static,
+        before_collect: impl FnOnce() + Send + 'static,
+        after_collect: impl FnOnce(&Result<ShutdownWorkObservation, AppServiceCloseError>)
+        + Send
+        + 'static,
+    ) {
         let retained = owner.clone();
         let worker_cancellation = cancellation.clone();
         let work = app.background_executor().spawn(async move {
@@ -73,7 +102,6 @@ impl RunningProcessOwner {
             let _ = cx.update(|app| completed(&retained, result, app));
         })
         .detach();
-        Ok(())
     }
 
     #[cfg(test)]

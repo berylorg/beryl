@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 639: Consume Exact Exit Confirmation Results (finished)
+# Phase 640: Retain Exit Requests Through Initial Work Observation (finished)
 
-Routed native confirmation is bound to its originating Exit request. Exact result consumption
-preserves pending/error custody, leaves Cancel unfenced and retains positive intent awaiting work
-observation. All 25 focused tests passed (`89989bff-9f4e-4248-b6f1-4d0373c84e2b`), including native
-results and stale/successor refusal. The default library check and independent semantic review passed.
+Initial Exit observation resolves the original invoking window and retains the exact move-only
+request through worker collection, cancellation and GUI delivery; scheduling refusal returns it.
+All 29 focused tests passed (`8348b01a-ff84-48d3-a184-52ebffd3d0d9`), including real command delivery,
+stale/busy refusal and reentrant observation. The default library check and independent semantic
+review passed. No automatic classification, request completion or shutdown admission was added.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -138,9 +139,10 @@ policy actions remain explicit.
 Phases 635–636 supply owner-retained GUI delivery, exact completion and invoking-window binding of
 the running Exit consumer. Phase 637 supplies exact-request work classification and idle admission;
 phase 638 connects work-bearing observations to owned native confirmation, and phase 639 consumes
-exact confirmation results into cancellation or retained confirmed intent. Ordinary toolbar
-mounting, initial command-to-observation scheduling, automatic
-refresh/progress routing and request completion remain unmounted.
+exact confirmation results into cancellation or retained confirmed intent. Phase 640 supplies
+request-retaining initial worker observation from exact command delivery. Ordinary toolbar
+mounting, automatic observation/classification and refresh/progress routing, and coherent request
+completion remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
