@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 659: Install Admitted Shutdown Gates Across Published Shells (finished)
+# Phase 660: Release Shutdown Gates From Retained Reopening Evidence (finished)
 
-The running owner now installs shutdown gates across all published shells only after admission.
-It visits every handle outside the owner borrow, reports missing windows and local failures, and
-preserves installed gates and shutdown custody. Six focused native cases passed
-(`2af0d377-9d74-4e68-8cce-a02be7d5a355`), including unavailable-window custody after correcting
-isolated test teardown. The default library check, formatting and independent review passed;
-complete multi-window traversal was reviewed in source. Automatic mounting and coherent release
-remain pending.
+The owner now releases shell gates only from retained coherent-reopening evidence with services
+returned and shutdown intent absent. Every native shell and resident composer is validated before
+any gate clears in one synchronous GUI update. Independent gates and progress custody remain intact.
+All nine focused cases passed across the main run (`cf5675aa-4c4c-4798-a485-85b63dc0c635`) and
+corrected test-cleanup rerun (`1a5b20f8-31e6-47c6-8a8f-a61e2445f573`). The default library check,
+formatting and independent semantic review passed. Automatic policy mounting remains pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -176,7 +175,7 @@ to initial Exit routing, reserving successor reads and reclassifying fresh work 
 Phase 657 supplies the resident-composer shutdown mutation gate, including independent gate release
 and read-only interaction. Phase 658 supplies the shell adapter and New Window gate.
 Phase 659 supplies admitted-only installation across the published set. Connect automatic
-installation and coherent release with the remaining visible barrier
+installation and phase 660's proven-reopening release with the remaining visible barrier
 controls before ordinary Exit mounting; it grants no shutdown or reopening authority itself.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)

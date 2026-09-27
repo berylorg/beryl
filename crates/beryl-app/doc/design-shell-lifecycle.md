@@ -548,6 +548,16 @@ by the executable composition root.
   an empty published set as success. Repeated installation is idempotent. This boundary grants no
   progress, teardown or reopening authority; coherent gate removal remains a separate obligation.
 
+- The running owner may release the installed shell gates only while it retains an unconsumed
+  coordinator failure result proving coherent reopening, with complete services returned and no
+  shutdown intent. It snapshots the published handles under a short borrow, then validates the
+  nonempty set and every native shell, controller and live resident composer before changing any
+  gate. Validation and release run in one synchronous GUI update without yielding or holding the
+  owner borrow. A failed validation leaves every gate unchanged; successful release preserves
+  independent startup and ordinary-close gates. Release does not consume the progress result,
+  complete a command, restore cancelled work or admit a successor attempt. Consumed or absent
+  evidence, readiness and failure without proven reopening confer no release authority.
+
 - Successful startup transfers one move-only running Exit consumer alongside the complete graph
   and published windows. Existing startup command producers remain valid for deferred Exit events,
   including after removal of the old startup surface. One pending bit and one exact active request

@@ -1,6 +1,64 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(crate) fn release_shutdown_interaction_gates(
+        windows: &[WindowHandle<Self>],
+        app: &mut App,
+    ) -> Result<(), String> {
+        let (first, rest) = windows
+            .split_first()
+            .ok_or("shutdown interaction release has no published windows")?;
+        first
+            .update(app, |root, _, cx| {
+                root.validate_shutdown_interaction_release(cx)?;
+                for window in rest {
+                    window
+                        .read(cx)
+                        .map_err(|error| error.to_string())?
+                        .validate_shutdown_interaction_release(cx)?;
+                }
+                root.set_shutdown_interaction_gated(false, cx)
+                    .expect("validated composer remains live during synchronous gate release");
+                for window in rest {
+                    window
+                        .update(cx, |root, _, cx| {
+                            root.set_shutdown_interaction_gated(false, cx).expect(
+                                "validated composer remains live during synchronous gate release",
+                            );
+                        })
+                        .expect("validated window remains live during synchronous gate release");
+                }
+                Ok(())
+            })
+            .map_err(|error| error.to_string())?
+    }
+
+    fn validate_shutdown_interaction_release(&self, app: &App) -> Result<(), String> {
+        let controller = self
+            .controller
+            .as_ref()
+            .ok_or("shutdown shell lost its controller")?;
+        if !matches!(controller.content, ShellContent::Threadless { .. }) {
+            let composer = controller
+                .composer_mount
+                .as_ref()
+                .and_then(|mount| mount.read(app).contribution())
+                .ok_or("shutdown shell lost its composer")?;
+            if !composer.read(app).is_live() {
+                return Err("conversation composer is being released".into());
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_release_shutdown_interaction_gates(
+        windows: &[WindowHandle<Self>],
+        app: &mut App,
+    ) -> Result<(), String> {
+        Self::release_shutdown_interaction_gates(windows, app)
+    }
+
     pub(crate) fn set_shutdown_interaction_gated(
         &mut self,
         gated: bool,

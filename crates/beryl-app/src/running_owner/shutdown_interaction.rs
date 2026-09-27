@@ -1,8 +1,41 @@
+use super::progress::RunningShutdownProgress;
 use super::{RunningProcessOwner, RunningShutdownStatus};
+use crate::{app_services::AppServiceShutdownProgress, main_window::MainWindowShellRoot};
 use gpui::App;
 use std::{cell::RefCell, rc::Rc};
 
 impl RunningProcessOwner {
+    pub(crate) fn release_shutdown_interaction_gate(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        let windows = {
+            let owner = owner.borrow();
+            if owner.shutdown.is_some()
+                || owner.process.services.is_none()
+                || !matches!(
+                    owner.progress,
+                    Some(RunningShutdownProgress::Settled(Ok(
+                        AppServiceShutdownProgress::Failed { reopened: true, .. }
+                    )))
+                )
+            {
+                return Err(
+                    "shutdown interaction release requires retained coherent reopening evidence"
+                        .into(),
+                );
+            }
+            owner
+                .process
+                .windows
+                .shells()
+                .iter()
+                .map(|shell| shell.window())
+                .collect::<Vec<_>>()
+        };
+        MainWindowShellRoot::release_shutdown_interaction_gates(&windows, app)
+    }
+
     pub(crate) fn install_shutdown_interaction_gate(
         owner: &Rc<RefCell<Self>>,
         app: &mut App,

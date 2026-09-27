@@ -23,6 +23,25 @@ async fn settled(owner: &Rc<RefCell<RunningProcessOwner>>, cx: &mut AsyncApp) {
             .await;
     }
     assert!(!owner.borrow().test_services_on_worker());
+    cx.update(|app| {
+        let window = owner.borrow().test_process().windows.shells()[0].window();
+        let reopened = owner.borrow().shutdown_status().is_none();
+        for _ in 0..2 {
+            let result = RunningProcessOwner::release_shutdown_interaction_gate(owner, app);
+            assert_eq!(result.is_ok(), reopened);
+            assert_eq!(
+                window
+                    .read(app)
+                    .unwrap()
+                    .new_window_disabled_reason(app)
+                    .as_deref()
+                    == Some("Application Exit is waiting for active work and durable state."),
+                !reopened
+            );
+        }
+        assert!(owner.borrow().test_shutdown_progress_settled());
+    })
+    .unwrap();
     if owner.borrow().shutdown_status().is_none() {
         let invoking = owner.borrow().test_process().windows.window_ids()[0];
         let job = owner
@@ -139,6 +158,11 @@ pub(super) async fn exercise(
     .unwrap()
     .unwrap();
     assert!(owner.borrow().test_services_on_worker());
+    assert!(
+        cx.update(|app| RunningProcessOwner::release_shutdown_interaction_gate(&owner, app))
+            .unwrap()
+            .is_err()
+    );
     assert!(owner.borrow_mut().take_shutdown_progress().is_none());
     assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
     assert_eq!(notifications.get(), 0);
@@ -274,6 +298,11 @@ pub(super) async fn exercise(
     }
     assert!(owner.borrow().shutdown_status().is_none());
     assert!(
+        cx.update(|app| RunningProcessOwner::release_shutdown_interaction_gate(&owner, app))
+            .unwrap()
+            .is_err()
+    );
+    assert!(
         owner
             .borrow()
             .test_services()
@@ -345,6 +374,9 @@ pub(super) async fn exercise(
         owner.borrow().shutdown_status(),
         Some((invoking, intent, RunningShutdownStatus::Admitted))
     );
+    cx.update(|app| RunningProcessOwner::install_shutdown_interaction_gate(&owner, app))
+        .unwrap()
+        .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         cx.update(|app| {

@@ -293,3 +293,118 @@ fn startup_release_failure_regates_prepared_prefix_without_handing_off_members(
             .unwrap();
     }
 }
+
+#[gpui::test]
+fn shutdown_release_validates_all_windows_before_clearing_any_gate(cx: &mut gpui::TestAppContext) {
+    cx.update(gpui_text_input::ensure_text_input_bindings);
+    let (_first, mut first) = shell(cx, 71);
+    let (_second, mut second) = shell(cx, 81);
+    for shell in [&mut first, &mut second] {
+        cx.update(|app| shell.gate_startup_interaction(app))
+            .unwrap();
+        drive(shell, cx);
+        cx.update(|app| shell.publish(app)).unwrap();
+        shell
+            .window()
+            .update(cx, |root, _, cx| {
+                root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            })
+            .unwrap();
+    }
+    let windows = [first.window(), second.window()];
+    second
+        .window()
+        .update(cx, |root, window, cx| {
+            let mount = root.controller().unwrap().composer_mount().unwrap();
+            let composer = mount.read(cx).contribution().unwrap();
+            composer.update(cx, |composer, cx| {
+                composer.begin_widget_release_fence(window, cx).unwrap();
+            });
+        })
+        .unwrap();
+    assert!(
+        cx.update(
+            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app)
+        )
+        .is_err()
+    );
+    for window in windows {
+        window
+            .read_with(cx, |root, app| {
+                assert_eq!(
+                    root.new_window_disabled_reason(app).as_deref(),
+                    Some("Application Exit is waiting for active work and durable state.")
+                );
+            })
+            .unwrap();
+    }
+    second
+        .window()
+        .update(cx, |root, window, cx| {
+            let mount = root.controller().unwrap().composer_mount().unwrap();
+            let composer = mount.read(cx).contribution().unwrap();
+            composer.update(cx, |composer, cx| {
+                composer
+                    .resume_after_widget_release_fence(window, cx)
+                    .unwrap();
+            });
+        })
+        .unwrap();
+    cx.update(|app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app))
+        .unwrap();
+    for window in windows {
+        window
+            .read_with(cx, |root, app| {
+                assert_ne!(
+                    root.new_window_disabled_reason(app).as_deref(),
+                    Some("Application Exit is waiting for active work and durable state.")
+                );
+                assert!(root.startup_interaction_gated());
+                let mount = root.controller().unwrap().composer_mount().unwrap();
+                let composer = mount.read(app).contribution().unwrap();
+                assert!(!composer.read(app).gpui_input().read(app).is_enabled());
+            })
+            .unwrap();
+    }
+    for shell in [&first, &second] {
+        cx.update(|app| {
+            MainWindowShell::release_startup_interaction(std::slice::from_ref(shell), app)
+        })
+        .unwrap();
+    }
+    first
+        .window()
+        .update(cx, |root, _, cx| {
+            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+        })
+        .unwrap();
+    cx.update(|app| second.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("released second shell"));
+    windows[1]
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+    assert!(
+        cx.update(
+            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app)
+        )
+        .is_err()
+    );
+    first
+        .window()
+        .read_with(cx, |root, app| {
+            assert_eq!(
+                root.new_window_disabled_reason(app).as_deref(),
+                Some("Application Exit is waiting for active work and durable state.")
+            );
+        })
+        .unwrap();
+    assert!(
+        cx.update(|app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&[], app))
+            .is_err()
+    );
+    cx.update(|app| first.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("released first shell"));
+    windows[0]
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+}

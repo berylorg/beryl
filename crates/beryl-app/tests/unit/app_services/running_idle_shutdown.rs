@@ -72,6 +72,7 @@ fn run_with_missing_window(
                         .unwrap();
                     let owner = RunningProcessOwner::start(running, app);
                     let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
+                    assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
                     assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());
                     assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app), original_reason);
                     assert!(
@@ -187,6 +188,7 @@ fn run_with_missing_window(
                         );
                         assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
                         cx.update(|app| {
+                            assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
                             for _ in 0..2 {
                                 RunningProcessOwner::install_shutdown_interaction_gate(&owner, app)
                                     .unwrap();
@@ -207,6 +209,28 @@ fn run_with_missing_window(
                             assert_eq!(owner.borrow().shutdown_status(),
                                 Some((invoking, intent, RunningShutdownStatus::Admitted)));
                             assert_eq!(owner.borrow().test_services().graph().unwrap().shutdown, attempt);
+                            let cancelled = ProjectionCancellationToken::new();
+                            cancelled.cancel();
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            loop {
+                                cx.update(|app| RunningProcessOwner::advance_shutdown(
+                                    &owner, cancelled.clone(), app, |_, _| {}
+                                )).unwrap().unwrap();
+                                while !owner.borrow().test_shutdown_progress_settled() {
+                                    assert!(Instant::now() < deadline);
+                                    cx.background_executor().timer(Duration::from_millis(10)).await;
+                                }
+                                cx.update(|app| {
+                                    assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
+                                    assert!(owner.borrow().test_shutdown_progress_settled());
+                                }).unwrap();
+                                let result = owner.borrow_mut().take_shutdown_progress().unwrap().unwrap();
+                                if matches!(result, AppServiceShutdownProgress::Failed { reopened: true, .. }) {
+                                    break;
+                                }
+                                assert!(matches!(result, AppServiceShutdownProgress::Failed { reopened: false, .. }));
+                                assert!(Instant::now() < deadline);
+                            }
                         }
                         assert!(
                             owner
