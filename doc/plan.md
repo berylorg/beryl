@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 701: Compose Interrupted Exit Resume Settlement (finished)
+# Phase 703: Retain Failed Service Graph Recovery Custody (finished)
 
-Accepted worker composition of original settlement, retained resume execution/reconciliation and
-fresh Running validation. Noncommit performs no inverse write; committed resume is never repeated,
-and failures retain original and resume custody behind unchanged fences. All 37 focused tests
-passed (`c54eb351-260d-48b4-8aef-fb2f08adaf58`), including eight native tests; library check and
-independent lifecycle/persistence review passed. Graph recovery composition remains pending.
+Accepted fenced service-graph retirement with retained original home lock, registry and outer
+custody. Healthy/stale requests refuse consumption; incomplete retirement cannot reopen. Library
+check, all 12 focused tests (`522f2d7d-5b35-4d36-9dfe-2e725fba0bb4`) and independent lifecycle/
+persistence review passed. This contribution exposes no production reopening capability.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -104,6 +103,11 @@ candidate recovery boundary. Admit candidate session settlement only after exact
 retirement, retaining failed recovery and resume outcomes without reopening interaction. Preserve
 the original cancelled request and bounded worker custody. Whole-graph publication, fresh resident
 bindings and exact draft/work settlement remain prerequisites to recovery completion.
+
+The existing retirement implementation is startup-only and closes the original home. Phase 703
+supplies the missing service-graph recovery custody contribution before this integration.
+Resident-owned marker drives must finish after marker retirement fences admission; service-graph
+completion alone does not prove those drives or other resident resources have retired.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

@@ -17,6 +17,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "app_services/recovery_retirement.rs"]
+mod recovery_retirement;
+#[path = "app_services/recovery_support.rs"]
+mod recovery_support;
+
 mod custody {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),

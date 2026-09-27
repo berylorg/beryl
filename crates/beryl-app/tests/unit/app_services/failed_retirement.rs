@@ -5,46 +5,7 @@ use beryl_state::{
     ApplySettings, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
 };
 
-fn installed() -> (tempfile::TempDir, ProcessServiceOwner, FaultController) {
-    let (directory, candidate, state, syndic, faults) = fixture();
-    let mut owner = owner(&candidate);
-    owner
-        .open_initial(
-            candidate,
-            state,
-            syndic,
-            configuration(),
-            SyndicTimestamp::from_unix_millis(1),
-            CommandCancellation::new(),
-        )
-        .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while owner
-        .graph()
-        .unwrap()
-        .handoff
-        .as_ref()
-        .unwrap()
-        .test_completed_passes()
-        == 0
-    {
-        assert!(
-            Instant::now() < deadline,
-            "initial handoff scan did not settle"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    (directory, owner, faults)
-}
-
-fn fail(owner: &ProcessServiceOwner, faults: &FaultController) {
-    faults.fail_next(FaultPoint::BeforeReadConfirmation);
-    assert!(owner.graph().unwrap().home().home_revision().is_err());
-    assert_eq!(
-        owner.graph().unwrap().home().health().state(),
-        HomeHealthState::Failed
-    );
-}
+use super::recovery_support::{fail, installed};
 
 fn reopen(
     owner: &mut ProcessServiceOwner,

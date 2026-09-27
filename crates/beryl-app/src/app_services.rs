@@ -34,6 +34,7 @@ mod failed_retirement;
 mod initial_disposal;
 mod preparation;
 mod published;
+mod recovery_retirement;
 mod shutdown;
 mod window_services;
 use attempt::InitialServiceAttemptState;
@@ -126,6 +127,7 @@ pub(crate) struct ProcessServiceOwner {
     graph: Option<PublishedAppServices>,
     failed_close: Option<beryl_home_store::HomeCloseError>,
     failed_retirement: Option<crate::cas_projection::CasRetirementDisposalFailure>,
+    recovery_retirement: Option<recovery_retirement::ServiceGraphRetirement>,
     attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
     process: ProcessAdmissionGate,
@@ -170,6 +172,7 @@ impl ProcessServiceOwner {
             graph: None,
             failed_close: None,
             failed_retirement: None,
+            recovery_retirement: None,
             attempt: InitialServiceAttemptState::Initial,
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
