@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 620: Retain The Complete Running Process And Auxiliary Cleanup (finished)
+# Phase 621: Prepare Worker-Owned Shutdown Observations (finished)
 
-The running owner retains the complete startup handoff and drains optional startup-surface
-cleanup in one task that retains the owner through native settlement. Failure preserves exact
-auxiliary custody and published windows; late Exit survives removal. All 13 focused native and
-protocol tests, the default app library check and independent lifecycle review pass
-(run `5c9eca6f-cd4c-4650-9a35-451211a43dee`). Close/Exit policy mounting remains below.
+Move-only jobs gather shutdown evidence off the GUI executor while the complete graph remains
+with its running owner. Weak source and graph lifetime checks reject retirement; cancellation
+never publishes idle evidence. All 22 focused observation/admission tests passed, followed by all
+seven owner tests after the final cancellation check (`fc49f6b1-2b33-4f3e-ae6b-47cd71ed753a`).
+The default app library check and independent concurrency/custody review also pass.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -114,8 +114,9 @@ earlier lock-order and bounded observation prerequisites are accepted in phase 6
 The observed coordinator handoff and graph-owned lifetime integration are accepted in phases
 613–614. Owned native confirmation and canonical dependency publication are accepted in phases
 615–617, including Cancel default, exact duplicate control, focus restoration, native close vetoes
-and disposal ordering. Next derive the bounded running process window owner from `StartedProcess`
-and its published restore set, then mount confirmation and close/Exit policy through that owner.
+and disposal ordering. The complete running owner and auxiliary cleanup are accepted in phase 620;
+worker-owned shutdown observation is accepted in phase 621. Next mount confirmation and ordinary
+close/Exit policy through that owner, retaining exact published native destruction custody.
 Preserve separate acceptance boundaries for any missing components before final integration.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)

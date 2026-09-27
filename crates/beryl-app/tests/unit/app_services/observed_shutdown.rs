@@ -19,8 +19,10 @@ fn running() -> (tempfile::TempDir, ProcessServiceOwner) {
 }
 
 fn observe(owner: &ProcessServiceOwner) -> ShutdownWorkObservation {
-    owner
-        .observe_shutdown_work(&ProjectionCancellationToken::new())
+    let job = owner.prepare_shutdown_observation().unwrap();
+    std::thread::spawn(move || job.collect(&ProjectionCancellationToken::new()))
+        .join()
+        .unwrap()
         .unwrap()
 }
 
@@ -129,6 +131,7 @@ fn cancelled_observed_shutdown_grants_a_fresh_restore_lifetime_after_coherent_re
     let (_directory, mut owner) = running();
     let restore = owner.graph().unwrap().restored_window_attempt().unwrap();
     let permit = owner.process.execution_permit();
+    let previous_job = owner.prepare_shutdown_observation().unwrap();
     admit(&mut owner);
     let cancellation = ProjectionCancellationToken::new();
     cancellation.cancel();
@@ -149,6 +152,10 @@ fn cancelled_observed_shutdown_grants_a_fresh_restore_lifetime_after_coherent_re
     }
     assert!(owner.graph().unwrap().shutdown.is_none());
     assert!(restore.validate_lifetime().is_err());
+    assert!(matches!(
+        previous_job.collect(&ProjectionCancellationToken::new()),
+        Err(AppServiceCloseError::Unavailable)
+    ));
     owner
         .graph()
         .unwrap()
@@ -161,4 +168,78 @@ fn cancelled_observed_shutdown_grants_a_fresh_restore_lifetime_after_coherent_re
     admit(&mut owner);
     ready(&mut owner);
     owner.finish_shutdown().unwrap();
+}
+
+#[test]
+fn prepared_observation_does_not_retain_a_retired_graph_or_home() {
+    let (directory, mut owner) = running();
+    let job = owner.prepare_shutdown_observation().unwrap();
+    close(&mut owner);
+    assert_reopens(&directory);
+    assert!(matches!(
+        job.collect(&ProjectionCancellationToken::new()),
+        Err(AppServiceCloseError::Unavailable)
+    ));
+}
+
+#[test]
+fn graph_retirement_during_worker_collection_rejects_the_completed_observation() {
+    let (directory, mut owner) = running();
+    let job = owner.prepare_shutdown_observation().unwrap();
+    let (collected, collection) = std::sync::mpsc::channel();
+    let (resume, resumed) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        job.test_collect_then(&ProjectionCancellationToken::new(), || {
+            collected.send(()).unwrap();
+            resumed.recv_timeout(Duration::from_secs(20)).unwrap();
+        })
+    });
+    collection.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(owner.graph().is_some());
+    owner.process.execution_permit().commit(|| ()).unwrap();
+    close(&mut owner);
+    assert_reopens(&directory);
+    resume.send(()).unwrap();
+    assert!(matches!(
+        worker.join().unwrap(),
+        Err(AppServiceCloseError::Unavailable)
+    ));
+}
+
+#[test]
+fn cancelled_worker_observation_preserves_graph_and_execution_authority() {
+    let (_directory, mut owner) = running();
+    let job = owner.prepare_shutdown_observation().unwrap();
+    let cancellation = ProjectionCancellationToken::new();
+    cancellation.cancel();
+    let worker = std::thread::spawn(move || job.collect(&cancellation));
+    assert!(matches!(
+        worker.join().unwrap(),
+        Err(AppServiceCloseError::Work(_))
+    ));
+    owner
+        .graph()
+        .unwrap()
+        .restored_window_attempt()
+        .unwrap()
+        .validate_lifetime()
+        .unwrap();
+    owner.process.execution_permit().commit(|| ()).unwrap();
+    close(&mut owner);
+}
+
+#[test]
+fn cancellation_after_worker_collection_does_not_publish_idle_evidence() {
+    let (_directory, mut owner) = running();
+    let job = owner.prepare_shutdown_observation().unwrap();
+    let worker = std::thread::spawn(move || {
+        let cancellation = ProjectionCancellationToken::new();
+        job.test_collect_then(&cancellation, || cancellation.cancel())
+    });
+    assert!(matches!(
+        worker.join().unwrap(),
+        Err(AppServiceCloseError::Work(_))
+    ));
+    owner.process.execution_permit().commit(|| ()).unwrap();
+    close(&mut owner);
 }

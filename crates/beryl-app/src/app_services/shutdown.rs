@@ -3,7 +3,7 @@ use crate::{
     cas_projection::{
         ProjectionCancellationToken, ProjectionConnectionServiceCloseError,
         ProjectionConnectionServiceCloseOutcome, ShutdownCoordinatorError, ShutdownProgress,
-        ShutdownWorkError, ShutdownWorkObservation,
+        ShutdownWorkError, ShutdownWorkObservation, ShutdownWorkReadJob,
     },
     discussion_settlement::coordinator::HandoffCoordinatorError,
     process_admission::ProcessAdmissionError,
@@ -61,10 +61,9 @@ pub(crate) enum AppServiceFinalizationError {
 }
 
 impl ProcessServiceOwner {
-    pub(crate) fn observe_shutdown_work(
+    pub(crate) fn prepare_shutdown_observation(
         &self,
-        cancellation: &ProjectionCancellationToken,
-    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+    ) -> Result<PreparedShutdownObservation, AppServiceCloseError> {
         let graph = self
             .graph
             .as_ref()
@@ -72,11 +71,26 @@ impl ProcessServiceOwner {
         if graph.shutdown.is_some() {
             return Err(AppServiceCloseError::AlreadyShuttingDown);
         }
-        Ok(graph
-            .cas
-            .as_ref()
-            .ok_or(AppServiceCloseError::Unavailable)?
-            .observe_shutdown_work(&graph.sessions, cancellation)?)
+        Ok(PreparedShutdownObservation {
+            lifetime: Arc::downgrade(
+                graph
+                    .restore_lifetime
+                    .as_ref()
+                    .ok_or(AppServiceCloseError::Unavailable)?,
+            ),
+            work: graph
+                .cas
+                .as_ref()
+                .ok_or(AppServiceCloseError::Unavailable)?
+                .prepare_shutdown_observation(&graph.sessions),
+        })
+    }
+
+    pub(crate) fn observe_shutdown_work(
+        &self,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+        self.prepare_shutdown_observation()?.collect(cancellation)
     }
 
     pub(crate) fn try_begin_observed_shutdown(
@@ -229,5 +243,50 @@ impl ProcessServiceOwner {
         } else {
             Ok(())
         }
+    }
+}
+
+pub(crate) struct PreparedShutdownObservation {
+    lifetime: std::sync::Weak<()>,
+    work: ShutdownWorkReadJob,
+}
+
+impl PreparedShutdownObservation {
+    pub(crate) fn collect(
+        self,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+        self.collect_then(cancellation, || {})
+    }
+
+    fn collect_then(
+        self,
+        cancellation: &ProjectionCancellationToken,
+        after_collection: impl FnOnce(),
+    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+        if self.lifetime.upgrade().is_none() {
+            return Err(AppServiceCloseError::Unavailable);
+        }
+        let result = self.work.collect(cancellation)?;
+        after_collection();
+        if cancellation.is_cancelled() {
+            return Err(ShutdownWorkError::Work(
+                crate::cas_projection::ProcessWorkError::Cancelled,
+            )
+            .into());
+        }
+        if self.lifetime.upgrade().is_none() {
+            return Err(AppServiceCloseError::Unavailable);
+        }
+        Ok(result)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_collect_then(
+        self,
+        cancellation: &ProjectionCancellationToken,
+        after_collection: impl FnOnce(),
+    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+        self.collect_then(cancellation, after_collection)
     }
 }

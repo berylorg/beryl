@@ -5,9 +5,12 @@ include!(concat!(
 ));
 
 fn observe(fixture: &Fixture) -> ShutdownWorkObservation {
-    fixture
+    let job = fixture
         .service
-        .observe_shutdown_work(&fixture.sessions, &ProjectionCancellationToken::new())
+        .prepare_shutdown_observation(&fixture.sessions);
+    std::thread::spawn(move || job.collect(&ProjectionCancellationToken::new()))
+        .join()
+        .unwrap()
         .unwrap()
 }
 

@@ -17,7 +17,9 @@ mod shutdown;
 mod shutdown_admission;
 mod shutdown_capture;
 mod shutdown_observation;
-pub(crate) use shutdown_observation::{ShutdownWorkError, ShutdownWorkObservation};
+pub(crate) use shutdown_observation::{
+    ShutdownWorkError, ShutdownWorkObservation, ShutdownWorkReadJob,
+};
 mod shutdown_execution;
 pub(crate) use shutdown_capture::{
     ShutdownTerminalCompletion, ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord,

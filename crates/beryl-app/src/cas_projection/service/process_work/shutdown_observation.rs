@@ -1,4 +1,5 @@
 use super::super::flight_registry::FlightRegistry;
+use super::super::work_sources::{ProcessWorkRead, ProcessWorkSources};
 use super::*;
 use beryl_home_store::CursorReadLimits;
 
@@ -37,7 +38,32 @@ impl ShutdownWorkObservation {
     }
 }
 
+pub(crate) struct ShutdownWorkReadJob {
+    sources: ProcessWorkSources,
+    sessions: ScheduledExecutionSessions,
+}
+
+impl ShutdownWorkReadJob {
+    pub(crate) fn collect(
+        self,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<ShutdownWorkObservation, ShutdownWorkError> {
+        self.sources
+            .collect_shutdown_observation(&self.sessions, cancellation, || {})
+    }
+}
+
 impl ProjectionConnectionService {
+    pub(crate) fn prepare_shutdown_observation(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+    ) -> ShutdownWorkReadJob {
+        ShutdownWorkReadJob {
+            sources: self.work_sources(),
+            sessions: sessions.clone(),
+        }
+    }
+
     pub(crate) fn observe_shutdown_work(
         &self,
         sessions: &ScheduledExecutionSessions,
@@ -52,19 +78,29 @@ impl ProjectionConnectionService {
         cancellation: &ProjectionCancellationToken,
         before_validation: impl FnOnce(),
     ) -> Result<ShutdownWorkObservation, ShutdownWorkError> {
+        self.work_sources()
+            .collect_shutdown_observation(sessions, cancellation, before_validation)
+    }
+}
+
+impl ProcessWorkSources {
+    fn collect_shutdown_observation(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        cancellation: &ProjectionCancellationToken,
+        before_validation: impl FnOnce(),
+    ) -> Result<ShutdownWorkObservation, ShutdownWorkError> {
         check_cancelled(cancellation)?;
-        let home_interval = self
-            .mutation_observer
-            .observe()
-            .map_err(beryl_home_store::HomeObservedCoherenceError::from)?;
-        let connection_interval = self.connection_work_boundary().try_observe()?;
+        let home_interval = self.mutation_observation()?;
+        let read = self.read()?;
+        let boundary = read.connections.work_boundary();
+        let connection_interval = boundary.try_observe()?;
         let (revision, has_work) =
-            self.collect_shutdown_work_facts(sessions, cancellation, before_validation)?;
-        let home = self.home.as_deref().ok_or(ProcessWorkError::Closed)?;
-        self.connection_work_boundary()
-            .try_elect(&connection_interval, || {
-                home.try_elect_observed_coherent(&home_interval, self.home_generation, || ())
-            })??;
+            read.collect_shutdown_work_facts(sessions, cancellation, before_validation)?;
+        let home = read.home.as_deref().ok_or(ProcessWorkError::Closed)?;
+        boundary.try_elect(&connection_interval, || {
+            home.try_elect_observed_coherent(&home_interval, read.home_generation, || ())
+        })??;
         Ok(ShutdownWorkObservation {
             revision,
             has_work,
@@ -72,7 +108,9 @@ impl ProjectionConnectionService {
             connection_interval,
         })
     }
+}
 
+impl ProcessWorkRead {
     fn collect_shutdown_work_facts(
         &self,
         sessions: &ScheduledExecutionSessions,
@@ -81,7 +119,7 @@ impl ProjectionConnectionService {
     ) -> Result<(ShutdownWorkRevision, bool), ProcessWorkError> {
         check_cancelled(cancellation)?;
         let revision = self.shutdown_work_revision(sessions)?;
-        let read = self.work_read();
+        let read = self;
         let home = read.home.as_deref().ok_or(ProcessWorkError::Closed)?;
         let mut has_work = revision.requires_connection_cleanup();
         read.visit_live_facts(sessions, &revision.required, cancellation, |_, facts| {

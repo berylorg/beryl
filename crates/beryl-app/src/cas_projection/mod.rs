@@ -186,7 +186,7 @@ pub use service::{
 };
 pub(crate) use service::{
     ShutdownAttemptId, ShutdownCoordinatorError, ShutdownFailure, ShutdownProgress,
-    ShutdownWorkError, ShutdownWorkObservation,
+    ShutdownWorkError, ShutdownWorkObservation, ShutdownWorkReadJob,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,

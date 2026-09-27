@@ -608,6 +608,12 @@ by the executable composition root.
   coherent reopening clears that attempt and supplies a fresh restoration lifetime. Earlier window
   preparation references remain stale. No caller supplies a replacement service, session owner or
   process gate at this boundary.
+- Preparing a shutdown observation job performs no storage read on the GUI executor. The move-only
+  job captures weak work sources, the exact execution-session registry and a weak graph lifetime;
+  it gathers the existing bounded observation on a worker without transferring the service graph.
+  Graph retirement or shutdown invalidation rejects the job before or after collection. Cancellation
+  and failed reads publish no idle result. Returned evidence still requires the graph-owned atomic
+  admission path; neither job creation nor successful observation grants a process fence.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

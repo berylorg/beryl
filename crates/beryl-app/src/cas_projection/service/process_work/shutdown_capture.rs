@@ -132,7 +132,7 @@ impl ProcessWorkRead {
         Ok(stamp)
     }
 
-    fn shutdown_work_revision(
+    pub(super) fn shutdown_work_revision(
         &self,
         sessions: &ScheduledExecutionSessions,
     ) -> Result<ShutdownWorkRevision, ProcessWorkError> {
@@ -147,7 +147,7 @@ impl ProcessWorkRead {
         Ok(revision)
     }
 
-    fn validate_shutdown_work_revision(
+    pub(super) fn validate_shutdown_work_revision(
         &self,
         sessions: &ScheduledExecutionSessions,
         revision: &ShutdownWorkRevision,
