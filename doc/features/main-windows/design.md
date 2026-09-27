@@ -137,6 +137,10 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - A failure belonging to unviewed work is reported through a bounded commandless Exit-failure
   notice in the invoking surviving window. Reporting never opens or selects that thread; when
   no matching persistent backend condition is eligible it offers no substitute Retry command.
+- A coordinator failure without an identified thread is reported in the original invoking
+  surviving window. It identifies the failed shutdown step without inventing a thread association,
+  persistent backend/home condition or successful reopening. A missing invoking window has no
+  replacement destination.
 - A blocking turn or active-work failure that also establishes selected-thread runtime/backend
   unavailability in an affected window directs the user to that window's separately owned
   persistent backend-unavailable notice;

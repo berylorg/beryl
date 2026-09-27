@@ -29,6 +29,36 @@ fn run_driver(cancelled: bool, waiting: bool, report_refusal: bool) {
 }
 
 #[test]
+fn native_exit_unattributed_source_failure_preserves_admission() {
+    run_driver_with_work_failure(
+        false,
+        false,
+        false,
+        Some(crate::cas_projection::ShutdownFailure::SourceUnavailable),
+    );
+}
+
+#[test]
+fn native_exit_unattributed_stop_failure_preserves_admission() {
+    run_driver_with_work_failure(
+        false,
+        false,
+        false,
+        Some(crate::cas_projection::ShutdownFailure::StopFailed),
+    );
+}
+
+#[test]
+fn native_exit_unattributed_cleanup_failure_preserves_admission() {
+    run_driver_with_work_failure(
+        false,
+        false,
+        false,
+        Some(crate::cas_projection::ShutdownFailure::CleanupFailed),
+    );
+}
+
+#[test]
 fn native_exit_unviewed_execution_failure_preserves_admission() {
     run_driver_with_work_failure(
         false,
@@ -143,6 +173,13 @@ fn run_driver_with_work_failure(
                                 let notice = root.notice_projection().unwrap();
                                 assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
                                 assert!(notice.content.detail().as_str().contains(&format!("{reason:?}")));
+                                let expected_step = match reason {
+                                    crate::cas_projection::ShutdownFailure::SourceUnavailable => "Shutdown work observation is unavailable",
+                                    crate::cas_projection::ShutdownFailure::StopFailed => "Shutdown could not stop work",
+                                    crate::cas_projection::ShutdownFailure::CleanupFailed => "Shutdown could not complete work cleanup",
+                                    _ => "Shutdown could not prove that work settled",
+                                };
+                                assert!(notice.content.detail().as_str().starts_with(expected_step));
                                 assert_eq!(notice.content.commands().count(), 0);
                                 assert_eq!(root.notice_diagnostics().retained_records, 1);
                                 assert!(Rc::ptr_eq(&identity, &request.identity()));

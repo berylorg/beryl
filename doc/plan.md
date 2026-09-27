@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 652: Report Thread-Specific Exit Coordinator Failures (finished)
+# Phase 653: Report Unattributed Exit Coordinator Failures (finished)
 
-Unproven execution and compaction results now contribute bounded commandless notices to surviving
-viewing windows, or the original invoking survivor for unviewed work, preserving result and custody.
-Default library check, independent semantic review and all 16 focused cases passed (run
-`b1d744fd-96f2-4aa6-ab0d-6a581270ce6c`). Unattributed coordinator failures, persistent-condition
-guidance, toolbar mounting and final teardown remain pending.
+SourceUnavailable, StopFailed and CleanupFailed now contribute bounded commandless notices only to
+the original invoking survivor, preserving outcomes and custody. Default library check, independent
+review and all 20 focused cases passed across runs `47f2f475-1d9c-483d-93e4-bfbac42e0757` and
+`24ebd099-1a41-4042-af16-d5f0fe45fb0f`, after correcting one stale exclusion expectation.
+Persistent-condition guidance, toolbar mounting and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -163,7 +163,8 @@ altering policy outcomes. Progress and final-teardown reporting remain separate 
 Phase 651 extends that contribution to typed progress-delivery errors while retaining unresolved
 admission. Coordinator failure results still require their own affected-window attribution.
 Phase 652 supplies exact thread-specific coordinator reporting, including unviewed-work attribution;
-unattributed coordinator failures and eligible persistent-condition guidance remain pending.
+phase 653 supplies original-invoker reporting for unattributed coordinator failures. Eligible
+persistent-condition guidance remains pending.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

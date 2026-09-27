@@ -14,13 +14,18 @@ impl RunningProcessOwner {
     ) {
         let (thread, content) = if let Some(error) = delivery_error(outcome) {
             (None, failure_content(error))
-        } else if let Some((thread, reason)) = work_failure(outcome) {
-            (
-                Some(thread),
-                failure_content(&format_args!(
-                    "Shutdown could not prove that work settled: {reason:?}"
-                )),
-            )
+        } else if let Some((thread, reason)) = coordinator_failure(outcome) {
+            let step = match reason {
+                ShutdownFailure::SourceUnavailable => "Shutdown work observation is unavailable",
+                ShutdownFailure::StopFailed => "Shutdown could not stop work",
+                ShutdownFailure::CleanupFailed => "Shutdown could not complete work cleanup",
+                ShutdownFailure::UnprovenExecution { .. }
+                | ShutdownFailure::UnprovenCompaction { .. } => {
+                    "Shutdown could not prove that work settled"
+                }
+                ShutdownFailure::Cancelled => unreachable!(),
+            };
+            (thread, failure_content(&format_args!("{step}: {reason:?}")))
         } else {
             return;
         };
@@ -98,7 +103,9 @@ impl RunningProcessOwner {
     }
 }
 
-fn work_failure(outcome: &ExitAttemptOutcome) -> Option<(SyndicThreadId, &ShutdownFailure)> {
+fn coordinator_failure(
+    outcome: &ExitAttemptOutcome,
+) -> Option<(Option<SyndicThreadId>, &ShutdownFailure)> {
     let Ok(super::ExitAttemptCompletion::Progress(AppServiceShutdownProgress::Failed {
         reason,
         ..
@@ -107,12 +114,12 @@ fn work_failure(outcome: &ExitAttemptOutcome) -> Option<(SyndicThreadId, &Shutdo
         return None;
     };
     let thread = match reason {
-        ShutdownFailure::UnprovenExecution { thread, .. } => *thread,
-        ShutdownFailure::UnprovenCompaction { operation } => operation.thread_id(),
-        ShutdownFailure::Cancelled
-        | ShutdownFailure::SourceUnavailable
+        ShutdownFailure::UnprovenExecution { thread, .. } => Some(*thread),
+        ShutdownFailure::UnprovenCompaction { operation } => Some(operation.thread_id()),
+        ShutdownFailure::SourceUnavailable
         | ShutdownFailure::StopFailed
-        | ShutdownFailure::CleanupFailed => return None,
+        | ShutdownFailure::CleanupFailed => None,
+        ShutdownFailure::Cancelled => return None,
     };
     Some((thread, reason))
 }

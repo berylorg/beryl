@@ -56,9 +56,11 @@ Exit-failure report for an affected window, the feature contributes one owner-co
 with a stable notice identity, bounded title and detail, and an empty owner-command set to the
 Notifications per-window arbiter.
 
-An Exit preparation, progress-delivery or thread-specific coordinator failure uses the title
+An Exit preparation, progress-delivery or coordinator failure uses the title
 `Couldn't exit Beryl` and bounded diagnostic detail. Unproven execution or compaction reports identify
 the blocking thread and turn or operation without claiming successful reopening.
+Unattributed coordinator failures describe unavailable work observation, failed work stop or failed
+work cleanup as applicable; they do not imply that irreversible final teardown has begun.
 
 For a qualifying backend-unavailable condition, the bounded detail points to the separately owned
 persistent backend-unavailable notice; it does not duplicate that notice's `Retry` `command button`.

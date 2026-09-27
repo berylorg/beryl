@@ -41,7 +41,7 @@ fn coordinator_outcomes_are_not_delivery_errors() {
             reopened: true,
         }),
         Completion::Progress(Progress::Failed {
-            reason: ShutdownFailure::SourceUnavailable,
+            reason: ShutdownFailure::Cancelled,
             reopened: false,
         }),
     ] {
@@ -50,7 +50,7 @@ fn coordinator_outcomes_are_not_delivery_errors() {
             command_completed: false,
         };
         assert!(delivery_error(&outcome).is_none());
-        assert!(work_failure(&outcome).is_none());
+        assert!(coordinator_failure(&outcome).is_none());
     }
 }
 
@@ -82,8 +82,8 @@ fn work_failure_routes_only_to_viewing_windows_or_original_invoker() {
                 )),
                 command_completed: reopened,
             };
-            let (target, original) = work_failure(&outcome).unwrap();
-            assert_eq!(target, thread);
+            let (target, original) = coordinator_failure(&outcome).unwrap();
+            assert_eq!(target, Some(thread));
             assert_eq!(*original, reason);
             let windows = vec![
                 (invoking, Some(other), 1),
@@ -91,23 +91,62 @@ fn work_failure_routes_only_to_viewing_windows_or_original_invoker() {
                 (second_view, Some(thread), 3),
             ];
             assert_eq!(
-                failure_destinations(windows.clone(), Some(target), Some(invoking)),
+                failure_destinations(windows.clone(), target, Some(invoking)),
                 vec![(viewing, 2), (second_view, 3)]
             );
             assert_eq!(
-                failure_destinations(windows, Some(target), None),
+                failure_destinations(windows, target, None),
                 vec![(viewing, 2), (second_view, 3)]
             );
             let unviewed = vec![(invoking, None, 1), (viewing, Some(other), 2)];
             assert_eq!(
-                failure_destinations(unviewed.clone(), Some(target), Some(invoking)),
+                failure_destinations(unviewed.clone(), target, Some(invoking)),
                 vec![(invoking, 1)]
             );
-            assert!(
-                failure_destinations(unviewed.clone(), Some(target), Some(second_view)).is_empty()
+            assert!(failure_destinations(unviewed.clone(), target, Some(second_view)).is_empty());
+            assert!(failure_destinations(unviewed, target, None).is_empty());
+            assert!(failure_destinations::<()>(vec![], target, Some(invoking)).is_empty());
+            assert_eq!(outcome.command_completed, reopened);
+        }
+    }
+}
+
+#[test]
+fn unattributed_failures_route_only_to_the_original_surviving_invoker() {
+    let invoking = WindowId::from_bytes([51; 16]);
+    let other = WindowId::from_bytes([52; 16]);
+    let missing = WindowId::from_bytes([53; 16]);
+    let thread = SyndicThreadId::from_bytes([54; 16]);
+    for reopened in [false, true] {
+        for reason in [
+            ShutdownFailure::SourceUnavailable,
+            ShutdownFailure::StopFailed,
+            ShutdownFailure::CleanupFailed,
+        ] {
+            let outcome = ExitAttemptOutcome {
+                result: Ok(super::super::ExitAttemptCompletion::Progress(
+                    AppServiceShutdownProgress::Failed { reason, reopened },
+                )),
+                command_completed: reopened,
+            };
+            let (target, original) = coordinator_failure(&outcome).unwrap();
+            assert_eq!(target, None);
+            assert_eq!(*original, reason);
+            assert!(delivery_error(&outcome).is_none());
+            let windows = vec![(invoking, Some(thread), 1), (other, None, 2)];
+            assert_eq!(
+                failure_destinations(windows.clone(), target, Some(invoking)),
+                vec![(invoking, 1)]
             );
-            assert!(failure_destinations(unviewed, Some(target), None).is_empty());
-            assert!(failure_destinations::<()>(vec![], Some(target), Some(invoking)).is_empty());
+            assert!(failure_destinations(windows.clone(), target, Some(missing)).is_empty());
+            assert!(failure_destinations(windows, target, None).is_empty());
+            assert!(failure_destinations::<()>(vec![], target, Some(invoking)).is_empty());
+            assert!(matches!(
+                outcome.result,
+                Ok(super::super::ExitAttemptCompletion::Progress(
+                    AppServiceShutdownProgress::Failed { reason: retained, reopened: retained_reopening }
+                )) if retained == reason && retained_reopening == reopened
+            ));
             assert_eq!(outcome.command_completed, reopened);
         }
     }
