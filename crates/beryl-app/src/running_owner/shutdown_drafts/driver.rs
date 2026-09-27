@@ -54,6 +54,7 @@ impl RunningProcessOwner {
         + 'static,
     ) -> Result<(), String> {
         if matches!(action, RunningShutdownDraftAction::Release) {
+            Self::require_shutdown_session_released(owner)?;
             Self::require_shutdown_placements_settled(owner)?;
         }
         let drafts =

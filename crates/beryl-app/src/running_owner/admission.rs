@@ -38,6 +38,7 @@ pub(crate) enum IdleShutdownError {
 }
 
 pub(super) struct RunningShutdownAttempt {
+    pub(super) session: Option<super::shutdown_session::RunningShutdownSession>,
     invoking: WindowId,
     intent: ShutdownIntent,
     lease: WindowCloseLease,
@@ -147,6 +148,7 @@ impl RunningProcessOwner {
             work_ready: false,
             drafts: None,
             placements: None,
+            session: None,
         });
         Ok(())
     }
@@ -181,6 +183,7 @@ impl RunningProcessOwner {
             work_ready: false,
             drafts: None,
             placements: None,
+            session: None,
         });
         Ok(())
     }

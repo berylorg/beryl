@@ -189,6 +189,7 @@ impl RunningProcessOwner {
         app: &mut App,
         driving: bool,
     ) -> Result<RunningShutdownDraftProgress, String> {
+        Self::require_shutdown_session_released(owner)?;
         Self::require_shutdown_placements_settled(owner)?;
         let retained = Self::shutdown_drafts(owner, false)?;
         let mut drafts = retained

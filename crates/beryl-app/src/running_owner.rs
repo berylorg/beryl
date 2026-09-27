@@ -30,6 +30,7 @@ mod progress;
 mod shutdown_drafts;
 mod shutdown_interaction;
 mod shutdown_placements;
+mod shutdown_session;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
@@ -44,6 +45,7 @@ pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
+pub(crate) use shutdown_session::RunningShutdownSession;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartupCleanup {

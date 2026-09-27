@@ -26,6 +26,7 @@ impl RunningProcessOwner {
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_poll: impl FnOnce() + Send + 'static,
     ) -> Result<(), String> {
+        Self::require_shutdown_session_released(owner)?;
         Self::require_shutdown_placements_settled(owner)?;
         let mut services = {
             let mut owner = owner.borrow_mut();

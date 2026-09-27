@@ -6,6 +6,107 @@ enum CaptureCase {
     FinalClose,
 }
 
+async fn exercise_session(
+    owner: Rc<RefCell<RunningProcessOwner>>,
+    unwind: bool,
+    cx: &mut AsyncApp,
+) -> Rc<RefCell<RunningProcessOwner>> {
+    use crate::exit_session::ExitSessionExecution;
+    use crate::running_owner::RunningShutdownSession;
+    let original_attempt = owner.borrow().test_services().graph().unwrap().shutdown;
+    let placements = owner.borrow().shutdown_placements().unwrap();
+    let weak = Rc::downgrade(&owner);
+    let (release, parked) = std::sync::mpsc::sync_channel(1);
+    let (sender, receiver) = futures_channel::oneshot::channel();
+    let gui_thread = std::thread::current().id();
+    cx.update(|app| {
+        RunningProcessOwner::test_publish_shutdown_session(
+            &owner,
+            app,
+            move |owner, app| {
+                assert_eq!(std::thread::current().id(), gui_thread);
+                assert!(owner.try_borrow_mut().is_ok());
+                assert!(!owner.borrow().test_services_on_worker());
+                assert_eq!(
+                    owner.borrow().test_services().graph().unwrap().shutdown,
+                    original_attempt
+                );
+                assert_eq!(owner.borrow().shutdown_placements().unwrap(), placements);
+                match owner.borrow().shutdown_session().unwrap() {
+                    RunningShutdownSession::Unwound => assert!(unwind),
+                    RunningShutdownSession::Settled(Ok(ExitSessionExecution::Committed {
+                        receipt,
+                        later_failure,
+                        local_finalization,
+                    })) => {
+                        assert!(!unwind);
+                        assert!(later_failure.is_none());
+                        assert!(local_finalization.is_none());
+                        let owner = owner.borrow();
+                        let graph = owner.test_services().graph().unwrap();
+                        assert!(
+                            graph
+                                .state()
+                                .session()
+                                .committed_revision(graph.home(), receipt)
+                                .unwrap()
+                                .is_some()
+                        );
+                    }
+                    other => panic!("unexpected session result: {other:?}"),
+                }
+                assert_session_fenced(owner, app);
+                sender.send(owner.clone()).ok().unwrap();
+            },
+            move || {
+                assert_ne!(std::thread::current().id(), gui_thread);
+                parked.recv_timeout(Duration::from_secs(10)).unwrap();
+                assert!(!unwind, "injected session worker unwind");
+            },
+        )
+        .unwrap();
+        assert!(owner.borrow().test_services_on_worker());
+        assert!(matches!(
+            owner.borrow().shutdown_session(),
+            Some(RunningShutdownSession::Pending)
+        ));
+        assert_session_fenced(&owner, app);
+    })
+    .unwrap();
+    drop(owner);
+    assert!(weak.upgrade().is_some());
+    release.send(()).unwrap();
+    receiver.await.unwrap()
+}
+
+fn assert_session_fenced(owner: &Rc<RefCell<RunningProcessOwner>>, app: &mut gpui::App) {
+    assert!(
+        RunningProcessOwner::publish_shutdown_session(owner, app, |_, _| panic!(
+            "duplicate session"
+        ))
+        .is_err()
+    );
+    assert!(RunningProcessOwner::release_shutdown_drafts(owner, app).is_err());
+    assert!(
+        RunningProcessOwner::drive_shutdown_drafts(
+            owner,
+            crate::running_owner::RunningShutdownDraftAction::Release,
+            app,
+            |_, _, _| panic!("session owns recovery custody")
+        )
+        .is_err()
+    );
+    let cancelled = ProjectionCancellationToken::new();
+    cancelled.cancel();
+    assert!(
+        RunningProcessOwner::advance_shutdown(owner, cancelled, app, |_, _| panic!(
+            "session owns recovery custody"
+        ))
+        .is_err()
+    );
+    assert!(RunningProcessOwner::release_shutdown_interaction_gate(owner, app).is_err());
+}
+
 #[test]
 fn native_exit_placement_retains_owner_and_exact_complete_result() {
     run(CaptureCase::Success);
@@ -27,6 +128,20 @@ fn native_final_close_refuses_exit_placement_capture() {
 }
 
 fn run(case: CaptureCase) {
+    run_with_session(case, None);
+}
+
+#[test]
+fn native_exit_session_retains_commit_and_fences_recovery() {
+    run_with_session(CaptureCase::Success, Some(false));
+}
+
+#[test]
+fn native_exit_session_unwind_retains_services_and_fences_recovery() {
+    run_with_session(CaptureCase::Success, Some(true));
+}
+
+fn run_with_session(case: CaptureCase, session_unwind: Option<bool>) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -37,6 +152,8 @@ fn run(case: CaptureCase) {
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
             let owner = RunningProcessOwner::start(running, app);
+            assert!(RunningProcessOwner::publish_shutdown_session(&owner, app,
+                |_, _| panic!("unadmitted session")).is_err());
             assert!(RunningProcessOwner::capture_shutdown_placements(&owner, app,
                 |_, _, _| panic!("unadmitted capture")).is_err());
             app.spawn(async move |cx| {
@@ -57,6 +174,8 @@ fn run(case: CaptureCase) {
                 cx.update(|app| RunningProcessOwner::install_shutdown_interaction_gate(&owner, app)).unwrap().unwrap();
                 prepare_work(&owner, cx).await;
                 let original_attempt = owner.borrow().test_services().graph().unwrap().shutdown;
+                cx.update(|app| assert!(RunningProcessOwner::publish_shutdown_session(&owner, app,
+                    |_, _| panic!("session requires drafts and placements")).is_err())).unwrap();
                 cx.update(|app| {
                     assert!(RunningProcessOwner::capture_shutdown_placements(&owner, app,
                         |_, _, _| panic!("drafts not ready")).is_err());
@@ -156,6 +275,14 @@ fn run(case: CaptureCase) {
                     assert!(!released.await.unwrap().native_destroyed);
                     owner
                 };
+                if let Some(unwind) = session_unwind {
+                    let owner = exercise_session(owner, unwind, cx).await;
+                    let process = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
+                    support::dispose_running(process, cx).await;
+                    observed.set(true);
+                    cx.update(|app| app.quit()).unwrap();
+                    return;
+                }
                 cx.update(|app| {
                     assert_eq!(RunningProcessOwner::release_shutdown_drafts(&owner, app).unwrap(),
                         RunningShutdownDraftProgress::Released);

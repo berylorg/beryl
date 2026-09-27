@@ -326,6 +326,28 @@ by the executable composition root.
   postcommit failure preservation, installed ambiguity, failed/foreign reconciliation retaining
   custody, exact-new resolution and abandonment. Independently review outcome and custody mapping.
 
+## Retained Exit Session Execution
+
+- The original work-ready Application Exit attempt admits one session worker only after complete
+  draft and placement readiness. Admission reserves its result slot before moving the complete
+  process service owner to the worker. Final ordinary close, duplicate admission and unavailable
+  services refuse without scheduling or callback.
+- The worker uses that original graph's home and typed session handle and the retained placement
+  set. It executes once and returns the complete service owner with the exact preparation or command
+  outcome. Worker unwind returns the service owner but remains an unproven publication outcome;
+  it never implies noncommit. No replacement write or automatic reconciliation is scheduled.
+- A strong GUI continuation retains the running owner through service return and result retention,
+  then notifies once outside owner borrows. Abandoning the caller cannot discard worker custody.
+  The result remains owned by the original attempt; notification alone consumes no receipt,
+  local-finalization capability or reconciliation handle and grants no session readiness.
+- Once admitted, session custody fences draft release and coordinator recovery until a separate
+  outcome policy proves their prerequisites. This fence includes settled but unconsumed results
+  and unwind. Shells, claims, drafts, work readiness and interaction gates remain retained. This
+  boundary grants no disposal or quit authority.
+- Verify refused and duplicate admission, delayed off-GUI execution, caller abandonment, exact GUI
+  delivery and service return, commit and unwind custody, and recovery exclusion before and after
+  settlement. Independently review the lifecycle and persistence boundary.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never
