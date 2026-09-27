@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 643: Carry Initial Exit Through Confirmed Observation (finished)
+# Phase 644: Carry The Exit Request Through Shutdown Progress (finished)
 
-Initial Exit routing retains the request and cancellation token through one confirmed worker
-observation, returning exact admission, cancellation or typed failure with original intent custody.
-The five routing tests passed (`600b4813-cca9-403a-9b5d-6255b3c1d084`) after correcting the success
-fixture to release synthetic unsettled work; refusal remains separately covered. The other 31 focused
-lifecycle tests, default library check and independent semantic review passed. Later progress routing
-and coherent request completion remain explicit.
+Exit progress retains the exact active request through one worker pass, consumes its settled result
+after service return and delivers outside owner borrows. Refusal preserves request custody;
+readiness and proven reopening stay distinct. The two new native tests passed
+(`16fe9106-b4e0-4d8d-b4be-127c611d4c85`) after correcting the fixture to require a fresh execution
+permit after reopening. The other 20 focused tests, default library check and independent semantic
+review passed. Automatic polling, coherent request completion and teardown remain explicit.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -146,6 +146,8 @@ observation to work routing while retaining the request through native settlemen
 the exact confirmation into cancellation or retained confirmed intent during that routing. Phase 643
 carries positive confirmation through one exact worker observation and admission/discard. Ordinary
 toolbar mounting, subsequent refresh/progress routing, and coherent request completion remain unmounted.
+Phase 644 supplies exact-request delivery through one worker progress pass and consumes the settled
+result after complete service return. Policy-driven polling and final teardown remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

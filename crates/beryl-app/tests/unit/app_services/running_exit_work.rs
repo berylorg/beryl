@@ -28,6 +28,14 @@ mod initial_routing {
     ));
 }
 
+mod progress_route {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_progress.rs"
+    ));
+}
+
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
     run(false, None, None);

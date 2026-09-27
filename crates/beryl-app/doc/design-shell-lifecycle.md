@@ -608,6 +608,16 @@ by the executable composition root.
   performs no automatic retry, request completion, progress scheduling or quit; its caller still
   owns coherent completion of the request.
 
+- Exit progress retains the exact active request through one worker-owned shutdown progress pass.
+  Scheduling requires its original live invoking window and an admitted application-Exit intent
+  for that window. Refusal returns the unchanged request without callback or service transfer.
+  Scheduled progress returns the same request exactly once on the GUI executor, after complete
+  service custody is restored and the settled progress result is consumed, outside owner borrows.
+  Waiting, readiness, failed progress with its exact reopening evidence, and service errors remain
+  distinct. Missing settled evidence is an explicit error. Only the underlying proven-reopening
+  boundary releases shutdown intent; delivery itself neither completes the Exit request nor
+  schedules another pass, reopens services, tears down windows or grants quit authority.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task
