@@ -6,6 +6,14 @@ enum CaptureCase {
     FinalClose,
 }
 
+mod reconciliation {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_shutdown_session_reconciliation.rs"
+    ));
+}
+
 async fn exercise_session(
     owner: Rc<RefCell<RunningProcessOwner>>,
     unwind: bool,
@@ -56,6 +64,12 @@ async fn exercise_session(
                     other => panic!("unexpected session result: {other:?}"),
                 }
                 assert_session_fenced(owner, app);
+                assert!(
+                    RunningProcessOwner::reconcile_shutdown_session(owner, app, |_, _| {
+                        panic!("commit and unwind are not pending reconciliation")
+                    })
+                    .is_err()
+                );
                 sender.send(owner.clone()).ok().unwrap();
             },
             move || {
@@ -142,8 +156,42 @@ fn native_exit_session_unwind_retains_services_and_fences_recovery() {
 }
 
 fn run_with_session(case: CaptureCase, session_unwind: Option<bool>) {
+    run_with_reconciliation(case, session_unwind, None);
+}
+
+fn run_with_reconciliation(
+    case: CaptureCase,
+    session_unwind: Option<bool>,
+    reconciliation_unwind: Option<bool>,
+) {
     let directory = support::native_home();
-    let input = input(directory.path(), |path, _| support::open(path));
+    let faults = FaultController::new();
+    let opening_faults = faults.clone();
+    let input = input(directory.path(), move |path, _| {
+        if reconciliation_unwind.is_none() {
+            return support::open(path);
+        }
+        let mut candidate = HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
+            opening_faults.clone(),
+        )
+        .unwrap();
+        let state = BerylState::register(&mut candidate).unwrap();
+        let syndic = SyndicStorage::register(&mut candidate).unwrap();
+        let candidate = candidate
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+        StartupHomeOpen::Ready {
+            candidate,
+            state,
+            syndic,
+        }
+    });
     let finished = Rc::new(Cell::new(false));
     let observed = finished.clone();
     Application::new().with_quit_on_last_window_close(false).run(move |app| {
@@ -152,6 +200,8 @@ fn run_with_session(case: CaptureCase, session_unwind: Option<bool>) {
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
             let owner = RunningProcessOwner::start(running, app);
+            assert!(RunningProcessOwner::reconcile_shutdown_session(&owner, app,
+                |_, _| panic!("unadmitted reconciliation")).is_err());
             assert!(RunningProcessOwner::publish_shutdown_session(&owner, app,
                 |_, _| panic!("unadmitted session")).is_err());
             assert!(RunningProcessOwner::capture_shutdown_placements(&owner, app,
@@ -277,6 +327,14 @@ fn run_with_session(case: CaptureCase, session_unwind: Option<bool>) {
                 };
                 if let Some(unwind) = session_unwind {
                     let owner = exercise_session(owner, unwind, cx).await;
+                    let process = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
+                    support::dispose_running(process, cx).await;
+                    observed.set(true);
+                    cx.update(|app| app.quit()).unwrap();
+                    return;
+                }
+                if let Some(unwind) = reconciliation_unwind {
+                    let owner = reconciliation::exercise(owner, faults, unwind, cx).await;
                     let process = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
                     support::dispose_running(process, cx).await;
                     observed.set(true);

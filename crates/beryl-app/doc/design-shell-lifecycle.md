@@ -348,6 +348,28 @@ by the executable composition root.
   delivery and service return, commit and unwind custody, and recovery exclusion before and after
   settlement. Independently review the lifecycle and persistence boundary.
 
+## Retained Exit Session Reconciliation
+
+- An explicit reconciliation pass admits only the original attempt's indeterminate session
+  outcome or its retained failed reconciliation. It transfers that exact reconciliation owner
+  and the complete original process service owner to one worker, reserving the attempt's slot
+  first. Missing readiness, unavailable services, concurrent passes and terminal outcomes refuse
+  without consuming custody or invoking completion.
+- The worker uses the original graph's home and the retained handle. It preserves the complete
+  typed reconciliation result, including original command failure, exact receipt, pending owner
+  and separate pass failure. It never publishes a replacement command or retriggers recovery;
+  same-home recovery remains responsible for health restoration and an exact-handle retry.
+- A strong GUI continuation returns services and retains the result in the original attempt before
+  invoking one completion outside owner borrows. Caller abandonment does not cancel the pass.
+  Worker unwind returns services and retains an unproven outcome; installed home-store custody
+  remains authoritative, and no ordinary retry is inferred from unwind.
+- Every result, including ExactOld and ExactNew, keeps the existing draft and coordinator recovery
+  fences until a separate outcome policy consumes its proof. Reconciliation delivery alone grants
+  no session readiness, gate release, window disposal or quit authority.
+- Verify invalid and duplicate admission, delayed worker ownership, caller abandonment, exact GUI
+  delivery, retained failed passes, explicit same-handle resolution, terminal refusal and unwind.
+  Independently review the original-attempt ownership and persistent outcome boundary.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

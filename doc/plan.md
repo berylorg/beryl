@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 686: Retain The Exit Session Worker In Its Running Attempt (finished)
+# Phase 687: Retain Exit Session Reconciliation In Its Running Attempt (finished)
 
-Accepted one-shot worker admission under original Exit custody, complete service-owner return,
-exact retained outcomes and recovery exclusion through settlement. All 22 focused shutdown/session
-tests passed (`f414e719-1cae-41f0-b6e0-33f84a95a84b`); the default app library check and independent
-lifecycle/persistence review passed. Outcome consumption and reconciliation remain separate.
+Accepted explicit exact-handle reconciliation under the original Exit attempt, complete service
+return, retained typed results and recovery exclusion through settlement and unwind. All 24 focused
+shutdown/session tests passed (`61e6a121-12db-49a8-8db5-6804e5055f63`); the default app library check
+and independent lifecycle/persistence review passed. Outcome readiness and same-home recovery
+composition remain separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -235,6 +236,9 @@ unsettled and composing proven session readiness before final teardown.
 Phase 686 supplies retained running-attempt worker admission, exact service/outcome return and
 recovery exclusion. Next compose outcome consumption, same-home reconciliation and proven session
 readiness without dropping original receipts or pending custody.
+Phase 687 supplies retained explicit reconciliation passes and exact typed result return under
+the original attempt. Next compose outcome readiness and same-home recovery; all session outcomes
+still fence draft release and coordinator recovery until their proof is explicitly consumed.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

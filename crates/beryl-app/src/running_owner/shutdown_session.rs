@@ -1,13 +1,17 @@
 use super::*;
 use crate::exit_session::{
-    ExitSessionExecution, ExitSessionPreparationError, execute_exit_session,
+    ExitSessionExecution, ExitSessionPreparationError, ExitSessionReconciled, execute_exit_session,
 };
 use std::panic::AssertUnwindSafe;
+
+mod reconciliation;
 
 #[derive(Debug)]
 pub(crate) enum RunningShutdownSession {
     Pending,
     Settled(Result<ExitSessionExecution, ExitSessionPreparationError>),
+    Reconciling,
+    Reconciled(ExitSessionReconciled),
     Unwound,
 }
 
