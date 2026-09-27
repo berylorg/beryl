@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 711: Detach Fenced Resident Service Custody (finished)
+# Phase 712: Detach Fenced Mount Publication Adapters (finished)
 
-Accepted exact recovery-fenced resident service handoff with unchanged widget and restoration
-facts, single-reference custody and continued interaction fencing. Library checking, all 24
-resident-close tests (`ef6a12c1-0dc7-4b17-8358-dde1c74aef03`), six GPUI composer tests and
-independent lifecycle review passed. Mount retirement and fresh binding remain separate.
+Accepted exact recovery-fenced asset and marker adapter handoff with idle/no-task admission,
+single-transfer custody, unchanged resident presentation and unavailable detached publication.
+Library checking, all 54 resident-close, mounted-submission and composer-mount tests
+(`afcac04d-0124-4a84-b5d5-139e0073c7d8`) and independent lifecycle review passed.
+Whole-mount retirement, worker draining and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -106,8 +107,10 @@ save recovery is outside this cut because it cannot satisfy session-publication 
 substitute native-lineage unmounting or startup cleanup for resident retirement proof. Phase 707
 supplies the consuming host primitive, phase 708 the enclosing slot primitive and phase 709 the
 exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
-Phase 711 supplies the resident service-reference handoff. Worker-reference draining, mount adapter
-detachment and fresh widget bindings remain here.
+Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
+adapter handoff. Worker-reference draining, configurator and mount service detachment, and fresh
+widget bindings remain here. Mount drop still follows ordinary close cleanup and cannot substitute
+for the required recovery retirement boundary.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

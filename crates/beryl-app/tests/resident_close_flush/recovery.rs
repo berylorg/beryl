@@ -6,6 +6,143 @@ use beryl_app::main_window::{
 use gpui::{EntityInputHandler, TestAppContext};
 
 #[gpui::test]
+fn recovery_detaches_publication_adapters_once_without_releasing_the_resident(
+    cx: &mut TestAppContext,
+) {
+    let (fixture, cx) = support::mounted(cx, "resident-publication-detachment", 251);
+    let composer = fixture
+        .mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    let close = cx.update(|window, app| {
+        fixture
+            .mount
+            .update(app, |mount, cx| mount.begin_window_close(window, cx))
+            .unwrap()
+    });
+    fixture.mount.update(cx, |mount, cx| {
+        assert!(
+            mount
+                .detach_interrupted_exit_publication_adapters(close.ticket, cx)
+                .is_err()
+        );
+    });
+    drive_until(cx, "publication detachment close becomes ready", |cx| {
+        cx.update(|window, app| {
+            fixture.mount.update(app, |mount, cx| {
+                mount.advance_window_close(close.ticket, window, cx)
+            })
+        })
+        .unwrap()
+            == Advance::Ready
+    });
+    drive_until(cx, "publication detachment editor settles", |cx| {
+        input.read_with(cx, |input, _| input.is_quiescent())
+    });
+    let selection = composer.read_with(cx, |composer, _| composer.selection_identity());
+    let stale = Ticket::for_test(fixture.mount.entity_id(), 99, selection);
+    fixture.mount.update(cx, |mount, cx| {
+        assert!(
+            mount
+                .detach_interrupted_exit_publication_adapters(close.ticket, cx)
+                .is_err()
+        );
+    });
+    composer
+        .update(cx, |composer, cx| {
+            composer.test_set_shutdown_interaction_gated(true, cx)
+        })
+        .unwrap();
+    fixture.mount.update(cx, |mount, cx| {
+        assert!(
+            mount
+                .fence_interrupted_exit_resident(close.ticket, cx)
+                .unwrap()
+        );
+    });
+    let restoration = composer.read_with(cx, |composer, _| {
+        composer.recovery_snapshot().unwrap().restoration().clone()
+    });
+    let adapters = fixture.service.test_with_close_slot_locked(|| {
+        fixture.mount.update(cx, |mount, cx| {
+            assert!(
+                mount
+                    .detach_interrupted_exit_publication_adapters(stale, cx)
+                    .is_err()
+            );
+            let adapters = mount
+                .detach_interrupted_exit_publication_adapters(close.ticket, cx)
+                .unwrap()
+                .unwrap();
+            assert!(
+                mount
+                    .detach_interrupted_exit_publication_adapters(close.ticket, cx)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                mount
+                    .detach_interrupted_exit_publication_adapters(stale, cx)
+                    .is_err()
+            );
+            assert_eq!(
+                mount.contribution().unwrap().entity_id(),
+                composer.entity_id()
+            );
+            adapters
+        })
+    });
+    cx.update(|window, app| {
+        fixture.mount.update(app, |mount, cx| {
+            assert!(
+                mount
+                    .publish_autosave_interval(
+                        1,
+                        beryl_app::composer_host::ComposerHostAutosaveInterval::new(30).unwrap(),
+                        window,
+                        cx,
+                    )
+                    .is_err()
+            );
+            assert!(
+                mount
+                    .release_window_close(close.ticket, window, cx)
+                    .is_err()
+            );
+            assert!(
+                mount
+                    .authorize_window_close_disposal(close.ticket, window, cx)
+                    .is_err()
+            );
+        });
+    });
+    cx.simulate_keystrokes("x ctrl-z ctrl-v");
+    drive(cx, 12);
+    composer.read_with(cx, |composer, _| {
+        assert_eq!(
+            composer.recovery_snapshot().unwrap().restoration(),
+            &restoration
+        );
+        assert_eq!(composer.gpui_input().entity_id(), input.entity_id());
+        assert!(!composer.test_widget_released());
+    });
+    assert_eq!(
+        input
+            .update(cx, |input, _| input.export_restoration(Some(
+                selection.binding().range_history_frontier()
+            )))
+            .unwrap(),
+        restoration
+    );
+    assert!(fixture.service.test_window_close_is_current(close.ticket));
+    drop(adapters);
+    drop(input);
+    drop(composer);
+    support::finish(fixture, cx);
+}
+
+#[gpui::test]
 fn recovery_fence_preserves_the_exact_resident_and_refuses_ordinary_release(
     cx: &mut TestAppContext,
 ) {

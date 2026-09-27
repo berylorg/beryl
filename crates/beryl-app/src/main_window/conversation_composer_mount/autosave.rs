@@ -24,14 +24,14 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
-    pub(super) fn submission_assets(&self) -> beryl_state::AssetState {
-        self.autosave.assets.clone()
+    pub(super) fn submission_assets(&self) -> Result<beryl_state::AssetState, String> {
+        Ok(self.autosave.adapters()?.0.clone())
     }
 
     pub(super) fn submission_marker_seals(
         &self,
-    ) -> crate::composer_marker_seal::DraftMarkerSealService {
-        self.autosave.marker_seals.clone()
+    ) -> Result<crate::composer_marker_seal::DraftMarkerSealService, String> {
+        Ok(self.autosave.adapters()?.1.clone())
     }
 
     pub fn autosave_diagnostics(&self) -> MainWindowConversationComposerAutosaveDiagnostics {
@@ -45,6 +45,7 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<ComposerHostAutosaveSettingsCompletion, String> {
+        self.autosave.adapters()?;
         let selection = self
             .service
             .selected_identity()
@@ -185,8 +186,7 @@ impl MainWindowConversationComposerMount {
         let published_at = current_timestamp()?;
         self.autosave.last_error = None;
         let service = self.service.clone();
-        let assets = self.autosave.assets.clone();
-        let marker_seals = self.autosave.marker_seals.clone();
+        let (assets, marker_seals) = self.autosave.adapters()?.clone();
         let cancellation = CommandCancellation::new();
         let task = cx.background_executor().spawn(async move {
             service.fire_autosave(

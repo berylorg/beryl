@@ -219,10 +219,12 @@ impl MainWindowConversationComposerMount {
         diagnostics.mount_flush_ticket_present = self.native_lineage_disposal_flush.is_some();
         diagnostics.mount_flush_capture = self.native_lineage_disposal_capture;
         diagnostics.mount_last_disposal_advance = self.native_lineage_last_disposal_advance;
-        let markers = self.submission_marker_seals().diagnostics();
-        diagnostics.marker_current_flights = markers.current_flights();
-        diagnostics.marker_driving_flights = markers.driving_flights();
-        diagnostics.marker_terminalizing_flights = markers.terminalizing_flights();
+        if let Ok(seals) = self.submission_marker_seals() {
+            let markers = seals.diagnostics();
+            diagnostics.marker_current_flights = markers.current_flights();
+            diagnostics.marker_driving_flights = markers.driving_flights();
+            diagnostics.marker_terminalizing_flights = markers.terminalizing_flights();
+        }
         diagnostics
     }
 

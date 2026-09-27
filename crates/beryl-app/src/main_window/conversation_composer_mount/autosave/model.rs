@@ -69,8 +69,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerAutosave {
     pub(super) generation: u64,
     pub(super) task: Option<Task<()>>,
     pub(super) fenced: bool,
-    pub(super) assets: AssetState,
-    pub(super) marker_seals: DraftMarkerSealService,
+    pub(super) adapters: Option<(AssetState, DraftMarkerSealService)>,
     pub(super) settings: Option<(u64, ComposerHostAutosaveInterval)>,
     pub(super) last_error: Option<String>,
     #[cfg(feature = "test-faults")]
@@ -87,8 +86,7 @@ impl MainWindowConversationComposerAutosave {
             generation: 0,
             task: None,
             fenced: false,
-            assets,
-            marker_seals,
+            adapters: Some((assets, marker_seals)),
             settings: None,
             last_error: None,
             #[cfg(feature = "test-faults")]
@@ -117,6 +115,21 @@ impl MainWindowConversationComposerAutosave {
 
     pub(in crate::main_window) fn record_error(&mut self, error: String) {
         self.last_error = Some(error);
+    }
+
+    pub(super) fn adapters(&self) -> Result<&(AssetState, DraftMarkerSealService), String> {
+        self.adapters.as_ref().ok_or_else(|| {
+            "conversation composer publication adapters are detached for recovery".to_owned()
+        })
+    }
+
+    pub(in crate::main_window) fn detach_recovery_adapters(
+        &mut self,
+    ) -> Result<Option<(AssetState, DraftMarkerSealService)>, String> {
+        if !matches!(self.state, AutosaveState::Idle) || self.task.is_some() {
+            return Err("conversation composer autosave work is not drained".to_owned());
+        }
+        Ok(self.adapters.take())
     }
 
     pub(super) fn advance_generation(&mut self) -> Result<u64, String> {

@@ -358,8 +358,8 @@ impl MainWindowConversationComposerMount {
         })?;
         let cancellation = active.cancellation.clone();
         let service = self.service.clone();
-        let assets = self.submission_assets();
-        let marker_seals = self.submission_marker_seals();
+        let assets = self.submission_assets()?;
+        let marker_seals = self.submission_marker_seals()?;
         #[cfg(feature = "test-faults")]
         let test_gate = self.submission.test_advance_gate.take();
         #[cfg(feature = "test-faults")]
@@ -707,8 +707,12 @@ impl Drop for MainWindowConversationComposerMount {
         };
         active.cancellation.cancel();
         let service = self.service.clone();
-        let assets = self.submission_assets();
-        let marker_seals = self.submission_marker_seals();
+        let assets = self
+            .submission_assets()
+            .expect("active submission retains publication adapters");
+        let marker_seals = self
+            .submission_marker_seals()
+            .expect("active submission retains publication adapters");
         let executor = self.submission.executor.clone();
         executor
             .clone()

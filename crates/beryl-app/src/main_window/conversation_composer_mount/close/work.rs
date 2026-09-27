@@ -32,8 +32,16 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) {
         let service = self.service.clone();
-        let assets = self.submission_assets();
-        let seals = self.submission_marker_seals();
+        let (Ok(assets), Ok(seals)) = (self.submission_assets(), self.submission_marker_seals())
+        else {
+            self.record_window_close_state(
+                MainWindowConversationComposerCloseAdvance::Unsatisfied(
+                    ComposerHostFlushFailure::Recoverable,
+                ),
+                cx,
+            );
+            return;
+        };
         let executor = cx.background_executor().clone();
         let task = executor.spawn(async move {
             let result = run_close_work(&service, close, work, assets, seals);

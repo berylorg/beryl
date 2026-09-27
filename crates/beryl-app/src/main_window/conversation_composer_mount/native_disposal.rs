@@ -20,8 +20,8 @@ impl MainWindowConversationComposerMount {
                 .clone();
             let worker_cancellation = cancellation.clone();
             let service = self.service.clone();
-            let assets = self.submission_assets();
-            let seals = self.submission_marker_seals();
+            let assets = self.submission_assets()?;
+            let seals = self.submission_marker_seals()?;
             let executor = cx.background_executor().clone();
             let task = executor.spawn(async move {
                 service.advance_native_lineage_disposal(
@@ -34,8 +34,8 @@ impl MainWindowConversationComposerMount {
                 )
             });
             let service = self.service.clone();
-            let assets = self.submission_assets();
-            let seals = self.submission_marker_seals();
+            let assets = self.submission_assets()?;
+            let seals = self.submission_marker_seals()?;
             let task_cancellation = cancellation.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
                 let result = task.await;
@@ -110,8 +110,12 @@ impl MainWindowConversationComposerMount {
             return false;
         };
         let service = self.service.clone();
-        let assets = self.submission_assets();
-        let seals = self.submission_marker_seals();
+        let assets = self
+            .submission_assets()
+            .expect("native disposal retains publication adapters");
+        let seals = self
+            .submission_marker_seals()
+            .expect("native disposal retains publication adapters");
         let executor = self.submission.executor();
         executor
             .clone()
