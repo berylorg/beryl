@@ -61,6 +61,25 @@ runtime/root, session/window, and thread-claim durable state.
   must prove work and draft readiness, capture native facts and settle the command before final
   teardown; this state mutation alone grants no shutdown, claim release or native destruction.
 
+## Resume A Committed Exit Session
+
+- `ResumeSessionAfterExit` contributes one header-only transition from OrderlyExit to Running.
+  Its input supplies the exact session revision and 1–256 unique `(window id, record revision)`
+  pairs; order is irrelevant. Empty, oversized or duplicate input is rejected. Preparation requires
+  an existing OrderlyExit header and exact equality with its complete window reference set.
+- The enclosing HomeCommand retains exact home and domain revision checks. Success advances the
+  session revision once and changes only its exit intent. Window records and revisions, placements,
+  selected threads, remembered targets, paired claims and their revisions, and fallback remain
+  unchanged. Missing, stale, incomplete, foreign or already-Running input publishes nothing.
+- Reconciliation reserves only the changed header and retains ordinary noncommit, commit with
+  later failure, and indeterminate outcomes. This contribution performs no service replacement,
+  claim restoration or window operation. The composing recovery owner must prove that the original
+  Exit failed, preserve known outcomes and validate the exact source under fresh authority before
+  using it; the contribution alone grants no reopening, interaction release or shutdown authority.
+- Verify threadless and claimed sets through capacity, identity and claim preservation after
+  reopening, rejected malformed or stale inputs, writer revision drift, and ambiguous and
+  postcommit outcomes. Independently review this persistence transition.
+
 ## Reverse thread claims
 
 - Exact claim sources may be read by window or thread identity. A present source validates its

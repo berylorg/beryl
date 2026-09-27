@@ -155,6 +155,12 @@ Preserve each window's visible identity and placement without requiring auxiliar
   previously eligible mutation surface is re-enabled, and the toolbar label returns to `Exit`; a
   new attempt requires explicit activation
   after the blocking state is coherent again.
+- Once an Exit failure has been reported, that Exit stays cancelled even if later recovery proves
+  its session write succeeded. Automatic same-home recovery may restore coherent interaction in
+  the surviving windows; it never silently resumes closing them. Preserve their selected threads,
+  claims, resident content and saved placements. A fresh Exit activation is required afterward.
+  Pending or terminally unavailable durable outcomes keep their dependent actions unavailable;
+  recovery does not reinterpret them as a cancelled write or repeat that write.
 
 ## Final Teardown And Blocked Shutdown
 

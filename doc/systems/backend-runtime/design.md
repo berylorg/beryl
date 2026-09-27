@@ -236,6 +236,41 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   rejection and publication races. Component acceptance does not substitute for complete-graph
   publication or running-window recovery evidence.
 
+### Interrupted Exit During Same-Home Recovery
+
+- The process supervisor retains the reported-failed Exit's identity and bounded immutable session
+  evidence outside replaceable graphs. That evidence records the exact configured home, intended
+  complete session/window revisions and placements, known command outcome and original failure.
+  It conveys no old-generation read, write, receipt or service authority. Pending reconciliation
+  stays owned by the home-store registry and follows its exact-handle recovery protocol.
+- Reporting failure latches cancellation of that Exit. A later exact-new resolution preserves the
+  successful durable outcome but cannot resume shutdown. Before reporting failure, healthy exact
+  reconciliation may still satisfy an active Exit's ordinary readiness contract.
+- Replacement preserves known outcomes and reconciles only eligible pending outcomes. Proven
+  noncommit needs no inverse session write. Proven committed Exit state requires a separate
+  revision-checked session transition back to Running before live session mutation resumes.
+  This transition preserves committed placements, window records, selections and paired claims;
+  it is not startup restoration and does not undo the original write.
+- Fresh candidate handles validate the retained evidence against the same home's exact complete
+  session/window state before preparing that transition. Prior-generation receipts are historical
+  evidence only. Changed membership, revisions or placements, collision, unsupported successor or
+  unproven outcome refuse resumption rather than adopting newer facts. No failed-generation handle,
+  editor adapter, service lease or execution capability crosses the replacement publication cut.
+- The resume command has its own retained ordinary command outcome. Noncommit keeps dependent
+  interaction fenced; another automatic recovery attempt may prepare it only after proving that
+  noncommit and freshly validating the unchanged source. Indeterminate resume is reconciled before
+  any repeat. Proven commit is preserved through later failure and is never repeated; fresh
+  validation must prove its exact resulting Running state. Terminal uncertainty remains unavailable.
+- Candidate convergence includes this session settlement before whole-graph publication. Fresh
+  graph bindings attach to the preserved native windows and resident presentation; their old
+  generation resources must first retire. Only complete fresh bindings, healthy session settlement
+  and exact draft/work cleanup permit atomic interaction-gate release and completion of the
+  cancelled request. No intermediate step grants native destruction or quit authority.
+- Verify committed and noncommitted original outcomes, pending and terminal uncertainty, stale
+  evidence, failed/ambiguous resume, duplicate and stale completions, preservation of windows and
+  claims, and absence of automatic Exit after recovery. Independently review this replacement and
+  persistence boundary.
+
 ## Protocol Ownership
 
 - Authentication, agent execution, configuration, skills, MCP, tools, subagents, sandboxing, approvals, and provider policy remain backend-owned.

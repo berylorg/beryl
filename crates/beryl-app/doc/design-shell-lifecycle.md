@@ -405,6 +405,27 @@ by the executable composition root.
   caller abandonment, complete service return, durable commit, definitive noncommit, postcommit
   failure and indeterminate custody with unchanged fences. Independently review this handoff.
 
+## Interrupted Exit Recovery Ownership
+
+- The running owner latches a reported session-publication failure as cancellation of the exact
+  Exit request. The process-owned recovery supervisor preserves its bounded immutable source and
+  result evidence through graph retirement under the
+  [interrupted-Exit recovery contract](../../../doc/systems/backend-runtime/design.md#interrupted-exit-during-same-home-recovery).
+  Original service handles, receipts and close tickets cannot authorize replacement-generation
+  work. No retained evidence object itself releases draft, work or interaction fences.
+- Session command preparation retains the complete expected source and resulting session/window
+  revisions and placements before execution. Known commit remains known after a later failure;
+  pending registry custody, original failure and any local-finalization capability remain owned
+  until their applicable settlement or retirement. New-generation validation uses fresh typed
+  handles and exact immutable facts, never old receipt acceptance or a replacement Exit command.
+- The app composes the separate session resume contribution and retains its own execution and
+  reconciliation outcomes. It neither calls startup begin-restore on surviving windows nor infers
+  Running from a healthy replacement graph alone. Service rebinding and resident draft/work
+  settlement remain separate prerequisites to atomic coherent reopening of the cancelled request.
+- Verify reported-failure cancellation through late exact-new resolution, source evidence across
+  replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
+  and claims. Independently review lifecycle and persistence composition.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never
