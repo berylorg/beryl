@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 672: Compose Exit Draft Preparation And Recovery Policy (finished)
+# Phase 673: Connect Draft Preparation To The Ordinary Exit Consumer (finished)
 
-Exact-request draft preparation now preserves readiness custody or automatically recovers while
-retaining both the original preparation failure and recovery evidence. All 36 focused native
-regressions passed (`b68c44a9-b602-4859-ac37-ab68a9ba34a2`), followed by the strengthened scheduling
-refusal test (`17528322-a072-4ea7-8498-dbcd843b5e89`). Default library check, scoped formatting and
-independent lifecycle review passed. Ordinary attempt integration, session durability and final
-teardown remain pending.
+The ordinary consumer now follows work readiness through exact draft preparation, retains
+DraftsReady custody and reports original preparation failures with separate recovery evidence.
+All 68 focused native regressions passed (`b65a5237-f67f-4bb9-af98-a7af1afa383c`); default library
+check, scoped formatting and independent lifecycle review passed. Session durability, enabled
+ordinary shutdown and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -203,6 +202,8 @@ policy to that handoff before enabling ordinary shutdown.
 Phase 672 supplies that exact-request preparation policy, preserving both the original failure
 and recovery evidence. Connect it to the ordinary attempt consumer and compose durable session
 publication before enabling ordinary shutdown.
+Phase 673 connects preparation and recovery outcomes to the ordinary attempt consumer. Next
+compose durable session obligations before enabling ordinary shutdown or entering final teardown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

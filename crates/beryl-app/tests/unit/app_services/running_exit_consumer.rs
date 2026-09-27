@@ -160,9 +160,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                                                 assert_eq!(root.notice_projection().map(|notice| notice.report_count),
                                                     if missing { None } else { Some(1) });
                                                 assert!(matches!(outcome.result,
-                                                    Ok(ExitAttemptCompletion::Progress(
-                                                        AppServiceShutdownProgress::Ready
-                                                    ))));
+                                                    Ok(ExitAttemptCompletion::DraftsReady)));
                                                 assert_eq!(owner.borrow().resolve_exit_window(
                                                     &mut request, app).unwrap(), invoking);
                                                 assert!(!owner.borrow().test_services_on_worker());
@@ -204,16 +202,19 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                         let cleaned = Rc::new(RefCell::new(None));
                         let delivered = cleaned.clone();
                         cx.update(|app| {
-                            assert!(RunningProcessOwner::drive_exit(
-                                &owner, request, cancellation, app,
-                                move |owner, request, result, _| {
+                            let completed = move |owner: &Rc<RefCell<RunningProcessOwner>>, request, result: Result<AppServiceShutdownProgress, crate::running_owner::ExitProgressError>, _: &mut gpui::App| {
                                     assert!(matches!(result.unwrap(),
                                         AppServiceShutdownProgress::Failed { reopened: true, .. }));
                                     assert!(owner.borrow().shutdown_status().is_none());
                                     assert!(RunningProcessOwner::finish_exit(owner, &request));
                                     *delivered.borrow_mut() = Some(request);
-                                },
-                            ).is_ok());
+                                };
+                            let scheduled = if refusal {
+                                RunningProcessOwner::drive_exit(&owner, request, cancellation, app, completed)
+                            } else {
+                                RunningProcessOwner::recover_exit_drafts(&owner, request, app, completed)
+                            };
+                            assert!(scheduled.is_ok());
                         }).unwrap();
                         wait(&cleaned, cx).await;
                         assert!(Rc::ptr_eq(&identity, &cleaned.borrow_mut().take().unwrap().identity()));

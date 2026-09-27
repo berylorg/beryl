@@ -312,6 +312,16 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool, set
                             || (confirm == Some(true) && admitted)
                         {
                             assert!(permit.commit(|| ()).is_err());
+                            if settle {
+                                let (sender, receiver) = futures_channel::oneshot::channel();
+                                cx.update(|app| RunningProcessOwner::drive_shutdown_drafts(
+                                    &owner, crate::running_owner::RunningShutdownDraftAction::Release, app,
+                                    move |_, result, _| {
+                                        assert_eq!(result.unwrap(), crate::running_owner::RunningShutdownDraftProgress::Released);
+                                        sender.send(()).ok().unwrap();
+                                    })).unwrap().unwrap();
+                                receiver.await.unwrap();
+                            }
                             super::super::running_shutdown_progress::exercise(
                                 owner,
                                 invoking,
@@ -428,6 +438,11 @@ fn route(
                     Ok(ExitRoutingCompletion::Admitted)
                 }
                 Ok(ExitAttemptCompletion::Cancelled) => Ok(ExitRoutingCompletion::Cancelled),
+                Ok(ExitAttemptCompletion::DraftsReady) => {
+                    assert!(settle);
+                    assert!(!RunningProcessOwner::finish_exit(owner, &request));
+                    Ok(ExitRoutingCompletion::Admitted)
+                }
                 Ok(ExitAttemptCompletion::ConfirmedObservationCancelled) => {
                     Ok(ExitRoutingCompletion::ConfirmedObservationCancelled)
                 }
@@ -443,7 +458,10 @@ fn route(
             cancellation,
             app,
             move |owner, request, outcome, app| {
-                let expected = !matches!(&outcome.result, Ok(ExitAttemptCompletion::Progress(_)));
+                let expected = !matches!(
+                    &outcome.result,
+                    Ok(ExitAttemptCompletion::Progress(_) | ExitAttemptCompletion::DraftsReady)
+                );
                 assert_eq!(outcome.command_completed, expected);
                 completed(owner, request, outcome.result, app);
             },
