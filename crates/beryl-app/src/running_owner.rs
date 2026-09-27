@@ -46,6 +46,8 @@ pub(crate) struct RunningProcessOwner {
     progress: Option<progress::RunningShutdownProgress>,
     observing_initial_work: bool,
     waiting_for_exit: bool,
+    #[cfg(test)]
+    exit_waiting_passes: usize,
 }
 
 pub(crate) struct RunningProcess {
@@ -72,6 +74,8 @@ impl RunningProcessOwner {
             progress: None,
             observing_initial_work: false,
             waiting_for_exit: false,
+            #[cfg(test)]
+            exit_waiting_passes: 0,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {

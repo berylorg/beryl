@@ -626,6 +626,17 @@ by the executable composition root.
   boundary releases shutdown intent; delivery itself neither completes the Exit request nor
   schedules another pass, reopens services, tears down windows or grants quit authority.
 
+- The Exit progress driver retains that same request and complete running owner until one
+  non-waiting result. It schedules one pass at a time through the validated Exit progress boundary,
+  consuming each result before another pass. Waiting yields through one bounded-delay GUI
+  continuation; no owner borrow or worker remains held by that delay. Every successor revalidates
+  the original request, invoking window and admitted intent. Cancellation is passed unchanged to
+  the coordinator rather than abandoning progress. Readiness, either failure reopening outcome,
+  service error or successor scheduling refusal ends the driver and returns the request exactly
+  once outside owner borrows. Initial refusal returns it synchronously without notification.
+  The driver never retries a failure, completes the command, releases retained intent, starts
+  teardown or quits; those remain explicit policy actions on the returned outcome.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

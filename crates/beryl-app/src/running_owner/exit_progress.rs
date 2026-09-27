@@ -5,7 +5,7 @@ use crate::{
     startup_owner::RunningExitRequest,
 };
 use gpui::App;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExitProgressError {
@@ -22,6 +22,76 @@ pub(crate) enum ExitProgressError {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn drive_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        cancellation: ProjectionCancellationToken,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            RunningExitRequest,
+            Result<AppServiceShutdownProgress, ExitProgressError>,
+            &mut App,
+        ) + 'static,
+    ) -> Result<(), (RunningExitRequest, ExitProgressError)> {
+        let (sender, mut receiver) = futures_channel::oneshot::channel();
+        Self::advance_exit(
+            owner,
+            request,
+            cancellation.clone(),
+            app,
+            move |_, request, result, _| {
+                let _ = sender.send((request, result));
+            },
+        )?;
+        let retained = owner.clone();
+        app.spawn(async move |cx| {
+            loop {
+                let Ok((request, result)) = receiver.await else {
+                    return;
+                };
+                if !matches!(result, Ok(AppServiceShutdownProgress::Waiting)) {
+                    let _ = cx.update(|app| completed(&retained, request, result, app));
+                    return;
+                }
+                #[cfg(test)]
+                {
+                    retained.borrow_mut().exit_waiting_passes += 1;
+                }
+                cx.background_executor()
+                    .timer(Duration::from_millis(50))
+                    .await;
+                let (sender, next) = futures_channel::oneshot::channel();
+                receiver = next;
+                match cx.update(|app| {
+                    Self::advance_exit(
+                        &retained,
+                        request,
+                        cancellation.clone(),
+                        app,
+                        move |_, request, result, _| {
+                            let _ = sender.send((request, result));
+                        },
+                    )
+                }) {
+                    Ok(Ok(())) => {}
+                    Ok(Err((request, error))) => {
+                        let _ = cx.update(|app| completed(&retained, request, Err(error), app));
+                        return;
+                    }
+                    Err(_) => return,
+                }
+            }
+        })
+        .detach();
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_exit_waiting_passes(&self) -> usize {
+        self.exit_waiting_passes
+    }
+
     pub(crate) fn advance_exit(
         owner: &Rc<RefCell<Self>>,
         mut request: RunningExitRequest,

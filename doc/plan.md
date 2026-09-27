@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 645: Guard Exit Completion With Settled Owner Custody (finished)
+# Phase 646: Drive Admitted Exit Through Waiting Progress (finished)
 
-Owner-level Exit completion now refuses while observation, confirmation, shutdown intent, progress
-or absent service custody remains. Exact completion wakes outside owner borrows and requires no
-live invoking window. All 25 focused tests passed (`55c3fc88-4a23-4ed3-baee-9c5d91442226` and
-`bc9fd8bd-3b1c-43b9-93e2-94c5710f5d26`), together with the default library check and independent
-semantic review. Automatic routing and teardown remain explicit.
+The Exit driver retains the original request and owner through delayed Waiting passes and returns
+one terminal outcome without completing the command or beginning teardown. The library check,
+28 distinct focused tests and independent semantic review passed. A blocked real home mutation
+proves Waiting and resumed readiness; its final focused run passed
+(`111a2e85-f7a2-4693-ac9c-9b30d9de3208`). Initial routing integration, visible gates, outcome
+presentation and final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -150,6 +151,10 @@ result after complete service return. Policy-driven polling and final teardown r
 Phase 645 guards request completion until owner custody settles; callers still explicitly end an
 unadmitted intent or obtain proven reopening before completion. Automatic outcome handling remains
 unmounted.
+
+Phase 646 supplies automatic delayed progress polling while Waiting, with exact request retention
+and terminal delivery. Connect it to admitted initial routing and coherent outcome handling during
+ordinary policy integration; it grants no teardown or quit authority.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

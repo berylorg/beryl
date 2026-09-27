@@ -36,6 +36,14 @@ mod progress_route {
     ));
 }
 
+mod progress_driver {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_driver.rs"
+    ));
+}
+
 #[test]
 fn native_exit_idle_classification_admits_only_the_active_request() {
     run(false, None, None);

@@ -1,0 +1,273 @@
+use crate::running_owner::ExitProgressError;
+use beryl_home_store::{CommandOutcome, HomeCommand};
+use beryl_state::{
+    ApplySettings, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
+};
+
+#[test]
+fn native_exit_driver_returns_ready_with_original_custody() {
+    run_driver(false, false);
+}
+
+#[test]
+fn native_exit_driver_returns_cancelled_with_proven_reopening() {
+    run_driver(true, false);
+}
+
+#[test]
+fn native_exit_driver_waits_for_home_mutation_then_resumes() {
+    run_driver(false, true);
+}
+
+fn run_driver(cancelled: bool, waiting: bool) {
+    let directory = support::native_home();
+    let faults = FaultController::new();
+    let opening_faults = faults.clone();
+    let input = input(directory.path(), move |path, _| {
+        let mut candidate = HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
+            opening_faults.clone(),
+        )
+        .unwrap();
+        let state = BerylState::register(&mut candidate).unwrap();
+        let syndic = SyndicStorage::register(&mut candidate).unwrap();
+        let candidate = candidate
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+        StartupHomeOpen::Ready {
+            candidate,
+            state,
+            syndic,
+        }
+    });
+    let finished = Rc::new(Cell::new(false));
+    let observed = finished.clone();
+    Application::new()
+        .with_quit_on_last_window_close(false)
+        .run(move |app| {
+            startup_owner::start(
+                input,
+                move |result, app| {
+                    let StartupCompletion::Running(running) = result else {
+                        panic!("startup failed")
+                    };
+                    let invoking = running.windows.window_ids()[0];
+                    let owner = RunningProcessOwner::start(running, app);
+                    let command = owner.borrow().window_exit_command(invoking, app).unwrap();
+                    command.request_exit();
+                    app.spawn(async move |cx| {
+                        let request = next_request(&owner, cx).await;
+                        let identity = request.identity();
+                        let (request, error) = cx
+                            .update(|app| {
+                                RunningProcessOwner::drive_exit(
+                                    &owner,
+                                    request,
+                                    ProjectionCancellationToken::new(),
+                                    app,
+                                    |_, _, _, _| panic!("refusal must not notify"),
+                                )
+                            })
+                            .unwrap()
+                            .err()
+                            .unwrap();
+                        assert!(matches!(error, ExitProgressError::Intent));
+                        assert!(Rc::ptr_eq(&identity, &request.identity()));
+                        assert!(!owner.borrow().test_services_on_worker());
+                        let observation = observe(&owner, ProjectionCancellationToken::new(), cx)
+                            .await
+                            .unwrap();
+                        cx.update(|app| {
+                            owner.borrow_mut().try_begin_idle_shutdown(
+                                invoking,
+                                ShutdownIntent::ApplicationExit,
+                                &observation,
+                                app,
+                            )
+                        })
+                        .unwrap()
+                        .unwrap();
+                        let mutation = if waiting {
+                            let (home, command) = {
+                                let owner = owner.borrow();
+                                let graph = owner.test_services().graph().unwrap();
+                                let home = graph.home();
+                                let mut command = HomeCommand::new(home.home_revision().unwrap());
+                                command
+                                    .add(
+                                        graph.state().settings().apply(
+                                            graph.state().settings().revision(home).unwrap(),
+                                            ApplySettings::new(vec![SettingUpdate::new(
+                                                SettingKey::DeveloperInstructions,
+                                                ExpectedSettingRevision::Absent,
+                                                SettingValue::developer_instructions(
+                                                    "waiting progress fixture",
+                                                )
+                                                .unwrap(),
+                                            )])
+                                            .unwrap(),
+                                        ),
+                                    )
+                                    .unwrap();
+                                (home.service_reference(), command)
+                            };
+                            let pause = faults.block_next(FaultPoint::BeforeCommit);
+                            let work = cx
+                                .background_executor()
+                                .spawn(async move { home.execute(command) });
+                            assert!(pause.wait_until_reached(Duration::from_secs(5)));
+                            Some((pause, work))
+                        } else {
+                            None
+                        };
+                        let cancellation = ProjectionCancellationToken::new();
+                        if cancelled {
+                            cancellation.cancel();
+                        }
+                        let slot = Rc::new(RefCell::new(None));
+                        let delivered = slot.clone();
+                        let gui_thread = std::thread::current().id();
+                        let weak = Rc::downgrade(&owner);
+                        cx.update(|app| {
+                            assert!(
+                                RunningProcessOwner::drive_exit(
+                                    &owner,
+                                    request,
+                                    cancellation,
+                                    app,
+                                    move |owner, request, result, _| {
+                                        assert_eq!(std::thread::current().id(), gui_thread);
+                                        assert!(!owner.borrow().test_services_on_worker());
+                                        assert!(
+                                            owner.borrow_mut().take_shutdown_progress().is_none()
+                                        );
+                                        assert!(owner.borrow().exit_requested());
+                                        assert_eq!(
+                                            owner.borrow().test_process().windows.window_ids(),
+                                            vec![invoking]
+                                        );
+                                        assert!(
+                                            delivered
+                                                .borrow_mut()
+                                                .replace((owner.clone(), request, result))
+                                                .is_none()
+                                        );
+                                    },
+                                )
+                                .is_ok()
+                            );
+                            command.request_exit();
+                        })
+                        .unwrap();
+                        drop(owner);
+                        assert!(weak.upgrade().is_some());
+                        if let Some((pause, work)) = mutation {
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            while {
+                                let owner = weak.upgrade().unwrap();
+                                let owner = owner.borrow();
+                                owner.test_exit_waiting_passes() == 0
+                                    || owner.test_services_on_worker()
+                            } {
+                                assert!(
+                                    Instant::now() < deadline,
+                                    "driver never delivered Waiting"
+                                );
+                                cx.background_executor()
+                                    .timer(Duration::from_millis(1))
+                                    .await;
+                            }
+                            assert!(slot.borrow().is_none());
+                            {
+                                let owner = weak.upgrade().unwrap();
+                                assert!(!owner.borrow().test_services_on_worker());
+                                assert!(owner.borrow_mut().take_shutdown_progress().is_none());
+                                assert!(owner.borrow().exit_requested());
+                            }
+                            command.request_exit();
+                            pause.release();
+                            assert!(matches!(work.await, CommandOutcome::Committed { .. }));
+                        }
+                        wait(&slot, cx).await;
+                        let (owner, mut request, result) = slot.borrow_mut().take().unwrap();
+                        assert!(Rc::ptr_eq(&identity, &request.identity()));
+                        if cancelled {
+                            assert!(matches!(
+                                result.unwrap(),
+                                AppServiceShutdownProgress::Failed { reopened: true, .. }
+                            ));
+                        } else {
+                            assert!(matches!(result.unwrap(), AppServiceShutdownProgress::Ready));
+                            assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                            let cancellation = ProjectionCancellationToken::new();
+                            cancellation.cancel();
+                            let delivered = slot.clone();
+                            cx.update(|app| {
+                                assert!(
+                                    RunningProcessOwner::drive_exit(
+                                        &owner,
+                                        request,
+                                        cancellation,
+                                        app,
+                                        move |owner, request, result, _| {
+                                            assert!(
+                                                delivered
+                                                    .borrow_mut()
+                                                    .replace((owner.clone(), request, result))
+                                                    .is_none()
+                                            );
+                                        },
+                                    )
+                                    .is_ok()
+                                )
+                            })
+                            .unwrap();
+                            wait(&slot, cx).await;
+                            let (_, returned, result) = slot.borrow_mut().take().unwrap();
+                            request = returned;
+                            assert!(matches!(
+                                result.unwrap(),
+                                AppServiceShutdownProgress::Failed { reopened: true, .. }
+                            ));
+                        }
+                        assert!(owner.borrow().shutdown_status().is_none());
+                        assert!(RunningProcessOwner::finish_exit(&owner, &request));
+                        assert!(!owner.borrow().exit_requested());
+                        let (request, error) = cx
+                            .update(|app| {
+                                RunningProcessOwner::drive_exit(
+                                    &owner,
+                                    request,
+                                    ProjectionCancellationToken::new(),
+                                    app,
+                                    |_, _, _, _| panic!("stale request must not notify"),
+                                )
+                            })
+                            .unwrap()
+                            .err()
+                            .unwrap();
+                        assert!(matches!(error, ExitProgressError::Request(_)));
+                        assert!(Rc::ptr_eq(&identity, &request.identity()));
+                        let running = Rc::try_unwrap(owner)
+                            .ok()
+                            .unwrap()
+                            .into_inner()
+                            .test_into_process();
+                        support::dispose_running(running, cx).await;
+                        observed.set(true);
+                        cx.update(|app| app.quit()).unwrap();
+                    })
+                    .detach();
+                },
+                app,
+            );
+            support::watchdog(app);
+        });
+    assert!(finished.get());
+    assert_reopens(&directory);
+}
