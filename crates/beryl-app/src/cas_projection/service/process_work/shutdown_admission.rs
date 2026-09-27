@@ -9,6 +9,15 @@ impl ProjectionConnectionService {
         sessions: &ScheduledExecutionSessions,
         observation: &ShutdownWorkObservation,
     ) -> Result<ProcessAdmissionFence, ShutdownWorkError> {
+        self.try_admit_observed_shutdown_with_window(sessions, observation, None)
+    }
+
+    pub(crate) fn try_admit_observed_shutdown_with_window(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        observation: &ShutdownWorkObservation,
+        window: Option<crate::window_acquisition::WindowShutdownAdmission<'_>>,
+    ) -> Result<ProcessAdmissionFence, ShutdownWorkError> {
         let read = self.work_read();
         let revision = &observation.revision;
         read.validate_shutdown_source_identity(revision)?;
@@ -18,6 +27,9 @@ impl ProjectionConnectionService {
             .as_ref()
             .ok_or(RuntimeWorkError::Closed)?;
         let closing = read.command_authorizer.prepare_process_closing()?;
+        if let Some(window) = window {
+            window.validate(&closing)?;
+        }
         let _sessions = sessions.try_hold_work_revision(&revision.required.sessions)?;
         let _controls = compaction.try_hold_control_revisions(
             &read.stop_coordinator,

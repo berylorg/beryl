@@ -12,6 +12,45 @@ fn observe(fixture: &Fixture) -> ShutdownWorkObservation {
 }
 
 #[test]
+fn window_admission_refreshes_only_work_evidence_after_stale_observation() {
+    use crate::window_acquisition::RuntimeBackedWindowProcessRegistry;
+    let fixture = Fixture::idle();
+    let id = beryl_model::WindowId::from_bytes([1; 16]);
+    let registry = RuntimeBackedWindowProcessRegistry::new(fixture.gate.clone());
+    let _resident = registry.reserve_main_window(id).unwrap();
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id]).unwrap())
+        .unwrap();
+    let window = registry
+        .prepare_shutdown_admission(&lease, id, true)
+        .unwrap();
+    let permit = fixture.gate.execution_permit();
+    let stale = observe(&fixture);
+    drop(fixture.service.connection_work_boundary().begin_change());
+    assert!(matches!(
+        fixture.service.try_admit_observed_shutdown_with_window(
+            &fixture.sessions,
+            &stale,
+            Some(window)
+        ),
+        Err(ShutdownWorkError::Runtime(RuntimeWorkError::Stale))
+    ));
+    permit.commit(|| ()).unwrap();
+    assert_eq!(lease.is_final(id), Ok(true));
+    let fresh = observe(&fixture);
+    let fence = fixture
+        .service
+        .try_admit_observed_shutdown_with_window(&fixture.sessions, &fresh, Some(window))
+        .unwrap();
+    assert_eq!(
+        permit.commit(|| ()),
+        Err(crate::process_admission::ProcessAdmissionError::Fenced)
+    );
+    fence.reopen_if(true).unwrap();
+    assert_eq!(lease.is_final(id), Ok(true));
+}
+
+#[test]
 fn observed_shutdown_admits_idle_and_pending_work_and_invalidates_old_permits() {
     for pending in [false, true] {
         let fixture = Fixture::with_pending(pending);

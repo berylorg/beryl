@@ -97,6 +97,28 @@ impl ProcessServiceOwner {
         &mut self,
         observation: &ShutdownWorkObservation,
     ) -> Result<(), AppServiceCloseError> {
+        self.try_begin_observed_shutdown_with_window(observation, None)
+    }
+
+    pub(crate) fn try_begin_observed_window_shutdown(
+        &mut self,
+        observation: &ShutdownWorkObservation,
+        lease: &crate::window_acquisition::WindowCloseLease,
+        invoking: beryl_model::WindowId,
+        require_final: bool,
+    ) -> Result<(), AppServiceCloseError> {
+        let window = self
+            .windows
+            .prepare_shutdown_admission(lease, invoking, require_final)
+            .map_err(ShutdownWorkError::from)?;
+        self.try_begin_observed_shutdown_with_window(observation, Some(window))
+    }
+
+    fn try_begin_observed_shutdown_with_window(
+        &mut self,
+        observation: &ShutdownWorkObservation,
+        window: Option<crate::window_acquisition::WindowShutdownAdmission<'_>>,
+    ) -> Result<(), AppServiceCloseError> {
         let graph = self
             .graph
             .as_mut()
@@ -104,11 +126,16 @@ impl ProcessServiceOwner {
         if graph.shutdown.is_some() {
             return Err(AppServiceCloseError::AlreadyShuttingDown);
         }
-        let attempt = graph
+        let cas = graph
             .cas
             .as_ref()
-            .ok_or(AppServiceCloseError::Unavailable)?
-            .try_begin_observed_shutdown(&graph.sessions, observation)?;
+            .ok_or(AppServiceCloseError::Unavailable)?;
+        let attempt = match window {
+            Some(window) => {
+                cas.try_begin_observed_window_shutdown(&graph.sessions, observation, window)?
+            }
+            None => cas.try_begin_observed_shutdown(&graph.sessions, observation)?,
+        };
         graph.shutdown = Some(attempt);
         graph.shutdown_ready = false;
         drop(graph.restore_lifetime.take());

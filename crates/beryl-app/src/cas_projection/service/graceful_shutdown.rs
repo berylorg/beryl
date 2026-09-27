@@ -88,6 +88,24 @@ impl ProjectionConnectionService {
         sessions: &ScheduledExecutionSessions,
         observation: &ShutdownWorkObservation,
     ) -> Result<ShutdownAttemptId, ShutdownCoordinatorError> {
+        self.try_begin_observed_shutdown_with_window(sessions, observation, None)
+    }
+
+    pub(crate) fn try_begin_observed_window_shutdown(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        observation: &ShutdownWorkObservation,
+        window: crate::window_acquisition::WindowShutdownAdmission<'_>,
+    ) -> Result<ShutdownAttemptId, ShutdownCoordinatorError> {
+        self.try_begin_observed_shutdown_with_window(sessions, observation, Some(window))
+    }
+
+    fn try_begin_observed_shutdown_with_window(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        observation: &ShutdownWorkObservation,
+        window: Option<crate::window_acquisition::WindowShutdownAdmission<'_>>,
+    ) -> Result<ShutdownAttemptId, ShutdownCoordinatorError> {
         let mut coordinator = self
             .graceful_shutdown
             .try_lock()
@@ -100,7 +118,7 @@ impl ProjectionConnectionService {
             .checked_add(1)
             .ok_or(ShutdownCoordinatorError::Unavailable)?;
         let prepared = self.prepare_shutdown_execution_capture()?;
-        let fence = self.try_admit_observed_shutdown(sessions, observation)?;
+        let fence = self.try_admit_observed_shutdown_with_window(sessions, observation, window)?;
         let execution = prepared.bind(&fence);
         let id = ShutdownAttemptId {
             service: self.service_generation,

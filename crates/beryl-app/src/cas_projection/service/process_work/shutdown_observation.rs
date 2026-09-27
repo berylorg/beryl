@@ -7,6 +7,8 @@ mod tests;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ShutdownWorkError {
+    #[error("shutdown window custody is unavailable: {0:?}")]
+    Window(#[from] crate::window_acquisition::WindowCloseAdmissionError),
     #[error(transparent)]
     Work(#[from] ProcessWorkError),
     #[error(transparent)]

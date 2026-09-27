@@ -57,6 +57,10 @@ pub(crate) struct ProcessAdmissionClosing<'a> {
 }
 
 impl ProcessAdmissionClosing<'_> {
+    pub(crate) fn belongs_to(&self, gate: &ProcessAdmissionGate) -> bool {
+        Arc::ptr_eq(&self.gate.inner, &gate.inner)
+    }
+
     pub(crate) fn publish(mut self) -> ProcessAdmissionFence {
         self.state.epoch = self.epoch;
         self.state.fenced = true;

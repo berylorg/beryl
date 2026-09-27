@@ -1,11 +1,15 @@
 use super::*;
 use crate::process_admission::ProcessAdmissionError;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub(crate) enum WindowCloseAdmissionError {
+    #[error(transparent)]
     Process(ProcessAdmissionError),
+    #[error("window close registry is busy")]
     Busy,
+    #[error("window close evidence no longer matches the window set")]
     WindowSetChanged,
+    #[error("window close registry is unavailable")]
     Unavailable,
 }
 
@@ -27,7 +31,61 @@ pub(crate) struct WindowCloseLease {
     process: crate::process_admission::ProcessAdmissionGate,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct WindowShutdownAdmission<'a> {
+    lease: &'a WindowCloseLease,
+    invoking: WindowId,
+    require_final: bool,
+}
+
+impl WindowShutdownAdmission<'_> {
+    pub(crate) fn validate(
+        &self,
+        closing: &crate::process_admission::ProcessAdmissionClosing<'_>,
+    ) -> Result<(), WindowCloseAdmissionError> {
+        if !closing.belongs_to(&self.lease.process) {
+            return Err(WindowCloseAdmissionError::WindowSetChanged);
+        }
+        let registry = self
+            .lease
+            .snapshot
+            .registry
+            .try_lock()
+            .map_err(|error| match error {
+                std::sync::TryLockError::WouldBlock => WindowCloseAdmissionError::Busy,
+                std::sync::TryLockError::Poisoned(_) => WindowCloseAdmissionError::Unavailable,
+            })?;
+        if !registry
+            .close_owner
+            .as_ref()
+            .is_some_and(|owner| Arc::ptr_eq(owner, &self.lease.owner))
+            || !Arc::ptr_eq(&registry.membership_revision, &self.lease.snapshot.revision)
+            || !self.lease.snapshot.members.contains(&self.invoking)
+            || (self.require_final && self.lease.snapshot.members.len() != 1)
+        {
+            return Err(WindowCloseAdmissionError::WindowSetChanged);
+        }
+        Ok(())
+    }
+}
+
 impl RuntimeBackedWindowProcessRegistry {
+    pub(crate) fn prepare_shutdown_admission<'a>(
+        &self,
+        lease: &'a WindowCloseLease,
+        invoking: WindowId,
+        require_final: bool,
+    ) -> Result<WindowShutdownAdmission<'a>, WindowCloseAdmissionError> {
+        if !Arc::ptr_eq(&self.flights, &lease.snapshot.registry) {
+            return Err(WindowCloseAdmissionError::WindowSetChanged);
+        }
+        Ok(WindowShutdownAdmission {
+            lease,
+            invoking,
+            require_final,
+        })
+    }
+
     pub(crate) fn inspect_close_snapshot(
         &self,
         snapshot: &WindowCloseSnapshot,

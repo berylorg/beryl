@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 626: Release Proven-Clean Failed Confirmation Attempts (finished)
+# Phase 627: Validate Window Custody Inside Observed Shutdown Admission (finished)
 
-The running owner releases failed confirmation slots only with exact native cleanup evidence,
-restores logical focus and permits a fresh activation. Uncertain destruction retains original custody.
-All five native confirmation-owner tests passed (`9e5674b0-804c-4ff3-8447-d11dd1bdcff4`), with
-the default app library check and independent lifecycle review.
+The graph-owned observed handoff now validates exact close custody under unpublished process
+closing. Refusal preserves execution and the caller's original lease for work refresh. All 36
+focused window, admission, coordinator and graph tests passed
+(`298455f8-e3fd-4c3c-b367-210effa05e65`), with the default library check and independent review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -122,6 +122,7 @@ The confirmation custody adapter, exact native cleanup evidence and proven-clean
 are accepted in phases 624–626. GPUI `49db3ce857` and published widget pins retain a single canonical
 GPUI graph. Ordinary close/Exit command routing, confirmed-intent work refresh/admission and exact
 published-window teardown remain unmounted; integrate them through the persistent running owner.
+Phase 627 accepts exact window-custody validation inside the observed admission boundary.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

@@ -6,6 +6,126 @@ fn id(value: u8) -> WindowId {
 }
 
 #[test]
+fn shutdown_validation_requires_exact_gate_registry_member_and_available_custody() {
+    let process = crate::process_admission::ProcessAdmissionGate::new();
+    let permit = process.execution_permit();
+    let registry = RuntimeBackedWindowProcessRegistry::new(process.clone());
+    let other_registry = RuntimeBackedWindowProcessRegistry::new(process.clone());
+    let _resident = registry.reserve_main_window(id(1)).unwrap();
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id(1)]).unwrap())
+        .unwrap();
+    assert!(matches!(
+        other_registry.prepare_shutdown_admission(&lease, id(1), true),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    ));
+    let window = registry
+        .prepare_shutdown_admission(&lease, id(1), true)
+        .unwrap();
+    let foreign = crate::process_admission::ProcessAdmissionGate::new();
+    assert_eq!(
+        window.validate(&foreign.prepare_closing().unwrap()),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    {
+        let closing = process.prepare_closing().unwrap();
+        assert_eq!(window.validate(&closing), Ok(()));
+        assert_eq!(
+            registry
+                .prepare_shutdown_admission(&lease, id(2), false)
+                .unwrap()
+                .validate(&closing),
+            Err(WindowCloseAdmissionError::WindowSetChanged)
+        );
+        let held = registry.flights.lock().unwrap();
+        assert_eq!(
+            window.validate(&closing),
+            Err(WindowCloseAdmissionError::Busy)
+        );
+        drop(held);
+        assert_eq!(window.validate(&closing), Ok(()));
+    }
+    permit.commit(|| ()).unwrap();
+    // A lost exact close owner cannot be replaced by membership equality.
+    registry.flights.lock().unwrap().close_owner = Some(Arc::new(()));
+    assert_eq!(
+        window.validate(&process.prepare_closing().unwrap()),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
+fn closing_guard_protects_validated_membership_until_fence_publication() {
+    let process = crate::process_admission::ProcessAdmissionGate::new();
+    let permit = process.execution_permit();
+    let registry = RuntimeBackedWindowProcessRegistry::new(process.clone());
+    let resident = registry.reserve_main_window(id(1)).unwrap();
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id(1)]).unwrap())
+        .unwrap();
+    let window = registry
+        .prepare_shutdown_admission(&lease, id(1), true)
+        .unwrap();
+    let closing = process.prepare_closing().unwrap();
+    window.validate(&closing).unwrap();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let worker = thread::spawn(move || {
+        started_tx.send(()).unwrap();
+        drop(resident);
+        done_tx.send(()).unwrap();
+    });
+    started_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(
+        done_rx.try_recv(),
+        Err(std::sync::mpsc::TryRecvError::Empty)
+    );
+    window.validate(&closing).unwrap();
+    let fence = closing.publish();
+    done_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    worker.join().unwrap();
+    assert_eq!(permit.commit(|| ()), Err(ProcessAdmissionError::Fenced));
+    fence.reopen_if(true).unwrap();
+    assert_eq!(
+        window.validate(&process.prepare_closing().unwrap()),
+        Err(WindowCloseAdmissionError::WindowSetChanged)
+    );
+}
+
+#[test]
+fn poisoned_window_registry_refuses_unpublished_shutdown_validation() {
+    let process = crate::process_admission::ProcessAdmissionGate::new();
+    let permit = process.execution_permit();
+    let registry = RuntimeBackedWindowProcessRegistry::new(process.clone());
+    let _resident = registry.reserve_main_window(id(1)).unwrap();
+    let lease = registry
+        .admit_close(registry.snapshot_for_close(&[id(1)]).unwrap())
+        .unwrap();
+    let poisoned = registry.flights.clone();
+    assert!(
+        thread::spawn(move || {
+            let _held = poisoned.lock().unwrap();
+            panic!("poison window registry");
+        })
+        .join()
+        .is_err()
+    );
+    let window = registry
+        .prepare_shutdown_admission(&lease, id(1), true)
+        .unwrap();
+    assert_eq!(
+        window.validate(&process.prepare_closing().unwrap()),
+        Err(WindowCloseAdmissionError::Unavailable)
+    );
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
 fn inspection_preserves_execution_and_construction_and_cannot_authorize_later_close() {
     let process = crate::process_admission::ProcessAdmissionGate::new();
     let permit = process.execution_permit();

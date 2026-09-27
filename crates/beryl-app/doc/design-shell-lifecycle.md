@@ -573,6 +573,15 @@ by the executable composition root.
   so later close admission still consumes and validates the original snapshot. Membership ABA,
   foreign snapshots, absent invoking members, competing close ownership and process shutdown
   refuse inspection without changing authority or reopening anything.
+- Running shutdown validates the retained close lease inside the observed admission boundary,
+  after acquiring unpublished process closing and before publishing its fence. The lease must
+  belong to that exact process gate and retain its original close owner, membership revision and
+  invoking member; final ordinary close additionally requires a single member. Registry validation
+  is nonblocking and follows process-gate then registry lock order. Every membership change and
+  close-owner release uses that same process gate, so its held closing guard protects the validated
+  window evidence through fence publication. Refusal leaves the coordinator and execution authority
+  unchanged. Work refresh retains the original lease and window evidence; it never substitutes a
+  new window snapshot under an earlier confirmation. This check grants no confirmation authority.
 - Shutdown runtime revision validation uses nonblocking read-only checks of every nested source.
   Busy, poisoned, closed, exhausted or changed sources refuse validation without altering source
   custody, notification, execution authority or failure state. Complete facts and durable reads
