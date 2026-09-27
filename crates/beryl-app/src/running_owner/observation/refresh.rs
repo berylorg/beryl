@@ -11,11 +11,16 @@ use beryl_home_store::{HomeMutationObservationError, HomeObservedCoherenceError}
 use syndic_storage::SyndicReadError;
 
 pub(super) fn work_changed(error: &ConfirmedShutdownError) -> bool {
+    match error {
+        ConfirmedShutdownError::Service(error) => service_work_changed(error),
+        _ => false,
+    }
+}
+
+pub(in crate::running_owner) fn service_work_changed(error: &AppServiceCloseError) -> bool {
     let work = match error {
-        ConfirmedShutdownError::Service(AppServiceCloseError::Work(work))
-        | ConfirmedShutdownError::Service(AppServiceCloseError::Coordinator(
-            ShutdownCoordinatorError::Work(work),
-        )) => work,
+        AppServiceCloseError::Work(work)
+        | AppServiceCloseError::Coordinator(ShutdownCoordinatorError::Work(work)) => work,
         _ => return false,
     };
     matches!(

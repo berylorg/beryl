@@ -17,6 +17,7 @@ mod exit_delivery;
 mod exit_notice;
 mod exit_observation;
 mod exit_progress;
+mod exit_refresh;
 mod exit_routing;
 mod exit_work;
 mod initial_observation;

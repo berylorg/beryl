@@ -4,6 +4,7 @@ use admission::{CompletedConfirmedShutdownObservation, ConfirmedShutdownError};
 use std::time::Duration;
 
 mod refresh;
+pub(super) use refresh::service_work_changed;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ConfirmedShutdownAdmission {

@@ -33,6 +33,8 @@ pub(crate) enum ExitWorkError {
     Admission(#[from] IdleShutdownError),
     #[error("Exit confirmation could not start: {0}")]
     Confirmation(String),
+    #[error("Exit work refresh could not be scheduled: {0}")]
+    RefreshScheduling(String),
 }
 
 impl RunningProcessOwner {
@@ -46,6 +48,17 @@ impl RunningProcessOwner {
         let classified = owner
             .borrow_mut()
             .classify_exit_work(request, result, app)?;
+        Self::route_classified_exit_work(owner, request, Ok(classified), app, completed)
+    }
+
+    pub(super) fn route_classified_exit_work(
+        owner: &Rc<RefCell<Self>>,
+        request: &mut RunningExitRequest,
+        classified: Result<ExitWorkClassification, ExitWorkError>,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<ExitWorkRoute, ExitWorkError> {
+        let classified = classified?;
         match classified {
             ExitWorkClassification::Admitted => Ok(ExitWorkRoute::Admitted),
             ExitWorkClassification::ConfirmationRequired {

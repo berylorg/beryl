@@ -41,7 +41,7 @@ impl RunningProcessOwner {
             &mut App,
         ) + 'static,
     ) -> Result<(), (RunningExitRequest, ExitObservationError)> {
-        Self::observe_exit_work(
+        Self::observe_and_classify_exit_work(
             owner,
             request,
             cancellation.clone(),
@@ -52,26 +52,31 @@ impl RunningProcessOwner {
                 let routed = {
                     let mut delivery = delivery.borrow_mut();
                     let (request, _) = delivery.as_mut().unwrap();
-                    Self::route_exit_work(owner, request, observation, app, move |owner, app| {
-                        let result = {
-                            let mut delivery = settled.borrow_mut();
-                            let (request, _) = delivery.as_mut().unwrap();
-                            owner.borrow_mut().consume_exit_confirmation(request, app)
-                        };
-                        let result = match result {
-                            Ok(Some(ExitConfirmationRoute::Cancelled)) => {
-                                Ok(ExitRoutingCompletion::Cancelled)
-                            }
-                            Ok(Some(ExitConfirmationRoute::AwaitingObservation)) => {
-                                let observed = settled.clone();
-                                match Self::observe_and_refresh_confirmed_shutdown(
-                                    owner,
-                                    cancellation,
-                                    app,
-                                    move |owner, result, app| {
-                                        let (request, completed) =
-                                            observed.borrow_mut().take().unwrap();
-                                        let result = result
+                    Self::route_classified_exit_work(
+                        owner,
+                        request,
+                        observation,
+                        app,
+                        move |owner, app| {
+                            let result = {
+                                let mut delivery = settled.borrow_mut();
+                                let (request, _) = delivery.as_mut().unwrap();
+                                owner.borrow_mut().consume_exit_confirmation(request, app)
+                            };
+                            let result = match result {
+                                Ok(Some(ExitConfirmationRoute::Cancelled)) => {
+                                    Ok(ExitRoutingCompletion::Cancelled)
+                                }
+                                Ok(Some(ExitConfirmationRoute::AwaitingObservation)) => {
+                                    let observed = settled.clone();
+                                    match Self::observe_and_refresh_confirmed_shutdown(
+                                        owner,
+                                        cancellation,
+                                        app,
+                                        move |owner, result, app| {
+                                            let (request, completed) =
+                                                observed.borrow_mut().take().unwrap();
+                                            let result = result
                                             .map(|admission| match admission {
                                                 ConfirmedShutdownAdmission::Admitted => {
                                                     ExitRoutingCompletion::Admitted
@@ -81,21 +86,22 @@ impl RunningProcessOwner {
                                                 }
                                             })
                                             .map_err(ExitRoutingError::ConfirmedObservation);
-                                        completed(owner, request, result, app);
-                                    },
-                                ) {
-                                    Ok(()) => return,
-                                    Err(error) => {
-                                        Err(ExitRoutingError::ObservationScheduling(error))
+                                            completed(owner, request, result, app);
+                                        },
+                                    ) {
+                                        Ok(()) => return,
+                                        Err(error) => {
+                                            Err(ExitRoutingError::ObservationScheduling(error))
+                                        }
                                     }
                                 }
-                            }
-                            Ok(None) => Err(ExitRoutingError::ConfirmationUnavailable),
-                            Err(error) => Err(ExitRoutingError::Confirmation(error)),
-                        };
-                        let (request, completed) = settled.borrow_mut().take().unwrap();
-                        completed(owner, request, result, app);
-                    })
+                                Ok(None) => Err(ExitRoutingError::ConfirmationUnavailable),
+                                Err(error) => Err(ExitRoutingError::Confirmation(error)),
+                            };
+                            let (request, completed) = settled.borrow_mut().take().unwrap();
+                            completed(owner, request, result, app);
+                        },
+                    )
                 };
                 let result = match routed {
                     Ok(ExitWorkRoute::Confirming) => return,

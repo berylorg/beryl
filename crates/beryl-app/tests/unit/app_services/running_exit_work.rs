@@ -12,6 +12,14 @@ mod exit_observation {
     ));
 }
 
+mod initial_refresh {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_exit_refresh.rs"
+    ));
+}
+
 mod confirmation_route {
     use super::*;
     include!(concat!(
