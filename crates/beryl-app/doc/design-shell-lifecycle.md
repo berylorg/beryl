@@ -540,6 +540,15 @@ by the executable composition root.
   dropping it does not complete it. Waiting or delivery alone selects no invoking window, observes
   no work, admits no barrier and grants no quit authority.
 
+- Each main-window Exit producer carries its original window identity. The first pending
+  activation retains that identity through delivery; duplicate activations from any window cannot
+  replace it or queue a successor. A deferred startup Exit has no main-window origin and binds once
+  to the first published main window in restore-set order. Resolution requires the exact active
+  request from this owner and a live published controller for the selected identity. Once bound,
+  loss of that window refuses resolution instead of selecting another window. Producer creation
+  also validates its published member. These checks grant no close lease or execution fence;
+  confirmation and admission must still validate their original window and work evidence.
+
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.
   It starts at most one GUI-executor cleanup task for the transferred startup surface. That task

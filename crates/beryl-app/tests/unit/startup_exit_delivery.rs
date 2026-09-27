@@ -9,6 +9,7 @@ fn producer() -> StartupCommands {
     StartupCommands(Rc::new(RefCell::new(Commands {
         stage: Stage::Waiting,
         exit: false,
+        exit_window: None,
         retry: None,
         wake: None,
         active_exit: None,
@@ -60,6 +61,70 @@ fn foreign_completion_cannot_end_an_active_request() {
     assert!(running.exit_requested());
     assert!(running.finish_exit(&request));
     assert!(other.finish_exit(&foreign));
+}
+
+#[test]
+fn first_window_origin_survives_pending_and_active_duplicates() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    let first = WindowId::from_bytes([31; 16]);
+    let second = WindowId::from_bytes([32; 16]);
+    let first_command = running.window_command(first);
+    let second_command = running.window_command(second);
+    first_command.request_exit();
+    second_command.request_exit();
+    producer.request_exit();
+    let mut request = take(&mut running);
+    assert_eq!(
+        running.bind_invoking_window(&mut request, Some(second)),
+        Some(first)
+    );
+    second_command.clone().request_exit();
+    assert!(running.finish_exit(&request));
+    assert!(!running.exit_requested());
+    assert_eq!(
+        running.bind_invoking_window(&mut request, Some(second)),
+        None
+    );
+    second_command.request_exit();
+    let mut successor = take(&mut running);
+    assert_eq!(
+        running.bind_invoking_window(&mut successor, Some(first)),
+        Some(second)
+    );
+    assert_eq!(
+        running.bind_invoking_window(&mut request, Some(first)),
+        None
+    );
+    assert!(running.finish_exit(&successor));
+}
+
+#[test]
+fn deferred_startup_origin_binds_once_and_foreign_requests_cannot_bind() {
+    let producer = producer();
+    producer.request_exit();
+    let mut running = handoff(&producer);
+    let first = WindowId::from_bytes([33; 16]);
+    let second = WindowId::from_bytes([34; 16]);
+    running.window_command(second).request_exit();
+    let mut request = take(&mut running);
+    let foreign_producer = self::producer();
+    let foreign = handoff(&foreign_producer);
+    assert_eq!(
+        foreign.bind_invoking_window(&mut request, Some(second)),
+        None
+    );
+    assert_eq!(request.invoking, None);
+    assert_eq!(running.bind_invoking_window(&mut request, None), None);
+    assert_eq!(
+        running.bind_invoking_window(&mut request, Some(first)),
+        Some(first)
+    );
+    assert_eq!(
+        running.bind_invoking_window(&mut request, Some(second)),
+        Some(first)
+    );
+    assert!(running.finish_exit(&request));
 }
 
 thread_local! {

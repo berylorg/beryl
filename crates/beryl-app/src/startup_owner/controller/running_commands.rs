@@ -2,7 +2,22 @@ use super::*;
 
 pub(crate) struct RunningExitCommands(StartupCommands);
 
-pub(crate) struct RunningExitRequest(Rc<()>);
+pub(crate) struct RunningExitRequest {
+    identity: Rc<()>,
+    invoking: Option<WindowId>,
+}
+
+#[derive(Clone)]
+pub(crate) struct RunningWindowExit {
+    commands: StartupCommands,
+    invoking: WindowId,
+}
+
+impl RunningWindowExit {
+    pub(crate) fn request_exit(&self) {
+        self.commands.request_exit_from(Some(self.invoking));
+    }
+}
 
 impl RunningExitCommands {
     pub(super) fn new(commands: StartupCommands) -> Self {
@@ -13,6 +28,36 @@ impl RunningExitCommands {
     pub(crate) fn exit_requested(&self) -> bool {
         let state = self.0.0.borrow();
         state.exit || state.active_exit.is_some()
+    }
+
+    pub(crate) fn window_command(&self, invoking: WindowId) -> RunningWindowExit {
+        RunningWindowExit {
+            commands: self.0.clone(),
+            invoking,
+        }
+    }
+
+    pub(crate) fn bind_invoking_window(
+        &self,
+        request: &mut RunningExitRequest,
+        startup_window: Option<WindowId>,
+    ) -> Option<WindowId> {
+        if !self.is_active(request) {
+            return None;
+        }
+        if request.invoking.is_none() {
+            request.invoking = startup_window;
+        }
+        request.invoking
+    }
+
+    fn is_active(&self, request: &RunningExitRequest) -> bool {
+        self.0
+            .0
+            .borrow()
+            .active_exit
+            .as_ref()
+            .is_some_and(|active| Rc::ptr_eq(active, &request.identity))
     }
 
     pub(crate) async fn next_exit(&mut self) -> RunningExitRequest {
@@ -29,7 +74,10 @@ impl RunningExitCommands {
             let request = Rc::new(());
             state.active_exit = Some(request.clone());
             state.wake = None;
-            return Poll::Ready(RunningExitRequest(request));
+            return Poll::Ready(RunningExitRequest {
+                identity: request,
+                invoking: state.exit_window.take(),
+            });
         }
         state.wake = Some(cx.waker().clone());
         Poll::Pending
@@ -53,7 +101,7 @@ impl RunningExitCommands {
         if !state
             .active_exit
             .as_ref()
-            .is_some_and(|active| Rc::ptr_eq(active, &request.0))
+            .is_some_and(|active| Rc::ptr_eq(active, &request.identity))
         {
             return Err(());
         }

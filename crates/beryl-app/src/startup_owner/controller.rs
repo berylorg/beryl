@@ -19,7 +19,7 @@ use std::{
 };
 
 mod running_commands;
-pub(crate) use running_commands::{RunningExitCommands, RunningExitRequest};
+pub(crate) use running_commands::{RunningExitCommands, RunningExitRequest, RunningWindowExit};
 
 #[derive(Clone)]
 enum Stage {
@@ -34,6 +34,7 @@ enum Stage {
 struct Commands {
     stage: Stage,
     exit: bool,
+    exit_window: Option<WindowId>,
     retry: Option<StartupAttempt>,
     wake: Option<Waker>,
     active_exit: Option<Rc<()>>,
@@ -44,9 +45,19 @@ pub(crate) struct StartupCommands(Rc<RefCell<Commands>>);
 
 impl StartupCommands {
     pub(crate) fn request_exit(&self) {
+        self.request_exit_from(None);
+    }
+
+    fn request_exit_from(&self, invoking: Option<WindowId>) {
         let mut state = self.0.borrow_mut();
+        if invoking.is_some() && !matches!(state.stage, Stage::Running) {
+            return;
+        }
         if matches!(state.stage, Stage::Running) && state.active_exit.is_some() {
             return;
+        }
+        if !state.exit {
+            state.exit_window = invoking;
         }
         state.exit = true;
         let stage = state.stage.clone();
@@ -137,6 +148,7 @@ pub(crate) fn start(
     let commands = StartupCommands(Rc::new(RefCell::new(Commands {
         stage: Stage::Preparing(cancellation),
         exit: false,
+        exit_window: None,
         retry: None,
         wake: None,
         active_exit: None,
