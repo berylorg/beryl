@@ -51,6 +51,9 @@ fn interrupted_exit_resume_preserves_records_and_refuses_duplicate_execution() {
             .unwrap();
         assert!(resume.execute(&mut candidate, &fresh).is_err());
         assert!(resume.reconcile(&mut candidate).is_err());
+        let mut previous = None;
+        assert!(resume.retry(&mut candidate, &fresh, &mut previous).is_err());
+        assert!(previous.is_none());
         assert_eq!(
             candidate
                 .recovery_access()
@@ -108,6 +111,9 @@ fn interrupted_exit_resume_retains_each_failure_and_exact_reconciliation() {
                         .len(),
                     1
                 );
+                let mut previous = None;
+                assert!(resume.retry(&mut candidate, &fresh, &mut previous).is_err());
+                assert!(previous.is_none());
                 faults.fail_next(FaultPoint::BeforeReadConfirmation);
                 assert!(
                     candidate
@@ -176,6 +182,100 @@ fn interrupted_exit_resume_retains_each_failure_and_exact_reconciliation() {
         assert!(resume.execute(&mut candidate, &fresh).is_err());
         candidate.abort().close().unwrap();
     }
+}
+
+#[test]
+fn resume_retry_preserves_prior_failures_and_revalidates_before_dispatch() {
+    let faults = FaultController::new();
+    let (_directory, home, session) = open_with_faults(3, faults.clone());
+    faults.fail_next(FaultPoint::AfterPersist);
+    let exit = execute_exit_session(&home, &session, placements(3)).unwrap();
+    let original = exit.publication().clone();
+    let (mut candidate, fresh) = recover_session(home);
+    let mut resume = InterruptedExitResume::new(InterruptedExit::Executed(exit));
+    let mut previous = None;
+    assert!(resume.retry(&mut candidate, &fresh, &mut previous).is_err());
+    faults.fail_next(FaultPoint::BeforeCommit);
+    resume.execute(&mut candidate, &fresh).unwrap();
+    let (mut candidate, newer) = recover_session(candidate.abort());
+    let foreign_faults = FaultController::new();
+    let (_foreign_directory, foreign, _) = open_with_faults(3, foreign_faults.clone());
+    foreign_faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(foreign.home_revision().is_err());
+    let (mut foreign, foreign_session) = recover_session(foreign);
+    assert!(
+        resume
+            .retry(&mut foreign, &foreign_session, &mut previous)
+            .is_err()
+    );
+    assert!(previous.is_none());
+    foreign.abort().close().unwrap();
+    assert!(resume.retry(&mut candidate, &fresh, &mut previous).is_err());
+    assert!(previous.is_none());
+    assert!(matches!(
+        resume.outcome(),
+        Some(ResumeSessionOutcome::NotCommitted { .. })
+    ));
+    let before = newer
+        .minimal_bootstrap_candidate(&candidate.recovery_access().unwrap())
+        .unwrap()
+        .unwrap();
+    faults.fail_next(FaultPoint::BeforeCommit);
+    resume.retry(&mut candidate, &newer, &mut previous).unwrap();
+    assert!(matches!(
+        previous,
+        Some(ResumeSessionOutcome::NotCommitted { .. })
+    ));
+    assert!(matches!(
+        resume.outcome(),
+        Some(ResumeSessionOutcome::NotCommitted { .. })
+    ));
+    let (mut candidate, newest) = recover_session(candidate.abort());
+    let revision = candidate
+        .recovery_access()
+        .unwrap()
+        .home_revision()
+        .unwrap();
+    assert!(
+        resume
+            .retry(&mut candidate, &newest, &mut previous)
+            .is_err()
+    );
+    assert_eq!(
+        candidate
+            .recovery_access()
+            .unwrap()
+            .home_revision()
+            .unwrap(),
+        revision
+    );
+    let mut second_previous = None;
+    resume
+        .retry(&mut candidate, &newest, &mut second_previous)
+        .unwrap();
+    assert!(matches!(
+        second_previous,
+        Some(ResumeSessionOutcome::NotCommitted { .. })
+    ));
+    assert_eq!(
+        resume.validate_candidate(&mut candidate, &newest).unwrap(),
+        ResumeSessionValidation::ResumedRunning
+    );
+    let after = newest
+        .minimal_bootstrap_candidate(&candidate.recovery_access().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.windows(), after.windows());
+    assert_eq!(before.header().fallback(), after.header().fallback());
+    assert_eq!(resume.exit().publication(), &original);
+    let mut third_previous = None;
+    assert!(
+        resume
+            .retry(&mut candidate, &newest, &mut third_previous)
+            .is_err()
+    );
+    assert!(third_previous.is_none());
+    candidate.abort().close().unwrap();
 }
 
 #[test]

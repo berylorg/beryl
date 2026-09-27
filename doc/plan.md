@@ -89,27 +89,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 696: Validate Retained Resume Outcomes Against Fresh Session State (finished)
+# Phase 697: Retry Proven Noncommitted Session Resumption (finished)
 
-Accepted fresh candidate validation of retained resume outcomes: noncommit and exact-old require
-unchanged committed Exit state; commit and exact-new require predicted Running state. Pending,
-failed and terminal uncertainty stay unavailable. Shared complete-state checks preserve custody
-and grant no write or interaction authority. All 25 focused tests passed
-(`106799fb-b03d-40a3-a9a7-ec9b61689646`); default app library check and independent
-lifecycle/persistence review passed.
+Accepted fresh validated retries only after proven noncommit, with prior outcome custody handed
+to an empty caller-owned slot before dispatch. Preparation refusal preserves evidence; committed
+and uncertain outcomes cannot repeat. All 26 focused tests passed
+(`91a056c5-ef31-42c5-aa8b-b3a6c44e65aa`), along with the default library check and independent
+persistence/lifecycle review. No recovery scheduling or interaction reopening is mounted.
 
-# Phase 697: Retry Proven Noncommitted Session Resumption (pending)
+# Phase 698: Retain Interrupted Exit Recovery Custody In The Process Supervisor (pending)
 
-Permit a later automatic recovery attempt only after proven noncommit and fresh unchanged-source
-validation. Preserve prior outcomes and refuse repeat after known commit or unresolved ambiguity.
-Keep whole-graph transfer and resident rebinding separate.
+Connect retained session outcomes to the exact reported-failed Exit request outside replaceable
+service graphs. Preserve cancellation and original evidence through recovery handoff, refusing
+duplicate or stale request transfer. Keep candidate settlement, replacement publication and resident
+rebinding separate; derive the concrete slice from the approved interrupted-Exit recovery contract.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Operator approved interrupted-Exit recovery on 2026-09-27. Phase 691 resolves the target contract;
 a reported failed Exit remains cancelled through same-home recovery and requires fresh activation.
-Phases 692–695 supply the exact header-only resume contribution, immutable publication evidence,
-fresh candidate validation and retained resume execution. Resume settlement and replacement
+Phases 692–697 supply the exact header-only resume contribution, immutable publication evidence,
+fresh candidate validation, retained resume execution and proven-noncommit retry. Resume settlement and replacement
 composition remain prerequisites to enabled mounting.
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the

@@ -132,18 +132,49 @@ impl InterruptedExitResume {
         if self.result_revision.is_some() {
             return Err("Session resume has already been attempted".into());
         }
+        self.execute_prepared(candidate, session, None)
+    }
+
+    pub(crate) fn retry(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        session: &SessionState,
+        previous: &mut Option<ResumeSessionOutcome>,
+    ) -> Result<(), String> {
+        if previous.is_some() {
+            return Err("Previous resume outcome custody is occupied".into());
+        }
+        self.execute_prepared(candidate, session, Some(previous))
+    }
+
+    fn execute_prepared(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        session: &SessionState,
+        previous: Option<&mut Option<ResumeSessionOutcome>>,
+    ) -> Result<(), String> {
         let home_revision = candidate
             .recovery_access()
             .map_err(|e| e.to_string())?
             .home_revision()
             .map_err(|e| e.to_string())?;
-        let validated = match &self.exit {
-            InterruptedExit::Executed(value) => value.validate_candidate(candidate, session),
-            InterruptedExit::Reconciled(value) => value.validate_candidate(candidate, session),
-        }
-        .map_err(|e| e.to_string())?;
-        if validated != ExitSessionValidation::CommittedExit {
-            return Err("Noncommitted Exit needs no session resume".into());
+        if previous.is_some() {
+            if self
+                .validate_candidate(candidate, session)
+                .map_err(|e| e.to_string())?
+                != ResumeSessionValidation::UnchangedExit
+            {
+                return Err("Committed session resume cannot be repeated".into());
+            }
+        } else {
+            let validated = match &self.exit {
+                InterruptedExit::Executed(value) => value.validate_candidate(candidate, session),
+                InterruptedExit::Reconciled(value) => value.validate_candidate(candidate, session),
+            }
+            .map_err(|e| e.to_string())?;
+            if validated != ExitSessionValidation::CommittedExit {
+                return Err("Noncommitted Exit needs no session resume".into());
+            }
         }
         let publication = self.exit.publication();
         let result_revision = publication
@@ -169,6 +200,9 @@ impl InterruptedExitResume {
             .map_err(|e| e.to_string())?;
         if access.home_revision().map_err(|e| e.to_string())? != home_revision {
             return Err("Home changed during session resume preparation".into());
+        }
+        if let Some(previous) = previous {
+            *previous = self.outcome.take();
         }
         self.result_revision = Some(result_revision);
         self.outcome = Some(match access.execute(command) {
