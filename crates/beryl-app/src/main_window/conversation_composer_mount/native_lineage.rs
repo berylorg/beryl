@@ -37,6 +37,9 @@ impl MainWindowConversationComposerMount {
         control: NativeLineageRecoveryControl,
         cx: &mut Context<Self>,
     ) {
+        if self.service.is_none() || self.recovery_fenced() {
+            return;
+        }
         self.native_lineage_recovery = Some(control);
         cx.notify();
     }
@@ -69,7 +72,10 @@ impl MainWindowConversationComposerMount {
     }
 
     fn ensure_native_lineage_refresh_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.native_lineage_recovery.is_none() || self.native_lineage_refresh_task.is_some() {
+        if self.window_close.is_some()
+            || self.native_lineage_recovery.is_none()
+            || self.native_lineage_refresh_task.is_some()
+        {
             return;
         }
         let executor = cx.background_executor().clone();

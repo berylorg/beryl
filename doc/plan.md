@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 723: Detach The Recovery-Fenced Mount Service (finished)
+# Phase 724: Detach The Recovery-Fenced Native Lineage Control (finished)
 
-Accepted exact, drained mount service-reference transfer while retaining the recovery-fenced
-editor and restoration facts. Detached service access refuses work and mount drop skips ordinary
-service cleanup. Library checking, 68 focused tests (f2cfe30f-0622-47d4-ba6b-73e6aad79389) and
-independent lifecycle review passed. Whole-mount retirement and fresh binding remain separate.
+Accepted exact, drained native-lineage control transfer, refresh-timer cancellation and rejection
+of late attachment while retaining the fenced editor and its restoration facts. Library checking,
+56 focused tests (b2a61592-1b9a-4fd2-bf90-e23a6004efde) and independent lifecycle review passed.
+Coordinated whole-mount retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -112,7 +112,8 @@ handoff. Phases 715–719 supply autosave, submission, close background-worker, 
 unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage worker lifetime
 evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
 native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
-detached mount drop behavior. Coordinated retirement of all remaining generation-bound handles
+detached mount drop behavior. Phase 724 supplies native-lineage control detachment and refresh-timer
+cancellation. Coordinated retirement of all remaining generation-bound handles
 and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)

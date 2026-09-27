@@ -1,6 +1,20 @@
 use super::*;
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window::conversation_composer_mount) fn recovery_fenced(&self) -> bool {
+        self.window_close.is_some_and(|close| close.recovery_fenced)
+    }
+
+    pub fn detach_interrupted_exit_native_lineage_control(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<crate::cas_projection::NativeLineageRecoveryControl>, String> {
+        self.validate_recovery_adapter_detachment(ticket, cx)?;
+        self.native_lineage_refresh_task.take();
+        Ok(self.native_lineage_recovery.take())
+    }
+
     pub(in crate::main_window) fn bound_service(
         &self,
     ) -> Result<&Arc<MainWindowConversationComposerService>, String> {
