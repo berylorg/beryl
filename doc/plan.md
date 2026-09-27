@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 644: Carry The Exit Request Through Shutdown Progress (finished)
+# Phase 645: Guard Exit Completion With Settled Owner Custody (finished)
 
-Exit progress retains the exact active request through one worker pass, consumes its settled result
-after service return and delivers outside owner borrows. Refusal preserves request custody;
-readiness and proven reopening stay distinct. The two new native tests passed
-(`16fe9106-b4e0-4d8d-b4be-127c611d4c85`) after correcting the fixture to require a fresh execution
-permit after reopening. The other 20 focused tests, default library check and independent semantic
-review passed. Automatic polling, coherent request completion and teardown remain explicit.
+Owner-level Exit completion now refuses while observation, confirmation, shutdown intent, progress
+or absent service custody remains. Exact completion wakes outside owner borrows and requires no
+live invoking window. All 25 focused tests passed (`55c3fc88-4a23-4ed3-baee-9c5d91442226` and
+`bc9fd8bd-3b1c-43b9-93e2-94c5710f5d26`), together with the default library check and independent
+semantic review. Automatic routing and teardown remain explicit.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -148,6 +147,9 @@ carries positive confirmation through one exact worker observation and admission
 toolbar mounting, subsequent refresh/progress routing, and coherent request completion remain unmounted.
 Phase 644 supplies exact-request delivery through one worker progress pass and consumes the settled
 result after complete service return. Policy-driven polling and final teardown remain unmounted.
+Phase 645 guards request completion until owner custody settles; callers still explicitly end an
+unadmitted intent or obtain proven reopening before completion. Automatic outcome handling remains
+unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

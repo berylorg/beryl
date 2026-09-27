@@ -70,11 +70,18 @@ impl RunningProcessOwner {
     }
 
     pub(crate) fn finish_exit(owner: &Rc<RefCell<Self>>, request: &RunningExitRequest) -> bool {
-        let result = owner
-            .borrow_mut()
-            .process
-            .commands
-            .finish_exit_deferred_wake(request);
+        let result = {
+            let mut owner = owner.borrow_mut();
+            if owner.observing_initial_work
+                || owner.confirmation.is_some()
+                || owner.shutdown.is_some()
+                || owner.progress.is_some()
+                || owner.process.services.is_none()
+            {
+                return false;
+            }
+            owner.process.commands.finish_exit_deferred_wake(request)
+        };
         let Ok(wake) = result else {
             return false;
         };

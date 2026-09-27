@@ -82,6 +82,7 @@ pub(super) async fn exercise(
         ExitWorkRoute::Confirming
     );
     assert!(delivered.borrow().is_none());
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
     assert_eq!(
         cx.update(|app| owner.borrow_mut().consume_exit_confirmation(request, app))
             .unwrap()
@@ -140,8 +141,14 @@ pub(super) async fn exercise(
     }
     wait(&delivered, cx).await;
     assert_eq!(calls.get(), 1);
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
+    assert!(owner.borrow().exit_requested());
     if let Some(replace) = replace_request {
         if replace {
+            assert!(matches!(
+                owner.borrow_mut().take_shutdown_confirmation().unwrap(),
+                Some(ShutdownConfirmationResult::Confirmed(_))
+            ));
             assert!(RunningProcessOwner::finish_exit(owner, request));
             command.request_exit();
             let mut successor = next_request(owner, cx).await;
@@ -150,17 +157,14 @@ pub(super) async fn exercise(
                     .unwrap(),
                 Err(ExitConfirmationError::Request(_))
             ));
-            assert!(matches!(
+            assert_eq!(
                 cx.update(|app| owner
                     .borrow_mut()
                     .consume_exit_confirmation(&mut successor, app))
+                    .unwrap()
                     .unwrap(),
-                Err(ExitConfirmationError::Unrelated)
-            ));
-            assert!(matches!(
-                owner.borrow_mut().take_shutdown_confirmation().unwrap(),
-                Some(ShutdownConfirmationResult::Confirmed(_))
-            ));
+                None
+            );
             *request = successor;
         } else {
             let result = cx
@@ -191,6 +195,7 @@ pub(super) async fn exercise(
                         RunningShutdownStatus::AwaitingObservation
                     ))
                 );
+                assert!(!RunningProcessOwner::finish_exit(owner, request));
                 owner.borrow_mut().end_unadmitted_shutdown().unwrap();
             }
         }

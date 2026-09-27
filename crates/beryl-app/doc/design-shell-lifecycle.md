@@ -536,6 +536,14 @@ by the executable composition root.
   with the move-only exact request, outside owner borrows; the callback may arm its successor.
   The active request continues coalescing duplicate activations until its exact explicit completion.
   Completion wakes a pending waiter only after both command-state and owner borrows have ended.
+  Owner-level completion refuses while initial observation, native confirmation custody, any
+  retained shutdown intent, or pending/unconsumed progress remains, or complete service custody
+  has not returned. Refusal leaves the exact request active and emits no wake. An unadmitted
+  intent must first be explicitly ended after its observation settles; an admitted intent must
+  first obtain the coordinator's proven reopening. Completion itself releases none of that custody
+  and does not validate native-window liveness, so loss of an invoking window does not prevent
+  ending an otherwise coherently settled failure. A pending command waiter is allowed and receives
+  its wake outside the owner borrow after successful exact completion.
   The policy consumer retains the request until cancellation or failure has coherently settled;
   dropping it does not complete it. Waiting or delivery alone selects no invoking window, observes
   no work, admits no barrier and grants no quit authority.

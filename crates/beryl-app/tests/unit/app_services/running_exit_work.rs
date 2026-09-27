@@ -67,7 +67,7 @@ fn native_exit_confirmation_cancel_consumes_once_without_completing_request() {
 }
 
 #[test]
-fn native_exit_confirmation_rejects_stale_and_successor_requests() {
+fn native_exit_confirmation_prevents_completion_until_consumed() {
     run(true, Some(true), Some(true));
 }
 
@@ -153,6 +153,8 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                                     move |_, result, _| *delivered.borrow_mut() = Some(result),
                                 )
                                 .unwrap();
+                                assert!(!RunningProcessOwner::finish_exit(&owner, &successor));
+                                assert!(owner.borrow().exit_requested());
                                 let mut successor =
                                     match RunningProcessOwner::observe_and_route_exit(
                                         &owner,

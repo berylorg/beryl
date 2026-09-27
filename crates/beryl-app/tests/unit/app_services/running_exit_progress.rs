@@ -67,6 +67,7 @@ fn exercise(ordinary_close: bool) {
                         })
                         .unwrap()
                         .unwrap();
+                        assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                         if ordinary_close {
                             let (returned, error) = cx
                                 .update(|app| {
@@ -108,6 +109,7 @@ fn exercise(ordinary_close: bool) {
                                         },
                                     )
                                     .unwrap();
+                                    assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                                     RunningProcessOwner::advance_exit(
                                         &owner,
                                         request,
@@ -126,6 +128,7 @@ fn exercise(ordinary_close: bool) {
                             assert!(Rc::ptr_eq(&identity, &request.identity()));
                             assert!(owner.borrow().test_services_on_worker());
                             wait(&pending, cx).await;
+                            assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                             assert!(matches!(
                                 owner
                                     .borrow_mut()
@@ -212,13 +215,23 @@ fn exercise(ordinary_close: bool) {
                                 assert!(owner.borrow().exit_requested());
                                 match result {
                                     AppServiceShutdownProgress::Ready => {
+                                        assert!(!RunningProcessOwner::finish_exit(
+                                            &owner, &request
+                                        ));
                                         assert!(permit.commit(|| ()).is_err());
                                         token.cancel();
                                     }
-                                    AppServiceShutdownProgress::Waiting => {}
+                                    AppServiceShutdownProgress::Waiting => {
+                                        assert!(!RunningProcessOwner::finish_exit(
+                                            &owner, &request
+                                        ));
+                                    }
                                     AppServiceShutdownProgress::Failed {
                                         reopened: false, ..
                                     } => {
+                                        assert!(!RunningProcessOwner::finish_exit(
+                                            &owner, &request
+                                        ));
                                         assert!(permit.commit(|| ()).is_err());
                                     }
                                     AppServiceShutdownProgress::Failed {
@@ -259,6 +272,56 @@ fn exercise(ordinary_close: bool) {
                         }
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
                         assert!(owner.borrow().shutdown_status().is_none());
+                        if !ordinary_close {
+                            let observation =
+                                observe(&owner, ProjectionCancellationToken::new(), cx)
+                                    .await
+                                    .unwrap();
+                            cx.update(|app| {
+                                owner.borrow_mut().try_begin_idle_shutdown(
+                                    invoking,
+                                    ShutdownIntent::ApplicationExit,
+                                    &observation,
+                                    app,
+                                )
+                            })
+                            .unwrap()
+                            .unwrap();
+                            let cancellation = ProjectionCancellationToken::new();
+                            cancellation.cancel();
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            loop {
+                                assert!(Instant::now() < deadline, "reopening did not settle");
+                                let slot = Rc::new(RefCell::new(None));
+                                let delivered = slot.clone();
+                                cx.update(|app| {
+                                    RunningProcessOwner::advance_shutdown(
+                                        &owner,
+                                        cancellation.clone(),
+                                        app,
+                                        move |_, _| *delivered.borrow_mut() = Some(()),
+                                    )
+                                })
+                                .unwrap()
+                                .unwrap();
+                                wait(&slot, cx).await;
+                                assert!(!owner.borrow().test_services_on_worker());
+                                assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                                let reopened = owner.borrow().shutdown_status().is_none();
+                                let result = owner
+                                    .borrow_mut()
+                                    .take_shutdown_progress()
+                                    .unwrap()
+                                    .unwrap();
+                                if reopened {
+                                    assert!(matches!(
+                                        result,
+                                        AppServiceShutdownProgress::Failed { reopened: true, .. }
+                                    ));
+                                    break;
+                                }
+                            }
+                        }
                         assert!(permit.commit(|| ()).is_err());
                         owner
                             .borrow()
