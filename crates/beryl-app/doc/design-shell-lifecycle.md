@@ -517,6 +517,12 @@ by the executable composition root.
 
 ## Window Detachment And Process Shutdown
 
+- Releasing startup interaction never authorizes native default destruction. Main-window native
+  close callbacks retain the window until the process owner has completed its close obligations.
+  Before ordinary command routing is installed, native close remains vetoed; afterward it submits
+  the exact close intent and still vetoes default destruction. Successful owned cleanup removes
+  the window explicitly through its retained native destruction authority.
+
 - The running process window owner retains one native confirmation control and its completion,
   bound to the invoking window, shutdown intent and exact observation. Windows uses the owned
   GPUI native confirmation boundary, with feature-owned strings and Cancel-default behavior.

@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 617: Publish The Qualified Native Confirmation Dependency Graph (finished)
+# Phase 618: Preserve Native Close Ownership Across Startup Release (finished)
 
-Published GPUI `85ae2daa` and matching scrollbar/text-input/settings revisions through the single
-canonical graph. Locked manifest validation, all three widget library checks, the default app
-library check and all ten native confirmation/dispatch/lifecycle tests pass without local patches
-(native run `9cb3511c-020b-494d-b215-8def7401a211`). Independent publication review confirms exact
-revision-only lockfile changes and no extra GPUI instance. Phases 615–616's native operation and
-dispatcher prerequisites are accepted; ordinary app close/Exit mounting remains below.
+Startup interaction release now preserves the native-close veto until process-owned cleanup.
+The real restored/threadless success test proves post-publication close preserves native, resident,
+reservation and durable custody while explicit disposal still settles. All twelve focused native
+restore-set/startup tests, the default app library check and independent semantic review pass.
+Ordinary close/Exit command routing remains below.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

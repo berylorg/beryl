@@ -99,8 +99,8 @@ impl MainWindowShellRoot {
         no_editor: bool,
     ) -> Result<(), String> {
         let gate = Rc::new(std::cell::Cell::new(true));
-        self.startup_interaction = Some(gate.clone());
-        window.on_window_should_close(cx, move |_, _| !gate.get());
+        self.startup_interaction = Some(gate);
+        window.on_window_should_close(cx, |_, _| false);
         let result = if no_editor {
             Ok(())
         } else {

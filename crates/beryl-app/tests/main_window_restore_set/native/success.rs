@@ -92,6 +92,31 @@ fn native_complete_set_publishes_in_order_and_releases_interaction_together() {
                         .iter()
                         .all(|raw| windows_native::visible(*raw))
                 );
+                for raw in handles.lock().unwrap().iter().copied() {
+                    unsafe {
+                        SendMessageW(
+                            windows_native::hwnd(raw),
+                            WM_CLOSE,
+                            Some(WPARAM(0)),
+                            Some(LPARAM(0)),
+                        );
+                    }
+                    assert!(windows_native::alive(raw));
+                }
+                cx.update(|app| {
+                    for shell in published.shells() {
+                        assert_gated(shell, false, app);
+                    }
+                })
+                .unwrap();
+                assert_eq!(fixture.process.main_window_occupancy(), ids.len());
+                let (fixture, saved) = cx
+                    .background_executor()
+                    .spawn(async move {
+                        assert_eq!(snapshot(&fixture), saved);
+                        (fixture, saved)
+                    })
+                    .await;
                 let disposed = Rc::new(RefCell::new(None));
                 let delivered = disposed.clone();
                 cx.update(|app| {
