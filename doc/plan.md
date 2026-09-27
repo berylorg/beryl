@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 673: Connect Draft Preparation To The Ordinary Exit Consumer (finished)
+# Phase 674: Publish The Complete Exit Session Atomically (finished)
 
-The ordinary consumer now follows work readiness through exact draft preparation, retains
-DraftsReady custody and reports original preparation failures with separate recovery evidence.
-All 68 focused native regressions passed (`b65a5237-f67f-4bb9-af98-a7af1afa383c`); default library
-check, scoped formatting and independent lifecycle review passed. Session durability, enabled
-ordinary shutdown and final teardown remain pending.
+The typed complete-set Exit command now atomically publishes 1–256 exact window placements and
+orderly-Exit intent, preserving selections, claims and fallback. All 18 focused state/session
+regressions passed (`273553d3-e0c2-433b-8aa8-4158e1c3d180`), including maximum capacity, stale-input
+rejection, reopening and ambiguous-outcome reconciliation. State/app library checks, scoped
+formatting and independent persistent-state review passed. Native capture, app integration and
+final teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -204,6 +205,8 @@ and recovery evidence. Connect it to the ordinary attempt consumer and compose d
 publication before enabling ordinary shutdown.
 Phase 673 connects preparation and recovery outcomes to the ordinary attempt consumer. Next
 compose durable session obligations before enabling ordinary shutdown or entering final teardown.
+Phase 674 supplies the complete-set atomic Exit session contribution. Next capture exact native
+placement facts and compose durable publication/reconciliation through the retained running owner.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

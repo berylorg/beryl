@@ -1,10 +1,12 @@
 mod create;
+mod exit;
 mod restore;
 mod shared;
 mod threadless;
 mod window;
 
 pub use create::{CreateClaimedWindow, ReplaceWindowClaim};
+pub use exit::{ExitWindowPlacement, PublishExitSession};
 pub use restore::{ActivateRestoringClaim, BeginSessionRestore};
 pub use threadless::InitializeThreadlessWindow;
 pub use window::{

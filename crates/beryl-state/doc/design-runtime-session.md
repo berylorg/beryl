@@ -49,6 +49,18 @@ runtime/root, session/window, and thread-claim durable state.
   reconciliation semantics. Zero-runtime eligibility remains the composing startup owner's
   responsibility; an empty session alone does not prove an empty runtime registry.
 
+- Dedicated Exit may publish all current window placements and the orderly-Exit marker in one
+  typed session contribution. Its input contains 1–256 unique window identities, each exact
+  expected window revision and admitted placement, under an exact session and domain revision.
+  The writer requires that input membership equal the entire active header; omitted, extra,
+  duplicate, stale or already-exiting input publishes nothing. Input order has no meaning.
+- That publication advances the session revision once and every included window revision once,
+  including unchanged placements. It preserves selected threads, remembered targets, paired
+  claims and fallback. It reserves the complete header/window reconciliation
+  closure and uses the existing HomeCommand durability and ambiguous-outcome protocol. The app
+  must prove work and draft readiness, capture native facts and settle the command before final
+  teardown; this state mutation alone grants no shutdown, claim release or native destruction.
+
 ## Reverse thread claims
 
 - Exact claim sources may be read by window or thread identity. A present source validates its

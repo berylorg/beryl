@@ -82,6 +82,7 @@ pub enum SessionMutationError {
     AlreadyInitialized,
     OrderlyExitInProgress,
     AlreadyOrderlyExit,
+    InvalidExitWindowSet,
     WindowLimit,
     WindowExists {
         window_id: WindowId,
@@ -143,6 +144,7 @@ impl fmt::Display for SessionMutationError {
                 formatter.write_str("session is already marked orderly Exit")
             }
             Self::WindowLimit => formatter.write_str("session already has 256 restorable windows"),
+            Self::InvalidExitWindowSet => formatter.write_str("Exit requires the exact nonempty active window set, with at most 256 unique windows"),
             Self::WindowExists { window_id } => {
                 write!(formatter, "window {window_id} already exists")
             }
