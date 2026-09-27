@@ -308,6 +308,17 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool, set
                         wait(&slot, cx).await;
                         let request = slot.borrow_mut().take().unwrap();
                         drop(work);
+                        if owner.borrow().shutdown_session().is_some() {
+                            assert!(settle);
+                            assert!(owner.borrow().require_shutdown_session_ready().is_ok());
+                            assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                            assert!(cx.update(|app| RunningProcessOwner::release_shutdown_drafts(&owner, app)).unwrap().is_err());
+                            let running = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
+                            support::dispose_running(running, cx).await;
+                            observed.set(true);
+                            cx.update(|app| app.quit()).unwrap();
+                            return;
+                        }
                         let owner = if confirm.is_none()
                             || (confirm == Some(true) && admitted)
                         {
@@ -438,7 +449,7 @@ fn route(
                     Ok(ExitRoutingCompletion::Admitted)
                 }
                 Ok(ExitAttemptCompletion::Cancelled) => Ok(ExitRoutingCompletion::Cancelled),
-                Ok(ExitAttemptCompletion::PlacementsReady) => {
+                Ok(ExitAttemptCompletion::SessionReady) => {
                     assert!(settle);
                     assert!(!RunningProcessOwner::finish_exit(owner, &request));
                     Ok(ExitRoutingCompletion::Admitted)
@@ -460,7 +471,7 @@ fn route(
             move |owner, request, outcome, app| {
                 let expected = !matches!(
                     &outcome.result,
-                    Ok(ExitAttemptCompletion::Progress(_) | ExitAttemptCompletion::PlacementsReady)
+                    Ok(ExitAttemptCompletion::Progress(_) | ExitAttemptCompletion::SessionReady)
                 );
                 assert_eq!(outcome.command_completed, expected);
                 completed(owner, request, outcome.result, app);

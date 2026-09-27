@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 689: Bind Exit Session Publication To Its Exact Request (finished)
+# Phase 690: Connect Exit Session Publication To The Attempt Consumer (finished)
 
-Accepted exact active-request validation, retained publication delivery and fresh readiness inspection
-without consuming typed outcome custody or releasing fences. All 32 focused cases have passing
-evidence: 30 in `d2d381dc-2ae4-43de-b4b5-f8ceb935b9f6`, plus two corrected failed-home fixture cleanup
-cases in `d512320b-51e9-4fc1-a5e1-d9da5210e641`. Default app library check and independent
-lifecycle/persistence review passed. Consumer integration and same-home recovery remain separate.
+Accepted ordered work, draft, placement and session publication through the original Exit request.
+SessionReady retains command and outcome custody; publication failure reports through the existing
+commandless notice path without implicit recovery or fence release. All 90 focused cases passed
+in `4f5accae-dea1-4246-837d-f007de763ce6`, the default app library check passed, and independent
+lifecycle/persistence review found no issues. Same-home recovery and final teardown remain separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -245,6 +245,10 @@ recovery; readiness inspection preserves all custody and grants no teardown or q
 Phase 689 supplies the exact-request publication handoff with retained outcomes and current readiness
 delivery. Next compose ordinary consumer and same-home failure policy; delivery alone neither
 completes the command nor releases recovery fences.
+Phase 690 connects publication to the ordinary consumer after placement readiness, retaining the
+request through session readiness or typed publication failure and commandless notice delivery.
+Next compose same-home failure recovery and outcome consumption before enabled ordinary mounting
+or final teardown; successful publication alone still retains every shutdown fence.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

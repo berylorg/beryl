@@ -13,7 +13,7 @@ use std::{cell::RefCell, rc::Rc};
 pub(crate) enum ExitAttemptCompletion {
     Cancelled,
     ConfirmedObservationCancelled,
-    PlacementsReady,
+    SessionReady,
     Progress(AppServiceShutdownProgress),
 }
 
@@ -25,6 +25,8 @@ pub(crate) enum ExitAttemptError {
     Routing(#[from] ExitRoutingError),
     #[error(transparent)]
     Progress(#[from] ExitProgressError),
+    #[error("Exit session publication failed: {0}")]
+    SessionPublication(String),
     #[error("Exit draft preparation failed: {preparation}; recovery: {recovery:?}")]
     DraftPreparation {
         preparation: String,
@@ -154,7 +156,7 @@ impl RunningProcessOwner {
             }
             let can_complete = !matches!(
                 &result,
-                Ok(ExitAttemptCompletion::PlacementsReady)
+                Ok(ExitAttemptCompletion::SessionReady)
                     | Ok(ExitAttemptCompletion::Progress(
                         AppServiceShutdownProgress::Ready | AppServiceShutdownProgress::Waiting
                     ))
@@ -226,9 +228,11 @@ impl RunningProcessOwner {
             request,
             app,
             move |owner, request, result, app| {
+                let completed = delivered.borrow_mut().take().unwrap();
                 let result = match result {
                     ExitPlacementPreparationCompletion::Ready => {
-                        Ok(ExitAttemptCompletion::PlacementsReady)
+                        Self::publish_exit_attempt_session(owner, request, app, completed);
+                        return;
                     }
                     ExitPlacementPreparationCompletion::Failed {
                         preparation,
@@ -238,10 +242,40 @@ impl RunningProcessOwner {
                         recovery,
                     }),
                 };
-                let completed = delivered.borrow_mut().take().unwrap();
                 completed(owner, request, result, app);
             },
         ) {
+            let completed = delivery.borrow_mut().take().unwrap();
+            completed(owner, request, Err(ExitAttemptError::Progress(error)), app);
+        }
+    }
+
+    fn publish_exit_attempt_session(
+        owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            RunningExitRequest,
+            Result<ExitAttemptCompletion, ExitAttemptError>,
+            &mut App,
+        ) + 'static,
+    ) {
+        let delivery = Rc::new(RefCell::new(Some(completed)));
+        let delivered = delivery.clone();
+        if let Err((request, error)) =
+            Self::publish_exit_session(owner, request, app, move |owner, request, result, app| {
+                let completed = delivered.borrow_mut().take().unwrap();
+                completed(
+                    owner,
+                    request,
+                    result
+                        .map(|()| ExitAttemptCompletion::SessionReady)
+                        .map_err(ExitAttemptError::SessionPublication),
+                    app,
+                );
+            })
+        {
             let completed = delivery.borrow_mut().take().unwrap();
             completed(owner, request, Err(ExitAttemptError::Progress(error)), app);
         }

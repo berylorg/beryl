@@ -1279,20 +1279,21 @@ by the executable composition root.
   complete the command, publish session state, dispose residents or authorize quit; the attempt
   consumer must interpret the result and use the existing guarded completion boundary.
 - The ordinary Exit attempt consumer follows work Ready with exact-request draft preparation,
-  then follows draft readiness with exact-request placement preparation. It reports PlacementsReady
-  only after complete capture succeeds, retaining the command, original attempt, placements, drafts
-  and gates for durable session obligations. Either preparation failure remains a distinct typed attempt error
-  containing its original cause and separate recovery evidence; recovery cancellation cannot
-  replace the failure. Scheduling refusal is a progress error and preserves unresolved custody.
-  All outcomes pass through the existing guarded completion and invoking-window notice boundaries;
-  only proven settled custody permits command completion. Delivery remains once, outside owner
-  borrows, with owner retention through both accepted preparation policies. Placement capture failure
-  uses its settled recovery policy before guarded completion; unresolved native or recovery custody
-  keeps the command active. Verify successful complete placement retention, original capture errors
-  with coherent recovery and commandless notice delivery, scheduling refusal without command
-  completion, and existing draft failure handling. Independently review lifecycle integration.
-  This integration neither
-  publishes session state nor authorizes disposal, native destruction or quit.
+  complete placement preparation and session publication in that order. It reports SessionReady
+  only after publication delivers current receipt-backed readiness, retaining the command,
+  original attempt, complete placements, drafts, session outcome and gates for final obligations.
+  Preparation failures remain distinct typed errors containing the original cause and separate
+  recovery evidence. Scheduling refusal remains a progress error. Session readiness failure is a
+  distinct session-publication error whose diagnostic does not replace the retained typed outcome.
+- All outcomes use guarded completion and the invoking-window notice boundary. Only proven settled
+  custody permits command completion; SessionReady explicitly retains the command. Session failure
+  does not start reconciliation or draft/coordinator recovery and cannot clear any fence. The
+  separate same-home outcome policy owns recovery before enabled ordinary mounting.
+  Delivery occurs once outside owner borrows, retaining the owner through accepted preparation and
+  publication. Verify ordered successful publication, exact request and service return, noncommit,
+  postcommit failure and indeterminate custody, commandless failure notices, refusal and duplicate
+  exclusion, caller abandonment, and existing preparation recovery. Independently review lifecycle
+  integration. This consumer boundary grants no disposal, native destruction or quit authority.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations

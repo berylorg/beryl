@@ -160,7 +160,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                                                 assert_eq!(root.notice_projection().map(|notice| notice.report_count),
                                                     if missing { None } else { Some(1) });
                                                 assert!(matches!(outcome.result,
-                                                    Ok(ExitAttemptCompletion::PlacementsReady)));
+                                                    Ok(ExitAttemptCompletion::SessionReady)));
                                                 assert_eq!(owner.borrow().resolve_exit_window(
                                                     &mut request, app).unwrap(), invoking);
                                                 assert!(!owner.borrow().test_services_on_worker());
@@ -196,6 +196,15 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                         }
                         assert!(owner.borrow().exit_requested());
                         assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                        if !refusal {
+                            assert!(owner.borrow().require_shutdown_session_ready().is_ok());
+                            assert!(cx.update(|app| RunningProcessOwner::release_shutdown_drafts(&owner, app)).unwrap().is_err());
+                            let running = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
+                            support::dispose_running(running, cx).await;
+                            observed.set(true);
+                            cx.update(|app| app.quit()).unwrap();
+                            return;
+                        }
                         let identity = request.identity();
                         let cancellation = ProjectionCancellationToken::new();
                         cancellation.cancel();

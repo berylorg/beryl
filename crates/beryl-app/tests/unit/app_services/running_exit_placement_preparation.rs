@@ -138,7 +138,7 @@ fn run(capture_failure: bool, recovery_failure: bool, consumer: bool) {
                                     assert!(root.notice_projection().is_none());
                                 }
                                 let result = match outcome.result {
-                                    Ok(crate::running_owner::ExitAttemptCompletion::PlacementsReady) => ExitPlacementPreparationCompletion::Ready,
+                                    Ok(crate::running_owner::ExitAttemptCompletion::SessionReady) => ExitPlacementPreparationCompletion::Ready,
                                     Err(crate::running_owner::ExitAttemptError::PlacementPreparation { preparation, recovery }) =>
                                         ExitPlacementPreparationCompletion::Failed { preparation, recovery },
                                     other => panic!("unexpected placement outcome: {other:?}"),
@@ -185,6 +185,17 @@ fn run(capture_failure: bool, recovery_failure: bool, consumer: bool) {
                         .unwrap().err().unwrap();
                     assert!(matches!(error, ExitProgressError::PlacementPreparation(_)));
                     request = returned;
+                    if consumer && !capture_failure {
+                        assert!(owner.borrow().require_shutdown_session_ready().is_ok());
+                        assert!(cx.update(|app| RunningProcessOwner::release_shutdown_drafts(&owner, app)).unwrap().is_err());
+                        assert!(!RunningProcessOwner::finish_exit(&owner, &request));
+                        let running = Rc::try_unwrap(owner).ok().unwrap().into_inner().test_into_process();
+                        support::dispose_running(running, cx).await;
+                        assert!(weak.upgrade().is_none());
+                        observed.set(true);
+                        cx.update(|app| app.quit()).unwrap();
+                        return;
+                    }
                     let (sender, receiver) = futures_channel::oneshot::channel();
                     assert!(cx.update(|app| {
                         window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(true, cx)).unwrap().unwrap();

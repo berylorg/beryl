@@ -5,25 +5,45 @@ use crate::running_owner::{
 
 #[test]
 fn native_exit_session_publication_delivers_exact_ready_request() {
-    run(None);
+    run(None, false);
 }
 
 #[test]
 fn native_exit_session_publication_retains_noncommit() {
-    run(Some(FaultPoint::BeforeCommit));
+    run(Some(FaultPoint::BeforeCommit), false);
 }
 
 #[test]
 fn native_exit_session_publication_retains_postcommit_failure() {
-    run(Some(FaultPoint::AfterPersist));
+    run(Some(FaultPoint::AfterPersist), false);
 }
 
 #[test]
 fn native_exit_session_publication_retains_indeterminate_custody() {
-    run(Some(FaultPoint::AfterCommitBeforePersist));
+    run(Some(FaultPoint::AfterCommitBeforePersist), false);
 }
 
-fn run(fault: Option<FaultPoint>) {
+#[test]
+fn native_exit_attempt_session_publication_retains_ready_request() {
+    run(None, true);
+}
+
+#[test]
+fn native_exit_attempt_session_publication_reports_noncommit() {
+    run(Some(FaultPoint::BeforeCommit), true);
+}
+
+#[test]
+fn native_exit_attempt_session_publication_reports_postcommit_failure() {
+    run(Some(FaultPoint::AfterPersist), true);
+}
+
+#[test]
+fn native_exit_attempt_session_publication_reports_indeterminate() {
+    run(Some(FaultPoint::AfterCommitBeforePersist), true);
+}
+
+fn run(fault: Option<FaultPoint>, consumer: bool) {
     let directory = support::native_home();
     let faults = FaultController::new();
     let opening_faults = faults.clone();
@@ -61,6 +81,7 @@ fn run(fault: Option<FaultPoint>) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
+                    let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::start(running, app);
                     owner
                         .borrow()
@@ -150,6 +171,7 @@ fn run(fault: Option<FaultPoint>) {
                             .unwrap();
                         assert!(matches!(error, ExitProgressError::SessionPublication(_)));
                         assert!(owner.borrow().shutdown_session().is_none());
+                        if !consumer {
                         let (sender, receiver) = futures_channel::oneshot::channel();
                         cx.update(|app| {
                             RunningProcessOwner::capture_shutdown_placements(
@@ -163,6 +185,7 @@ fn run(fault: Option<FaultPoint>) {
                         .unwrap()
                         .unwrap();
                         receiver.await.unwrap().unwrap();
+                        }
                         let original_attempt =
                             owner.borrow().test_services().graph().unwrap().shutdown;
                         if let Some(fault) = fault {
@@ -172,11 +195,8 @@ fn run(fault: Option<FaultPoint>) {
                         let weak = Rc::downgrade(&owner);
                         let thread = std::thread::current().id();
                         assert!(
-                            cx.update(|app| RunningProcessOwner::publish_exit_session(
-                                &owner,
-                                request,
-                                app,
-                                move |owner, request, result, app| {
+                            cx.update(|app| {
+                                let completed = move |owner: &Rc<RefCell<RunningProcessOwner>>, request, result: Result<(), String>, app: &mut gpui::App| {
                                     assert_eq!(thread, std::thread::current().id());
                                     assert!(owner.try_borrow_mut().is_ok());
                                     assert!(!owner.borrow().test_services_on_worker());
@@ -233,8 +253,33 @@ fn run(fault: Option<FaultPoint>) {
                                         other => panic!("unexpected publication: {other:?}"),
                                     }
                                     sender.send((owner.clone(), request)).ok().unwrap();
+                                };
+                                if consumer {
+                                    RunningProcessOwner::test_complete_exit_work(&owner, request, app,
+                                        move |owner, request, outcome, app| {
+                                            assert!(!outcome.command_completed);
+                                            let result = match outcome.result {
+                                                Ok(crate::running_owner::ExitAttemptCompletion::SessionReady) => Ok(()),
+                                                Err(crate::running_owner::ExitAttemptError::SessionPublication(error)) => {
+                                                    let notice = window.read(app).unwrap().notice_projection().unwrap();
+                                                    assert_eq!(notice.content.title().as_str(), "Couldn't exit Beryl");
+                                                    assert_eq!(notice.content.commands().count(), 0);
+                                                    assert_eq!(notice.report_count, 1);
+                                                    assert_eq!(notice.content.detail().as_str(), format!("Exit session publication failed: {error}"));
+                                                    Err(error)
+                                                },
+                                                other => panic!("unexpected attempt outcome: {other:?}"),
+                                            };
+                                            if result.is_ok() {
+                                                assert!(window.read(app).unwrap().notice_projection().is_none());
+                                            }
+                                            completed(owner, request, result, app);
+                                        });
+                                    Ok(())
+                                } else {
+                                    RunningProcessOwner::publish_exit_session(&owner, request, app, completed)
                                 }
-                            ))
+                            })
                             .unwrap()
                             .is_ok()
                         );
