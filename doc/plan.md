@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 671: Recover Exit After Exact Draft Release (finished)
+# Phase 672: Compose Exit Draft Preparation And Recovery Policy (finished)
 
-The exact active Exit request now has a retained recovery handoff from draft release to cancelled
-coordinator progression. Release failure preserves custody; only proven reopening releases
-interaction gates. All 33 focused native regressions passed (`e6015e59-89c8-4937-ac5c-8c53513bcecc`),
-as did the final ordinary-close refusal assertion (`91273387-3c2d-4e62-b2fe-449fa0c44913`). Default
-library check, formatting and independent lifecycle review passed. Preparation policy integration,
-durable session publication and final teardown remain pending.
+Exact-request draft preparation now preserves readiness custody or automatically recovers while
+retaining both the original preparation failure and recovery evidence. All 36 focused native
+regressions passed (`b68c44a9-b602-4859-ac37-ab68a9ba34a2`), followed by the strengthened scheduling
+refusal test (`17528322-a072-4ea7-8498-dbcd843b5e89`). Default library check, scoped formatting and
+independent lifecycle review passed. Ordinary attempt integration, session durability and final
+teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -200,6 +200,9 @@ Phase 670 supplies automatic draft preparation/release polling with exact retain
 Phase 671 supplies the exact-request recovery handoff from draft release through cancelled
 coordinator progression. Next compose durable session publication and connect preparation failure
 policy to that handoff before enabling ordinary shutdown.
+Phase 672 supplies that exact-request preparation policy, preserving both the original failure
+and recovery evidence. Connect it to the ordinary attempt consumer and compose durable session
+publication before enabling ordinary shutdown.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

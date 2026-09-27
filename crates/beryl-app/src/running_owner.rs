@@ -15,6 +15,7 @@ mod exit_attempt;
 mod exit_availability;
 mod exit_confirmation;
 mod exit_delivery;
+mod exit_draft_preparation;
 mod exit_draft_recovery;
 mod exit_notice;
 mod exit_observation;
@@ -33,6 +34,7 @@ pub(crate) use confirmation::{
 };
 pub(crate) use exit_attempt::{ExitAttemptCompletion, ExitAttemptError};
 pub(crate) use exit_confirmation::{ExitConfirmationError, ExitConfirmationRoute};
+pub(crate) use exit_draft_preparation::ExitDraftPreparationCompletion;
 pub(crate) use exit_observation::ExitObservationError;
 pub(crate) use exit_progress::ExitProgressError;
 pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};

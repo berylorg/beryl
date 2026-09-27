@@ -1035,6 +1035,16 @@ by the executable composition root.
   one terminal callback outside owner borrows after successful scheduling, or its original request
   on synchronous refusal with no callback. This handoff does not initiate preparation, discard the
   original obligation failure, complete an Exit command, publish session state or authorize quit.
+- Exit draft preparation validates the exact active request and original work-ready Application
+  Exit attempt before scheduling the retained preparation driver. Ready delivery preserves the
+  attempt, request and interaction gates for subsequent durable session obligations. A terminal
+  preparation failure automatically uses the exact draft recovery handoff; its delivery retains
+  both the original preparation failure and the separate coordinator recovery result or error.
+  Recovery does not replace the original failure with cancellation. Scheduling refusal returns
+  the original request without callback or recovery. Accepted scheduling delivers exactly once
+  outside owner borrows, retaining the owner even if the caller drops it. This policy does not
+  complete the command, publish session state, dispose residents or authorize quit; the attempt
+  consumer must interpret the result and use the existing guarded completion boundary.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations
