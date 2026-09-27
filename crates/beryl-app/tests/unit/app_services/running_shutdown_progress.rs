@@ -97,6 +97,8 @@ pub(super) async fn exercise(
     let started = entered.clone();
     let gui_thread = std::thread::current().id();
     let notifications = Rc::new(Cell::new(0));
+    let successor_scheduled = Rc::new(Cell::new(false));
+    let schedule_record = successor_scheduled.clone();
     let delivered = notifications.clone();
     let callback_cancellation = cancellation.clone();
     cx.update(|app| {
@@ -123,7 +125,13 @@ pub(super) async fn exercise(
                     )
                     .is_err()
                 );
-                if ready_first {
+                if ready_first
+                    && matches!(
+                        owner.borrow().shutdown_status(),
+                        Some((_, _, RunningShutdownStatus::Admitted))
+                    )
+                {
+                    schedule_record.set(true);
                     let result = owner
                         .borrow_mut()
                         .take_shutdown_progress()
@@ -200,7 +208,10 @@ pub(super) async fn exercise(
     );
     release.send(()).unwrap();
     settled(&owner, cx).await;
-    assert_eq!(notifications.get(), if ready_first { 2 } else { 1 });
+    assert_eq!(
+        notifications.get(),
+        1 + usize::from(successor_scheduled.get())
+    );
     assert!(
         cx.update(|app| RunningProcessOwner::advance_shutdown(
             &owner,
@@ -211,11 +222,18 @@ pub(super) async fn exercise(
         .unwrap()
         .is_err()
     );
+    let status_before_consumption = owner.borrow().shutdown_status();
     let mut result = owner
         .borrow_mut()
         .take_shutdown_progress()
         .unwrap()
         .unwrap();
+    if matches!(result, AppServiceShutdownProgress::Ready) {
+        assert_eq!(
+            status_before_consumption,
+            Some((invoking, intent, RunningShutdownStatus::WorkReady))
+        );
+    }
     assert!(owner.borrow_mut().take_shutdown_progress().is_none());
     if ready_first {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -250,9 +268,24 @@ pub(super) async fn exercise(
         );
         assert_eq!(
             owner.borrow().shutdown_status(),
-            Some((invoking, intent, RunningShutdownStatus::Admitted))
+            Some((invoking, intent, RunningShutdownStatus::WorkReady))
         );
         assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
+        assert!(
+            cx.update(|app| RunningProcessOwner::advance_shutdown(
+                &owner,
+                ProjectionCancellationToken::new(),
+                app,
+                |_, _| panic!("ready work must not notify again"),
+            ))
+            .unwrap()
+            .is_err()
+        );
+        assert!(!owner.borrow().test_services_on_worker());
+        assert_eq!(
+            owner.borrow().shutdown_status(),
+            Some((invoking, intent, RunningShutdownStatus::WorkReady))
+        );
         window.update(cx, |_, _, _| ()).unwrap();
         cancellation.cancel();
         cx.update(|app| {
@@ -260,6 +293,10 @@ pub(super) async fn exercise(
         })
         .unwrap()
         .unwrap();
+        assert_eq!(
+            owner.borrow().shutdown_status(),
+            Some((invoking, intent, RunningShutdownStatus::Admitted))
+        );
         settled(&owner, cx).await;
         result = owner
             .borrow_mut()

@@ -38,11 +38,20 @@ impl RunningProcessOwner {
             {
                 return Err("no admitted running shutdown is retained".into());
             }
+            if owner
+                .shutdown
+                .as_ref()
+                .is_some_and(|attempt| attempt.work_ready)
+                && !cancellation.is_cancelled()
+            {
+                return Err("shutdown work is already ready".into());
+            }
             let services = owner
                 .process
                 .services
                 .take()
                 .ok_or("the complete service owner is unavailable")?;
+            owner.shutdown.as_mut().unwrap().work_ready = false;
             owner.progress = Some(RunningShutdownProgress::Polling);
             services
         };
@@ -57,6 +66,13 @@ impl RunningProcessOwner {
             {
                 let mut owner = retained.borrow_mut();
                 owner.process.services = Some(services);
+                if matches!(result, Ok(AppServiceShutdownProgress::Ready)) {
+                    owner
+                        .shutdown
+                        .as_mut()
+                        .expect("retained admitted shutdown")
+                        .work_ready = true;
+                }
                 if matches!(
                     result,
                     Ok(AppServiceShutdownProgress::Failed { reopened: true, .. })

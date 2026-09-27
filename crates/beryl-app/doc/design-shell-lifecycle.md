@@ -978,6 +978,16 @@ by the executable composition root.
 - A failed barrier before final teardown releases interaction gates from the retained coherent state without restoring
   cancelled continuations or repeating possible dispatch. Closing a settings or auxiliary window
   never becomes the final-main-window execution barrier.
+- The running owner retains work readiness on its original admitted shutdown attempt after a
+  successful coordinator Ready result and complete service return. Consuming the delivery result
+  does not erase that state. Work readiness preserves the invoking member, close-versus-Exit mode,
+  lease and execution fence; it proves no draft, session, restore-set or native cleanup obligation.
+  Further ordinary work polling is refused. Before final teardown, an explicitly cancelled progress
+  pass may still ask the existing coordinator to reopen coherently after a recoverable obligation
+  failure. Scheduling that pass clears readiness before service transfer; only another Ready
+  result restores it. Waiting, error and failure without reopening never manufacture readiness.
+  Coherent reopening releases the original attempt through the existing boundary. No ready state
+  completes an Exit request, removes interaction gates, consumes services or grants quit authority.
 - Final service cleanup exposes a typed failure boundary: rejection performs no graph consumption
   in that call, while failure after consumption is irreversible for that attempt.
   The process window owner enters final teardown only after work and durable window obligations

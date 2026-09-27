@@ -255,7 +255,7 @@ fn run_driver_with_work_failure(
                             assert!(!owner.borrow().test_services_on_worker());
                             assert!(matches!(owner.borrow().shutdown_status(),
                                 Some((window, ShutdownIntent::ApplicationExit,
-                                    RunningShutdownStatus::Admitted)) if window == invoking));
+                                    RunningShutdownStatus::WorkReady)) if window == invoking));
                             assert!(matches!(
                                 owner.borrow_mut().take_shutdown_progress(),
                                 Some(Ok(AppServiceShutdownProgress::Ready))
@@ -295,7 +295,7 @@ fn run_driver_with_work_failure(
                             None
                         };
                         let cancellation = ProjectionCancellationToken::new();
-                        if cancelled {
+                        if cancelled || report_refusal {
                             cancellation.cancel();
                         }
                         let slot = Rc::new(RefCell::new(None));
@@ -365,13 +365,14 @@ fn run_driver_with_work_failure(
                         wait(&slot, cx).await;
                         let (owner, mut request, result) = slot.borrow_mut().take().unwrap();
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
-                        if cancelled {
+                        if cancelled || report_refusal {
                             assert!(matches!(
                                 result.unwrap(),
                                 AppServiceShutdownProgress::Failed { reopened: true, .. }
                             ));
                         } else {
                             assert!(matches!(result.unwrap(), AppServiceShutdownProgress::Ready));
+                            assert_eq!(owner.borrow().shutdown_status(), Some((invoking, ShutdownIntent::ApplicationExit, RunningShutdownStatus::WorkReady)));
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                             let cancellation = ProjectionCancellationToken::new();
                             cancellation.cancel();

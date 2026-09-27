@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 665: Project Shared Exit Availability Into Published Shells (finished)
+# Phase 666: Retain Exact Running Shutdown Work Readiness (finished)
 
-The running owner now projects shared Exit gate reasons into disabled toolbar tooltips, with one
-cancellable weak-owner observer and notifications only on changes. Shutdown/startup precedence,
-unavailable routing and exact command custody remain intact. All 19 focused native delivery,
-command/home gate and shell presentation tests passed (`88a9064b-ca7f-4e06-85f7-ea88cd37f7f1`),
-alongside the default library check, formatting and independent semantic review. Settings state
-installation and enabled routing remain pending.
+The original admitted attempt now retains WorkReady after successful coordinator completion and
+service return, including after result consumption. Ordinary duplicate polling is refused;
+explicit cancellation clears readiness before transfer and preserves coherent recovery. The
+47-case native run passed 44 cases; after correcting three outdated fixture expectations, all
+19 affected cases passed (`b3d3e70c-5e07-45dd-8ae5-6beb92b63e3f`). Default library check,
+formatting and independent semantic review passed. Window durability and teardown remain pending.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -184,6 +184,9 @@ Phase 664 binds those producers to current home health and the original publishe
 Settings state installation, toolbar notification and enabled routing remain pending.
 Phase 665 supplies automatic shared availability projection and toolbar notification with bounded,
 owner-scoped observation. Settings state installation and enabled routing remain pending.
+Phase 666 retains exact work readiness through result consumption and prevents ordinary duplicate
+polling, while preserving explicit cancelled recovery. Next compose resident draft/session
+obligations before admitting final teardown; work readiness alone cannot authorize destruction.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

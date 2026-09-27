@@ -132,85 +132,9 @@ fn exercise(ordinary_close: bool) {
                             assert!(owner.borrow().test_services_on_worker());
                             wait(&pending, cx).await;
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
-                            assert!(matches!(
-                                owner
-                                    .borrow_mut()
-                                    .take_shutdown_progress()
-                                    .unwrap()
-                                    .unwrap(),
-                                AppServiceShutdownProgress::Waiting
-                                    | AppServiceShutdownProgress::Ready
-                            ));
+                            let mut result = owner.borrow_mut().take_shutdown_progress().unwrap().unwrap();
+                            assert!(matches!(result, AppServiceShutdownProgress::Waiting | AppServiceShutdownProgress::Ready));
                             let slot = Rc::new(RefCell::new(None));
-                            let delivered = slot.clone();
-                            let gui_thread = std::thread::current().id();
-                            cx.update(|app| {
-                                assert!(
-                                    RunningProcessOwner::advance_exit(
-                                        &owner,
-                                        request,
-                                        ProjectionCancellationToken::new(),
-                                        app,
-                                        move |owner, request, result, app| {
-                                            assert_eq!(std::thread::current().id(), gui_thread);
-                                            assert!(!owner.borrow().test_services_on_worker());
-                                            assert!(
-                                                owner
-                                                    .borrow_mut()
-                                                    .take_shutdown_progress()
-                                                    .is_none()
-                                            );
-                                            assert!(matches!(
-                                                result.unwrap(),
-                                                AppServiceShutdownProgress::Waiting
-                                                    | AppServiceShutdownProgress::Ready
-                                            ));
-                                            assert!(
-                                                RunningProcessOwner::advance_exit(
-                                                    owner,
-                                                    request,
-                                                    ProjectionCancellationToken::new(),
-                                                    app,
-                                                    move |owner, request, result, _| {
-                                                        assert_eq!(
-                                                            std::thread::current().id(),
-                                                            gui_thread
-                                                        );
-                                                        assert!(
-                                                            !owner
-                                                                .borrow()
-                                                                .test_services_on_worker()
-                                                        );
-                                                        assert!(
-                                                            owner
-                                                                .borrow_mut()
-                                                                .take_shutdown_progress()
-                                                                .is_none()
-                                                        );
-                                                        assert!(
-                                                            delivered
-                                                                .borrow_mut()
-                                                                .replace((request, result))
-                                                                .is_none()
-                                                        );
-                                                    },
-                                                )
-                                                .is_ok()
-                                            );
-                                        },
-                                    )
-                                    .is_ok()
-                                );
-                                assert!(owner.borrow().test_services_on_worker());
-                                assert!(owner.borrow().exit_requested());
-                                assert_eq!(window.read(app).unwrap().new_window_disabled_reason(app).as_deref(), Some("Application Exit is waiting for active work and durable state."));
-                                command.request_exit();
-                            })
-                            .unwrap();
-                            wait(&slot, cx).await;
-                            let (returned, result) = slot.borrow_mut().take().unwrap();
-                            request = returned;
-                            let mut result = result.unwrap();
                             let token = ProjectionCancellationToken::new();
                             let deadline = Instant::now() + Duration::from_secs(5);
                             loop {

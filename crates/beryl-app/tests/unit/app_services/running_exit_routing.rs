@@ -235,7 +235,9 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool, set
                                                 Some((
                                                     invoking,
                                                     ShutdownIntent::ApplicationExit,
-                                                    if admitted {
+                                                    if admitted && drive {
+                                                        RunningShutdownStatus::WorkReady
+                                                    } else if admitted {
                                                         RunningShutdownStatus::Admitted
                                                     } else {
                                                         RunningShutdownStatus::AwaitingObservation

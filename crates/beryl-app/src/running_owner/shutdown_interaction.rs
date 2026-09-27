@@ -44,7 +44,11 @@ impl RunningProcessOwner {
             let owner = owner.borrow();
             if !matches!(
                 owner.shutdown_status(),
-                Some((_, _, RunningShutdownStatus::Admitted))
+                Some((
+                    _,
+                    _,
+                    RunningShutdownStatus::Admitted | RunningShutdownStatus::WorkReady
+                ))
             ) {
                 return Err("shutdown interaction gating requires admitted intent".into());
             }

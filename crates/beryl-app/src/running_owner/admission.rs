@@ -12,6 +12,7 @@ pub(crate) enum RunningShutdownStatus {
     AwaitingObservation,
     Observing,
     Admitted,
+    WorkReady,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +43,7 @@ pub(super) struct RunningShutdownAttempt {
     lease: WindowCloseLease,
     pending: Option<Arc<()>>,
     pub(super) admitted: bool,
+    pub(super) work_ready: bool,
 }
 
 pub(crate) struct PreparedConfirmedShutdownObservation {
@@ -139,6 +141,7 @@ impl RunningProcessOwner {
             lease,
             pending: None,
             admitted: true,
+            work_ready: false,
         });
         Ok(())
     }
@@ -170,6 +173,7 @@ impl RunningProcessOwner {
             lease,
             pending: None,
             admitted: false,
+            work_ready: false,
         });
         Ok(())
     }
@@ -181,7 +185,9 @@ impl RunningProcessOwner {
             (
                 attempt.invoking,
                 attempt.intent,
-                if attempt.admitted {
+                if attempt.work_ready {
+                    RunningShutdownStatus::WorkReady
+                } else if attempt.admitted {
                     RunningShutdownStatus::Admitted
                 } else if attempt.pending.is_some() {
                     RunningShutdownStatus::Observing
