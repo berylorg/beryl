@@ -43,11 +43,12 @@ impl MainWindowConversationComposerMount {
             return;
         };
         let executor = cx.background_executor().clone();
-        let task = executor.spawn(async move {
+        let worker = self.window_close_workers.track(move || {
             let result = run_close_work(&service, close, work, assets, seals);
             let selection = service.selected_identity();
             (result, selection)
         });
+        let task = executor.spawn(async move { worker.run() });
         let service = self.service.clone();
         self.window_close_task = Some(cx.spawn_in(window, async move |this, cx| {
             let (result, selection) = task.await;
@@ -105,9 +106,10 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) {
         let service = self.service.clone();
-        let task = cx.background_executor().spawn(async move {
-            service.release_window_close_gate_wait(close.ticket, close.flush)
-        });
+        let worker = self
+            .window_close_workers
+            .track(move || service.release_window_close_gate_wait(close.ticket, close.flush));
+        let task = cx.background_executor().spawn(async move { worker.run() });
         self.window_close_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| {

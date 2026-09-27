@@ -1,6 +1,28 @@
 use super::*;
 
 impl MainWindowConversationComposerMount {
+    #[cfg(feature = "test-faults")]
+    pub fn test_window_close_worker(
+        &self,
+        run: impl FnOnce() + Send + 'static,
+    ) -> Result<Box<dyn FnOnce() + Send>, String> {
+        let resources = (
+            self.service.clone(),
+            self.submission_assets()?,
+            self.submission_marker_seals()?,
+        );
+        let worker = self.window_close_workers.track(move || {
+            let _resources = resources;
+            run();
+        });
+        Ok(Box::new(move || worker.run()))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_window_close_retained_workers(&self) -> usize {
+        self.window_close_workers.retained()
+    }
+
     pub fn detach_interrupted_exit_submission_source(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
@@ -55,6 +77,7 @@ impl MainWindowConversationComposerMount {
             || close.disposing
             || close.release_requested
             || self.window_close_task.is_some()
+            || self.window_close_workers.retained() != 0
             || !self.autosave.workers_drained()
             || !self.submission.workers_drained()
             || self.submission.is_active()
