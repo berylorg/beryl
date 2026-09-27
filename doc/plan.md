@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 714: Detach Fenced Mount Submission Source (finished)
+# Phase 715: Retain Autosave Worker Lifetime Through Recovery (finished)
 
-Accepted exact recovery-fenced submission source transfer after active/task custody drains,
-preserved custody on refusal, single transfer and unavailable detached submission. The execution
-wake stays idle and resident presentation and close gates remain unchanged. Library checking, all
-40 resident-close and mounted-submission tests (`881bc002-0e05-4cb3-aaf1-53a773cdfaf2`) and
-independent lifecycle review passed. Whole-mount retirement and fresh rebinding remain separate.
+Accepted autosave worker lifetime custody independent of GUI continuation cancellation. Adapter
+detachment waits until captured resources drop, including completion, unwind and unstarted
+abandonment, while retaining the fenced editor and close ticket. Library checking, all 44
+resident-close and mounted-composer tests (`8142a54e-2eef-4af0-b875-14b67d061d13`) and independent
+lifecycle review passed. Other mount workers and whole-resident retirement remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -109,7 +109,8 @@ supplies the consuming host primitive, phase 708 the enclosing slot primitive an
 exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
 Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
 adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
-handoff. Worker-reference draining, mount service detachment, and fresh
+handoff. Phase 715 supplies autosave worker lifetime evidence. Remaining worker-reference
+draining, mount service detachment, and fresh
 widget bindings remain here. Mount drop still follows ordinary close cleanup and cannot substitute
 for the required recovery retirement boundary.
 

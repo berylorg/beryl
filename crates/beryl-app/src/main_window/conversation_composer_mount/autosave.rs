@@ -69,6 +69,19 @@ impl MainWindowConversationComposerMount {
         self.autosave.hold_ready_once = true;
     }
 
+    #[cfg(feature = "test-faults")]
+    pub fn test_autosave_worker(
+        &self,
+        run: impl FnOnce() + Send + 'static,
+    ) -> Result<Box<dyn FnOnce() + Send>, String> {
+        let resources = (self.service.clone(), self.autosave.adapters()?.clone());
+        let worker = self.autosave.track_worker(move || {
+            let _resources = resources;
+            run();
+        });
+        Ok(Box::new(move || worker.run()))
+    }
+
     pub(super) fn initialize_autosave(
         &mut self,
         window: &mut Window,
@@ -188,7 +201,7 @@ impl MainWindowConversationComposerMount {
         let service = self.service.clone();
         let (assets, marker_seals) = self.autosave.adapters()?.clone();
         let cancellation = CommandCancellation::new();
-        let task = cx.background_executor().spawn(async move {
+        let worker = self.autosave.track_worker(move || {
             service.fire_autosave(
                 selection,
                 timer,
@@ -200,6 +213,7 @@ impl MainWindowConversationComposerMount {
                 &cancellation,
             )
         });
+        let task = cx.background_executor().spawn(async move { worker.run() });
         self.autosave.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -271,9 +285,10 @@ impl MainWindowConversationComposerMount {
         }
         let generation = self.autosave.generation;
         let service = self.service.clone();
-        let task = cx
-            .background_executor()
-            .spawn(async move { service.advance_autosave(selection, ticket) });
+        let worker = self
+            .autosave
+            .track_worker(move || service.advance_autosave(selection, ticket));
+        let task = cx.background_executor().spawn(async move { worker.run() });
         self.autosave.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| {

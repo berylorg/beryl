@@ -55,6 +55,7 @@ impl MainWindowConversationComposerMount {
             || close.disposing
             || close.release_requested
             || self.window_close_task.is_some()
+            || !self.autosave.workers_drained()
             || self.submission.is_active()
             || self.pending_presentation.is_some()
             || self.native_lineage_snapshot.is_some()

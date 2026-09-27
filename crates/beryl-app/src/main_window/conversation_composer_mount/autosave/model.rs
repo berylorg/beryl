@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use beryl_state::AssetState;
 use gpui::Task;
 
@@ -21,6 +23,7 @@ pub struct MainWindowConversationComposerAutosaveDiagnostics {
     phase: MainWindowConversationComposerAutosavePhase,
     generation: u64,
     retained_tasks: usize,
+    retained_workers: usize,
     fenced: bool,
     last_error: Option<String>,
 }
@@ -36,6 +39,10 @@ impl MainWindowConversationComposerAutosaveDiagnostics {
 
     pub const fn retained_tasks(&self) -> usize {
         self.retained_tasks
+    }
+
+    pub const fn retained_workers(&self) -> usize {
+        self.retained_workers
     }
 
     pub const fn fenced(&self) -> bool {
@@ -68,6 +75,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerAutosave {
     pub(super) state: AutosaveState,
     pub(super) generation: u64,
     pub(super) task: Option<Task<()>>,
+    workers: Arc<()>,
     pub(super) fenced: bool,
     pub(super) adapters: Option<(AssetState, DraftMarkerSealService)>,
     pub(super) settings: Option<(u64, ComposerHostAutosaveInterval)>,
@@ -85,6 +93,7 @@ impl MainWindowConversationComposerAutosave {
             state: AutosaveState::Idle,
             generation: 0,
             task: None,
+            workers: Arc::new(()),
             fenced: false,
             adapters: Some((assets, marker_seals)),
             settings: None,
@@ -108,6 +117,7 @@ impl MainWindowConversationComposerAutosave {
             },
             generation: self.generation,
             retained_tasks: usize::from(self.task.is_some()),
+            retained_workers: Arc::strong_count(&self.workers) - 1,
             fenced: self.fenced,
             last_error: self.last_error.clone(),
         }
@@ -126,10 +136,24 @@ impl MainWindowConversationComposerAutosave {
     pub(in crate::main_window) fn detach_recovery_adapters(
         &mut self,
     ) -> Result<Option<(AssetState, DraftMarkerSealService)>, String> {
-        if !matches!(self.state, AutosaveState::Idle) || self.task.is_some() {
+        if !matches!(self.state, AutosaveState::Idle)
+            || self.task.is_some()
+            || !self.workers_drained()
+        {
             return Err("conversation composer autosave work is not drained".to_owned());
         }
         Ok(self.adapters.take())
+    }
+
+    pub(in crate::main_window) fn workers_drained(&self) -> bool {
+        Arc::strong_count(&self.workers) == 1
+    }
+
+    pub(super) fn track_worker<F>(&self, job: F) -> AutosaveWorker<F> {
+        AutosaveWorker {
+            job: Some(job),
+            _lifetime: self.workers.clone(),
+        }
     }
 
     pub(super) fn advance_generation(&mut self) -> Result<u64, String> {
@@ -164,5 +188,20 @@ impl MainWindowConversationComposerAutosave {
             AutosaveState::Idle => false,
             _ => false,
         }
+    }
+}
+
+pub(super) struct AutosaveWorker<F> {
+    // Captured resources drop before the lifetime witness, including unstarted work.
+    job: Option<F>,
+    _lifetime: Arc<()>,
+}
+
+impl<F> AutosaveWorker<F> {
+    pub(super) fn run<R>(mut self) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        self.job.take().unwrap()()
     }
 }

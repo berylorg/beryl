@@ -15,6 +15,8 @@ mod mounted;
 mod mutation;
 #[path = "resident_close_flush/recovery.rs"]
 mod recovery;
+#[path = "resident_close_flush/recovery_autosave.rs"]
+mod recovery_autosave;
 #[path = "resident_close_flush/recovery_configurator.rs"]
 mod recovery_configurator;
 #[path = "resident_close_flush/recovery_submission.rs"]
