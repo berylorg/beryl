@@ -593,6 +593,15 @@ by the executable composition root.
   custody, and neither an observation job nor confirmation alone starts shutdown progress.
   Cancellation may discard an exact settled worker result without admission, including successful
   collection delivered after cancellation. Discarding a stale result cannot settle another worker.
+- A no-work activation uses the same running owner and exact published invoking member, but may
+  enter admission without native confirmation only with a successful observation reporting no
+  process work. It acquires and validates original window custody through the same atomic observed
+  handoff. Work-bearing evidence requires confirmation; stale, busy or unavailable evidence refuses
+  without a fence and releases any unadmitted close lease. A fresh observation must be classified
+  again, so work appearing during idle admission cannot inherit permission to shut down. Successful
+  idle admission retains the original lease and close-versus-Exit intent in the same admitted owner
+  slot as confirmed shutdown. Pending confirmation or another retained attempt excludes this path.
+  This boundary does not collect work on the GUI executor, retry, progress shutdown or quit.
 - Shutdown runtime revision validation uses nonblocking read-only checks of every nested source.
   Busy, poisoned, closed, exhausted or changed sources refuse validation without altering source
   custody, notification, execution authority or failure state. Complete facts and durable reads

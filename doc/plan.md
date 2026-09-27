@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 628: Retain Confirmed Intent Through Worker Refresh And Admission (finished)
+# Phase 629: Admit Revalidated Idle Shutdown Through The Running Owner (finished)
 
-Sealed native-positive evidence now becomes owner-retained close custody. Exact tagged worker
-completion admits through the window-validated graph handoff; refusal preserves intent, and late
-cancellation can discard its exact result without admission. Nine final native tests passed
-(`0ab56f0c-8128-48d0-98b1-8beee7523596`), following the 17-test native/graph run, with the default
-library check and independent lifecycle review.
+Idle admission now uses exact published-window custody and the atomic observed handoff, retaining
+the original close-versus-Exit intent in the shared owner slot. Changed work refuses admission;
+fresh work requires confirmation. All 21 native/graph tests passed
+(`b369ff94-3f92-42ff-aaba-e0475f8d5629`), with the default library check and independent review.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -123,8 +122,9 @@ The confirmation custody adapter, exact native cleanup evidence and proven-clean
 are accepted in phases 624–626. GPUI `49db3ce857` and published widget pins retain a single canonical
 GPUI graph. Phases 627–628 accept exact window-custody validation inside observed admission and
 owner-retained confirmed intent through tagged worker refresh, refusal and late cancellation.
-Ordinary close/Exit command routing, automatic refresh scheduling, the revalidated no-work path,
-visible barrier gating, coherent failure completion and exact published-window teardown remain
+Phase 629 accepts the revalidated no-work admission boundary through that same retained owner.
+Ordinary close/Exit command routing, automatic refresh scheduling, visible barrier gating,
+coherent failure completion and exact published-window teardown remain
 unmounted; integrate them through the persistent running owner. Successful admission retains its
 original lease and intent; it does not yet drive shutdown progress or normal process quit.
 

@@ -6,7 +6,7 @@ use crate::startup_owner::StartedProcess;
 
 mod admission;
 mod confirmation;
-pub(crate) use admission::ConfirmedShutdownStatus;
+pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
@@ -22,7 +22,7 @@ pub(crate) struct RunningProcessOwner {
     process: StartedProcess,
     startup_cleanup: StartupCleanup,
     confirmation: Option<confirmation::RunningConfirmation>,
-    confirmed: Option<admission::ConfirmedShutdown>,
+    shutdown: Option<admission::RunningShutdownAttempt>,
 }
 
 impl RunningProcessOwner {
@@ -31,7 +31,7 @@ impl RunningProcessOwner {
         let owner = Rc::new(RefCell::new(Self {
             process,
             confirmation: None,
-            confirmed: None,
+            shutdown: None,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {

@@ -8,7 +8,7 @@ use beryl_model::WindowId;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConfirmedShutdownStatus {
+pub(crate) enum RunningShutdownStatus {
     AwaitingObservation,
     Observing,
     Admitted,
@@ -22,7 +22,19 @@ pub(crate) enum ConfirmedShutdownError {
     Service(#[from] AppServiceCloseError),
 }
 
-pub(super) struct ConfirmedShutdown {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum IdleShutdownError {
+    #[error("the running owner already retains shutdown intent custody")]
+    IntentBusy,
+    #[error("process work requires shutdown confirmation")]
+    ConfirmationRequired,
+    #[error("shutdown window custody is unavailable: {0}")]
+    Window(String),
+    #[error(transparent)]
+    Service(#[from] AppServiceCloseError),
+}
+
+pub(super) struct RunningShutdownAttempt {
     invoking: WindowId,
     intent: ShutdownIntent,
     lease: WindowCloseLease,
@@ -63,11 +75,66 @@ impl CompletedConfirmedShutdownObservation {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn try_begin_idle_shutdown(
+        &mut self,
+        invoking: WindowId,
+        intent: ShutdownIntent,
+        observation: &ShutdownWorkObservation,
+        app: &App,
+    ) -> Result<(), IdleShutdownError> {
+        if self.confirmation.is_some() || self.shutdown.is_some() {
+            return Err(IdleShutdownError::IntentBusy);
+        }
+        if observation.has_work() {
+            return Err(IdleShutdownError::ConfirmationRequired);
+        }
+        if !self.process.windows.shells().iter().any(|shell| {
+            shell
+                .window()
+                .read(app)
+                .ok()
+                .and_then(|root| root.controller())
+                .is_some_and(|controller| controller.window_id() == invoking)
+        }) {
+            return Err(IdleShutdownError::Window(
+                "the invoking main window is unavailable".into(),
+            ));
+        }
+        let (snapshot, _) = self
+            .process
+            .services
+            .prepare_close_confirmation(self.process.windows.window_ids(), invoking, observation)
+            .map_err(IdleShutdownError::Window)?;
+        let lease = self
+            .process
+            .services
+            .admit_close_confirmation(
+                snapshot,
+                invoking,
+                intent == ShutdownIntent::FinalWindowClose,
+            )
+            .map_err(IdleShutdownError::Window)?;
+        self.process.services.try_begin_observed_window_shutdown(
+            observation,
+            &lease,
+            invoking,
+            intent == ShutdownIntent::FinalWindowClose,
+        )?;
+        self.shutdown = Some(RunningShutdownAttempt {
+            invoking,
+            intent,
+            lease,
+            pending: None,
+            admitted: true,
+        });
+        Ok(())
+    }
+
     pub(crate) fn begin_confirmed_shutdown(
         &mut self,
         context: confirmation::ShutdownConfirmationContext,
     ) -> Result<(), String> {
-        if self.confirmation.is_some() || self.confirmed.is_some() {
+        if self.confirmation.is_some() || self.shutdown.is_some() {
             return Err("the running owner already retains shutdown intent custody".into());
         }
         let lease = self.process.services.admit_close_confirmation(
@@ -75,7 +142,7 @@ impl RunningProcessOwner {
             context.invoking,
             context.intent == ShutdownIntent::FinalWindowClose,
         )?;
-        self.confirmed = Some(ConfirmedShutdown {
+        self.shutdown = Some(RunningShutdownAttempt {
             invoking: context.invoking,
             intent: context.intent,
             lease,
@@ -85,19 +152,19 @@ impl RunningProcessOwner {
         Ok(())
     }
 
-    pub(crate) fn confirmed_shutdown(
+    pub(crate) fn shutdown_status(
         &self,
-    ) -> Option<(WindowId, ShutdownIntent, ConfirmedShutdownStatus)> {
-        self.confirmed.as_ref().map(|attempt| {
+    ) -> Option<(WindowId, ShutdownIntent, RunningShutdownStatus)> {
+        self.shutdown.as_ref().map(|attempt| {
             (
                 attempt.invoking,
                 attempt.intent,
                 if attempt.admitted {
-                    ConfirmedShutdownStatus::Admitted
+                    RunningShutdownStatus::Admitted
                 } else if attempt.pending.is_some() {
-                    ConfirmedShutdownStatus::Observing
+                    RunningShutdownStatus::Observing
                 } else {
-                    ConfirmedShutdownStatus::AwaitingObservation
+                    RunningShutdownStatus::AwaitingObservation
                 },
             )
         })
@@ -107,7 +174,7 @@ impl RunningProcessOwner {
         &mut self,
     ) -> Result<PreparedConfirmedShutdownObservation, String> {
         let attempt = self
-            .confirmed
+            .shutdown
             .as_mut()
             .ok_or("no confirmed shutdown intent is retained")?;
         if attempt.admitted || attempt.pending.is_some() {
@@ -129,7 +196,7 @@ impl RunningProcessOwner {
     ) -> Result<(), ConfirmedShutdownError> {
         self.settle_confirmed_shutdown_observation(&completion)?;
         let observation = completion.result?;
-        let attempt = self.confirmed.as_mut().unwrap();
+        let attempt = self.shutdown.as_mut().unwrap();
         self.process.services.try_begin_observed_window_shutdown(
             &observation,
             &attempt.lease,
@@ -152,7 +219,7 @@ impl RunningProcessOwner {
         completion: &CompletedConfirmedShutdownObservation,
     ) -> Result<(), ConfirmedShutdownError> {
         let attempt = self
-            .confirmed
+            .shutdown
             .as_mut()
             .ok_or(ConfirmedShutdownError::StaleObservation)?;
         if attempt.admitted
@@ -169,13 +236,13 @@ impl RunningProcessOwner {
 
     pub(crate) fn end_unadmitted_shutdown(&mut self) -> Result<(), String> {
         let attempt = self
-            .confirmed
+            .shutdown
             .as_ref()
             .ok_or("no confirmed shutdown intent is retained")?;
         if attempt.admitted || attempt.pending.is_some() {
             return Err("confirmed shutdown still owns observation or admission".into());
         }
-        self.confirmed.take();
+        self.shutdown.take();
         Ok(())
     }
 }

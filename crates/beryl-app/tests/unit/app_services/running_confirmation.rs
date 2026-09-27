@@ -141,6 +141,13 @@ fn run(choice: Choice) {
                         })
                         .unwrap()
                         .unwrap();
+                        assert!(matches!(
+                            cx.update(|app| owner
+                                .borrow_mut()
+                                .try_begin_idle_shutdown(invoking, intent, &duplicate, app,))
+                                .unwrap(),
+                            Err(crate::running_owner::IdleShutdownError::IntentBusy)
+                        ));
                         if choice == Choice::OpenFailure {
                             main.update(cx, |_, window, cx| {
                                 window.focus(&cx.focus_handle());

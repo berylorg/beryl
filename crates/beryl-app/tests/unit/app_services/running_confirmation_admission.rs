@@ -1,4 +1,4 @@
-use crate::running_owner::ConfirmedShutdownStatus;
+use crate::running_owner::RunningShutdownStatus;
 
 pub(super) async fn exercise(
     owner: &Rc<RefCell<RunningProcessOwner>>,
@@ -24,7 +24,7 @@ pub(super) async fn exercise(
                 .begin_confirmed_shutdown(context)
                 .is_err()
         );
-        assert!(owner.borrow().confirmed_shutdown().is_none());
+        assert!(owner.borrow().shutdown_status().is_none());
         return;
     }
     owner
@@ -32,12 +32,8 @@ pub(super) async fn exercise(
         .begin_confirmed_shutdown(context)
         .unwrap();
     assert_eq!(
-        owner.borrow().confirmed_shutdown(),
-        Some((
-            invoking,
-            intent,
-            ConfirmedShutdownStatus::AwaitingObservation
-        ))
+        owner.borrow().shutdown_status(),
+        Some((invoking, intent, RunningShutdownStatus::AwaitingObservation))
     );
     assert!(
         owner
@@ -64,8 +60,8 @@ pub(super) async fn exercise(
         .prepare_confirmed_shutdown_observation()
         .unwrap();
     assert_eq!(
-        owner.borrow().confirmed_shutdown().unwrap().2,
-        ConfirmedShutdownStatus::Observing
+        owner.borrow().shutdown_status().unwrap().2,
+        RunningShutdownStatus::Observing
     );
     assert!(
         owner
@@ -90,8 +86,8 @@ pub(super) async fn exercise(
                 .is_err()
         );
         assert_eq!(
-            owner.borrow().confirmed_shutdown().unwrap().2,
-            ConfirmedShutdownStatus::AwaitingObservation
+            owner.borrow().shutdown_status().unwrap().2,
+            RunningShutdownStatus::AwaitingObservation
         );
         let job = owner
             .borrow_mut()
@@ -117,11 +113,11 @@ pub(super) async fn exercise(
                 .is_err()
         );
         assert_eq!(
-            owner.borrow().confirmed_shutdown().unwrap().2,
-            ConfirmedShutdownStatus::AwaitingObservation
+            owner.borrow().shutdown_status().unwrap().2,
+            RunningShutdownStatus::AwaitingObservation
         );
         owner.borrow_mut().end_unadmitted_shutdown().unwrap();
-        assert!(owner.borrow().confirmed_shutdown().is_none());
+        assert!(owner.borrow().shutdown_status().is_none());
         drop(
             owner
                 .borrow()
@@ -154,8 +150,8 @@ pub(super) async fn exercise(
     );
     permit.commit(|| ()).unwrap();
     assert_eq!(
-        owner.borrow().confirmed_shutdown().unwrap().2,
-        ConfirmedShutdownStatus::AwaitingObservation
+        owner.borrow().shutdown_status().unwrap().2,
+        RunningShutdownStatus::AwaitingObservation
     );
     drop(unsettled);
     let mut job = owner
@@ -175,8 +171,8 @@ pub(super) async fn exercise(
             .is_err()
     );
     assert_eq!(
-        owner.borrow().confirmed_shutdown().unwrap().2,
-        ConfirmedShutdownStatus::Observing
+        owner.borrow().shutdown_status().unwrap().2,
+        RunningShutdownStatus::Observing
     );
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -204,8 +200,8 @@ pub(super) async fn exercise(
             .unwrap();
     }
     assert_eq!(
-        owner.borrow().confirmed_shutdown(),
-        Some((invoking, intent, ConfirmedShutdownStatus::Admitted))
+        owner.borrow().shutdown_status(),
+        Some((invoking, intent, RunningShutdownStatus::Admitted))
     );
     assert!(
         owner

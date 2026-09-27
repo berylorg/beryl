@@ -51,6 +51,20 @@ pub fn active_live_command_count(service: &super::ProjectionConnectionService) -
         .active_command_count_for_test()
 }
 
+pub(crate) fn retain_projection_work(
+    service: &super::ProjectionConnectionService,
+    thread: beryl_model::SyndicThreadId,
+) -> impl Send + use<> {
+    let acquisition =
+        super::acquisition::ProjectionAcquisition::admit(&service.live_command_authorizer())
+            .unwrap();
+    super::CasProjectionCoordinator::for_healthy_home(service.live_home_command().unwrap().home())
+        .unwrap()
+        .begin_projection(thread)
+        .unwrap()
+        .with_acquisition(acquisition)
+}
+
 pub use super::outage_buffer::{
     OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferError,
     OutageBufferLimits, OutageConnectionIdentity, OutageFact, OutageLoss, OutageObservationSlot,
