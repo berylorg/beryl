@@ -2,6 +2,18 @@ use super::*;
 
 impl MainWindowConversationComposerMount {
     #[cfg(feature = "test-faults")]
+    pub fn test_window_close_cleanup(
+        &self,
+        run: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let service = self.service.clone();
+        Box::pin(self.window_close_workers.track_future(async move {
+            let _service = service;
+            run.await;
+        }))
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_window_close_completion(
         &self,
         run: impl FnOnce() + Send + 'static,

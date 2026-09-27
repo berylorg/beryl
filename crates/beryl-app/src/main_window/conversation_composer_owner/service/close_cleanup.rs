@@ -12,7 +12,7 @@ enum CleanupStep {
 }
 
 impl MainWindowConversationComposerService {
-    pub(in crate::main_window) fn cleanup_unmounted_window_close(
+    pub(in crate::main_window) async fn cleanup_unmounted_window_close(
         self: Arc<Self>,
         ticket: MainWindowConversationComposerCloseTicket,
         flush: Option<ComposerHostFlushTicket>,
@@ -20,25 +20,20 @@ impl MainWindowConversationComposerService {
         mut disposal_captured: bool,
         executor: BackgroundExecutor,
     ) {
-        let timer = executor.clone();
-        executor
-            .spawn(async move {
-                let mut delay = Duration::from_millis(1);
-                for _ in 0..32 {
-                    match self.cleanup_unmounted_window_close_step(
-                        ticket,
-                        flush,
-                        disposing,
-                        &mut disposal_captured,
-                    ) {
-                        Ok(CleanupStep::Pending) => {}
-                        Ok(CleanupStep::Finished) | Err(_) => return,
-                    }
-                    timer.timer(delay).await;
-                    delay = delay.saturating_mul(2).min(Duration::from_millis(100));
-                }
-            })
-            .detach();
+        let mut delay = Duration::from_millis(1);
+        for _ in 0..32 {
+            match self.cleanup_unmounted_window_close_step(
+                ticket,
+                flush,
+                disposing,
+                &mut disposal_captured,
+            ) {
+                Ok(CleanupStep::Pending) => {}
+                Ok(CleanupStep::Finished) | Err(_) => return,
+            }
+            executor.timer(delay).await;
+            delay = delay.saturating_mul(2).min(Duration::from_millis(100));
+        }
     }
 
     fn cleanup_unmounted_window_close_step(

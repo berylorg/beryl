@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 718: Retain Close Completion Resources Through Recovery (finished)
+# Phase 719: Retain Unmounted Close Cleanup Resources (finished)
 
-Accepted resource custody through the close GUI completion callback, including abandonment and
-unwind, with unchanged resident restoration and blocked premature adapter handoff. Library
-checking, all 47 resident-close and mount tests (`5ce51f43-a6c2-4863-b394-a7cd5d44bf23`), and
-independent lifecycle review passed. Cleanup spawned after callback handoff remains a separate
-worker lifetime; this phase does not prove its drainage or whole-mount retirement.
+Accepted tracked async cleanup custody across suspension, completion, abandonment and unwind,
+with unchanged bounded cleanup behavior and preserved resident gates and restoration. Library
+checking, all 48 resident-close and mount tests (65d7f31d-19c8-4876-aa92-ad4f87ac8f74), and
+independent lifecycle review passed. Whole-mount retirement and fresh binding remain separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -109,10 +108,10 @@ supplies the consuming host primitive, phase 708 the enclosing slot primitive an
 exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
 Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
 adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
-handoff. Phases 715–718 supply autosave, submission, close background-worker and close GUI
-completion lifetime evidence. Remaining worker-reference draining, including separately spawned
-unmounted cleanup, mount service detachment, and fresh widget bindings remain here. Mount drop still follows ordinary close cleanup and cannot substitute
-for the required recovery retirement boundary.
+handoff. Phases 715–719 supply autosave, submission, close background-worker, close GUI completion and
+unmounted close cleanup lifetime evidence. Remaining worker-reference draining, mount service
+detachment and fresh widget bindings remain here. Mount drop still follows ordinary close cleanup
+and cannot substitute for the required recovery retirement boundary.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

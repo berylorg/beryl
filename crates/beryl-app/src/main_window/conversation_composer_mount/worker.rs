@@ -1,6 +1,11 @@
-use std::sync::Arc;
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct WorkerLifetime(Arc<()>);
 
 impl WorkerLifetime {
@@ -14,12 +19,27 @@ impl WorkerLifetime {
             _lifetime: self.0.clone(),
         }
     }
+
+    pub(super) fn track_future<F: Future<Output = ()>>(
+        &self,
+        future: F,
+    ) -> ResourceWorker<Pin<Box<F>>> {
+        self.track(Box::pin(future))
+    }
 }
 
 pub(super) struct ResourceWorker<F> {
     // Captured resources drop before the lifetime witness, including unstarted work.
     job: Option<F>,
     _lifetime: Arc<()>,
+}
+
+impl<F: Future<Output = ()>> Future for ResourceWorker<Pin<Box<F>>> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        self.get_mut().job.as_mut().unwrap().as_mut().poll(cx)
+    }
 }
 
 impl<F> ResourceWorker<F> {
