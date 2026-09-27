@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 641: Connect Initial Exit Observation To Work Routing (finished)
+# Phase 642: Consume Confirmation During Initial Exit Routing (finished)
 
-Initial Exit routing now retains the exact request through worker observation and automatic
-classification into idle admission, native confirmation settlement or routing failure. All 32
-focused tests passed (`d9ca1c08-fbf2-43d6-a109-246350f582a5`), including native positive/Cancel,
-cancelled observation, reentrant scheduling and stale/busy refusal. The default library check and
-independent semantic review passed. Confirmation consumption and later shutdown policy stay explicit.
+Initial Exit routing now consumes exact native confirmation and returns the original request with
+Cancel, retained confirmed intent, idle admission or typed failure. All 32 focused lifecycle tests
+passed (`d3f0e308-4028-447e-a530-89c265a60405`), including native positive/Cancel, observation
+cancellation, request identity, duplicate coalescing and cleanup custody. The default library
+check and independent semantic review passed. Later scheduling and request completion remain explicit.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -141,9 +141,9 @@ the running Exit consumer. Phase 637 supplies exact-request work classification 
 phase 638 connects work-bearing observations to owned native confirmation, and phase 639 consumes
 exact confirmation results into cancellation or retained confirmed intent. Phase 640 supplies
 request-retaining initial worker observation from exact command delivery. Phase 641 connects that
-observation to work routing while retaining the request through native settlement. Ordinary toolbar
-mounting, automatic confirmation consumption and refresh/progress routing, and coherent request
-completion remain unmounted.
+observation to work routing while retaining the request through native settlement. Phase 642 consumes
+the exact confirmation into cancellation or retained confirmed intent during that routing. Ordinary
+toolbar mounting, automatic refresh/progress routing, and coherent request completion remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

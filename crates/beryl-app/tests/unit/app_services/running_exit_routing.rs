@@ -1,4 +1,4 @@
-use crate::running_owner::ExitRoutingCompletion;
+use crate::running_owner::{ExitRoutingCompletion, ExitRoutingError};
 use windows::{
     Win32::{
         Foundation::{LPARAM, WPARAM},
@@ -59,7 +59,10 @@ fn exercise(confirm: Option<bool>) {
                                 token,
                                 app,
                                 move |owner, request, result, app| {
-                                    assert!(matches!(result, Err(ExitWorkError::Observation(_))));
+                                    assert!(matches!(
+                                        result,
+                                        Err(ExitRoutingError::Work(ExitWorkError::Observation(_)))
+                                    ));
                                     assert!(owner.borrow().shutdown_status().is_none());
                                     let token = ProjectionCancellationToken::new();
                                     token.cancel();
@@ -72,7 +75,9 @@ fn exercise(confirm: Option<bool>) {
                                             move |owner, request, result, _| {
                                                 assert!(matches!(
                                                     result,
-                                                    Err(ExitWorkError::Observation(_))
+                                                    Err(ExitRoutingError::Work(
+                                                        ExitWorkError::Observation(_)
+                                                    ))
                                                 ));
                                                 assert!(owner.borrow().shutdown_status().is_none());
                                                 *delivered.borrow_mut() = Some(request);
@@ -124,22 +129,31 @@ fn exercise(confirm: Option<bool>) {
                                     if let Some(confirm) = confirm {
                                         assert_eq!(
                                             result.unwrap(),
-                                            ExitRoutingCompletion::ConfirmationSettled
+                                            if confirm {
+                                                ExitRoutingCompletion::AwaitingObservation
+                                            } else {
+                                                ExitRoutingCompletion::Cancelled
+                                            }
                                         );
-                                        assert!(owner.borrow().shutdown_status().is_none());
                                         assert_eq!(
                                             owner
                                                 .borrow_mut()
                                                 .consume_exit_confirmation(&mut request, app)
                                                 .unwrap(),
-                                            Some(if confirm {
-                                                ExitConfirmationRoute::AwaitingObservation
-                                            } else {
-                                                ExitConfirmationRoute::Cancelled
-                                            })
+                                            None
                                         );
                                         if confirm {
+                                            assert_eq!(
+                                                owner.borrow().shutdown_status(),
+                                                Some((
+                                                    invoking,
+                                                    ShutdownIntent::ApplicationExit,
+                                                    RunningShutdownStatus::AwaitingObservation,
+                                                ))
+                                            );
                                             owner.borrow_mut().end_unadmitted_shutdown().unwrap();
+                                        } else {
+                                            assert!(owner.borrow().shutdown_status().is_none());
                                         }
                                     } else {
                                         assert_eq!(

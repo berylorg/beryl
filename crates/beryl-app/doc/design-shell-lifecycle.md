@@ -593,12 +593,16 @@ by the executable composition root.
 - Initial Exit routing connects request-retaining worker observation to the existing work route.
   It returns the original request on scheduling refusal, with no completion callback. Once
   scheduled, it retains that request through observation and any native confirmation, delivering
-  it exactly once with idle admission, settled confirmation, or routing failure on the GUI executor
-  outside owner borrows. Confirmation settlement is notification, not positive intent or successful
-  cleanup; its exact result remains owned until explicit consumption. Observation cancellation or
-  failure never routes idle admission. Duplicate activations continue coalescing throughout this
-  operation. Routing performs no automatic retry, confirmation consumption, request completion,
-  confirmed refresh, progress scheduling or quit.
+  it exactly once with idle admission, cancelled confirmation, retained confirmed intent awaiting
+  observation, or a typed routing failure on the GUI executor outside owner borrows. Native
+  settlement first consumes the exact request-associated confirmation through the existing validated
+  boundary. Missing settled evidence is an explicit failure, never cancellation or positive intent.
+  Failed request/operation identity validation or unresolved native cleanup preserves the original
+  confirmation custody; stale window snapshots and rejected confirmed intent retain their existing
+  consumption semantics. Observation
+  cancellation or failure never routes idle admission. Duplicate activations continue coalescing
+  throughout this operation. Routing performs no automatic retry, request completion, confirmed
+  refresh, progress scheduling or quit; its caller still owns coherent completion of the request.
 
 - The persistent running owner accepts that complete handoff without reconstructing services or
   extracting window handles. The composition root retains it for the ordinary process lifetime.

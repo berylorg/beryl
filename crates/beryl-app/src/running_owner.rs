@@ -25,7 +25,7 @@ pub(crate) use confirmation::{
 };
 pub(crate) use exit_confirmation::{ExitConfirmationError, ExitConfirmationRoute};
 pub(crate) use exit_observation::ExitObservationError;
-pub(crate) use exit_routing::ExitRoutingCompletion;
+pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
 pub(crate) use observation::ConfirmedShutdownAdmission;
 
