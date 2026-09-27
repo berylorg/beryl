@@ -99,6 +99,29 @@ lifecycle/persistence review found no issues. Same-home recovery and final teard
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
+Architectural blocker identified on 2026-09-27 after phase 690: an Exit session command can
+durably publish `OrderlyExit` and then report a storage failure. The
+[main-window contract](features/main-windows/design.md#application-exit) requires recoverable
+failure to preserve the windows and restore coherent interaction before a fresh explicit Exit.
+The [same-home replacement contract](systems/backend-runtime/design.md#same-home-recovery-composition)
+retires the old graph and invalidates its generation-bound handles and receipts. The
+[session contract](../crates/beryl-state/doc/design-runtime-session.md#session-and-windows)
+defines Exit publication but no interrupted-Exit transition back to Running under the recovered
+generation. The accepted postcommit-failure test proves the marker survives reopening;
+`BeginSessionRestore` changes claim state and revisions and is not an identity-preserving
+running-session recovery operation.
+
+Resolve that cross-generation outcome policy in the owning feature, system, state and app
+authorities before implementing session-outcome consumption or enabled Exit. Recommended decision
+for Operator review: a reported failed Exit stays cancelled; automatic same-home recovery preserves
+known outcomes and reconciles only eligible pending outcomes. When proven committed Exit state
+requires it, a separate revision-checked transition resumes Running while preserving surviving
+windows, selections, claims and captured placements. Unknown/collision
+outcomes remain unavailable; neither recovery nor a late success silently exits or repeats the
+original command. This recommendation is not implementation authority. Ordinary healthy
+reconciliation versus a reported failed Exit, retained evidence across graph replacement, and
+failure of the resume transition need explicit treatment in that decision.
+
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
 ordinary process window owner. Share serialized final-window designation with construction,
 implement exact side-effect-free native confirmation, preserve ordinary-close versus Exit restore
