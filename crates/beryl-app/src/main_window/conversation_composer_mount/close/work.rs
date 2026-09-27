@@ -50,6 +50,19 @@ impl MainWindowConversationComposerMount {
         });
         let task = executor.spawn(async move { worker.run() });
         let service = self.service.clone();
+        let completion =
+            self.window_close_workers
+                .track(move |(unmounted, disposing, disposal_captured)| {
+                    if unmounted {
+                        service.cleanup_unmounted_window_close(
+                            close.ticket,
+                            close.flush,
+                            disposing,
+                            disposal_captured,
+                            executor,
+                        );
+                    }
+                });
         self.window_close_task = Some(cx.spawn_in(window, async move |this, cx| {
             let (result, selection) = task.await;
             let disposal_captured = close.disposal_captured
@@ -87,15 +100,7 @@ impl MainWindowConversationComposerMount {
                     }
                 }
             });
-            if applied.is_err() {
-                service.cleanup_unmounted_window_close(
-                    close.ticket,
-                    close.flush,
-                    disposing,
-                    disposal_captured,
-                    executor,
-                );
-            }
+            completion.run_with((applied.is_err(), disposing, disposal_captured));
         }));
     }
 

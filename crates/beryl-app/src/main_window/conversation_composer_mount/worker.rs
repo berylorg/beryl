@@ -23,6 +23,13 @@ pub(super) struct ResourceWorker<F> {
 }
 
 impl<F> ResourceWorker<F> {
+    pub(super) fn run_with<A, R>(mut self, argument: A) -> R
+    where
+        F: FnOnce(A) -> R,
+    {
+        self.job.take().unwrap()(argument)
+    }
+
     pub(super) fn run<R>(mut self) -> R
     where
         F: FnOnce() -> R,

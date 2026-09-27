@@ -2,6 +2,19 @@ use super::*;
 
 impl MainWindowConversationComposerMount {
     #[cfg(feature = "test-faults")]
+    pub fn test_window_close_completion(
+        &self,
+        run: impl FnOnce() + Send + 'static,
+    ) -> Box<dyn FnOnce() + Send> {
+        let service = self.service.clone();
+        let completion = self.window_close_workers.track(move |()| {
+            let _service = service;
+            run();
+        });
+        Box::new(move || completion.run_with(()))
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_window_close_worker(
         &self,
         run: impl FnOnce() + Send + 'static,
