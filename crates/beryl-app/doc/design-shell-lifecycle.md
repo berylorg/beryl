@@ -531,6 +531,15 @@ by the executable composition root.
   cancellation or failure requires a fresh activation for another attempt. A foreign or stale
   completion cannot end a successor request. Wake delivery occurs outside command-state borrows.
 
+- The persistent running owner accepts that complete handoff without reconstructing services or
+  extracting window handles. The composition root retains it for the ordinary process lifetime.
+  It starts at most one GUI-executor cleanup task for the transferred startup surface. That task
+  retains both the owner and the original surface through native settlement and exposes no
+  cancellation handle. Pending cleanup blocks clean quit; failure retains the original surface
+  custody and diagnostic in the running owner. Only successful destruction settles that auxiliary
+  obligation. Main-window identity, interaction and pending Exit delivery remain unchanged while
+  cleanup runs or fails. This ownership boundary grants no shutdown or startup-rollback authority.
+
 - The running process window owner retains one native confirmation control and its completion,
   bound to the invoking window, shutdown intent and exact observation. Windows uses the owned
   GPUI native confirmation boundary, with feature-owned strings and Cancel-default behavior.

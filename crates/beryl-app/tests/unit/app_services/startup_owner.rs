@@ -35,6 +35,14 @@ mod support {
     ));
 }
 
+mod running_owner {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_owner.rs"
+    ));
+}
+
 #[test]
 fn native_success_hands_off_the_complete_graph_and_late_exit_with_auxiliary_custody() {
     let directory = support::native_home();

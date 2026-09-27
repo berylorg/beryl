@@ -204,6 +204,8 @@ pub mod runtime_activity_enrollment;
 pub mod startup_surface;
 #[cfg(target_os = "windows")]
 mod startup_owner;
+#[cfg(target_os = "windows")]
+mod running_owner;
 pub mod theme_runtime;
 pub mod window_acquisition;
 
