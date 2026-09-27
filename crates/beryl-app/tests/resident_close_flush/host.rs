@@ -2,15 +2,11 @@ use beryl_app::composer_host::{
     ComposerHostAutosaveAdvance, ComposerHostAutosaveCapture, ComposerHostError,
     ComposerHostFlushAdmission, ComposerHostFlushAdvance, ComposerHostFlushCapture,
     ComposerHostFlushFailure, ComposerHostFlushPurpose, ComposerHostFlushState,
-    ComposerHostFlushTicket, ComposerHostPublicationTicket,
 };
 use beryl_home_store::{CommandCancellation, test_faults::FaultPoint};
 use syndic_storage::SyndicTimestamp;
 
-use super::{
-    composer,
-    support::{self, Host},
-};
+use super::{composer, support};
 
 #[test]
 fn clean_and_dirty_close_keep_exact_editor_until_success_and_reject_stale_settlement() {
@@ -310,82 +306,4 @@ fn close_reconciliation_stays_unsatisfied_and_release_preserves_exact_publicatio
     assert!(!fixture.host.is_dirty());
 }
 
-fn begin_close(fixture: &mut Host) -> ComposerHostFlushTicket {
-    match fixture
-        .host
-        .begin_flush(ComposerHostFlushPurpose::WindowClose)
-        .unwrap()
-    {
-        ComposerHostFlushAdmission::Started { ticket, .. } => ticket,
-        other => panic!("expected new close attempt: {other:?}"),
-    }
-}
-
-fn capture(
-    fixture: &mut Host,
-    close: ComposerHostFlushTicket,
-    operation: u64,
-) -> ComposerHostPublicationTicket {
-    match fixture
-        .host
-        .capture_flush_publication(
-            &fixture.store,
-            close,
-            fixture.assets.clone(),
-            &fixture.seals,
-            composer::operation_id(operation),
-            None,
-            SyndicTimestamp::from_unix_millis(operation),
-            &CommandCancellation::new(),
-        )
-        .unwrap()
-    {
-        ComposerHostFlushCapture::Captured(ticket) => ticket,
-        other => panic!("expected close publication for operation {operation}: {other:?}"),
-    }
-}
-
-fn ready(fixture: &mut Host, close: ComposerHostFlushTicket, operation: u64) {
-    assert_eq!(
-        fixture.host.flush_state(close).unwrap(),
-        ComposerHostFlushState::CaptureRequired
-    );
-    if fixture.host.is_dirty() {
-        capture(fixture, close, operation);
-        assert_eq!(
-            fixture.host.advance_flush(&fixture.store, close).unwrap(),
-            ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
-        );
-    }
-    assert!(!fixture.host.is_dirty());
-    let revision = fixture.store.home_revision().unwrap();
-    let binding = fixture.host.binding();
-    assert_eq!(fixture.host.publication_custody_count(), 0);
-    assert_eq!(
-        fixture
-            .host
-            .capture_flush_publication(
-                &fixture.store,
-                close,
-                fixture.assets.clone(),
-                &fixture.seals,
-                composer::operation_id(operation),
-                None,
-                SyndicTimestamp::from_unix_millis(operation),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostFlushCapture::State(ComposerHostFlushState::CloseReady)
-    );
-    assert_eq!(fixture.store.home_revision().unwrap(), revision);
-    assert_eq!(fixture.host.binding(), binding);
-    assert_eq!(fixture.host.publication_custody_count(), 0);
-    assert_eq!(
-        fixture.host.advance_flush(&fixture.store, close).unwrap(),
-        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CloseReady)
-    );
-    assert_eq!(
-        fixture.host.flush_state(close).unwrap(),
-        ComposerHostFlushState::CloseReady
-    );
-}
+use super::support::host_close::{begin_close, capture, ready};

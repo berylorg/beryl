@@ -22,8 +22,11 @@ use super::{
 mod autosave;
 mod close;
 mod flush;
+mod retirement;
 mod service;
 mod settlement;
+
+pub use retirement::ComposerHostRetiredClose;
 
 use settlement::{
     PublicationStep, error_failure, publication_failure, recoverable_error, stale_callback_error,

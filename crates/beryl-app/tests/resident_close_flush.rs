@@ -15,6 +15,8 @@ mod mounted;
 mod mutation;
 #[path = "resident_close_flush/release.rs"]
 mod release;
+#[path = "resident_close_flush/retirement.rs"]
+mod retirement;
 #[path = "resident_close_flush/shutdown.rs"]
 mod shutdown;
 #[path = "resident_close_flush/support.rs"]

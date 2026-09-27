@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 705: Retain Worker-Owned Interrupted Exit Graph Retirement (finished)
+# Phase 707: Retire A Clean Composer Host Without Durable Disposal (finished)
 
-Accepted exact-request worker retirement with original service custody returned before completion,
-including failure and unwind. Library check, independent lifecycle review, 13 graph/custody tests
-(`a42b3a2e-04c6-4ccb-8fbe-3e3e21801231`) and eight native Exit tests
-(`34293a4c-cb1b-44b0-ab17-4db3cfa1bfc0`) passed. No reopening authority is granted.
+Accepted consuming retirement of an exact ready host with drained custody, bounded immutable
+checkpoint facts and unchanged host return on refusal. Library checking, independent lifecycle
+review and all 18 resident-close tests passed (`27441254-9e6c-4c0a-95a2-b8ae085c1a57`). No storage
+cleanup, whole-resident retirement, fresh binding or reopening authority is supplied by this primitive.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -103,7 +103,8 @@ work before retiring generation-bound editor adapters. Preserve resident present
 checkpoint/history facts without durable cleanup through the Failed store. Fresh exact validation
 must precede rebinding; changed or unresolved evidence stays unavailable. General dirty or ambiguous
 save recovery is outside this cut because it cannot satisfy session-publication admission. Do not
-substitute native-lineage unmounting or startup cleanup for resident retirement proof.
+substitute native-lineage unmounting or startup cleanup for resident retirement proof. Phase 707
+supplies the consuming host primitive; service workers and preserved widget bindings remain here.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

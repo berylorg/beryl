@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[path = "support/host_close.rs"]
+pub mod host_close;
+
 use beryl_app::{
     cas_projection::ProjectionServiceConfig,
     composer_host::SyndicComposerHost,
