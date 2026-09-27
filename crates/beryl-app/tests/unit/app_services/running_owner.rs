@@ -91,7 +91,7 @@ fn run(with_surface: bool, lose_surface: bool) {
                             let owner = owner.borrow();
                             assert_eq!(owner.test_process().windows.window_ids(), ids);
                             assert_eq!(owner.test_process().windows.shells()[0].window(), main);
-                            assert!(owner.test_process().services.graph().is_some());
+                            assert!(owner.test_services().graph().is_some());
                             assert_eq!(owner.exit_requested(), with_surface);
                             match owner.startup_cleanup() {
                                 StartupCleanup::Failed(detail) => {

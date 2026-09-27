@@ -39,7 +39,7 @@ pub(super) struct RunningShutdownAttempt {
     intent: ShutdownIntent,
     lease: WindowCloseLease,
     pending: Option<Arc<()>>,
-    admitted: bool,
+    pub(super) admitted: bool,
 }
 
 pub(crate) struct PreparedConfirmedShutdownObservation {
@@ -82,7 +82,7 @@ impl RunningProcessOwner {
         observation: &ShutdownWorkObservation,
         app: &App,
     ) -> Result<(), IdleShutdownError> {
-        if self.confirmation.is_some() || self.shutdown.is_some() {
+        if self.confirmation.is_some() || self.shutdown.is_some() || self.progress.is_some() {
             return Err(IdleShutdownError::IntentBusy);
         }
         if observation.has_work() {
@@ -103,23 +103,31 @@ impl RunningProcessOwner {
         let (snapshot, _) = self
             .process
             .services
+            .as_ref()
+            .ok_or(AppServiceCloseError::Unavailable)?
             .prepare_close_confirmation(self.process.windows.window_ids(), invoking, observation)
             .map_err(IdleShutdownError::Window)?;
         let lease = self
             .process
             .services
+            .as_ref()
+            .ok_or(AppServiceCloseError::Unavailable)?
             .admit_close_confirmation(
                 snapshot,
                 invoking,
                 intent == ShutdownIntent::FinalWindowClose,
             )
             .map_err(IdleShutdownError::Window)?;
-        self.process.services.try_begin_observed_window_shutdown(
-            observation,
-            &lease,
-            invoking,
-            intent == ShutdownIntent::FinalWindowClose,
-        )?;
+        self.process
+            .services
+            .as_mut()
+            .ok_or(AppServiceCloseError::Unavailable)?
+            .try_begin_observed_window_shutdown(
+                observation,
+                &lease,
+                invoking,
+                intent == ShutdownIntent::FinalWindowClose,
+            )?;
         self.shutdown = Some(RunningShutdownAttempt {
             invoking,
             intent,
@@ -134,14 +142,19 @@ impl RunningProcessOwner {
         &mut self,
         context: confirmation::ShutdownConfirmationContext,
     ) -> Result<(), String> {
-        if self.confirmation.is_some() || self.shutdown.is_some() {
+        if self.confirmation.is_some() || self.shutdown.is_some() || self.progress.is_some() {
             return Err("the running owner already retains shutdown intent custody".into());
         }
-        let lease = self.process.services.admit_close_confirmation(
-            context.snapshot,
-            context.invoking,
-            context.intent == ShutdownIntent::FinalWindowClose,
-        )?;
+        let lease = self
+            .process
+            .services
+            .as_ref()
+            .ok_or("the complete service owner is on a worker")?
+            .admit_close_confirmation(
+                context.snapshot,
+                context.invoking,
+                context.intent == ShutdownIntent::FinalWindowClose,
+            )?;
         self.shutdown = Some(RunningShutdownAttempt {
             invoking: context.invoking,
             intent: context.intent,
@@ -183,6 +196,8 @@ impl RunningProcessOwner {
         let work = self
             .process
             .services
+            .as_ref()
+            .ok_or("the complete service owner is on a worker")?
             .prepare_shutdown_observation()
             .map_err(|error| error.to_string())?;
         let identity = Arc::new(());
@@ -197,12 +212,16 @@ impl RunningProcessOwner {
         self.settle_confirmed_shutdown_observation(&completion)?;
         let observation = completion.result?;
         let attempt = self.shutdown.as_mut().unwrap();
-        self.process.services.try_begin_observed_window_shutdown(
-            &observation,
-            &attempt.lease,
-            attempt.invoking,
-            attempt.intent == ShutdownIntent::FinalWindowClose,
-        )?;
+        self.process
+            .services
+            .as_mut()
+            .ok_or(AppServiceCloseError::Unavailable)?
+            .try_begin_observed_window_shutdown(
+                &observation,
+                &attempt.lease,
+                attempt.invoking,
+                attempt.intent == ShutdownIntent::FinalWindowClose,
+            )?;
         attempt.admitted = true;
         Ok(())
     }

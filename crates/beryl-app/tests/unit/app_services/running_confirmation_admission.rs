@@ -12,8 +12,7 @@ pub(super) async fn exercise(
     if choice == Choice::AdmissionAba {
         let resident = owner
             .borrow()
-            .test_process()
-            .services
+            .test_services()
             .windows
             .reserve_main_window(beryl_model::WindowId::from_bytes([232; 16]))
             .unwrap();
@@ -38,8 +37,7 @@ pub(super) async fn exercise(
     assert!(
         owner
             .borrow()
-            .test_process()
-            .services
+            .test_services()
             .windows
             .reserve_main_window(beryl_model::WindowId::from_bytes([232; 16]))
             .is_err()
@@ -121,8 +119,7 @@ pub(super) async fn exercise(
         drop(
             owner
                 .borrow()
-                .test_process()
-                .services
+                .test_services()
                 .windows
                 .reserve_main_window(beryl_model::WindowId::from_bytes([232; 16]))
                 .unwrap(),
@@ -135,12 +132,7 @@ pub(super) async fn exercise(
         .await;
     let stale = completion.test_duplicate_success();
     let stale_discard = completion.test_duplicate_success();
-    let permit = owner
-        .borrow()
-        .test_process()
-        .services
-        .process
-        .execution_permit();
+    let permit = owner.borrow().test_services().process.execution_permit();
     let unsettled = permit.reserve().unwrap();
     assert!(
         owner

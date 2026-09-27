@@ -88,7 +88,7 @@ impl RunningProcessOwner {
         app: &mut App,
         configure: impl FnOnce(WindowsNativeConfirmationRequest) -> WindowsNativeConfirmationRequest,
     ) -> Result<(), String> {
-        if owner.borrow().shutdown.is_some() {
+        if owner.borrow().shutdown.is_some() || owner.borrow().progress.is_some() {
             return Err("the running owner already retains shutdown intent custody".into());
         }
         if owner.borrow().confirmation.is_some() {
@@ -111,11 +111,16 @@ impl RunningProcessOwner {
                 })
                 .ok_or("the invoking main window is unavailable")?
                 .window();
-            let (snapshot, final_member) = owner.process.services.prepare_close_confirmation(
-                owner.process.windows.window_ids(),
-                invoking,
-                &observation,
-            )?;
+            let (snapshot, final_member) = owner
+                .process
+                .services
+                .as_ref()
+                .ok_or("the complete service owner is on a worker")?
+                .prepare_close_confirmation(
+                    owner.process.windows.window_ids(),
+                    invoking,
+                    &observation,
+                )?;
             if intent == ShutdownIntent::FinalWindowClose && !final_member {
                 return Err("the invoking main window is no longer final".into());
             }
@@ -220,6 +225,8 @@ impl RunningProcessOwner {
         let valid = self
             .process
             .services
+            .as_ref()
+            .ok_or("the complete service owner is on a worker")?
             .inspect_close_confirmation(&operation.context.snapshot, operation.context.invoking)
             .is_ok();
         let confirmed = *outcome == WindowsNativeConfirmationOutcome::Confirmed;

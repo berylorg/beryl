@@ -213,8 +213,7 @@ fn run(choice: Choice) {
                             if choice == Choice::MembershipAba {
                                 let reservation = owner
                                     .borrow()
-                                    .test_process()
-                                    .services
+                                    .test_services()
                                     .windows
                                     .reserve_main_window(beryl_model::WindowId::from_bytes(
                                         [231; 16],
@@ -267,8 +266,7 @@ fn run(choice: Choice) {
                                 assert_eq!(context.observation().running_threads(), 0);
                                 owner
                                     .borrow()
-                                    .test_process()
-                                    .services
+                                    .test_services()
                                     .inspect_close_confirmation(context.snapshot(), invoking)
                                     .unwrap();
                                 if choice != Choice::Confirm {
@@ -298,8 +296,7 @@ fn run(choice: Choice) {
                                 restore.validate_lifetime().unwrap();
                                 let job = owner
                                     .borrow()
-                                    .test_process()
-                                    .services
+                                    .test_services()
                                     .prepare_shutdown_observation()
                                     .unwrap();
                                 let observation = cx
@@ -372,8 +369,7 @@ fn run(choice: Choice) {
                             assert!(
                                 owner
                                     .borrow()
-                                    .test_process()
-                                    .services
+                                    .test_services()
                                     .graph()
                                     .unwrap()
                                     .shutdown
@@ -389,8 +385,7 @@ fn run(choice: Choice) {
                             assert!(
                                 owner
                                     .borrow()
-                                    .test_process()
-                                    .services
+                                    .test_services()
                                     .graph()
                                     .unwrap()
                                     .shutdown

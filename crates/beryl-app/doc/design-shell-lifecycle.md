@@ -669,6 +669,16 @@ by the executable composition root.
   completion rules, and composes resident-preserving draft flush with typed session
   publication. It retains windows and claims until success, then joins service/runtime disposal
   before process exit. Explicit Exit and final ordinary close retain their distinct restore modes.
+- An admitted running shutdown advances by one worker-owned progress pass at a time. The running
+  owner transfers its complete service owner to that pass while retaining all windows, appearance,
+  commands, auxiliary cleanup and original close lease on the GUI executor. The continuation
+  retains the running owner and returns that same service owner before publishing the result;
+  no replacement graph or concurrent service operation may enter during the transfer. Duplicate
+  progress and new shutdown intent are refused until the prior result is consumed. Waiting, ready,
+  errors and failure without proven reopening retain the admitted intent and lease. Only the
+  coordinator's explicit coherent-reopening result releases them. Cancellation goes through that
+  coordinator, never through dropping a worker or inferring completion from missing services.
+  One pass neither retries automatically nor grants final teardown, window destruction or quit.
 - A failed barrier before final teardown releases interaction gates from the retained coherent state without restoring
   cancelled continuations or repeating possible dispatch. Closing a settings or auxiliary window
   never becomes the final-main-window execution barrier.

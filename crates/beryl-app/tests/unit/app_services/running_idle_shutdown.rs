@@ -4,17 +4,17 @@ use crate::running_owner::{
 
 #[test]
 fn native_idle_final_close_retains_exact_admitted_intent() {
-    run(ShutdownIntent::FinalWindowClose, false);
+    run(ShutdownIntent::FinalWindowClose, false, None);
 }
 
 #[test]
 fn native_idle_exit_retains_exact_admitted_intent() {
-    run(ShutdownIntent::ApplicationExit, false);
+    run(ShutdownIntent::ApplicationExit, false, None);
 }
 
 #[test]
 fn native_idle_admission_refuses_new_work_and_requires_confirmation() {
-    run(ShutdownIntent::FinalWindowClose, true);
+    run(ShutdownIntent::FinalWindowClose, true, None);
 }
 
 async fn observe(
@@ -23,8 +23,7 @@ async fn observe(
 ) -> crate::cas_projection::ShutdownWorkObservation {
     let job = owner
         .borrow()
-        .test_process()
-        .services
+        .test_services()
         .prepare_shutdown_observation()
         .unwrap();
     cx.background_executor()
@@ -32,7 +31,7 @@ async fn observe(
         .await
 }
 
-fn run(intent: ShutdownIntent, new_work: bool) {
+pub(super) fn run(intent: ShutdownIntent, new_work: bool, progress_ready_first: Option<bool>) {
     let directory = support::native_home();
     let input = input(directory.path(), |path, _| support::open(path));
     let finished = Rc::new(Cell::new(false));
@@ -55,6 +54,14 @@ fn run(intent: ShutdownIntent, new_work: bool) {
                         .restored_window_attempt()
                         .unwrap();
                     let owner = RunningProcessOwner::start(running, app);
+                    assert!(
+                        RunningProcessOwner::advance_shutdown(
+                            &owner,
+                            ProjectionCancellationToken::new(),
+                            app
+                        )
+                        .is_err()
+                    );
                     app.spawn(async move |cx| {
                         let idle = observe(&owner, cx).await;
                         assert!(!idle.has_work());
@@ -78,13 +85,7 @@ fn run(intent: ShutdownIntent, new_work: bool) {
                         assert_refusal(&owner, &permit, &restore);
                         if new_work {
                             let work = crate::cas_projection::test_faults::retain_projection_work(
-                                owner
-                                    .borrow()
-                                    .test_process()
-                                    .services
-                                    .graph()
-                                    .unwrap()
-                                    .cas(),
+                                owner.borrow().test_services().graph().unwrap().cas(),
                                 beryl_model::SyndicThreadId::from_bytes([237; 16]),
                             );
                             assert!(
@@ -139,13 +140,7 @@ fn run(intent: ShutdownIntent, new_work: bool) {
                             Err(crate::process_admission::ProcessAdmissionError::Fenced)
                         );
                         assert!(restore.validate_lifetime().is_err());
-                        let attempt = owner
-                            .borrow()
-                            .test_process()
-                            .services
-                            .graph()
-                            .unwrap()
-                            .shutdown;
+                        let attempt = owner.borrow().test_services().graph().unwrap().shutdown;
                         assert!(matches!(
                             cx.update(|app| owner
                                 .borrow_mut()
@@ -161,13 +156,7 @@ fn run(intent: ShutdownIntent, new_work: bool) {
                             .is_err()
                         );
                         assert_eq!(
-                            owner
-                                .borrow()
-                                .test_process()
-                                .services
-                                .graph()
-                                .unwrap()
-                                .shutdown,
+                            owner.borrow().test_services().graph().unwrap().shutdown,
                             attempt
                         );
                         assert!(owner.borrow_mut().end_unadmitted_shutdown().is_err());
@@ -177,38 +166,56 @@ fn run(intent: ShutdownIntent, new_work: bool) {
                                 .prepare_confirmed_shutdown_observation()
                                 .is_err()
                         );
+                        let owner = if let Some(ready_first) = progress_ready_first {
+                            super::running_shutdown_progress::exercise(
+                                owner,
+                                invoking,
+                                intent,
+                                ready_first,
+                                cx,
+                            )
+                            .await
+                        } else {
+                            owner
+                        };
+                        assert!(restore.validate_lifetime().is_err());
+                        assert!(permit.commit(|| ()).is_err());
                         let mut running = Rc::try_unwrap(owner)
                             .ok()
                             .unwrap()
                             .into_inner()
                             .test_into_process();
-                        running.services = cx
-                            .background_executor()
-                            .spawn(async move {
-                                let mut services = running.services;
-                                let cancelled = ProjectionCancellationToken::new();
-                                cancelled.cancel();
-                                let deadline = Instant::now() + Duration::from_secs(5);
-                                loop {
-                                    match services.poll_shutdown(&cancelled).unwrap() {
-                                        AppServiceShutdownProgress::Failed {
-                                            reopened: true,
-                                            ..
-                                        } => break services,
-                                        AppServiceShutdownProgress::Failed {
-                                            reopened: false,
-                                            ..
-                                        } => {
-                                            assert!(Instant::now() < deadline);
-                                            std::thread::yield_now();
-                                        }
-                                        other => {
-                                            panic!("unexpected test cleanup progress: {other:?}")
+                        if running.services.graph().unwrap().shutdown.is_some() {
+                            running.services = cx
+                                .background_executor()
+                                .spawn(async move {
+                                    let mut services = running.services;
+                                    let cancelled = ProjectionCancellationToken::new();
+                                    cancelled.cancel();
+                                    let deadline = Instant::now() + Duration::from_secs(5);
+                                    loop {
+                                        match services.poll_shutdown(&cancelled).unwrap() {
+                                            AppServiceShutdownProgress::Failed {
+                                                reopened: true,
+                                                ..
+                                            } => break services,
+                                            AppServiceShutdownProgress::Failed {
+                                                reopened: false,
+                                                ..
+                                            } => {
+                                                assert!(Instant::now() < deadline);
+                                                std::thread::yield_now();
+                                            }
+                                            other => {
+                                                panic!(
+                                                    "unexpected test cleanup progress: {other:?}"
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                            })
-                            .await;
+                                })
+                                .await;
+                        }
                         support::dispose_running(running, cx).await;
                         observed.set(true);
                         cx.update(|app| app.quit()).unwrap();
@@ -230,21 +237,12 @@ fn assert_refusal(
 ) {
     let owner = owner.borrow();
     assert!(owner.shutdown_status().is_none());
-    assert!(
-        owner
-            .test_process()
-            .services
-            .graph()
-            .unwrap()
-            .shutdown
-            .is_none()
-    );
+    assert!(owner.test_services().graph().unwrap().shutdown.is_none());
     permit.commit(|| ()).unwrap();
     restore.validate_lifetime().unwrap();
     drop(
         owner
-            .test_process()
-            .services
+            .test_services()
             .windows
             .reserve_main_window(beryl_model::WindowId::from_bytes([238; 16]))
             .unwrap(),

@@ -59,6 +59,14 @@ mod running_idle_shutdown {
     ));
 }
 
+mod running_shutdown_progress {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_shutdown_progress.rs"
+    ));
+}
+
 #[test]
 fn native_success_hands_off_the_complete_graph_and_late_exit_with_auxiliary_custody() {
     let directory = support::native_home();

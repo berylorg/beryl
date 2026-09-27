@@ -1,11 +1,17 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gpui::App;
+use gpui::{App, Entity};
 
-use crate::startup_owner::StartedProcess;
+use crate::{
+    app_services::ProcessServiceOwner,
+    main_window::PublishedMainWindowRestoreSet,
+    startup_owner::{OwnedStartupSurface, RunningExitCommands, StartedProcess},
+    theme_runtime::GpuiAppearanceWindowSet,
+};
 
 mod admission;
 mod confirmation;
+mod progress;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
@@ -19,19 +25,35 @@ pub(crate) enum StartupCleanup {
 }
 
 pub(crate) struct RunningProcessOwner {
-    process: StartedProcess,
+    process: RunningProcess,
     startup_cleanup: StartupCleanup,
     confirmation: Option<confirmation::RunningConfirmation>,
     shutdown: Option<admission::RunningShutdownAttempt>,
+    progress: Option<progress::RunningShutdownProgress>,
+}
+
+pub(crate) struct RunningProcess {
+    services: Option<ProcessServiceOwner>,
+    pub(crate) windows: PublishedMainWindowRestoreSet,
+    appearance: Entity<GpuiAppearanceWindowSet>,
+    pub(crate) startup_surface: Option<OwnedStartupSurface>,
+    commands: RunningExitCommands,
 }
 
 impl RunningProcessOwner {
     pub(crate) fn start(mut process: StartedProcess, app: &mut App) -> Rc<RefCell<Self>> {
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
-            process,
+            process: RunningProcess {
+                services: Some(process.services),
+                windows: process.windows,
+                appearance: process.appearance,
+                startup_surface: None,
+                commands: process.commands,
+            },
             confirmation: None,
             shutdown: None,
+            progress: None,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {
@@ -65,13 +87,28 @@ impl RunningProcessOwner {
     }
 
     #[cfg(test)]
-    pub(crate) fn test_process(&self) -> &StartedProcess {
+    pub(crate) fn test_process(&self) -> &RunningProcess {
         &self.process
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_services(&self) -> &ProcessServiceOwner {
+        self.process
+            .services
+            .as_ref()
+            .expect("services retained on GUI")
     }
 
     #[cfg(test)]
     pub(crate) fn test_into_process(self) -> StartedProcess {
         assert_ne!(self.startup_cleanup, StartupCleanup::Pending);
-        self.process
+        assert!(self.progress.is_none());
+        StartedProcess {
+            services: self.process.services.expect("services retained on GUI"),
+            windows: self.process.windows,
+            appearance: self.process.appearance,
+            startup_surface: self.process.startup_surface,
+            commands: self.process.commands,
+        }
     }
 }
