@@ -3,7 +3,9 @@ use crate::cas_projection::CasRetirementFailure;
 use beryl_home_store::{HomeGeneration, HomeHealthState};
 
 pub(super) struct ServiceGraphRetirement {
+    generation: HomeGeneration,
     graph: Option<PublishedAppServices>,
+    marker: Option<DraftMarkerSealService>,
     home: Option<HomeStore>,
     failure: Option<AppServiceCloseError>,
     complete: bool,
@@ -17,6 +19,8 @@ pub(crate) enum ServiceGraphRetirementError {
     Stale,
     #[error("service graph retirement is incomplete; original custody remains retained")]
     Incomplete,
+    #[error("retired marker drives are still settling")]
+    MarkerDrivesPending,
     #[error(transparent)]
     Admission(#[from] ProcessAdmissionError),
 }
@@ -45,7 +49,9 @@ impl ProcessServiceOwner {
         self.process.fence()?;
         self.attempt = InitialServiceAttemptState::Blocked;
         self.recovery_retirement = Some(ServiceGraphRetirement {
+            generation: expected,
             graph: self.graph.take(),
+            marker: None,
             home: None,
             failure: None,
             complete: false,
@@ -73,7 +79,8 @@ impl ProcessServiceOwner {
         if let Some(activity) = graph.activity.take() {
             activity.retire();
         }
-        if let Some(marker) = graph.marker.take() {
+        retirement.marker = graph.marker.take();
+        if let Some(marker) = retirement.marker.as_ref() {
             marker.retire_home_generation();
         }
         drop(graph.theme.take());
@@ -90,9 +97,31 @@ impl ProcessServiceOwner {
         if std::mem::take(&mut self.fail_shutdown_completion) {
             retirement.failure = Some(AppServiceCloseError::PersistentFailure);
         }
-        if retirement.failure.is_some() || self.failed_retirement.is_some() {
+        self.finish_service_graph_retirement(expected)
+    }
+
+    pub(crate) fn finish_service_graph_retirement(
+        &mut self,
+        expected: HomeGeneration,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        let retirement = self
+            .recovery_retirement
+            .as_mut()
+            .filter(|retirement| retirement.generation == expected)
+            .ok_or(ServiceGraphRetirementError::Stale)?;
+        if retirement.graph.is_some()
+            || retirement.home.is_none()
+            || retirement.failure.is_some()
+            || self.failed_retirement.is_some()
+        {
             return Err(ServiceGraphRetirementError::Incomplete);
         }
+        if let Some(marker) = retirement.marker.as_ref() {
+            if marker.retire_home_generation().settling_drives() != 0 {
+                return Err(ServiceGraphRetirementError::MarkerDrivesPending);
+            }
+        }
+        drop(retirement.marker.take());
         retirement.complete = true;
         Ok(())
     }

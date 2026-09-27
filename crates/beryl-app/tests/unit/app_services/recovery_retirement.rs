@@ -76,6 +76,10 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
         Err(ServiceGraphRetirementError::Stale)
     ));
     owner.process.execution_permit().commit(|| ()).unwrap();
+    assert!(matches!(
+        owner.finish_service_graph_retirement(expected),
+        Err(ServiceGraphRetirementError::Stale)
+    ));
     let (_other_directory, candidate, _, _, other_faults) = fixture();
     let home = candidate.publish().unwrap();
     other_faults.fail_next(FaultPoint::BeforeReadConfirmation);
@@ -90,6 +94,11 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
     ));
     assert!(owner.graph().is_some());
     owner.retire_failed_service_graph(expected).unwrap();
+    assert!(matches!(
+        owner.finish_service_graph_retirement(later),
+        Err(ServiceGraphRetirementError::Stale)
+    ));
+    owner.finish_service_graph_retirement(expected).unwrap();
     owner.test_retired_service_home().unwrap().close().unwrap();
     recovered.abort().close().unwrap();
 }
@@ -106,6 +115,10 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
     ));
     assert!(owner.graph().is_none());
     assert!(owner.test_retired_service_home().is_none());
+    assert!(matches!(
+        owner.finish_service_graph_retirement(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
     assert!(!owner.initial_attempt_is_settled());
     assert!(owner.process.execution_permit().commit(|| ()).is_err());
     assert!(
@@ -121,4 +134,50 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
     ));
     drop(owner);
     assert_reopens(&directory);
+}
+
+#[test]
+fn recovery_retirement_waits_for_admitted_marker_drive_without_reopening_admission() {
+    let (directory, mut owner, faults) = installed();
+    let flight = super::recovery_support::marker_flight(&owner);
+    let graph = owner.graph().unwrap();
+    let expected = graph.home().health().generation().unwrap();
+    let marker = graph.marker();
+    let home = graph.home().service_reference();
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    marker.test_arm_before_command_fault(move |_| {
+        entered_tx.send(()).unwrap();
+        release_rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    });
+    let worker_marker = marker.clone();
+    let worker = std::thread::spawn(move || worker_marker.drive(&home, flight));
+    entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    fail(&owner, &faults);
+    assert!(matches!(
+        owner.retire_failed_service_graph(expected),
+        Err(ServiceGraphRetirementError::MarkerDrivesPending)
+    ));
+    assert!(owner.graph().is_none());
+    assert!(owner.test_retired_service_home().is_none());
+    assert!(matches!(
+        owner.finish_service_graph_retirement(expected),
+        Err(ServiceGraphRetirementError::MarkerDrivesPending)
+    ));
+    assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .is_err()
+    );
+    release_tx.send(()).unwrap();
+    assert!(worker.join().unwrap().is_err());
+    assert_eq!(marker.diagnostics().current_flights(), 0);
+    owner.finish_service_graph_retirement(expected).unwrap();
+    owner.finish_service_graph_retirement(expected).unwrap();
+    assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    assert!(!owner.initial_attempt_is_settled());
+    owner.test_retired_service_home().unwrap().close().unwrap();
 }

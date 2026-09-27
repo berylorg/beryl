@@ -46,6 +46,80 @@ pub(super) fn fail(owner: &ProcessServiceOwner, faults: &FaultController) {
         HomeHealthState::Failed
     );
 }
+
+pub(super) fn marker_flight(
+    owner: &ProcessServiceOwner,
+) -> crate::composer_marker_seal::DraftMarkerSealFlight {
+    use crate::composer_marker_seal::{DraftMarkerSealAdmission, DraftMarkerSealFlightRequest};
+    use syndic_storage::{
+        DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionIdV1,
+        DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionOpenRequestV1,
+        DraftEditorCurrentSelectorV1, DraftMarkerSealOperationIdV1, DraftPieceOperationIdV1,
+    };
+    let graph = owner.graph().unwrap();
+    let home = graph.home();
+    let syndic = graph.syndic();
+    support::seed_populated(home, syndic.clone());
+    let current = syndic
+        .current_draft(
+            home,
+            support::id(30),
+            SyndicPointReadLimit::new(65_536).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    let selector = DraftEditorCurrentSelectorV1::new(
+        current.thread().id(),
+        current.thread().revision(),
+        current.draft().id(),
+        current.draft().revision(),
+        current.draft().piece_root(),
+        current.draft().history(),
+    );
+    let prepared = syndic
+        .prepare_open_draft_editor_candidate_session(
+            home,
+            DraftEditorCandidateSessionOpenRequestV1::new(
+                selector,
+                DraftEditorCandidateSessionIdV1::from_bytes([201; 16]),
+                DraftPieceOperationIdV1::from_bytes([202; 16]),
+            ),
+        )
+        .unwrap();
+    let mut command = beryl_home_store::HomeCommand::new(home.home_revision().unwrap());
+    command
+        .add(
+            syndic.open_draft_editor_candidate_session(
+                syndic.revision(home).unwrap(),
+                prepared.clone(),
+            ),
+        )
+        .unwrap();
+    let outcome = home.execute(command);
+    let session = match syndic
+        .reconcile_draft_editor_candidate_session_open(home, &prepared, outcome)
+        .unwrap()
+    {
+        DraftEditorCandidateSessionOpenOutcomeV1::Opened(head) => head,
+        other => panic!("expected opened editor session: {other:?}"),
+    };
+    let request = DraftMarkerSealFlightRequest::new(
+        DraftEditorCandidateActivationBindingV1::from_head(&session),
+        DraftMarkerSealOperationIdV1::from_bytes([203; 16]),
+        beryl_state::AssetReferenceSetStagingAuthority::new(
+            beryl_model::AssetReferenceSetId::from_bytes([204; 16]),
+            [204; 32],
+        ),
+    );
+    match graph
+        .marker()
+        .admit(home, request, &CommandCancellation::new())
+        .unwrap()
+    {
+        DraftMarkerSealAdmission::Admitted(flight) => flight,
+        other => panic!("expected admitted marker flight: {other:?}"),
+    }
+}
 pub(super) fn install_uncertain_enrollment(
     owner: &ProcessServiceOwner,
     home: &HomeStore,

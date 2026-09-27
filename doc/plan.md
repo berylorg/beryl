@@ -89,12 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 703: Retain Failed Service Graph Recovery Custody (finished)
+# Phase 704: Retain Marker Drives During Service Graph Retirement (finished)
 
-Accepted fenced service-graph retirement with retained original home lock, registry and outer
-custody. Healthy/stale requests refuse consumption; incomplete retirement cannot reopen. Library
-check, all 12 focused tests (`522f2d7d-5b35-4d36-9dfe-2e725fba0bb4`) and independent lifecycle/
-persistence review passed. This contribution exposes no production reopening capability.
+Accepted retained marker-drive custody and exact-generation retirement completion without gate
+release or production reopening authority. Library check, all 13 focused tests
+(`21bba098-61c6-4e62-9491-a7b692f21b13`) and independent lifecycle review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -104,10 +103,9 @@ retirement, retaining failed recovery and resume outcomes without reopening inte
 the original cancelled request and bounded worker custody. Whole-graph publication, fresh resident
 bindings and exact draft/work settlement remain prerequisites to recovery completion.
 
-The existing retirement implementation is startup-only and closes the original home. Phase 703
-supplies the missing service-graph recovery custody contribution before this integration.
-Resident-owned marker drives must finish after marker retirement fences admission; service-graph
-completion alone does not prove those drives or other resident resources have retired.
+Phases 703–704 supply service-graph recovery custody and retain active marker drives until their
+settlement. Resident workers must still join and release their old-generation handles before
+reopening; service-graph completion alone does not prove whole-resident retirement.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
