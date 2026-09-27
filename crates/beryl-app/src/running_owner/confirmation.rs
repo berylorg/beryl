@@ -88,7 +88,10 @@ impl RunningProcessOwner {
         app: &mut App,
         configure: impl FnOnce(WindowsNativeConfirmationRequest) -> WindowsNativeConfirmationRequest,
     ) -> Result<(), String> {
-        if owner.borrow().shutdown.is_some() || owner.borrow().progress.is_some() {
+        if owner.borrow().observing_initial_work
+            || owner.borrow().shutdown.is_some()
+            || owner.borrow().progress.is_some()
+        {
             return Err("the running owner already retains shutdown intent custody".into());
         }
         if owner.borrow().confirmation.is_some() {

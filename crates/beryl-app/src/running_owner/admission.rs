@@ -82,7 +82,11 @@ impl RunningProcessOwner {
         observation: &ShutdownWorkObservation,
         app: &App,
     ) -> Result<(), IdleShutdownError> {
-        if self.confirmation.is_some() || self.shutdown.is_some() || self.progress.is_some() {
+        if self.observing_initial_work
+            || self.confirmation.is_some()
+            || self.shutdown.is_some()
+            || self.progress.is_some()
+        {
             return Err(IdleShutdownError::IntentBusy);
         }
         if observation.has_work() {
@@ -142,7 +146,11 @@ impl RunningProcessOwner {
         &mut self,
         context: confirmation::ShutdownConfirmationContext,
     ) -> Result<(), String> {
-        if self.confirmation.is_some() || self.shutdown.is_some() || self.progress.is_some() {
+        if self.observing_initial_work
+            || self.confirmation.is_some()
+            || self.shutdown.is_some()
+            || self.progress.is_some()
+        {
             return Err("the running owner already retains shutdown intent custody".into());
         }
         let lease = self

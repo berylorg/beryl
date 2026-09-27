@@ -556,6 +556,16 @@ by the executable composition root.
   that proof retains the original control and context and blocks clean quit. Neither an error
   string nor an absent native handle establishes cleanup, and cleanup evidence never confirms intent.
 
+- Before choosing confirmation or idle admission, the running owner schedules at most one initial
+  work observation on a worker. A detached GUI continuation retains the complete owner until the
+  result is delivered. Pending observation excludes another initial observation, confirmation and
+  shutdown admission without fencing ordinary execution or window construction. Collection failure
+  and cancellation yield no idle evidence; cancellation is checked again before GUI delivery.
+  The observation slot is released before the required GUI callback, outside the owner borrow,
+  allowing explicit successor scheduling or policy classification. Scheduling refusal delivers no
+  callback. This boundary neither retries nor chooses a window or shutdown policy; the consumer
+  still validates its invoking window and evidence through confirmation or idle admission.
+
 - [Fatal crash reporting](../../../doc/systems/crash-reporting/design.md) bypasses this ordinary
   shutdown coordinator. Its separate process initializes only a report surface with fixed
   presentation resources, never the process service graph, persisted theme, home or backend.

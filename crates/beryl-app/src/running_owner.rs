@@ -11,6 +11,7 @@ use crate::{
 
 mod admission;
 mod confirmation;
+mod initial_observation;
 mod observation;
 mod progress;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
@@ -32,6 +33,7 @@ pub(crate) struct RunningProcessOwner {
     confirmation: Option<confirmation::RunningConfirmation>,
     shutdown: Option<admission::RunningShutdownAttempt>,
     progress: Option<progress::RunningShutdownProgress>,
+    observing_initial_work: bool,
 }
 
 pub(crate) struct RunningProcess {
@@ -56,6 +58,7 @@ impl RunningProcessOwner {
             confirmation: None,
             shutdown: None,
             progress: None,
+            observing_initial_work: false,
             startup_cleanup: if surface.is_some() {
                 StartupCleanup::Pending
             } else {
@@ -105,6 +108,7 @@ impl RunningProcessOwner {
     pub(crate) fn test_into_process(self) -> StartedProcess {
         assert_ne!(self.startup_cleanup, StartupCleanup::Pending);
         assert!(self.progress.is_none());
+        assert!(!self.observing_initial_work);
         StartedProcess {
             services: self.process.services.expect("services retained on GUI"),
             windows: self.process.windows,
