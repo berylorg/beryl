@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 630: Advance Running Shutdown On A Worker With Complete Service Custody (finished)
+# Phase 631: Schedule Confirmed Observation Through The Retained Running Owner (finished)
 
-One progress pass now transfers and returns the complete service owner while retaining native
-custody. Only proven reopening releases the admitted intent; unconsumed results exclude new work.
-All 29 focused tests passed, followed by two strengthened native cases
-(`03502092-31f2-483f-b6c6-11ad617583a4`); the default library check and independent review passed.
+Confirmed observation now retains the complete running owner across worker collection and exact
+GUI admission or cancellation, with one callback outside the owner borrow. All 21 focused tests
+passed (`207c3459-187a-47af-b1d6-9c04a9d8677d`), including three new native handoff cases;
+the default library check and independent semantic review passed.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -127,7 +127,9 @@ Ordinary close/Exit command routing, automatic refresh scheduling, visible barri
 coherent failure completion and exact published-window teardown remain
 unmounted; integrate them through the persistent running owner. Successful admission retains its
 original lease and intent. Phase 630 accepts a worker-owned progress pass with complete service
-custody and proven reopening; automatic scheduling and normal process quit remain unmounted.
+custody and proven reopening. Phase 631 connects a confirmed worker observation to exact GUI
+admission or cancellation through a retained continuation. Initial observation, policy-driven
+refresh/progress scheduling and normal process quit remain unmounted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

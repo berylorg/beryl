@@ -593,6 +593,14 @@ by the executable composition root.
   custody, and neither an observation job nor confirmation alone starts shutdown progress.
   Cancellation may discard an exact settled worker result without admission, including successful
   collection delivered after cancellation. Discarding a stale result cannot settle another worker.
+- The running owner schedules confirmed observation through one detached GUI continuation that
+  retains the complete owner until worker collection and exact admission or discard settle. It
+  checks cancellation again on the GUI executor before admission, including after a successful
+  worker read. Cancellation settles that job without fencing and retains the unadmitted intent
+  for explicit completion. The required completion callback runs once on the GUI executor, after
+  releasing the owner borrow; it may end the attempt or request a fresh observation after refusal.
+  No caller-held task handle controls this custody, and the adapter neither retries automatically
+  nor starts shutdown progress. Collection errors retain the original intent and window lease.
 - A no-work activation uses the same running owner and exact published invoking member, but may
   enter admission without native confirmation only with a successful observation reporting no
   process work. It acquires and validates original window custody through the same atomic observed

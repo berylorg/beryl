@@ -11,11 +11,13 @@ use crate::{
 
 mod admission;
 mod confirmation;
+mod observation;
 mod progress;
 pub(crate) use admission::{IdleShutdownError, RunningShutdownStatus};
 pub(crate) use confirmation::{
     ShutdownConfirmationContext, ShutdownConfirmationResult, ShutdownIntent,
 };
+pub(crate) use observation::ConfirmedShutdownAdmission;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartupCleanup {

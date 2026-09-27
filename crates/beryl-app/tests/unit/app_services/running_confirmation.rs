@@ -20,6 +20,9 @@ enum Choice {
     AdmissionExit,
     AdmissionCancel,
     AdmissionAba,
+    WorkerAdmission,
+    WorkerCancelBefore,
+    WorkerCancelAfter,
     Cancel,
     MembershipAba,
     OpenFailure,
@@ -32,6 +35,29 @@ mod admission {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/app_services/running_confirmation_admission.rs"
     ));
+}
+
+mod observation {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/running_confirmed_observation.rs"
+    ));
+}
+
+#[test]
+fn native_confirmed_worker_retains_owner_and_refreshes_after_refusal() {
+    run(Choice::WorkerAdmission);
+}
+
+#[test]
+fn native_confirmed_worker_cancellation_before_read_settles_without_admission() {
+    run(Choice::WorkerCancelBefore);
+}
+
+#[test]
+fn native_confirmed_worker_cancellation_after_read_settles_without_admission() {
+    run(Choice::WorkerCancelAfter);
 }
 
 #[test]
@@ -164,7 +190,7 @@ fn run(choice: Choice) {
                         );
                         let weak = Rc::downgrade(&owner);
                         drop(owner);
-                        let owner = weak
+                        let mut owner = weak
                             .upgrade()
                             .expect("pending native task retains complete owner");
                         let deadline = Instant::now() + Duration::from_secs(5);
@@ -255,7 +281,10 @@ fn run(choice: Choice) {
                             | Choice::AdmissionRefresh
                             | Choice::AdmissionExit
                             | Choice::AdmissionCancel
-                            | Choice::AdmissionAba => {
+                            | Choice::AdmissionAba
+                            | Choice::WorkerAdmission
+                            | Choice::WorkerCancelBefore
+                            | Choice::WorkerCancelAfter => {
                                 let Ok(Some(ShutdownConfirmationResult::Confirmed(context))) =
                                     result
                                 else {
@@ -269,7 +298,14 @@ fn run(choice: Choice) {
                                     .test_services()
                                     .inspect_close_confirmation(context.snapshot(), invoking)
                                     .unwrap();
-                                if choice != Choice::Confirm {
+                                if matches!(
+                                    choice,
+                                    Choice::WorkerAdmission
+                                        | Choice::WorkerCancelBefore
+                                        | Choice::WorkerCancelAfter
+                                ) {
+                                    owner = observation::exercise(owner, context, choice, cx).await;
+                                } else if choice != Choice::Confirm {
                                     admission::exercise(&owner, context, choice, cx).await;
                                 }
                             }
@@ -360,7 +396,12 @@ fn run(choice: Choice) {
                                 );
                             }
                         }
-                        if matches!(choice, Choice::AdmissionRefresh | Choice::AdmissionExit) {
+                        if matches!(
+                            choice,
+                            Choice::AdmissionRefresh
+                                | Choice::AdmissionExit
+                                | Choice::WorkerAdmission
+                        ) {
                             assert_eq!(
                                 permit.commit(|| ()),
                                 Err(crate::process_admission::ProcessAdmissionError::Fenced)
@@ -403,7 +444,12 @@ fn run(choice: Choice) {
                                 .expect("settled task released owner")
                                 .into_inner()
                                 .test_into_process();
-                            if matches!(choice, Choice::AdmissionRefresh | Choice::AdmissionExit) {
+                            if matches!(
+                                choice,
+                                Choice::AdmissionRefresh
+                                    | Choice::AdmissionExit
+                                    | Choice::WorkerAdmission
+                            ) {
                                 running.services = cx
                                     .background_executor()
                                     .spawn(async move {
