@@ -1405,3 +1405,25 @@ Overall capacity acceptance and preserved resident adoption remain pending.
 Independent resource review accepted the discard correction: deque capacity remains charged by
 owner_storage_charge after clearing, and pending/cancelled queues and request identities remain
 unchanged. Initial index admission still blocks overall acceptance.
+
+Initial index correction now prepares an immutable active job through the existing checked
+configured/enclosing budget. The raw geometry baseline maps to the live session charge including
+outgoing effects. The first checkpoint observation admits the active job plus transient and
+replacement checkpoints before reserve; actual checkpoint backing is observed before boxing.
+Only successful preparation commits the geometry job, session identity, resident release and stage.
+The public configured-only start_index delegates to the same implementation without changing its
+identity/busy validation order. Session peaks include both successful and refused preparation.
+
+The one-work-unit fixture stops at completed restoration and exercises zero, current-only and
+byte/item one-under ceilings twice each. It verifies unchanged ownership, exact identity, active
+cleanup records, no effects and zero spent work, followed by exact-fit startup and complete
+candidate progress or drop cleanup. Separate configured byte/item cases prove terminal failure
+still wins with zero host capacity. Exact capacity is obtained from a production preparation probe;
+allocator overreservation and allocation failure remain source-reviewed rather than fault-injected.
+
+Full integration run `83909d1f-e13b-4435-af53-bcb8f7eaf548` passed 250 tests, zero skipped,
+in 21.495 seconds. Full unit run `4295cc9a-0ac4-47fd-9637-db0c7d853080` passed 115 tests,
+zero skipped, in 16.858 seconds. Default-feature prepublication check passed in 3.30 seconds.
+Independent resource review found no blocking source issue; parent verification completed after
+that review. This closes the two stage-boundary findings. Overall capacity acceptance remains a
+separate review boundary.

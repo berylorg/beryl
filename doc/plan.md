@@ -89,19 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 835: Discard Retired Session Pages Without Transfer Allocation (finished)
+# Phase 836: Admit Initial Session Index Preparation (finished)
 
-Retirement now clears resident pages in place, preserving pending requests, backing and exact
-cleanup custody. All 43 prepublication tests pass; independent resource review accepted the change.
-Initial index admission remains pending; see [evidence](failures/prepublication-capacity.md#session-stage-boundary-admission).
+Initial index preparation now admits its enclosing peak before allocation and commits identity and
+custody changes only on success. All 250 integration and 115 unit tests pass, default-feature check
+passes, and independent review accepted the correction. See
+[evidence](failures/prepublication-capacity.md#session-stage-boundary-admission); overall 747 acceptance remains pending.
 
-# Phase 836: Admit Initial Session Index Preparation (pending)
-
-Prepare initial index startup under the checked enclosing session capacity before advancing
-identity or releasing restoration custody. Preserve retryable refusal without effects or state
-advancement, independently retain configured failures, and propagate preparation peaks.
-Verify zero/current/exact byte and item availability, repeated retry, restored progress and cleanup
-with independent resource review before overall phase 747 acceptance.
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;
