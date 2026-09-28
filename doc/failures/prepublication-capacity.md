@@ -1,5 +1,30 @@
 # Prepublication Capacity
 
+## Presentation Overlap Before Scanner Metadata
+
+On 2026-09-28, active scanner overlap stopped depending on target presentation metadata, which
+does not yet exist when inline GPUI output first returns. It now queries the inline fragments'
+live presentation pointer and length against bounded object-page allocations. Deferred facts keep
+their separate overlap term. The same query qualifies returned fragments before scanner insertion;
+ordinary text and unrelated equal content receive no credit, empty displays contribute zero bytes,
+and repeated page references do not multiply credit. No session admission credits are enabled yet.
+
+The query counts charged fragment occurrences, not distinct allocations. In particular, callers
+must not concatenate returned and retained handles when the scanner already charges their shared
+payload once; `scan/output.rs` separately charges only duplicate fragment records at that peak.
+Future credit wiring must retain that distinction and account detached facts explicitly.
+
+Actual GPUI qualification covers empty/nonempty shared and independent backing, repeated page
+references, duplicated charged occurrences, and ordinary text using the same display backing.
+Existing deferred index/target preparation and commit coverage remains green. The first test build
+required converting GPUI's immutable fragment slice to a vector before extending the fixture;
+run `b8f153ab-fc92-4007-8c2c-7e36c016fba1` then passed the existing 225 tests but rejected the new
+nonempty fixture's undersized baseline. Using the established 64/40 height/baseline resolved it.
+LLVM, one-job, nonincremental, debug-zero nextest run `9a0de84a-b271-4775-9908-f657e1d18bbb`
+passed all 226 integration tests across `range_widget`, `exact_geometry` and `prepublication`,
+no skips, in 21.436 seconds. Independent resource review accepted this ownership-query boundary;
+session baseline mapping and observation-specific credit application remain separate work.
+
 ## Shared Output Capacity Allowance
 
 On 2026-09-28, the mapped allowance calculation gained separate existing and prospective shared
