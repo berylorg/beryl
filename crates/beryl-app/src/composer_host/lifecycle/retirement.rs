@@ -10,6 +10,27 @@ pub struct ComposerHostRetiredClose {
 }
 
 impl ComposerHostRetiredClose {
+    pub fn saved_checkpoint_matches_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        storage: &syndic_storage::SyndicStorage,
+    ) -> Result<bool, ComposerHostError> {
+        if access.home_id() != self.binding.home_id() {
+            return Err(ComposerHostError::ForeignHome {
+                expected: self.binding.home_id(),
+                actual: access.home_id(),
+            });
+        }
+        if access.generation() == self.binding.home_generation() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
+        Ok(storage.draft_editor_candidate_is_saved_candidate(
+            access,
+            self.checkpoint,
+            self.selector,
+        )?)
+    }
+
     pub const fn binding(&self) -> ComposerHostBinding {
         self.binding
     }

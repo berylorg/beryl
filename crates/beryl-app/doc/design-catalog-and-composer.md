@@ -110,6 +110,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   only that attempt's gate, preserves current caret, selection, scroll, and history authority, and
   cannot lift an independent unavailable state. Pending publication retains ordinary exact custody;
   stale settlement cannot release or dispose another attempt or replacement editor.
+- After clean interrupted-Exit retirement, retained host facts may be checked through fresh
+  same-home replacement candidate access. Each observation authenticates the exact retained live
+  checkpoint and durable selector through Syndic's saved-checkpoint boundary. Foreign homes, old
+  storage handles and changed or unresolved evidence cannot establish readiness. This read-only,
+  uncached observation neither creates a replacement binding nor releases interaction gates or
+  authorizes whole-graph publication.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and

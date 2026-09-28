@@ -41,7 +41,105 @@ fn clean_host_retirement_preserves_saved_facts_after_home_failure() {
         assert_eq!(retired.close_ticket(), close);
         support::assert_history_preserved(retired.binding().history(), saved.history());
         assert_eq!(fixture.store.health().state(), HomeHealthState::Failed);
+        let mut recovery = fixture.store.recover_same_home().unwrap();
+        let fresh = syndic_storage::SyndicStorage::reacquire_candidate(&recovery).unwrap();
+        let access = recovery.recovery_access().unwrap();
+        let revision = access.home_revision().unwrap();
+        assert!(
+            retired
+                .saved_checkpoint_matches_candidate(&access, &fixture.storage)
+                .is_err()
+        );
+        for _ in 0..2 {
+            assert!(
+                retired
+                    .saved_checkpoint_matches_candidate(&access, &fresh)
+                    .unwrap()
+            );
+            assert_eq!(access.home_revision().unwrap(), revision);
+        }
+        let foreign = support::host("retired-checkpoint-foreign", 201);
+        assert!(
+            retired
+                .saved_checkpoint_matches_candidate(&access, &foreign.storage)
+                .is_err()
+        );
+        foreign.faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        assert!(foreign.store.home_revision().is_err());
+        let mut foreign_recovery = foreign.store.recover_same_home().unwrap();
+        let foreign_storage =
+            syndic_storage::SyndicStorage::reacquire_candidate(&foreign_recovery).unwrap();
+        assert!(matches!(
+            retired.saved_checkpoint_matches_candidate(
+                &foreign_recovery.recovery_access().unwrap(),
+                &foreign_storage
+            ),
+            Err(beryl_app::composer_host::ComposerHostError::ForeignHome { .. })
+        ));
+        foreign_recovery.abort().close().unwrap();
+        fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        for _ in 0..2 {
+            assert!(
+                retired
+                    .saved_checkpoint_matches_candidate(&access, &fresh)
+                    .is_err()
+            );
+        }
+        assert!(recovery.publish().is_err());
     }
+}
+
+#[test]
+fn retired_checkpoint_rejects_a_changed_durable_selector() {
+    let mut fixture = support::host("retired-checkpoint-changed", 211);
+    let close = begin_close(&mut fixture);
+    ready(&mut fixture, close, 10);
+    let retired = Box::new(fixture.host)
+        .retire_clean_window_close(close)
+        .unwrap_or_else(|_| panic!("ready host refused retirement"));
+    let (host, binding) = composer::activated(
+        fixture.storage.clone(),
+        &fixture.store,
+        fixture.thread,
+        214,
+        215,
+    );
+    fixture.host = host;
+    composer::commit_text(
+        &mut fixture.host,
+        &fixture.store,
+        binding,
+        1,
+        0,
+        0,
+        "new",
+        3,
+        1,
+    );
+    let newer_close = begin_close(&mut fixture);
+    ready(&mut fixture, newer_close, 10);
+    let newer = Box::new(fixture.host)
+        .retire_clean_window_close(newer_close)
+        .unwrap_or_else(|_| panic!("newer ready host refused retirement"));
+    assert_ne!(retired.selector(), newer.selector());
+    fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(fixture.store.home_revision().is_err());
+    let mut recovery = fixture.store.recover_same_home().unwrap();
+    let fresh = syndic_storage::SyndicStorage::reacquire_candidate(&recovery).unwrap();
+    let access = recovery.recovery_access().unwrap();
+    let revision = access.home_revision().unwrap();
+    assert!(
+        retired
+            .saved_checkpoint_matches_candidate(&access, &fresh)
+            .is_err()
+    );
+    assert!(
+        newer
+            .saved_checkpoint_matches_candidate(&access, &fresh)
+            .unwrap()
+    );
+    assert_eq!(access.home_revision().unwrap(), revision);
+    recovery.abort().close().unwrap();
 }
 
 #[test]

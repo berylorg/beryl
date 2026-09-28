@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 732: Observe Saved Draft Checkpoints Through Candidate Access (finished)
+# Phase 734: Validate Retired Composer Checkpoints Through Fresh Candidates (finished)
 
-Saved-checkpoint observations now share exact selector, idle session, publication, root/history and
-progress-receipt validation through ordinary or fresh candidate access. The library check, 57
-checkpoint/adoption/history tests and the tightened corruption-case rerun passed. Independent
-persistent-state review found no blocking issues. This supplies read-only storage evidence;
-resident rebinding, gate release and whole-graph publication remain separate boundaries.
+Retired host facts now validate their exact saved checkpoint through fresh same-home replacement
+candidate access, without writes or cached acceptance. All 43 resident-close tests passed,
+including clean and flushed checkpoints, stale/foreign access, changed selectors and read failure.
+Independent lifecycle/persistence review found no blocking issues. Fresh resident binding and
+whole-graph publication remain separate boundaries.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -121,7 +121,8 @@ and fresh widget bindings remain here; individual handoffs do not prove whole-mo
 Phase 728 consumes the bundle for exclusive service retirement and retains refused service custody.
 Phase 729 retains matching retirement evidence in the preserved resident snapshot; phase 730 supplies
 exact live observation of that retained retirement. Phase 731 records the remaining widget ownership
-qualification; phase 732 supplies fresh candidate checkpoint observation.
+qualification; phase 732 supplies fresh candidate checkpoint observation, and phase 734 connects
+that observation to the retained clean-host facts.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
