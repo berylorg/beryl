@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 807: Qualify Text Response Deferred Custody Reachability (finished)
+# Phase 808: Credit Complete Object Pages At Forward Text Publication (finished)
 
-Text responses cannot retain deferred custody; removed the unnecessary deferred-credit obligation.
-Actual prepared transitions and exact-fit/refusal/retry checks passed with all 227 integration
-tests. Independent semantic/resource review found no blocking issues. See
-[evidence](failures/prepublication-capacity.md#text-response-deferred-custody-is-unreachable).
+Complete object pages now carry proven retained output credit through nonterminal forward-text
+publication. The regression failed before the fix; all 227 integration tests passed afterward.
+Independent semantic/resource review found no blocking issues. See
+[evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -135,6 +135,7 @@ it before later work. Phase 805 credits actual GPUI inline output through object
 Phase 806 carries proven credit through active object-response publication. Source finalization
 and terminal/nested publication still require their own credits. Phase 807 qualifies that text
 responses cannot retain deferred custody; they need no deferred-display credit.
+Phase 808 credits complete object pages through nonterminal forward-text publication.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

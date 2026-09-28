@@ -47,6 +47,23 @@ The new cases directly cover `NeedObjects`; `NeedContext` is qualified by source
 tests use observed peaks rather than an independent publication-byte oracle.
 
 This proves scanning and active object-response publication, not fully credited response peaks.
+Complete object pages now also carry retained scanner output credit through nonterminal forward-text
+publication. Previously that branch supplied zero to successor and destination admission, inflating
+enclosing byte peaks despite shared backing. The counter remains cleared after scanning; a stack
+argument supplies the proven candidate-only amount only to the nonterminal branch. No original
+output is credited again, and source-finalization and terminal/nested branches remain unchanged.
+
+The extended `text_successor_retains_shared_output_and_consumes_deferred_custody` fixture caught
+the missing credit before the fix (`10834565-f530-4e09-bb93-8656bd1f61f0`). It covers index/target,
+delivered/resident, empty/multibyte display, low/high baselines, raw-peak parity, exact observed
+enclosing fit, byte/item one-under, unchanged original custody and retry. One-under may reach
+GPUI's unattributed `Total` refusal; the fixture preserves that distinction. Following text-response
+checks still prove zero deferred credit. Independent review found no blocking issues; ownership
+is source-reviewed and exact-fit limits use observed peaks, not an independent publication oracle.
+Final LLVM, one-job, nonincremental, debug-zero run `50e45456-c273-4096-bb01-c4411c007caf`
+passed all 227 integration tests across the same three targets, no skips, in 21.265 seconds.
+No source or tests changed after that run. Root phase 808 and widget phase 63 accept this boundary.
+
 Source finalization, terminal/nested publication and live session
 budget routing remain separate work.
 
@@ -706,7 +723,7 @@ Initial and terminal-successor jobs start without deferred custody. Text continu
 empty output collections, so original retained output does not create incremental copy credit.
 
 Qualify that invariant instead of adding unreachable credit plumbing. The integration fixture
-`text_successor_consumes_deferred_custody_before_preparation` uses actual incomplete/complete
+`text_successor_retains_shared_output_and_consumes_deferred_custody` uses actual incomplete/complete
 prepared object responses for index and target jobs with empty and multibyte display. It checks
 unchanged original custody, zero deferred ownership after commit, and following delivered/resident
 text preparation against independently mapped raw peaks, exact fit, byte/item one-under and retry.
