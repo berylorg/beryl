@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 804: Credit Detached Deferred Display Custody (finished)
+# Phase 805: Credit Shared Inline Output During Object Scanning (finished)
 
-Detached deferred custody now carries its existing display credit through scanner observations,
-startup and GPUI allowance, restoring temporary charges on success/error. Configured charges remain
-full and prospective output remains uncredited. All 226 integration tests passed and independent
-resource review accepted the boundary; see
-[evidence](failures/prepublication-capacity.md#detached-deferred-display-custody).
+GPUI inline output now receives ownership-proven display credit through reservation, returned and
+retained scanner custody, metadata and subsequent object-page scans. Startup and configured limits
+remain independent; publication remains separate. All 226 integration tests passed and independent
+resource review found no blocking issues; see
+[evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -132,7 +132,8 @@ ceilings; shared credits and session accounting/routing remain pending.
 Phase 802 credits shared deferred display at continuation pre-copy and immediate coexistence.
 Phase 803 credits the newly deferred tail at pre-allocation and immediate retention. Phase 804
 carries detached deferred custody credit through scanner observations and GPUI reservation, restoring
-it before later work. GPUI output and publication still require ownership-specific credits.
+it before later work. Phase 805 credits actual GPUI inline output through object-page scanning;
+subsequent source finalization and publication still require ownership-specific credits.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

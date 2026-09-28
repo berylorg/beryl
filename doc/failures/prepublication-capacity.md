@@ -1,5 +1,36 @@
 # Prepublication Capacity
 
+## Shared Inline Output During Object Scanning
+
+On 2026-09-28, enclosing object scans began carrying shared inline output credit through actual
+GPUI reservation and scanner custody. Startup admits only existing credit. The known inline input
+supplies prospective display allowance; returned pointer/length identity then proves the credited
+payload. One stack counter carries output credit through destination reservation, retained fragments,
+metadata and subsequent layout. Returned/retained handles do not duplicate credit because their
+payload is charged once. Discarded output is dropped before its credit is removed. Detached fact
+credit remains separate, and scanner credit is cleared before response finalization/publication.
+Configured and geometry-relative counts stay raw; no persistent owner state or registry was added.
+
+Actual scanner probes cover two page objects and deferred layout for index/target paths, empty and
+multibyte displays, exact limits, one-under bytes/items, low/high current baselines, overflow,
+unchanged original owners, empty failure releases and retry. The page probe checks retained credit
+against live fragments and zero credit after discarded index output. Existing overlap fixtures
+qualify independent backing, repeated page references and returned/retained aliases; existing
+observer/startup tests qualify configured precedence and startup isolation compositionally.
+
+Focused runs `24622bdd-4968-478b-93e3-9d957c38e7fc` and
+`29cba84c-0eec-4acc-9b5d-811fc6b850b6` exposed outdated test assumptions: detached layout now
+credits both the fact copy and returned display, and a one-under limit can reach GPUI's ambiguous
+`Total` refusal before a later explicit observation. Tests preserve that unattributed failure rather
+than fabricating host attribution. Final LLVM, one-job, nonincremental, debug-zero run
+`69bdf163-c018-42cc-9685-7a8b81a4a62b` passed all 226 integration tests across `range_widget`,
+`exact_geometry` and `prepublication`, no skips, in 23.245 seconds.
+Independent resource review found no blocking issues in this boundary. No source or tests changed
+after the successful run.
+
+This proves the object-scanning boundary, not fully credited response peaks. Subsequent source
+finalization, publication/nested ownership and live session budget routing remain separate work.
+
 ## Detached Deferred Display Custody
 
 On 2026-09-28, enclosing response preparation began carrying the detached deferred fact's existing
