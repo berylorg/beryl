@@ -64,8 +64,26 @@ Final LLVM, one-job, nonincremental, debug-zero run `50e45456-c273-4096-bb01-c44
 passed all 227 integration tests across the same three targets, no skips, in 21.265 seconds.
 No source or tests changed after that run. Root phase 808 and widget phase 63 accept this boundary.
 
-Source finalization, terminal/nested publication and live session
-budget routing remain separate work.
+Source finalization now carries the retained scanner display credit through final layout calls and
+terminal checkpoint admission. Existing inline fragments remain live, and new non-inline output
+receives no additional credit. A scoped helper restores the prior stack counter on success and
+error before terminal publication. Original ownership and borrowed input lifetimes remain unchanged.
+
+The isolated production finalization fixture covers index/target, empty/multibyte display, low/high
+current charges, unchanged raw peaks, exact-fit and byte/item one-under limits, unchanged original
+custody, empty releases and retry. Expected enclosing peaks are raw finalization peaks mapped by
+the known baseline and retained display length; this is not an independent raw allocation oracle.
+The probe checks restored credit on every returned result. Red run
+`37bd944d-270a-495f-b636-01d4e698c202` rejected the intended fit at finalization before the fix;
+focused green run `e23e8935-2052-410a-a127-cc9f26c54d8e` passed afterward. Full LLVM, one-job,
+nonincremental, debug-zero run `86b4a7a1-a4fe-4c0d-9a78-dc9fb78a5f65` passed all 228 integration
+tests across the same three targets, no skips, in 22.472 seconds. Stable formatting and scoped
+diff checks passed. No source or tests changed after that run. Ambiguous GPUI `Total` refusal stays
+unattributed; configured precedence and overflow remain covered by existing observer tests.
+Independent semantic/resource review found no blockers, including scoped restoration and the
+production call path. Root phase 809 and widget phase 64 accept this finalization boundary.
+
+Terminal/nested publication and live session budget routing remain separate work.
 
 ## Detached Deferred Display Custody
 

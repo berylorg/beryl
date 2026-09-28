@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 808: Credit Complete Object Pages At Forward Text Publication (finished)
+# Phase 809: Credit Shared Output Through Source Finalization (finished)
 
-Complete object pages now carry proven retained output credit through nonterminal forward-text
-publication. The regression failed before the fix; all 227 integration tests passed afterward.
-Independent semantic/resource review found no blocking issues. See
+Complete object-response source finalization and terminal checkpoint admission now carry proven
+retained output credit, restoring it before terminal publication. The regression failed before the
+fix; all 228 integration tests passed afterward. Independent review found no blockers. See
 [evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
@@ -133,9 +133,11 @@ Phase 803 credits the newly deferred tail at pre-allocation and immediate retent
 carries detached deferred custody credit through scanner observations and GPUI reservation, restoring
 it before later work. Phase 805 credits actual GPUI inline output through object-page scanning;
 Phase 806 carries proven credit through active object-response publication. Source finalization
-and terminal/nested publication still require their own credits. Phase 807 qualifies that text
+and terminal/nested publication required their own credits. Phase 807 qualifies that text
 responses cannot retain deferred custody; they need no deferred-display credit.
 Phase 808 credits complete object pages through nonterminal forward-text publication.
+Phase 809 credits source finalization and terminal checkpoint admission, restoring the counter
+before terminal publication. Terminal/nested publication still needs its ownership mapping.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
