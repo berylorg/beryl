@@ -75,14 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 818: Admit Surface Box Conversion Overlap (finished)
+# Phase 819: Account Retained Prepared Surface Storage (finished)
 
-All four surface collections now admit possible capacity-plus-length overlap before boxing and
-carry final lengths into subsequent conversions. Enclosing accounting preserves session custody
-on host-only refusal. All 246 integration tests, default-feature compilation and independent
-semantic/resource review passed. Later candidate/Ready/adoption transitions remain pending; see
-the Beryl capacity evidence note.
-
+Prepared surfaces now retain a separate post-preparation collection charge using boxed lengths,
+page ordering, caret and placeholder, excluding released scratch maps and spare vector capacity.
+Session transition checks consume that charge while earlier and mounted preparation peaks remain
+separate. All 247 integration tests, default-feature compilation and independent semantic/resource
+review passed. Candidate/Ready/adoption custody transitions remain pending.
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the

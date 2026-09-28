@@ -985,3 +985,24 @@ prepublication compilation passed in 3.21s. Scoped formatting and diff checks pa
 semantic/resource review found no blockers. The probe exercises two u64 collections; production's
 four collection types and live-session refusal cleanup were source-reviewed. No manifests or
 canonical dependency pins changed.
+
+## Prepared surface retained storage
+
+Root phase 819 / widget phase 74 (2026-09-28) separates returned prepared-surface storage from
+its earlier preparation peak. `PreparedCoherentRangeSurface::retained_charge` records final boxed
+collection lengths plus retained page ordering, caret and placeholder. Scratch maps have dropped
+and excess vector capacity has been released before the session uses this charge. The existing
+candidate peak remains available to ordinary mounted preparation. Earlier per-allocation session
+admissions and high-water observations remain intact; this post-return check is not preallocation
+proof and does not accept the later candidate/Ready/adoption custody transitions.
+
+The new integration case qualifies preservation of non-collection storage while boxing releases
+spare capacity. Actual prepared-field construction and session consumption are source-reviewed.
+The extra two-usize charge field enlarges the prepared record by 16 bytes on the supported target;
+the large shared-object exact-budget fixture changed from 903584 to 903600 after the first full
+run caught that expected layout change (246/247 passed). Its exact-fit/one-under checks remain.
+Final LLVM one-job integration run `cc0470c9-2e74-49ce-8d03-ea712dbd31f7` passed 247/247,
+zero skipped, 24.366s. Default-feature prepublication check passed in 3.23s; scoped rustfmt and
+Git whitespace checks passed. Independent semantic/resource review found no blocker. Existing
+GPUI float-fallback and proc-macro future-compatibility warnings are unchanged. No manifest or
+canonical dependency pin changed; no task-owned temporary resources remain.
