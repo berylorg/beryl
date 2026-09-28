@@ -1,5 +1,35 @@
 # Prepublication Capacity
 
+## Detached Deferred Display Custody
+
+On 2026-09-28, enclosing response preparation began carrying the detached deferred fact's existing
+display credit through its entire inline admission. The original owner remains borrowed. A scoped
+budget helper adds the full detached record/fallback/display charge and four items while recording
+only the copied display as shared. All explicit observations and continuation startup retain full
+configured charges. GPUI allowance uses that existing credit with zero prospective output credit.
+Checked arithmetic precedes mutation; returned success/error restores raw fixed counts and credit
+before further scanner work. Direct and geometry-relative admission initialize and retain zero
+credit. This adds one stack budget counter, no retained owner state or allocation registry.
+
+The feature probe isolates actual deferred layout after a separately admitted continuation copy.
+Index/target fixtures cover empty and multibyte displays, exact enclosing limits, one-under byte/item
+refusals, low/high current baselines, overflow without host attribution, source-contract failure,
+empty releases, unchanged original owners and retry. Every returned result checks scope restoration.
+Whole-response enclosing preparation also verifies shared backing and raw peak parity. The probe
+does not establish fully credited response peaks; returned output and publication remain separate.
+Configured precedence is compositionally covered by existing observer/response tests and the common
+admission path, not a new tight-configured detached fixture.
+
+Initial full run `c807a7d4-a3aa-4472-a82c-4b83868c5a7d` passed 225/226: a new assertion incorrectly
+expected an earlier byte refusal to reach the successful operation's later item peak. It now checks
+the actual attempted peak exceeds the refused limit and stays within the successful peaks. Focused
+run `1c0f1ff3-baac-4ddf-bda7-6592e8cb3cf1` passed. A subsequent source-contract assertion initially
+compared an error reference to a value; that fixture compile error was corrected. Final LLVM,
+one-job, nonincremental, debug-zero run `09cb601a-35ee-4cb4-bb93-19d9928ed60e` passed all 226 tests
+across `range_widget`, `exact_geometry` and `prepublication`, no skips, in 20.982 seconds.
+Independent resource review accepted custody, checked mapping, startup/allowance separation and
+restoration. No source or tests changed after the final successful run.
+
 ## Shared Display Credit At Deferred Tail Creation
 
 On 2026-09-28, enclosing response preparation began crediting the new deferred tail's display at
