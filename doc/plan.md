@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 768: Admit Prepared Replacement Inputs (finished)
+# Phase 769: Admit Replacement Input And Job Coexistence (finished)
 
-All six prepared replacement-input paths admit combined owner/input capacity before allocation.
-Cloned styles charge length-sized run backing while moved styles retain actual capacity charges.
-Independent resource review accepted the corrected exact-fit accounting; all 188 geometry,
-widget and prepublication regression cases passed on the final revision.
+Index and target job preparation now admits current-owner and replacement-input coexistence before
+checkpoint or job allocation. Index startup peak evidence includes those inputs once. Independent
+resource review accepted the checked arithmetic and refusal behavior; all 188 geometry, widget and
+prepublication regression cases passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–768 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–769 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -116,6 +116,7 @@ Terminal prepared publication cleanup-key growth now admits replacement backing 
 Terminal target immutable-array preparation now admits staging and conversion overlap.
 Prepared transition cleanup previews now allocate only after combined capacity admission.
 Replacement inputs now admit owner coexistence before cloning or boxing.
+Replacement job allocation now includes the already prepared inputs in its admission budget.
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation. Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
