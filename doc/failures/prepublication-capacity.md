@@ -1504,3 +1504,40 @@ exact retry custody. Exercise empty-page accumulation and nonempty deduplicated 
 exact continuation and cleanup, then independently review before resuming overall acceptance.
 The finding is source-reviewed; no new dynamic reproduction is claimed. It requires no product
 scope or architectural policy change and does not invalidate the accepted text correction.
+### Delivered Object Preparation Correction
+
+Root 838 / widget 93 removes the delivered-path proof vector: a borrowed, deduplicated iterator
+mints text-owned scalar proofs and feeds the same object-page validator used by opaque proof
+batches. Binding/extent, exact page/key, scalar boundaries, missing/extra proofs, payload identity
+and ordering checks remain enforced. This implementation-private simplification removes proof
+storage coexistence rather than reserving unnecessary scratch; the public proof-batch API remains.
+
+Object admission now computes replacements, FIFO pressure, projected counts and eviction reports
+without allocation. It admits requested disposition plus destination capacity, then actual
+disposition plus requested destination, then both actual capacities. The session includes all
+existing response, owner, pending, cleanup and effect charges, observes attempted peaks and checks
+configured limits before host availability. Only successful preparation takes the delivered page
+and waiting identity. Same-page reconciliation remains excluded from eviction counters, repeated
+payload replacement precedes FIFO pressure, and commit retains survivor order.
+
+New tests accumulate at least two empty resident object pages with one-object request capacity,
+and separately exercise multiple objects sharing an anchor plus a distinct anchor. Zero/current,
+byte-one-under and item-one-under capacities each refuse twice without changing ownership,
+request key, next identity or cleanup records. Exact capacity continues to a candidate; dropping
+while refused drains cleanup to zero. Invalid UTF-8 scalar anchors and configured presentation
+limits remain terminal with zero host capacity. The initial local-byte-limit fixture was rejected
+by ObjectPage construction because request byte limits already prohibit that payload; the supported
+presentation-limit case replaces it.
+
+Focused run 96771504-1b63-4acc-baab-1e6e6602b19c passed both new tests. Full integration run
+b40334f1-e6df-409c-a17f-3c5e2cd5edca passed 292 tests across range_widget, exact_geometry,
+prepublication, range_residency and range_objects, zero skipped, in 21.988 seconds. The latter
+covers each eviction limit, same-page reconciliation and wrong/missing/extra/duplicate proofs.
+Unit run 5f8aa0d6-1bc7-4c02-a52e-34ab818cc435 passed all 115 tests in 17.117 seconds.
+Default-feature prepublication and range_objects checks passed in 3.70 seconds. Independent
+review accepted this boundary; overall preparation acceptance remains separate.
+
+Evidence limits: exact peaks use the production borrowed-preparation probe, not an allocator
+oracle. Allocator overreservation and global configured-ceiling comparison are source-reviewed.
+The new cleanup regression drops the session while refused; it does not claim explicit-cancel
+coverage. No canonical dependency pins or manifests changed.

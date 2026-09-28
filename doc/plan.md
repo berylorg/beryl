@@ -89,26 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 837: Admit Delivered Text Residency Preparation (finished)
+# Phase 838: Admit Delivered Object Preparation (finished)
 
-Delivered text residency bookkeeping is admitted before allocation and response consumption.
-Repeated refusals preserve identity and custody; exact retry and cleanup pass. Independent review
-accepted the boundary, with 264 integration and 115 unit tests plus default-feature checks passing.
-See [evidence](failures/prepublication-capacity.md#delivered-text-residency-preparation-gap).
-Overall 747 acceptance and delivered-object preparation review remain pending.
-
-# Phase 838: Admit Delivered Object Preparation (pending)
-
-Admit the complete delivered-object preparation peak before proof-vector and residency bookkeeping
-allocation, with requested and actual capacity checks. Borrow the response until preparation
-succeeds; preserve waiting identity, resident ownership and cleanup custody on enclosing refusal,
-retain configured failure precedence and observe attempted peaks. Include proof/residency storage
-coexistence and preserve deduplicated-anchor validation, reconciliation and eviction semantics.
-Verify accumulated empty object pages, nonempty anchors, byte/item one-under and exact capacity,
-repeated retry, successful continuation and drop cleanup. Independently review this boundary before
-returning to overall 747 acceptance. See
-[evidence](failures/prepublication-capacity.md#delivered-object-residency-preparation-gap).
-
+Delivered-object proofs now validate without allocation. Residency storage is admitted before
+allocation and response consumption, preserving retry custody and eviction semantics. Independent
+review accepted the boundary; 292 integration and 115 unit tests plus default-feature checks pass.
+See [evidence](failures/prepublication-capacity.md#delivered-object-preparation-correction).
+Overall preparation acceptance remains pending.
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Complete overall acceptance of the bounded prepublication reservation before preserved resident
