@@ -28,8 +28,27 @@ than fabricating host attribution. Final LLVM, one-job, nonincremental, debug-ze
 Independent resource review found no blocking issues in this boundary. No source or tests changed
 after the successful run.
 
-This proves the object-scanning boundary, not fully credited response peaks. Subsequent source
-finalization, publication/nested ownership and live session budget routing remain separate work.
+Active object-response publication now carries candidate-only output credit plus deferred display
+whose allocation matches the borrowed object page or original continuation. The scanner counter is
+cleared before explicit publication observations; its retained output amount and the proven deferred
+amount are checked and applied once to successor-record and destination admission. The original
+owner and response pages remain borrowed throughout. Configured counts, records, fallback text and
+items stay raw; terminal/source-finalization and text-response paths still supply zero credit.
+
+Whole-response index/target fixtures cover initial deferred tails and subsequent object responses,
+empty/multibyte display, low/high current baselines, unchanged raw peaks, reduced enclosing byte
+peaks, exact fits, one-under bytes/items with explicit enclosing refusal, repeated preparation,
+unchanged originals and empty failure releases. LLVM one-job, nonincremental, debug-zero run
+`79511000-e798-458b-bb68-877ec2926ef6` passed all 226 integration tests across the same three targets,
+no skips, in 21.283 seconds. Existing observer tests and unchanged common admission establish
+configured precedence and overflow handling compositionally. Independent resource review found no
+blocking issues; no source or tests changed after the full successful run.
+The new cases directly cover `NeedObjects`; `NeedContext` is qualified by source review. Exact-fit
+tests use observed peaks rather than an independent publication-byte oracle.
+
+This proves scanning and active object-response publication, not fully credited response peaks.
+Source finalization, terminal/nested publication, text-response deferred custody and live session
+budget routing remain separate work.
 
 ## Detached Deferred Display Custody
 
