@@ -89,29 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 842: Reserve Combined Resident Adoption Capacity (finished)
+# Phase 742: Implement Preserved Resident Widget Adoption (finished)
 
-Accepted protected predecessor measurement, bounded successor admission and exact reservation
-association. All 55 prepublication integration tests and default-feature checks pass; independent
-lifecycle/resource review accepted. The unnecessary infrastructure-accounting expansion was removed;
-[scope correction and evidence](failures/shared-infrastructure.md) preserve the lesson.
-Final adoption and host single-flight integration remain pending.
-
-# Phase 742: Implement Preserved Resident Widget Adoption (pending)
-
-Implement the owned widget's checked preserved-resident adoption contract using its ordinary
-prepublication and staged-publication machinery. Consume the protected cut from phase 841 and
-combined reservation from phase 842, with exact predecessor/successor admission, using
-the session ceiling from phase 746 and complete preparation accounting from phase 747. Keep
-the old paint, entity, focus handle and subscriptions intact until atomic coherent adoption;
-refusal retains no pending adoption intent. Preserve the fence after success and drain exact
-cleanup custody after either outcome. Mirror this bounded execution scope in the sibling plan
-before code changes; split any newly independent implementation boundary before taking it on.
-
-Verify non-origin scroll, directed selection, inline gaps and history, unchanged focus/subscriptions,
-stale predecessor/source/history/environment, pending work, exact-fit and insufficient capacity,
-late/duplicate delivery, cancellation and ledger drainage. Use focused crate integration tests and
-independent lifecycle/resource review. This accepts the widget primitive only.
+Accepted same-resident prepared adoption with exact protection/reservation, source/history and
+window checks, preserved focus/subscriptions/fence, monotonic request identity and bounded cleanup.
+All 543 widget tests pass (including six new integration cases); default-feature compilation and
+independent lifecycle/resource review pass. Dependency publication and application attachment remain
+separate boundaries below.
 
 # Phase 743: Publish Preserved Resident Adoption Dependency (pending)
 
