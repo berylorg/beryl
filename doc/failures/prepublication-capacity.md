@@ -106,3 +106,37 @@ Host scan ceilings remain outstanding. The current-ownership gate does not bound
 propagate host availability through immutable preparation, preserve typed retryable attribution, and
 account shared presentation ownership once as preparation progresses. Preserve configured terminal
 failures and the rule against inferring host attribution from ambiguous GPUI capacity errors.
+
+## Immutable Preparation Ceiling Verification
+
+Internal immutable text/object preparation now accepts enclosing byte/item ceilings, each clamped
+to configured geometry limits. The existing budget carries them through scan, publication and
+completed-index successor preparation. Ordinary callers supply configured limits. This primitive
+does not yet derive a session ceiling or classify retryable host denial.
+
+The integration fixture covers index/target and resident/external paths, zero/exact/one-under
+ceilings, unchanged owner counts, reusable pending identity, empty refusal release and successful
+commit after refusal. Reconstructed owners also prove oversized enclosing allowances cannot
+override configured byte or item limits. New tests were moved from the existing private unit-test
+module convention to Cargo integration placement, with a feature-gated probe delegating directly
+to production preparation/commit. Independent review accepted propagation and the test-support
+delta. Final run `29b4ecf4-2536-46c8-a3a1-34d7339eb2ac` passed all 210 integration tests
+(19.487 seconds, zero skipped); focused moved-fixture run `f0e8e45f-be19-4601-ba39-8c91fb7026ae`
+also passed.
+
+The expanded run `2d65e52d-54ec-4d71-a468-e88f24d9103e` passed 320 of 325 tests, including all
+209 integration tests. Five older unit tests failed and reproduced on unchanged widget `a3f9fc8`
+in baseline run `029ff07b-a1a5-422d-8771-0dbb7f7bead9`:
+
+- `committed_settlement_accepts_exact_fit_and_one_under_is_retryable`: fixed component charges differ.
+- `terminal_target_replacement_accepts_fixed_exact_caps_and_rejects_one_under`: resident charge is
+  807 bytes, while the fixture expects 783.
+- `history_custody_capacity_exhaustion_releases_and_reuses_exact_slots`: restoration result differs
+  from the expected `NotQuiescent` refusal.
+- `active_interaction_and_scroll_anchor_are_runtime_realization_targets`: observed `ScrollAnchor`
+  differs from the expected `ActiveInteraction`.
+- `exact_priority_after_end_object_retains_proof_for_successive_edit`: observed count is four,
+  while the fixture expects one.
+
+Do not treat those baseline failures as a green full unit suite or infer their remedy from assertion
+text. Reconcile each against current authority before changing expectations or production behavior.
