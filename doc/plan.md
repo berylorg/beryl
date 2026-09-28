@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 774: Account Discarded Layout Fragment Custody (finished)
+# Phase 775: Admit Inline Object Style Storage Before Allocation (finished)
 
-Returned fragment records now count through index and nonretained target layout/checkpoint peaks;
-retained target payload accounting remains unchanged. Independent resource review accepted the
-change. All 55 geometry tests passed, including exact byte/item refusal and cleanup; 136 unchanged
-widget/prepublication regressions also passed. Pre-call reservation remains phase 747 work.
+Nonempty inline presentations now admit their style-run backing before cloning and allocation;
+empty presentations remain allocation-free. Independent resource review accepted the change.
+All 192 geometry, widget and prepublication tests passed, including exact byte/item boundaries
+and pre-layout refusal. Deferred-object custody and GPUI reservation remain phase 747 work.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–774 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–775 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -122,6 +122,9 @@ Text input conversion now admits immutable backing and its style run before allo
 Oversize presentation run backing now passes admission before cloning.
 Grapheme custody now remains accounted through previous-segment layout.
 Returned fragment records now remain charged through index and discarded-target layout peaks.
+Inline presentation style-run backing now passes admission before cloning and allocation.
+Deferred-object caller custody must also remain charged through inline admission; see the
+[capacity evidence](failures/prepublication-capacity.md).
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Carry prepared transition peak evidence

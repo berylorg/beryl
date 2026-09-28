@@ -28,6 +28,13 @@ can retain geometry between an earlier check and the next text allocation. Charg
 grapheme as well as destination storage at that later check. This local correction does not prove
 the remaining preparation paths or combined predecessor reservation.
 
+The same custody issue remains for deferred inline objects: in the widget's
+`src/range_geometry/exact/scan.rs`, `process_object_page` takes `deferred_object` into a local
+box before `admit_inline_object` allocates its run or invokes layout. Scanner counts then omit
+that still-live box and fact payload. The inline style-run admission guard alone does not close
+this gap. Preserve or explicitly charge deferred custody through admission before relying on
+remaining scanner capacity for the returned GPUI reservation; this remains phase 747 work.
+
 Output-collection growth tests exposed another transition distinction: returned GPUI payload
 charges alone do not include the additional fragment enum records retained alongside scanner
 backing during transfer. Admit those records and the replacement backing while the old backing
