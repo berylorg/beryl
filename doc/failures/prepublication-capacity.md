@@ -1081,3 +1081,38 @@ and diff checks passed. Independent resource review found no blocker. Blocked an
 attempts are source-reviewed through the same scheduling invariant, not directly instrumented.
 No production source, manifest or dependency pin changed. Placeholder ownership and transfer
 coexistence remain pending; this finding does not accept overall preparation capacity.
+
+## Candidate Configuration And Placeholder Ownership
+
+Phase 824 / widget 79 initially considered a no-change clone audit: SharedString, font features,
+font fallbacks and the settlement coordinator share backing. Independent review found the omitted
+constituent: StreamingGeometryStyle also owns StreamingOversizePresentation.runs, a Vec<TextRun>.
+The derived configuration clone in finish_candidate copied this vector before any preparation
+admission. Shared fields alone therefore did not establish that the full configuration was cheap.
+
+Candidate preparation now clones the environment Arc and borrows its immutable configuration.
+This removes that allocation rather than estimating or reserving another copy. The local environment
+handle keeps configuration alive across mutable session operations and all refusal paths. This is a
+local ownership correction; startup's separate configuration/style clones and full environment
+accounting are not qualified by it and remain in the overall preparation audit.
+
+The remaining placeholder clone is SharedString over ArcCow: static backing copies a reference,
+owned backing clones its Arc. Neither duplicates string bytes or registers another cleanup record.
+The prepared surface record is admitted before the clone enters surface preparation. For an empty
+source and nonempty placeholder, surface preparation charges sizeof(SharedString) plus text length
+and one item before highlight allocation. The first highlight admission runs even with zero
+rectangles. That conservative charge remains in conversion and retained-surface accounting.
+Nonempty sources or empty placeholders discard the temporary handle; refusal drops local handles
+without dropping environment-owned backing. No placeholder text copy or shaping happens here.
+
+Evidence inspected: range_widget/prepublication/session/candidate.rs finish_candidate;
+prepublication/types.rs environment owner; range_widget/types.rs configuration/coordinator;
+range_geometry/exact/types.rs oversize/style; surface.rs prepare and surface/highlight_geometry.rs;
+GPUI shared_string.rs, util/arc_cow.rs and font feature/fallback definitions. The allocation removal
+and static/owned backing proof are source-reviewed, not allocator-instrumented. Existing live tests
+exercise candidate preparation and repeated capacity refusal. Run
+8cb7566b-39e5-4264-a360-145b23290e27 passed 43/43 prepublication tests, zero skipped, 15.524s;
+default-feature check passed in 3.24s. Changed-file rustfmt and diff checks passed. A broad format
+check reported pre-existing differences in lib.rs and exact_geometry tests, which remain untouched.
+Independent resource review accepted the correction. No manifest or canonical dependency pin
+changed. Transfer coexistence and the wider preparation boundary remain pending.

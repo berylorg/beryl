@@ -75,13 +75,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 823: Qualify Candidate Effect-Buffer Isolation (finished)
+# Phase 824: Qualify Candidate Placeholder Ownership (finished)
 
-Candidate preparation cannot coexist with buffered service effects: every request producer installs
-waiting state and ends the service step, and each step starts with an empty buffer. The common live
-driver now asserts Ready results have no effects. All 43 prepublication integration tests and
-independent resource review passed; blocked/failed attempts are covered by source-level scheduling
-proof. Placeholder and transfer coexistence audits remain pending under phase 747.
+Candidate preparation now borrows configuration through its shared environment, removing an
+unadmitted copy of the oversize style-run vector. Placeholder cloning shares existing backing;
+its surface charge precedes highlight allocation. All 43 prepublication tests, default-feature
+check and independent resource review passed. See the [ownership finding](failures/prepublication-capacity.md#candidate-configuration-and-placeholder-ownership).
+Transfer coexistence and startup/environment accounting remain pending under phase 747.
+
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -145,9 +146,10 @@ retryable refusals through the admitted state. Configured failures remain termin
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
 See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
 
+Phase 824 removes the candidate configuration deep clone and qualifies shared placeholder backing.
 Phases 821–822 admit candidate, Ready and adoption storage before custody transfer. Immutable
 geometry and remaining-session projections are checked against actual transfer; overall preparation
-closure still requires a bounded audit, including placeholder ownership before surface preparation
+closure still requires a bounded audit, including startup/environment ownership before preparation
 and transfer coexistence. Phase 823 proves buffered effects cannot coexist with candidate preparation
 under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
