@@ -1023,3 +1023,21 @@ exact-fit/one-under bytes and items, repeated refusal and configured precedence;
 residual derivation and residual-induced early refusal are source-reviewed, not directly tested.
 No manifest, canonical dependency pin or final retained charge changed. Existing compiler warnings
 are unchanged; no task-owned temporary resources remain.
+
+## Candidate Ownership Admission Before Transfer
+
+Phase 821 / widget 76 moves standalone candidate accounting and admission ahead of resident-page,
+target and cleanup custody transfer. The geometry projection uses the ordinary accounting inputs
+with no target and subtracts only active presentation overlap. Transfer spare slots use immutable
+resident counts. Configured failure remains terminal; host refusal completes the temporary cleanup
+record and leaves resident/geometry/custody owners available for retry. Candidate attempted charge
+contributes to high water before either capacity check.
+
+Verification: full integration run `ececa705-7ff6-4ce7-9b03-dca7c9d8ec3b`, 247/247 passed,
+0 skipped, 20.873s; default-feature prepublication check passed in 3.07s. Terminal target tests compare
+the projection with actual removal across prior-output and empty/nonempty inline display cases.
+The added active/deferred projection assertion passed in focused run
+`a33c6596-aa00-4582-8acf-dbd3513a1b2b` (1 passed, 246 skipped, 0.019s). Formatting and diff checks
+passed. Independent semantic/resource review found no blockers. Live-session refusal at this exact
+candidate boundary is source-reviewed, not directly exercised; no additional test was required for
+this bounded move. Ready/adoption coexistence remains pending; this does not accept overall phase747.

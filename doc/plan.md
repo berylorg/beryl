@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 820: Admit Surface Residuals Before Highlights (finished)
+# Phase 821: Admit Candidate Ownership Before Transfer (finished)
 
-Caret and placeholder residual charges now participate in every highlight allocation admission.
-Final retained and conversion charges remain unchanged. All 247 integration tests, default-feature
-compilation and independent semantic/resource review passed. Actual residual-induced early refusal
-is source-reviewed; existing tight-budget helper tests cover admission routing. Candidate/Ready/
-adoption transitions remain pending.
+Candidate storage is derived immutably and admitted against configured and host capacity before
+page, target or cleanup custody moves. Geometry projection tests cover terminal removal and active
+shared presentation custody. All 247 integration tests, the added focused assertion, default-feature
+compilation and independent review passed. Exact live-session candidate refusal is source-reviewed.
+Ready/adoption coexistence and overall preparation acceptance remain pending.
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
