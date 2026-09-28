@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 838: Admit Delivered Object Preparation (finished)
+# Phase 839: Remove Allocating Prepublication Teardown (finished)
 
-Delivered-object proofs now validate without allocation. Residency storage is admitted before
-allocation and response consumption, preserving retry custody and eviction semantics. Independent
-review accepted the boundary; 292 integration and 115 unit tests plus default-feature checks pass.
-See [evidence](failures/prepublication-capacity.md#delivered-object-preparation-correction).
-Overall preparation acceptance remains pending.
+Geometry destruction and ledger-owned session teardown no longer allocate discarded release
+reports. Public reporting APIs remain intact. Independent review accepted the correction;
+293 integration and 115 unit tests plus default-feature checks pass. Nonallocation is established
+by source inspection. See [evidence](failures/prepublication-capacity.md#nonallocating-teardown-correction).
+
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Complete overall acceptance of the bounded prepublication reservation before preserved resident
@@ -107,12 +107,10 @@ limits remain required; dependency-private scratch and allocator/RSS accounting 
 this reservation under the bounded-resource system contract.
 
 Accepted components and invalidated approaches are retained in the
-[capacity evidence](failures/prepublication-capacity.md). The final review's stage-boundary gaps
-are corrected: retirement clears pages without transfer allocation, and initial index preparation
-uses checked enclosing admission before mutation. Current widget passes 264 integration
-and 115 unit tests plus the default-feature prepublication check. Reconcile the complete source
-and evidence with an independent resource review; component acceptance alone is insufficient.
-Phase 837 corrects delivered-text residency bookkeeping admission. Overall review confirms missing delivered-object proof/residency admission; phase 838 owns that prerequisite.
+[capacity evidence](failures/prepublication-capacity.md). Allocation-free retirement, initial-index
+admission and delivered text/object preparation close the latest review findings. The widget
+passes 293 integration and 115 unit tests plus default-feature checks. Reconcile the complete
+source and evidence with independent resource review; component acceptance alone is insufficient.
 Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
 and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.
 

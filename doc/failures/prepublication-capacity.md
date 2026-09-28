@@ -1541,3 +1541,46 @@ Evidence limits: exact peaks use the production borrowed-preparation probe, not 
 oracle. Allocator overreservation and global configured-ceiling comparison are source-reviewed.
 The new cleanup regression drops the session while refused; it does not claim explicit-cancel
 coverage. No canonical dependency pins or manifests changed.
+
+## Allocating Prepublication Teardown
+
+Overall review after widget 3a66a3c found ExactGeometryOwner::Drop calling release_all(true).
+That function creates jobs/pages/object_pages vectors and pushes retained keys. An active index
+job or retained ready index therefore allocates while a session/candidate is destroyed, despite
+the explicit nonallocating destruction contract in widget design. Session cancel/fail also call
+geometry.dispose and discard the report. Text/object residency dispose methods similarly collect
+pending keys even though the session's ledger already owns their cancellation custody.
+
+Root 839 / widget 94 removes unused reporting work from these ledger-owned teardown paths while
+preserving reporting APIs for actual consumers. Natural field destruction can release geometry
+without a report; terminal sessions can discard their local owner storage after marking the
+existing ledger records. This is a bounded implementation correction, with no new lifecycle or
+product policy. Source inspection establishes the allocation; previous passing cleanup tests
+proved release effects but did not prove nonallocation.
+
+### Nonallocating Teardown Correction
+
+Root 839 / widget 94 removes the geometry reporting destructor; ordinary field destruction now
+releases its inputs, scanner, pending input, index and target owners without creating release
+vectors. Session cancellation and failure share release_local_owners: mark existing ledger
+records, drain resident custody, clear waiting/delivered/prepared/candidate/geometry owners,
+then discard residency buffers and counters. They no longer cancel into a soon-discarded local
+queue or collect reports whose external custody already belongs to the ledger. Public geometry
+reporting APIs remain unchanged. Public text/object dispose still collects original pending keys
+before calling the shared discard primitive, preserving reporting and request identity.
+
+The new active-geometry regression covers text/object requests, delivered/undelivered responses,
+and cancellation/failure/drop (12 cases). Repeated cancellation and repeated failed service expose
+no new source effects; selected cleanup matches the exact key and generation once, and explicit
+drain/ack leaves no active records. Existing tests cover ready-candidate drop, resident cleanup,
+late responses, slot reuse and geometry release reports. The test establishes zero resident and
+pending page counts and no candidate, not zero total storage in a still-live session.
+
+Run 7fae7f6c-1d9c-488c-af6e-580899d81e3e passed 177 integration tests across prepublication,
+exact_geometry, range_residency and range_objects in 18.884 seconds. The subsequently added
+test passed in focused run 97816d47-53b3-4663-b14b-4038f889dd6e (one test, 49 skipped).
+Run dabeb537-1f21-4941-b3c4-18317affad86 passed 115 unit and 115 range_widget tests in 21.247
+seconds. Together these establish 293 integration and 115 unit passes for the unchanged production
+code. Default-feature prepublication/exact_geometry/range_objects checks passed in 4.28 seconds.
+Independent review accepted the boundary. Nonallocation is source-proved, without allocator
+instrumentation; overall preparation review remains pending.
