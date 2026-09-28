@@ -82,6 +82,10 @@ runtime/root, session/window, and thread-claim durable state.
 
 ## Reverse thread claims
 
+- Window-keyed claim observation is also available through explicit candidate recovery access.
+  It shares ordinary identity and reverse-copy validation and fixed point-read limits, requires
+  fresh typed home/generation authority and propagates confirmation failures. It writes nothing,
+  grants no ordinary admission and does not substitute for window or whole-session qualification.
 - Exact claim sources may be read by window or thread identity. A present source validates its
   requested identity and matching reverse copy; an absent source proves absence at that exact
   key without scanning the claim collection. Whole-home validation and atomic paired mutations

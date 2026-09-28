@@ -1,8 +1,8 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainReader, DomainValidator, HomeStore,
-    PointReadLimit, ReadError, ValidationContribution,
+    DomainCallbackError, DomainCallbackSource, DomainReader, DomainValidator,
+    HomeCandidateRecoveryAccess, HomeStore, PointReadLimit, ReadError, ValidationContribution,
 };
 use beryl_model::{DomainRevision, SyndicThreadId, WindowId};
 
@@ -52,27 +52,47 @@ impl SessionState {
         store: &HomeStore,
         window_id: WindowId,
     ) -> Result<WindowClaimCatalogSource, ThreadClaimCatalogSourceError> {
-        let claim = store.read_point::<SessionDomain, ClaimByWindowCodec>(
-            &self.handle,
-            &window_id,
-            point_limit(),
-        )?;
-        if let Some(claim) = claim {
-            if claim.window_id() != window_id {
-                return Err(ThreadClaimCatalogSourceError::WindowCopyMismatch { window_id });
-            }
-            let by_thread = store.read_point::<SessionDomain, ClaimByThreadCodec>(
-                &self.handle,
-                &claim.thread_id(),
-                point_limit(),
-            )?;
-            if by_thread != Some(claim) {
-                return Err(ThreadClaimCatalogSourceError::ReverseCopiesDisagree {
-                    thread_id: claim.thread_id(),
-                });
-            }
-        }
-        Ok(WindowClaimCatalogSource { window_id, claim })
+        window_claim_source(
+            window_id,
+            || {
+                store.read_point::<SessionDomain, ClaimByWindowCodec>(
+                    &self.handle,
+                    &window_id,
+                    point_limit(),
+                )
+            },
+            |thread_id| {
+                store.read_point::<SessionDomain, ClaimByThreadCodec>(
+                    &self.handle,
+                    &thread_id,
+                    point_limit(),
+                )
+            },
+        )
+    }
+
+    pub fn window_claim_catalog_source_candidate(
+        &self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        window_id: WindowId,
+    ) -> Result<WindowClaimCatalogSource, ThreadClaimCatalogSourceError> {
+        window_claim_source(
+            window_id,
+            || {
+                access.read_point::<SessionDomain, ClaimByWindowCodec>(
+                    &self.handle,
+                    &window_id,
+                    point_limit(),
+                )
+            },
+            |thread_id| {
+                access.read_point::<SessionDomain, ClaimByThreadCodec>(
+                    &self.handle,
+                    &thread_id,
+                    point_limit(),
+                )
+            },
+        )
     }
 
     /// Reads one claim through both reverse copies or proves it is unclaimed.
@@ -118,6 +138,25 @@ impl SessionState {
     ) -> ValidationContribution {
         self.handle.validation(expected_revision, source)
     }
+}
+
+fn window_claim_source(
+    window_id: WindowId,
+    read_window: impl FnOnce() -> Result<Option<ThreadClaimRecord>, ReadError>,
+    read_thread: impl FnOnce(SyndicThreadId) -> Result<Option<ThreadClaimRecord>, ReadError>,
+) -> Result<WindowClaimCatalogSource, ThreadClaimCatalogSourceError> {
+    let claim = read_window()?;
+    if let Some(claim) = claim {
+        if claim.window_id() != window_id {
+            return Err(ThreadClaimCatalogSourceError::WindowCopyMismatch { window_id });
+        }
+        if read_thread(claim.thread_id())? != Some(claim) {
+            return Err(ThreadClaimCatalogSourceError::ReverseCopiesDisagree {
+                thread_id: claim.thread_id(),
+            });
+        }
+    }
+    Ok(WindowClaimCatalogSource { window_id, claim })
 }
 
 impl DomainValidator<SessionDomain> for ThreadClaimCatalogSource {
