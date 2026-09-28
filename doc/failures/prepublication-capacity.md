@@ -1,5 +1,29 @@
 # Prepublication Capacity
 
+## Nested Preparation Observations
+
+On 2026-09-28, nested target preparation began carrying the response's existing capacity
+observer through each checked transition admission. Publication moves it only after fallible
+base arithmetic succeeds and restores it before mapping either success or failure. This replaces
+the aggregate peak replay described below. Earlier configured/enclosing peaks survive; representable
+refusals use configured precedence. Arithmetic failures clear attribution and retain saturated raw
+attempt evidence separately from the observer's representable peaks. Standalone transitions retain
+their existing configured-only admission.
+
+Both production views still receive identical raw charges. Observation-specific shared credits,
+GPUI startup/output separation, session baseline derivation, enclosing peak reporting and retry
+routing remain pending. The feature-only probe qualifies nested exact byte/item limits, mixed
+refusal precedence, overflow after refusal, earlier distinct peaks and zero capacity. Existing
+source-backed transition fixtures now require `test-support` for their observer type; independent
+review identified the missing module feature gate and it was corrected.
+
+Independent resource review accepted the scoped production trace and corrected feature gate.
+The ordinary `exact_geometry` target passed `cargo check` without `test-support`. Final LLVM,
+one-job, nonincremental, debug-zero nextest run `8074ecac-6bbc-4ff9-af6d-3a8b667d849c` passed all
+215 tests across `range_widget`, `exact_geometry` and `prepublication`, with no skips, in 20.309
+seconds. The earlier run `2fbf1ce8-9c0a-42e8-bbd3-ccb43652ba69` also passed 215 tests before the
+feature-gate correction. GPUI, dependency pins and host-session routing are unchanged.
+
 ## Separate Preparation Capacity Observations
 
 On 2026-09-28, immutable preparation admission began using `CapacityObservations` in the widget
