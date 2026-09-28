@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 798: Admit GPUI Continuation Startup Explicitly (finished)
+# Phase 799: Derive Shared Output Capacity Allowances (finished)
 
-The widget admits the actual prior continuation charge before GPUI invocation with zero prospective
-credit and explicit configured/enclosing refusal evidence. Independent review accepted the boundary;
-all 223 integration tests passed. See [evidence](failures/prepublication-capacity.md#explicit-gpui-continuation-startup-admission).
+Mapped output allowances now separate existing and prospective shared credit while preserving
+configured bounds and checked mapping representability. Independent review accepted the calculation;
+all 225 integration tests passed. See [evidence](failures/prepublication-capacity.md#shared-output-capacity-allowance).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -120,7 +120,8 @@ and failures. Derive live session baselines and observation-specific credits bef
 results for host admission. Phase 797 derives zero-credit GPUI allowances from both mapped views;
 separate prospective inline-output credit still requires startup/output admission separation.
 Phase 798 explicitly admits zero-credit continuation startup before GPUI invocation; shared-output
-allowance derivation and per-observation credits remain pending.
+credit remains separate. Phase 799 supplies shared-output allowance derivation; production callers
+still supply zero credits. Connect ownership evidence at each observation before enabling credits.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

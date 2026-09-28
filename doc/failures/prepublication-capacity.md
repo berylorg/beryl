@@ -1,5 +1,23 @@
 # Prepublication Capacity
 
+## Shared Output Capacity Allowance
+
+On 2026-09-28, the mapped allowance calculation gained separate existing and prospective shared
+credits. Existing credit must fit raw preparation growth and is subtracted only after checked
+baseline addition. Prospective credit extends only enclosing output headroom; configured capacity
+and representability of the pre-credit sum still bound the result. The extension is bounded before
+addition, so maximum-sized prospective credit cannot wrap. This is a pure calculation and does not
+replace startup admission or create attempted-peak/refusal evidence. Ordinary callers continue to
+supply zero credits; scanner ownership plumbing and live session mapping remain pending.
+
+Integration qualification exhaustively compares bounded allowances with actual observation
+admission for every candidate output, using only the prospective credit represented in that output.
+Additional cases cover independent byte/item ceilings, configured precedence, invalid existing
+credit, baseline underflow, checked addition overflow and near-maximum allowance representability.
+LLVM, one-job, nonincremental, debug-zero nextest run `e568d861-b790-4585-8760-dce5338cc665`
+passed all 225 tests across `range_widget`, `exact_geometry` and `prepublication`, no skips,
+in 20.470 seconds. Independent resource review accepted the calculation and its bounded scope.
+
 ## Explicit GPUI Continuation Startup Admission
 
 On 2026-09-28, the widget began admitting GPUI continuation startup explicitly before resuming
