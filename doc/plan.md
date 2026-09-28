@@ -89,25 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 839: Remove Allocating Prepublication Teardown (finished)
+# Phase 840: Admit Adoption Configuration Storage (finished)
 
-Geometry destruction and ledger-owned session teardown no longer allocate discarded release
-reports. Public reporting APIs remain intact. Independent review accepted the correction;
-293 integration and 115 unit tests plus default-feature checks pass. Nonallocation is established
-by source inspection. See [evidence](failures/prepublication-capacity.md#nonallocating-teardown-correction).
+Fresh-widget adoption admits requested configuration run storage before cloning and actual capacity
+before owner transfer, retaining its separate charge afterward. Independent review accepted the
+correction; 294 integration and 115 unit tests plus default-feature checks pass. See
+[evidence](failures/prepublication-capacity.md#adoption-configuration-storage-correction).
 
-# Phase 840: Admit Adoption Configuration Storage (pending)
-
-Include the independently cloned configuration style-run backing in fresh-widget adoption support,
-with checked requested storage before cloning and actual capacity validation before owner transfer.
-Carry its retained charge through construction without duplicating the transferred geometry's
-existing style owner. Preserve configured/available refusal and candidate cleanup semantics.
-Verify run length independently of spare capacity, exact fit and byte/item refusal against an
-independent charge expectation, plus rejection drainage. Independently review this bounded
-prerequisite before resuming overall 747. See
-[evidence](failures/prepublication-capacity.md#adoption-configuration-storage-gap).
-
-# Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
+# Phase 747: Enforce Capacity Throughout Prepublication Preparation (wip)
 
 Complete overall acceptance of the bounded prepublication reservation before preserved resident
 adoption may use it. Startup, restoration and geometry request/response preparation, candidate
@@ -120,7 +109,8 @@ this reservation under the bounded-resource system contract.
 Accepted components and invalidated approaches are retained in the
 [capacity evidence](failures/prepublication-capacity.md). Allocation-free retirement, initial-index
 admission, delivered text/object preparation and nonallocating teardown are accepted. The widget
-passes 293 integration and 115 unit tests plus default-feature checks. Reconcile the complete
+passes 294 integration and 115 unit tests plus default-feature checks. Adoption configuration
+storage is also accepted. Reconcile the complete
 source and evidence with independent resource review; component acceptance alone is insufficient.
 Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
 and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.

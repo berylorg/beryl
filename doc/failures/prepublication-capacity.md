@@ -1607,3 +1607,27 @@ not independently establish coverage of this omitted owner. The 293 integration 
 passes remain valid but do not accept overall preparation. No architectural or product-policy
 change is required; review stopped at this concrete finding, leaving later adoption construction
 boundaries unqualified by that pass.
+
+### Adoption Configuration Storage Correction
+
+Root 840 / widget 95 adds the independent configuration run backing to fresh-widget support.
+Requested clone storage uses checked run length times TextRun size, independent of the source
+vector's spare capacity. The candidate peak includes that charge before cloning; adoption replaces
+the requested term with actual clone capacity and checks configured and available ceilings before
+taking geometry or surface owners. Construction, later auxiliary admission and diagnostics retain
+the configuration charge separately from transferred geometry backing.
+
+The regression varies run length and spare capacity independently, derives the incremental charge
+from TextRun size, accepts exact fit, rejects one-byte/item shortages and checks retained widget
+accounting after excluding geometry and adopted custody. Rejection releases the candidate; success
+retires its record through transfer. Both outcomes drain to zero active records with an empty
+repeated drain. Test fixtures were corrected to use the current cleanup field, the window's test
+context, and the distinct successful-transfer cleanup semantics.
+
+Focused run 3ee8ee9b-db68-4ea0-9e83-d9fda5c39c40 passed. Full run
+e9945077-1678-419e-8cdf-49fcd2c6085a passed 294 integration and 115 unit tests across six binaries,
+zero skipped, in 24.856 seconds. Default-feature test checks passed in 1m 51s. Verification used
+locked local dependencies, one compiler job, LLVM linking, no normal debug information and no
+incremental compilation. Independent review accepted this bounded correction after final fixture
+inspection. Actual allocator-overcapacity rejection and admission ordering are source-reviewed,
+not allocation-instrumented. Overall preparation acceptance remains separate.
