@@ -809,3 +809,52 @@ remain the next integration boundary; this proof does not accept whole-session h
 Independent semantic/resource review found no blocking findings after tracing discarded output,
 checkpoint content, nested constructors, observer restoration and cleanup admission. Root phase 811
 and widget phase 66 accept this no-production-change qualification.
+
+## Session Response Preparation Uses Enclosing Capacity
+
+Phase 812/widget67 connects admitted delivered and resident text/object responses in both geometry
+stages to the enclosing preparation observer. The previous ordinary preparation calls checked only
+raw geometry limits after the session's current-ownership guard; a fitting current charge did not
+constrain incremental preparation. The replacement derives S from checked session current ownership
+plus buffered effects and H from the clamped available capacity. Existing geometry/resident display
+overlap is removed once by current_charge; the preparation baseline still includes the raw geometry
+owner and borrowed pages. Per-observation candidate display credits remain separate.
+
+Prepared success and failure peaks update session high-water evidence. A failure explicitly attributed
+to Enclosing and still within configured session capacity reports CapacityBlocked, retains admitted
+response and successor IDs, consumes zero work and emits no cleanup or effects. Raw configured limits
+remain unchanged. Configured excess stays terminal, and unattributed GPUI errors are not reclassified
+as host refusal. Successful preparation commits through the existing response path.
+
+Expanded admitted_response integration cases exercise byte/item availability equal to current
+ownership as well as one below current ownership: repeated preparation refusal, cancellation, drop,
+exact-key collision, restored capacity and eventual readiness preserve the existing custody and
+identity invariants. Whole progression includes delivered and resident responses in index/target
+stages. The separate geometry_preparation_peaks_preserve_refusal_attribution fixture measures a new
+preparation peak above earlier reservations, accepts its exact byte/item limits and rejects one-under.
+It allows terminal DeterministicGeometry for unattributed GPUI refusal; explicit retry is separately
+required by the current-equal cases.
+
+Fixture corrections: the default 256 KiB object reservation dominated cumulative high water
+(274509 bytes), so it could not serve as this step's exact-capacity oracle. The final fixture uses
+coherent resident and pending envelopes of one object/512 bytes and proves the preparation peak is
+higher than previous peaks. Resident limits must fit pending limits or environment validation fails.
+A configured-surface variant at this small session peak was rejected earlier by the mounted-widget
+initial-capacity requirement and was removed; existing cleanup_capacity_cases covers configured
+terminal outcomes elsewhere, while classification at this boundary is source-reviewed. A GPUI
+one-under refusal can be unattributed and terminal, so the test must not assume every shortage is
+explicitly retryable. These fixture corrections did not alter production policy.
+
+Focused expanded retry run 2784e9bc-9707-45d8-9453-c186be16f7a8 passed 11 tests; initial full run
+cbf579ff-ca4d-4a43-b1b2-b3d453ff4a55 passed 230 tests in 21.028 seconds. Final focused peak run
+7a481e09-f4ed-4b09-844a-273fd00a9337 passed one test with 230 skipped. Independent read-only
+semantic/resource review found no blockers, including a second review of the fixture corrections.
+The session fixtures deliver empty object pages; shared inline-display composition is source-reviewed
+and supported by the prior geometry qualification, not directly exercised in these fixtures.
+Candidate-surface, ready and transition preparation remain separate work under phase 747.
+
+Final verification: a4aab56d-0d9e-4dd4-afb4-c167be2e5196 passed all 231 range_widget,
+exact_geometry and prepublication tests, zero skipped, in 21.216 seconds. Stable edition-2024
+skip-children rustfmt checks and scoped diff checks passed. No manifests, canonical pins, test
+support API or temporary processes/directories were added. Existing GPUI float-literal and
+proc-macro-error2 warnings remain unchanged.

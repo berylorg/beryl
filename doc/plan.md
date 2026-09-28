@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 811: Qualify Terminal Index Publication Ownership (finished)
+# Phase 812: Route Session Geometry Preparation Through Enclosing Capacity (finished)
 
-Terminal index and nested target publication require zero incremental display credit; source review
-and a whole-response regression qualify both nested outcomes without a production change. All 230
-integration tests passed, and independent review found no blockers. See
-[evidence](failures/prepublication-capacity.md#terminal-index-publication-has-no-retained-display-credit).
+Admitted delivered/resident geometry responses now enforce the session's available capacity during
+preparation and preserve exact custody and IDs on explicit retryable refusal. Peaks feed session
+evidence; configured and unattributed failures remain terminal. All 231 integration tests passed,
+and independent semantic/resource review found no blockers. See
+[evidence](failures/prepublication-capacity.md#session-response-preparation-uses-enclosing-capacity).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -140,8 +141,8 @@ Phase 809 credits source finalization and terminal checkpoint admission, restori
 before terminal publication. Phase 810 carries candidate-only credit through terminal target
 publication. Phase 811 qualifies zero incremental credit for terminal index and nested target
 publication; index output is discarded and nested targets start without display payload.
-Next derive the session budget, account shared presentation ownership once, and route typed
-retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
+Phase 812 derives the session budget, accounts shared presentation ownership once, and routes typed
+retryable refusals through the admitted state. Configured failures remain terminal; do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
 See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
 
@@ -177,7 +178,7 @@ Direct text and object response admission now accept enclosing byte/item ceiling
 configured limits; session derivation and peak propagation remain required before host use.
 Resident pending request allocation now admits session ownership and temporary demand storage;
 resident reuse validates original payload identity separately from new external response keys.
-Remaining work includes host-budget propagation through prepared target transitions,
+Next enforce host-budget admission before candidate surface allocations. Remaining work includes prepared target transitions,
 prepared-publication collections, and surface preparation.
 Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
