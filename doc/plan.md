@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 819: Account Retained Prepared Surface Storage (finished)
+# Phase 820: Admit Surface Residuals Before Highlights (finished)
 
-Prepared surfaces now retain a separate post-preparation collection charge using boxed lengths,
-page ordering, caret and placeholder, excluding released scratch maps and spare vector capacity.
-Session transition checks consume that charge while earlier and mounted preparation peaks remain
-separate. All 247 integration tests, default-feature compilation and independent semantic/resource
-review passed. Candidate/Ready/adoption custody transitions remain pending.
+Caret and placeholder residual charges now participate in every highlight allocation admission.
+Final retained and conversion charges remain unchanged. All 247 integration tests, default-feature
+compilation and independent semantic/resource review passed. Actual residual-induced early refusal
+is source-reviewed; existing tight-budget helper tests cover admission routing. Candidate/Ready/
+adoption transitions remain pending.
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the

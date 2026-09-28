@@ -1006,3 +1006,20 @@ zero skipped, 24.366s. Default-feature prepublication check passed in 3.23s; sco
 Git whitespace checks passed. Independent semantic/resource review found no blocker. Existing
 GPUI float-fallback and proc-macro future-compatibility warnings are unchanged. No manifest or
 canonical dependency pin changed; no task-owned temporary resources remain.
+
+## Surface residual admission before highlights
+
+Root phase 820 / widget phase 75 (2026-09-28) includes caret and retained placeholder charges
+before highlight vector reservation, instead of first including them during boxed conversion.
+The immutable caret lookup and placeholder selection now precede highlight preparation; every
+requested and actual vector-capacity observation includes their charge plus realized buffers.
+Conversion and final retained accounting still include each residual once. This does not accept
+placeholder ownership before surface preparation or later candidate/Ready/adoption transitions.
+
+Full integration run `e166656e-024f-4eb5-91ca-30cbbecad7c5` passed 247/247, zero skipped, 22.442s;
+default-feature prepublication compilation passed in 3.24s. Scoped formatting and whitespace
+checks passed. Independent semantic/resource review found no blocker. Existing helper tests cover
+exact-fit/one-under bytes and items, repeated refusal and configured precedence; actual surface
+residual derivation and residual-induced early refusal are source-reviewed, not directly tested.
+No manifest, canonical dependency pin or final retained charge changed. Existing compiler warnings
+are unchanged; no task-owned temporary resources remain.
