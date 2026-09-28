@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 812: Route Session Geometry Preparation Through Enclosing Capacity (finished)
+# Phase 813: Admit Candidate Resident Transfer Buffers (finished)
 
-Admitted delivered/resident geometry responses now enforce the session's available capacity during
-preparation and preserve exact custody and IDs on explicit retryable refusal. Peaks feed session
-evidence; configured and unattributed failures remain terminal. All 231 integration tests passed,
-and independent semantic/resource review found no blockers. See
-[evidence](failures/prepublication-capacity.md#session-response-preparation-uses-enclosing-capacity).
+Candidate transfer buffers now admit checked combined byte/item growth before allocation and
+recheck actual capacities before continuing. Refusal preserves resident/geometry custody and
+completes the temporary cleanup reservation. All 233 integration tests passed; the default-feature
+check and independent semantic/resource review passed. Next admit surface preparation collections.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 

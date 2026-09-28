@@ -858,3 +858,23 @@ exact_geometry and prepublication tests, zero skipped, in 21.216 seconds. Stable
 skip-children rustfmt checks and scoped diff checks passed. No manifests, canonical pins, test
 support API or temporary processes/directories were added. Existing GPUI float-literal and
 proc-macro-error2 warnings remain unchanged.
+
+## Candidate resident transfer buffer admission
+
+Phase 813 / widget phase 68 moves resident text/object destination-slot admission ahead of both
+allocations. Checked combined growth includes the current session charge and its already reserved
+cleanup record. Configured refusal is terminal; available-capacity refusal completes that temporary
+record and leaves resident and geometry owners intact. Actual text capacity is checked with pending
+object slots before the second allocation, then both actual capacities are checked before surface
+preparation. Attempted peaks feed session high-water evidence, including failure paths.
+
+The two integration cases cover zero, text-only, object-only and combined counts, exact fit,
+independent byte/item refusal, repeated denial, configured-terminal classification and arithmetic
+overflow. A test-support-only associated probe invokes the production helper. Tests initially placed
+in source were relocated to the integration target; review also caught and corrected the module's
+missing test-support feature gate. The default-feature prepublication check passed in 3.13 seconds.
+Final integration run `0252971b-a642-4e27-b50b-1d0ea31234df` passed 233/233 in 21.162 seconds;
+post-gate focused run `fc17e18d-754d-44ab-8c11-05d41de75186` passed 2/2 in 0.016 seconds.
+Independent semantic/resource review closed without remaining blockers. Allocator over-reservation
+and the exact session transfer-refusal cleanup branch are source-reviewed, not fault-injected.
+Surface map/object/gap/selection allocations and later ready/adoption admission remain pending.
