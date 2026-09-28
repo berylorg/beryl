@@ -89,19 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 841: Protect A Quiescent Resident During Adoption Preparation (finished)
+# Phase 842: Reserve Combined Resident Adoption Capacity (finished)
 
-Accepted protected resident admission, callback suppression, environment invalidation and exact
-release without enabling input. All 295 integration and 120 unit tests plus default-feature checks
-pass; independent lifecycle/resource review accepted the corrected boundary.
-[Evidence](failures/resident-protection.md) records stale-settlement and pending-selection fixes.
-Combined reservation and final adoption remain pending.
-
-# Phase 842: Reserve Combined Resident Adoption Capacity (pending)
-
-Measure protected predecessor ownership and admit ordinary successor preparation under one finite
-combined byte/item envelope before source effects. Verify exact fit, shortage, cancellation and
-cleanup without evicting predecessor paint; independently review reservation ownership.
+Accepted protected predecessor measurement, bounded successor admission and exact reservation
+association. All 55 prepublication integration tests and default-feature checks pass; independent
+lifecycle/resource review accepted. The unnecessary infrastructure-accounting expansion was removed;
+[scope correction and evidence](failures/shared-infrastructure.md) preserve the lesson.
+Final adoption and host single-flight integration remain pending.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
