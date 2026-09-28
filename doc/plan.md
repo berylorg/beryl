@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 775: Admit Inline Object Style Storage Before Allocation (finished)
+# Phase 776: Preserve Deferred Object Charges During Admission (finished)
 
-Nonempty inline presentations now admit their style-run backing before cloning and allocation;
-empty presentations remain allocation-free. Independent resource review accepted the change.
-All 192 geometry, widget and prepublication tests passed, including exact byte/item boundaries
-and pre-layout refusal. Deferred-object custody and GPUI reservation remain phase 747 work.
+Detached deferred objects remain charged throughout nested admission; enclosing budget totals
+are restored before success or failure returns. Independent resource review accepted the change.
+All 192 tests passed across geometry, widget and prepublication verification, including deferred
+exact byte/item boundaries and one-under refusal. Returned GPUI reservation remains pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -123,7 +123,7 @@ Oversize presentation run backing now passes admission before cloning.
 Grapheme custody now remains accounted through previous-segment layout.
 Returned fragment records now remain charged through index and discarded-target layout peaks.
 Inline presentation style-run backing now passes admission before cloning and allocation.
-Deferred-object caller custody must also remain charged through inline admission; see the
+Deferred-object caller custody now remains charged through inline admission; see the
 [capacity evidence](failures/prepublication-capacity.md).
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
