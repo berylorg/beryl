@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 770: Admit Nested Index Successor Preparation (finished)
+# Phase 771: Admit Text Segment Input Conversion (finished)
 
-Completed-index successor preparation now admits the enclosing response, index and cleanup custody
-before allocating a target job, terminal publication or cleanup storage. Nested success peaks
-propagate outward, and retained index accounting excludes the unchanged owner. Independent resource
-review accepted the change; all 188 geometry, widget and prepublication regression cases passed.
+Text segment preparation now admits immutable text and style-run backing before allocation,
+including old scanner storage and any detached grapheme. Independent resource review accepted
+the change. The 188 existing regressions passed, and the new exact-fit/one-under byte and item
+conversion-order regression passed after correcting its fixture.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–770 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–771 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -118,8 +118,11 @@ Prepared transition cleanup previews now allocate only after combined capacity a
 Replacement inputs now admit owner coexistence before cloning or boxing.
 Replacement job allocation now includes the already prepared inputs in its admission budget.
 Completed-index successor allocation now includes the enclosing response and index custody.
+Text input conversion now admits immutable backing and its style run before allocation.
 Remaining work includes prepared target transitions and prepared-publication collections,
-returned GPUI admission custody, and surface preparation. Carry prepared transition peak evidence
+oversize input preparation, returned GPUI admission custody, and surface preparation. Include
+caller-detached grapheme custody during layout in the returned-admission reservation.
+Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
 limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
