@@ -63,5 +63,5 @@ failed to detect it when the new guard was disabled.
 
 Explicit resident admission now reuses the prepared path's binding, revision, presentation and
 demand proof without changing external exact-key admission or copying payloads. Cleanup names
-the current pending request, not the old resident key. Session integration must select that path
-only after residency selection and verify resumed reuse through candidate completion.
+the current pending request, not the old resident key. Session integration selects that path
+only after residency selection; the context-reuse fixture now resumes through candidate completion.

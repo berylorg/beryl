@@ -89,23 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 782: Admit Authenticated Resident Geometry Responses (finished)
+# Phase 781: Gate Resident Geometry Requests On Session Capacity (finished)
 
-Explicit direct resident admission now shares authenticated identity/demand checks with prepared
-responses while preserving strict external request keys and caller capacity. Independent review
-accepted the change; 203 scoped tests and the expanded identity/cleanup test passed. Session
-integration remains phase 781; see [reuse evidence](failures/prepublication-capacity.md).
-
-# Phase 781: Gate Resident Geometry Requests On Session Capacity (pending)
-
-Admit pending geometry request storage together with its resident-demand preparation under the
-session's available byte/item envelope before mutation. Count existing session owners once,
-preserve configured-limit failure and retryable host-capacity refusal, and retain exact cleanup.
-Verify byte/item shortfalls, repeated refusal and resumed progress through resident requests;
-independently review the request admission boundary. Response scanning and candidate preparation
-remain phase 747 work and are not accepted by this request-only boundary. Integrate the explicit
-resident admission from phase 782: ordinary direct admission incorrectly rejects resident pages
-carrying their original request key. The focused reuse fixture exposed this existing mismatch.
+Resident pending requests now admit current custody, prepared demand and request storage before
+allocation or demand commit. Refusal preserves custody, pending state and effects; existing ID
+attempt/high-water bookkeeping remains. Resident responses use authenticated reuse admission.
+Independent resource review accepted the boundary; all 204 regression tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -117,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–780 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–782 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -139,6 +128,8 @@ Deferred-object caller custody now remains charged through inline admission; see
 Returned GPUI custody now receives a per-call ceiling before invocation.
 Direct text and object response admission now accept enclosing byte/item ceilings without changing
 configured limits; session derivation and peak propagation remain required before host use.
+Resident pending request allocation now admits session ownership and temporary demand storage;
+resident reuse validates original payload identity separately from new external response keys.
 Remaining work includes host-budget propagation through prepared target transitions,
 prepared-publication collections, and surface preparation.
 Carry prepared transition peak evidence
