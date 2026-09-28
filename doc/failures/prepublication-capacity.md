@@ -1062,3 +1062,22 @@ preparation gate; exact Ready/adoption host refusal and configured precedence re
 Default-feature check passed after the final Debug addition in 3.36s; formatting/diff checks passed.
 Independent semantic/resource review found no blockers. This accepts transition admission only;
 placeholder timing and enclosing effect/transition coexistence still need overall preparation audit.
+## Candidate Effect-Buffer Isolation
+
+Phase 823 / widget 78 audits the remaining buffered-effect concern without changing production
+accounting. `service` creates an empty EffectBuffer per call. The five push sites (validation,
+restoration text/object, geometry text/object) each install waiting state, with no delivered or
+admitted geometry response, and immediately return. The service loop then breaks. Delivery is
+external to that call. Resident and admitted-response progression do not append effects. Therefore
+both candidate entries, an existing target in `advance_geometry` and TargetComplete in
+`commit_geometry_response`, run with zero buffered effects. Failure and resident release mark the
+separate cleanup ledger; they do not append service effects. This proof depends on the present
+request-and-wait scheduling and must be revisited if service gains batching or synchronous delivery.
+
+The common live driver asserts a Ready service result contains no effects before processing it.
+Since EffectBuffer is append-only until return, earlier effects cannot be hidden. Prepublication
+integration run `d98489ce-9d6b-4164-b8e0-c4dc5250eaba` passed 43/43, 0 skipped, 15.220s. Formatting
+and diff checks passed. Independent resource review found no blocker. Blocked and failed candidate
+attempts are source-reviewed through the same scheduling invariant, not directly instrumented.
+No production source, manifest or dependency pin changed. Placeholder ownership and transfer
+coexistence remain pending; this finding does not accept overall preparation capacity.

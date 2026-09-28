@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 822: Admit Ready And Adoption Ownership Before Transfer (finished)
+# Phase 823: Qualify Candidate Effect-Buffer Isolation (finished)
 
-Ready and adoption charges now include the projected remaining session and are admitted before
-custody moves. Projection equality is checked against actual ownership before cleanup draining.
-All 248 integration tests, default-feature compilation and independent semantic/resource review
-passed. Tight byte/item tests verify retry, but may refuse earlier; exact transition refusal is
-source-reviewed. Overall preparation acceptance and preserved-resident adoption remain pending.
+Candidate preparation cannot coexist with buffered service effects: every request producer installs
+waiting state and ends the service step, and each step starts with an empty buffer. The common live
+driver now asserts Ready results have no effects. All 43 prepublication integration tests and
+independent resource review passed; blocked/failed attempts are covered by source-level scheduling
+proof. Placeholder and transfer coexistence audits remain pending under phase 747.
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -148,7 +148,8 @@ See the [failure note](failures/prepublication-capacity.md#direct-response-ceili
 Phases 821–822 admit candidate, Ready and adoption storage before custody transfer. Immutable
 geometry and remaining-session projections are checked against actual transfer; overall preparation
 closure still requires a bounded audit, including placeholder ownership before surface preparation
-and enclosing effect/transition coexistence. Do not treat component acceptance as overall admission.
+and transfer coexistence. Phase 823 proves buffered effects cannot coexist with candidate preparation
+under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
 including resident-response paths, prepared surface allocations, candidate/ready ownership and
