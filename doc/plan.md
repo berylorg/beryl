@@ -89,12 +89,20 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 739: Transfer Retained Resident Retirement Facts (finished)
+# Phase 740: Qualify Preserved Widget Recovery Attachment (finished)
 
-The mount can transfer retained retirement facts after exact live fence and resource checks.
-Taking them leaves the preserved editor fenced and readiness false; refused reconstruction can
-return them through exact acceptance. All 48 resident-close tests passed; independent lifecycle
-and custody review found no blockers. Worker reconstruction and widget attachment remain separate.
+Pinned widget APIs do not provide complete same-resident recovery attachment. Direct rebind omits
+exact scroll/history transfer, restoration import clears the surface, and prepublication adoption
+constructs a fresh widget. The [focused evidence](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-attachment.md)
+passed independent lifecycle review. This source qualification makes no runtime acceptance claim.
+
+# Phase 741: Define Preserved Resident Widget Adoption (pending)
+
+Resolve the bounded missing attachment contract in the owned widget and app authorities using
+phase 740 evidence. Specify same-resident preservation, fresh exact source/history validation,
+environment and capacity admission, refusal and cleanup custody, and fenced progress. Review the
+contract against interrupted-Exit preservation before deriving implementation and runtime
+qualification phases. Preserve separate service-worker, mount composition and whole-graph gates.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -126,6 +134,8 @@ phase 736 supplies fresh candidate paired-claim observation for the remaining sl
 Phase 737 supplies consuming slot reconstruction with fresh exact claims and fenced bindings.
 Phase 738 supplies service reconstruction with the same candidate reference and fresh close gate.
 Phase 739 supplies the checked handoff of retained retirement facts from the preserved resident.
+Phase 740 qualifies the missing same-resident widget attachment boundary; phase 741 defines its
+owning contract before implementation.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
