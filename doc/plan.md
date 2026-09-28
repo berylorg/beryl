@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 759: Admit Terminal Prepared Targets Before Allocation (finished)
+# Phase 760: Admit Prepared Target Jobs Before Allocation (finished)
 
-Terminal target preparation checks current geometry plus publication storage before allocating
-the publication. Independent review accepted charge equivalence, allocation ordering and unchanged
-refusal custody; all 188 geometry, prepublication and range-widget tests passed.
+Prepared target jobs check current ownership plus the proposed job and pending request before
+allocating either box. Independent review accepted charge equivalence, allocation ordering and
+unchanged refusal custody; all 188 geometry, prepublication and range-widget tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,10 +105,10 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–759 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–760 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
-continuation copy admission, plus terminal prepared target publication admission.
+continuation copy admission, plus terminal prepared target publication and target job box admission.
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
