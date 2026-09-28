@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 751: Admit Scanner Checkpoint Backing Growth (finished)
+# Phase 752: Admit Index Startup Before Allocation (finished)
 
-Scanner and terminal checkpoint insertion admits replacement backing before growth, including
-old/new coexistence and live layout charges. All 71 geometry/prepublication tests passed, covering
-exact fit, byte/item refusal before growth, terminal cleanup and bounded eviction. Independent
-resource review accepted this boundary; startup and prepared-publication collections remain phase 747.
+Index startup admits job and checkpoint ownership before backing allocation or boxing, preserving
+owners and job identity on refusal. Independent resource review accepted the change. Verification
+covers all 72 geometry/prepublication tests: 71 passed together and the corrected page-coexistence
+fixture passed its focused rerun. Target startup and prepared transitions remain phase 747.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,8 +106,8 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–751 supply scanner text, cross-page continuation, output and checkpoint growth admission.
-Remaining work includes index/target startup and prepared-publication collections,
+Phases 748–752 supply scanner text, continuation, output, checkpoint growth and index startup admission.
+Remaining work includes target startup and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
 limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
