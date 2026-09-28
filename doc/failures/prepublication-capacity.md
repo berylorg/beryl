@@ -1266,3 +1266,34 @@ observation; it does not directly force final transfer, Ready or adoption-gate r
 do not instrument every intermediate allocation. Focused source inspection and independent resource
 review supply that bounded transfer proof. Overall phase 747, old baseline test reconciliation and preserved-resident integration remain
 separate acceptance boundaries.
+
+## Committed Settlement Capacity Fixture Reconciliation
+
+The current unit baseline `cd21fb9c-fb2b-49b1-9e45-2510f644de70` reproduced the same five
+older failures: 110 of 115 passed, zero skipped (17.155 seconds). This reconciliation changes
+only `committed_settlement_accepts_exact_fit_and_one_under_is_retryable`; the other four remain
+open and this is not acceptance of the full unit suite or overall preparation boundary.
+
+The package's committed-settlement contract requires atomic successor adoption, while its geometry
+contract admits exact byte/item caps and rejects one under without replacing prior publication.
+The fixture's old fixed component sizes predate subsequent owner and admission changes. Source
+inspection of `prepare_widget_transition` confirms request and effect backing use actual capacity
+multiplied by `size_of::<RangeTextInputRequest>()`: 68 slots at 640 bytes require 43,520 bytes for
+each request queue, and four effects require 2,560 bytes. The candidate record is charged at its
+current 10,384-byte size. Prior surface retention is 7,238 bytes/90 items. Replacement index
+preparation retains the current geometry, replacement inputs, active job, pending page request and
+checkpoint/release coexistence; its current peak is 5,354 bytes/34 items. The fixture continues to
+assert these separate fixed charges rather than deriving its expected total from the observed
+admission total.
+
+Those components plus the current 19,952-byte realization owner and 9,984-byte auxiliary state
+sum to 143,824 bytes/328 items. Actual settlement first retains `PendingRebindIntent::Mutation`;
+its three proof records add 480 bytes/3 items through `current_auxiliary_realization_charge`,
+in addition to the transition's own proof storage. The exact settlement cap is therefore
+144,304 bytes/331 items. The test still rejects byte-minus-one and item-minus-one, checks the
+predecessor fingerprint, active mutation and emitted events remain unchanged, then retries at the
+exact cap and checks successor positions, proofs and obsolete predecessor settlement.
+
+Focused run `6bec7e37-e944-4aed-8404-7327666bbcd6` passed the corrected case (one passed,
+114 skipped, 0.023 seconds). No production behavior, manifest, or canonical pin changed.
+Independent resource review accepted the ownership arithmetic and unchanged atomic retry checks.

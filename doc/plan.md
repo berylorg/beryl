@@ -75,13 +75,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 829: Qualify Candidate Transfer Coexistence (finished)
+# Phase 830: Reconcile Committed Settlement Capacity Fixture (finished)
 
-Source and independent resource review confirm the existing preparation and final-owner gates
-cover synchronous transfer through Ready. Buffers and payloads move without growth; origin
-charges retain vacant residency backing and cleanup promotion reuses existing slots.
-No runtime changes or test reruns were needed. Overall preparation acceptance and baseline
-test reconciliation remain pending. See [evidence](failures/prepublication-capacity.md#candidate-transfer-coexistence).
+Reconciled fixed component and total charges with current ownership. The existing byte/item
+one-under atomic retry and exact-fit settlement test passes; independent resource review
+accepted the correction. No production change. Four older unit failures remain open.
+See [evidence](failures/prepublication-capacity.md#committed-settlement-capacity-fixture-reconciliation).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -151,7 +150,7 @@ Phases 821–822 admit candidate, Ready and adoption storage before custody tran
 geometry and remaining-session projections are checked against actual transfer. Phases 825–827
 admit startup configuration, custody, geometry and residency; phases 828–829 qualify shared
 environment ownership and synchronous transfer coexistence. Overall preparation closure and the
-five older baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
+four remaining baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
 under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
