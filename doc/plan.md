@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 748: Admit Exact Geometry Text Buffer Growth (finished)
+# Phase 749: Admit Scanner Cross-Page Continuation Storage (finished)
 
-Scanner text growth now admits destination and coexistence charges before reservation, including
-rechecking after segment rollover retains geometry. All 65 geometry/prepublication tests passed;
-independent resource review accepted this local prerequisite. The [capacity correction](failures/prepublication-capacity.md)
-retains whole-session propagation and other preparation peaks in phase 747.
+Active-atom and deferred-object continuation storage now checks byte/item capacity before boxing
+or cloning retained payloads. All 67 geometry/prepublication tests passed, including exact-fit and
+refusal-before-allocation cases; independent resource review accepted this local prerequisite.
+Whole-session capacity propagation and other preparation allocations remain in phase 747.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
