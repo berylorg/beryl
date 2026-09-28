@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 794: Observe Nested Preparation At Admission (finished)
+# Phase 795: Map Preparation Observations To Enclosing Ownership (finished)
 
-Nested target preparation now carries the observer through actual checked admissions and restores
-it before success/failure mapping. Independent review accepted the corrected feature gate; all 215
-integration tests and the ordinary target check passed. Shared credits and session routing remain
-pending. See [evidence](failures/prepublication-capacity.md#nested-preparation-observations).
+Checked baseline translation now preserves raw configured charges and maps each enclosing
+observation with bounded incremental credit, including nested admissions. Independent review
+accepted the change; all 218 integration tests passed. Production remains identity-mapped until
+session and credit integration. See [evidence](failures/prepublication-capacity.md#checked-enclosing-observation-mapping).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 

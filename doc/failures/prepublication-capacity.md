@@ -1,5 +1,27 @@
 # Prepublication Capacity
 
+## Checked Enclosing Observation Mapping
+
+On 2026-09-28, `CapacityObservations` gained checked preparation and enclosing baselines.
+Each observation maps raw total `T` to `S + (T - B) - C` independently for bytes and items,
+rejecting a raw total below its baseline or incremental credit larger than growth. The checked
+addition precedes subtraction, so an overflowing intermediate remains terminal even when credit
+could make the mathematical result representable. Mapping failure clears refusal attribution and
+preserves prior representable observer peaks. Configured admission continues to compare raw `T`.
+
+Ordinary and nested preparation now use this mapping entry point. The baseline fields follow the
+existing observer move/restore path into nested preparation. Production constructors still select
+zero baselines and callers supply zero credit, preserving identity mapping. Session baseline
+derivation, live allocation credit discovery, GPUI startup/output separation, outward enclosing
+peak reporting and retry routing remain pending; this primitive does not establish host admission.
+
+The integration probe covers changing credits with noncoincident maxima, configured precedence,
+exact and one-under byte/item limits, baseline underflow, credit exceeding growth, addition overflow,
+maximum representable values and nested baseline preservation. LLVM, one-job, nonincremental,
+debug-zero nextest run `2537d7d3-eb6e-46f8-a9ad-3b5bb9749a55` passed all 218 tests across
+`range_widget`, `exact_geometry` and `prepublication`, with no skips, in 21.286 seconds.
+Independent resource review accepted the mapping and its explicitly limited production integration.
+
 ## Nested Preparation Observations
 
 On 2026-09-28, nested target preparation began carrying the response's existing capacity
