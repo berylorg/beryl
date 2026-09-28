@@ -13,6 +13,8 @@ mod host;
 mod mounted;
 #[path = "resident_close_flush/mutation.rs"]
 mod mutation;
+#[path = "resident_close_flush/rebinding.rs"]
+mod rebinding;
 #[path = "resident_close_flush/recovery.rs"]
 mod recovery;
 #[path = "resident_close_flush/recovery_autosave.rs"]

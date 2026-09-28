@@ -45,6 +45,11 @@ fn clean_host_retirement_preserves_saved_facts_after_home_failure() {
         let fresh = syndic_storage::SyndicStorage::reacquire_candidate(&recovery).unwrap();
         let access = recovery.recovery_access().unwrap();
         let revision = access.home_revision().unwrap();
+        let (retired, _) = retired
+            .rebind_candidate(&access, fixture.storage.clone())
+            .err()
+            .unwrap();
+        assert_eq!(retired.binding(), saved);
         assert!(
             retired
                 .saved_checkpoint_matches_candidate(&access, &fixture.storage)
@@ -59,6 +64,11 @@ fn clean_host_retirement_preserves_saved_facts_after_home_failure() {
             assert_eq!(access.home_revision().unwrap(), revision);
         }
         let foreign = support::host("retired-checkpoint-foreign", 201);
+        let (retired, _) = retired
+            .rebind_candidate(&access, foreign.storage.clone())
+            .err()
+            .unwrap();
+        assert_eq!(retired.binding(), saved);
         assert!(
             retired
                 .saved_checkpoint_matches_candidate(&access, &foreign.storage)
@@ -78,6 +88,11 @@ fn clean_host_retirement_preserves_saved_facts_after_home_failure() {
         ));
         foreign_recovery.abort().close().unwrap();
         fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        let (retired, _) = retired
+            .rebind_candidate(&access, fresh.clone())
+            .err()
+            .unwrap();
+        assert_eq!(retired.binding(), saved);
         for _ in 0..2 {
             assert!(
                 retired
@@ -128,6 +143,12 @@ fn retired_checkpoint_rejects_a_changed_durable_selector() {
     let fresh = syndic_storage::SyndicStorage::reacquire_candidate(&recovery).unwrap();
     let access = recovery.recovery_access().unwrap();
     let revision = access.home_revision().unwrap();
+    let old_binding = retired.binding();
+    let (retired, _) = retired
+        .rebind_candidate(&access, fresh.clone())
+        .err()
+        .unwrap();
+    assert_eq!(retired.binding(), old_binding);
     assert!(
         retired
             .saved_checkpoint_matches_candidate(&access, &fresh)

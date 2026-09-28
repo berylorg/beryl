@@ -116,6 +116,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
   storage handles and changed or unresolved evidence cannot establish readiness. This read-only,
   uncached observation neither creates a replacement binding nor releases interaction gates or
   authorizes whole-graph publication.
+- Reconstructing a clean retired host consumes its retained facts only after that fresh validation
+  succeeds. Failure returns those facts intact. The replacement preserves the live candidate,
+  durable selector, original activation checkpoint and bounded settlement capacity, while issuing
+  a checked successor host identity in the replacement home generation. It opens no editor session
+  and writes no draft or history. Its new close gate starts fenced and requires ordinary fresh
+  flush qualification; the old close ticket cannot release it. Widget attachment, replacement
+  service publication and coherent interaction reopening remain separate obligations.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and
