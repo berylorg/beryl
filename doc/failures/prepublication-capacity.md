@@ -1,5 +1,30 @@
 # Prepublication Capacity
 
+## Transient Inline Style Run Coexistence
+
+On 2026-09-28, inspection found that inline-object and oversize style-run allocation guards did
+not carry those buffers into the remaining capacity passed to GPUI. GPUI borrows their runs while
+shaping and keeps the input vectors alive through returned-output construction, but its inline
+output charge omits those vectors. The widget now subtracts checked run bytes/items before binding
+construction and records their coexistence with returned output. Later scanner growth excludes the
+already dropped runs. Ordinary text transfers runs into charged output and supplies no extra charge.
+This corrects the reservation omission left outside the previous attribution-only acceptance.
+
+The inline fixture now covers empty/nonempty presentation and direct/deferred input at its earlier
+allocation guard and the positive reservation boundary, including byte/item one-under and exact
+cleanup. Existing oversize exact-fit/shortage tests and the integration suite cover ordinary scans.
+Source inspection establishes the common index/target call path and GPUI ownership distinction;
+this is not a claim of complete shared presentation or session host-budget accounting.
+
+Initial integration run `f3f5bf39-06d7-4477-b683-e5b0f14af460` passed 213 tests. Extending the fixture
+initially assumed the minimum positive reservation reached shaping's maps check; run
+`d5d32afc-7ea9-422b-a3cf-23ae30b00a82` passed 212 and failed that assertion because GPUI session
+startup can reject the tiny allowance first. The test now distinguishes GPUI entry from scanner
+refusal without requiring a later failure point. Focused run `51f67cbb-acf9-440e-b69e-a8616f1caf2a`
+passed; final run `2df59c87-9171-4d38-9ba3-606c5b6b60ed` passed all 213 tests, zero skipped,
+in 19.381 seconds. Independent resource review accepted the change. The five older baseline unit
+failures were not rerun or waived, and canonical dependency pins remain unchanged.
+
 ## Pre-Shaping Reservation Refusal Attribution
 
 On 2026-09-28, the existing requirement for a positive byte and item remainder before GPUI
