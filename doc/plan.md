@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 814: Admit Candidate Surface Page Ordering (finished)
+# Phase 815: Admit Candidate Fragment Map Collection (finished)
 
-Candidate surface page ordering now admits requested and actual capacity before use, with checked
-box-conversion coexistence. In-place sorting preserves equal-position input order. Retryable refusal
-retains resident/geometry custody and releases the temporary cleanup reservation. All 235 integration
-tests, the default-feature check and independent semantic/resource review passed. Remaining surface
-collections and transitions stay pending; see the Beryl capacity evidence note.
-
+Owned fragment maps now admit requested and actual capacity with retained page ordering included.
+Adjacent-position deduplication and object-gap identity remain unchanged. Host refusal preserves
+resident/geometry custody and releases temporary cleanup. The 237-test suite, all three final
+focused cases, default-feature check and independent semantic/resource review passed. Remaining
+geometry collections and transitions stay pending; see the Beryl capacity evidence note.
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;

@@ -898,3 +898,26 @@ passed; independent semantic/resource review found no blockers. Allocator overre
 box-conversion coexistence and exact live-session page-order refusal cleanup were source-reviewed,
 not fault-injected. Test probes remain behind test-support. No manifests or canonical pins changed.
 Fragment maps, realized object/gap geometry, selection/composition and later transitions remain pending.
+
+## Candidate fragment map collection admission
+
+Phase 815 / widget phase 70 extracts owned map enumeration and collection. The same fragment
+variant rules and adjacent-position first-wins deduplication are preserved, including distinct
+inline-object gaps. Requested slots are checked before fallible reservation and actual capacity
+before filling. The session baseline includes current cleanup custody, actual transfer buffers,
+the prepared surface record and retained boxed page ordering. Configured refusal precedes host
+refusal, attempted peaks propagate before errors, and host refusal completes only temporary cleanup.
+Resident pages and geometry remain in place for retry. Ordinary mounted preparation uses the same
+collector with its existing later admission; remaining geometry and transition work stays pending.
+
+An initial compile rejected calling maps() on the fragment enum; explicit per-variant access fixed
+that local implementation error. Full integration run `d459b4ca-a593-4210-8621-94f666249a32` passed
+237/237 in 21.299 seconds. A final additional test covers differing placements at duplicate logical
+positions, distinct object gaps and nonadjacent repeats; focused run
+`8de34a1a-5329-47ed-b165-68e5f2aa32ae` passed all three cases in 0.026 seconds (235 skipped).
+The other cases cover empty/singleton/duplicate maps, exact fit, independent byte/item one-under,
+repeated denial, capacity restoration, configured precedence and checked enclosing arithmetic.
+Default-feature prepublication check passed in 3.16 seconds; scoped rustfmt and diff checks passed.
+Independent semantic/resource review found no blockers. Allocator overreservation, live-session
+map-refusal cleanup and per-variant map extraction are source-reviewed rather than directly
+fault-injected by the new helper tests. No manifests or canonical pins changed.
