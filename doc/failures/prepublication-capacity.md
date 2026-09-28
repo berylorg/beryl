@@ -1157,3 +1157,28 @@ fault-injected. No manifest or canonical dependency pin changed.
 Geometry style/owner and residency VecDeque construction still precede this gate. They require
 separate startup admission, alongside shared environment accounting and transfer coexistence,
 before the overall prepublication preparation boundary can be accepted.
+## Startup Geometry And Residency Admission
+
+Phase 827 / widget 82 corrects geometry style/Box and residency VecDeque construction preceding
+session admission. The startup helper checks the combined session shell, nested geometry/text/object
+owners and requested custody storage before constructing owners. It substitutes actual geometry,
+then text residency, then object residency charges before proceeding. The accepted custody gates
+still check requested and actual custody capacities before final acceptance. Refusal releases local
+owners without requests or cleanup registrations. Seed validation and generation allocation remain
+before startup; the host-capacity check now precedes geometry construction as required.
+
+The geometry preflight uses cloned run length rather than the source style vector's spare capacity.
+It retains ordinary per-run metadata and payload accounting. This avoids rejecting exact capacity
+for a copy that does not retain source spare storage. Existing initial-owner accounting continues
+to charge actual capacity. The exact-fit integration fixture now moves a style with an empty run
+vector and 16 reserved slots into the environment, then proves exact byte/item acceptance, one-under
+and zero refusal, no cleanup effects, and unchanged ownership under subsequent service refusal.
+An initial test edit used private style fields and failed compilation; it was corrected to use the
+public style constructors. No production contract change was needed.
+
+Run f0cc73d4-aead-47e5-9c83-b1ad52d159a5 passed 43/43 prepublication tests, zero skipped,
+15.231s. Default-feature compilation passed in 3.13s; scoped rustfmt and diff checks passed.
+Independent resource review accepted the bounded change. Nonempty style metadata, allocator excess,
+intermediate allocation failure and allocation ordering are source-reviewed, not fault-injected.
+No manifest or canonical dependency pin changed. Shared environment accounting and transfer
+coexistence remain open before overall preparation acceptance.

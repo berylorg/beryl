@@ -75,12 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 826: Admit Startup Custody Reservations (finished)
+# Phase 827: Admit Startup Geometry And Residency Owners (finished)
 
-Custody startup admits requested combined storage before allocation, actual text capacity before
-object reservation, and actual combined capacity before acceptance. All 43 prepublication tests,
-default compilation and independent resource review passed. Geometry/residency startup allocation,
-shared environment accounting and transfer coexistence remain pending.
+Startup now admits geometry, residency and custody storage before constructing the owners,
+then replaces projected charges with actual charges between allocations. Style-copy admission
+uses run length rather than source spare capacity. All 43 prepublication tests, default compilation
+and independent resource review passed. Shared environment accounting and transfer coexistence
+remain pending; see [capacity evidence](failures/prepublication-capacity.md#startup-geometry-and-residency-admission).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
