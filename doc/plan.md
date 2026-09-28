@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 813: Admit Candidate Resident Transfer Buffers (finished)
+# Phase 814: Admit Candidate Surface Page Ordering (finished)
 
-Candidate transfer buffers now admit checked combined byte/item growth before allocation and
-recheck actual capacities before continuing. Refusal preserves resident/geometry custody and
-completes the temporary cleanup reservation. All 233 integration tests passed; the default-feature
-check and independent semantic/resource review passed. Next admit surface preparation collections.
+Candidate surface page ordering now admits requested and actual capacity before use, with checked
+box-conversion coexistence. In-place sorting preserves equal-position input order. Retryable refusal
+retains resident/geometry custody and releases the temporary cleanup reservation. All 235 integration
+tests, the default-feature check and independent semantic/resource review passed. Remaining surface
+collections and transitions stay pending; see the Beryl capacity evidence note.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 

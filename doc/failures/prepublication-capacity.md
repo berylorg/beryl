@@ -878,3 +878,23 @@ post-gate focused run `fc17e18d-754d-44ab-8c11-05d41de75186` passed 2/2 in 0.016
 Independent semantic/resource review closed without remaining blockers. Allocator over-reservation
 and the exact session transfer-refusal cleanup branch are source-reviewed, not fault-injected.
 Surface map/object/gap/selection allocations and later ready/adoption admission remain pending.
+
+## Candidate surface page ordering admission
+
+Phase 814 / widget phase 69 extracts page ordering into shared preparation. It checks requested
+slots before fallible reservation, actual capacity before filling, and capacity plus length before
+box conversion when shrinking could allocate. An in-place unstable sort keyed by source start and
+original index preserves the prior stable ordering without allocating sorting scratch. The session
+baseline includes reserved cleanup custody, both actual transfer buffers and the prepared surface
+record. Configured refusal wins over host refusal; attempted peaks propagate before errors, and
+host refusal completes only the temporary cleanup reservation while retaining resident/geometry.
+
+Focused integration run `ade39251-ec63-4434-85b1-75710e7dccce` passed 2 cases. These cover empty,
+singleton and duplicate/reordered positions, exact fit, byte/item one-under, repeated host refusal,
+retry success, configured precedence and enclosing arithmetic. Full run
+`797b4a34-7103-4c78-8c48-a58d209fba2e` passed 235/235, zero skipped, in 21.641 seconds.
+The default-feature prepublication check passed in 3.09 seconds. Scoped rustfmt and diff checks
+passed; independent semantic/resource review found no blockers. Allocator overreservation,
+box-conversion coexistence and exact live-session page-order refusal cleanup were source-reviewed,
+not fault-injected. Test probes remain behind test-support. No manifests or canonical pins changed.
+Fragment maps, realized object/gap geometry, selection/composition and later transitions remain pending.
