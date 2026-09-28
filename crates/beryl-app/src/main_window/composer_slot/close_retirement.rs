@@ -7,9 +7,64 @@ pub struct MainWindowComposerRetiredClose {
     selection: MainWindowComposerSelectionIdentity,
     close: MainWindowConversationComposerCloseTicket,
     host: ComposerHostRetiredClose,
+    last_activation_generation: u64,
 }
 
 impl MainWindowComposerRetiredClose {
+    pub fn rebind_candidate(
+        self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        storage: SyndicStorage,
+        state: &beryl_state::BerylState,
+    ) -> Result<
+        (
+            Box<MainWindowComposerSlot>,
+            MainWindowConversationComposerCloseTicket,
+        ),
+        (Self, MainWindowComposerSlotError),
+    > {
+        let result = (|| {
+            let session = state.session();
+            let bootstrap = session
+                .minimal_bootstrap_candidate(access)?
+                .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+            let claim = self.selection.claim();
+            if !bootstrap.windows().iter().any(|window| {
+                window.window_id() == self.selection.window_id()
+                    && window.selected_thread() == Some(claim)
+            }) {
+                return Err(MainWindowComposerSlotError::IdentityMismatch);
+            }
+            let paired = session
+                .window_claim_catalog_source_candidate(access, self.selection.window_id())?;
+            if !paired.claim().is_some_and(|paired| {
+                paired.thread_id() == claim.thread_id()
+                    && paired.generation() == claim.generation()
+                    && paired.revision() == claim.revision()
+                    && paired.state() == beryl_state::ThreadClaimState::Active
+            }) {
+                return Err(MainWindowComposerSlotError::IdentityMismatch);
+            }
+            let assets = state.assets();
+            assets.revision_candidate(access)?;
+            let host = self.host.reconstruct_candidate(access, storage.clone())?;
+            let mut slot = Box::new(MainWindowComposerSlot::new(
+                self.selection.window_id(),
+                claim,
+                *host,
+                storage,
+                MainWindowComposerMarkerMetadataAuthority::new(assets),
+            )?);
+            slot.last_activation_generation = self.last_activation_generation;
+            let close = self
+                .close
+                .with_recovered_selection(slot.selected_identity().unwrap());
+            slot.window_close = Some(close);
+            Ok((slot, close))
+        })();
+        result.map_err(|error| (self, error))
+    }
+
     pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
     }
@@ -64,6 +119,7 @@ impl MainWindowComposerSlot {
                     selection: identity,
                     close,
                     host,
+                    last_activation_generation: self.last_activation_generation,
                 })
             }
             Err(host) => {
@@ -76,6 +132,15 @@ impl MainWindowComposerSlot {
                 None
             }
         }
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_release_window_close_gate(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        flush: Option<ComposerHostFlushTicket>,
+    ) -> Result<bool, MainWindowComposerSlotError> {
+        self.release_window_close_gate(close, flush)
     }
 
     #[cfg(feature = "test-faults")]

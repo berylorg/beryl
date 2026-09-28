@@ -17,14 +17,22 @@ impl ComposerHostRetiredClose {
         access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
         storage: syndic_storage::SyndicStorage,
     ) -> Result<Box<SyndicComposerHost>, (Self, ComposerHostError)> {
-        let generation = match self.binding.host_generation().next() {
-            Some(generation) => generation,
-            None => return Err((self, ComposerHostError::GenerationExhausted)),
-        };
-        match self.saved_checkpoint_matches_candidate(access, &storage) {
-            Ok(true) => {}
-            Ok(false) => return Err((self, ComposerHostError::LifecycleBlocked)),
-            Err(error) => return Err((self, error)),
+        self.reconstruct_candidate(access, storage)
+            .map_err(|error| (self, error))
+    }
+
+    pub(crate) fn reconstruct_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        storage: syndic_storage::SyndicStorage,
+    ) -> Result<Box<SyndicComposerHost>, ComposerHostError> {
+        let generation = self
+            .binding
+            .host_generation()
+            .next()
+            .ok_or(ComposerHostError::GenerationExhausted)?;
+        if !self.saved_checkpoint_matches_candidate(access, &storage)? {
+            return Err(ComposerHostError::LifecycleBlocked);
         }
         let binding = ComposerHostBinding::new(
             access.home_id(),
@@ -53,9 +61,7 @@ impl ComposerHostRetiredClose {
             session_disposed: false,
         }));
         host.last_generation = Some(generation);
-        if let Err(error) = host.begin_flush(ComposerHostFlushPurpose::WindowClose) {
-            return Err((self, error));
-        }
+        host.begin_flush(ComposerHostFlushPurpose::WindowClose)?;
         Ok(host)
     }
 

@@ -15,6 +15,13 @@ pub struct MainWindowConversationComposerCloseTicket {
 }
 
 impl MainWindowConversationComposerCloseTicket {
+    pub(in crate::main_window) const fn with_recovered_selection(
+        self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Self {
+        Self { selection, ..self }
+    }
+
     #[cfg(feature = "test-faults")]
     pub const fn for_test(
         owner: gpui::EntityId,

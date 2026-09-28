@@ -150,6 +150,12 @@ pub enum MainWindowComposerSlotError {
     TargetNotFresh,
     #[error("the recovered Syndic handle does not belong to this recovered home generation")]
     RecoveryHandleMismatch,
+    #[error("fresh recovery state read failed: {0}")]
+    RecoveryRead(#[from] beryl_home_store::ReadError),
+    #[error("fresh recovery session validation failed: {0}")]
+    RecoverySession(#[from] beryl_state::SessionReadError),
+    #[error("fresh recovery claim validation failed: {0}")]
+    RecoveryClaim(#[from] beryl_state::ThreadClaimCatalogSourceError),
     #[error("the slot is disposed")]
     Disposed,
     #[error("widget release contained work that was not locally releasable")]

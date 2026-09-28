@@ -123,6 +123,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
   and writes no draft or history. Its new close gate starts fenced and requires ordinary fresh
   flush qualification; the old close ticket cannot release it. Widget attachment, replacement
   service publication and coherent interaction reopening remain separate obligations.
+- Reconstructing the enclosing retired slot additionally validates the selected window in the
+  fresh bounded session set, its exact Active paired claim and the replacement asset handle.
+  It preserves the activation counter and installs a drained dispatcher with the fresh host.
+  The resident owner and close-request generation remain unchanged, but the replacement close
+  ticket names the fresh selection; old tickets cannot release it. Failure returns the original
+  retirement facts intact. This creates no durable records and does not publish services, attach
+  the widget or establish whole-session recovery readiness.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and
