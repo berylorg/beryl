@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 746: Admit An Initial Prepublication Capacity Ceiling (finished)
+# Phase 748: Admit Exact Geometry Text Buffer Growth (finished)
 
-The widget now accepts initial host byte/item admission capacity and clamps later availability to
-that ceiling. All 21 prepublication integration tests passed; independent resource review accepted
-the narrowed admission boundary. The [review correction](failures/prepublication-capacity.md)
-retains the separate preparation-peak obligation in phase 747 before combined resident use.
+Scanner text growth now admits destination and coexistence charges before reservation, including
+rechecking after segment rollover retains geometry. All 65 geometry/prepublication tests passed;
+independent resource review accepted this local prerequisite. The [capacity correction](failures/prepublication-capacity.md)
+retains whole-session propagation and other preparation peaks in phase 747.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,6 +105,12 @@ the host ceiling. Derive remaining capacity without double charging transferred 
 exact cleanup on refusal, and verify tight byte/item budgets while actively progressing through
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
+
+Phase 748 supplies text-buffer growth admission. Remaining work includes index/target startup,
+fragment and presentation collections, returned GPUI admission custody, and surface preparation.
+Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
+limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
+reservation under the bounded-resource system contract; no GPUI redesign is required.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
