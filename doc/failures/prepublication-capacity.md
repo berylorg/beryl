@@ -1,5 +1,30 @@
 # Prepublication Capacity
 
+## Explicit GPUI Continuation Startup Admission
+
+On 2026-09-28, the widget began admitting GPUI continuation startup explicitly before resuming
+layout. The existing occupied reservation includes transient style runs, the returned fragment
+record and the larger prior/successor continuation item allowance. The new boundary adds the
+actual GPUI continuation struct and semantic items for its prior position, using checked sums and
+the ordinary zero-credit admission path. Configured/enclosing failures now carry explicit
+attribution and attempted peaks before GPUI is called. Errors actually returned by GPUI remain
+unattributed; component limits and output allowances are unchanged. No GPUI API change is needed
+to enforce this startup boundary. Live session mapping and prospective output credits remain pending.
+
+The new integration probe compares startup charges with an actual GPUI session at positions with
+zero, one and two adjacent object facts. It checks exact and one-under byte/item ceilings, mapped
+peaks, configured precedence, empty cleanup and overflow after prior refusal. The existing direct
+and deferred inline-style fixture still verifies early allocation admission and configured GPUI
+map refusal. Its old peak expected only the positive one-byte/item placeholder; the explicit
+startup observation now records the full continuation charge. Run
+`4e34c00d-add7-4060-88fb-be6989c8df22` passed 222 of 223 tests and exposed that stale expectation;
+the fixture formula now includes the continuation's struct and five semantic items for its
+before-first-object prior position, preserving exact-fit and one-under checks.
+
+Independent resource review accepted this boundary. Final LLVM, one-job, nonincremental,
+debug-zero nextest run `3888c235-a702-49de-8964-6895ca653c26` passed all 223 tests across
+`range_widget`, `exact_geometry` and `prepublication`, with no skips, in 20.297 seconds.
+
 ## Mapped GPUI Remaining Capacity
 
 On 2026-09-28, observed preparation stopped deriving the GPUI allowance by subtracting raw
