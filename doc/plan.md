@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 786: Carry Enclosing Ceilings Through Immutable Response Preparation (finished)
+# Phase 787: Retain Successor Identity With Admitted Geometry Responses (finished)
 
-Internal preparation now accepts enclosing byte/item ceilings through scan, publication and
-successor preparation, independently clamped to configured limits. Independent review accepted
-propagation and unchanged refusal custody; all 210 integration tests passed. Five broader unit
-failures reproduce on the unchanged baseline; see the [verification evidence](failures/prepublication-capacity.md#immutable-preparation-ceiling-verification).
+Admitted delivered and resident responses now reserve successor identities once. Preparation reads
+them without counter mutation; commit and teardown clear them with exact custody. Independent
+review accepted the boundary, and all 211 integration tests passed; see the
+[verification evidence](failures/prepublication-capacity.md#admitted-response-successor-identity).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -104,6 +104,8 @@ advancing. Operator approved the prepared-response correction, and phase 784 now
 and resident responses through preparation and commit. Phase 785 retains admitted response state
 and exact waiting identity independently of unprocessed delivery, and current-capacity refusal
 retries without re-admission. Phase 786 supplies internal enclosing-ceiling preparation entry points.
+Phase 787 retains successor identities once per admitted response so preparation retries cannot
+advance the identity counter.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
@@ -117,7 +119,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–786 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–787 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission

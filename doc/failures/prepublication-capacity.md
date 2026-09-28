@@ -140,3 +140,21 @@ in baseline run `029ff07b-a1a5-422d-8771-0dbb7f7bead9`:
 
 Do not treat those baseline failures as a green full unit suite or infer their remedy from assertion
 text. Reconcile each against current authority before changing expectations or production behavior.
+
+## Admitted Response Successor Identity
+
+Preparation previously allocated three successor identities on every attempt. Before enabling host
+preparation retries, those identities now enter admitted response custody once for all four delivered
+and resident text/object paths. Preparation reads them immutably. A checked complete reservation
+precedes counter mutation, and commit, cancellation or terminal failure clears the retained state.
+The larger inline state is covered by the existing session-size ownership charge.
+
+Independent lifecycle/resource review accepted this boundary. Focused integration run
+`88acb3fd-1b12-42f7-85ab-83daafeb3be3` passed both admitted-response tests; full run
+`f026b0aa-b017-4ca0-beb1-f1ae15e4a9eb` passed all 211 integration tests in 21.611 seconds,
+zero skipped. Tests verify stable identities across repeated byte/item current-capacity denial,
+fresh subsequent reservations, resident and delivered progress to Ready, cleared reservations after
+commit/cancellation/collision, and exact cleanup. Overflow atomicity was verified by inspection.
+These tests do not yet exercise typed preparation retries: session budget derivation, shared
+presentation accounting and typed refusal attribution remain outstanding. The earlier five baseline
+unit failures were neither rerun nor changed by this boundary.
