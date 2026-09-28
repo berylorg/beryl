@@ -130,6 +130,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   ticket names the fresh selection; old tickets cannot release it. Failure returns the original
   retirement facts intact. This creates no durable records and does not publish services, attach
   the widget or establish whole-session recovery readiness.
+- Recovery service reconstruction takes its home reference from the same private recovery
+  candidate used to reconstruct the retired slot. It installs the fresh exact close ticket in
+  the service gate before returning the service. Candidate-access or slot-validation failure
+  returns the original retirement facts; success leaves ordinary interaction fenced and starts
+  no native-lineage worker. Construction performs no writes and neither attaches the resident
+  widget nor publishes the replacement graph.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and

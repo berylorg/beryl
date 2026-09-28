@@ -51,6 +51,8 @@ mod recovery_submission_worker;
 mod release;
 #[path = "resident_close_flush/retirement.rs"]
 mod retirement;
+#[path = "resident_close_flush/service_rebinding.rs"]
+mod service_rebinding;
 #[path = "resident_close_flush/service_retirement.rs"]
 mod service_retirement;
 #[path = "resident_close_flush/shutdown.rs"]

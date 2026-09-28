@@ -8,6 +8,23 @@ use std::sync::TryLockError;
 
 impl MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
+    pub fn test_begin_window_close_flush(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+    ) -> Result<Option<ComposerHostFlushAdmission>, String> {
+        self.begin_window_close_flush(ticket)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_release_window_close_gate(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        flush: Option<ComposerHostFlushTicket>,
+    ) -> Result<Option<bool>, String> {
+        self.release_window_close_gate(ticket, flush)
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_with_close_slot_locked<T>(&self, action: impl FnOnce() -> T) -> T {
         let _slot = self.slot.lock().unwrap();
         action()

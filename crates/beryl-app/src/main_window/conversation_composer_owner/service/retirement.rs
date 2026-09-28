@@ -5,6 +5,28 @@ use crate::main_window::{
 };
 
 impl MainWindowConversationComposerService {
+    pub fn rebind_candidate(
+        candidate: &mut beryl_home_store::HomeRecoveryCandidate,
+        retired: MainWindowComposerRetiredClose,
+        storage: syndic_storage::SyndicStorage,
+        state: &beryl_state::BerylState,
+    ) -> Result<
+        (Self, MainWindowConversationComposerCloseTicket),
+        (MainWindowComposerRetiredClose, String),
+    > {
+        let store = candidate.service_reference();
+        let access = match candidate.recovery_access() {
+            Ok(access) => access,
+            Err(error) => return Err((retired, error.to_string())),
+        };
+        let (slot, close) = retired
+            .rebind_candidate(&access, storage, state)
+            .map_err(|(retired, error)| (retired, error.to_string()))?;
+        let mut service = Self::new(store, *slot);
+        service.window_close = Mutex::new(Some(close));
+        Ok((service, close))
+    }
+
     pub fn retire_clean_window_close(
         mut self: Arc<Self>,
         close: MainWindowConversationComposerCloseTicket,

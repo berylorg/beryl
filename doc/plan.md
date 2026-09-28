@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 737: Reconstruct Retired Composer Slots With Fresh Bindings (finished)
+# Phase 738: Reconstruct Fenced Composer Services From Recovery Candidates (finished)
 
-Retired slots now reconstruct only after fresh window, paired Active claim, asset and saved-host
-validation. Refusal preserves retirement facts; success preserves the activation counter and
-installs fresh fenced bindings without writes. All 46 resident-close tests passed; independent
-lifecycle/persistence review found no blockers. Service and widget attachment remain separate.
+Recovery service reconstruction obtains its home reference from the same candidate used for slot
+validation and installs the fresh close gate before returning. Refusal retains retirement facts;
+success writes nothing and stays fenced through publication. All 48 resident-close tests passed;
+independent lifecycle/persistence review found no blockers. Widget attachment remains separate.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
@@ -124,6 +124,7 @@ qualification; phase 732 supplies fresh candidate checkpoint observation, and ph
 that observation to the retained clean-host facts. Phase 735 supplies consuming host reconstruction;
 phase 736 supplies fresh candidate paired-claim observation for the remaining slot reconstruction.
 Phase 737 supplies consuming slot reconstruction with fresh exact claims and fenced bindings.
+Phase 738 supplies service reconstruction with the same candidate reference and fresh close gate.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
