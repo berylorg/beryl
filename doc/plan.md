@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 754: Admit Terminal Index Checkpoint Staging Before Allocation (finished)
+# Phase 755: Admit Prepared Successor Requests Before Allocation (finished)
 
-Terminal prepared-index checkpoint queue and vector storage are admitted before allocation,
-including the incoming queue record and coexisting staging backing. Independent resource review
-accepted the change; all 187 geometry, prepublication and range-widget tests passed.
+Prepared successor requests validate without allocation and admit their modeled byte/item charge
+before boxing, preserving current geometry and exact refusal custody. Independent resource review
+accepted the boundary; all 187 geometry, prepublication and range-widget tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,8 +105,9 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–754 supply scanner text, continuation, output, checkpoint growth, index startup,
-active prepared response destination admission and terminal index checkpoint staging admission.
+Phases 748–755 supply scanner text, continuation, output, checkpoint growth, index startup,
+active prepared response destination, terminal index checkpoint staging and prepared successor
+request admission.
 Remaining work includes target startup and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
