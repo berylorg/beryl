@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 765: Admit Terminal Prepared Release Collection Growth (finished)
+# Phase 766: Admit Prepared Target Publication Array Staging (finished)
 
-Terminal prepared target/index cleanup-key growth now checks old/new backing overlap and prepared
-publication custody before exact reservation. Independent resource review accepted refusal and peak
-propagation. All 188 regression cases passed across the suite and corrected exact-peak test rerun.
+Terminal target fragment and object-presentation arrays now admit staging and immutable backing
+overlap before allocation, rechecking actual capacity while preserving shared payload accounting.
+Independent resource review accepted refusal and peak propagation; all 188 regression cases passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,13 +105,14 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–765 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–766 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
 and prepared index startup admission with enclosing peak evidence. Target-origin preparation no
 longer allocates a temporary checkpoint queue; prepared desired targets check capacity before boxing.
 Terminal prepared publication cleanup-key growth now admits replacement backing before reservation.
+Terminal target immutable-array preparation now admits staging and conversion overlap.
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation. Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
