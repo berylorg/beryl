@@ -1219,3 +1219,50 @@ preserved-adoption boundary, and has not been implemented or accepted by this au
 Verification is focused source and authority inspection plus independent review; runtime source is
 unchanged, so no tests were rerun. No exact universal environment-charge API or new memory-governor
 contract is warranted. Transfer coexistence and overall preparation closure remain pending.
+## Candidate Transfer Coexistence
+
+Phase 829 / widget 84 audits the transfer after surface preparation at widget `779c48d`
+(runtime unchanged from `041b9eb`). Existing component gates cover this bounded path; no additional
+allocation or growing intermediate owner was found between admission and Ready publication.
+
+`session/candidate.rs::finish_candidate` admits current session ownership plus the retained
+prepared surface and both transfer vectors' actual capacities before transfer. It then checks
+projected candidate, remaining origin, Ready and adoption charges before taking any resident page,
+geometry target or custody vector. Configured refusal remains terminal; host refusal completes
+only the temporary reserved candidate cleanup record and retains the original session ownership.
+
+The transfer proof is local to the current synchronous implementation:
+
+- `candidate/transfer.rs::prepare` reserves destinations for the exact resident page counts and
+  admits requested and actual capacities before returning. Text and object
+  `take_resident_pages_into` pop their existing deques into those sufficient vectors. There is no
+  callback, yield or intervening residency change. Pushes cannot grow the destinations; page
+  payload ownership moves without cloning.
+- Both old residency deques retain their backing. Before transfer, owner storage charges vacant
+  slots and resident payload charges include occupied page records. The preparation charge also
+  contains the complete destination capacity. Moving a page changes which slot is occupied but
+  does not create another buffer or payload. `candidate_origin_charge` adds the vacated resident
+  slots to the post-transfer origin projection; candidate surface charge retains unused transfer
+  capacity. Neither leftover backing is discarded from final accounting.
+- `ExactGeometryOwner::take_target` unboxes the target without copying its backing.
+  `CoherentRangeSurface::commit_prepared` moves prepared fields, resident vectors and target.
+  Remaining geometry and both custody vectors move into the candidate; there is no deep clone,
+  new boxed collection, shaping, request creation or other variable-size allocation in this cut.
+- `cleanup.rs::promote_candidate` validates the reserved record and resident records before
+  changing any ownership under one lock. Its cloned iterator is a borrowed iterator chain, not a
+  collected token vector. Promotion changes the existing slots. A failed validation leaves those
+  slots session-owned; the service failure path marks them cleanup-ready and releases custody.
+  Successful promotion has no later fallible allocation or callback before Ready publication.
+
+This proof covers owned growing buffers and the explicit owner charges, not compiler stack-move
+copies, allocator metadata or a global RSS theorem. Changing the synchronous transfer or adding
+allocation, callbacks, batching or cloning requires reopening the proof.
+
+Existing evidence remains applicable without rerunning unchanged code: phase 822 compares origin
+projection with the actual post-transfer session before cleanup drain and exercises byte/item
+one-under refusal, unchanged retries and exact-capacity continuation; phase 821 qualifies projected
+remaining geometry against target removal. The one-under test can block at an earlier preparation
+observation; it does not directly force final transfer, Ready or adoption-gate refusal. Those probes
+do not instrument every intermediate allocation. Focused source inspection and independent resource
+review supply that bounded transfer proof. Overall phase 747, old baseline test reconciliation and preserved-resident integration remain
+separate acceptance boundaries.

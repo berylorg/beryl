@@ -75,12 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 828: Qualify Shared Environment Accounting (finished)
+# Phase 829: Qualify Candidate Transfer Coexistence (finished)
 
-Source and independent resource review confirm that pre-existing environment and finite shared
-pools remain separately bounded; session/candidate admission charges their occupied custody.
-Full-pool and per-record charges overlap and must not be blindly added in combined adoption.
-No runtime change or new accounting API is required. Transfer coexistence remains pending. See [evidence](failures/prepublication-capacity.md#shared-environment-accounting-boundary).
+Source and independent resource review confirm the existing preparation and final-owner gates
+cover synchronous transfer through Ready. Buffers and payloads move without growth; origin
+charges retain vacant residency backing and cleanup promotion reuses existing slots.
+No runtime changes or test reruns were needed. Overall preparation acceptance and baseline
+test reconciliation remain pending. See [evidence](failures/prepublication-capacity.md#candidate-transfer-coexistence).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -147,9 +148,10 @@ See the [failure note](failures/prepublication-capacity.md#direct-response-ceili
 
 Phase 824 removes the candidate configuration deep clone and qualifies shared placeholder backing.
 Phases 821–822 admit candidate, Ready and adoption storage before custody transfer. Immutable
-geometry and remaining-session projections are checked against actual transfer; overall preparation
-closure still requires a bounded audit, including startup/environment ownership before preparation
-and transfer coexistence. Phase 823 proves buffered effects cannot coexist with candidate preparation
+geometry and remaining-session projections are checked against actual transfer. Phases 825–827
+admit startup configuration, custody, geometry and residency; phases 828–829 qualify shared
+environment ownership and synchronous transfer coexistence. Overall preparation closure and the
+five older baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
 under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
