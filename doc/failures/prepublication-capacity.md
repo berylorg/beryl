@@ -1041,3 +1041,24 @@ The added active/deferred projection assertion passed in focused run
 passed. Independent semantic/resource review found no blockers. Live-session refusal at this exact
 candidate boundary is source-reviewed, not directly exercised; no additional test was required for
 this bounded move. Ready/adoption coexistence remains pending; this does not accept overall phase747.
+## Ready And Adoption Admission Before Transfer
+
+Phase 822 / widget 77 shares session shell accounting between current ownership and the immutable
+post-candidate projection. The projection adds newly vacant resident-buffer slots and excludes only
+cleanup records promoted with the candidate; moved geometry, resident payload and custody storage
+are charged through the candidate. Ready and adoption charges are checked and observed before any
+page/target/cleanup transfer, with configured failure before host refusal. Host refusal completes the
+temporary cleanup reservation and retains retryable ownership. Successful candidate fields receive
+those admitted charges directly. Candidate Debug includes content-free origin-session charge.
+
+The common integration driver compares projected origin with actual ownership immediately after
+taking the candidate. Initial run `529380c4-6a15-49f8-a76f-4ca326503c69` passed 244/247: three new
+assertions incorrectly compared against ownership after cleanup draining (416-byte record multiples).
+Moving the assertion before the drain compares the same ownership moment; no production workaround
+was needed. Final run `869d3c69-2f31-47e4-9aeb-25b8147e41d1` passed 248/248, 0 skipped, 21.342s.
+The additional live test verifies one-byte/item shortfalls, repeated refusal preserving ownership
+and cleanup counts, exact-capacity resumption and complete release. It may refuse at an earlier
+preparation gate; exact Ready/adoption host refusal and configured precedence remain source-reviewed.
+Default-feature check passed after the final Debug addition in 3.36s; formatting/diff checks passed.
+Independent semantic/resource review found no blockers. This accepts transition admission only;
+placeholder timing and enclosing effect/transition coexistence still need overall preparation audit.

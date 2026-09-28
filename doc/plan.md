@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 821: Admit Candidate Ownership Before Transfer (finished)
+# Phase 822: Admit Ready And Adoption Ownership Before Transfer (finished)
 
-Candidate storage is derived immutably and admitted against configured and host capacity before
-page, target or cleanup custody moves. Geometry projection tests cover terminal removal and active
-shared presentation custody. All 247 integration tests, the added focused assertion, default-feature
-compilation and independent review passed. Exact live-session candidate refusal is source-reviewed.
-Ready/adoption coexistence and overall preparation acceptance remain pending.
+Ready and adoption charges now include the projected remaining session and are admitted before
+custody moves. Projection equality is checked against actual ownership before cleanup draining.
+All 248 integration tests, default-feature compilation and independent semantic/resource review
+passed. Tight byte/item tests verify retry, but may refuse earlier; exact transition refusal is
+source-reviewed. Overall preparation acceptance and preserved-resident adoption remain pending.
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -144,6 +144,11 @@ Phase 812 derives the session budget, accounts shared presentation ownership onc
 retryable refusals through the admitted state. Configured failures remain terminal; do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
 See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
+
+Phases 821–822 admit candidate, Ready and adoption storage before custody transfer. Immutable
+geometry and remaining-session projections are checked against actual transfer; overall preparation
+closure still requires a bounded audit, including placeholder ownership before surface preparation
+and enclosing effect/transition coexistence. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
 including resident-response paths, prepared surface allocations, candidate/ready ownership and
