@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 778: Account Composite Continuations Before Layout (finished)
+# Phase 779: Bound Direct Geometry Response Admission (finished)
 
-Initial and checkpoint-restored scanners now count exact composite continuation witnesses.
-Pristine origin specialization admits witness growth before mutation; returned-layout reservation
-shares the calculation. Independent resource review accepted the boundary and all 196 geometry,
-widget and prepublication tests passed. Host-budget propagation remains pending.
+Text and object response admission now accept per-call byte/item ceilings, independently clamped
+to configured limits through context, scan and publication. Identity handling and terminal cleanup
+remain intact. Independent resource review accepted the boundary; all 200 geometry, widget and
+prepublication tests passed. Host budget derivation and prepared paths remain pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–778 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–779 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -126,6 +126,8 @@ Inline presentation style-run backing now passes admission before cloning and al
 Deferred-object caller custody now remains charged through inline admission; see the
 [capacity evidence](failures/prepublication-capacity.md).
 Returned GPUI custody now receives a per-call ceiling before invocation.
+Direct text and object response admission now accept enclosing byte/item ceilings without changing
+configured limits; session derivation and peak propagation remain required before host use.
 Remaining work includes host-budget propagation through prepared target transitions,
 prepared-publication collections, and surface preparation.
 Carry prepared transition peak evidence
