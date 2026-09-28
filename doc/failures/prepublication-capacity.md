@@ -921,3 +921,22 @@ Default-feature prepublication check passed in 3.16 seconds; scoped rustfmt and 
 Independent semantic/resource review found no blockers. Allocator overreservation, live-session
 map-refusal cleanup and per-variant map extraction are source-reviewed rather than directly
 fault-injected by the new helper tests. No manifests or canonical pins changed.
+## Candidate Realized Geometry Buffer Admission
+
+Root phase 816 / widget phase 71 admits combined realized-object and object-gap vector storage
+before either allocation, actual object capacity before allocating gaps, and both actual capacities
+before filling. The enclosing baseline includes retained session/cleanup, transfer buffers, prepared
+surface record, page ordering and map capacity. Nonempty or undersized input buffers are rejected by
+surface construction rather than allowing implicit growth. Existing object identity, presentation,
+ordered-gap and geometry validation remains in the realization path. Host refusal observes peaks,
+releases temporary cleanup and preserves resident/geometry custody; configured refusal, allocation
+failure and arithmetic remain terminal. Ordinary mounted publication keeps its existing late guard.
+
+The two focused tests cover empty, object-only, gap-only and combined buffers, exact fit, repeated
+byte/item one-under refusal, restored availability, configured precedence, count multiplication and
+separate enclosing byte/item overflow. Initial focused run `223946b6-40f9-4c84-8ae6-9953accdb3f3`
+passed 2 tests. Final full run `f73ac333-cdcc-42a2-bbae-f0897e20d57f` passed all 240 tests in 21.754s.
+The default-feature prepublication check passed in 3.30s; scoped formatting and diff checks passed.
+Independent semantic/resource review found no blocker. Allocator overreservation, live-session
+buffer-refusal cleanup and count/fill equivalence were source-reviewed rather than fault-injected.
+Selection/composition collections, boxed conversions and publication transitions remain pending.

@@ -75,6 +75,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
+# Phase 816: Admit Realized Geometry Buffers (finished)
+
+Combined object/gap storage now admits requested and actual capacities before filling, with
+transfer, page-order and map storage retained in the baseline. Retry keeps resident/geometry
+custody and releases temporary cleanup. All 240 integration tests, default-feature compilation
+and independent semantic/resource review passed. Remaining collections, conversions and
+publication transitions stay pending; see the Beryl capacity evidence note.
+
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -89,13 +97,6 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 815: Admit Candidate Fragment Map Collection (finished)
-
-Owned fragment maps now admit requested and actual capacity with retained page ordering included.
-Adjacent-position deduplication and object-gap identity remain unchanged. Host refusal preserves
-resident/geometry custody and releases temporary cleanup. The 237-test suite, all three final
-focused cases, default-feature check and independent semantic/resource review passed. Remaining
-geometry collections and transitions stay pending; see the Beryl capacity evidence note.
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;
