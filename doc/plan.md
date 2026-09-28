@@ -89,18 +89,25 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 747: Enforce Capacity Throughout Prepublication Preparation (finished)
+# Phase 841: Protect A Quiescent Resident During Adoption Preparation (finished)
 
-Independent whole-path resource/lifecycle review accepted widget ec903ed from startup through
-fresh adoption and cleanup. All 294 integration and 115 unit tests plus default-feature checks
-pass. [Acceptance evidence](failures/prepublication-capacity.md#overall-preparation-capacity-acceptance)
-records source-review and accounting limits. Preserved resident adoption remains unimplemented.
+Accepted protected resident admission, callback suppression, environment invalidation and exact
+release without enabling input. All 295 integration and 120 unit tests plus default-feature checks
+pass; independent lifecycle/resource review accepted the corrected boundary.
+[Evidence](failures/resident-protection.md) records stale-settlement and pending-selection fixes.
+Combined reservation and final adoption remain pending.
+
+# Phase 842: Reserve Combined Resident Adoption Capacity (pending)
+
+Measure protected predecessor ownership and admit ordinary successor preparation under one finite
+combined byte/item envelope before source effects. Verify exact fit, shortage, cancellation and
+cleanup without evicting predecessor paint; independently review reservation ownership.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
 Implement the owned widget's checked preserved-resident adoption contract using its ordinary
-prepublication and staged-publication machinery. Include the protected quiescent cut, exact
-predecessor/successor admission and finite combined capacity reservation before realization, using
+prepublication and staged-publication machinery. Consume the protected cut from phase 841 and
+combined reservation from phase 842, with exact predecessor/successor admission, using
 the session ceiling from phase 746 and complete preparation accounting from phase 747. Keep
 the old paint, entity, focus handle and subscriptions intact until atomic coherent adoption;
 refusal retains no pending adoption intent. Preserve the fence after success and drain exact
