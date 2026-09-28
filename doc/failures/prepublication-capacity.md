@@ -1,5 +1,31 @@
 # Prepublication Capacity
 
+## Shared Display Credit At Deferred Tail Creation
+
+On 2026-09-28, enclosing response preparation began crediting the new deferred tail's display at
+pre-allocation and immediate retention observations. The borrowed object page remains in the raw
+baseline and its display is shared by `clone_for_geometry`. The scanner uses one helper for both
+observations. Configured and geometry-relative charges remain raw; fallback copies, all records and
+items remain fully charged. Direct admission supplies no credit. No persistent state or allocation
+registry was added. Detached custody, GPUI output and publication remain separate unfinished credits.
+
+The feature probe isolates this production helper after preparing a continuation under configured
+limits. Index/target fixtures cover empty and multibyte displays, exact fit and one-under byte/item
+ceilings, identity geometry limits, current charge below/above the baseline, overflow without host
+attribution, retries, empty failure releases and unchanged original owners. Whole-response enclosing
+fixtures also exercise the production selector and verify shared backing and unchanged raw peaks.
+The tight probe does not establish a fully credited whole-response peak: later zero-credit
+observations can still dominate. Configured precedence remains covered compositionally by the
+existing observer/response tests and inspected common admission path, not a new tight-configured
+deferred-tail fixture.
+
+Initial nextest run `019374c9-3955-4f06-b7c2-94f53661cbe8` passed 226/226 in 20.545 seconds.
+After adding the whole-response enclosing fixtures, final LLVM, one-job, nonincremental, debug-zero
+run `7b00e205-fb2e-47d4-b04a-53b1966338b1` passed all 226 integration tests across `range_widget`,
+`exact_geometry` and `prepublication`, no skips, in 20.388 seconds. Independent resource review
+accepted backing custody, boundary-local credit, full configured accounting and unchanged-owner
+failure/retry behavior. No source or tests changed after the final successful run.
+
 ## Deferred Display Credit At Continuation Copy
 
 On 2026-09-28, text and object preparation gained one shared continuation-copy boundary that

@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 802: Credit Shared Deferred Display During Response Continuation Copy (finished)
+# Phase 803: Credit Shared Deferred Tail Creation (finished)
 
-Both response paths now credit proven shared deferred display bytes at pre-copy admission and
-immediate coexistence, preserving full configured charges. All 226 integration tests passed and
-independent resource review accepted the boundary. See
-[evidence](failures/prepublication-capacity.md#deferred-display-credit-at-continuation-copy).
+Enclosing preparation now credits the borrowed page's shared display during deferred-tail creation,
+before allocation and immediately after retention. Configured charges remain full. All 226 integration
+tests passed and independent resource review accepted the boundary; see
+[evidence](failures/prepublication-capacity.md#shared-display-credit-at-deferred-tail-creation).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -128,7 +128,9 @@ avoid crediting duplicate returned/retained handles whose payload is charged onl
 Phase 801 connects actual response preparation to typed enclosing current charge and limit, with
 the raw baseline derived from owner and borrowed inputs. Ordinary callers still use identity
 ceilings; shared credits and session accounting/routing remain pending.
-Phase 802 credits shared deferred display only at continuation pre-copy and immediate coexistence; later scanner and publication observations still require ownership-specific credits.
+Phase 802 credits shared deferred display at continuation pre-copy and immediate coexistence.
+Phase 803 credits the newly deferred tail at pre-allocation and immediate retention; detached,
+GPUI-output and publication observations still require ownership-specific credits.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
