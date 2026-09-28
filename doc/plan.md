@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 810: Credit Shared Output Through Terminal Target Publication (finished)
+# Phase 811: Qualify Terminal Index Publication Ownership (finished)
 
-Terminal target publication carries candidate-only display credit through array conversion and
-cleanup admission without discounting original payload again. The regression failed before the
-fix; all 229 integration tests passed afterward. Independent review found no blockers. See
-[evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
+Terminal index and nested target publication require zero incremental display credit; source review
+and a whole-response regression qualify both nested outcomes without a production change. All 230
+integration tests passed, and independent review found no blockers. See
+[evidence](failures/prepublication-capacity.md#terminal-index-publication-has-no-retained-display-credit).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -138,7 +138,8 @@ responses cannot retain deferred custody; they need no deferred-display credit.
 Phase 808 credits complete object pages through nonterminal forward-text publication.
 Phase 809 credits source finalization and terminal checkpoint admission, restoring the counter
 before terminal publication. Phase 810 carries candidate-only credit through terminal target
-publication. Terminal index/nested publication still needs its ownership mapping.
+publication. Phase 811 qualifies zero incremental credit for terminal index and nested target
+publication; index output is discarded and nested targets start without display payload.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

@@ -776,3 +776,35 @@ Independent semantic/resource review found no blocking issues. It traced direct/
 public text-request guards, scanner origin/checkpoint constructors, terminal successor creation and
 failure cleanup. No alternate text path retains deferred custody. No source or test changes followed
 the successful full run. Root phase 807 and widget phase 62 remove the obsolete credit obligation.
+
+## Terminal Index Publication Has No Retained Display Credit
+
+Terminal index publication does not need the retained-output credit introduced for targets.
+`scan::output::admit_layout` retains fragments only for target jobs; index output remains charged
+while returned custody exists, then drops that custody and restores its transient credit. Complete
+object responses consume deferred custody before publication. Index checkpoint arrays carry no
+presentation payload. Nested target preparation either uses `Scanner::from_checkpoint` with empty
+output/deferred state or creates an empty terminal publication. The existing observer moves into
+nested preparation and returns before error mapping and cleanup admission. These boundaries have
+zero incremental shared display to deduct; original owner and borrowed inputs remain in the baseline.
+No production change or additional credit plumbing is required.
+
+The integration regression `terminal_index_publication_has_no_retained_display_credit` exercises
+whole response preparation for initial and prior-deferred index responses, empty and multibyte
+presentation display, resident and delivered admission, and active versus immediately complete
+nested targets. It compares raw preparation peaks with checked baseline mapping at zero and elevated
+current charges, then verifies exact fit twice, byte/item one-under refusal, empty failure release,
+unchanged owner counts and successful retry. Earlier scanner output still receives its scoped credit;
+the fixture's terminal peak has zero credit. Its raw peak comes from production accounting, not an
+independent allocation oracle. The test preserves attribution for ambiguous GPUI Total failures.
+
+Focused run `576d9fd1-d04c-4403-9e14-dbe4244d1f16` passed. Full LLVM, one-job, nonincremental,
+debug-zero run `ada5c0e7-8600-400c-aa2e-5e29587e5ac8` passed all 230 integration tests across
+`range_widget`, `exact_geometry` and `prepublication`, zero skipped, in 20.877 seconds. Formatting
+and scoped whitespace checks passed. No source or test changes followed the full run. The earlier
+five baseline unit failures were not rerun or changed. Session budget derivation and retry routing
+remain the next integration boundary; this proof does not accept whole-session host admission.
+
+Independent semantic/resource review found no blocking findings after tracing discarded output,
+checkpoint content, nested constructors, observer restoration and cleanup admission. Root phase 811
+and widget phase 66 accept this no-production-change qualification.
