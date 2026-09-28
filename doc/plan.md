@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 792: Qualify Shared Presentation Preparation Peaks (finished)
+# Phase 793: Separate Preparation Capacity Observations (finished)
 
-Independent resource review accepted the source-level accounting map, including prospective display
-credit before metadata and the separate GPUI continuation-only startup check. No production code
-changed. The [evidence and verification obligations](failures/prepublication-capacity.md#shared-presentation-preparation-peak-map)
-guide the remaining implementation; phase 747 is not accepted.
+Immutable preparation now checks configured/enclosing observations independently and retains
+separate peaks; current production charges remain identical. Independent review accepted the
+bounded refactor and all 214 integration tests passed. See the
+[evidence and remaining constraints](failures/prepublication-capacity.md#separate-preparation-capacity-observations).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -114,6 +114,9 @@ separate configured/enclosing observations before session routing; GPUI continua
 not receive prospective display credit that belongs only to returned inline output. Carry credit
 through pre-copy, detached, returned-output-before-metadata and publication boundaries, and record
 enclosing high water per observation rather than subtracting a final credit from a raw peak.
+Phase 793 supplies the independent observer with identical production inputs. Before applying
+credits, replace nested aggregate raw-peak import with actual observations for both views and
+propagate enclosing peaks to the session; separate internal peaks alone do not complete admission.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

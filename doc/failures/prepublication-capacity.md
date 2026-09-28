@@ -1,5 +1,28 @@
 # Prepublication Capacity
 
+## Separate Preparation Capacity Observations
+
+On 2026-09-28, immutable preparation admission began using `CapacityObservations` in the widget
+fork's `src/range_geometry/exact/capacity_observation.rs`. Each observation independently checks
+configured and enclosing byte/item limits and retains each view's high-water marks. A simultaneous
+failure gives configured refusal precedence. Arithmetic failure and GPUI errors remain unattributed.
+
+Production callers currently supply identical raw charges to both views; their decisions remain
+equivalent to the previous minimum ceilings. Positive remaining-capacity reservations and nested
+successor admission still enforce those minima. The nested publication path imports aggregate raw
+peaks into both views, clears any classification from that aggregate, and replays only exact nested
+refusal evidence. This is valid only while the two views are identical: sharing propagation must
+replace this import with each view's actual observations. Separate internal peaks do not yet supply
+host-session peak reporting, session budget derivation, sharing credits, or retry routing.
+
+The integration probe qualifies differing observations, noncoincident high-water marks, exact and
+one-under byte/item limits, mixed-limit configured precedence, zero and maximum representable
+counts, and clearing refusal after successful admission. Existing preparation tests continue to
+cover positive reservations, arithmetic failure, immutable retry and cleanup. Independent resource
+review found no scoped blocker. LLVM, one-job, nonincremental, debug-zero nextest run
+`84265f82-ee61-4e75-95fa-8385c8259c8a` passed all 214 tests across `range_widget`, `exact_geometry`
+and `prepublication`, with no skips, in 20.151 seconds. No GPUI API or dependency pin changed.
+
 ## Shared Presentation Preparation Peak Map
 
 On 2026-09-28, source inspection qualified why the existing final-retained overlap query cannot
