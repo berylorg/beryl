@@ -89,11 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 756: Admit Terminal Index Storage Before Allocation (finished)
+# Phase 757: Admit Terminal Target Startup Before Allocation (finished)
 
-Terminal index preparation admits checkpoint conversion overlap and index storage before allocation.
-Independent resource review accepted the boundary; all 187 geometry, prepublication and range-widget
-tests passed. Current geometry remains intact on refusal.
+Terminal target startup admits coexistence before constructing shared arrays and boxed publication.
+Independent review accepted allocation/refusal ordering and accounting. All 187 existing geometry,
+prepublication and range-widget tests passed; the corrected terminal-start regression passed
+separately, covering empty/nonempty sources and replacement of a prior target.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,10 +106,10 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–756 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–757 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
-request admission and terminal index storage admission.
-Remaining work includes target startup and prepared-publication collections,
+request admission, terminal index storage admission and terminal target startup admission.
+Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
 limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
