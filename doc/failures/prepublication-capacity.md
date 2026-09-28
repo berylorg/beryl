@@ -1361,3 +1361,22 @@ Focused run `b33cc085-6264-4506-9de8-a7ae9cd43b5d` passed (one passed, 114 skipp
 The priority module excluding the separately known successive-edit fixture passed six tests
 in run `e6d6419d-4321-4a76-9617-2de0604d85e4` (109 skipped, 0.919 seconds).
 Independent review accepted the scheduling interpretation. The successive-edit fixture and overall preparation remain open.
+
+## Successive Edit Object Ownership Fixture Reconciliation
+
+The after-end-object successive-edit fixture compared the resident-object ownership diagnostic
+to one semantic object. That diagnostic sums retained object-vector allocation slots, as required
+by the package page-capacity contract. Its bounded object-page helper collects a filtered vector;
+the current allocation retains four slots for the one initialized fact. Spare slots remain charged
+and do not imply four semantic objects.
+
+The test now counts initialized facts in the coherent surface's object pages. It still requires
+exact after-object caret/selection identity and successful subsequent inline-object insertion.
+The insertion path obtains an exact source-position proof from the retained text and object pages
+before starting the mutation, so the original proof-retention behavior remains exercised. No
+production accounting, capacity limit or fixture allocation strategy changed.
+
+Full unit run `a269a326-08a1-4591-8672-11104d65d6c6` passed all 115 tests, zero skipped,
+in 16.910 seconds. All five baseline unit failures are now reconciled; this is not overall
+prepublication preparation acceptance. Independent review accepted the correction. This fixture
+qualifies insertion admission, not host settlement or final publication of the new object.
