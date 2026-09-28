@@ -1482,3 +1482,25 @@ An attempted small-fixture global-ceiling test was rejected during environment c
 its limit was below the initial widget-owner minimum; it was replaced by the supported local
 residency failure case and is not reported as global-ceiling test coverage. Delivered-object proof
 and residency allocation remain unresolved overall checkpoints.
+## Delivered Object Residency Preparation Gap
+
+Independent overall review after widget `1edd408` confirms that delivered-object consumption still
+checks only response coexistence before taking waiting/response custody. It then allocates anchor
+proofs through RangeResidency::prove_object_page_anchors and calls ObjectResidency::prepare_admit,
+which allocates disposition and replacement-deque storage without enclosing admission. Later
+immutable geometry preparation cannot admit an allocation that already happened.
+
+A concrete item counterexample uses at least three resident-page slots, one-object request capacity
+and three successive empty object responses for distinct text windows. At the third admission,
+two resident pages require two disposition slots and the destination needs at least three slots.
+The pending object reservation covers only max_objects+1=2 items. Even crediting all of that
+reservation leaves at least three unadmitted items; the old deque remains live and is already in
+current ownership. This counterexample does not rely on allocator overreservation. Nonempty pages
+also grow the scalar-boundary proof vector before object residency preparation.
+
+Root 838 / widget 93 owns admission of this complete delivered-object preparation boundary,
+including proof/storage coexistence, requested and actual capacities, configured precedence and
+exact retry custody. Exercise empty-page accumulation and nonempty deduplicated anchors, refusal,
+exact continuation and cleanup, then independently review before resuming overall acceptance.
+The finding is source-reviewed; no new dynamic reproduction is claimed. It requires no product
+scope or architectural policy change and does not invalidate the accepted text correction.

@@ -97,6 +97,18 @@ accepted the boundary, with 264 integration and 115 unit tests plus default-feat
 See [evidence](failures/prepublication-capacity.md#delivered-text-residency-preparation-gap).
 Overall 747 acceptance and delivered-object preparation review remain pending.
 
+# Phase 838: Admit Delivered Object Preparation (pending)
+
+Admit the complete delivered-object preparation peak before proof-vector and residency bookkeeping
+allocation, with requested and actual capacity checks. Borrow the response until preparation
+succeeds; preserve waiting identity, resident ownership and cleanup custody on enclosing refusal,
+retain configured failure precedence and observe attempted peaks. Include proof/residency storage
+coexistence and preserve deduplicated-anchor validation, reconciliation and eviction semantics.
+Verify accumulated empty object pages, nonempty anchors, byte/item one-under and exact capacity,
+repeated retry, successful continuation and drop cleanup. Independently review this boundary before
+returning to overall 747 acceptance. See
+[evidence](failures/prepublication-capacity.md#delivered-object-residency-preparation-gap).
+
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Complete overall acceptance of the bounded prepublication reservation before preserved resident
@@ -113,7 +125,7 @@ are corrected: retirement clears pages without transfer allocation, and initial 
 uses checked enclosing admission before mutation. Current widget passes 264 integration
 and 115 unit tests plus the default-feature prepublication check. Reconcile the complete source
 and evidence with an independent resource review; component acceptance alone is insufficient.
-Phase 837 corrects delivered-text residency bookkeeping admission. Recheck delivered-object anchor-proof and residency preparation before closure.
+Phase 837 corrects delivered-text residency bookkeeping admission. Overall review confirms missing delivered-object proof/residency admission; phase 838 owns that prerequisite.
 Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
 and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.
 
