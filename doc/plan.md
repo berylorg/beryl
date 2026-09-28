@@ -89,20 +89,29 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 741: Define Preserved Resident Widget Adoption (finished)
+# Phase 746: Admit An Initial Prepublication Capacity Ceiling (finished)
 
-The owned widget and app catalog/composer authorities now define exact preserved-resident adoption,
-fresh source/history correspondence, fenced progress, combined capacity and cleanup custody.
-Independent lifecycle/resource contract review found no blocking findings; implementation phases
-742–745 follow. This documentation-only acceptance makes no runtime claim. The
-[source evidence](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-attachment.md)
-remains qualification of the prior API boundary.
+The widget now accepts initial host byte/item admission capacity and clamps later availability to
+that ceiling. All 21 prepublication integration tests passed; independent resource review accepted
+the narrowed admission boundary. The [review correction](failures/prepublication-capacity.md)
+retains the separate preparation-peak obligation in phase 747 before combined resident use.
+
+# Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
+
+Propagate the admitted host budget through geometry scans and candidate preparation before growth,
+including resident-response paths, prepared surface allocations, candidate/ready ownership and
+transition peaks. Existing configured geometry limits and after-allocation checks do not prove
+the host ceiling. Derive remaining capacity without double charging transferred owners, retain
+exact cleanup on refusal, and verify tight byte/item budgets while actively progressing through
+geometry and candidate creation. Independently review resource peaks before phase 742 may rely
+on this session for combined resident reservation.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
 Implement the owned widget's checked preserved-resident adoption contract using its ordinary
 prepublication and staged-publication machinery. Include the protected quiescent cut, exact
-predecessor/successor admission and finite combined capacity reservation before realization. Keep
+predecessor/successor admission and finite combined capacity reservation before realization, using
+the session ceiling from phase 746 and complete preparation accounting from phase 747. Keep
 the old paint, entity, focus handle and subscriptions intact until atomic coherent adoption;
 refusal retains no pending adoption intent. Preserve the fence after success and drain exact
 cleanup custody after either outcome. Mirror this bounded execution scope in the sibling plan
