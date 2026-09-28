@@ -1584,3 +1584,26 @@ seconds. Together these establish 293 integration and 115 unit passes for the un
 code. Default-feature prepublication/exact_geometry/range_objects checks passed in 4.28 seconds.
 Independent review accepted the boundary. Nonallocation is source-proved, without allocator
 instrumentation; overall preparation review remains pending.
+
+## Adoption Configuration Storage Gap
+
+Independent overall review after widget e36d97b confirms a separate fresh-widget adoption owner
+omitted from its support charge. new_with_prepublication checks candidate.adoption_peak and then
+clones environment.config(). That derived clone allocates the oversize presentation runs vector.
+The transferred candidate geometry retains its own previously admitted style backing, so these
+are distinct owners during and after construction.
+
+adoption_widget_support_charge subtracts the entire initial geometry charge from
+initial_widget_owner_charge. The remaining terms cover the inline widget, requests, response
+custody, dispatch storage and residency owners, but no configuration run backing.
+realization_owner_charge covers the inline Vec header, not N*sizeof(TextRun) heap storage.
+This is the same variable-sized package-owned constituent corrected for earlier configuration
+clones, not excluded fixed control metadata or allocator/RSS overhead.
+
+Root 840 / widget 95 owns requested/actual adoption configuration admission and retained accounting,
+with independent run-length/spare-capacity expectations, exact fit, refusal and cleanup evidence.
+Existing adoption tests feed the candidate's reported peak back as the ceiling and therefore do
+not independently establish coverage of this omitted owner. The 293 integration and 115 unit
+passes remain valid but do not accept overall preparation. No architectural or product-policy
+change is required; review stopped at this concrete finding, leaving later adoption construction
+boundaries unqualified by that pass.

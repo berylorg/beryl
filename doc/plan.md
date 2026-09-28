@@ -96,6 +96,17 @@ reports. Public reporting APIs remain intact. Independent review accepted the co
 293 integration and 115 unit tests plus default-feature checks pass. Nonallocation is established
 by source inspection. See [evidence](failures/prepublication-capacity.md#nonallocating-teardown-correction).
 
+# Phase 840: Admit Adoption Configuration Storage (pending)
+
+Include the independently cloned configuration style-run backing in fresh-widget adoption support,
+with checked requested storage before cloning and actual capacity validation before owner transfer.
+Carry its retained charge through construction without duplicating the transferred geometry's
+existing style owner. Preserve configured/available refusal and candidate cleanup semantics.
+Verify run length independently of spare capacity, exact fit and byte/item refusal against an
+independent charge expectation, plus rejection drainage. Independently review this bounded
+prerequisite before resuming overall 747. See
+[evidence](failures/prepublication-capacity.md#adoption-configuration-storage-gap).
+
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Complete overall acceptance of the bounded prepublication reservation before preserved resident
@@ -108,7 +119,7 @@ this reservation under the bounded-resource system contract.
 
 Accepted components and invalidated approaches are retained in the
 [capacity evidence](failures/prepublication-capacity.md). Allocation-free retirement, initial-index
-admission and delivered text/object preparation close the latest review findings. The widget
+admission, delivered text/object preparation and nonallocating teardown are accepted. The widget
 passes 293 integration and 115 unit tests plus default-feature checks. Reconcile the complete
 source and evidence with independent resource review; component acceptance alone is insufficient.
 Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
