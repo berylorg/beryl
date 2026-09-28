@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 789: Attribute Explicit Preparation Capacity Refusals (finished)
+# Phase 790: Attribute Pre-Shaping Reservation Refusals (finished)
 
-Explicit preparation admission now distinguishes configured and enclosing-only refusal using
-exact rejected counts, including nested successor evidence. Unattributed errors retain their
-existing behavior. Independent review accepted the boundary; all 212 integration tests passed.
-See the [verification evidence](failures/prepublication-capacity.md#explicit-preparation-refusal-attribution).
+The pre-GPUI positive-remainder check now records required byte/item counts through explicit
+admission, preserving allowed ceilings and leaving overflow and GPUI failures unclassified.
+Independent review accepted the boundary; all 213 integration tests passed. See the
+[verification evidence](failures/prepublication-capacity.md#pre-shaping-reservation-refusal-attribution).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -107,7 +107,7 @@ retries without re-admission. Phase 786 supplies internal enclosing-ceiling prep
 Phase 787 retains successor identities once per admitted response so preparation retries cannot
 advance the identity counter.
 Phase 788 shares deferred presentation backing and includes it in retained overlap queries.
-Phase 789 attributes explicit preparation admission refusals without inferring GPUI error causes.
+Phases 789–790 attribute explicit preparation and pre-shaping reservation refusals without inferring GPUI error causes.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
@@ -121,7 +121,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–789 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–790 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission

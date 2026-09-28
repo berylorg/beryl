@@ -1,5 +1,30 @@
 # Prepublication Capacity
 
+## Pre-Shaping Reservation Refusal Attribution
+
+On 2026-09-28, the existing requirement for a positive byte and item remainder before GPUI
+binding construction was routed through explicit count admission. Checked occupied-plus-one counts
+now contribute to attempted peaks and configured/enclosing refusal attribution. Allowed remainders
+are unchanged. Arithmetic overflow remains unclassified; success clears refusal evidence before
+GPUI, whose ambiguous failures remain unclassified. This does not implement session retry routing,
+shared preparation credits or full preparation protection.
+
+The feature-gated probe exercises the production reservation helper for exact positive remainder,
+zero remainder, independent dimensions, mixed configured/enclosing precedence and overflow.
+Binding construction order and GPUI non-attribution are inspection evidence. The existing inline
+style fixture still distinguishes its earlier allocation guard from entry into GPUI.
+
+Initial full run `ba174982-e66c-43e3-83ca-2aa29364fe8f` passed 212 of 213 tests; the inline style
+fixture expected the older peak without the reservation floor. Its correction keeps the earlier
+style-guard assertions and adds the fragment record, positive remainder and composite continuation
+growth only when that later reservation is reached. Focused run
+`b241fb9a-5e31-4d9a-acad-6362036ddbd0` caught double counting the temporary style run in that formula;
+run `1ed13eb4-eab3-4a1a-ab66-ac7704e8e6d8` passed after aligning it with the reservation counts.
+
+Independent review accepted the boundary and corrected fixture. Final full integration run
+`77c3cbf7-7272-44ea-87ff-caa69c792254` passed all 213 tests, zero skipped, in 20.743 seconds.
+The five older baseline unit failures were not rerun or waived; no canonical dependency pin changed.
+
 ## Explicit Preparation Refusal Attribution
 
 On 2026-09-28, widget explicit preparation admission began retaining the exact byte/item pair
