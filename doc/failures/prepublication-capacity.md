@@ -158,3 +158,29 @@ commit/cancellation/collision, and exact cleanup. Overflow atomicity was verifie
 These tests do not yet exercise typed preparation retries: session budget derivation, shared
 presentation accounting and typed refusal attribution remain outstanding. The earlier five baseline
 unit failures were neither rerun nor changed by this boundary.
+
+## Deferred Presentation Sharing
+
+Inspection before session-budget derivation found that deferred scanner facts and prepared
+continuation copies used ordinary source-fact cloning. That deliberately duplicates presentation
+backing for source response custody, but contradicts the geometry sharing contract. Geometry now
+uses a private clone that copies fallback text and aliases immutable presentation backing. Ordinary
+fact and object-page clones retain independent backing. Current and prepared geometry overlap
+queries include deferred aliases by allocation identity and extent; fixed records, boxes, fallback
+copies and semantic items remain charged. Repeated page references do not multiply overlap credit.
+
+The integration regression covers index and target scans, repeated immutable preparation, deferred
+commit, the next deferred response and publication of the prior deferred object's presentation.
+Independent source clones receive no overlap credit. Focused run
+`afb66fbf-8f16-42f5-94e6-c512fe35667f` passed; complete run
+`08425d4e-6f2c-47f0-a1e4-563435fd4034` passed all 212 integration tests in 19.238 seconds,
+zero skipped. Independent resource review accepted this boundary. The final fixture keeps the
+complete index and partial target responses on the same object population. Initial fixture
+attempts exceeded the fixture's fragment or baseline limits and used
+an empty source whose target was already complete; the final fixture uses valid presentation
+metrics and a nonempty source to exercise an active target.
+
+This boundary does not propagate shared credits through scanner preparation peaks or implement
+session host ceilings and typed retryable refusal. Those remain required before combined resident
+reservation can rely on the session. The five earlier baseline unit failures were not rerun or
+changed.
