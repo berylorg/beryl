@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 809: Credit Shared Output Through Source Finalization (finished)
+# Phase 810: Credit Shared Output Through Terminal Target Publication (finished)
 
-Complete object-response source finalization and terminal checkpoint admission now carry proven
-retained output credit, restoring it before terminal publication. The regression failed before the
-fix; all 228 integration tests passed afterward. Independent review found no blockers. See
+Terminal target publication carries candidate-only display credit through array conversion and
+cleanup admission without discounting original payload again. The regression failed before the
+fix; all 229 integration tests passed afterward. Independent review found no blockers. See
 [evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
@@ -137,7 +137,8 @@ and terminal/nested publication required their own credits. Phase 807 qualifies 
 responses cannot retain deferred custody; they need no deferred-display credit.
 Phase 808 credits complete object pages through nonterminal forward-text publication.
 Phase 809 credits source finalization and terminal checkpoint admission, restoring the counter
-before terminal publication. Terminal/nested publication still needs its ownership mapping.
+before terminal publication. Phase 810 carries candidate-only credit through terminal target
+publication. Terminal index/nested publication still needs its ownership mapping.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

@@ -83,7 +83,27 @@ unattributed; configured precedence and overflow remain covered by existing obse
 Independent semantic/resource review found no blockers, including scoped restoration and the
 production call path. Root phase 809 and widget phase 64 accept this finalization boundary.
 
-Terminal/nested publication and live session budget routing remain separate work.
+Terminal target publication now carries candidate-only scanner display credit through array
+staging/conversion, publication allocation and cleanup-record admission. Fragment handles move
+into the target before scanner vectors clear; their output charge remains in the raw observation.
+Original payload already in the baseline receives no additional display credit, and existing
+payload-transfer deductions remain unchanged. The terminal call consumes its stack budget.
+
+The new whole-response fixture covers delivered/resident inputs, empty/multibyte display, initial
+output and prior committed output plus a deferred tail, zero/high current charges, raw peak parity,
+exact fit, byte/item one-under, unchanged owner, empty failure releases and retry. Expected credit
+uses known display lengths against observed raw peaks, not an independent raw allocation oracle.
+Early target completion is qualified by source review; the fixture exercises source-end completion.
+Red run `ce99f545-433d-4c2e-a585-f429d100a4a6` showed the missing nine-byte credit; expanded green
+run `27579f9c-03d1-428e-a90e-99aa9cde95cb` passed. Full LLVM, one-job, nonincremental, debug-zero
+run `24bdb491-ebca-4208-8803-a54dcbde9aca` passed all 229 integration tests across the same three
+targets, no skips, in 22.926 seconds. Formatting and scoped diff checks passed; no source/tests
+changed after the full run. Configured precedence and arithmetic remain covered by existing
+observer tests; ambiguous GPUI refusal remains unattributed. Independent semantic/resource review
+found no blockers, including early completion routing, array backing lifetime and unchanged original
+payload deductions. Root phase 810 and widget phase 65 accept this terminal target boundary.
+
+Terminal index/nested publication and live session budget routing remain separate work.
 
 ## Detached Deferred Display Custody
 
