@@ -940,3 +940,26 @@ The default-feature prepublication check passed in 3.30s; scoped formatting and 
 Independent semantic/resource review found no blocker. Allocator overreservation, live-session
 buffer-refusal cleanup and count/fill equivalence were source-reviewed rather than fault-injected.
 Selection/composition collections, boxed conversions and publication transitions remain pending.
+
+## Candidate Highlight Geometry Collection Admission
+
+Root phase 817 / widget phase 72 replaces growing selection/composition vectors with exact-count
+preparation. Count and fill use the same immutable rectangle iterators, preserving text wrap pairs,
+minimum widths, selected inline-object bounds after text bounds, gap filtering and directed ranges.
+Combined requested storage is admitted before either vector allocation, actual selection capacity
+before composition allocation, and both actual capacities before filling. The session baseline
+includes current cleanup custody, actual transfer buffers, prepared surface record, boxed page
+ordering, map capacity and realized object/gap capacity. Configured refusal wins; attempted peaks
+propagate before errors and host-only refusal releases temporary cleanup without moving resident
+or geometry custody. Ordinary mounted preparation retains its separate later admission boundary.
+
+Three focused tests cover expected wrap rectangles, reversed selection, object-only gap selection,
+text-before-object ordering, empty text/composition, exact fit, repeated byte/item one-under refusal,
+restored availability, configured precedence and separate enclosing byte/item overflow. Focused
+run `a2380f9d-e18d-46fa-9069-24d7c88f687f` passed 3 tests (240 skipped). Full integration run
+`3190040b-f4b6-4cff-a30b-cb8d036d430d` passed 243/243 in 21.504s. Default-feature prepublication
+check passed in 3.21s; scoped formatting and diff checks passed. Initial missing test-probe type
+qualification and test gap-constructor arguments were corrected before passing verification.
+Independent semantic/resource review found no blockers. Allocator overreservation and live-session
+highlight-refusal cleanup were source-reviewed rather than fault-injected. Boxed conversions and
+later publication transitions remain pending. No manifests or canonical dependency pins changed.
