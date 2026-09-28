@@ -75,13 +75,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 825: Remove Redundant Startup Configuration Ownership (finished)
+# Phase 826: Admit Startup Custody Reservations (finished)
 
-Session construction now borrows configuration, removing its redundant oversize style-run copy.
-All 43 prepublication tests, default-feature compilation and independent resource review passed.
-See the [startup ownership finding](failures/prepublication-capacity.md#startup-configuration-ownership).
-Startup allocation admission, shared environment accounting and transfer coexistence remain
-pending under phase 747.
+Custody startup admits requested combined storage before allocation, actual text capacity before
+object reservation, and actual combined capacity before acceptance. All 43 prepublication tests,
+default compilation and independent resource review passed. Geometry/residency startup allocation,
+shared environment accounting and transfer coexistence remain pending.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

@@ -1137,3 +1137,23 @@ and found no blocker. Allocation removal is source-verified rather than allocato
 Prepublication run fc05035b-6bc1-4fec-a082-5f5d84a80330 passed 43/43, zero skipped, 15.808s.
 Default-feature compilation passed in 3.31s; changed-file rustfmt and diff checks passed.
 No manifest or canonical dependency pin changed.
+
+## Startup Custody Reservation Admission
+
+Phase 826 / widget 81 corrects custody vectors reserving before initial capacity admission.
+Construction first creates the session with empty custody vectors and obtains its baseline.
+The shared checked storage formula adds both requested capacities before the text reservation,
+then actual text capacity plus requested object slots before the object reservation. Final
+current charge checks both actual capacities. Refusal drops the initialized owners and creates
+no requests or ledger records. Generation and seed validation ordering are preserved.
+
+Run e849fa79-123b-434a-a6ea-3a9b8a10eb64 passed 43/43 prepublication tests, zero skipped,
+15.471s; default-feature compilation passed in 3.15s. Scoped rustfmt and diff checks passed.
+Independent resource review accepted the bounded change. Existing integration coverage proves
+exact-fit, byte/item-minus-one and zero capacity refusal with empty cleanup ownership.
+Allocation-error, excess-capacity and checked-arithmetic ordering are source-reviewed rather than
+fault-injected. No manifest or canonical dependency pin changed.
+
+Geometry style/owner and residency VecDeque construction still precede this gate. They require
+separate startup admission, alongside shared environment accounting and transfer coexistence,
+before the overall prepublication preparation boundary can be accepted.
