@@ -1324,3 +1324,20 @@ Independent resource review accepted the fixture correction. This exercises targ
 preparation: publication allocation is zero and page demand is one item, so it does not prove
 immediate terminal-surface publication allocation. Three other baseline failures and overall
 preparation remain open.
+## Detached History Restoration Fixture Reconciliation
+
+The history custody fixture expected older detached operations to prevent restoration export
+from a fully realized successor binding. The package contract instead transfers admitted
+settlement custody to the host on rebind; later generations may operate while those exact
+bounded records await terminal settlement. Restoration cannot capture an admitted operation's
+base as current, but does not acquire or cancel detached host custody.
+
+The fixture now checks `NotQuiescent` while the current history operation is admitted, before
+rebind. After revision 4 is realized it verifies both settlement slots remain retained and
+export returns the current revision-4 binding. Existing atomic exhaustion, exact obsolete
+settlement, repeated slot reuse, bounded high water and final drainage checks remain intact.
+Production `is_semantically_quiescent` checks current pending history; `export_restoration`
+requires full widget quiescence and a coherent surface. Neither consumes detached slots.
+
+Focused run `a27a4d74-317e-4d68-a39c-2313b01c25b3` passed (one passed, 114 skipped,
+0.051 seconds). No production behavior, manifest or canonical pin changed. Independent lifecycle/resource review accepted the correction. Two remaining priority fixture failures and overall preparation remain open.
