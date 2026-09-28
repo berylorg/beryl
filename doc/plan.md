@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 777: Reserve Returned Layout Capacity Before GPUI Admission (finished)
+# Phase 778: Account Composite Continuations Before Layout (finished)
 
-Each GPUI call now receives a returned-storage ceiling derived before invocation from remaining
-geometry capacity, including fragment records and continuation replacement peaks. Original GPUI
-errors remain unchanged. Independent resource review accepted the boundary; all 194 geometry,
-widget and prepublication tests passed. Host propagation and candidate construction remain pending.
+Initial and checkpoint-restored scanners now count exact composite continuation witnesses.
+Pristine origin specialization admits witness growth before mutation; returned-layout reservation
+shares the calculation. Independent resource review accepted the boundary and all 196 geometry,
+widget and prepublication tests passed. Host-budget propagation remains pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–777 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–778 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
