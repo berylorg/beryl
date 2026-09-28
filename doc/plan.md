@@ -89,19 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 742: Implement Preserved Resident Widget Adoption (finished)
+# Phase 743: Publish Preserved Resident Adoption Dependency (finished)
 
-Accepted same-resident prepared adoption with exact protection/reservation, source/history and
-window checks, preserved focus/subscriptions/fence, monotonic request identity and bounded cleanup.
-All 543 widget tests pass (including six new integration cases); default-feature compilation and
-independent lifecycle/resource review pass. Dependency publication and application attachment remain
-separate boundaries below.
-
-# Phase 743: Publish Preserved Resident Adoption Dependency (pending)
-
-Publish the accepted widget revision and update Beryl's canonical dependency pin and locked graph.
-Validate metadata, focused consumer compilation and relevant widget/composer regression coverage;
-retain one GPUI graph. Dependency availability does not accept application recovery attachment.
+Published accepted widget revision `45c200a5e78f299f2f6436cda75097c75253eca7` and updated Beryl's
+canonical dependency pin and lockfile. Isolated canonical and local metadata/consumer checks pass;
+all 107 selected composer regressions pass against the published dependency, retaining one GPUI
+graph. The widget's 543-test and independent lifecycle/resource review acceptance remains intact.
+Settings retains its existing text-input revision. Application recovery attachment remains below.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
