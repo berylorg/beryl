@@ -89,12 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 796: Retain Enclosing Preparation Peak Evidence (finished)
+# Phase 797: Derive GPUI Allowances From Both Capacity Views (finished)
 
-Prepared success and failure now retain optional independent enclosing peaks; validation and
-direct paths without an observer report none. Independent review accepted the change after the
-fixed metadata-size snapshot correction; all 219 integration tests passed. Session consumption
-remains pending. See [evidence](failures/prepublication-capacity.md#enclosing-preparation-result-evidence).
+Observed GPUI startup allowances now use checked configured and mapped enclosing headroom,
+without prospective output credit. Independent review accepted the scoped change; all 221
+integration tests passed. See [evidence](failures/prepublication-capacity.md#mapped-gpui-remaining-capacity).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -118,7 +117,8 @@ Phase 793 supplies the independent observer with identical production inputs; ph
 it through actual nested admissions. Phase 795 adds checked baseline mapping, with production
 still using identity mapping; phase 796 carries optional enclosing peaks out in prepared results
 and failures. Derive live session baselines and observation-specific credits before using these
-results for host admission. Remaining GPUI allowance derivation must respect both mapped views.
+results for host admission. Phase 797 derives zero-credit GPUI allowances from both mapped views;
+separate prospective inline-output credit still requires startup/output admission separation.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

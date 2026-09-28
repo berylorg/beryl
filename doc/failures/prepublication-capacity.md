@@ -1,5 +1,22 @@
 # Prepublication Capacity
 
+## Mapped GPUI Remaining Capacity
+
+On 2026-09-28, observed preparation stopped deriving the GPUI allowance by subtracting raw
+occupancy from the minimum raw ceiling. After the existing positive byte/item reservation,
+`CapacityObservations::remaining_capacity` computes the smaller of configured headroom
+`K - R` and enclosing headroom `H - (S + (R - B))`, using checked arithmetic in each dimension.
+No prospective display credit enters this startup allowance. Unobserved admission keeps its
+existing raw ceiling path; production zero baselines retain identity behavior. This does not
+enable session baselines or establish shared-output GPUI admission.
+
+Tests qualify higher and lower enclosing baselines, configured and enclosing limiting dimensions,
+maximal admitted output plus one-byte/item overflow, explicit refusal precedence and independent
+peaks, baseline underflow (including one below baseline), and maximum representable arithmetic.
+Independent source review found no scoped blocker. LLVM, one-job, nonincremental, debug-zero
+nextest run `386baa9c-87ae-4526-b6e6-fe59f91df94f` passed all 221 tests across `range_widget`,
+`exact_geometry` and `prepublication`, with no skips, in 20.647 seconds.
+
 ## Enclosing Preparation Result Evidence
 
 Prepared responses and `ExactGeometryFailure` now retain an optional enclosing byte/item peak
