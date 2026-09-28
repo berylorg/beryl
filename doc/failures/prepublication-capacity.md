@@ -1341,3 +1341,23 @@ requires full widget quiescence and a coherent surface. Neither consumes detache
 
 Focused run `a27a4d74-317e-4d68-a39c-2313b01c25b3` passed (one passed, 114 skipped,
 0.051 seconds). No production behavior, manifest or canonical pin changed. Independent lifecycle/resource review accepted the correction. Two remaining priority fixture failures and overall preparation remain open.
+
+## Active Interaction Priority Fixture Reconciliation
+
+The active-interaction fixture injected a target before the initial geometry index had completed,
+then drove all work to quiescence and expected the final surface to retain the interaction's
+publication priority. `commit_widget_transition_internal` retains an index intent when a target
+starts without an index. Target publication applies and clears its one-shot interaction request;
+the later index successor uses the current desired state and publishes scroll-anchor priority.
+That final priority is not evidence that the earlier interaction target was never prioritized.
+
+The fixture now fully realizes the initial surface and index using the same object fact before
+requesting the interaction. It keeps its ActiveInteraction priority and realized-object assertions,
+then explicitly requests scrolling and checks ScrollAnchor priority. This qualifies ordinary
+interaction from a coherent surface; it does not assert persistence of the one-shot request across
+initial-index completion. No production behavior changes.
+
+Focused run `b33cc085-6264-4506-9de8-a7ae9cd43b5d` passed (one passed, 114 skipped).
+The priority module excluding the separately known successive-edit fixture passed six tests
+in run `e6d6419d-4321-4a76-9617-2de0604d85e4` (109 skipped, 0.919 seconds).
+Independent review accepted the scheduling interpretation. The successive-edit fixture and overall preparation remain open.

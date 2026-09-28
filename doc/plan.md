@@ -75,12 +75,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 832: Reconcile Detached History Restoration Fixture (finished)
+# Phase 833: Reconcile Active Interaction Priority Fixture (finished)
 
-Corrected the history fixture to distinguish live admitted history from detached host custody.
-The focused test passes, including exhaustion, successor restoration, exact slot reuse and
-drainage. Independent lifecycle/resource review accepted the change. No production behavior
-changed; two priority unit failures and overall preparation remain open.
+Initialized the priority fixture before requesting its active interaction. All six applicable
+priority cases pass; the separate successive-edit baseline failure remains open. Independent
+review accepted the scheduling interpretation and unchanged priority/object assertions.
+No production behavior changed; overall preparation remains pending.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -150,7 +150,7 @@ Phases 821–822 admit candidate, Ready and adoption storage before custody tran
 geometry and remaining-session projections are checked against actual transfer. Phases 825–827
 admit startup configuration, custody, geometry and residency; phases 828–829 qualify shared
 environment ownership and synchronous transfer coexistence. Overall preparation closure and the
-two remaining baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
+remaining successive-edit baseline test failure still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
 under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
