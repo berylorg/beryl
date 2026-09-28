@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 779: Bound Direct Geometry Response Admission (finished)
+# Phase 780: Admit Direct Geometry Request Storage Before Allocation (finished)
 
-Text and object response admission now accept per-call byte/item ceilings, independently clamped
-to configured limits through context, scan and publication. Identity handling and terminal cleanup
-remain intact. Independent resource review accepted the boundary; all 200 geometry, widget and
-prepublication tests passed. Host budget derivation and prepared paths remain pending.
+Pending text/object request storage now checks independently clamped caller byte/item ceilings
+before allocation or mutation, preserving identity handling and same-ID retry on refusal.
+Independent resource review accepted the boundary; all 202 geometry, widget and prepublication
+tests passed. Host budget derivation remains pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–779 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–780 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
