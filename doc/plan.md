@@ -75,12 +75,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 830: Reconcile Committed Settlement Capacity Fixture (finished)
+# Phase 831: Reconcile Terminal Target Capacity Fixture (finished)
 
-Reconciled fixed component and total charges with current ownership. The existing byte/item
-one-under atomic retry and exact-fit settlement test passes; independent resource review
-accepted the correction. No production change. Four older unit failures remain open.
-See [evidence](failures/prepublication-capacity.md#committed-settlement-capacity-fixture-reconciliation).
+Reconciled fixed resident and transition byte charges. Both corrected capacity tests pass,
+including separate exact byte/item caps and one-under atomic refusal; independent resource
+review accepted the correction. No production change. Three older unit failures remain open.
+See [evidence](failures/prepublication-capacity.md#terminal-target-capacity-fixture-reconciliation).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -150,7 +150,7 @@ Phases 821–822 admit candidate, Ready and adoption storage before custody tran
 geometry and remaining-session projections are checked against actual transfer. Phases 825–827
 admit startup configuration, custody, geometry and residency; phases 828–829 qualify shared
 environment ownership and synchronous transfer coexistence. Overall preparation closure and the
-four remaining baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
+three remaining baseline test failures still require final reconciliation. Phase 823 proves buffered effects cannot coexist with candidate preparation
 under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,

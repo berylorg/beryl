@@ -1297,3 +1297,30 @@ exact cap and checks successor positions, proofs and obsolete predecessor settle
 Focused run `6bec7e37-e944-4aed-8404-7327666bbcd6` passed the corrected case (one passed,
 114 skipped, 0.023 seconds). No production behavior, manifest, or canonical pin changed.
 Independent resource review accepted the ownership arithmetic and unchanged atomic retry checks.
+## Terminal Target Capacity Fixture Reconciliation
+
+The terminal-target replacement fixture also retained old target-specific byte constants.
+`install_resident_payloads` installs one text page and one object page with a single inline fact;
+it sums the text retained charge and object retained charge, with one additional object-page item.
+The current resident charge is 807 bytes/3 items rather than 783 bytes/3 items.
+
+A temporary permissive first case in run `455bf75b-3e4d-4f90-9810-86df03dcd7a7` allowed the
+transition to reach its fixed-total assertion and exposed the current component charges. It
+failed the old total as intended for diagnosis; both that permissive setting and diagnostic output
+were removed. Final expectations remain fixed and independent of the observed admission total.
+The transition comprises realization owner 19,952/1, prior surface 7,238/90, auxiliary state
+8,952/52, each current/destination request queue 43,520/68, candidate record 10,384/1,
+geometry 3,861/22, resident payload 807/3, effects 1,920/3 and page demand 0/1 (bytes/items).
+All remaining components are zero. Request and effect backing still follow actual capacity times
+the current 640-byte request record, as in the committed-settlement reconciliation above.
+These charges total 140,154 bytes/309 items. Only the old byte cap and resident byte assertion
+changed; the item cap and all admission and state assertions remain unchanged.
+
+Focused run `b3a930cd-ec6d-4703-904b-305066600e88` passed both corrected capacity cases (two
+passed, 113 skipped, 0.052 seconds). The terminal case separately exercises exact byte and item
+success and one-under refusal, checks the admitted component total, changed successful fingerprint,
+and unchanged refused fingerprint/events. No production behavior, manifest or canonical pin changed.
+Independent resource review accepted the fixture correction. This exercises target-replacement/request
+preparation: publication allocation is zero and page demand is one item, so it does not prove
+immediate terminal-surface publication allocation. Three other baseline failures and overall
+preparation remain open.
