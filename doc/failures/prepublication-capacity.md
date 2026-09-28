@@ -1,5 +1,29 @@
 # Prepublication Capacity
 
+## Deferred Display Credit At Continuation Copy
+
+On 2026-09-28, text and object preparation gained one shared continuation-copy boundary that
+admits the copy before allocation and observes its immediate coexistence with the original.
+Only enclosing mode credits the deferred fact's display length, whose backing `clone_for_geometry`
+shares with that original. Configured observations and geometry-relative limits retain the full
+raw charge. Fallback text, records and semantic items receive no credit. No extra retained state,
+page registry or persistent allocation is introduced. Subsequent observations still use zero
+credit; this is not completion of scanner/publication credit or session routing.
+
+The feature probe executes that actual boundary with the original owner's baseline and drops the
+copy. Integration coverage exercises index and target jobs, absent deferred state, empty and
+multibyte displays, exact fit, one-under byte/item rejection, enclosing current charge below and
+above the raw baseline, overflow without fabricated attribution, repeated retries and unchanged
+original custody. Existing mapped observer and actual response tests retain configured-priority
+coverage. The first run (`20ebbc12-1998-47f3-8e28-030b69537db9`, 225/226) exposed a fixture-only
+component limit: the multibyte display exceeded the previous eight-byte layout bound during setup.
+Increasing that fixture bound to 16 admitted its intended input. LLVM, one-job, nonincremental,
+debug-zero nextest run `8d72f1b5-1aa6-409b-8f20-91adb05cb4db` passed all 226 integration tests,
+no skips, in 20.717 seconds. Independent resource review accepted the copy admission, backing proof,
+raw configured charging, checked mapping and drop/unchanged-owner behavior. A direct tight configured
+copy fixture is not added: configured precedence is qualified compositionally by existing tests
+and the inspected unchanged observer. No source or tests changed after the successful run.
+
 ## Actual Response Baseline Mapping
 
 On 2026-09-28, immutable text and object response preparation gained a typed internal capacity
