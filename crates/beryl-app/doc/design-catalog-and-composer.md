@@ -142,6 +142,36 @@ governed by [design.md](design.md). It does not independently declare engineerin
   the facts are outside the resident, its retirement-readiness observation is false. Refused
   reconstruction may return the original facts through the same exact retirement acceptance;
   stale attempts preserve custody. This GUI handoff performs no storage access or rebinding.
+- Preserved-resident attachment uses the widget's checked prepublication adoption boundary.
+  Before deriving a successor seed, the app freshly authenticates the retained clean checkpoint,
+  selector, candidate and history correspondence through the same-home candidate and validates
+  paired claims. Equal offsets, extents or revisions alone are insufficient. Only binding and
+  opaque source/history authority are replaced; the captured caret, directed selection, inline
+  gaps and exact scroll continuation are preserved. Fresh marker/presentation adapters belong to
+  that same candidate generation and must satisfy the captured presentation and layout inputs.
+- Recovery owns one bounded preparation flight per preserved resident, tagged by the cancelled
+  Exit request, resident identity, predecessor close ticket and fresh candidate generation. Its
+  fresh service dispatches prepublication reads off the GUI thread and returns exact keyed results
+  to explicitly scheduled bounded GUI realization steps. Ordinary resident pumping stays fenced;
+  assigning a service does not authorize old callbacks or requests. Worker lifetime, cancellation
+  and cleanup remain owned until their actual completion, including abandoned GUI delivery.
+- The app retains the widget fence, old coherent paint and focus identity throughout preparation.
+  It reserves the widget's combined old/new capacity envelope before realization and checks the
+  exact flight and live predecessor again before adoption. Changed source/history, environment,
+  claim, window or request evidence refuses attachment without resetting the editor. There is no
+  direct-rebind/import fallback, hidden replacement widget or automatic focus transfer. Cancellation
+  drains candidate effects and cleanup without releasing interaction or replaying Exit.
+- Fresh service and adapter custody remains recovery-owned until coherent widget adoption and
+  exact resident association succeed together in one GUI completion with no intervening callback.
+  All fallible validation and admission precede that publication; refused adoption preserves the
+  predecessor and returns or retains the fresh resources for explicit cleanup. The app does not
+  regain failed-generation resources or treat successful widget adoption as whole-graph readiness.
+  Every resident stays fenced until session settlement, complete fresh graph bindings and exact
+  draft/work settlement authorize the separate atomic reopening boundary.
+- Verify exact fresh attachment with unchanged checkpoint/history and resident identity, stale
+  worker completion, candidate failure, environment/capacity refusal, cancellation and complete
+  cleanup. Independently review the source correspondence and lifecycle composition; widget-only
+  evidence cannot establish service-worker retirement or whole-home recovery.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and

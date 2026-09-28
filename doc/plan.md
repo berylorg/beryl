@@ -89,20 +89,52 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 740: Qualify Preserved Widget Recovery Attachment (finished)
+# Phase 741: Define Preserved Resident Widget Adoption (finished)
 
-Pinned widget APIs do not provide complete same-resident recovery attachment. Direct rebind omits
-exact scroll/history transfer, restoration import clears the surface, and prepublication adoption
-constructs a fresh widget. The [focused evidence](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-attachment.md)
-passed independent lifecycle review. This source qualification makes no runtime acceptance claim.
+The owned widget and app catalog/composer authorities now define exact preserved-resident adoption,
+fresh source/history correspondence, fenced progress, combined capacity and cleanup custody.
+Independent lifecycle/resource contract review found no blocking findings; implementation phases
+742–745 follow. This documentation-only acceptance makes no runtime claim. The
+[source evidence](memory/github.com/berylorg/gpui-text-input/commit/8667c11a0837e78a00d70a4fc8a26804dbd493d1/preserved-resident-recovery-attachment.md)
+remains qualification of the prior API boundary.
 
-# Phase 741: Define Preserved Resident Widget Adoption (pending)
+# Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
-Resolve the bounded missing attachment contract in the owned widget and app authorities using
-phase 740 evidence. Specify same-resident preservation, fresh exact source/history validation,
-environment and capacity admission, refusal and cleanup custody, and fenced progress. Review the
-contract against interrupted-Exit preservation before deriving implementation and runtime
-qualification phases. Preserve separate service-worker, mount composition and whole-graph gates.
+Implement the owned widget's checked preserved-resident adoption contract using its ordinary
+prepublication and staged-publication machinery. Include the protected quiescent cut, exact
+predecessor/successor admission and finite combined capacity reservation before realization. Keep
+the old paint, entity, focus handle and subscriptions intact until atomic coherent adoption;
+refusal retains no pending adoption intent. Preserve the fence after success and drain exact
+cleanup custody after either outcome. Mirror this bounded execution scope in the sibling plan
+before code changes; split any newly independent implementation boundary before taking it on.
+
+Verify non-origin scroll, directed selection, inline gaps and history, unchanged focus/subscriptions,
+stale predecessor/source/history/environment, pending work, exact-fit and insufficient capacity,
+late/duplicate delivery, cancellation and ledger drainage. Use focused crate integration tests and
+independent lifecycle/resource review. This accepts the widget primitive only.
+
+# Phase 743: Publish Preserved Resident Adoption Dependency (pending)
+
+Publish the accepted widget revision and update Beryl's canonical dependency pin and locked graph.
+Validate metadata, focused consumer compilation and relevant widget/composer regression coverage;
+retain one GPUI graph. Dependency availability does not accept application recovery attachment.
+
+# Phase 744: Drive Fenced Resident Recovery Preparation (pending)
+
+Implement one recovery-owned fresh prepublication flight per preserved resident under the app
+catalog/composer contract. Authenticate the retained clean source/history and claims before deriving
+the successor seed; dispatch bounded reads off the GUI thread and realize through explicit bounded
+GUI steps. Verify stale flight/generation rejection, capacity/environment refusal, actual worker
+lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
+fenced. Independently review the fresh-source and worker-custody boundary.
+
+# Phase 745: Attach Fresh Services To Preserved Residents (pending)
+
+Compose the accepted preparation flight and widget adoption with fresh service/adapter association
+in one checked GUI completion. Verify preserved presentation and focus, refusal without partial
+association, late completion and exact cleanup. Keep all interaction fenced for separate session,
+graph and draft/work convergence; independently review lifecycle composition. Whole-resident
+retirement remains phase 706 and whole-home publication remains phase 702.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
