@@ -65,3 +65,25 @@ Explicit resident admission now reuses the prepared path's binding, revision, pr
 demand proof without changing external exact-key admission or copying payloads. Cleanup names
 the current pending request, not the old resident key. Session integration selects that path
 only after residency selection; the context-reuse fixture now resumes through candidate completion.
+
+## Direct Response Ceilings Do Not Provide Retryable Session Admission
+
+The prepublication session currently calls destructive direct geometry response admission from
+`src/range_widget/prepublication/session/progression/geometry.rs` in the widget fork. Merely passing
+reduced host availability into those calls cannot provide retryable response admission:
+`ExactGeometryOwner::admit_page_inner` and its object counterpart take the active job, and
+`terminal_failure` returns cleanup while dropping that job on capacity refusal. The package's
+prepublication contract instead requires a retryable exact-response denial to retain its bounded
+custody without advancing. The accepted direct API contract remains valid for terminal callers.
+
+Use the existing prepared-response and explicit commit machinery for the session integration,
+with the enclosing host budget applied before preparation growth. Completed-index preparation had
+mapped failed successor preparation from a plain error using the earlier outer peak. A shared mutable
+preparation budget now preserves attempted peaks, including cleanup storage and saturated overflow
+evidence, and merges them before constructing the outer failure. Exact/insufficient capacity and
+overflow tests plus independent review accepted that correction; 207 regression tests passed
+(nextest run `146b6b87-56d2-4df7-bce1-dc0f60775f8d`). Enclosing failure propagation was reviewed
+in source; the focused tests directly exercise production budget and release modules.
+Account shared presentation ownership once as preparation progresses. Session integration and its
+focused retry/cleanup tests remain outstanding. Preserve configured terminal failures and the existing
+rule against inferring host attribution from ambiguous GPUI capacity errors.

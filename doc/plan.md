@@ -89,14 +89,22 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 781: Gate Resident Geometry Requests On Session Capacity (finished)
+# Phase 783: Preserve Nested Preparation Refusal Peaks (finished)
 
-Resident pending requests now admit current custody, prepared demand and request storage before
-allocation or demand commit. Refusal preserves custody, pending state and effects; existing ID
-attempt/high-water bookkeeping remains. Resident responses use authenticated reuse admission.
-Independent resource review accepted the boundary; all 204 regression tests passed.
+Nested successor and cleanup preparation now retain attempted byte/item peaks on failure and
+success; enclosing failures include that evidence. Independent resource review accepted the change.
+All 207 regression tests passed, including exact/insufficient capacity and overflow evidence.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
+
+Integration finding, 2026-09-28: do not pass reduced host availability directly into the session's
+current destructive geometry response methods. Their capacity failure drops the active job;
+the session contract requires retryable exact-response denial to retain bounded custody without
+advancing. Resume by integrating prepared response admission and commit, including resident reuse,
+before applying host ceilings. Preserve configured terminal failures and do not infer host attribution
+from ambiguous GPUI errors. Nested successor refusal now carries its attempted peak outward.
+Operator approved the prepared-response correction on 2026-09-28; implementation is resumed.
+See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
 including resident-response paths, prepared surface allocations, candidate/ready ownership and
@@ -106,7 +114,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–782 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–783 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
