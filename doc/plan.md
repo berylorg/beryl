@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 817: Admit Highlight Geometry Collections (finished)
+# Phase 818: Admit Surface Box Conversion Overlap (finished)
 
-Selection and composition collections now admit combined requested and actual capacity before
-filling, preserving wrapped text and inline-object selection geometry. The session carries existing
-storage in its baseline and retains custody on host-only refusal. All 243 integration tests,
-default-feature compilation and independent semantic/resource review passed. Box conversions
-and later publication transitions remain pending; see the Beryl capacity evidence note.
+All four surface collections now admit possible capacity-plus-length overlap before boxing and
+carry final lengths into subsequent conversions. Enclosing accounting preserves session custody
+on host-only refusal. All 246 integration tests, default-feature compilation and independent
+semantic/resource review passed. Later candidate/Ready/adoption transitions remain pending; see
+the Beryl capacity evidence note.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

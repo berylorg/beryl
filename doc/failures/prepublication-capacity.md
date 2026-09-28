@@ -963,3 +963,25 @@ qualification and test gap-constructor arguments were corrected before passing v
 Independent semantic/resource review found no blockers. Allocator overreservation and live-session
 highlight-refusal cleanup were source-reviewed rather than fault-injected. Boxed conversions and
 later publication transitions remain pending. No manifests or canonical dependency pins changed.
+## Candidate Surface Box Conversion Admission
+
+Root phase 818 / widget phase 73 admits each realized-object, object-gap, selection and composition
+vector conversion before `into_boxed_slice`. Excess capacity requires admission of current live
+storage plus destination length; exact-capacity conversion needs no duplicate allocation charge.
+After conversion the next check carries the boxed length instead of old vector capacity. The
+surface callback now owns realized-buffer charges, while the enclosing session baseline retains
+session/cleanup, transfer buffers, prepared record, page order and maps. Conversion checks also
+carry caret and placeholder charges. Host-only refusal drops temporary collections and completes
+temporary cleanup without moving resident or geometry custody; configured refusal stays terminal.
+Ordinary mounted admission and later candidate/Ready/adoption transition guards remain separate.
+
+Three integration cases force excess capacity, qualify sequential release, exact-fit and one-under
+byte/item bounds, repeated refusal, configured precedence, empty allocated and unallocated vectors,
+exact-capacity vectors, enclosing overflow and refusal after an earlier successful conversion.
+Restored availability preserves values and final charges. Initial focused run
+`0b06ca0c-cbb8-4d7c-83ad-57373570d8cd` passed two tests before the final third case was added.
+Full run `46e73c4a-4c2a-4ac5-bcff-60915348f5f4` passed 246/246 in 21.445s; default-feature
+prepublication compilation passed in 3.21s. Scoped formatting and diff checks passed. Independent
+semantic/resource review found no blockers. The probe exercises two u64 collections; production's
+four collection types and live-session refusal cleanup were source-reviewed. No manifests or
+canonical dependency pins changed.
