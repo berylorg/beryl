@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 806: Credit Shared Display During Active Object Response Publication (finished)
+# Phase 807: Qualify Text Response Deferred Custody Reachability (finished)
 
-Active object-response successor and destination admission now credit proven candidate display
-backing while preserving configured charges and original custody. All 226 integration tests passed;
-independent resource review found no blocking issues. See
-[evidence](failures/prepublication-capacity.md#shared-inline-output-during-object-scanning).
+Text responses cannot retain deferred custody; removed the unnecessary deferred-credit obligation.
+Actual prepared transitions and exact-fit/refusal/retry checks passed with all 227 integration
+tests. Independent semantic/resource review found no blocking issues. See
+[evidence](failures/prepublication-capacity.md#text-response-deferred-custody-is-unreachable).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -132,8 +132,9 @@ Phase 802 credits shared deferred display at continuation pre-copy and immediate
 Phase 803 credits the newly deferred tail at pre-allocation and immediate retention. Phase 804
 carries detached deferred custody credit through scanner observations and GPUI reservation, restoring
 it before later work. Phase 805 credits actual GPUI inline output through object-page scanning;
-Phase 806 carries proven credit through active object-response publication. Source finalization,
-terminal/nested publication and text-response deferred custody still require their own credits.
+Phase 806 carries proven credit through active object-response publication. Source finalization
+and terminal/nested publication still require their own credits. Phase 807 qualifies that text
+responses cannot retain deferred custody; they need no deferred-display credit.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

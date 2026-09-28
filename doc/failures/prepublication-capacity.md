@@ -47,7 +47,7 @@ The new cases directly cover `NeedObjects`; `NeedContext` is qualified by source
 tests use observed peaks rather than an independent publication-byte oracle.
 
 This proves scanning and active object-response publication, not fully credited response peaks.
-Source finalization, terminal/nested publication, text-response deferred custody and live session
+Source finalization, terminal/nested publication and live session
 budget routing remain separate work.
 
 ## Detached Deferred Display Custody
@@ -694,3 +694,30 @@ This boundary does not propagate shared credits through scanner preparation peak
 session host ceilings and typed retryable refusal. Those remain required before combined resident
 reservation can rely on the session. The five earlier baseline unit failures were not rerun or
 changed.
+## Text Response Deferred Custody Is Unreachable
+
+The pending plan proposed carrying deferred display credit through text-response publication.
+Source inspection invalidated its reachability premise: `scan::process_object_page` creates a
+deferred tail only for an incomplete object page, which returns before text scanning and requests
+another object page. On the next response it takes and admits the deferred object. A complete
+object page rejects any remaining deferred custody before `process_page_range` can request context
+or proceed to forward text. Inline admission returns ordinary success/error, not a context request.
+Initial and terminal-successor jobs start without deferred custody. Text continuation copies have
+empty output collections, so original retained output does not create incremental copy credit.
+
+Qualify that invariant instead of adding unreachable credit plumbing. The integration fixture
+`text_successor_consumes_deferred_custody_before_preparation` uses actual incomplete/complete
+prepared object responses for index and target jobs with empty and multibyte display. It checks
+unchanged original custody, zero deferred ownership after commit, and following delivered/resident
+text preparation against independently mapped raw peaks, exact fit, byte/item one-under and retry.
+Context reachability is a source-review obligation; this fixture does not exercise backward context.
+Source-finalization, terminal/nested publication and session-budget integration remain pending.
+
+LLVM, one-job, nonincremental, debug-zero integration run
+`816b92a9-13e6-4cd4-92ad-7e880ce4f01f` passed all 227 tests across `range_widget`,
+`exact_geometry` and `prepublication`, with no skips, in 21.222 seconds. The focused regression
+also passed (`6795f14c-8bb0-4467-a657-4fa2a4399642`). No production behavior changed.
+Independent semantic/resource review found no blocking issues. It traced direct/prepared admission,
+public text-request guards, scanner origin/checkpoint constructors, terminal successor creation and
+failure cleanup. No alternate text path retains deferred custody. No source or test changes followed
+the successful full run. Root phase 807 and widget phase 62 remove the obsolete credit obligation.
