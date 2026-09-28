@@ -616,3 +616,9 @@ Compact restoration validates the exact root, logical extent, cursor, UTF-8 boun
 and adjacency facts. It streams bounded pages and does not retain a draft-sized piece or marker
 collection. A sealed-content text read returns at most 65,536 nonempty valid UTF-8 bytes from one
 exact immutable content reference and never exposes building content or provider transport bytes.
+
+Unpublished same-home composer preparation may perform these exact-root text, marker, marker-edge
+and compact restoration reads through borrowed home-candidate access and fresh Syndic handles.
+It uses the same bounds and authentication as ordinary reads, performs no writes, and does not
+open ordinary service access. The caller separately authenticates the retained saved checkpoint
+and claims before deriving a replacement composer binding.

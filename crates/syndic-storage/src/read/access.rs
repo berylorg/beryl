@@ -15,6 +15,12 @@ pub(crate) enum ReadAccess<'a> {
     Candidate(&'a HomeCandidateRecoveryAccess<'a>),
 }
 
+impl<'a> From<&'a HomeStore> for ReadAccess<'a> {
+    fn from(store: &'a HomeStore) -> Self {
+        Self::Ordinary(store)
+    }
+}
+
 impl ReadAccess<'_> {
     pub(crate) fn home_id(self) -> BerylHomeId {
         match self {

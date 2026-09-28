@@ -9,7 +9,9 @@ use crate::codec::{DraftByThreadFamily, DraftsFamily, ThreadsFamily};
 use crate::{SyndicReadError, SyndicStorage};
 
 use super::*;
+use crate::read::access::ReadAccess;
 
+mod candidate;
 mod marker_receipts;
 pub(super) use marker_receipts::{
     progress_receipt_closure_is_exact, progress_receipt_closure_is_exact_with_access,
@@ -228,6 +230,21 @@ impl SyndicStorage {
         demand: DraftPieceTextDemandV1,
         max_bytes: usize,
     ) -> Result<DraftPieceTextDemandResultV1, DraftPieceRangeSourceErrorV1> {
+        self.draft_piece_text_demand_with_access(
+            ReadAccess::Ordinary(store),
+            root,
+            demand,
+            max_bytes,
+        )
+    }
+
+    fn draft_piece_text_demand_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        root: DraftPieceRootReferenceV1,
+        demand: DraftPieceTextDemandV1,
+        max_bytes: usize,
+    ) -> Result<DraftPieceTextDemandResultV1, DraftPieceRangeSourceErrorV1> {
         if !(4..=DRAFT_PIECE_PAGE_MAX_BYTES).contains(&max_bytes) {
             return Err(DraftPieceRangeSourceErrorV1::Malformed(
                 DraftPieceMalformedRangeRequestV1::Limit,
@@ -272,6 +289,15 @@ impl SyndicStorage {
         root: DraftPieceRootReferenceV1,
         demand: DraftPieceMarkerDemandV1,
     ) -> Result<DraftPieceMarkerDemandResultV1, DraftPieceRangeSourceErrorV1> {
+        self.draft_piece_marker_demand_with_access(ReadAccess::Ordinary(store), root, demand)
+    }
+
+    fn draft_piece_marker_demand_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        root: DraftPieceRootReferenceV1,
+        demand: DraftPieceMarkerDemandV1,
+    ) -> Result<DraftPieceMarkerDemandResultV1, DraftPieceRangeSourceErrorV1> {
         if !(1..=DRAFT_PIECE_PAGE_MAX_RECORDS).contains(&demand.object_ceiling())
             || !(1..=DRAFT_PIECE_PAGE_MAX_BYTES).contains(&demand.retained_byte_ceiling())
         {
@@ -313,6 +339,21 @@ impl SyndicStorage {
     pub fn draft_piece_marker_edge_proof(
         &self,
         store: &HomeStore,
+        root: DraftPieceRootReferenceV1,
+        request: DraftPieceMarkerEdgeProofRequestV1,
+        retained_byte_ceiling: usize,
+    ) -> Result<Option<DraftPieceMarkerEdgeProofV1>, DraftPieceRangeSourceErrorV1> {
+        self.draft_piece_marker_edge_proof_with_access(
+            ReadAccess::Ordinary(store),
+            root,
+            request,
+            retained_byte_ceiling,
+        )
+    }
+
+    fn draft_piece_marker_edge_proof_with_access(
+        &self,
+        store: ReadAccess<'_>,
         root: DraftPieceRootReferenceV1,
         request: DraftPieceMarkerEdgeProofRequestV1,
         retained_byte_ceiling: usize,
@@ -527,7 +568,15 @@ impl SyndicStorage {
         store: &HomeStore,
         restoration: DraftPieceRestorationV1,
     ) -> Result<DraftPieceRestorationV1, DraftPiecePrepareErrorV1> {
-        let history = self.point::<DraftEditHistoryFrontiersFamily>(
+        self.validate_draft_piece_restoration_with_access(ReadAccess::Ordinary(store), restoration)
+    }
+
+    fn validate_draft_piece_restoration_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        restoration: DraftPieceRestorationV1,
+    ) -> Result<DraftPieceRestorationV1, DraftPiecePrepareErrorV1> {
+        let history = self.point_with_access::<DraftEditHistoryFrontiersFamily>(
             store,
             restoration.history().key(),
             point_limit(),
@@ -536,7 +585,7 @@ impl SyndicStorage {
             || history.as_ref().is_none_or(|frontier| {
                 frontier.reference() != restoration.history() || !frontier.is_locally_valid()
             })
-            || !draft_edit_history_frontier_is_authenticated_v1(
+            || !draft_edit_history_frontier_is_authenticated_with_access(
                 self,
                 store,
                 history.as_ref().expect("history presence checked"),

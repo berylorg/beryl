@@ -4,6 +4,7 @@ use beryl_home_store::HomeStore;
 use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
 use sha2::{Digest, Sha256};
 
+use crate::read::access::ReadAccess;
 use crate::{SyndicStorage, draft_piece::*};
 
 mod mapping_program;
@@ -63,7 +64,7 @@ pub(crate) struct MarkerOrderRef {
 
 struct BuildContext<'a> {
     storage: &'a SyndicStorage,
-    store: &'a HomeStore,
+    store: ReadAccess<'a>,
     draft_id: SyndicDraftId,
     session_id: Option<DraftEditorCandidateSessionIdV1>,
     operation_id: DraftPieceOperationIdV1,
@@ -86,7 +87,7 @@ struct BuildContext<'a> {
 impl<'a> BuildContext<'a> {
     fn new(
         storage: &'a SyndicStorage,
-        store: &'a HomeStore,
+        store: impl Into<ReadAccess<'a>>,
         draft_id: SyndicDraftId,
         session_id: Option<DraftEditorCandidateSessionIdV1>,
         operation_id: DraftPieceOperationIdV1,
@@ -96,7 +97,7 @@ impl<'a> BuildContext<'a> {
 
     fn with_ordinal(
         storage: &'a SyndicStorage,
-        store: &'a HomeStore,
+        store: impl Into<ReadAccess<'a>>,
         draft_id: SyndicDraftId,
         session_id: Option<DraftEditorCandidateSessionIdV1>,
         operation_id: DraftPieceOperationIdV1,
@@ -104,7 +105,7 @@ impl<'a> BuildContext<'a> {
     ) -> Self {
         Self {
             storage,
-            store,
+            store: store.into(),
             draft_id,
             session_id,
             operation_id,
@@ -156,7 +157,7 @@ impl<'a> BuildContext<'a> {
             Some(acquisition) => acquisition.point::<F>(key),
             None => self
                 .storage
-                .point::<F>(self.store, key, point_limit())
+                .point_with_access::<F>(self.store, key, point_limit())
                 .map_err(DraftPiecePrepareErrorV1::from),
         }
     }
@@ -2162,7 +2163,7 @@ fn advance_tree_build<'a>(
 }
 fn read_context<'a>(
     storage: &'a SyndicStorage,
-    store: &'a HomeStore,
+    store: impl Into<ReadAccess<'a>>,
     root: DraftPieceRootReferenceV1,
 ) -> Result<(BuildContext<'a>, Option<SequenceRef>), DraftPiecePrepareErrorV1> {
     let mut context = BuildContext::new(
@@ -2598,9 +2599,9 @@ fn marker_cursor(
     }))
 }
 
-fn read_forward_text_demand(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+fn read_forward_text_demand<'a>(
+    storage: &'a SyndicStorage,
+    store: ReadAccess<'a>,
     root: DraftPieceRootReferenceV1,
     start: u64,
     max_bytes: usize,
@@ -2690,13 +2691,14 @@ fn read_forward_text_demand(
     ))
 }
 
-pub(crate) fn read_text_demand(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+pub(crate) fn read_text_demand<'a>(
+    storage: &'a SyndicStorage,
+    store: impl Into<ReadAccess<'a>>,
     root: DraftPieceRootReferenceV1,
     demand: DraftPieceTextDemandV1,
     max_bytes: usize,
 ) -> Result<DraftPieceTextDemandResultV1, DraftPiecePrepareErrorV1> {
+    let store = store.into();
     let extent = root.summary().logical_utf8_bytes();
     let coordinate = match demand {
         DraftPieceTextDemandV1::Forward(value)
@@ -3002,9 +3004,9 @@ fn cursor_edge(
     })
 }
 
-pub(crate) fn read_marker_demand(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+pub(crate) fn read_marker_demand<'a>(
+    storage: &'a SyndicStorage,
+    store: impl Into<ReadAccess<'a>>,
     root: DraftPieceRootReferenceV1,
     demand: &DraftPieceMarkerDemandV1,
 ) -> Result<DraftPieceMarkerDemandResultV1, DraftPiecePrepareErrorV1> {
@@ -3228,9 +3230,9 @@ fn marker_key(marker: DraftPieceMarkerAtV1) -> DraftCompositeSearchKeyV1 {
     }
 }
 
-pub(crate) fn prove_marker_edge(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+pub(crate) fn prove_marker_edge<'a>(
+    storage: &'a SyndicStorage,
+    store: impl Into<ReadAccess<'a>>,
     root: DraftPieceRootReferenceV1,
     request: DraftPieceMarkerEdgeProofRequestV1,
 ) -> Result<Option<DraftPieceMarkerEdgeProofV1>, DraftPiecePrepareErrorV1> {
@@ -3311,9 +3313,9 @@ pub(crate) fn prove_marker_edge(
     }
 }
 
-pub(crate) fn validate_position(
-    storage: &SyndicStorage,
-    store: &HomeStore,
+pub(crate) fn validate_position<'a>(
+    storage: &'a SyndicStorage,
+    store: impl Into<ReadAccess<'a>>,
     root: DraftPieceRootReferenceV1,
     position: DraftCompositePositionV1,
 ) -> Result<(), DraftPiecePrepareErrorV1> {

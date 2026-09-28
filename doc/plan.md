@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 743: Publish Preserved Resident Adoption Dependency (finished)
+# Phase 746: Read Preserved Draft Ranges Through Candidate Access (finished)
 
-Published accepted widget revision `45c200a5e78f299f2f6436cda75097c75253eca7` and updated Beryl's
-canonical dependency pin and lockfile. Isolated canonical and local metadata/consumer checks pass;
-all 107 selected composer regressions pass against the published dependency, retaining one GPUI
-graph. The widget's 543-test and independent lifecycle/resource review acceptance remains intact.
-Settings retains its existing text-input revision. Application recovery attachment remains below.
+Added candidate-only exact-root text, marker, marker-edge and restoration reads through the shared
+bounded reader. Ordinary access stays health-gated. All 68 selected storage regressions and the app
+consumer check pass; independent access/lifecycle review accepted. Fresh source/claim validation
+and recovery worker custody remain in 744; no candidate publication or widget attachment is implied.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -105,6 +104,11 @@ the successor seed; dispatch bounded reads off the GUI thread and realize throug
 GUI steps. Verify stale flight/generation rejection, capacity/environment refusal, actual worker
 lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
 fenced. Independently review the fresh-source and worker-custody boundary.
+
+Use the candidate-only reads accepted in 746. The ordinary native-lineage service route requires
+Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
+retained recovery work and borrow candidate access inside the worker, following the existing
+interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 
