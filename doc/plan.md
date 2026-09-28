@@ -89,22 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 836: Admit Initial Session Index Preparation (finished)
+# Phase 837: Admit Delivered Text Residency Preparation (finished)
 
-Initial index preparation now admits its enclosing peak before allocation and commits identity and
-custody changes only on success. All 250 integration and 115 unit tests pass, default-feature check
-passes, and independent review accepted the correction. See
-[evidence](failures/prepublication-capacity.md#session-stage-boundary-admission); overall 747 acceptance remains pending.
-
-# Phase 837: Admit Delivered Text Residency Preparation (pending)
-
-Admit disposition and replacement-deque preparation before allocation when a delivered text page
-enters prepublication residency. Preserve the delivered response, waiting identity and cleanup
-custody on retryable enclosing refusal; retain configured failure precedence and preparation peaks.
-Verify an existing resident replaced by an adjacent page under current, byte/item one-under and
-exact capacity, repeated retry, successful continuation and cleanup. Independently review this
-boundary before returning to overall 747 acceptance. The delivered-object proof/residency path
-remains an explicit unresolved overall-review checkpoint, not covered by this text correction.
+Delivered text residency bookkeeping is admitted before allocation and response consumption.
+Repeated refusals preserve identity and custody; exact retry and cleanup pass. Independent review
+accepted the boundary, with 264 integration and 115 unit tests plus default-feature checks passing.
+See [evidence](failures/prepublication-capacity.md#delivered-text-residency-preparation-gap).
+Overall 747 acceptance and delivered-object preparation review remain pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -119,11 +110,10 @@ this reservation under the bounded-resource system contract.
 Accepted components and invalidated approaches are retained in the
 [capacity evidence](failures/prepublication-capacity.md). The final review's stage-boundary gaps
 are corrected: retirement clears pages without transfer allocation, and initial index preparation
-uses checked enclosing admission before mutation. Current widget cb066fb passes 250 integration
+uses checked enclosing admission before mutation. Current widget passes 264 integration
 and 115 unit tests plus the default-feature prepublication check. Reconcile the complete source
 and evidence with an independent resource review; component acceptance alone is insufficient.
-Overall review found delivered-text residency bookkeeping outside the admitted peak; phase 837
-corrects it. Recheck delivered-object anchor-proof and residency preparation before closure.
+Phase 837 corrects delivered-text residency bookkeeping admission. Recheck delivered-object anchor-proof and residency preparation before closure.
 Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
 and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.
 

@@ -1451,3 +1451,34 @@ retry and cleanup evidence. Independent overall review stopped at this confirmed
 The delivered-object path additionally builds anchor-proof vectors and prepares object residency;
 its coverage remains unresolved and must be checked before overall acceptance. This finding does
 not invalidate the accepted initial-index correction or require an architectural policy change.
+
+Root 837 / widget 92 correction: residency now computes the overlap/FIFO eviction plan without
+allocating, while borrowing the delivered page. It admits requested disposition plus destination
+storage, actual disposition plus requested destination, then both actual capacities. Only completed
+storage preparation allows the session to take the response and waiting identity and commit the
+resident replacement. Old deque/payload, delivered payload and pending reservations remain in the
+coexistence baseline; no speculative retirement credit hides preparation growth. Attempted peaks
+are observed before either enclosing refusal or configured failure. Ordinary residency admission
+uses the same preparation and preserves overlap-first then FIFO eviction.
+
+The replacement regression uses one resident and a 32-byte adjacent GeometryIndex response. Two
+attempts each at zero, current, byte-one-under and item-one-under capacity preserve ownership,
+page key, next identity and cleanup custody with no effects or spent work. Exact capacity permits
+continuation to a candidate; dropping while blocked also drains cleanup to zero. Local residency
+failure remains terminal with zero host capacity. A separate shared-residency regression replaces
+an overlapping middle resident and evicts the oldest nonoverlapping resident under byte pressure,
+preserving the last resident and incoming page order.
+
+Focused run `42ccf310-88e9-4472-a1fc-85242fe85f20` passed 3 tests. Full integration run
+`4988f687-23b7-48af-b0f5-91e650bec8d9` passed 264 tests across range_widget, exact_geometry,
+prepublication and range_residency, zero skipped, in 21.092 seconds. Unit run
+`0c431f8d-e665-4e44-972b-6ee3af370338` passed 115 tests, zero skipped, in 16.695 seconds.
+Default-feature checks of prepublication and range_residency passed in 3.37 seconds. Independent
+source and regression review accepted the boundary; broad verification completed afterward.
+
+Evidence limits: exact-fit values use borrowed production preparation, not an independent allocator
+oracle. Allocator overreservation and global session-configured comparison remain source-reviewed.
+An attempted small-fixture global-ceiling test was rejected during environment creation because
+its limit was below the initial widget-owner minimum; it was replaced by the supported local
+residency failure case and is not reported as global-ceiling test coverage. Delivered-object proof
+and residency allocation remain unresolved overall checkpoints.
