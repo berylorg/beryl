@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 763: Remove Temporary Target Origin Checkpoint Allocation (finished)
+# Phase 764: Admit Prepared Desired Target Before Allocation (finished)
 
-Prepared replacement-origin and local-target fallback transitions now obtain origin checkpoints
-without allocating a discarded checkpoint queue. Independent review accepted checkpoint equivalence
-and unchanged refusal custody; all 188 geometry, prepublication and widget tests passed.
+Incomplete-index target preparation now checks current-owner plus desired-target capacity before
+allocating its box. Independent review accepted checked arithmetic, exact-fit admission and unchanged
+refusal custody; all 188 geometry, prepublication and widget tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,12 +105,12 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–763 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–764 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
 and prepared index startup admission with enclosing peak evidence. Target-origin preparation no
-longer allocates a temporary checkpoint queue.
+longer allocates a temporary checkpoint queue; prepared desired targets check capacity before boxing.
 Remaining work includes prepared target transitions and prepared-publication collections,
 returned GPUI admission custody, and surface preparation. Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
