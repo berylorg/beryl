@@ -92,8 +92,17 @@ Independent review accepted this integration; 208 tests passed (nextest run
 `e99b0ccd-ebf7-4ad7-9419-79f1c1f9a2b9`). A subsequent stronger resident test admits current items
 while denying the extra prepared-demand record and passed (`d5ea0988-eb92-40d0-b1cf-bc34ea2711f1`).
 
-Host scan ceilings and retryable response custody remain outstanding: delivery takes the waiting
-identity and response before admitting payloads into residency. Retry must distinguish that retained
-state from unprocessed delivery. Account shared presentation ownership once as preparation progresses.
-Preserve configured terminal failures and the existing rule against inferring host attribution from
-ambiguous GPUI capacity errors.
+Response residency admission and geometry preparation now occupy separate bounded work steps.
+The admitted state retains exact external waiting identity and resident text/object page identifiers;
+capacity below current ownership leaves that state unchanged and retry does not re-admit the payload.
+Cancellation, drop and exact-key collision release the original cleanup record exactly once; obsolete
+redelivery after commit is rejected. Resident reuse enters the same admitted state. Independent review
+accepted this boundary, and all 209 regression tests passed (nextest run
+`36cae4c8-e56a-4aa4-b38f-b0965b00eabc`, 19.177 seconds, zero skipped).
+The resident refusal fixture now denies current items by one because an admitted preparation step
+does not allocate another demand record; the successor fixture accounts for both work steps.
+
+Host scan ceilings remain outstanding. The current-ownership gate does not bound scan allocations:
+propagate host availability through immutable preparation, preserve typed retryable attribution, and
+account shared presentation ownership once as preparation progresses. Preserve configured terminal
+failures and the rule against inferring host attribution from ambiguous GPUI capacity errors.
