@@ -1427,3 +1427,27 @@ zero skipped, in 16.858 seconds. Default-feature prepublication check passed in 
 Independent resource review found no blocking source issue; parent verification completed after
 that review. This closes the two stage-boundary findings. Overall capacity acceptance remains a
 separate review boundary.
+
+## Delivered Text Residency Preparation Gap
+
+Overall review at widget `cb066fb` found a separate gap before immutable geometry preparation.
+`advance_one` gates a delivered page using `response_coexistence_charge`, but `process_delivered`
+then takes the response/waiting state and calls `RangeResidency::admit`. Its `prepare_admit` allocates
+one disposition per existing resident and a fresh destination deque while the old deque and pages
+remain live. It checks local residency limits and computes prepared retained charges only after
+allocation; the enclosing session never admits those preparation charges.
+
+A concrete supported cut has one resident, max_resident_pages=1, a 32-byte adjacent GeometryIndex
+request and its valid ASCII response. Availability equal to response coexistence passes the gate.
+Even crediting the entire unmaterialized 32-byte/one-item pending reservation, one disposition plus
+one new RangePage destination slot exceeds both dimensions: RangePage alone contains String and
+Vec storage larger than 32 bytes, and the two new slots exceed one item. Existing resident deque
+capacity is already charged and cannot cover the separately allocated destination. Successful
+full integration and unit suites therefore do not close this boundary.
+
+Root phase 837 / widget phase 92 owns checked enclosing admission for delivered text residency
+preparation, exact response/waiting preservation on refusal and peak propagation, with replacement,
+retry and cleanup evidence. Independent overall review stopped at this confirmed blocker.
+The delivered-object path additionally builds anchor-proof vectors and prepares object residency;
+its coverage remains unresolved and must be checked before overall acceptance. This finding does
+not invalidate the accepted initial-index correction or require an architectural policy change.

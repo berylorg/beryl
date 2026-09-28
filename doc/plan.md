@@ -96,100 +96,36 @@ custody changes only on success. All 250 integration and 115 unit tests pass, de
 passes, and independent review accepted the correction. See
 [evidence](failures/prepublication-capacity.md#session-stage-boundary-admission); overall 747 acceptance remains pending.
 
+# Phase 837: Admit Delivered Text Residency Preparation (pending)
+
+Admit disposition and replacement-deque preparation before allocation when a delivered text page
+enters prepublication residency. Preserve the delivered response, waiting identity and cleanup
+custody on retryable enclosing refusal; retain configured failure precedence and preparation peaks.
+Verify an existing resident replaced by an adjacent page under current, byte/item one-under and
+exact capacity, repeated retry, successful continuation and cleanup. Independently review this
+boundary before returning to overall 747 acceptance. The delivered-object proof/residency path
+remains an explicit unresolved overall-review checkpoint, not covered by this text correction.
+
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
-Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;
-the session contract requires retryable exact-response denial to retain bounded custody without
-advancing. Operator approved the prepared-response correction, and phase 784 now routes delivered
-and resident responses through preparation and commit. Phase 785 retains admitted response state
-and exact waiting identity independently of unprocessed delivery, and current-capacity refusal
-retries without re-admission. Phase 786 supplies internal enclosing-ceiling preparation entry points.
-Phase 787 retains successor identities once per admitted response so preparation retries cannot
-advance the identity counter.
-Phase 788 shares deferred presentation backing and includes it in retained overlap queries.
-Phases 789–790 attribute explicit preparation and pre-shaping reservation refusals without inferring GPUI error causes.
-Phase 791 reserves transient inline style runs through the GPUI call and output coexistence.
-Phase 792 qualified observation-specific shared credit and session baseline derivation. Implement
-separate configured/enclosing observations before session routing; GPUI continuation startup must
-not receive prospective display credit that belongs only to returned inline output. Carry credit
-through pre-copy, detached, returned-output-before-metadata and publication boundaries, and record
-enclosing high water per observation rather than subtracting a final credit from a raw peak.
-Phase 793 supplies the independent observer with identical production inputs; phase 794 carries
-it through actual nested admissions. Phase 795 adds checked baseline mapping, with production
-still using identity mapping; phase 796 carries optional enclosing peaks out in prepared results
-and failures. Derive live session baselines and observation-specific credits before using these
-results for host admission. Phase 797 derives zero-credit GPUI allowances from both mapped views;
-separate prospective inline-output credit still requires startup/output admission separation.
-Phase 798 explicitly admits zero-credit continuation startup before GPUI invocation; shared-output
-credit remains separate. Phase 799 supplies shared-output allowance derivation; production callers
-still supply zero credits. Phase 800 derives active and returned inline overlap from live fragments
-before metadata exists. Connect ownership evidence at each observation before enabling credits;
-avoid crediting duplicate returned/retained handles whose payload is charged only once.
-Phase 801 connects actual response preparation to typed enclosing current charge and limit, with
-the raw baseline derived from owner and borrowed inputs. Ordinary callers still use identity
-ceilings; shared credits and session accounting/routing remain pending.
-Phase 802 credits shared deferred display at continuation pre-copy and immediate coexistence.
-Phase 803 credits the newly deferred tail at pre-allocation and immediate retention. Phase 804
-carries detached deferred custody credit through scanner observations and GPUI reservation, restoring
-it before later work. Phase 805 credits actual GPUI inline output through object-page scanning;
-Phase 806 carries proven credit through active object-response publication. Source finalization
-and terminal/nested publication required their own credits. Phase 807 qualifies that text
-responses cannot retain deferred custody; they need no deferred-display credit.
-Phase 808 credits complete object pages through nonterminal forward-text publication.
-Phase 809 credits source finalization and terminal checkpoint admission, restoring the counter
-before terminal publication. Phase 810 carries candidate-only credit through terminal target
-publication. Phase 811 qualifies zero incremental credit for terminal index and nested target
-publication; index output is discarded and nested targets start without display payload.
-Phase 812 derives the session budget, accounts shared presentation ownership once, and routes typed
-retryable refusals through the admitted state. Configured failures remain terminal; do not infer host
-attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
-See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
+Complete overall acceptance of the bounded prepublication reservation before preserved resident
+adoption may use it. Startup, restoration and geometry request/response preparation, candidate
+collections, Ready/adoption projections and synchronous custody transfer must admit byte/item
+peaks before growth. Retryable availability refusal preserves exact identity and custody;
+configured failures stay terminal. Existing shared owners are charged once. Finite shaping input
+limits remain required; dependency-private scratch and allocator/RSS accounting remain outside
+this reservation under the bounded-resource system contract.
 
-Phase 824 removes the candidate configuration deep clone and qualifies shared placeholder backing.
-Phases 821–822 admit candidate, Ready and adoption storage before custody transfer. Immutable
-geometry and remaining-session projections are checked against actual transfer. Phases 825–827
-admit startup configuration, custody, geometry and residency; phases 828–829 qualify shared
-environment ownership and synchronous transfer coexistence. All baseline unit failures are reconciled; overall preparation closure still requires final acceptance. Phase 823 proves buffered effects cannot coexist with candidate preparation
-under current request-and-wait scheduling. Do not treat component acceptance as overall admission.
-
-Propagate the admitted host budget through geometry scans and candidate preparation before growth,
-including resident-response paths, prepared surface allocations, candidate/ready ownership and
-transition peaks. Existing configured geometry limits and after-allocation checks do not prove
-the host ceiling. Derive remaining capacity without double charging transferred owners, retain
-exact cleanup on refusal, and verify tight byte/item budgets while actively progressing through
-geometry and candidate creation. Independently review resource peaks before phase 742 may rely
-on this session for combined resident reservation.
-
-Phases 748–791 supply scanner text, continuation, output, checkpoint growth, index startup,
-active prepared response destination, terminal index checkpoint staging and prepared successor
-request admission, terminal index storage admission, terminal target startup admission and response
-continuation copy admission, plus terminal prepared target publication, target job box admission
-and prepared index startup admission with enclosing peak evidence. Target-origin preparation no
-longer allocates a temporary checkpoint queue; prepared desired targets check capacity before boxing.
-Terminal prepared publication cleanup-key growth now admits replacement backing before reservation.
-Terminal target immutable-array preparation now admits staging and conversion overlap.
-Prepared transition cleanup previews now allocate only after combined capacity admission.
-Replacement inputs now admit owner coexistence before cloning or boxing.
-Replacement job allocation now includes the already prepared inputs in its admission budget.
-Completed-index successor allocation now includes the enclosing response and index custody.
-Text input conversion now admits immutable backing and its style run before allocation.
-Oversize presentation run backing now passes admission before cloning.
-Grapheme custody now remains accounted through previous-segment layout.
-Returned fragment records now remain charged through index and discarded-target layout peaks.
-Inline presentation style-run backing now passes admission before cloning and allocation.
-Deferred-object caller custody now remains charged through inline admission; see the
-[capacity evidence](failures/prepublication-capacity.md).
-Returned GPUI custody now receives a per-call ceiling before invocation.
-Direct text and object response admission now accept enclosing byte/item ceilings without changing
-configured limits; session derivation and peak propagation remain required before host use.
-Resident pending request allocation now admits session ownership and temporary demand storage;
-resident reuse validates original payload identity separately from new external response keys.
-Next enforce host-budget admission before candidate surface allocations. Remaining work includes prepared target transitions,
-prepared-publication collections, and surface preparation.
-Carry prepared transition peak evidence
-through enclosing host admission; retained counts alone do not prove preparation capacity.
-Retain finite shaping-input limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
-reservation under the bounded-resource system contract; no GPUI redesign is required.
+Accepted components and invalidated approaches are retained in the
+[capacity evidence](failures/prepublication-capacity.md). The final review's stage-boundary gaps
+are corrected: retirement clears pages without transfer allocation, and initial index preparation
+uses checked enclosing admission before mutation. Current widget cb066fb passes 250 integration
+and 115 unit tests plus the default-feature prepublication check. Reconcile the complete source
+and evidence with an independent resource review; component acceptance alone is insufficient.
+Overall review found delivered-text residency bookkeeping outside the admitted peak; phase 837
+corrects it. Recheck delivered-object anchor-proof and residency preparation before closure.
+Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
+and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
