@@ -89,12 +89,23 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 780: Admit Direct Geometry Request Storage Before Allocation (finished)
+# Phase 782: Admit Authenticated Resident Geometry Responses (finished)
 
-Pending text/object request storage now checks independently clamped caller byte/item ceilings
-before allocation or mutation, preserving identity handling and same-ID retry on refusal.
-Independent resource review accepted the boundary; all 202 geometry, widget and prepublication
-tests passed. Host budget derivation remains pending.
+Explicit direct resident admission now shares authenticated identity/demand checks with prepared
+responses while preserving strict external request keys and caller capacity. Independent review
+accepted the change; 203 scoped tests and the expanded identity/cleanup test passed. Session
+integration remains phase 781; see [reuse evidence](failures/prepublication-capacity.md).
+
+# Phase 781: Gate Resident Geometry Requests On Session Capacity (pending)
+
+Admit pending geometry request storage together with its resident-demand preparation under the
+session's available byte/item envelope before mutation. Count existing session owners once,
+preserve configured-limit failure and retryable host-capacity refusal, and retain exact cleanup.
+Verify byte/item shortfalls, repeated refusal and resumed progress through resident requests;
+independently review the request admission boundary. Response scanning and candidate preparation
+remain phase 747 work and are not accepted by this request-only boundary. Integrate the explicit
+resident admission from phase 782: ordinary direct admission incorrectly rejects resident pages
+carrying their original request key. The focused reuse fixture exposed this existing mismatch.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 

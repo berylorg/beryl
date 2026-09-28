@@ -51,3 +51,17 @@ is still charged, before reserving the vector. Exact-cap refusal evidence must i
 storage, since a later capacity error can otherwise hide that the allocation already happened.
 Use separate setup and scan evidence: index checkpoint peaks and deferred-object continuation
 peaks can dominate a test intended to exercise output growth.
+
+## Resident Payloads Retain Their Original Request Identity
+
+A tight-capacity session fixture with repeated emoji and an eight-byte segment limit reached
+resident context reuse, then failed with `MalformedResponse` after capacity was restored.
+The session selected an authenticated resident page but sent it through ordinary direct response
+admission, which requires the newly issued request key. Resident pages retain their original key.
+Capacity refusal alone had hidden the mismatch; a fixture that never reused resident pages also
+failed to detect it when the new guard was disabled.
+
+Explicit resident admission now reuses the prepared path's binding, revision, presentation and
+demand proof without changing external exact-key admission or copying payloads. Cleanup names
+the current pending request, not the old resident key. Session integration must select that path
+only after residency selection and verify resumed reuse through candidate completion.
