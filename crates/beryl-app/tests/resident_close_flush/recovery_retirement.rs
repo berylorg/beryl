@@ -76,6 +76,11 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
             .unwrap_err();
         assert!(
             mount
+                .take_interrupted_exit_retirement(close.ticket, cx)
+                .is_err()
+        );
+        assert!(
+            mount
                 .interrupted_exit_retirement_ready(close.ticket, cx)
                 .is_err()
         );
@@ -87,6 +92,12 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
             !mount
                 .interrupted_exit_retirement_ready(close.ticket, cx)
                 .unwrap()
+        );
+        assert!(
+            mount
+                .take_interrupted_exit_retirement(close.ticket, cx)
+                .unwrap()
+                .is_none()
         );
         (resources, foreign_evidence)
     });
@@ -214,6 +225,64 @@ fn detached_retirement_releases_adapters_and_retries_without_releasing_the_edito
     });
     assert_eq!(foreign_evidence.close_ticket(), foreign_close);
     assert_eq!(foreign_evidence.selection(), foreign_selection);
+    let retired = mount.update(cx, |mount, cx| {
+        assert!(mount.take_interrupted_exit_retirement(stale, cx).is_err());
+        assert!(
+            mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .unwrap()
+        );
+        let retired = mount
+            .take_interrupted_exit_retirement(close.ticket, cx)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !mount
+                .interrupted_exit_retirement_ready(close.ticket, cx)
+                .unwrap()
+        );
+        assert!(
+            mount
+                .take_interrupted_exit_retirement(close.ticket, cx)
+                .unwrap()
+                .is_none()
+        );
+        retired
+    });
+    assert_eq!(retired.close_ticket(), close.ticket);
+    assert_eq!(retired.selection(), selection);
+    composer.read_with(cx, |composer, _| {
+        let snapshot = composer.recovery_snapshot().unwrap();
+        assert!(snapshot.retired_close().is_none());
+        assert_eq!(snapshot.restoration(), &seed);
+        assert_eq!(composer.gpui_input().entity_id(), input.entity_id());
+        assert!(!composer.test_widget_released());
+    });
+    cx.update(|window, app| {
+        mount.update(app, |mount, cx| {
+            assert!(
+                mount
+                    .release_window_close(close.ticket, window, cx)
+                    .is_err()
+            );
+            assert!(
+                mount
+                    .authorize_window_close_disposal(close.ticket, window, cx)
+                    .is_err()
+            );
+            let retired = mount
+                .accept_interrupted_exit_retirement(stale, retired, cx)
+                .unwrap_err();
+            mount
+                .accept_interrupted_exit_retirement(close.ticket, retired, cx)
+                .unwrap();
+            assert!(
+                mount
+                    .interrupted_exit_retirement_ready(close.ticket, cx)
+                    .unwrap()
+            );
+        })
+    });
     composer.read_with(cx, |composer, _| {
         let snapshot = composer.recovery_snapshot().unwrap();
         let retired = snapshot.retired_close().unwrap();

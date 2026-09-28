@@ -40,6 +40,15 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn take_recovery_retirement(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &Context<Self>,
+    ) -> Result<Option<crate::main_window::MainWindowComposerRetiredClose>, String> {
+        self.validate_recovery_retirement(close, cx)?;
+        Ok(self.recovery_snapshot.as_mut().unwrap().retired.take())
+    }
+
     pub(in crate::main_window) fn recovery_retirement_ready(
         &self,
         close: MainWindowConversationComposerCloseTicket,

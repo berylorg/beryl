@@ -41,6 +41,20 @@ impl MainWindowComposerMountRecoveryResources {
 }
 
 impl MainWindowConversationComposerMount {
+    pub fn take_interrupted_exit_retirement(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<crate::main_window::MainWindowComposerRetiredClose>, String> {
+        self.validate_recovery_retirement(ticket, cx)?;
+        self.contribution
+            .as_ref()
+            .unwrap()
+            .update(cx, |resident, cx| {
+                resident.take_recovery_retirement(ticket, cx)
+            })
+    }
+
     pub fn interrupted_exit_retirement_ready(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,

@@ -136,6 +136,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   returns the original retirement facts; success leaves ordinary interaction fenced and starts
   no native-lineage worker. Construction performs no writes and neither attaches the resident
   widget nor publishes the replacement graph.
+- Retained resident retirement facts may be transferred to recovery work only after rechecking
+  the exact recovery fence, detached mount resources and live resident quiescence. The transfer
+  moves the facts once, retains the presentation snapshot and leaves interaction closed. While
+  the facts are outside the resident, its retirement-readiness observation is false. Refused
+  reconstruction may return the original facts through the same exact retirement acceptance;
+  stale attempts preserve custody. This GUI handoff performs no storage access or rebinding.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and
