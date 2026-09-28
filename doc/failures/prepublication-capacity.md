@@ -1,5 +1,34 @@
 # Prepublication Capacity
 
+## Explicit Preparation Refusal Attribution
+
+On 2026-09-28, widget explicit preparation admission began retaining the exact byte/item pair
+rejected by a limit comparison, separately from historical peaks. Internal typed attribution
+reports enclosing-only refusal only when both counts fit configured geometry limits; either
+configured dimension takes precedence. Nested successor preparation carries that evidence into
+the enclosing failure. Arithmetic, component, validation and GPUI failures without an explicit
+comparison remain unclassified. No production session retry routing changes in this boundary.
+
+The integration ceiling fixture verifies both mixed-limit orientations, byte/item exact, under
+and zero ceilings, resident/external text and object preparation, immutable custody and retry.
+The nested capacity integration fixture verifies exact refusal counts and clearing on success
+or arithmetic overflow. Nested propagation itself is inspection evidence; the response fixture
+does not isolate a publication-stage nested refusal. Independent resource review accepted this
+bounded evidence and found no false retry attribution.
+
+Focused nextest run `a354d081-904f-41cc-a94a-5d29757e3f55` passed. Final full integration run
+`0c84737c-9379-4d26-96cb-0d1e1e832c2f` passed all 212 tests, zero skipped, in 19.100 seconds.
+The first build caught a test budget initializer missing the new field; it was corrected.
+Run `07268b07-09c6-42fb-80ea-46fe499ca138` rejected the test's overbroad expectation that every
+host-limited failure has explicit attribution: a one-under response reached GPUI's ambiguous
+`Layout(CapacityExceeded(Total))`. The regression now requires that error to remain unclassified.
+Run `37b7af5c-f92c-498b-bcd6-d37861be99f5` disproved a publication-stage coverage assumption in
+that fixture; the unsupported assertion was removed and the inspection evidence is stated above.
+
+Shared presentation credits throughout preparation peaks, GPUI refusal provenance, session budget
+derivation/routing and complete phase 747 remain pending. Existing five baseline unit failures
+were not rerun or waived. No canonical dependency pin changed.
+
 ## Initial Admission Is Not A Preparation Peak Bound
 
 On 2026-09-28, independent review of the initial host-capacity API found that clamping session
