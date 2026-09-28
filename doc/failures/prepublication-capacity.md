@@ -1,5 +1,29 @@
 # Prepublication Capacity
 
+## Actual Response Baseline Mapping
+
+On 2026-09-28, immutable text and object response preparation gained a typed internal capacity
+input that distinguishes geometry-relative ceilings from enclosing current charge and limit.
+The enclosing form derives its raw baseline from checked owner counts plus borrowed response
+inputs. It retains configured geometry limits as raw ceilings and carries the existing mapped
+observer through scanner and nested publication admissions. Ordinary wrappers retain identity
+mapping. No session routing or shared-display credits are enabled by this constructor plumbing.
+
+The existing response integration matrix now exercises index/target and resident/delivered paths
+with enclosing baselines below and above the raw baseline, exact fit, one-under bytes/items,
+configured refusal, stale validation, arithmetic overflow, retry after refusal and unchanged owner
+counts. Empty object-page fixtures explicitly charge their one page record; the first compile
+attempt tried to call the private allocated-item accessor from an integration test and was corrected
+without changing production visibility. LLVM, one-job, nonincremental, debug-zero nextest run
+`f59aaa9f-1de3-4638-b7b1-013fd896ed0c` passed all 226 integration tests across `range_widget`,
+`exact_geometry` and `prepublication`, no skips, in 20.369 seconds.
+Independent resource review accepted the typed constructor, mapped scanner/nested custody,
+validation ordering and refusal evidence. No code or tests changed after that successful run.
+
+The enclosing caller must already account for the geometry owner and borrowed inputs in its
+current charge. Per-observation shared-display credits, live session baseline derivation and
+typed retry routing remain required before completing session capacity enforcement.
+
 ## Presentation Overlap Before Scanner Metadata
 
 On 2026-09-28, active scanner overlap stopped depending on target presentation metadata, which

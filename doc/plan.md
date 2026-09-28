@@ -89,11 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 800: Identify Shared Presentation Backing Before Scanner Metadata (finished)
+# Phase 801: Map Actual Response Preparation Into Enclosing Custody (finished)
 
-Active scanner overlap now uses live GPUI fragment backing before target metadata exists, while
-retaining deferred-fact overlap. Independent resource review accepted the query and all 226
-integration tests passed. See [evidence](failures/prepublication-capacity.md#presentation-overlap-before-scanner-metadata).
+Text and object preparation now accept enclosing current charge and limit through a typed internal
+input, with checked owner/input baselines and independent configured limits. All 226 integration
+tests passed and independent resource review accepted the change. See
+[evidence](failures/prepublication-capacity.md#actual-response-baseline-mapping).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -124,6 +125,9 @@ credit remains separate. Phase 799 supplies shared-output allowance derivation; 
 still supply zero credits. Phase 800 derives active and returned inline overlap from live fragments
 before metadata exists. Connect ownership evidence at each observation before enabling credits;
 avoid crediting duplicate returned/retained handles whose payload is charged only once.
+Phase 801 connects actual response preparation to typed enclosing current charge and limit, with
+the raw baseline derived from owner and borrowed inputs. Ordinary callers still use identity
+ceilings; shared credits and session accounting/routing remain pending.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
