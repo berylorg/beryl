@@ -68,7 +68,7 @@ only after residency selection; the context-reuse fixture now resumes through ca
 
 ## Direct Response Ceilings Do Not Provide Retryable Session Admission
 
-The prepublication session currently calls destructive direct geometry response admission from
+The prepublication session previously called destructive direct geometry response admission from
 `src/range_widget/prepublication/session/progression/geometry.rs` in the widget fork. Merely passing
 reduced host availability into those calls cannot provide retryable response admission:
 `ExactGeometryOwner::admit_page_inner` and its object counterpart take the active job, and
@@ -84,6 +84,16 @@ evidence, and merges them before constructing the outer failure. Exact/insuffici
 overflow tests plus independent review accepted that correction; 207 regression tests passed
 (nextest run `146b6b87-56d2-4df7-bce1-dc0f60775f8d`). Enclosing failure propagation was reviewed
 in source; the focused tests directly exercise production budget and release modules.
-Account shared presentation ownership once as preparation progresses. Session integration and its
-focused retry/cleanup tests remain outstanding. Preserve configured terminal failures and the existing
-rule against inferring host attribution from ambiguous GPUI capacity errors.
+The session now uses immutable preparation and explicit commit for delivered and resident responses.
+It reuses prepared successor requests through residency and cleanup admission, without allocating
+or charging another pending record. Completed-index preparation supplies the target job once.
+Blocked successor admission preserves ownership, and cancellation/drop releases exact custody.
+Independent review accepted this integration; 208 tests passed (nextest run
+`e99b0ccd-ebf7-4ad7-9419-79f1c1f9a2b9`). A subsequent stronger resident test admits current items
+while denying the extra prepared-demand record and passed (`d5ea0988-eb92-40d0-b1cf-bc34ea2711f1`).
+
+Host scan ceilings and retryable response custody remain outstanding: delivery takes the waiting
+identity and response before admitting payloads into residency. Retry must distinguish that retained
+state from unprocessed delivery. Account shared presentation ownership once as preparation progresses.
+Preserve configured terminal failures and the existing rule against inferring host attribution from
+ambiguous GPUI capacity errors.

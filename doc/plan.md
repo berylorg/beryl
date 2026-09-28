@@ -89,21 +89,23 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 783: Preserve Nested Preparation Refusal Peaks (finished)
+# Phase 784: Commit Prepared Geometry Responses In Prepublication Sessions (finished)
 
-Nested successor and cleanup preparation now retain attempted byte/item peaks on failure and
-success; enclosing failures include that evidence. Independent resource review accepted the change.
-All 207 regression tests passed, including exact/insufficient capacity and overflow evidence.
+Delivered and resident responses now prepare and commit geometry once; successor dispatch reuses
+the pending request through residency and cleanup admission without duplicate allocation or charge.
+Independent review accepted the boundary. All 208 regression tests passed, plus the strengthened
+resident-preparation item-capacity test. Host scan ceilings and response retry custody remain below.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
-Integration finding, 2026-09-28: do not pass reduced host availability directly into the session's
-current destructive geometry response methods. Their capacity failure drops the active job;
+Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;
 the session contract requires retryable exact-response denial to retain bounded custody without
-advancing. Resume by integrating prepared response admission and commit, including resident reuse,
-before applying host ceilings. Preserve configured terminal failures and do not infer host attribution
-from ambiguous GPUI errors. Nested successor refusal now carries its attempted peak outward.
-Operator approved the prepared-response correction on 2026-09-28; implementation is resumed.
+advancing. Operator approved the prepared-response correction, and phase 784 now routes delivered
+and resident responses through preparation and commit. Next retain the exact response and waiting
+identity across retryable preparation denial: delivery currently takes both before processing and
+admits payloads into residency. Keep that state distinguishable from unprocessed delivery so retry
+does not admit the payload twice. Preserve configured terminal failures and do not infer host
+attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.
 See the [failure note](failures/prepublication-capacity.md#direct-response-ceilings-do-not-provide-retryable-session-admission).
 
 Propagate the admitted host budget through geometry scans and candidate preparation before growth,
@@ -114,7 +116,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–783 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–784 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
