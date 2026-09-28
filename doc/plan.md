@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 749: Admit Scanner Cross-Page Continuation Storage (finished)
+# Phase 750: Admit Scanner Output Collection Growth (finished)
 
-Active-atom and deferred-object continuation storage now checks byte/item capacity before boxing
-or cloning retained payloads. All 67 geometry/prepublication tests passed, including exact-fit and
-refusal-before-allocation cases; independent resource review accepted this local prerequisite.
-Whole-session capacity propagation and other preparation allocations remain in phase 747.
+Fragment and inline-object presentation backing now admits old/new coexistence before growth;
+the temporary fragment vector is removed. All 69 geometry/prepublication tests passed, including
+initial/repeated growth and tight-budget refusal cleanup. Independent resource review accepted
+this local boundary; complete preparation-capacity propagation remains in phase 747.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,8 +106,9 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phase 748 supplies text-buffer growth admission. Remaining work includes index/target startup,
-fragment and presentation collections, returned GPUI admission custody, and surface preparation.
+Phases 748–750 supply scanner text, cross-page continuation and output-collection growth admission.
+Remaining work includes index/target startup, checkpoint and prepared-publication collections,
+returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
 limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
 reservation under the bounded-resource system contract; no GPUI redesign is required.

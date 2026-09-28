@@ -27,3 +27,11 @@ must be checked against current ownership immediately before growth: shaping the
 can retain geometry between an earlier check and the next text allocation. Charge the detached
 grapheme as well as destination storage at that later check. This local correction does not prove
 the remaining preparation paths or combined predecessor reservation.
+
+Output-collection growth tests exposed another transition distinction: returned GPUI payload
+charges alone do not include the additional fragment enum records retained alongside scanner
+backing during transfer. Admit those records and the replacement backing while the old backing
+is still charged, before reserving the vector. Exact-cap refusal evidence must inspect released
+storage, since a later capacity error can otherwise hide that the allocation already happened.
+Use separate setup and scan evidence: index checkpoint peaks and deferred-object continuation
+peaks can dominate a test intended to exercise output growth.
