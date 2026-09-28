@@ -75,13 +75,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 824: Qualify Candidate Placeholder Ownership (finished)
+# Phase 825: Remove Redundant Startup Configuration Ownership (finished)
 
-Candidate preparation now borrows configuration through its shared environment, removing an
-unadmitted copy of the oversize style-run vector. Placeholder cloning shares existing backing;
-its surface charge precedes highlight allocation. All 43 prepublication tests, default-feature
-check and independent resource review passed. See the [ownership finding](failures/prepublication-capacity.md#candidate-configuration-and-placeholder-ownership).
-Transfer coexistence and startup/environment accounting remain pending under phase 747.
+Session construction now borrows configuration, removing its redundant oversize style-run copy.
+All 43 prepublication tests, default-feature compilation and independent resource review passed.
+See the [startup ownership finding](failures/prepublication-capacity.md#startup-configuration-ownership).
+Startup allocation admission, shared environment accounting and transfer coexistence remain
+pending under phase 747.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

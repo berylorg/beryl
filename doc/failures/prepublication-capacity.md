@@ -1116,3 +1116,24 @@ default-feature check passed in 3.24s. Changed-file rustfmt and diff checks pass
 check reported pre-existing differences in lib.rs and exact_geometry tests, which remain untouched.
 Independent resource review accepted the correction. No manifest or canonical dependency pin
 changed. Transfer coexistence and the wider preparation boundary remain pending.
+
+## Startup Configuration Ownership
+
+Phase 825 / widget 80 removes the full configuration clone in
+RangePrepublicationSession::new_with_admission_capacity. Like candidate preparation, that clone
+copied StreamingOversizePresentation.runs before admission. Startup now borrows the environment's
+configuration and stores a cloned environment Arc in the session. No configuration payload is
+copied by this change. The original environment keeps the borrow alive during construction;
+on success its temporary handle drops, leaving session custody. Early errors drop temporary
+owners, and initial-capacity refusal drops the constructed session without issuing requests.
+Validation order, generation allocation and configured/enclosing limit selection are unchanged.
+
+The geometry owner's own style clone is still present. This correction does not qualify that
+allocation, the custody-vector reservations, shared environment backing or transfer coexistence.
+Those remain required by the overall preparation audit before preserved-resident reservation.
+
+Independent resource review inspected construction, environment ownership and geometry/drop paths
+and found no blocker. Allocation removal is source-verified rather than allocator-instrumented.
+Prepublication run fc05035b-6bc1-4fec-a082-5f5d84a80330 passed 43/43, zero skipped, 15.808s.
+Default-feature compilation passed in 3.31s; changed-file rustfmt and diff checks passed.
+No manifest or canonical dependency pin changed.
