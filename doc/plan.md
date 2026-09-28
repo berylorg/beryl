@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 776: Preserve Deferred Object Charges During Admission (finished)
+# Phase 777: Reserve Returned Layout Capacity Before GPUI Admission (finished)
 
-Detached deferred objects remain charged throughout nested admission; enclosing budget totals
-are restored before success or failure returns. Independent resource review accepted the change.
-All 192 tests passed across geometry, widget and prepublication verification, including deferred
-exact byte/item boundaries and one-under refusal. Returned GPUI reservation remains pending.
+Each GPUI call now receives a returned-storage ceiling derived before invocation from remaining
+geometry capacity, including fragment records and continuation replacement peaks. Original GPUI
+errors remain unchanged. Independent resource review accepted the boundary; all 194 geometry,
+widget and prepublication tests passed. Host propagation and candidate construction remain pending.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,7 +106,7 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–775 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–777 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
 continuation copy admission, plus terminal prepared target publication, target job box admission
@@ -125,12 +125,12 @@ Returned fragment records now remain charged through index and discarded-target 
 Inline presentation style-run backing now passes admission before cloning and allocation.
 Deferred-object caller custody now remains charged through inline admission; see the
 [capacity evidence](failures/prepublication-capacity.md).
-Remaining work includes prepared target transitions and prepared-publication collections,
-returned GPUI admission custody, and surface preparation.
+Returned GPUI custody now receives a per-call ceiling before invocation.
+Remaining work includes host-budget propagation through prepared target transitions,
+prepared-publication collections, and surface preparation.
 Carry prepared transition peak evidence
 through enclosing host admission; retained counts alone do not prove preparation capacity.
-Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
-limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
+Retain finite shaping-input limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
 reservation under the bounded-resource system contract; no GPUI redesign is required.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)

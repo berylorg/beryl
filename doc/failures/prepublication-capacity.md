@@ -36,6 +36,14 @@ this gap. The correction carries that box and fact charge in the admission budge
 the nested call, restoring the enclosing budget before propagating success or failure.
 Remaining scanner capacity can then include this custody when reserving returned GPUI storage.
 
+Returned-layout reservation now clamps each call's retained byte/item limits to remaining geometry
+capacity, including the fragment enum and both pre- and post-replacement continuation accounting.
+An attempted conversion of GPUI `Total` errors to geometry capacity errors was rejected in review:
+GPUI does not identify which total failed, so reducing the item ceiling could mislabel an unchanged
+configured byte-limit failure. Preserve GPUI errors unchanged. Such refusal remains a deterministic
+terminal layout-capacity failure; do not infer host-capacity attribution or repeat shaping to
+diagnose it. Exact returned capacity can still be followed by a separate checkpoint-growth refusal.
+
 Output-collection growth tests exposed another transition distinction: returned GPUI payload
 charges alone do not include the additional fragment enum records retained alongside scanner
 backing during transfer. Admit those records and the replacement backing while the old backing
