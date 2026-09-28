@@ -801,7 +801,8 @@ independent allocation oracle. The test preserves attribution for ambiguous GPUI
 Focused run `576d9fd1-d04c-4403-9e14-dbe4244d1f16` passed. Full LLVM, one-job, nonincremental,
 debug-zero run `ada5c0e7-8600-400c-aa2e-5e29587e5ac8` passed all 230 integration tests across
 `range_widget`, `exact_geometry` and `prepublication`, zero skipped, in 20.877 seconds. Formatting
-and scoped whitespace checks passed. No source or test changes followed the full run. The earlier
+and scoped whitespace checks passed after normalizing two mixed line endings; the whitespace-only
+correction passed an ignore-line-ending diff check. No semantic test changes followed the full run. The earlier
 five baseline unit failures were not rerun or changed. Session budget derivation and retry routing
 remain the next integration boundary; this proof does not accept whole-session host admission.
 
