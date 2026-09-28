@@ -1631,3 +1631,30 @@ locked local dependencies, one compiler job, LLVM linking, no normal debug infor
 incremental compilation. Independent review accepted this bounded correction after final fixture
 inspection. Actual allocator-overcapacity rejection and admission ordering are source-reviewed,
 not allocation-instrumented. Overall preparation acceptance remains separate.
+
+## Overall Preparation Capacity Acceptance
+
+Root 747 / widget 2 independently accepts widget ec903ed across startup admission, restoration
+and initial indexing, request/response preparation, candidate collections and projections,
+synchronous transfer, fresh-widget construction and cleanup. The review reconciled prior component
+evidence against current whole-path custody rather than treating individual passes as sufficient.
+
+Request preparation uses empty retirement sets on this path, so generic retirement collection
+introduces no allocated backing. Requested storage precedes growth; retained capacities and
+enclosing peaks feed subsequent gates. Available-capacity response refusal retains custody and
+reserved successor identities, while configured failure remains terminal. Candidate construction
+admits simultaneous preparation, remaining-origin, Ready and adoption charges before moving owners.
+Transfer moves payloads into sufficient destinations without cloning. Fresh adoption includes
+configuration backing and projected request/residency/dispatch buffers. Cleanup promotion and
+transfer use existing ledger records; session/candidate destruction does not collect release reports.
+
+The unchanged ec903ed source passed run e9945077-1678-419e-8cdf-49fcd2c6085a: 294 integration and
+115 unit tests, zero skipped, plus the default-feature checks recorded above. Source and manifest
+inspection found no archived old-code/old-doc references in the widget implementation or tests.
+Independent review found no blocking issue in the complete capacity boundary.
+
+Limits: allocator behavior/RSS and dependency-private scratch remain excluded. Shared environment
+infrastructure is bounded separately. Final Ready/adoption gates, intermediate transfer ordering
+and nonallocating teardown rely partly on source inspection, not allocation instrumentation.
+This accepts preparation accounting only; preserved-resident protection, combined reservation,
+atomic adoption and application recovery remain separate unimplemented boundaries.

@@ -89,31 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 840: Admit Adoption Configuration Storage (finished)
+# Phase 747: Enforce Capacity Throughout Prepublication Preparation (finished)
 
-Fresh-widget adoption admits requested configuration run storage before cloning and actual capacity
-before owner transfer, retaining its separate charge afterward. Independent review accepted the
-correction; 294 integration and 115 unit tests plus default-feature checks pass. See
-[evidence](failures/prepublication-capacity.md#adoption-configuration-storage-correction).
-
-# Phase 747: Enforce Capacity Throughout Prepublication Preparation (wip)
-
-Complete overall acceptance of the bounded prepublication reservation before preserved resident
-adoption may use it. Startup, restoration and geometry request/response preparation, candidate
-collections, Ready/adoption projections and synchronous custody transfer must admit byte/item
-peaks before growth. Retryable availability refusal preserves exact identity and custody;
-configured failures stay terminal. Existing shared owners are charged once. Finite shaping input
-limits remain required; dependency-private scratch and allocator/RSS accounting remain outside
-this reservation under the bounded-resource system contract.
-
-Accepted components and invalidated approaches are retained in the
-[capacity evidence](failures/prepublication-capacity.md). Allocation-free retirement, initial-index
-admission, delivered text/object preparation and nonallocating teardown are accepted. The widget
-passes 294 integration and 115 unit tests plus default-feature checks. Adoption configuration
-storage is also accepted. Reconcile the complete
-source and evidence with independent resource review; component acceptance alone is insufficient.
-Preserve explicit evidence limitations for shared-environment infrastructure, allocator behavior
-and source-reviewed transfer/adoption gates. No preserved resident implementation is accepted here.
+Independent whole-path resource/lifecycle review accepted widget ec903ed from startup through
+fresh adoption and cleanup. All 294 integration and 115 unit tests plus default-feature checks
+pass. [Acceptance evidence](failures/prepublication-capacity.md#overall-preparation-capacity-acceptance)
+records source-review and accounting limits. Preserved resident adoption remains unimplemented.
 
 # Phase 742: Implement Preserved Resident Widget Adoption (pending)
 
