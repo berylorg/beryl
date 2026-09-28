@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 795: Map Preparation Observations To Enclosing Ownership (finished)
+# Phase 796: Retain Enclosing Preparation Peak Evidence (finished)
 
-Checked baseline translation now preserves raw configured charges and maps each enclosing
-observation with bounded incremental credit, including nested admissions. Independent review
-accepted the change; all 218 integration tests passed. Production remains identity-mapped until
-session and credit integration. See [evidence](failures/prepublication-capacity.md#checked-enclosing-observation-mapping).
+Prepared success and failure now retain optional independent enclosing peaks; validation and
+direct paths without an observer report none. Independent review accepted the change after the
+fixed metadata-size snapshot correction; all 219 integration tests passed. Session consumption
+remains pending. See [evidence](failures/prepublication-capacity.md#enclosing-preparation-result-evidence).
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -115,8 +115,10 @@ not receive prospective display credit that belongs only to returned inline outp
 through pre-copy, detached, returned-output-before-metadata and publication boundaries, and record
 enclosing high water per observation rather than subtracting a final credit from a raw peak.
 Phase 793 supplies the independent observer with identical production inputs; phase 794 carries
-it through actual nested admissions. Before applying credits, map both views at each admission and
-propagate enclosing peaks to the session; separate internal peaks alone do not complete admission.
+it through actual nested admissions. Phase 795 adds checked baseline mapping, with production
+still using identity mapping; phase 796 carries optional enclosing peaks out in prepared results
+and failures. Derive live session baselines and observation-specific credits before using these
+results for host admission. Remaining GPUI allowance derivation must respect both mapped views.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

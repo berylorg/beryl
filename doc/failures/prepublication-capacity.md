@@ -1,5 +1,32 @@
 # Prepublication Capacity
 
+## Enclosing Preparation Result Evidence
+
+Prepared responses and `ExactGeometryFailure` now retain an optional enclosing byte/item peak
+copied from the observer. Crate-private accessors keep it available for session integration without
+changing existing raw geometry peak getters. Validation and direct-admission paths without an
+observer report `None`; arithmetic failures after observer creation retain its prior representable
+peaks, including `Some((0, 0))` before a first valid observation. This evidence never supplies
+refusal attribution for arithmetic or GPUI errors. Nested success and failure use the restored
+observer, and commit still reports the existing raw geometry evidence.
+
+The added inline metadata increased the large shared-presentation fixture's charged peak by 16
+bytes, from 903568 to 903584 on the supported target. Both ordinary widget publication wrappers
+embed `PreparedTargetResponse` and already admit their `size_of` in `response_preparation.rs` and
+`response_commit.rs`. Initial nextest run `fc6aab3f-7501-460d-a66d-d3bc4dca0309` passed 218 tests
+and failed only that fixed snapshot. The snapshot was updated after tracing the new metadata
+charge; the dynamic exact-fit, one-byte-under and cleanup assertions remain intact.
+
+Integration probes cover independent raw/enclosing peaks after nested refusal and arithmetic
+failure, cloned failure evidence, pre-observation overflow, stale response validation, and ordinary
+and resident prepared text/object success and refusal. Session consumption, sharing discovery,
+GPUI startup/output allowances and retry routing remain pending.
+
+Independent review accepted the result plumbing and metadata accounting, subject to the corrected
+snapshot passing. Final LLVM, one-job, nonincremental, debug-zero nextest run
+`30b7a215-fced-4598-a981-95c21da28e91` passed all 219 tests across `range_widget`, `exact_geometry`
+and `prepublication`, with no skips, in 20.975 seconds, satisfying that condition.
+
 ## Checked Enclosing Observation Mapping
 
 On 2026-09-28, `CapacityObservations` gained checked preparation and enclosing baselines.
