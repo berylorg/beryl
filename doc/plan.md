@@ -75,13 +75,6 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 834: Reconcile Successive Edit Object Ownership Fixture (finished)
-
-Corrected the fixture to count initialized object facts separately from allocation slots.
-All 115 unit tests pass, including every reconciled baseline failure. Independent review
-accepted the retained exact-gap and insertion-admission checks. Production behavior is unchanged.
-Overall preparation acceptance remains pending.
-
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -96,6 +89,19 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
+# Phase 835: Discard Retired Session Pages Without Transfer Allocation (finished)
+
+Retirement now clears resident pages in place, preserving pending requests, backing and exact
+cleanup custody. All 43 prepublication tests pass; independent resource review accepted the change.
+Initial index admission remains pending; see [evidence](failures/prepublication-capacity.md#session-stage-boundary-admission).
+
+# Phase 836: Admit Initial Session Index Preparation (pending)
+
+Prepare initial index startup under the checked enclosing session capacity before advancing
+identity or releasing restoration custody. Preserve retryable refusal without effects or state
+advancement, independently retain configured failures, and propagate preparation peaks.
+Verify zero/current/exact byte and item availability, repeated retry, restored progress and cleanup
+with independent resource review before overall phase 747 acceptance.
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
 Integration finding, 2026-09-28: direct geometry response admission drops the active job on refusal;

@@ -1380,3 +1380,28 @@ Full unit run `a269a326-08a1-4591-8672-11104d65d6c6` passed all 115 tests, zero 
 in 16.910 seconds. All five baseline unit failures are now reconciled; this is not overall
 prepublication preparation acceptance. Independent review accepted the correction. This fixture
 qualifies insertion admission, not host settlement or final publication of the new object.
+
+## Session Stage Boundary Admission
+
+Overall preparation review at widget `38f33f3` found two gaps despite all 115 unit tests and
+248 integration tests passing. Restoration completion called configured-only `start_index`:
+a one-work-unit service schedule permits availability to become zero immediately before that
+call, which still allocated checkpoints/an active job, advanced identity and omitted its peak
+from session evidence. Initial index preparation must use enclosing admission before identity
+or restoration custody changes; root phase 836 owns this correction.
+
+Restoration completion and index response completion also used `drop(take_resident_pages())`.
+Those helpers drain into newly allocated vectors while original deque backing remains live.
+Phase 835 replaces those four calls with crate-private in-place resident discard. Text and object
+deques clear without collecting; only resident byte/object/presentation counters reset. Pending
+requests and retained deque backing survive, and exact ledger release stays at the same call sites.
+This avoids a needless allocation instead of admitting another transfer buffer.
+
+Pre-correction full integration run `d331cdad-c2d6-421f-af6b-b5181dc6c46e` passed 248 tests in
+22.188 seconds; default-feature prepublication check passed. Post-correction prepublication run
+`f52d1f28-7594-4bbf-b42b-b76425be0f13` passed all 43 tests in 15.434 seconds. These lifecycle tests
+plus source inspection verify the discard change; they do not establish initial index admission.
+Overall capacity acceptance and preserved resident adoption remain pending.
+Independent resource review accepted the discard correction: deque capacity remains charged by
+owner_storage_charge after clearing, and pending/cancelled queues and request identities remain
+unchanged. Initial index admission still blocks overall acceptance.
