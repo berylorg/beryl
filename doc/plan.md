@@ -75,13 +75,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 827: Admit Startup Geometry And Residency Owners (finished)
+# Phase 828: Qualify Shared Environment Accounting (finished)
 
-Startup now admits geometry, residency and custody storage before constructing the owners,
-then replaces projected charges with actual charges between allocations. Style-copy admission
-uses run length rather than source spare capacity. All 43 prepublication tests, default compilation
-and independent resource review passed. Shared environment accounting and transfer coexistence
-remain pending; see [capacity evidence](failures/prepublication-capacity.md#startup-geometry-and-residency-admission).
+Source and independent resource review confirm that pre-existing environment and finite shared
+pools remain separately bounded; session/candidate admission charges their occupied custody.
+Full-pool and per-record charges overlap and must not be blindly added in combined adoption.
+No runtime change or new accounting API is required. Transfer coexistence remains pending. See [evidence](failures/prepublication-capacity.md#shared-environment-accounting-boundary).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

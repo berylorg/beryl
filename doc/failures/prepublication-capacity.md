@@ -1182,3 +1182,40 @@ Independent resource review accepted the bounded change. Nonempty style metadata
 intermediate allocation failure and allocation ordering are source-reviewed, not fault-injected.
 No manifest or canonical dependency pin changed. Shared environment accounting and transfer
 coexistence remain open before overall preparation acceptance.
+## Shared Environment Accounting Boundary
+
+Phase 828 / widget 83 audits the shared environment without changing runtime accounting.
+The package prepublication contract supplies an immutable environment and a host-retained,
+finite cleanup ledger; its settlement contract separately bounds the coordinator custody pool.
+The root bounded-resource system permits separate local caps and excludes universal exact
+accounting of ordinary object graphs, handles and allocator storage. Omission of pre-existing
+shared infrastructure from the incremental session charge is not itself an admission defect.
+
+Source evidence at widget `041b9eb`:
+
+- `prepublication/types.rs::RangePrepublicationEnvironment::new` moves the supplied configuration
+  into one `Arc` owner. Session construction and candidate preparation clone its handle and borrow
+  configuration; they do not duplicate that configuration. The session's geometry style copy is
+  separately admitted by the accepted startup path.
+- `prepublication/cleanup.rs::new` allocates the fixed ledger pool before session construction.
+  `ownership` reports the mutex/inner storage and all slots. `record_charge` reports one slot;
+  session `accounting.rs::shell_charge` charges its occupied records, and candidate preparation
+  transfers the corresponding record charges with custody. Full-pool and occupied-record charges
+  are overlapping views, not disjoint quantities to add directly.
+- The candidate holds a weak environment identity and a strong cleanup-ledger handle. Session and
+  candidate destruction mark their registered records ready; the host must retain, drain and
+  acknowledge the pool. Neither destruction path creates another pool or copies configuration.
+- Shared configuration payload/placeholder evidence remains qualified by the earlier configuration
+  audits. This audit does not exempt session-created copies, surface retention, geometry growth,
+  or transition coexistence from their existing admission rules.
+
+Independent resource/authority review found no material public ownership decision needed for this
+slice. Preserve separate infrastructure bounds and the existing occupied-custody charges. If the
+later combined resident reservation uses the full ledger-pool charge, identify the shared ledger
+and remove only the occupied-record overlap already included in its participating owner charges;
+never blindly add both views or credit unrelated records. That composition still belongs to the
+preserved-adoption boundary, and has not been implemented or accepted by this audit.
+
+Verification is focused source and authority inspection plus independent review; runtime source is
+unchanged, so no tests were rerun. No exact universal environment-charge API or new memory-governor
+contract is warranted. Transfer coexistence and overall preparation closure remain pending.
