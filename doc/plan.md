@@ -89,11 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 760: Admit Prepared Target Jobs Before Allocation (finished)
+# Phase 761: Admit Prepared Index Startup Before Allocation (finished)
 
-Prepared target jobs check current ownership plus the proposed job and pending request before
-allocating either box. Independent review accepted charge equivalence, allocation ordering and
-unchanged refusal custody; all 188 geometry, prepublication and range-widget tests passed.
+Prepared index startup admits the origin checkpoint, job and pending request with current ownership
+before allocation. Independent review accepted allocation ordering, component bounds and unchanged
+refusal custody; all 188 geometry, prepublication and range-widget tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -105,12 +105,15 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–760 supply scanner text, continuation, output, checkpoint growth, index startup,
+Phases 748–761 supply scanner text, continuation, output, checkpoint growth, index startup,
 active prepared response destination, terminal index checkpoint staging and prepared successor
 request admission, terminal index storage admission, terminal target startup admission and response
-continuation copy admission, plus terminal prepared target publication and target job box admission.
+continuation copy admission, plus terminal prepared target publication, target job box admission
+and prepared index startup admission.
 Remaining work includes prepared target transitions and prepared-publication collections,
-returned GPUI admission custody, and surface preparation.
+returned GPUI admission custody, and surface preparation. Propagate prepared index startup transient
+peaks into enclosing admission evidence before host-level reliance; final retained counts alone
+exclude the temporary origin checkpoint.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
 limits. Dependency-private shaping scratch and allocator/RSS accounting remain outside this
 reservation under the bounded-resource system contract; no GPUI redesign is required.
