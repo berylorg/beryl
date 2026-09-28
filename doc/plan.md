@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 791: Reserve Transient Inline Style Runs Through Layout (finished)
+# Phase 792: Qualify Shared Presentation Preparation Peaks (finished)
 
-Inline-object and oversize style-run buffers remain charged through GPUI reservation and output
-coexistence; ordinary text's transferred runs are not counted twice. Independent review accepted
-the boundary, and all 213 integration tests passed. See the
-[verification evidence](failures/prepublication-capacity.md#transient-inline-style-run-coexistence).
+Independent resource review accepted the source-level accounting map, including prospective display
+credit before metadata and the separate GPUI continuation-only startup check. No production code
+changed. The [evidence and verification obligations](failures/prepublication-capacity.md#shared-presentation-preparation-peak-map)
+guide the remaining implementation; phase 747 is not accepted.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -109,6 +109,11 @@ advance the identity counter.
 Phase 788 shares deferred presentation backing and includes it in retained overlap queries.
 Phases 789–790 attribute explicit preparation and pre-shaping reservation refusals without inferring GPUI error causes.
 Phase 791 reserves transient inline style runs through the GPUI call and output coexistence.
+Phase 792 qualified observation-specific shared credit and session baseline derivation. Implement
+separate configured/enclosing observations before session routing; GPUI continuation startup must
+not receive prospective display credit that belongs only to returned inline output. Carry credit
+through pre-copy, detached, returned-output-before-metadata and publication boundaries, and record
+enclosing high water per observation rather than subtracting a final credit from a raw peak.
 Next derive the session budget, account shared presentation ownership once, and route typed
 retryable refusals through the admitted state. Preserve configured terminal failures and do not infer host
 attribution from ambiguous GPUI errors. Nested successor refusal carries attempted peaks outward.

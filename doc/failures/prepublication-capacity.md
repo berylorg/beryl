@@ -1,5 +1,101 @@
 # Prepublication Capacity
 
+## Shared Presentation Preparation Peak Map
+
+On 2026-09-28, source inspection qualified why the existing final-retained overlap query cannot
+simply be subtracted from every preparation peak. This is implementation evidence for the existing
+widget prepublication and shared-resource contracts, not new design authority. Production host
+ceiling propagation remains unimplemented.
+
+The enclosing session and configured geometry budgets need distinct charge views. The configured
+view must preserve existing component-limit semantics. The enclosing view counts resident backing
+once, with credit only for an allocation already charged by another live owner. A final overlap
+amount cannot be applied retroactively to earlier peaks; nor can credits raise configured limits.
+Arithmetic failure remains terminal and cannot be attributed as an enclosing refusal.
+
+For an observation, let `S` be current session charge, `B` the full geometry-owner plus borrowed-input
+baseline included by preparation, and `T` its raw total including that baseline. The enclosing
+charge is `S + (T - B) - C`, where `C` covers only duplicated display charges introduced by this
+preparation observation. Current session overlap is already reflected in `S`; subtracting it again
+would undercount. Derive byte and item views separately using checked arithmetic. This expression
+is an accounting identity, not permission to subtract a final credit from a peak: enclosing high
+water must be observed per boundary, because the maximum raw total and maximum shared credit need
+not occur together. Existing raw peaks remain evidence for configured geometry limits.
+
+The relevant source paths in the sibling widget checkout are:
+
+- `src/range_widget/prepublication/session/accounting.rs::current_charge` already subtracts current
+  geometry presentation overlap against resident object pages and removes inline nested owner
+  records from recursive charges. Geometry preparation instead starts with the full geometry owner
+  plus borrowed response payloads. Session derivation must reconcile these different baselines,
+  including both text and object input for an object response; it cannot subtract geometry counts
+  blindly from the session total or charge borrowed resident input a second time.
+- `src/range_geometry/exact/prepared_admission.rs::admit_response_continuation` admits a copy before
+  allocating it. `copy_response_continuation` shares deferred display backing but copies fallback
+  text and owns a new deferred record. Display credit must apply at that pre-copy observation as
+  well as afterward. Ordinary fallback strings, records and semantic items remain fully charged.
+- `src/range_geometry/exact/scan.rs::process_object_page` takes a deferred object out of scanner state
+  and temporarily adds its full charge to fixed custody while admitting it. An overlap query over
+  the scanner no longer sees that object during this interval. Credit must follow the detached
+  caller custody and be restored or removed with it, including on failure. Deferred-tail creation
+  likewise needs the prospective shared display represented before cloning.
+- `src/range_geometry/exact/scan/output.rs::admit_layout` observes returned GPUI output and reserves
+  scanner fragment storage before `scan.rs::admit_inline_object` creates its matching widget
+  presentation metadata. Therefore scanning only `object_presentations` misses a real shared
+  display during these observations. The caller already knows the inline display allocation;
+  accounting must carry that identity through returned-output and fragment-retention observations.
+  Discarded index output still coexists with its resident input before it is dropped.
+- `src/range_geometry/exact/scan/output/reservation.rs::binding` sets GPUI's retained allowance
+  before output exists. Prospective display credit therefore also belongs at this boundary; adding
+  credit only after GPUI returns is too late to admit an exact-fit host budget. Any allowance for
+  shared inline display must be specific to that call's known input, preserve configured GPUI
+  limits, and be reconciled with returned charge before further allocation. Ordinary text,
+  oversize style presentation and line finalization cannot inherit resident-inline display credit.
+  GPUI's `streaming_layout.rs::resume_streaming_layout_session` validates continuation capacity
+  before shaping, when inline display is not part of the charge. An enlarged total ceiling cannot
+  by itself prove that this earlier check fits: prospective display credit must not subsidize a
+  continuation-only observation. Startup and output checks need separate qualification before
+  enabling the credit; post-return checking alone does not prove admission before allocation.
+- `src/range_geometry/exact/prepared_admission/publication.rs` and `target_arrays.rs` retain the
+  unchanged current owner, scanner delta, destination storage and publication conversion together.
+  Existing shared-output payload deductions must be reconciled with resident display credits;
+  do not deduct the same charge twice. Credit follows charged occurrences, not merely the number
+  of matching page references. Index completion also transfers the enclosing observation into
+  `transition::PreparationCapacity` while preparing its target successor.
+
+GPUI evidence is in the sibling owned fork's
+`crates/gpui/src/text_system/streaming_layout/inline.rs`: `prepare_inline` shares presentation text
+with its shaped line, while `inline_charge` includes the display length in fragment bytes. Thus the
+display is already present in returned-output charge before widget metadata exists. The style-run
+reservation accepted separately remains necessary; runs and display backing are different owners.
+
+The existing bounded pointer-and-length identity comparisons can identify shared resident backing
+without retaining another object registry. A prospective credit must be bounded by the display
+charge actually included in that observation. Equal text in an independently cloned allocation
+does not establish shared ownership. Empty displays contribute zero bytes; duplicate references to
+one resident page do not multiply credit. Matching allocations must remain live during comparison.
+
+Verification must cover direct and deferred objects, index output discarded after admission and
+target output retained before metadata insertion, continuation pre-copy, detached-deferred error
+paths, and terminal publication/nested successor peaks. Exercise empty and nonempty display,
+independent equal-content allocations, repeated page references, exact fit and byte/item one-under,
+configured-versus-enclosing precedence, repeated retry with stable successor IDs, and cancellation
+cleanup. The shared-deferred fixture establishes retained overlap only; the existing 213-test result
+does not establish these prospective-credit or session-host-ceiling guarantees.
+
+The GPUI reservation still uses one retained ceiling and its layout failures have no enclosing
+attribution. Shared credit must not turn such an error into an inferred retryable refusal, and a
+second shaping attempt is not acceptable evidence. The remaining implementation must preserve
+explicit attribution across reservation and nested successor boundaries before session retry routing
+is enabled. This map does not establish that existing GPUI error attribution is sufficient for all
+host-ceiling outcomes.
+
+Independent resource review accepted this evidence boundary after correcting the deferred-function
+citation and explicitly separating GPUI startup admission from output admission. The root verified
+the cited startup code and response-input baselines. No production source, dependency pins or test
+expectations changed; no runtime tests were rerun for this source-inspection-only qualification.
+Full host-budget propagation and phase 747 remain pending.
+
 ## Transient Inline Style Run Coexistence
 
 On 2026-09-28, inspection found that inline-object and oversize style-run allocation guards did
