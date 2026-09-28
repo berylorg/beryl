@@ -89,12 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 753: Admit Active Prepared Response Storage Before Allocation (finished)
+# Phase 754: Admit Terminal Index Checkpoint Staging Before Allocation (finished)
 
-Active prepared response fragment, object-presentation and checkpoint backing is admitted before
-allocation. Independent resource review accepted the change. Verification covers all 187 geometry,
-prepublication and range-widget tests: 186 passed together; one baseline-confirmed stale byte-count
-expectation was corrected and its focused rerun passed, including exact-fit/refusal and cleanup.
+Terminal prepared-index checkpoint queue and vector storage are admitted before allocation,
+including the incoming queue record and coexisting staging backing. Independent resource review
+accepted the change; all 187 geometry, prepublication and range-widget tests passed.
 
 # Phase 747: Enforce Capacity Throughout Prepublication Preparation (pending)
 
@@ -106,8 +105,8 @@ exact cleanup on refusal, and verify tight byte/item budgets while actively prog
 geometry and candidate creation. Independently review resource peaks before phase 742 may rely
 on this session for combined resident reservation.
 
-Phases 748–753 supply scanner text, continuation, output, checkpoint growth, index startup and
-active prepared response destination admission.
+Phases 748–754 supply scanner text, continuation, output, checkpoint growth, index startup,
+active prepared response destination admission and terminal index checkpoint staging admission.
 Remaining work includes target startup and prepared-publication collections,
 returned GPUI admission custody, and surface preparation.
 Reserve bounded returned GPUI custody before invoking layout while retaining finite shaping-input
