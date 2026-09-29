@@ -67,7 +67,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         }),
         cx,
     );
-    let shell = cx.update(|app| {
+    let mut shell = cx.update(|app| {
         let appearance = GpuiAppearanceWindowSet::new(
             prepared.appearance().clone(),
             NonZeroUsize::new(4).unwrap(),
@@ -80,6 +80,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
     for _ in 0..32 {
         drive(&shell, cx);
     }
+    cx.update(|app| shell.publish(app)).unwrap();
     let mount = shell
         .window()
         .read_with(cx, |root, _| {
@@ -154,7 +155,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         let snapshot = resident.recovery_snapshot().unwrap();
         (*snapshot.restoration(), snapshot.protection())
     });
-    let (candidate, mut adapters, state, storage) = home_support::join(
+    let (candidate, mut adapters, state, storage, fresh_appearance) = home_support::join(
         home_support::worker(move || {
             let mut candidate = Arc::try_unwrap(store)
                 .ok()
@@ -165,7 +166,8 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
             let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
             let adapters =
                 crate::app_services::recovery_composer::test_support::adapters(&mut candidate);
-            (candidate, Some(adapters), state, storage)
+            let appearance = super::threadless_tests::appearance::prepare(&candidate);
+            (candidate, Some(adapters), state, storage, appearance)
         }),
         cx,
     );
@@ -473,8 +475,34 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         drop(source);
         candidate
     });
-    shell
-        .window()
+    let window = shell.window();
+    let old_owner = shell.appearance_owner.clone();
+    cx.update(|app| shell.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("published selected shell handoff"));
+    let fresh_owner = (!refuse).then(|| {
+        cx.update(|app| old_owner.update(app, |owner, _| owner.retire()));
+        let owner = cx.update(|app| {
+            GpuiAppearanceWindowSet::new(
+                fresh_appearance.clone(),
+                NonZeroUsize::new(4).unwrap(),
+                app,
+            )
+        });
+        cx.update(|app| MainWindowShellRoot::bind_interrupted_exit_appearance(window, &owner, app))
+            .unwrap();
+        window
+            .read_with(cx, |root, app| {
+                assert!(root.shutdown_interaction_gated);
+                assert!(!resident.read(app).is_live());
+                assert!(Arc::ptr_eq(
+                    &root.controller().unwrap().appearance.generation,
+                    &fresh_appearance
+                ));
+            })
+            .unwrap();
+        owner
+    });
+    window
         .update(cx, |root, window, cx| {
             assert!(
                 input
@@ -494,9 +522,15 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         preparation,
         adapters,
         configurator,
-        shell,
     ));
     cx.run_until_parked();
+    if let Some(owner) = fresh_owner {
+        use crate::theme_runtime::AppearancePublicationTarget;
+        assert_eq!(
+            cx.update(|app| owner.read(app).target().snapshot().count),
+            0
+        );
+    }
     home_support::join(
         home_support::worker(move || candidate.abort().close().unwrap()),
         cx,

@@ -217,6 +217,24 @@ impl GpuiAppearanceWindowSet {
         adapter: Box<dyn AppearanceWindowAdapter>,
         cx: &mut Context<Self>,
     ) -> Result<(), AdapterRegistrationError> {
+        self.register_with(
+            adapter,
+            |adapter, generation, cx| adapter.prepare(generation, cx),
+            cx,
+        )
+    }
+
+    pub(crate) fn register_with(
+        &mut self,
+        adapter: Box<dyn AppearanceWindowAdapter>,
+        prepare: impl FnOnce(
+            &dyn AppearanceWindowAdapter,
+            Arc<AppearanceGeneration>,
+            &mut App,
+        )
+            -> Result<Box<dyn PreparedWindowAppearance>, super::AdapterFailureClass>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), AdapterRegistrationError> {
         let snapshot = self.target.snapshot();
         let id = adapter.id();
         if !snapshot.active {
@@ -235,8 +253,7 @@ impl GpuiAppearanceWindowSet {
             .epoch
             .checked_next()
             .map_err(|_| AdapterRegistrationError::WindowEpochExhausted)?;
-        let prepared = adapter
-            .prepare(Arc::clone(&snapshot.current), cx)
+        let prepared = prepare(adapter.as_ref(), Arc::clone(&snapshot.current), cx)
             .map_err(|class| AdapterRegistrationError::Preparation { adapter: id, class })?;
         prepared
             .validate(cx)

@@ -6,7 +6,12 @@ impl MainWindowConversationComposer {
             self.phase,
             MainWindowConversationComposerPhase::Live
                 | MainWindowConversationComposerPhase::Fencing
-        )
+        ) || (matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::RecoveryFenced
+        ) && self.recovery_snapshot.is_none()
+            && self.service.is_some()
+            && self.window_close.is_some())
     }
 
     pub(in crate::main_window) fn apply_appearance(

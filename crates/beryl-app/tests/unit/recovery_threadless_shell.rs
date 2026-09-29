@@ -12,6 +12,9 @@ use beryl_state::{BerylState, InitializeThreadlessWindow, PreparedThemeAppearanc
 use gpui::TestAppContext;
 use std::num::NonZeroUsize;
 
+#[path = "recovery_shell_appearance.rs"]
+pub(super) mod appearance;
+
 struct Home {
     store: Arc<HomeStore>,
     state: BerylState,
@@ -122,22 +125,27 @@ fn placement() -> WindowPlacement {
 fn threadless_shell_recovery_adopts_facts_and_preserves_gate_and_reservation(
     cx: &mut TestAppContext,
 ) {
-    run(cx, false, false);
+    run(cx, false, false, false);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_refuses_wrong_draft_home_and_unretired_shell(cx: &mut TestAppContext) {
-    run(cx, true, false);
+    run(cx, true, false, false);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_retained_drafts_preserve_refusals_and_invalidate_readiness(
     cx: &mut TestAppContext,
 ) {
-    run(cx, false, true);
+    run(cx, false, true, false);
 }
 
-fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
+#[gpui::test]
+fn threadless_shell_recovery_replaces_appearance_and_notice_ownership(cx: &mut TestAppContext) {
+    run(cx, false, false, true);
+}
+
+fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
     let (home, attempt, lifetime, process, prepared, appearance) = std::thread::spawn(|| {
         let home = Home::new();
         let (attempt, lifetime) = RestoredWindowPreparationAttempt::new_for_test(
@@ -216,7 +224,13 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
             assert!(root.retire_shutdown_draft(&mut draft, cx).unwrap());
         })
         .unwrap();
-    let (candidate, source, directory) = std::thread::spawn(move || home.recover()).join().unwrap();
+    let (candidate, source, directory, fresh_appearance) = std::thread::spawn(move || {
+        let (candidate, source, directory) = home.recover();
+        let fresh = bindings.then(|| appearance::prepare(&candidate));
+        (candidate, source, directory, fresh)
+    })
+    .join()
+    .unwrap();
     let mut source = Some(source);
     if refuse {
         let (foreign_candidate, foreign, foreign_directory) =
@@ -325,6 +339,11 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         .unwrap();
     assert_eq!(process.main_window_occupancy(), 1);
     assert!(!cx.update(|app| shell.ready_to_publish(app)));
+    let old_owner = shell.appearance_owner.clone();
+    cx.update(|app| shell.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("published shell handoff"));
+    let fresh_owner =
+        fresh_appearance.map(|fresh| appearance::verify(window, old_owner, fresh, cx));
     std::thread::spawn(move || {
         drop(candidate.abort());
         directory.close().unwrap();
@@ -339,11 +358,16 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         })
         .unwrap();
     assert_eq!(process.main_window_occupancy(), 1);
-    cx.update(|app| shell.release_published_handle(app))
-        .unwrap_or_else(|_| panic!("published shell handoff"));
     window
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();
     cx.run_until_parked();
     assert_eq!(process.main_window_occupancy(), 0);
+    if let Some(owner) = fresh_owner {
+        use crate::theme_runtime::AppearancePublicationTarget;
+        assert_eq!(
+            cx.update(|app| owner.read(app).target().snapshot().count),
+            0
+        );
+    }
 }

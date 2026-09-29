@@ -249,6 +249,7 @@ impl MainWindowComposerRecoveryPreparation {
         if snapshot.restoration != self.predecessor || snapshot.retired.is_some() {
             return Err("resident recovery predecessor is not owned by preparation".into());
         }
+        let protection = snapshot.protection;
         {
             let source = self
                 .custody
@@ -259,9 +260,13 @@ impl MainWindowComposerRecoveryPreparation {
             }
         }
         let clipboard_writer = MainWindowConversationComposer::production_clipboard_writer();
-        let (candidate, source) = resident
-            .input
-            .update(cx, |input, cx| self.adopt(input, current, window, cx))?;
+        let (candidate, source) = resident.input.update(cx, |input, cx| {
+            let adopted = self.adopt(input, current, window, cx)?;
+            input
+                .release_resident_protection(protection, cx)
+                .expect("adopted resident retains its exact predecessor protection");
+            Ok::<_, String>(adopted)
+        })?;
         let selection = source.selection();
         let fresh_close = source.close_ticket();
         let service = source.into_service();

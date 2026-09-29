@@ -463,6 +463,18 @@ by the executable composition root.
   custody or performing storage work on the GUI thread. Refusal preserves all inputs; success only
   consumes the fixed facts and clears draft readiness. Fresh candidate-state revalidation, session
   settlement and appearance/notice replacement still precede publication and coherent reopening.
+- Fresh appearance registration requires an attached recovered shell, its shutdown fence and
+  published native-release custody, with the old appearance publication target retired. The fresh
+  owner must match the attached same-home replacement generation. Existing registration admission
+  and final validation precede one GUI commit that replaces shell/editor appearance, notice arbiter,
+  widget, ingress lifetime, subscription and native-release ownership. Refusal preserves bindings;
+  success retains shutdown fencing and inert notice commands. An adopted recovery-fenced editor
+  accepts appearance only after predecessor snapshot custody is consumed and fresh service/close
+  custody is installed. Later theme updates use ordinary exact-home validation. This registration
+  adds no worker or retained recovery queue and does not settle the cancelled request.
+- Successful resident adoption releases its exact invalidated predecessor widget protection before
+  discarding the predecessor snapshot. This consumes obsolete protection custody only; the widget
+  remains disabled and the resident remains recovery-fenced until process recovery settles.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

@@ -148,6 +148,10 @@ pub(super) struct MainWindowShellNotices {
 }
 
 impl MainWindowShellNotices {
+    pub(super) fn publication_retired(&self) -> bool {
+        !self.publication.snapshot().active
+    }
+
     pub(super) fn new(
         controller: &MainWindowShellController,
         publication: Arc<GpuiAppearancePublicationTarget>,
@@ -180,6 +184,25 @@ impl MainWindowShellNotices {
 }
 
 impl MainWindowShellRoot {
+    pub(super) fn replace_recovered_notices(
+        &mut self,
+        publication: Arc<GpuiAppearancePublicationTarget>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.retire_notices(window, cx);
+        self.notices = MainWindowShellNotices::new(
+            self.controller
+                .as_ref()
+                .expect("validated recovery controller"),
+            publication,
+            self.notice_safe_focus(cx),
+            cx,
+        );
+        self.set_notices_inert(true, window, cx);
+        self.subscribe_notices(window, cx);
+    }
+
     pub fn notice_ingress(&self, window: &Window, _: &Context<Self>) -> MainWindowNoticeIngress {
         MainWindowNoticeIngress {
             window: window
