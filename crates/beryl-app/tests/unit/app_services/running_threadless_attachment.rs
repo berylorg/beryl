@@ -16,6 +16,11 @@ mod construction {
     include!("interrupted_exit_construction_support.rs");
 }
 
+mod service_preparation {
+    use super::*;
+    include!("interrupted_exit_services_support.rs");
+}
+
 mod native_appearance {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -249,6 +254,8 @@ pub(super) async fn verify(
     assert!(!RunningProcessOwner::finish_exit(owner, request));
     let candidate = revalidation::verify(owner, request, candidate, &appearance, cx).await;
     let candidate = process_work::verify(owner, request, candidate, cx).await;
+    let candidate =
+        service_preparation::verify(owner, request, candidate, generation, faults, cx).await;
     cx.background_executor()
         .spawn(async move {
             drop(candidate.session);

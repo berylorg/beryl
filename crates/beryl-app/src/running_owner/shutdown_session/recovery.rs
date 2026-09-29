@@ -9,6 +9,7 @@ pub(crate) use resident::ResidentPreparationKey;
 mod resident_retirement;
 mod resume;
 mod retirement;
+mod service_preparation;
 mod settlement;
 mod threadless;
 pub(crate) use settlement::InterruptedExitCandidate;
