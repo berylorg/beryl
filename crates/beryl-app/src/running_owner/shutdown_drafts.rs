@@ -14,6 +14,7 @@ pub(crate) enum RunningShutdownDraftProgress {
 }
 
 mod driver;
+mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
 
 pub(super) struct RunningShutdownDrafts {

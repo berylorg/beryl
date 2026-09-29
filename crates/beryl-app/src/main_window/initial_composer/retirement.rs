@@ -36,6 +36,33 @@ impl MainWindowInitialComposer {
 }
 
 impl InitialComposerCandidate {
+    pub(in crate::main_window) fn release_recovery_service(
+        &mut self,
+        expected: &Arc<MainWindowConversationComposerService>,
+    ) -> Result<(), String> {
+        let Some(service) = self.service.as_ref() else {
+            return Ok(());
+        };
+        if !Arc::ptr_eq(service, expected)
+            || !self.activated
+            || !self.preparation_started
+            || self.retirement_started
+            || self.open_terminal
+            || self.opened.is_none()
+            || self.open_reconciliation.is_some()
+            || self.abandonment.is_some()
+            || self.abandonment_reconciliation.is_some()
+            || self.abandonment_receipt.is_some()
+            || self.host.is_some()
+        {
+            return Err(
+                "initial composer construction custody is not settled for this service".into(),
+            );
+        }
+        self.service.take();
+        Ok(())
+    }
+
     pub(in crate::main_window) fn drive_retirement(
         &mut self,
         cancellation: CommandCancellation,

@@ -1,5 +1,39 @@
 # Initial Composer Activation Custody
 
+## Interrupted Exit Retirement Ownership
+
+On 2026-09-29, phase 706 integration disproved the assumption that retiring the mount/resident
+bundle alone releases the selected composer's complete service ownership. The real acquired-shell
+test `initial_composer::resident_retirement::shutdown_retirement_retains_refused_service_and_preserves_exact_resident`
+reaches an exact ready close and widget quiescence, fails the home, detaches the bundle and drops
+its intentionally retained service reference, but exclusive retirement still returns pending.
+Nextest run `fbc6ab0c-9ff9-40f6-8434-b7d2c5443512` reproduces this; the app library check passes.
+
+`InitialComposerCandidate::prepare_selection` in `initial_composer/activation.rs` retains a service
+clone. `SelectedShellPrepared::from_acquired` in `shell/host/selected.rs` carries that candidate into
+the shell's acquired custody, and `MainWindowShell::publish` does not release it. This is additional
+ownership beyond the detached mount/resident bundle. `retire_clean_window_close` correctly refuses
+while that clone exists. The retained candidate also owns failed-generation source handles.
+Independent lifecycle review confirmed this blocker and withdrew its preliminary source-only acceptance.
+
+The Operator authorized the correction. Phase 706 now checks exact service identity and settled
+activation/preparation state after resident fencing and mount detachment, then releases only the
+construction owner's duplicate service reference. Both acquired and restored shells use this
+handoff. Opening, claim and source records remain under shell custody for phase 702 whole-shell
+recovery. No initial-candidate abandonment runs against Failed storage and exclusivity remains strict.
+
+Independent lifecycle review accepted the corrected boundary. Nextest run
+`e680888e-6737-4612-9951-243b4e4766a1` passed eight focused shell tests, including acquired/restored
+failed-store retirement, retained worker/service refusal and retry, focus/editor preservation and
+transferred-facts readiness. Run `626fa238-923b-481a-a1a5-ebb0a7b72734` passed four native request-owner
+tests; the app library check passed. This evidence accepts resident service retirement, not complete
+old-generation retirement or interaction reopening.
+
+An earlier empty-draft variant of the hidden-shell fixture retained a pending index intent despite
+ready draft flush and repeated draws. Its cause remains unqualified; the current nonempty-input
+regression isolates the additional service owner. Empty-resident quiescence needs separate evidence
+before claiming complete running-shell coverage.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.

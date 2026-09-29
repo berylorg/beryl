@@ -110,6 +110,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   only that attempt's gate, preserves current caret, selection, scroll, and history authority, and
   cannot lift an independent unavailable state. Pending publication retains ordinary exact custody;
   stale settlement cannot release or dispose another attempt or replacement editor.
+- Once exact interrupted-Exit resident fencing and mount-resource detachment succeed, acquired and
+  restored shell construction custody releases its duplicate selected-service reference only after
+  checking the same service identity and settled activation/preparation state. Pending opening or
+  abandonment obligations refuse that handoff. Opening, claim and source records remain owned for
+  the separate whole-shell recovery boundary; releasing this duplicate performs no storage cleanup
+  and does not prove whole-graph retirement.
 - After clean interrupted-Exit retirement, retained host facts may be checked through fresh
   same-home replacement candidate access. Each observation authenticates the exact retained live
   checkpoint and durable selector through Syndic's saved-checkpoint boundary. Foreign homes, old

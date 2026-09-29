@@ -89,47 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 745: Attach Fresh Services To Preserved Residents (finished)
+# Phase 706: Retire Clean Interrupted Exit Resident Resources (finished)
 
-Exact request-owner completion now checks the preparation key, captured resident/window/close,
-readiness and candidate generation before coherent mount adoption. Successful attachment returns
-candidate/session custody once and preserves editor identity, focus and recovery fences; refused
-and cancelled attachments retain cleanup custody. Eighteen focused native recovery and mount tests,
-the app check and independent lifecycle review pass. Whole-resident retirement remains phase 706;
-session settlement, whole-home publication and reopening remain separate phase 702 work.
-
-# Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
-
-At the admitted session-publication cut, prove exact ready draft-close tickets and drained resident
-work before retiring generation-bound editor adapters. Preserve resident presentation and bounded
-checkpoint/history facts without durable cleanup through the Failed store. Fresh exact validation
-must precede rebinding; changed or unresolved evidence stays unavailable. General dirty or ambiguous
-save recovery is outside this cut because it cannot satisfy session-publication admission. Do not
-substitute native-lineage unmounting or startup cleanup for resident retirement proof. Phase 707
-supplies the consuming host primitive, phase 708 the enclosing slot primitive and phase 709 the
-exclusive service primitive. Phase 710 supplies the preserved resident recovery fence.
-Phase 711 supplies the resident service-reference handoff and phase 712 the mount publication
-adapter handoff; phase 713 supplies configurator detachment and phase 714 the submission source
-handoff. Phases 715–719 supply autosave, submission, close background-worker, close GUI completion and
-unmounted close cleanup lifetime evidence. Phase 720 supplies native-lineage worker lifetime
-evidence; phase 721 supplies pending-activation cleanup lifetime evidence and phase 722 supplies
-native-disposal lifetime evidence. Phase 723 supplies the mount service-reference handoff and
-detached mount drop behavior. Phase 724 supplies native-lineage control detachment and refresh-timer
-cancellation. Phase 725 supplies resident clipboard callback detachment and phase 726 transfers
-retained mutation-failure custody. Phase 727 composes the resource handoffs into one bundle.
-Coordinated retirement of all remaining generation-bound handles
-and fresh widget bindings remain here; individual handoffs do not prove whole-mount retirement.
-Phase 728 consumes the bundle for exclusive service retirement and retains refused service custody.
-Phase 729 retains matching retirement evidence in the preserved resident snapshot; phase 730 supplies
-exact live observation of that retained retirement. Phase 731 records the remaining widget ownership
-qualification; phase 732 supplies fresh candidate checkpoint observation, and phase 734 connects
-that observation to the retained clean-host facts. Phase 735 supplies consuming host reconstruction;
-phase 736 supplies fresh candidate paired-claim observation for the remaining slot reconstruction.
-Phase 737 supplies consuming slot reconstruction with fresh exact claims and fenced bindings.
-Phase 738 supplies service reconstruction with the same candidate reference and fresh close gate.
-Phase 739 supplies the checked handoff of retained retirement facts from the preserved resident.
-Phase 740 qualifies the missing same-resident widget attachment boundary; phase 741 defines its
-owning contract before implementation.
+The exact retained shutdown draft set now coordinates fencing, resource detachment and exclusive
+resident service retirement while retaining partial refusals. Acquired and restored construction
+owners release their duplicate service reference only after checked handoff; opening/claim/source
+custody stays retained for whole-shell recovery. Editor identity, focus and recovery fences survive.
+Eight focused shell tests, four native request-owner tests, the app check and independent lifecycle
+review pass. Whole-shell/graph retirement and reopening remain phase 702 work. Empty hidden-shell
+index quiescence remains unqualified as recorded in the [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

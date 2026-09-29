@@ -1,5 +1,9 @@
 use super::restoration_support::*;
 
+#[path = "support/restored_recovery.rs"]
+mod recovery_support;
+pub(super) use recovery_support::shell_for_recovery;
+
 #[cfg(target_os = "windows")]
 #[path = "restored_desktop.rs"]
 mod desktop;

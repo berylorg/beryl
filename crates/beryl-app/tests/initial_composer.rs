@@ -8,6 +8,8 @@ mod gpui_cases;
 mod home_support;
 #[path = "initial_composer/preserved_retirement.rs"]
 mod preserved_retirement;
+#[path = "initial_composer/resident_retirement.rs"]
+mod resident_retirement;
 #[path = "initial_composer/support/restoration.rs"]
 mod restoration_support;
 #[path = "initial_composer/restored.rs"]

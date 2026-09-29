@@ -256,6 +256,15 @@ pub struct RestoredWindowComposer {
     before_claim_activation: Option<Box<dyn FnOnce() + Send>>,
 }
 
+impl RestoredWindowComposer {
+    pub(in crate::main_window) fn release_recovery_service(
+        &mut self,
+        expected: &Arc<MainWindowConversationComposerService>,
+    ) -> Result<(), String> {
+        self.candidate.release_recovery_service(expected)
+    }
+}
+
 pub struct RestoredWindowComposerFailure {
     pub custody: RestoredWindowComposer,
     pub error: String,

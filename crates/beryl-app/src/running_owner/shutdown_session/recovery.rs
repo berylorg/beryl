@@ -3,6 +3,7 @@ use crate::startup_owner::RunningExitRequest;
 
 mod resident;
 pub(crate) use resident::ResidentPreparationKey;
+mod resident_retirement;
 mod resume;
 mod retirement;
 mod settlement;

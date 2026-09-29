@@ -358,7 +358,18 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
                             assert!(owner.borrow_mut().retain_interrupted_exit_session(&foreign).is_err());
                             assert!(owner.borrow().interrupted_exit_session().is_none());
                             assert_eq!(before, format!("{:?}", owner.borrow().shutdown_session().unwrap()));
+                            cx.update(|app| {
+                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
+                            }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            cx.update(|app| {
+                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&foreign, app).is_err());
+                                window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(false, cx)).unwrap().unwrap();
+                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
+                                window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(true, cx)).unwrap().unwrap();
+                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
+                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
+                            }).unwrap();
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
                             assert!(matches!(owner.borrow().shutdown_session(), Some(RunningShutdownSession::RecoveryOwned)));
                             assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
@@ -489,7 +500,12 @@ async fn dispose_failed_fixture(mut running: startup_owner::StartedProcess, cx: 
     cx.background_executor()
         .spawn(async move {
             if running.services.graph().is_none() {
-                running.services.test_retired_service_home().unwrap().close().unwrap();
+                running
+                    .services
+                    .test_retired_service_home()
+                    .unwrap()
+                    .close()
+                    .unwrap();
                 return;
             }
             assert_eq!(

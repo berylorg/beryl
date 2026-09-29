@@ -4,8 +4,11 @@ use crate::main_window::{
     MainWindowConversationComposerCloseTicket, MainWindowConversationComposerMount,
 };
 
+mod recovery;
+
 pub struct MainWindowShutdownDraft {
     root: gpui::EntityId,
+    retirement: Option<recovery::ResidentRetirement>,
     composer: Option<(
         Entity<MainWindowConversationComposerMount>,
         gpui::EntityId,
@@ -76,6 +79,7 @@ impl MainWindowShellRoot {
         };
         Ok(MainWindowShutdownDraft {
             root: cx.entity_id(),
+            retirement: None,
             composer,
         })
     }
