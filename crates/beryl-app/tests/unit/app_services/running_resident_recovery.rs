@@ -136,6 +136,49 @@ fn resident_run(scenario: ResidentScenario) {
                                     .is_err()
                                 );
                                 assert!(candidate.is_some() && retired.is_some());
+                                for (next, expected) in [
+                                    (None, "graph retirement has not returned"),
+                                    (
+                                        Some(Err("injected retirement failure".into())),
+                                        "graph retirement has not returned",
+                                    ),
+                                    (Some(Ok(())), "injected retirement failure"),
+                                ] {
+                                    let error =
+                                        RunningProcessOwner::prepare_interrupted_exit_resident(
+                                            &owner,
+                                            &request,
+                                            &composer,
+                                            close,
+                                            window.into(),
+                                            &mut candidate,
+                                            &mut retired,
+                                            storage.clone(),
+                                            state.clone(),
+                                            |_, _, _| {
+                                                panic!("unretired graph admitted preparation")
+                                            },
+                                            app,
+                                            |_, _| panic!("unretired graph delivered completion"),
+                                        )
+                                        .err()
+                                        .expect("preparation requires successful graph retirement");
+                                    assert!(error.contains(expected), "{error}");
+                                    assert!(candidate.is_some() && retired.is_some());
+                                    assert_eq!(
+                                        candidate.as_ref().unwrap().candidate.generation(),
+                                        generation
+                                    );
+                                    assert_eq!(retired.as_ref().unwrap().close_ticket(), close);
+                                    assert_eq!(completions.get(), 0);
+                                    let resident = composer.read(app);
+                                    assert_eq!(
+                                        *resident.recovery_snapshot().unwrap().restoration(),
+                                        original
+                                    );
+                                    assert!(!resident.gpui_input().read(app).is_enabled());
+                                    owner.borrow().test_set_resident_graph_retirement(next);
+                                }
                                 let foreign_window =
                                     owner.borrow().test_process().windows.shells()[0].window();
                                 assert!(

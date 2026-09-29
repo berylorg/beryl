@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 765: Validate Graph Retirement Before Shell Mutation (finished)
+# Phase 766: Require Retired Graph Before Resident Preparation (finished)
 
-The running owner now validates the exact published failed generation before shell retirement,
-sharing the existing service predicate and preserving its worker-side recheck. Native tests prove
-stale and healthy refusals preserve construction, session and service custody. Fourteen focused
-tests passed, followed by five native tests after coverage strengthening; app compilation and
-independent lifecycle review accepted. See [custody evidence](failures/initial-composer-custody.md).
+Resident preparation now requires the existing exact-request successful graph-retirement result
+before consuming candidate or retirement custody or starting authentication. Native tests prove
+missing, pending and failed refusals preserve inputs and fences, followed by successful preparation
+and attachment. All 16 focused native tests, app compilation and independent lifecycle review
+passed. See [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

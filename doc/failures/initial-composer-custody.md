@@ -111,6 +111,20 @@ Existing healthy reconciliation fixtures now expect synchronous admission refusa
 worker-returned refusal. The app library check and independent lifecycle review passed. Complete
 fresh binding and publication remain phase 702 work.
 
+Phase 766 closes the corresponding resident-preparation admission gap. Preparation previously
+excluded only pending graph retirement, allowing missing or failed retirement results to reach
+candidate authentication. It now uses the same exact-request successful-retirement predicate as
+candidate session settlement, before taking either input or creating preparation work. The
+redundant request checks and weaker pending-only check were removed; no production state was added.
+
+Native component fixtures exercise absent, pending and failed results in sequence, preserving
+candidate generation, retired close custody, restoration facts and disabled input after each
+refusal. A test-only result setter then supplies successful retirement for the existing preparation,
+cancellation, stale-request, window-loss, capacity and attachment cases. This fixture injection is
+component evidence; actual graph retirement remains covered by the native Exit fixtures.
+Run `d18abfa9-8e53-451d-ba45-fde19bd9a91b` passed all 16 focused native tests. App library compilation
+and independent lifecycle review passed. Fresh shell bindings and full recovery remain phase 702.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.

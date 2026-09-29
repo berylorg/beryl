@@ -90,6 +90,19 @@ impl RunningProcessOwner {
         });
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_set_resident_graph_retirement(&self, result: Option<Result<(), String>>) {
+        *self
+            .interrupted_exit
+            .as_ref()
+            .unwrap()
+            .retirement
+            .borrow_mut() = Some(match result {
+            None => retirement::GraphRetirement::Pending,
+            Some(result) => retirement::GraphRetirement::Returned(result),
+        });
+    }
+
     pub(crate) fn prepare_interrupted_exit_resident(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
@@ -111,16 +124,11 @@ impl RunningProcessOwner {
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<ResidentPreparationKey, String> {
         let mut retained = owner.borrow_mut();
-        if !retained.process.commands.is_active(request) {
-            return Err("Interrupted Exit request changed".into());
-        }
+        retained.interrupted_exit_graph_retirement_result(request)?;
         let recovery = retained
             .interrupted_exit
             .as_mut()
             .ok_or("No reported failed Exit")?;
-        if !Rc::ptr_eq(&recovery.request, &request.identity()) {
-            return Err("Interrupted Exit request changed".into());
-        }
         if !recovery
             .residents
             .contains(&(window, resident.entity_id(), close))
@@ -137,10 +145,6 @@ impl RunningProcessOwner {
         if recovery.resident.is_some()
             || recovery.settlement.borrow().is_some()
             || recovery.session.borrow().is_none()
-            || matches!(
-                recovery.retirement.borrow().as_ref(),
-                Some(retirement::GraphRetirement::Pending)
-            )
         {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
