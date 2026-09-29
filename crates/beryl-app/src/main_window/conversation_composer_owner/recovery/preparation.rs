@@ -185,6 +185,40 @@ impl MainWindowComposerRecoveryPreparation {
         }
     }
 
+    pub fn adopt(
+        &mut self,
+        input: &mut RangeTextInput,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut Window,
+        cx: &mut Context<RangeTextInput>,
+    ) -> Result<(HomeRecoveryCandidate, MainWindowComposerCandidateSource), String> {
+        if self.candidate.is_none() || self.reservation.is_none() || !self.effects.is_empty() {
+            return Err("resident preparation is not ready for adoption".into());
+        }
+        self.custody
+            .retain_adoption_cleanup(cx.background_executor().clone())?;
+        let result = input.adopt_resident_successor(
+            self.reservation.take().unwrap(),
+            self.environment.as_ref().unwrap(),
+            self.candidate.take().unwrap(),
+            current,
+            window,
+            cx,
+        );
+        if let Err(error) = result {
+            self.cancel();
+            return Err(format!("resident adoption refused: {error:?}"));
+        }
+        // No callback runs between checked adoption and this exact resource transfer.
+        let resources = self
+            .custody
+            .take_resources()
+            .expect("checked adoption custody");
+        self.session.take();
+        self.worker.cancel();
+        Ok(resources)
+    }
+
     pub fn cancel(&mut self) {
         self.worker.cancel();
         self.candidate.take();

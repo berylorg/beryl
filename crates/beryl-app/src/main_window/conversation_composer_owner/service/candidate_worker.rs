@@ -209,6 +209,26 @@ impl Drop for MainWindowComposerCandidateWorker {
 }
 
 impl MainWindowComposerCandidateCustody {
+    pub(in crate::main_window) fn retain_adoption_cleanup(
+        &self,
+        executor: gpui::BackgroundExecutor,
+    ) -> Result<(), String> {
+        let state = self.state.borrow();
+        if state.cancelled || state.pending || state.completion.is_some() {
+            return Err("resident adoption source is not ready".into());
+        }
+        let Some((_, Ok(source))) = &state.resources else {
+            return Err("resident adoption source is unavailable".into());
+        };
+        source.retain_cleanup(
+            state
+                .cleanup
+                .clone()
+                .ok_or("resident adoption is not bound")?,
+            executor,
+        )
+    }
+
     pub fn source(&self) -> Option<Ref<'_, MainWindowComposerCandidateSource>> {
         Ref::filter_map(self.state.borrow(), |state| {
             state.resources.as_ref()?.1.as_ref().ok()

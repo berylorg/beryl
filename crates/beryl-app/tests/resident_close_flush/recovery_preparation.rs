@@ -5,7 +5,7 @@ use beryl_app::main_window::{
     MainWindowConversationComposerCloseAdvance as CloseAdvance,
 };
 use beryl_home_store::test_faults::FaultPoint;
-use gpui::{TestAppContext, px};
+use gpui::{EntityInputHandler, TestAppContext, px};
 use gpui_text_input::*;
 use std::sync::Arc;
 
@@ -44,6 +44,26 @@ fn reserved_candidate_returns_authentication_refusal(cx: &mut TestAppContext) {
     run(cx, Scenario::AuthenticationFailure);
 }
 
+#[gpui::test]
+fn prepared_adoption_preserves_fenced_resident_and_transfers_custody(cx: &mut TestAppContext) {
+    run(cx, Scenario::Adopt);
+}
+
+#[gpui::test]
+fn prepared_adoption_refuses_changed_protection_and_drains(cx: &mut TestAppContext) {
+    run(cx, Scenario::AdoptionProtection);
+}
+
+#[gpui::test]
+fn prepared_adoption_refuses_capacity_and_drains(cx: &mut TestAppContext) {
+    run(cx, Scenario::AdoptionCapacity);
+}
+
+#[gpui::test]
+fn prepared_adoption_refuses_changed_history_and_drains(cx: &mut TestAppContext) {
+    run(cx, Scenario::AdoptionHistory);
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Scenario {
     Ready,
@@ -53,6 +73,10 @@ enum Scenario {
     ProtectionChanged,
     WindowChanged,
     AuthenticationFailure,
+    Adopt,
+    AdoptionProtection,
+    AdoptionCapacity,
+    AdoptionHistory,
 }
 
 struct Empty;
@@ -89,6 +113,21 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         .read_with(cx, |mount, _| mount.contribution())
         .unwrap();
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    let focus = cx.update(|window, app| {
+        input.update(app, |input, cx| {
+            input.focus(window);
+            if scenario == Scenario::Adopt {
+                input.replace_and_mark_text_in_range(
+                    None,
+                    "retained adoption pages",
+                    None,
+                    window,
+                    cx,
+                );
+            }
+        });
+        window.focused(app)
+    });
     let close = cx.update(|window, app| {
         fixture
             .mount
@@ -104,6 +143,9 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         .unwrap()
             == CloseAdvance::Ready
     });
+    if scenario == Scenario::Adopt {
+        cx.simulate_keystrokes("ctrl-home shift-right");
+    }
     support::drive_until(cx, "preparation quiescence", |cx| {
         input.read_with(cx, |input, _| input.is_quiescent())
     });
@@ -175,6 +217,16 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         return;
     }
     let (fresh, selection) = preparation.authenticated_source().unwrap().unwrap();
+    let mut current = RangePrepublicationCurrent {
+        binding: fresh.binding,
+        history: fresh.history,
+        available_capacity: RangeSurfaceCharge { bytes: 0, items: 0 },
+    };
+    cx.update(|window, app| {
+        input.update(app, |input, cx| {
+            assert!(preparation.adopt(input, current, window, cx).is_err());
+        });
+    });
     assert_ne!(fresh.binding, seed.binding);
     let mut config =
         widget_support::widget_config(fresh.binding, selection.binding().presentation_generation());
@@ -183,6 +235,10 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
     let capacity = RangeSurfaceCharge {
         bytes: config.limits.max_surface_bytes * 2,
         items: config.limits.max_surface_items * 2,
+    };
+    current.available_capacity = RangeSurfaceCharge {
+        bytes: config.limits.max_surface_bytes,
+        items: config.limits.max_surface_items,
     };
     let environment = cx.update(|window, _| {
         let cleanup = RangePrepublicationCleanupLedger::new(window.text_system(), 64).unwrap();
@@ -285,6 +341,80 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         cx.run_until_parked();
     }
     assert!(finished);
+    if matches!(
+        scenario,
+        Scenario::Adopt
+            | Scenario::AdoptionProtection
+            | Scenario::AdoptionCapacity
+            | Scenario::AdoptionHistory
+    ) {
+        if scenario == Scenario::AdoptionProtection {
+            input.update(cx, |input, cx| {
+                assert!(
+                    input
+                        .set_presentation_generation(PresentationGeneration::new(99), cx)
+                        .is_err()
+                );
+            });
+        }
+        if scenario == Scenario::AdoptionCapacity {
+            current.available_capacity = RangeSurfaceCharge { bytes: 0, items: 0 };
+        }
+        if scenario == Scenario::AdoptionHistory {
+            current.history = None;
+        }
+        let adopted = cx.update(|window, app| {
+            input.update(app, |input, cx| {
+                preparation.adopt(input, current, window, cx)
+            })
+        });
+        cx.update(|window, app| {
+            assert_eq!(window.focused(app), focus);
+            input.update(app, |input, cx| {
+                assert!(!input.is_enabled());
+                assert!(preparation.adopt(input, current, window, cx).is_err());
+            });
+        });
+        if scenario == Scenario::Adopt {
+            let (candidate, source) = adopted.unwrap();
+            assert_eq!(source.seed(), fresh);
+            input.read_with(cx, |input, _| {
+                assert_eq!(input.export_restoration(fresh.history).unwrap(), fresh);
+                assert!(!input.resident_protection_is_current(protection));
+            });
+            assert_resources_retained(&mut preparation);
+            drop((preparation, source));
+            assert!(environment.cleanup().ownership().active > 0);
+            cx.update(|window, app| {
+                input.update(app, |input, cx| {
+                    assert!(input.dispose(window, cx).is_empty());
+                });
+            });
+            cx.update(|window, _| window.remove_window());
+            drop((input, composer, root, mount));
+            cx.run_until_parked();
+            for _ in 0..4 {
+                cx.executor()
+                    .advance_clock(std::time::Duration::from_millis(50));
+                cx.run_until_parked();
+            }
+            let ownership = environment.cleanup().ownership();
+            assert_eq!(
+                (
+                    ownership.active,
+                    ownership.ready,
+                    ownership.awaiting_acknowledgement
+                ),
+                (0, 0, 0)
+            );
+            drop(environment);
+            cx.run_until_parked();
+            candidate.abort().close().unwrap();
+            directory.close().unwrap();
+            return;
+        }
+        assert!(adopted.is_err());
+    }
     assert_resources_retained(&mut preparation);
     preparation.cancel();
     for _ in 0..128 {
@@ -306,7 +436,10 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
     input.read_with(cx, |input, _| {
         assert_eq!(
             input.resident_protection_is_current(protection),
-            scenario != Scenario::ProtectionChanged
+            !matches!(
+                scenario,
+                Scenario::ProtectionChanged | Scenario::AdoptionProtection
+            )
         );
         assert!(!input.is_enabled());
         assert_eq!(input.export_restoration(seed.history).unwrap(), seed);

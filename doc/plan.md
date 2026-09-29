@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 744: Drive Fenced Resident Recovery Preparation (finished)
+# Phase 753: Consume Prepared Resident Adoption Without Losing Custody (finished)
 
-The interrupted-Exit owner now retains one preparation flight bound to captured window/resident/close
-identity and fresh candidate generation, with frame-bounded realization and independent cancellation
-cleanup. Native tests cover abandoned delivery, stale requests, refusals and minimized/closed windows.
-All 107 focused regression tests and the app check pass; independent lifecycle review accepted.
-The [custody and native-stack lessons](failures/composer-candidate-worker-custody.md) are retained.
+The preparation driver now adopts through the widget's checked resident boundary and transfers
+fresh resources once. The existing bounded service cleanup driver retains adopted-page obligations
+after preparation disposal; refusal preserves the predecessor and explicit cancellation custody.
+All 92 focused tests and the app check pass; independent lifecycle review accepted. Mount association
+and coherent graph publication remain separate below.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 

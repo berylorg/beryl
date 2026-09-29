@@ -7,7 +7,7 @@ use beryl_home_store::{HomeCandidateRecoveryAccess, HomeRecoveryCandidate};
 use gpui_text_input::{ObjectPage, ObjectRequest, PageRequest, RangePage, RangeRestorationSeed};
 
 pub struct MainWindowComposerCandidateSource {
-    service: MainWindowConversationComposerService,
+    service: Arc<MainWindowConversationComposerService>,
     storage: syndic_storage::SyndicStorage,
     state: beryl_state::BerylState,
     predecessor: MainWindowConversationComposerCloseTicket,
@@ -66,7 +66,7 @@ impl MainWindowComposerCandidateSource {
             ..seed
         };
         Ok(Self {
-            service,
+            service: Arc::new(service),
             storage,
             state: state.clone(),
             predecessor,
@@ -153,7 +153,22 @@ impl MainWindowComposerCandidateSource {
         Ok(())
     }
 
-    pub(in crate::main_window) fn into_service(self) -> MainWindowConversationComposerService {
+    pub(super) fn retain_cleanup(
+        &self,
+        cleanup: Arc<MainWindowNativeLineagePrepublicationSource>,
+        executor: BackgroundExecutor,
+    ) -> Result<(), String> {
+        self.service
+            .retain_native_lineage_source(cleanup, executor)
+            .map_err(|error| match error {
+                MainWindowNativeLineageSourceRetentionError::CapacityFull { .. } => {
+                    "resident adoption cleanup capacity is full".into()
+                }
+                MainWindowNativeLineageSourceRetentionError::Failed(error) => error,
+            })
+    }
+
+    pub(in crate::main_window) fn into_service(self) -> Arc<MainWindowConversationComposerService> {
         self.service
     }
 }
