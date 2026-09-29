@@ -8,6 +8,55 @@ use crate::{
 };
 
 impl MainWindowShellRoot {
+    pub(crate) fn adopt_interrupted_exit_threadless_shell(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        source: &mut Option<crate::app_services::recovery_threadless::ThreadlessRecoveryWindow>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if draft.root != cx.entity_id()
+            || !self.shutdown_interaction_gated
+            || self.startup_interaction_gated()
+            || draft.retirement.is_some()
+            || draft.composer.is_some()
+        {
+            return Err("threadless recovery lost its exact gated draft".into());
+        }
+        let controller = self
+            .controller
+            .as_mut()
+            .ok_or("recovery shell lost its controller")?;
+        let ShellContent::Retired {
+            window_id,
+            threadless: true,
+            reservation: Some(_),
+            ..
+        } = &controller.content
+        else {
+            return Err("threadless shell construction is not retired".into());
+        };
+        let authenticated = source
+            .as_ref()
+            .ok_or("threadless recovery source is unavailable")?;
+        let previous = controller.appearance.generation.prepared().home();
+        if controller.composer_mount.is_some()
+            || authenticated.window().window_id() != *window_id
+            || authenticated.home_id() != previous.home_id()
+            || authenticated.generation() == previous.home_generation()
+        {
+            return Err("threadless recovery window and home identities disagree".into());
+        }
+        let ShellContent::Retired { reservation, .. } = &mut controller.content else {
+            unreachable!()
+        };
+        controller.content = ShellContent::RecoveredThreadless {
+            source: source.take().unwrap(),
+            reservation: reservation.take().unwrap(),
+        };
+        cx.notify();
+        Ok(())
+    }
+
     pub(crate) fn adopt_interrupted_exit_shell(
         &mut self,
         draft: &mut MainWindowShutdownDraft,
@@ -102,11 +151,19 @@ impl MainWindowShellRoot {
 
 impl MainWindowShellController {
     pub(super) fn validate_recovered_appearance(&self) -> Result<(), String> {
-        if let ShellContent::Recovered { selection, .. } = &self.content {
+        let identity = match &self.content {
+            ShellContent::Recovered { selection, .. } => Some((
+                selection.binding().home_id(),
+                selection.binding().home_generation(),
+            )),
+            ShellContent::RecoveredThreadless { source, .. } => {
+                Some((source.home_id(), source.generation()))
+            }
+            _ => None,
+        };
+        if let Some((home_id, generation)) = identity {
             let home = self.appearance.generation.prepared().home();
-            if home.home_id() != selection.binding().home_id()
-                || home.home_generation() != selection.binding().home_generation()
-            {
+            if home.home_id() != home_id || home.home_generation() != generation {
                 return Err(
                     "recovered shell requires fresh appearance before interaction release".into(),
                 );
@@ -119,3 +176,7 @@ impl MainWindowShellController {
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../../tests/unit/recovery_shell.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../../tests/unit/recovery_threadless_shell.rs"]
+mod threadless_tests;

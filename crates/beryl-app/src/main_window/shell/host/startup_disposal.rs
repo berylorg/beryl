@@ -88,7 +88,9 @@ impl MainWindowShell {
             .is_some_and(|controller| {
                 matches!(
                     controller.content,
-                    ShellContent::Retired { .. } | ShellContent::Recovered { .. }
+                    ShellContent::Retired { .. }
+                        | ShellContent::Recovered { .. }
+                        | ShellContent::RecoveredThreadless { .. }
                 )
             })
         {
@@ -238,7 +240,8 @@ impl MainWindowShell {
                             Some(controller) => {
                                 let retirement = match controller.content {
                                     ShellContent::Retired { .. }
-                                    | ShellContent::Recovered { .. } => unreachable!(
+                                    | ShellContent::Recovered { .. }
+                                    | ShellContent::RecoveredThreadless { .. } => unreachable!(
                                         "running recovery cannot enter startup disposal"
                                     ),
                                     ShellContent::Acquired { custody, .. } if preserve_records => {

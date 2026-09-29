@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 771: Authenticate Threadless Recovery Window Facts (finished)
+# Phase 772: Attach Threadless Recovery Facts To The Surviving Shell (finished)
 
-Threadless recovery now authenticates and revalidates bounded candidate window facts without writes
-or retained service handles. Six focused tests passed in run
-`67cafd4e-dd81-486b-a868-094a3ed9cde8`; app compilation and independent lifecycle/persistence review
-passed. Mixed-read rejection was source-reviewed; shell attachment and process recovery remain pending.
+Threadless shell adoption now consumes authenticated fixed-size facts, preserves the existing native
+reservation and keeps interaction gated pending fresh appearance. Six focused shell/aggregate tests
+passed in run `f15e3246-f20d-4898-852f-17b0101e58a4`; app compilation, formatting and independent
+lifecycle/persistence review passed. The fixture correction is recorded in
+[failure evidence](failures/native-recovery-fixture.md). Running-owner routing remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -113,7 +114,7 @@ custody. Fresh shell bindings must replace that retired state before coherent in
 Phase 767 supplies authenticated window facts with resident attachment for that shell rebinding.
 Phases 768–770 connect selected-shell adoption and synchronous draft-ticket renewal through the
 retained-draft aggregate to the running owner. Phase 771 supplies fresh bounded threadless window
-authentication; attachment to its surviving shell remains pending. Threadless bindings, fresh appearance/notice ownership and exact
+authentication; phase 772 supplies attachment to its surviving shell. Running-owner threadless routing, fresh appearance/notice ownership and exact
 draft/work settlement still precede whole-graph publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

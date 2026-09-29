@@ -16,3 +16,10 @@ The aborted fixtures may have left randomly named homes under the OS temporary d
 exact paths were not recorded, so ownership cannot be established for safe deletion. Unidentified
 directories were preserved. No test processes remained after verification. Future failing native
 fixture investigations should retain exact temporary-home paths before running the GUI callback.
+
+Threadless shell run `ec2c8c53-86bc-4210-bf2a-e447d3b193cf` on the same date exposed a separate
+fixture borrowing error: drawing inside `WindowHandle::update` reenters the already borrowed root.
+Draw through `App::update_window` instead, as the existing selected-shell tests do. Four selected
+cases passed and the two threadless cases failed before recovery; this was not a recovery failure.
+After correction all six passed in run `f15e3246-f20d-4898-852f-17b0101e58a4`. No homes with this
+fixture's `threadless-shell-recovery-` prefix remained after either run.

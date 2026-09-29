@@ -446,6 +446,12 @@ by the executable composition root.
   fixed-size window record and home/generation identity; explicit revalidation rejects changed
   facts. This proof neither begins startup restoration nor grants shell attachment, publication
   or interaction release by itself.
+- Threadless shell adoption requires the exact gated retained draft and retired threadless
+  construction with no composer. It consumes authenticated fixed-size facts for the same window
+  and home in a replacement generation, transferring the existing native reservation. Refusal
+  preserves both inputs. The recovered shell remains threadless, excludes startup paths and
+  requires fresh appearance before interaction release. The process recovery owner must still
+  revalidate candidate facts and settle the cancelled request before publication and reopening.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

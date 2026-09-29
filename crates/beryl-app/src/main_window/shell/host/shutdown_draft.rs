@@ -40,7 +40,10 @@ impl MainWindowShellRoot {
             .controller
             .as_ref()
             .ok_or("shutdown shell lost its controller")?;
-        if matches!(controller.content, ShellContent::Threadless { .. }) {
+        if matches!(
+            controller.content,
+            ShellContent::Threadless { .. } | ShellContent::RecoveredThreadless { .. }
+        ) {
             if controller.composer_mount.is_some() {
                 return Err("threadless shutdown shell has a composer".into());
             }

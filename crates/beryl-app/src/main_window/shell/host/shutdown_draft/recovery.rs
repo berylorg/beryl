@@ -22,7 +22,9 @@ impl MainWindowShellController {
             ShellContent::Restored { custody, .. } => {
                 custody.composer.validate_recovery_retirement()?;
             }
-            ShellContent::Threadless { .. } | ShellContent::Recovered { .. } => {}
+            ShellContent::Threadless { .. }
+            | ShellContent::Recovered { .. }
+            | ShellContent::RecoveredThreadless { .. } => {}
         }
         let retired = ShellContent::Retired {
             window_id: self.window_id(),
@@ -35,6 +37,7 @@ impl MainWindowShellController {
             ShellContent::Restored { custody, .. } => custody.reservation,
             ShellContent::Threadless { reservation, .. } => reservation,
             ShellContent::Recovered { reservation, .. } => reservation,
+            ShellContent::RecoveredThreadless { reservation, .. } => reservation,
             ShellContent::Retired { .. } => unreachable!(),
         };
         let ShellContent::Retired {
@@ -109,7 +112,9 @@ impl MainWindowShellRoot {
                         custody.composer.release_recovery_service(service)?;
                     }
                     ShellContent::Recovered { .. } => {}
-                    ShellContent::Threadless { .. } | ShellContent::Retired { .. } => {
+                    ShellContent::Threadless { .. }
+                    | ShellContent::RecoveredThreadless { .. }
+                    | ShellContent::Retired { .. } => {
                         unreachable!()
                     }
                 }
