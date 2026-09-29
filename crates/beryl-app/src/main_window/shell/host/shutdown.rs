@@ -38,7 +38,10 @@ impl MainWindowShellRoot {
             .controller
             .as_ref()
             .ok_or("shutdown shell lost its controller")?;
-        if !matches!(controller.content, ShellContent::Threadless { .. }) {
+        if matches!(controller.content, ShellContent::Retired { .. }) {
+            return Err("retired shell requires fresh bindings before interaction release".into());
+        }
+        if !controller.is_threadless() {
             let composer = controller
                 .composer_mount
                 .as_ref()
@@ -70,7 +73,10 @@ impl MainWindowShellRoot {
             .controller
             .as_ref()
             .ok_or_else(|| "shutdown shell lost its controller".to_owned())?;
-        if !matches!(controller.content, ShellContent::Threadless { .. }) {
+        if !gated && matches!(controller.content, ShellContent::Retired { .. }) {
+            return Err("retired shell requires fresh bindings before interaction release".into());
+        }
+        if !controller.is_threadless() {
             let composer = controller
                 .composer_mount
                 .as_ref()

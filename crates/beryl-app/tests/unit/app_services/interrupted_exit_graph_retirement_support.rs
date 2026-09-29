@@ -46,22 +46,15 @@ pub(super) async fn verify(
         );
         assert!(!owner.borrow().test_services_on_worker());
         let window = owner.borrow().test_process().windows.shells()[0].window();
-        window
-            .update(app, |root, _, cx| {
-                root.set_shutdown_interaction_gated(false, cx)
-            })
-            .unwrap()
-            .unwrap();
         assert!(
-            RunningProcessOwner::retire_interrupted_exit_graph(
-                owner,
-                request,
-                generation,
-                app,
-                |_, _| panic!("retirement with an ungated original window"),
-            )
-            .unwrap_err()
-            .contains("exact gated shell")
+            window
+                .update(app, |root, _, cx| {
+                    assert!(root.test_shell_construction_retired());
+                    root.set_shutdown_interaction_gated(false, cx)
+                })
+                .unwrap()
+                .unwrap_err()
+                .contains("requires fresh bindings")
         );
         assert!(!owner.borrow().test_services_on_worker());
         assert!(owner.borrow().test_services().graph().is_some());

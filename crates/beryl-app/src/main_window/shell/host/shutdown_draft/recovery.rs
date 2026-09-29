@@ -8,6 +8,46 @@ pub(super) enum ResidentRetirement {
     Retired(MainWindowComposerRetiredClose),
 }
 
+impl MainWindowShellController {
+    fn retire_construction(&mut self) -> Result<(), String> {
+        match &self.content {
+            ShellContent::Retired { .. } => return Ok(()),
+            ShellContent::Acquired { custody, .. } => {
+                custody
+                    .initial_composer
+                    .as_ref()
+                    .ok_or("acquired shell lost its construction custody")?
+                    .validate_recovery_retirement()?;
+            }
+            ShellContent::Restored { custody, .. } => {
+                custody.composer.validate_recovery_retirement()?;
+            }
+            ShellContent::Threadless { .. } => {}
+        }
+        let retired = ShellContent::Retired {
+            window_id: self.window_id(),
+            placement: self.placement().clone(),
+            threadless: self.is_threadless(),
+            reservation: None,
+        };
+        let reservation = match std::mem::replace(&mut self.content, retired) {
+            ShellContent::Acquired { custody, .. } => custody.reservation,
+            ShellContent::Restored { custody, .. } => custody.reservation,
+            ShellContent::Threadless { reservation, .. } => reservation,
+            ShellContent::Retired { .. } => unreachable!(),
+        };
+        let ShellContent::Retired {
+            reservation: retained,
+            ..
+        } = &mut self.content
+        else {
+            unreachable!()
+        };
+        *retained = Some(reservation);
+        Ok(())
+    }
+}
+
 impl MainWindowShellRoot {
     pub(crate) fn retire_shutdown_draft(
         &mut self,
@@ -26,6 +66,7 @@ impl MainWindowShellRoot {
             .ok_or("shutdown shell lost its controller")?;
         let Some((mount, editor, close)) = &draft.composer else {
             return if controller.is_threadless() && controller.composer_mount.is_none() {
+                controller.retire_construction()?;
                 Ok(true)
             } else {
                 Err("threadless shutdown draft changed".into())
@@ -40,7 +81,7 @@ impl MainWindowShellRoot {
         {
             return Err("resident retirement composer custody changed".into());
         }
-        mount.update(cx, |mount, cx| {
+        let ready = mount.update(cx, |mount, cx| {
             if !mount.fence_interrupted_exit_resident(*close, cx)? {
                 return Ok(false);
             }
@@ -66,7 +107,9 @@ impl MainWindowShellRoot {
                     ShellContent::Restored { custody, .. } => {
                         custody.composer.release_recovery_service(service)?;
                     }
-                    ShellContent::Threadless { .. } => unreachable!(),
+                    ShellContent::Threadless { .. } | ShellContent::Retired { .. } => {
+                        unreachable!()
+                    }
                 }
                 let Some(ResidentRetirement::Detached(resources)) = draft.retirement.take() else {
                     unreachable!()
@@ -87,6 +130,23 @@ impl MainWindowShellRoot {
                 }
             }
             mount.interrupted_exit_retirement_ready(*close, cx)
+        })?;
+        if ready {
+            controller.retire_construction()?;
+        }
+        Ok(ready)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_shell_construction_retired(&self) -> bool {
+        self.controller.as_ref().is_some_and(|controller| {
+            matches!(
+                controller.content,
+                ShellContent::Retired {
+                    reservation: Some(_),
+                    ..
+                }
+            )
         })
     }
 

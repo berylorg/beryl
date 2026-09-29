@@ -47,6 +47,9 @@ impl MainWindowShell {
                     return Err("startup appearance generation changed".to_owned());
                 }
                 match &controller.content {
+                    ShellContent::Retired { .. } => {
+                        Err("retired shell cannot enter startup".into())
+                    }
                     ShellContent::Threadless { source, .. } => {
                         source.validate_lifetime()?;
                         if controller.composer_mount.is_some() {

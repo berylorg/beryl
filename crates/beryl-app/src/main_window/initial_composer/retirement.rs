@@ -36,6 +36,26 @@ impl MainWindowInitialComposer {
 }
 
 impl InitialComposerCandidate {
+    fn construction_settled(&self) -> bool {
+        self.activated
+            && self.preparation_started
+            && !self.retirement_started
+            && !self.open_terminal
+            && self.opened.is_some()
+            && self.open_reconciliation.is_none()
+            && self.abandonment.is_none()
+            && self.abandonment_reconciliation.is_none()
+            && self.abandonment_receipt.is_none()
+            && self.host.is_none()
+    }
+
+    pub(in crate::main_window) fn validate_recovery_retirement(&self) -> Result<(), String> {
+        if !self.construction_settled() || self.service.is_some() {
+            return Err("initial composer construction custody is not retired".into());
+        }
+        Ok(())
+    }
+
     pub(in crate::main_window) fn release_recovery_service(
         &mut self,
         expected: &Arc<MainWindowConversationComposerService>,
@@ -43,18 +63,7 @@ impl InitialComposerCandidate {
         let Some(service) = self.service.as_ref() else {
             return Ok(());
         };
-        if !Arc::ptr_eq(service, expected)
-            || !self.activated
-            || !self.preparation_started
-            || self.retirement_started
-            || self.open_terminal
-            || self.opened.is_none()
-            || self.open_reconciliation.is_some()
-            || self.abandonment.is_some()
-            || self.abandonment_reconciliation.is_some()
-            || self.abandonment_receipt.is_some()
-            || self.host.is_some()
-        {
+        if !Arc::ptr_eq(service, expected) || !self.construction_settled() {
             return Err(
                 "initial composer construction custody is not settled for this service".into(),
             );

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 763: Publish And Qualify Empty Resident Retirement (finished)
+# Phase 764: Retire Failed-Generation Shell Construction Custody (finished)
 
-Published widget `2c3ae40` and settings `5b2e072`; canonical pins and lock select one widget graph.
-All 16 focused native tests pass, including untouched empty acquired/restored retirement with
-exact refusal/retry, editor/focus preservation and request cleanup. Canonical app compilation and
-locked metadata pass; independent review accepted. See the
-[custody evidence](failures/initial-composer-custody.md). Whole-shell recovery remains phase 702.
+Acquired/restored construction and threadless source custody now retire after exact resident
+retirement, retaining window identity, placement and native reservation. No old-generation storage
+cleanup runs; startup reuse and interaction release remain refused until fresh binding. Twenty
+focused native tests and five native Exit tests pass; app compilation and independent lifecycle
+review accepted. See [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -109,7 +109,8 @@ Phases 703–705 supply retained service-graph retirement and its worker handoff
 resident retirement; service-graph completion alone does not prove whole-resident retirement.
 Phase 759 binds that resident pass to graph-worker admission.
 Phase 760 requires successful graph retirement before candidate settlement can start.
-Acquired/restored opening, claim and source custody still needs whole-shell recovery handling.
+Phase 764 retires settled acquired/restored opening, claim and source custody and threadless source
+custody. Fresh shell bindings must replace that retired state before coherent interaction release.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

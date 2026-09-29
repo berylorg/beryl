@@ -14,7 +14,7 @@ pub struct RestoredWindowShellPreparationFailure {
 
 pub struct RestoredWindowShellUnpublished {
     pub(super) composer: RestoredWindowComposer,
-    reservation: RuntimeBackedWindowMainWindowReservation,
+    pub(super) reservation: RuntimeBackedWindowMainWindowReservation,
 }
 
 pub enum RestoredWindowShellRetirement {

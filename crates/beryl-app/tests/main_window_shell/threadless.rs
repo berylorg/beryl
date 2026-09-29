@@ -333,6 +333,69 @@ fn retired_threadless_preparation_releases_reservation_without_native_mount(
 }
 
 #[gpui::test]
+fn threadless_recovery_retires_source_without_releasing_native_reservation(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (mut fixture, prepared, revision) = support::join(
+        support::worker(|| {
+            let fixture = Fixture::new(124);
+            let prepared = fixture.prepare().unwrap();
+            let revision = fixture.store.home_revision().unwrap();
+            (fixture, prepared, revision)
+        }),
+        cx,
+    );
+    let owner = fixture.owner(cx);
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
+    let mut shell = cx.update(|app| {
+        placement_support::attach(
+            GpuiMainWindowShellHost::new(app, owner.clone()),
+            native_placement,
+        )
+        .construct_threadless_hidden(prepared)
+        .unwrap()
+    });
+    draw(shell.window(), cx);
+    cx.update(|app| shell.publish(app)).unwrap();
+    let window = shell.window();
+    let mut draft = window
+        .update(cx, |root, window, cx| {
+            root.test_set_shutdown_interaction_gated(true, cx).unwrap();
+            root.test_begin_shutdown_draft(window, cx).unwrap()
+        })
+        .unwrap();
+    fixture.lifetime.take();
+    window
+        .update(cx, |root, _, cx| {
+            assert!(!root.test_shell_construction_retired());
+            assert!(root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
+            assert!(root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
+            assert!(root.test_shell_construction_retired());
+            let controller = root.controller().unwrap();
+            assert_eq!(controller.window_id(), fixture.window);
+            assert_eq!(controller.placement(), &placement());
+            assert!(controller.is_threadless());
+            assert!(controller.composer_mount().is_none());
+            assert_eq!(fixture.process.main_window_occupancy(), 1);
+            assert!(root.test_set_shutdown_interaction_gated(false, cx).is_err());
+        })
+        .unwrap();
+    assert!(!cx.update(|app| shell.ready_to_publish(app)));
+    let store = fixture.store.clone();
+    assert_eq!(
+        support::join(support::worker(move || store.home_revision().unwrap()), cx),
+        revision
+    );
+    cx.update(|app| shell.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("published recovery shell handle"));
+    window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(fixture.process.main_window_occupancy(), 0);
+}
+
+#[gpui::test]
 fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
     cx: &mut gpui::TestAppContext,
 ) {

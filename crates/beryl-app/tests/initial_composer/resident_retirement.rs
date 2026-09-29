@@ -39,6 +39,14 @@ fn verify_retirement(
 ) {
     let (_other_fixture, other) = startup_interaction::shell(cx, 111);
     startup_interaction::drive(&shell, cx);
+    let original = shell
+        .window()
+        .read_with(cx, |root, _| {
+            let controller = root.controller().unwrap();
+            (controller.window_id(), controller.placement().clone())
+        })
+        .unwrap();
+    let occupancy = fixture.process.main_window_occupancy();
     let mount = shell
         .window()
         .read_with(cx, |root, _| {
@@ -116,6 +124,7 @@ fn verify_retirement(
                 Ok(true)
             ));
             assert!(mount.read(cx).selected_identity().is_some());
+            assert!(!root.test_shell_construction_retired());
         })
         .unwrap();
     drop(worker);
@@ -143,6 +152,7 @@ fn verify_retirement(
             let focus = window.focused(cx);
             assert!(!root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
             assert!(!root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
+            assert!(!root.test_shell_construction_retired());
             assert_eq!(window.focused(cx), focus);
             assert_eq!(mount.read(cx).contribution().unwrap(), resident);
             assert!(mount.read(cx).selected_identity().is_none());
@@ -164,6 +174,13 @@ fn verify_retirement(
             let focus = window.focused(cx);
             assert!(root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
             assert!(root.test_retire_shutdown_draft(&mut draft, cx).unwrap());
+            assert!(root.test_shell_construction_retired());
+            let controller = root.controller().unwrap();
+            assert_eq!(controller.window_id(), original.0);
+            assert_eq!(controller.placement(), &original.1);
+            assert!(!controller.is_threadless());
+            assert_eq!(fixture.process.main_window_occupancy(), occupancy);
+            assert!(root.test_set_shutdown_interaction_gated(false, cx).is_err());
             assert_eq!(window.focused(cx), focus);
             assert_eq!(resident.read(cx).gpui_input(), input);
             assert!(!input.read(cx).is_enabled());

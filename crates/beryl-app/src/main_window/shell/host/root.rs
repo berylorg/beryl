@@ -49,7 +49,7 @@ impl MainWindowShellRoot {
             ShellContent::Restored { custody, selection } => {
                 (*selection, custody.composer.target())
             }
-            ShellContent::Threadless { .. } => return None,
+            ShellContent::Threadless { .. } | ShellContent::Retired { .. } => return None,
         };
         let mount = controller.composer_mount.as_ref()?.read(app);
         let composer = mount.contribution()?.read(app);

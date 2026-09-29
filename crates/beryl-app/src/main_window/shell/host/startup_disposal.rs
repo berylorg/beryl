@@ -80,6 +80,18 @@ impl MainWindowShell {
             shell,
             error: error.to_owned(),
         };
+        if self
+            .root
+            .read(app)
+            .controller
+            .as_ref()
+            .is_some_and(|controller| matches!(controller.content, ShellContent::Retired { .. }))
+        {
+            return Err(failure(
+                self,
+                "retired running shell cannot enter startup disposal",
+            ));
+        }
         if !self.desktop_cleanup_allowed() {
             return Err(failure(self, "startup desktop work is not settled"));
         }
@@ -220,6 +232,9 @@ impl MainWindowShell {
                         match controller {
                             Some(controller) => {
                                 let retirement = match controller.content {
+                                    ShellContent::Retired { .. } => unreachable!(
+                                        "running recovery cannot enter startup disposal"
+                                    ),
                                     ShellContent::Acquired { custody, .. } if preserve_records => {
                                         MainWindowStartupRetirement::AcquiredPreserved(
                                             custody.preserve_records(),

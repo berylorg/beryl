@@ -380,6 +380,12 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&foreign, app).is_err());
                                 window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(false, cx)).unwrap().unwrap();
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
+                                let generation = owner.borrow().test_services().graph().unwrap().home().health().generation().unwrap();
+                                assert!(RunningProcessOwner::retire_interrupted_exit_graph(
+                                    &owner, &request, generation, app,
+                                    |_, _| panic!("retirement with an ungated original window"),
+                                ).unwrap_err().contains("exact gated shell"));
+                                assert!(!owner.borrow().test_services_on_worker());
                                 window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(true, cx)).unwrap().unwrap();
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
@@ -445,11 +451,13 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             .unwrap()
                             .into_inner()
                             .test_into_process();
-                        if matches!(
+                        if consumer && fault.is_some() {
+                            dispose_failed_fixture(running, true, cx).await;
+                        } else if matches!(
                             fault,
                             Some(FaultPoint::BeforeCommit | FaultPoint::AfterPersist)
                         ) {
-                            dispose_failed_fixture(running, cx).await;
+                            dispose_failed_fixture(running, false, cx).await;
                         } else {
                             support::dispose_running(running, cx).await;
                         }
@@ -467,19 +475,42 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
     assert_reopens(&directory);
 }
 
-async fn dispose_failed_fixture(mut running: startup_owner::StartedProcess, cx: &mut AsyncApp) {
-    let (sender, receiver) = futures_channel::oneshot::channel();
-    cx.update(|app| {
-        running.windows.test_dispose(
-            move |result, _| {
-                assert!(result.retained.is_none());
-                sender.send(()).unwrap();
-            },
-            app,
-        )
-    })
-    .unwrap();
-    receiver.await.unwrap();
+async fn dispose_failed_fixture(
+    mut running: startup_owner::StartedProcess,
+    retired: bool,
+    cx: &mut AsyncApp,
+) {
+    if retired {
+        cx.update(|app| {
+            for shell in running.windows.shells() {
+                shell
+                    .window()
+                    .update(app, |root, window, _| {
+                        assert!(root.test_shell_construction_retired());
+                        assert!(root.controller().unwrap().is_threadless());
+                        assert!(root.controller().unwrap().composer_mount().is_none());
+                        window.remove_window();
+                    })
+                    .unwrap();
+            }
+            drop(running.windows);
+        })
+        .unwrap();
+        cx.update(|app| assert!(app.windows().is_empty())).unwrap();
+    } else {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            running.windows.test_dispose(
+                move |result, _| {
+                    assert!(result.retained.is_none());
+                    sender.send(()).unwrap();
+                },
+                app,
+            )
+        })
+        .unwrap();
+        receiver.await.unwrap();
+    }
     running
         .appearance
         .update(cx, |appearance, _| appearance.retire())
@@ -493,6 +524,10 @@ async fn dispose_failed_fixture(mut running: startup_owner::StartedProcess, cx: 
                     .unwrap()
                     .close()
                     .unwrap();
+                return;
+            }
+            if running.services.graph().unwrap().home().health().state() == HomeHealthState::Healthy {
+                close(&mut running.services);
                 return;
             }
             assert_eq!(

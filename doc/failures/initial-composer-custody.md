@@ -73,6 +73,29 @@ identity, transferred-facts readiness, strict quiescence and empty disposal clea
 Independent review accepted. This does not establish complete running-shell recovery;
 opening, claim and source custody still require phase 702 whole-shell handling.
 
+Phase 764 releases that settled shell construction custody after exact resident retirement.
+Acquired opening state, restored claim/source state and threadless source handles are replaced by
+window identity and placement facts plus the existing process-owned native reservation. The latter
+contains no home/storage handle and remains held until native cleanup. Refused resident retirement
+retains construction custody; successful repetition is idempotent. Retired shells cannot authorize
+startup publication/disposal or interaction release. No failed-store abandonment or claim write runs.
+
+Nextest run `ba6bbbfc-aeae-4913-a086-58b437245fd5` passed 20 focused native tests, including empty
+and edited acquired/restored editors, held worker/service refusal, exact editor/focus preservation,
+threadless retirement, retained native capacity and unchanged threadless home revision. The broader
+Exit fixtures initially assumed they could reopen a retired shell to test graph admission, then
+reuse startup disposal for teardown. Runs `dbf0edf4-6309-4b41-9a52-7118c9e35b2f` and
+`781f7927-2d76-4e38-a8c1-ae0fa54641e9` rejected those assumptions. The missing-gate check now runs
+before retirement; later reopening is explicitly refused. Test teardown removes its retired,
+editor-free threadless windows directly and closes the retained home through the applicable
+healthy/failed path. Run `96237136-0f7f-4337-bbfc-e328c5062c33` identified the reconciled healthy
+fixture's need for ordinary close instead of failed-home retirement.
+
+Final run `bbdbd838-9445-4a7a-b75e-c96d86ef351e` passed all five native Exit cases, including
+noncommit, postcommit failure, indeterminate reconciliation and settlement unwind. The app library
+check passes and independent lifecycle review accepted. Fresh shell bindings, remaining graph
+ownership and coherent recovery publication remain phase 702; this is not full recovery acceptance.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.
