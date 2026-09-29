@@ -126,17 +126,77 @@ pub(super) async fn verify(
         );
         assert!(owner.borrow().test_services().graph().is_none());
         assert!(!RunningProcessOwner::finish_exit(owner, request));
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            let cancel = |request, app: &mut gpui::App| {
+                RunningProcessOwner::cancel_interrupted_exit_services(
+                    owner,
+                    request,
+                    app,
+                    |_, _| panic!("refused cancellation callback"),
+                )
+            };
+            assert!(cancel(&foreign, app).is_err());
+            if mode != "success" {
+                assert!(cancel(request, app).is_err());
+                return;
+            }
+            for retirement in [None, Some(Err("failed retirement".into()))] {
+                owner
+                    .borrow()
+                    .test_set_resident_graph_retirement(retirement);
+                assert!(cancel(request, app).is_err());
+            }
+            owner
+                .borrow()
+                .test_set_resident_graph_retirement(Some(Ok(())));
+            RunningProcessOwner::cancel_interrupted_exit_services(
+                owner,
+                request,
+                app,
+                move |owner, _| {
+                    assert!(!owner.borrow().test_services_on_worker());
+                    assert!(owner.borrow().interrupted_exit_session().is_some());
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+            assert!(owner.borrow().test_services_on_worker());
+            assert!(owner.borrow().interrupted_exit_session().is_none());
+            assert!(cancel(request, app).is_err());
+            assert!(!RunningProcessOwner::finish_exit(owner, request));
+            owner
+                .borrow_mut()
+                .test_replace_interrupted_exit_request(&foreign);
+        })
+        .unwrap();
+        if mode == "success" {
+            receiver.await.unwrap();
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_services_result(request)
+                    .unwrap_err()
+                    .contains("request changed")
+            );
+            owner
+                .borrow_mut()
+                .test_replace_interrupted_exit_request(request);
+            assert_eq!(
+                original,
+                format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(owner.borrow().test_services().graph().is_none());
+            assert!(!RunningProcessOwner::finish_exit(owner, request));
+        }
         let result = owner.borrow().test_take_interrupted_exit_services();
         candidate = Some(
             cx.background_executor()
                 .spawn(async move {
                     let failure = match result {
-                        Ok(prepared) => {
-                            assert_eq!(mode, "success");
-                            prepared.cancel()
-                        }
+                        Ok(_) => panic!("cancelled services remained prepared"),
                         Err(RecoveryServicePreparationError::App(failure)) => {
-                            if mode == "cancel" {
+                            if mode != "theme_failure" {
                                 assert!(matches!(failure.error(), AppServiceOpenError::Cancelled));
                             } else {
                                 assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));

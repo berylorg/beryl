@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 796: Retain Private Service Preparation Under The Interrupted Exit Owner (finished)
+# Phase 797: Cancel Retained Prepared Recovery Services (finished)
 
-The running owner now retains complete private service preparation under its existing single
-worker slot and cancelled Exit request. It revalidates session evidence before transfer and
-restores service, original-session and typed outcome custody before completion, including stale
-delivery and cancellation. All 21 focused tests passed, including the direct Exit fixture
-(76841150-c19f-46df-8313-2a95e44b60f4); compilation, formatting and independent review passed.
+The running owner now cancels retained private services through its existing worker slot, joining
+services before storage abort and restoring original-session and typed outcome custody before
+completion, including stale delivery. The focused run passed 19 of 21 tests, including the new
+direct Exit case; two native-window fixtures failed before recovery and passed on serial rerun
+(130a5b5c-df17-45b8-bc1a-47e6cea959f2). Compilation, formatting and independent review passed.
 Attachment, publication, retry scheduling and interaction release remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
@@ -142,6 +142,8 @@ Phase 795 connects complete private service preparation to the retired owner wit
 session and attention custody and preflight refusal before candidate transfer.
 Phase 796 retains that preparation and its typed outcomes under the running owner's exact
 cancelled Exit request, preserving original session evidence through worker and stale delivery.
+Phase 797 routes cancellation of retained prepared services through the same worker slot and
+preserves the typed disposal outcome before completion delivery.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

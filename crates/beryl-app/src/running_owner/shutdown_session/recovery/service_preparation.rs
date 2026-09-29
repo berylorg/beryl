@@ -129,6 +129,63 @@ impl RunningProcessOwner {
         Ok(())
     }
 
+    pub(crate) fn cancel_interrupted_exit_services(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<(), String> {
+        let (services, session_slot, settlement_slot, original, prepared) = {
+            let mut owner = owner.borrow_mut();
+            owner.interrupted_exit_services_result(request)?;
+            let recovery = owner.interrupted_exit.as_ref().unwrap();
+            if recovery.session.borrow().is_none()
+                || recovery.resident.is_some()
+                || recovery
+                    .pending_resident_frame
+                    .as_ref()
+                    .is_some_and(|wake| wake.strong_count() != 0)
+            {
+                return Err("Interrupted Exit recovery custody is unavailable".into());
+            }
+            if owner.process.services.is_none() {
+                return Err("The complete service owner is on a worker".into());
+            }
+            let session_slot = recovery.session.clone();
+            let settlement_slot = recovery.settlement.clone();
+            let original = session_slot.borrow_mut().take().unwrap();
+            let Some(CandidateSettlement::Services(Ok(prepared))) = settlement_slot
+                .borrow_mut()
+                .replace(CandidateSettlement::Pending)
+            else {
+                unreachable!()
+            };
+            (
+                owner.process.services.take().unwrap(),
+                session_slot,
+                settlement_slot,
+                original,
+                prepared,
+            )
+        };
+        let retained = owner.clone();
+        let work = app.background_executor().spawn(async move {
+            let failure = prepared.cancel();
+            (services, original, failure)
+        });
+        app.spawn(async move |cx| {
+            let (services, original, failure) = work.await;
+            retained.borrow_mut().process.services = Some(services);
+            *session_slot.borrow_mut() = Some(original);
+            *settlement_slot.borrow_mut() = Some(CandidateSettlement::Services(Err(
+                RecoveryServicePreparationError::App(failure),
+            )));
+            let _ = cx.update(|app| completed(&retained, app));
+        })
+        .detach();
+        Ok(())
+    }
+
     pub(crate) fn interrupted_exit_services_result(
         &self,
         request: &RunningExitRequest,
