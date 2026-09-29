@@ -1,4 +1,6 @@
-use beryl_home_store::{HomeGeneration, HomeOpenPublication, ThemeWatchLimits};
+use beryl_home_store::{
+    HomeGeneration, HomeOpenPublication, HomeRecoveryCandidate, ThemeWatchLimits,
+};
 use beryl_model::BerylHomeId;
 use beryl_state::PreparedThemeChangeSubscription;
 
@@ -18,14 +20,7 @@ impl PreparedThemeRuntime {
         service: ThemeService,
         config: ThemeRuntimeConfig,
     ) -> Result<Self, ThemeRuntimeStartError> {
-        let limits = ThemeWatchLimits::new(
-            config.watch_interval,
-            config.watch_queue_capacity,
-            config.watch_max_entries_per_poll,
-            config.watch_max_file_bytes.get(),
-            NonZeroUsize::new(64 * 1024).unwrap(),
-        )
-        .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
+        let limits = Self::watch_limits(&config)?;
         let subscription = service
             .prepare_initial_changes(candidate, limits)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
@@ -36,6 +31,37 @@ impl PreparedThemeRuntime {
             home_id: candidate.home_id(),
             generation: candidate.generation(),
         })
+    }
+
+    pub(crate) fn prepare_recovery(
+        candidate: &mut HomeRecoveryCandidate,
+        service: ThemeService,
+        config: ThemeRuntimeConfig,
+    ) -> Result<Self, ThemeRuntimeStartError> {
+        let limits = Self::watch_limits(&config)?;
+        let subscription = service
+            .prepare_recovered_changes(candidate, limits)
+            .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
+        Ok(Self {
+            subscription,
+            service,
+            config,
+            home_id: candidate.home_id(),
+            generation: candidate.generation(),
+        })
+    }
+
+    fn watch_limits(
+        config: &ThemeRuntimeConfig,
+    ) -> Result<ThemeWatchLimits, ThemeRuntimeStartError> {
+        ThemeWatchLimits::new(
+            config.watch_interval,
+            config.watch_queue_capacity,
+            config.watch_max_entries_per_poll,
+            config.watch_max_file_bytes.get(),
+            NonZeroUsize::new(64 * 1024).unwrap(),
+        )
+        .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))
     }
 
     pub(crate) fn load_published(

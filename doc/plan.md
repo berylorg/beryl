@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 791: Prepare Activity For A Fresh Recovery Candidate (finished)
+# Phase 792: Prepare Theme Runtime For A Fresh Recovery Candidate (finished)
 
-Recovery Activity preparation now shares the dormant initial-service constructor and rejects
-stale or foreign runtime/storage handles. Reads remain closed before publication and disposal
-releases prepared custody before abort. All 15 focused Activity cases passed across the initial
-run and corrected publication-fixture rerun (6c3fe0c2-7aef-4c4b-b661-79807640aad4); compilation,
-formatting and independent semantic review passed. Full fresh graph composition remains pending.
+Recovery Theme preparation now uses the existing dormant recovered subscription and shares initial
+watcher bounds. Fresh identity, publication-gated release and joined disposal before abort passed
+all 10 focused Theme cases (b0108e1c-a150-4c15-a28d-4c4702caead4), compilation, formatting and
+independent semantic review. Full fresh graph composition remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -134,6 +133,7 @@ Phase 788 routes constructed storage-candidate abort through the running owner's
 Phase 789 settles cancellation during construction before custody return and completion delivery.
 Phase 790 supplies recovery CAS handoff preparation and preserves convergence outcomes through disposal.
 Phase 791 supplies fresh candidate Activity preparation using the shared dormant implementation.
+Phase 792 supplies fresh candidate Theme preparation using the existing dormant watcher.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

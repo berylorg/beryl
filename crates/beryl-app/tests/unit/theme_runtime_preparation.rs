@@ -6,6 +6,9 @@ use beryl_state::BerylState;
 
 use super::*;
 
+#[path = "theme_runtime_recovery_preparation.rs"]
+mod recovery;
+
 fn candidate() -> (
     tempfile::TempDir,
     HomeOpenPublication,
