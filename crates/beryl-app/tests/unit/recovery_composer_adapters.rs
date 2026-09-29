@@ -28,7 +28,11 @@ fn prepare_cas(
         Box::new(provider),
         &ProjectionCancellationToken::new(),
     ) {
-        Ok(prepared) => prepared.into_recovery_parts(),
+        Ok(prepared) => {
+            let (candidate, service, start, handoff) = prepared.into_recovery_parts();
+            assert!(handoff.is_none());
+            (candidate, service, start)
+        }
         Err(_) => panic!("fixture CAS preparation failed"),
     }
 }

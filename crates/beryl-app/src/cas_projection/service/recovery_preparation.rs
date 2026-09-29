@@ -6,6 +6,7 @@ use crate::cas_projection::{ProjectionCancellationToken, initial_start::InitialS
 
 pub(crate) struct PreparedRecoveryCasServices {
     service: Option<ProjectionConnectionService>,
+    handoff: Option<crate::discussion_settlement::coordinator::HandoffCoordinator>,
     initial_start: Option<InitialStartOwner>,
     candidate: Option<HomeRecoveryCandidate>,
 }
@@ -27,9 +28,9 @@ impl RecoveryCasPreparationFailure {
         &self.error
     }
 
-    pub(crate) fn into_retry_home(self) -> Result<HomeStore, Self> {
+    pub(crate) fn into_retry_parts(self) -> Result<(HomeStore, CasPreparationError), Self> {
         if self.retirement_confirmed {
-            Ok(self.home)
+            Ok((self.home, self.error))
         } else {
             Err(self)
         }
@@ -50,6 +51,7 @@ impl PreparedRecoveryCasServices {
         HomeRecoveryCandidate,
         ProjectionConnectionService,
         InitialStartOwner,
+        Option<crate::discussion_settlement::coordinator::HandoffCoordinator>,
     ) {
         let candidate = self.candidate.take().expect("reopening candidate custody");
         let service = self.service.take().expect("prepared recovery CAS service");
@@ -57,7 +59,7 @@ impl PreparedRecoveryCasServices {
             .initial_start
             .take()
             .expect("publication fence custody");
-        (candidate, service, initial_start)
+        (candidate, service, initial_start, self.handoff.take())
     }
 
     pub(crate) fn prepare(
@@ -70,6 +72,7 @@ impl PreparedRecoveryCasServices {
     ) -> Result<Self, RecoveryCasPreparationFailure> {
         let mut prepared = Self {
             service: None,
+            handoff: None,
             initial_start: None,
             candidate: Some(candidate),
         };
@@ -161,16 +164,65 @@ impl PreparedRecoveryCasServices {
         }
     }
 
+    pub(crate) fn prepare_handoff(
+        mut self,
+        operations: crate::discussion_settlement::DiscussionSettlementOperations,
+        state: beryl_state::BerylState,
+        limits: crate::discussion_handoff_limits::HandoffScanLimits,
+        at: syndic_storage::SyndicTimestamp,
+        cancellation: beryl_home_store::CommandCancellation,
+    ) -> Result<Self, RecoveryCasPreparationFailure> {
+        let result = (|| {
+            if cancellation.is_cancelled() {
+                return Err(CasPreparationError::Cancelled);
+            }
+            if self.handoff.is_some() {
+                return Err(CasPreparationError::HandoffAlreadyPrepared);
+            }
+            self.handoff = Some(
+                self.service
+                    .as_ref()
+                    .expect("prepared recovery CAS service")
+                    .prepare_candidate_handoff(
+                        &self
+                            .candidate
+                            .as_mut()
+                            .expect("reopening candidate custody")
+                            .recovery_access()?,
+                        operations,
+                        state,
+                        limits,
+                        at,
+                        cancellation.clone(),
+                    )?,
+            );
+            if cancellation.is_cancelled() {
+                return Err(CasPreparationError::Cancelled);
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => Ok(self),
+            Err(error) => Err(self.fail(error)),
+        }
+    }
+
     pub(crate) fn cancel(self) -> RecoveryCasPreparationFailure {
         self.fail(CasPreparationError::Cancelled)
     }
 
     fn fail(mut self, error: CasPreparationError) -> RecoveryCasPreparationFailure {
         drop(self.initial_start.take());
-        let retirement_confirmed = self
+        let handoff_retired = self
+            .handoff
+            .take()
+            .is_none_or(|mut handoff| handoff.shutdown().is_ok());
+        let service_retired = self
             .service
             .take()
-            .is_none_or(|service| service.close().is_ok())
+            .is_none_or(|service| service.close().is_ok());
+        let retirement_confirmed = handoff_retired
+            && service_retired
             && !matches!(
                 error,
                 CasPreparationError::Service(
@@ -193,6 +245,7 @@ impl PreparedRecoveryCasServices {
 impl Drop for PreparedRecoveryCasServices {
     fn drop(&mut self) {
         drop(self.initial_start.take());
+        drop(self.handoff.take());
         drop(self.service.take());
         drop(self.candidate.take());
     }

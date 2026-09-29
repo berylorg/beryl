@@ -89,14 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 789: Settle Cancellation During Candidate Construction (finished)
+# Phase 790: Prepare The Recovery Discussion Handoff Coordinator (finished)
 
-The running constructor rejects pre-cancelled admission and returns an unpublished candidate to
-failed-home custody on worker cancellation before delivery, preserving actual reopen errors and
-the existing worker slot. Nine direct Exit-session tests passed in
-`5cd615b1-57db-4ca6-b556-2043fa563d14`; 21 recovery regressions, compilation, formatting and
-independent review passed. Fresh service preparation/disposal, retry scheduling and whole-graph
-publication remain pending.
+Recovery CAS preparation now shares initial handoff convergence and coordinator construction,
+retains its publication gate and joins both workers before candidate abort. Retry extraction
+preserves the owned convergence error with the failed home; the real indeterminate-write regression
+passed in `947eac62-3750-4cc2-9f4d-e158af22887a` after correcting its health expectation.
+All 22 targeted cases, compilation, formatting and independent review passed. The
+[outcome-custody lesson](failures/fresh-service-recovery.md) is retained. Complete fresh app graph
+preparation, running-owner routing and whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -133,6 +134,7 @@ Phase 786 supplies retained running-owner candidate construction using the exist
 Phase 787 supplies failed-home custody return to the retired service owner after candidate disposal.
 Phase 788 routes constructed storage-candidate abort through the running owner's retained worker.
 Phase 789 settles cancellation during construction before custody return and completion delivery.
+Phase 790 supplies recovery CAS handoff preparation and preserves convergence outcomes through disposal.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

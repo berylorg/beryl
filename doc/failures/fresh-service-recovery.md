@@ -22,3 +22,13 @@ unconfirmed disposal while preserving the original construction error. Recovery 
 withholds retry-home extraction in that case. Scheduler-start fault injection after partial
 worker construction verifies both clean cleanup and failed cleanup, including disposal before
 candidate abort. Internal panics still follow fatal process policy rather than in-process retry.
+
+## Convergence Outcome Transfer
+
+Adding discussion-handoff convergence to recovery preparation exposed a previously harmless
+assumption in retry extraction: returning only the home discarded the preparation error. That
+error can now own a committed receipt or indeterminate audit. Confirmed worker disposal does not
+settle that write outcome. Retry extraction therefore transfers both the failed home and the typed
+error; unconfirmed disposal retains both. The seeded recovery-handoff regression injects a failure
+after commit but before persistence, verifies exact outcome transfer, and reconciles its audit
+through the next candidate. Whole-graph callers must retain and consume this outcome explicitly.

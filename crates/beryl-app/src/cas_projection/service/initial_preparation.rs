@@ -70,36 +70,14 @@ impl PreparedCasServices {
         }
         self.validate_candidate(candidate)?;
         let service = self.service.as_ref().expect("prepared CAS service custody");
-        {
-            let access = candidate.recovery_access()?;
-            operations.converge_candidate(
-                &access,
-                &state,
-                &service.storage,
-                limits,
-                at,
-                cancellation,
-            )?;
-        }
-        let settlement = crate::discussion_settlement::DiscussionSettlementService::new(
+        self.handoff = Some(service.prepare_candidate_handoff(
+            &candidate.recovery_access()?,
             operations,
-            candidate.service_reference(),
             state,
-            service.storage.clone(),
-        );
-        service.resolution.configure(settlement.clone())?;
-        let handoff = crate::discussion_settlement::coordinator::HandoffCoordinator::prepare(
-            settlement,
             limits,
-            self.initial_start
-                .as_ref()
-                .expect("publication fence custody")
-                .gate(),
-        )?;
-        service
-            .scheduler_signal
-            .set_handoff_waker(Some(handoff.waker()));
-        self.handoff = Some(handoff);
+            at,
+            cancellation,
+        )?);
         Ok(self)
     }
 
@@ -187,6 +165,40 @@ impl Drop for PreparedCasServices {
         drop(self.initial_start.take());
         drop(self.handoff.take());
         drop(self.service.take());
+    }
+}
+
+impl ProjectionConnectionService {
+    pub(super) fn prepare_candidate_handoff(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        operations: crate::discussion_settlement::DiscussionSettlementOperations,
+        state: beryl_state::BerylState,
+        limits: crate::discussion_handoff_limits::HandoffScanLimits,
+        at: syndic_storage::SyndicTimestamp,
+        cancellation: beryl_home_store::CommandCancellation,
+    ) -> Result<crate::discussion_settlement::coordinator::HandoffCoordinator, CasPreparationError>
+    {
+        operations.converge_candidate(access, &state, &self.storage, limits, at, cancellation)?;
+        let settlement = crate::discussion_settlement::DiscussionSettlementService::new(
+            operations,
+            self.home
+                .as_ref()
+                .expect("prepared service home")
+                .as_ref()
+                .clone(),
+            state,
+            self.storage.clone(),
+        );
+        self.resolution.configure(settlement.clone())?;
+        let handoff = crate::discussion_settlement::coordinator::HandoffCoordinator::prepare(
+            settlement,
+            limits,
+            Arc::clone(&self.initial_start),
+        )?;
+        self.scheduler_signal
+            .set_handoff_waker(Some(handoff.waker()));
+        Ok(handoff)
     }
 }
 

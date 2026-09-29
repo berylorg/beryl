@@ -14,6 +14,13 @@ mod composer_adapters {
     ));
 }
 
+mod discussion_handoff {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/recovery_handoff_preparation.rs"
+    ));
+}
+
 #[derive(Default)]
 struct Probe {
     attached: AtomicUsize,
@@ -131,7 +138,8 @@ fn recovery_handoff_preserves_exact_custody_until_explicit_release_or_cancellati
         let gate = prepared.initial_start.as_ref().unwrap().gate();
         let signal = prepared.service.as_ref().unwrap().scheduler_signal.clone();
         let service_generation = prepared.service.as_ref().unwrap().service_generation();
-        let (mut candidate, service, start) = prepared.into_recovery_parts();
+        let (mut candidate, service, start, handoff) = prepared.into_recovery_parts();
+        assert!(handoff.is_none());
         assert_eq!(candidate.home_id(), home_id);
         assert_eq!(candidate.generation(), generation);
         assert_eq!(service.home_id(), home_id);
@@ -225,8 +233,8 @@ fn reopening_services_remain_fenced_and_cancel_before_candidate_abort() {
     assert_eq!(reference.health().state(), HomeHealthState::Reopening);
     let failed = prepared.cancel();
     assert_eq!(probe.shutdown.load(Ordering::SeqCst), 1);
-    let home = match failed.into_retry_home() {
-        Ok(home) => home,
+    let home = match failed.into_retry_parts() {
+        Ok((home, _error)) => home,
         Err(_) => panic!("joined preparation must allow retry"),
     };
     assert_eq!(home.health().state(), HomeHealthState::Failed);
@@ -260,8 +268,8 @@ fn stale_storage_and_failed_candidate_reads_return_original_failure_and_custody(
             CasPreparationError::Service(ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)
         ));
         assert_eq!(probe.attached.load(Ordering::SeqCst), 0);
-        let home = match failure.into_retry_home() {
-            Ok(home) => home,
+        let home = match failure.into_retry_parts() {
+            Ok((home, _error)) => home,
             Err(_) => panic!("no workers were started"),
         };
         home.recover_same_home().unwrap().abort().close().unwrap();
@@ -323,7 +331,7 @@ fn unconfirmed_disposal_cannot_return_a_retry_home() {
             .as_ref()
             .unwrap(),
     );
-    let failure = match prepared.cancel().into_retry_home() {
+    let failure = match prepared.cancel().into_retry_parts() {
         Err(failure) => failure,
         Ok(_) => panic!("unconfirmed shared-provider disposal granted retry"),
     };
@@ -356,7 +364,7 @@ fn returned_constructor_failure_joins_partial_workers_before_abort_and_retry() {
             assert!(
                 matches!(failure.error(), CasPreparationError::Service(ProjectionCoordinatorError::ServiceConstructionDisposal { source }) if matches!(**source, ProjectionCoordinatorError::AcceptedInputSchedulerSpawn { .. }))
             );
-            let failure = match failure.into_retry_home() {
+            let failure = match failure.into_retry_parts() {
                 Err(failure) => failure,
                 Ok(_) => panic!("failed construction cleanup granted retry"),
             };
@@ -372,8 +380,8 @@ fn returned_constructor_failure_joins_partial_workers_before_abort_and_retry() {
         ));
         assert_eq!(probe.shutdown.load(Ordering::SeqCst), 1);
         assert_eq!(reference.health().state(), HomeHealthState::Failed);
-        let home = match failure.into_retry_home() {
-            Ok(home) => home,
+        let home = match failure.into_retry_parts() {
+            Ok((home, _error)) => home,
             Err(_) => panic!("partial constructor did not confirm cleanup"),
         };
         home.recover_same_home().unwrap().abort().close().unwrap();
@@ -468,8 +476,8 @@ fn recovered_managed_session_configuration_keeps_work_fenced_and_rejects_foreign
             }
         };
         assert!(signal.diagnostics().stopped());
-        let home = match failure.into_retry_home() {
-            Ok(home) => home,
+        let home = match failure.into_retry_parts() {
+            Ok((home, _error)) => home,
             Err(_) => panic!("configuration cleanup must settle"),
         };
         home.close().unwrap();
