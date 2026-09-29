@@ -66,7 +66,7 @@ impl MainWindowConversationComposer {
         Ok(self.recovery_snapshot.as_ref().unwrap().retired.is_some())
     }
 
-    fn validate_recovery_retirement(
+    pub(crate) fn validate_recovery_retirement(
         &self,
         close: MainWindowConversationComposerCloseTicket,
         cx: &App,

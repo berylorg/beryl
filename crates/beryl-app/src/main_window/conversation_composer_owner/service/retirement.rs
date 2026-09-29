@@ -22,7 +22,7 @@ impl MainWindowConversationComposerService {
         let (slot, close) = retired
             .rebind_candidate(&access, storage, state)
             .map_err(|(retired, error)| (retired, error.to_string()))?;
-        let mut service = Self::new(store, *slot);
+        let mut service = Self::from_boxed_slot(store, slot);
         service.window_close = Mutex::new(Some(close));
         Ok((service, close))
     }

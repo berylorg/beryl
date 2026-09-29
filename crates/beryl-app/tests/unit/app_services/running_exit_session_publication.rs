@@ -8,6 +8,11 @@ mod graph_retirement_support {
     include!("interrupted_exit_graph_retirement_support.rs");
 }
 
+mod resident_recovery {
+    use super::*;
+    include!("running_resident_recovery.rs");
+}
+
 #[test]
 fn native_exit_session_publication_delivers_exact_ready_request() {
     run(None, false);

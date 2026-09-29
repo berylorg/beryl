@@ -29,6 +29,22 @@ pub(super) struct RunningShutdownDrafts {
 }
 
 impl RunningShutdownDrafts {
+    pub(super) fn recovery_residents(
+        &self,
+    ) -> Vec<(
+        gpui::AnyWindowHandle,
+        gpui::EntityId,
+        crate::main_window::MainWindowConversationComposerCloseTicket,
+    )> {
+        self.windows
+            .iter()
+            .filter_map(|(window, draft)| {
+                let (resident, close) = draft.as_ref().ok()?.recovery_resident_identity()?;
+                Some(((*window).into(), resident, close))
+            })
+            .collect()
+    }
+
     pub(super) fn ready(&self) -> bool {
         self.ready && !self.driving && !self.releasing
     }

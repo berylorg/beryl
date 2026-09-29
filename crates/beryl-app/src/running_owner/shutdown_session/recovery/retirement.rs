@@ -36,7 +36,10 @@ impl RunningProcessOwner {
             {
                 return Err("Interrupted Exit request changed".into());
             }
-            if recovery.session.borrow().is_none() || recovery.settlement.borrow().is_some() {
+            if recovery.session.borrow().is_none()
+                || recovery.settlement.borrow().is_some()
+                || recovery.resident.is_some()
+            {
                 return Err(
                     "Interrupted Exit session custody is unavailable or candidate work exists"
                         .into(),

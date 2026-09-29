@@ -178,6 +178,8 @@
 //! ```
 
 mod branch_discussion_dynamic_tools;
+#[cfg(test)]
+extern crate self as beryl_app;
 pub mod cas_projection;
 mod activity_service;
 mod app_services;

@@ -192,6 +192,10 @@ impl MainWindowComposerRecoveryPreparation {
         self.reservation.take();
     }
 
+    pub(crate) fn worker_pending(&self) -> bool {
+        self.custody.pending()
+    }
+
     pub fn advance_cleanup(&mut self) -> Result<bool, String> {
         if !self.custody.cancelled() {
             return Err("resident preparation is not cancelled".into());

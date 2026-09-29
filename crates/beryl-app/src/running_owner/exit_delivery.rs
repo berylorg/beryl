@@ -81,6 +81,7 @@ impl RunningProcessOwner {
                 || owner.shutdown.is_some()
                 || owner.progress.is_some()
                 || owner.process.services.is_none()
+                || owner.interrupted_exit.is_some()
             {
                 return false;
             }

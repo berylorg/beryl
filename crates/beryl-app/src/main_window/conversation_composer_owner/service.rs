@@ -199,7 +199,7 @@ impl Future for PendingCompletionTestGate {
 
 pub struct MainWindowConversationComposerService {
     pub(super) store: Arc<HomeServiceReference>,
-    pub(super) slot: Mutex<MainWindowComposerSlot>,
+    pub(super) slot: Mutex<Box<MainWindowComposerSlot>>,
     window_close: Mutex<Option<crate::main_window::MainWindowConversationComposerCloseTicket>>,
     native_lineage_sources: Mutex<Vec<Arc<MainWindowNativeLineagePrepublicationSource>>>,
     native_lineage_driver_started: AtomicBool,
@@ -317,6 +317,10 @@ impl MainWindowConversationComposerService {
     }
 
     pub fn new(store: HomeServiceReference, slot: MainWindowComposerSlot) -> Self {
+        Self::from_boxed_slot(store, Box::new(slot))
+    }
+
+    fn from_boxed_slot(store: HomeServiceReference, slot: Box<MainWindowComposerSlot>) -> Self {
         Self {
             store: Arc::new(store),
             slot: Mutex::new(slot),

@@ -175,6 +175,14 @@ impl MainWindowShellRoot {
 }
 
 impl MainWindowShutdownDraft {
+    pub(crate) fn recovery_resident_identity(
+        &self,
+    ) -> Option<(gpui::EntityId, MainWindowConversationComposerCloseTicket)> {
+        self.composer
+            .as_ref()
+            .map(|(_, resident, close)| (*resident, *close))
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_ticket(&self) -> Option<MainWindowConversationComposerCloseTicket> {
         self.composer.as_ref().map(|(_, _, ticket)| *ticket)

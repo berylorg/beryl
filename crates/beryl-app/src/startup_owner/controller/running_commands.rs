@@ -137,12 +137,16 @@ impl RunningExitCommands {
     }
 
     pub(crate) fn is_active(&self, request: &RunningExitRequest) -> bool {
+        self.is_active_identity(&request.identity)
+    }
+
+    pub(crate) fn is_active_identity(&self, identity: &Rc<()>) -> bool {
         self.0
             .0
             .borrow()
             .active_exit
             .as_ref()
-            .is_some_and(|active| Rc::ptr_eq(active, &request.identity))
+            .is_some_and(|active| Rc::ptr_eq(active, identity))
     }
 
     pub(crate) async fn next_exit(&mut self) -> RunningExitRequest {

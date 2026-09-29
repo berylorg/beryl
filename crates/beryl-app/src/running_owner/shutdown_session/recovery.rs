@@ -1,6 +1,7 @@
 use super::*;
 use crate::startup_owner::RunningExitRequest;
 
+mod resident;
 mod resume;
 mod retirement;
 mod settlement;
@@ -11,6 +12,13 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
     retirement: Rc<RefCell<Option<retirement::GraphRetirement>>>,
+    resident: Option<resident::ResidentPreparation>,
+    pending_resident_frame: Option<std::rc::Weak<()>>,
+    residents: Vec<(
+        gpui::AnyWindowHandle,
+        gpui::EntityId,
+        crate::main_window::MainWindowConversationComposerCloseTicket,
+    )>,
 }
 
 impl RunningProcessOwner {
@@ -29,6 +37,14 @@ impl RunningProcessOwner {
             session: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),
             retirement: Rc::new(RefCell::new(None)),
+            resident: None,
+            pending_resident_frame: None,
+            residents: self
+                .shutdown
+                .as_ref()
+                .and_then(|attempt| attempt.drafts.as_ref())
+                .map(|drafts| drafts.borrow().recovery_residents())
+                .unwrap_or_default(),
         });
     }
 

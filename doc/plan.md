@@ -89,44 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 752: Compose Bounded Candidate Realization And Cleanup (finished)
+# Phase 744: Drive Fenced Resident Recovery Preparation (finished)
 
-The preparation driver now composes authentication, protected combined-capacity admission, serial
-candidate reads, bounded GUI realization and retained cancellation cleanup. Seven mounted cases
-cover readiness, refusals and cancellation; all 71 resident-close tests and the app check pass.
-Independent lifecycle review accepted. Process-owner association and coherent adoption remain below.
-
-# Phase 744: Drive Fenced Resident Recovery Preparation (pending)
-
-Implement one recovery-owned fresh prepublication flight per preserved resident under the app
-catalog/composer contract. Authenticate the retained clean source/history and claims before deriving
-the successor seed; dispatch bounded reads off the GUI thread and realize through explicit bounded
-GUI steps. Verify stale flight/generation rejection, capacity/environment refusal, actual worker
-lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
-fenced. Independently review the fresh-source and worker-custody boundary.
-
-Retain `MainWindowComposerRecoveryPreparation` from 752 under that owner independently of GUI
-consumers. Its `prepare` authenticates off-thread; `authenticated_source` supplies copied source
-facts for environment construction, `admit` reserves the protected predecessor's combined capacity,
-and `advance` performs one delivery, dispatch or bounded widget step. Schedule those calls explicitly
-with exact request/resident/close/candidate-generation checks. Cancellation uses `cancel`, bounded
-`advance_cleanup`, then `take_cancelled_resources` for explicit returned-resource settlement.
-Keep the driver retained through later adoption; its ready candidate and reservation remain private
-until 745 supplies the checked handoff. Do not duplicate its worker, effect queue or cleanup driver.
-
-Use the candidate-only reads accepted in 746, authenticated source from 747 and protected resident
-snapshot from 748. Retain the worker custody receiver from 749 under the recovery owner independently
-of GUI consumers, including the authentication startup from 750; consume keyed results and explicitly
-settle returned resources. The ordinary route requires
-Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
-retained recovery work and borrow candidate access inside the worker, following the existing
-interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
-Use `prepare` before deriving the successor seed, then `bind_prepublication` with the admitted widget
-session generation and its environment. Use `deliver_completion` for direct session delivery; retain
-emitted effects and settle undispatched ones through custody after cancellation. Drive bounded cleanup
-until drained, retaining the receiver independently of GUI delivery and through later widget adoption.
-Copy source facts and release `source()` or `completion()` borrows before mutating the worker or custody.
-The [abandoned-custody lesson](failures/composer-candidate-worker-custody.md) remains applicable.
+The interrupted-Exit owner now retains one preparation flight bound to captured window/resident/close
+identity and fresh candidate generation, with frame-bounded realization and independent cancellation
+cleanup. Native tests cover abandoned delivery, stale requests, refusals and minimized/closed windows.
+All 107 focused regression tests and the app check pass; independent lifecycle review accepted.
+The [custody and native-stack lessons](failures/composer-candidate-worker-custody.md) are retained.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 

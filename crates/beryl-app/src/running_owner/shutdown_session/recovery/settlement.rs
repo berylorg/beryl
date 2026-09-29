@@ -52,7 +52,7 @@ impl RunningProcessOwner {
             {
                 return Err("Interrupted Exit request changed".into());
             }
-            if recovery.settlement.borrow().is_some() {
+            if recovery.settlement.borrow().is_some() || recovery.resident.is_some() {
                 return Err("Interrupted Exit candidate settlement is already retained".into());
             }
             if matches!(
