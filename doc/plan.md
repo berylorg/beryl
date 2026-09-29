@@ -89,15 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 790: Prepare The Recovery Discussion Handoff Coordinator (finished)
+# Phase 791: Prepare Activity For A Fresh Recovery Candidate (finished)
 
-Recovery CAS preparation now shares initial handoff convergence and coordinator construction,
-retains its publication gate and joins both workers before candidate abort. Retry extraction
-preserves the owned convergence error with the failed home; the real indeterminate-write regression
-passed in `947eac62-3750-4cc2-9f4d-e158af22887a` after correcting its health expectation.
-All 22 targeted cases, compilation, formatting and independent review passed. The
-[outcome-custody lesson](failures/fresh-service-recovery.md) is retained. Complete fresh app graph
-preparation, running-owner routing and whole-graph publication remain pending.
+Recovery Activity preparation now shares the dormant initial-service constructor and rejects
+stale or foreign runtime/storage handles. Reads remain closed before publication and disposal
+releases prepared custody before abort. All 15 focused Activity cases passed across the initial
+run and corrected publication-fixture rerun (6c3fe0c2-7aef-4c4b-b661-79807640aad4); compilation,
+formatting and independent semantic review passed. Full fresh graph composition remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -135,6 +133,7 @@ Phase 787 supplies failed-home custody return to the retired service owner after
 Phase 788 routes constructed storage-candidate abort through the running owner's retained worker.
 Phase 789 settles cancellation during construction before custody return and completion delivery.
 Phase 790 supplies recovery CAS handoff preparation and preserves convergence outcomes through disposal.
+Phase 791 supplies fresh candidate Activity preparation using the shared dormant implementation.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

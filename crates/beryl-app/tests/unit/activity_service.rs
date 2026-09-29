@@ -6,6 +6,8 @@ mod candidate;
 mod fixture;
 #[path = "activity_service/lifetime.rs"]
 mod lifetime;
+#[path = "activity_service/recovery.rs"]
+mod recovery;
 use crate::support;
 
 use fixture::*;

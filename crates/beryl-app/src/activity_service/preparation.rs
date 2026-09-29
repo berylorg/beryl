@@ -1,4 +1,7 @@
-use beryl_home_store::{HomeCandidateError, HomeOpenPublication, ReadError};
+use beryl_home_store::{
+    HomeCandidateError, HomeCandidateRecoveryAccess, HomeOpenPublication, HomeRecoveryCandidate,
+    ReadError,
+};
 
 use super::*;
 
@@ -28,19 +31,48 @@ impl PreparedActivityService {
         runtime: RuntimeActivityReadSource,
         limits: ActivityServiceLimits,
     ) -> Result<Self, ActivityPreparationError> {
+        let home = candidate.service_reference();
+        Self::prepare_candidate(
+            &candidate.recovery_access()?,
+            home,
+            storage,
+            runtime,
+            limits,
+        )
+    }
+
+    pub(crate) fn prepare_recovery(
+        candidate: &mut HomeRecoveryCandidate,
+        storage: SyndicStorage,
+        runtime: RuntimeActivityReadSource,
+        limits: ActivityServiceLimits,
+    ) -> Result<Self, ActivityPreparationError> {
+        let home = candidate.service_reference();
+        Self::prepare_candidate(
+            &candidate.recovery_access()?,
+            home,
+            storage,
+            runtime,
+            limits,
+        )
+    }
+
+    fn prepare_candidate(
+        access: &HomeCandidateRecoveryAccess<'_>,
+        home: HomeServiceReference,
+        storage: SyndicStorage,
+        runtime: RuntimeActivityReadSource,
+        limits: ActivityServiceLimits,
+    ) -> Result<Self, ActivityPreparationError> {
+        if access.home_id() != runtime.home_id() || access.generation() != runtime.home_generation()
         {
-            let access = candidate.recovery_access()?;
-            if access.home_id() != runtime.home_id()
-                || access.generation() != runtime.home_generation()
-            {
-                return Err(ActivityPreparationError::Identity);
-            }
-            storage.revision_candidate(&access)?;
+            return Err(ActivityPreparationError::Identity);
         }
+        storage.revision_candidate(access)?;
         Ok(Self {
             service: ActivityService::dormant(
                 Resources {
-                    home: candidate.service_reference(),
+                    home,
                     storage,
                     runtime,
                 },
