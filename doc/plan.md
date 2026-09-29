@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 797: Cancel Retained Prepared Recovery Services (finished)
+# Phase 798: Return Failed Recovery Preparation Home Custody (finished)
 
-The running owner now cancels retained private services through its existing worker slot, joining
-services before storage abort and restoring original-session and typed outcome custody before
-completion, including stale delivery. The focused run passed 19 of 21 tests, including the new
-direct Exit case; two native-window fixtures failed before recovery and passed on serial rerun
-(130a5b5c-df17-45b8-bc1a-47e6cea959f2). Compilation, formatting and independent review passed.
-Attachment, publication, retry scheduling and interaction release remain pending.
+Confirmed preparation failures now return the same locked home to the retired service owner
+through the exact interrupted Exit request, preserving typed outcomes and original session custody.
+Stale, duplicate and unconfirmed returns refuse without consumption. Five focused tests passed
+serially (27ed20cc-7704-46dd-8035-a118531254cd), including direct native Exit recovery; compilation,
+formatting and independent review passed. Retry scheduling, attachment and publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -144,6 +143,8 @@ Phase 796 retains that preparation and its typed outcomes under the running owne
 cancelled Exit request, preserving original session evidence through worker and stale delivery.
 Phase 797 routes cancellation of retained prepared services through the same worker slot and
 preserves the typed disposal outcome before completion delivery.
+Phase 798 returns confirmed preparation-failure home custody to the retired owner through the
+exact request while retaining typed errors and original session evidence.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

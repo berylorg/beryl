@@ -105,7 +105,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
         if mode == "unretired" {
             owner.recovery_retirement = saved_retirement;
         }
-        let failure = match result {
+        let mut failure = match result {
             Ok(prepared) => {
                 assert_eq!(mode, "cancel");
                 assert!(candidate.is_none());
@@ -118,6 +118,37 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             }
             Err(failure) => failure,
         };
+        let returned = !matches!(failure, RecoveryServicePreparationError::Refused(_));
+        if returned {
+            let evidence = format!("{failure:?}");
+            assert!(
+                owner
+                    .return_recovery_preparation_home(generation, &mut failure)
+                    .is_err()
+            );
+            let retirement = owner.recovery_retirement.take().unwrap();
+            assert!(
+                owner
+                    .return_recovery_preparation_home(expected, &mut failure)
+                    .is_err()
+            );
+            owner.recovery_retirement = Some(retirement);
+            owner
+                .return_recovery_preparation_home(expected, &mut failure)
+                .unwrap();
+            assert_eq!(evidence, format!("{failure:?}"));
+            assert!(
+                owner
+                    .return_recovery_preparation_home(expected, &mut failure)
+                    .is_err()
+            );
+        } else {
+            assert!(
+                owner
+                    .return_recovery_preparation_home(expected, &mut failure)
+                    .is_err()
+            );
+        }
         let home = match failure {
             RecoveryServicePreparationError::Refused(_) => {
                 assert!(matches!(
@@ -151,10 +182,8 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             RecoveryServicePreparationError::Cas(failure) => {
                 assert_eq!(mode, "cas_failure");
                 assert!(candidate.is_none());
-                failure
-                    .into_retry_parts()
-                    .unwrap_or_else(|_| panic!("CAS retirement unconfirmed"))
-                    .0
+                assert!(failure.into_retry_parts().is_err());
+                owner.take_retired_service_home(expected).unwrap()
             }
             RecoveryServicePreparationError::App(failure) => {
                 assert!(candidate.is_none());
@@ -167,7 +196,8 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
                     }
                     _ => panic!("unexpected ancillary failure"),
                 }
-                failure.into_retry_parts().unwrap().0
+                assert!(failure.into_retry_parts().is_err());
+                owner.take_retired_service_home(expected).unwrap()
             }
         };
         assert!(!observation.wait_until_reached(Duration::from_millis(60)));

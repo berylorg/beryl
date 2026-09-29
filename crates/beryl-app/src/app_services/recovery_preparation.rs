@@ -36,6 +36,10 @@ impl std::fmt::Debug for RecoveryAppServicePreparationFailure {
 }
 
 impl RecoveryAppServicePreparationFailure {
+    pub(crate) fn retry_home_custody(&mut self) -> Option<&mut Option<HomeStore>> {
+        self.cas.retry_home_custody()
+    }
+
     pub(crate) fn close(self) -> Result<(), RecoveryAppServiceCloseFailure> {
         self.cas
             .close()

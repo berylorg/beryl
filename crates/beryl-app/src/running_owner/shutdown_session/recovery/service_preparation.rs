@@ -8,6 +8,34 @@ use settlement::{CandidateSettlement, CandidateSettlementError};
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) fn return_interrupted_exit_preparation_home(
+        &mut self,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+    ) -> Result<(), String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if recovery.session.borrow().is_none()
+            || recovery.resident.is_some()
+            || recovery
+                .pending_resident_frame
+                .as_ref()
+                .is_some_and(|wake| wake.strong_count() != 0)
+        {
+            return Err("Interrupted Exit recovery custody is unavailable".into());
+        }
+        let mut settlement = recovery.settlement.borrow_mut();
+        let Some(CandidateSettlement::Services(Err(failure))) = settlement.as_mut() else {
+            return Err("Interrupted Exit service preparation has no retained failure".into());
+        };
+        self.process
+            .services
+            .as_mut()
+            .ok_or("The complete service owner is on a worker")?
+            .return_recovery_preparation_home(generation, failure)
+            .map_err(|error| error.to_string())
+    }
+
     pub(crate) fn prepare_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

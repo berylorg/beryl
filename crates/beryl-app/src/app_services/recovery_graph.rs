@@ -1,6 +1,7 @@
 use super::recovery_preparation::{
     PreparedRecoveryAppServices, RecoveryAppServicePreparationFailure,
 };
+use super::recovery_retirement::ServiceGraphRetirementError;
 use super::*;
 use crate::{
     cas_projection::{
@@ -36,6 +37,20 @@ impl std::fmt::Debug for RecoveryServicePreparationError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn return_recovery_preparation_home(
+        &mut self,
+        expected: HomeGeneration,
+        failure: &mut RecoveryServicePreparationError,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        let home = match failure {
+            RecoveryServicePreparationError::Refused(_) => None,
+            RecoveryServicePreparationError::Cas(failure) => failure.retry_home_custody(),
+            RecoveryServicePreparationError::App(failure) => failure.retry_home_custody(),
+        }
+        .ok_or(ServiceGraphRetirementError::InvalidHomeReturn)?;
+        self.return_retired_service_home(expected, home)
+    }
+
     pub(crate) fn prepare_recovery_service_graph(
         &self,
         expected: HomeGeneration,

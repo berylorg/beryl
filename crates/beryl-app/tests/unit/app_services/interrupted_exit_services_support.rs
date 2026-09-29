@@ -92,6 +92,12 @@ pub(super) async fn verify(
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
             assert!(owner.borrow().interrupted_exit_session().is_none());
+            assert!(
+                owner
+                    .borrow_mut()
+                    .return_interrupted_exit_preparation_home(request, generation)
+                    .is_err()
+            );
             assert!(start(request, CommandCancellation::new(), app).is_err());
             assert!(!RunningProcessOwner::finish_exit(owner, request));
             owner
@@ -120,6 +126,14 @@ pub(super) async fn verify(
                 .is_ok(),
             mode == "success"
         );
+        if mode == "success" {
+            assert!(
+                owner
+                    .borrow_mut()
+                    .return_interrupted_exit_preparation_home(request, generation)
+                    .is_err()
+            );
+        }
         assert_eq!(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
@@ -189,6 +203,53 @@ pub(super) async fn verify(
             assert!(owner.borrow().test_services().graph().is_none());
             assert!(!RunningProcessOwner::finish_exit(owner, request));
         }
+        let evidence = owner
+            .borrow()
+            .interrupted_exit_services_result(request)
+            .unwrap_err();
+        assert!(
+            owner
+                .borrow_mut()
+                .return_interrupted_exit_preparation_home(&foreign, generation)
+                .is_err()
+        );
+        for retirement in [None, Some(Err("failed retirement".into()))] {
+            owner
+                .borrow()
+                .test_set_resident_graph_retirement(retirement);
+            assert!(
+                owner
+                    .borrow_mut()
+                    .return_interrupted_exit_preparation_home(request, generation)
+                    .is_err()
+            );
+        }
+        owner
+            .borrow()
+            .test_set_resident_graph_retirement(Some(Ok(())));
+        owner
+            .borrow_mut()
+            .return_interrupted_exit_preparation_home(request, generation)
+            .unwrap();
+        assert!(
+            owner
+                .borrow_mut()
+                .return_interrupted_exit_preparation_home(request, generation)
+                .is_err()
+        );
+        assert_eq!(
+            evidence,
+            owner
+                .borrow()
+                .interrupted_exit_services_result(request)
+                .unwrap_err()
+        );
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        let home = owner.borrow_mut().test_take_retired_recovery_home();
         let result = owner.borrow().test_take_interrupted_exit_services();
         candidate = Some(
             cx.background_executor()
@@ -205,7 +266,7 @@ pub(super) async fn verify(
                         }
                         Err(error) => panic!("unexpected preparation failure: {error:?}"),
                     };
-                    let (home, _, _) = failure.into_retry_parts().unwrap();
+                    assert!(failure.into_retry_parts().is_err());
                     let candidate = home.recover_same_home().unwrap();
                     let state = BerylState::reacquire_candidate(&candidate).unwrap();
                     InterruptedExitCandidate {

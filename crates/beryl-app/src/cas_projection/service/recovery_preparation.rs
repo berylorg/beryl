@@ -13,7 +13,7 @@ pub(crate) struct PreparedRecoveryCasServices {
 
 pub(crate) struct RecoveryCasPreparationFailure {
     error: CasPreparationError,
-    home: HomeStore,
+    home: Option<HomeStore>,
     retirement_confirmed: bool,
 }
 
@@ -28,16 +28,24 @@ impl RecoveryCasPreparationFailure {
         &self.error
     }
 
-    pub(crate) fn into_retry_parts(self) -> Result<(HomeStore, CasPreparationError), Self> {
+    pub(crate) fn retry_home_custody(&mut self) -> Option<&mut Option<HomeStore>> {
+        (self.retirement_confirmed && self.home.is_some()).then_some(&mut self.home)
+    }
+
+    pub(crate) fn into_retry_parts(mut self) -> Result<(HomeStore, CasPreparationError), Self> {
         if self.retirement_confirmed {
-            Ok((self.home, self.error))
-        } else {
-            Err(self)
+            if let Some(home) = self.home.take() {
+                return Ok((home, self.error));
+            }
         }
+        Err(self)
     }
 
     pub(crate) fn close(self) -> Result<(), RecoveryCasCloseFailure> {
-        self.home.close().map_err(|close| RecoveryCasCloseFailure {
+        let Some(home) = self.home else {
+            return Ok(());
+        };
+        home.close().map_err(|close| RecoveryCasCloseFailure {
             _preparation: self.error,
             _close: close,
         })
@@ -243,7 +251,7 @@ impl PreparedRecoveryCasServices {
             .abort();
         RecoveryCasPreparationFailure {
             error,
-            home,
+            home: Some(home),
             retirement_confirmed,
         }
     }

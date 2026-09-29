@@ -331,10 +331,11 @@ fn unconfirmed_disposal_cannot_return_a_retry_home() {
             .as_ref()
             .unwrap(),
     );
-    let failure = match prepared.cancel().into_retry_parts() {
+    let mut failure = match prepared.cancel().into_retry_parts() {
         Err(failure) => failure,
         Ok(_) => panic!("unconfirmed shared-provider disposal granted retry"),
     };
+    assert!(failure.retry_home_custody().is_none());
     assert_eq!(probe.shutdown.load(Ordering::SeqCst), 1);
     drop(retained_provider);
     failure.close().unwrap();
