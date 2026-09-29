@@ -67,6 +67,29 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn composer_recovery_source(
+        &mut self,
+        state: &BerylState,
+        syndic: SyndicStorage,
+        retired: crate::main_window::MainWindowComposerRetiredClose,
+        seed: gpui_text_input::RangeRestorationSeed,
+    ) -> Result<
+        crate::main_window::MainWindowComposerCandidateSource,
+        (crate::main_window::MainWindowComposerRetiredClose, String),
+    > {
+        let Some((candidate, _)) = self
+            .cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+        else {
+            return Err((retired, "recovery handoff is unavailable".into()));
+        };
+        crate::main_window::MainWindowComposerCandidateSource::new(
+            candidate, retired, syndic, state, seed,
+        )
+    }
+
     pub(super) fn appearance(&self) -> Arc<crate::theme_runtime::AppearanceGeneration> {
         self.theme
             .as_ref()

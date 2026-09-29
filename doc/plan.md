@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 810: Validate Bindings Against The Prepared Recovery Graph (finished)
+# Phase 811: Authenticate Resident Sources From The Prepared Recovery Graph (finished)
 
-Complete binding validation and exact draft cleanup now require the retained prepared graph and
-its exact appearance, preserving session custody and closed interaction. All 11 native recovery
-tests and five session-publication tests passed, including the direct prepared-graph consumer
-(cbb093d6-c140-4465-b6fb-016b57366586), plus app compilation, formatting and independent review.
-Whole-graph publication and coherent interaction release remain pending.
+Resident source authentication now borrows the prepared graph's sole candidate and uses its fresh
+state/storage handles, returning retired facts on refusal and preserving unpublished custody.
+The native test covers foreign-home and restoration refusal followed by successful fresh binding;
+all 12 resident tests (319f2830-ee5d-47de-9285-b0b1bac4edc5), the graph custody test, app compilation,
+formatting and independent review passed. GUI worker integration and whole-graph publication remain
+pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -165,6 +166,8 @@ persisted active-theme input. Phase 808 resolves and retains production appearan
 or recovery publication, using shared loading and fallback behavior; connect it to complete fresh
 graph attachment next. Phase 809 connects its retained appearance to exact-request shell binding.
 Phase 810 connects complete binding validation and exact draft cleanup to that retained graph.
+Phase 811 authenticates resident sources using that graph's candidate and fresh domain handles;
+connect the source to the existing GUI preparation worker next.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

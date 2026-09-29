@@ -72,7 +72,7 @@ mod startup_owner {
     ));
 }
 
-fn fixture() -> (
+pub(super) fn fixture() -> (
     tempfile::TempDir,
     HomeOpenPublication,
     BerylState,
@@ -107,7 +107,7 @@ fn owner(candidate: &HomeOpenPublication) -> ProcessServiceOwner {
     )
 }
 
-fn configuration() -> AppServiceConfiguration {
+pub(super) fn configuration() -> AppServiceConfiguration {
     let one = NonZeroUsize::new(1).unwrap();
     AppServiceConfiguration {
         projection: ProjectionServiceConfig::try_new(

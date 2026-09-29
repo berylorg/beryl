@@ -143,6 +143,20 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn composer_recovery_source(
+        &mut self,
+        retired: crate::main_window::MainWindowComposerRetiredClose,
+        seed: gpui_text_input::RangeRestorationSeed,
+    ) -> Result<
+        crate::main_window::MainWindowComposerCandidateSource,
+        (crate::main_window::MainWindowComposerRetiredClose, String),
+    > {
+        self.services
+            .as_mut()
+            .expect("prepared recovery services")
+            .composer_recovery_source(&self.state, self.syndic.clone(), retired, seed)
+    }
+
     pub(crate) fn appearance(&self) -> Arc<crate::theme_runtime::AppearanceGeneration> {
         self.services
             .as_ref()
@@ -199,3 +213,7 @@ impl Drop for PreparedRecoveryServiceGraph {
         self.attention.close();
     }
 }
+
+#[cfg(all(test, feature = "test-faults", target_os = "windows"))]
+#[path = "../../tests/unit/app_services/recovery_graph_resident.rs"]
+mod resident_tests;
