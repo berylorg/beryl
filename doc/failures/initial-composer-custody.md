@@ -29,10 +29,21 @@ transferred-facts readiness. Run `626fa238-923b-481a-a1a5-ebb0a7b72734` passed f
 tests; the app library check passed. This evidence accepts resident service retirement, not complete
 old-generation retirement or interaction reopening.
 
-An earlier empty-draft variant of the hidden-shell fixture retained a pending index intent despite
-ready draft flush and repeated draws. Its cause remains unqualified; the current nonempty-input
-regression isolates the additional service owner. Empty-resident quiescence needs separate evidence
-before claiming complete running-shell coverage.
+The untouched empty acquired-shell variant has a separate widget ownership defect, qualified on
+2026-09-29. Removing the helper's text insertion reproduces Ready draft flush with one pending
+index intent after 512 bounded drive passes (run `b54350be-af18-4ef2-b789-1ebc09bb62e3`). Repeated
+input notifications do not resolve it. The restored fixture contains saved text and is not empty
+coverage; replacing empty text explicitly also mutates the binding and is not a valid workaround.
+
+Temporary instrumentation captured `Geometry(Busy)` from index preparation and then confirmed
+the geometry owner still holds an Index job while the widget has no active geometry job (runs
+`77dd7651-e162-4ac6-a94b-e037f1968c3f` and `20288098-d350-4d2f-8dcb-e968d87b9636`). The inspected
+immediate empty-target path retains the geometry owner's ongoing index but clears the widget's
+job tracking. The stranded Index state is observed; this originating transition is inferred from
+source and was not directly traced. See the [source diagnosis](../memory/github.com/berylorg/gpui-text-input/commit/45c200a5e78f299f2f6436cda75097c75253eca7/empty-target-index-custody.md).
+The probes and fixture changes were removed. Correct the widget's index ownership transition and
+verify untouched empty acquired/restored residents before claiming complete running-shell coverage;
+keep exact retirement and quiescence checks unchanged.
 
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection

@@ -89,13 +89,30 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 760: Require Successful Graph Retirement Before Candidate Settlement (finished)
+# Phase 761: Qualify Empty Composer Retirement Quiescence (finished)
 
-Settlement admission now requires the original request's successful graph-retirement result,
-preserving candidate and session custody on absent, pending or failed retirement. Five focused
-native owner tests, the app check and independent lifecycle review pass. Admitted worker unwind
-and foreign-candidate rejection remain covered; successful same-home convergence and publication
-remain phase 702.
+Reproduced stranded index ownership in the untouched empty acquired fixture and captured the
+geometry owner's retained Index job behind repeated Busy refusal. Independent review accepted
+the [bounded diagnosis](failures/initial-composer-custody.md), distinguishing the observed state
+from the source-inferred originating transition. All probes were removed; both original resident
+retirement tests pass. The restored fixture's saved text does not establish empty coverage.
+
+# Phase 762: Keep Widget Index Custody Coherent Through Local Target Publication (pending)
+
+Under the [widget transition contract](../../gpui-text-input/doc/design.md#range-backed-atomic-interaction-publication),
+correct the index ownership mismatch identified by phase 761. Coordinate the sibling plan before
+implementation. Reproduce immediate empty-target publication during active indexing in a focused
+widget test; keep geometry and widget job ownership aligned with exact pending/dispatched request
+settlement. Cover terminal and nonterminal local targets, refusal, delayed response and eventual
+quiescence. Preserve bounded prepared transitions and strict quiescence; no synthetic edit, flag
+clearing shortcut or new worker. Require focused widget checks and independent lifecycle review.
+
+# Phase 763: Publish And Qualify Empty Resident Retirement (pending)
+
+Publish the accepted widget correction through the canonical dependency path and qualify untouched
+empty acquired and restored shell retirement. Preserve exact service refusal/retry, editor/focus
+identity and request cleanup. Update native regression coverage and verify the app before returning
+to whole-shell recovery composition; empty-resident success alone does not complete phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -110,8 +127,9 @@ resident retirement; service-graph completion alone does not prove whole-residen
 Phase 759 binds that resident pass to graph-worker admission.
 Phase 760 requires successful graph retirement before candidate settlement can start.
 Acquired/restored opening, claim and source custody still needs whole-shell recovery handling.
-Empty hidden-shell index quiescence remains unqualified as recorded in the
-[custody evidence](failures/initial-composer-custody.md); no full running-shell recovery claim is made.
+The empty-resident index ownership defect recorded in the
+[custody evidence](failures/initial-composer-custody.md) is diagnosed; phases 762–763 supply its
+correction and native qualification. No full running-shell recovery claim is made.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
