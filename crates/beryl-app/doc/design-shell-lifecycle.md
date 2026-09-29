@@ -430,6 +430,11 @@ by the executable composition root.
   startup publication or disposal, and old-generation appearance prevents interaction release.
   Threadless bindings, appearance/notice replacement and process recovery settlement are separate
   prerequisites; this shell adapter alone grants no publication or reopening authority.
+- Retained shutdown drafts route shell adoption through the existing exact window entry. The
+  aggregate must be prepared, idle and unreleased, and its resident and close ticket must match
+  before adoption. Success keeps the renewed ticket in that entry and clears cached readiness;
+  other windows may still adopt before fresh draft readiness is established. This does not settle
+  work or complete the cancelled Exit request.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

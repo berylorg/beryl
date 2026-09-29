@@ -25,14 +25,24 @@ use support::*;
 
 #[gpui::test]
 fn shell_recovery_rebinds_selection_and_draft_without_reopening(cx: &mut TestAppContext) {
-    run(cx, false);
+    run(cx, false, false);
 }
 
 #[gpui::test]
 fn shell_recovery_preserves_custody_after_stale_draft_and_capacity_refusal(
     cx: &mut TestAppContext,
 ) {
-    run(cx, true);
+    run(cx, true, false);
+}
+
+#[gpui::test]
+fn retained_drafts_adopt_shell_and_invalidate_readiness(cx: &mut TestAppContext) {
+    run(cx, false, true);
+}
+
+#[gpui::test]
+fn retained_drafts_preserve_custody_after_refused_adoption(cx: &mut TestAppContext) {
+    run(cx, true, true);
 }
 
 fn drive(shell: &MainWindowShell, cx: &mut TestAppContext) {
@@ -45,7 +55,7 @@ fn drive(shell: &MainWindowShell, cx: &mut TestAppContext) {
     });
 }
 
-fn run(cx: &mut TestAppContext, refuse: bool) {
+fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, prepared) = home_support::join(
         home_support::worker(|| {
@@ -229,10 +239,111 @@ fn run(cx: &mut TestAppContext, refuse: bool) {
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
         Some(Box::new(support::config));
     let occupancy = process.main_window_occupancy();
+    let mut draft = Some(draft);
+    let mut retained = aggregate.then(|| {
+        crate::running_owner::RunningShutdownDrafts::test_recovery_drafts(
+            shell.window(),
+            draft.take().unwrap(),
+        )
+    });
     let candidate = shell
         .window()
         .update(cx, |root, window, cx| {
             let focus = window.focused(cx);
+            if let Some(retained) = retained.as_mut() {
+                let foreign = MainWindowConversationComposerCloseTicket::for_test(
+                    mount.entity_id(),
+                    u64::MAX,
+                    original,
+                );
+                for (driving, editor, ticket) in [
+                    (true, resident.entity_id(), old_close),
+                    (false, input.entity_id(), old_close),
+                    (false, resident.entity_id(), foreign),
+                ] {
+                    retained.test_recovery_driving(driving);
+                    assert!(
+                        retained
+                            .adopt_recovered_shell(
+                                root,
+                                editor,
+                                ticket,
+                                &mut preparation,
+                                &mut adapters,
+                                &mut configurator,
+                                current,
+                                window,
+                                cx,
+                            )
+                            .is_err()
+                    );
+                    assert!(
+                        retained.recovery_residents()
+                            == vec![(shell.window().into(), resident.entity_id(), old_close),]
+                    );
+                    assert!(adapters.is_some() && configurator.is_some());
+                    assert!(root.test_shell_construction_retired());
+                }
+                retained.test_recovery_driving(false);
+                let mut capacity = current;
+                if refuse {
+                    capacity.available_capacity = RangeSurfaceCharge { bytes: 0, items: 0 };
+                }
+                let result = retained.adopt_recovered_shell(
+                    root,
+                    resident.entity_id(),
+                    old_close,
+                    &mut preparation,
+                    &mut adapters,
+                    &mut configurator,
+                    capacity,
+                    window,
+                    cx,
+                );
+                assert_eq!(window.focused(cx), focus);
+                assert_eq!(process.main_window_occupancy(), occupancy);
+                assert_eq!(resident.read(cx).gpui_input(), input);
+                assert!(!input.read(cx).is_enabled());
+                if refuse {
+                    assert!(result.is_err());
+                    assert!(retained.test_recovery_ready());
+                    assert!(
+                        retained.recovery_residents()
+                            == vec![(shell.window().into(), resident.entity_id(), old_close),]
+                    );
+                    assert!(root.test_shell_construction_retired());
+                    assert!(adapters.is_some() && configurator.is_some());
+                    return None;
+                }
+                let (candidate, close) = result.unwrap();
+                assert_ne!(close, old_close);
+                assert!(!retained.test_recovery_ready());
+                assert!(
+                    retained.recovery_residents()
+                        == vec![(shell.window().into(), resident.entity_id(), close),]
+                );
+                assert_eq!(resident.read(cx).selection_identity(), selection);
+                assert!(adapters.is_none() && configurator.is_none());
+                assert!(!root.test_shell_construction_retired());
+                assert!(
+                    retained
+                        .adopt_recovered_shell(
+                            root,
+                            resident.entity_id(),
+                            old_close,
+                            &mut preparation,
+                            &mut adapters,
+                            &mut configurator,
+                            current,
+                            window,
+                            cx,
+                        )
+                        .is_err()
+                );
+                assert!(root.set_shutdown_interaction_gated(false, cx).is_err());
+                return Some(candidate);
+            }
+            let mut draft = draft.as_mut().unwrap();
             if refuse {
                 let root_id = draft.root;
                 draft.root = input.entity_id();
@@ -376,6 +487,7 @@ fn run(cx: &mut TestAppContext, refuse: bool) {
         .unwrap();
     drop((
         draft,
+        retained,
         mount,
         resident,
         input,

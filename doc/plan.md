@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 768: Rebind The Retired Selected Shell And Its Draft Together (finished)
+# Phase 769: Adopt A Recovered Shell Through Retained Shutdown Drafts (finished)
 
-Selected-shell adoption now installs authenticated window facts and renews its draft ticket only
-after successful resident adoption, preserving the native reservation, editor and focus. Refusal
-retains custody; old appearance still blocks interaction release. All 34 focused tests, app
-compilation and independent lifecycle review passed. See [custody evidence](failures/initial-composer-custody.md).
+The retained draft aggregate now validates exact window/resident/ticket custody before shell
+adoption, keeps the renewed ticket in its existing entry and invalidates cached readiness.
+Four shell/aggregate tests passed in run `83f8cd3d-e2d6-4dfa-82b8-92dd39925fb3`; app compilation
+and independent lifecycle review passed. Multiwindow readiness was source-reviewed; the fixture
+uses one window. Running-owner flight routing and final recovery composition remain separate.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -112,7 +113,7 @@ Phase 764 retires settled acquired/restored opening, claim and source custody an
 custody. Fresh shell bindings must replace that retired state before coherent interaction release.
 Phase 767 supplies authenticated window facts with resident attachment for that shell rebinding.
 Phase 768 supplies selected-shell adoption and synchronous draft-ticket renewal. Connect that
-adapter to the running owner; threadless bindings, fresh appearance/notice ownership and exact
+adapter through the phase 769 retained-draft aggregate to the running owner; threadless bindings, fresh appearance/notice ownership and exact
 draft/work settlement still precede whole-graph publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

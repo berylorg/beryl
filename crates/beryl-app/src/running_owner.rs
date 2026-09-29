@@ -29,6 +29,8 @@ mod initial_observation;
 mod observation;
 mod progress;
 mod shutdown_drafts;
+#[cfg(test)]
+pub(crate) use shutdown_drafts::RunningShutdownDrafts;
 mod shutdown_interaction;
 mod shutdown_placements;
 mod shutdown_session;

@@ -17,7 +17,7 @@ mod driver;
 mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
 
-pub(super) struct RunningShutdownDrafts {
+pub(crate) struct RunningShutdownDrafts {
     windows: Vec<(
         WindowHandle<MainWindowShellRoot>,
         Result<MainWindowShutdownDraft, String>,
@@ -30,7 +30,7 @@ pub(super) struct RunningShutdownDrafts {
 }
 
 impl RunningShutdownDrafts {
-    pub(super) fn recovery_residents(
+    pub(crate) fn recovery_residents(
         &self,
     ) -> Vec<(
         gpui::AnyWindowHandle,

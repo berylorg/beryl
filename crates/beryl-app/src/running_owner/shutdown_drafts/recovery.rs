@@ -1,6 +1,76 @@
 use super::*;
 
 impl RunningShutdownDrafts {
+    pub(crate) fn adopt_recovered_shell(
+        &mut self,
+        root: &mut MainWindowShellRoot,
+        resident: gpui::EntityId,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+        preparation: &mut crate::main_window::MainWindowComposerRecoveryPreparation,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<crate::main_window::MainWindowConversationComposerConfigurator>,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<
+        (
+            beryl_home_store::HomeRecoveryCandidate,
+            crate::main_window::MainWindowConversationComposerCloseTicket,
+        ),
+        String,
+    > {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("Interrupted Exit draft set is not available for adoption".into());
+        }
+        let (_, draft) = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("Recovery window is absent from retained drafts")?;
+        let draft = draft.as_mut().map_err(|error| error.clone())?;
+        if draft.recovery_resident_identity() != Some((resident, close)) {
+            return Err("Recovery resident differs from retained draft".into());
+        }
+        let adopted = root.adopt_interrupted_exit_shell(
+            draft,
+            preparation,
+            adapters,
+            configurator,
+            current,
+            window,
+            cx,
+        )?;
+        self.ready = false;
+        Ok(adopted)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_recovery_drafts(
+        window: WindowHandle<MainWindowShellRoot>,
+        draft: MainWindowShutdownDraft,
+    ) -> Self {
+        Self {
+            windows: vec![(window, Ok(draft))],
+            driving: false,
+            prepared: true,
+            releasing: false,
+            released: false,
+            ready: true,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_recovery_driving(&mut self, driving: bool) {
+        self.driving = driving;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_recovery_ready(&self) -> bool {
+        self.ready()
+    }
+
     pub(in crate::running_owner) fn retire_residents(
         &mut self,
         app: &mut App,
