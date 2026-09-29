@@ -1,9 +1,121 @@
 use super::recovery_support::{fail, installed};
 use super::*;
 use crate::app_services::recovery_retirement::{
-    RetiredProcessWorkError, ServiceGraphRetirementError,
+    RetiredHomeRecoveryError, RetiredProcessWorkError, ServiceGraphRetirementError,
 };
 use beryl_model::WindowId;
+
+#[test]
+fn retired_home_construction_preserves_failed_custody_and_returns_private_candidate() {
+    for fault in [
+        None,
+        Some(FaultPoint::BeforeReopen),
+        Some(FaultPoint::AfterReopen),
+    ] {
+        let (directory, mut owner, faults) = installed();
+        // Join the fixture scanner before arming a process-wide read fault.
+        owner
+            .graph
+            .as_mut()
+            .unwrap()
+            .handoff
+            .as_mut()
+            .unwrap()
+            .shutdown()
+            .unwrap();
+        let reservation = owner
+            .windows
+            .reserve_main_window(WindowId::from_bytes([153; 16]))
+            .unwrap();
+        let graph = owner.graph().unwrap();
+        let expected = graph.home().health().generation().unwrap();
+        let home_id = graph.home().home_id();
+        owner.process.fence().unwrap();
+        super::recovery_support::install_uncertain_enrollment(
+            &owner,
+            graph.home(),
+            graph.syndic(),
+            &faults,
+        );
+        let original = graph.home().pending_reconciliations().pop().unwrap();
+        fail(&owner, &faults);
+        owner.retire_failed_service_graph(expected).unwrap();
+        if let Some(fault) = fault {
+            faults.fail_next(fault);
+            let error = owner.recover_retired_service_home(expected).unwrap_err();
+            match fault {
+                FaultPoint::BeforeReopen => assert!(matches!(
+                    error,
+                    RetiredHomeRecoveryError::Reopen(
+                        beryl_home_store::HomeRecoveryError::Layout { .. }
+                    )
+                )),
+                FaultPoint::AfterReopen => assert!(matches!(
+                    error,
+                    RetiredHomeRecoveryError::Reopen(
+                        beryl_home_store::HomeRecoveryError::Persistence { .. }
+                    )
+                )),
+                _ => unreachable!(),
+            }
+            assert!(
+                HomeOpenCandidate::open(HomeOpenOptions::new(
+                    directory.path(),
+                    HomeSchemaVersion::CURRENT,
+                ))
+                .is_err()
+            );
+            assert!(owner.graph().is_none());
+            assert_eq!(owner.enrollments.pending_count(), 1);
+            assert_eq!(owner.windows.main_window_occupancy(), 1);
+            assert!(owner.process.execution_permit().commit(|| ()).is_err());
+        }
+        let mut candidate = owner.recover_retired_service_home(expected).unwrap();
+        assert_eq!(candidate.home_id(), home_id);
+        assert_ne!(candidate.generation(), expected);
+        assert_eq!(
+            candidate.service_reference().health().state(),
+            HomeHealthState::Reopening
+        );
+        assert!(matches!(
+            owner.recover_retired_service_home(expected),
+            Err(RetiredHomeRecoveryError::Retirement(
+                ServiceGraphRetirementError::HomeTransferred
+            ))
+        ));
+        assert!(
+            HomeOpenCandidate::open(HomeOpenOptions::new(
+                directory.path(),
+                HomeSchemaVersion::CURRENT,
+            ))
+            .is_err()
+        );
+        assert!(matches!(
+            candidate
+                .recovery_access()
+                .unwrap()
+                .reconcile(&original)
+                .unwrap(),
+            beryl_home_store::ReconciliationResolution::ExactNew { .. }
+        ));
+        let state = BerylState::reacquire_candidate(&candidate).unwrap();
+        let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        owner
+            .settle_retired_process_work(
+                &candidate.recovery_access().unwrap(),
+                &state,
+                &syndic,
+                &CommandCancellation::new(),
+            )
+            .unwrap();
+        assert_eq!(owner.enrollments.pending_count(), 0);
+        assert_eq!(owner.windows.main_window_occupancy(), 1);
+        assert!(owner.graph().is_none());
+        assert!(owner.process.execution_permit().commit(|| ()).is_err());
+        drop(reservation);
+        candidate.abort().close().unwrap();
+    }
+}
 
 #[test]
 fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
@@ -164,6 +276,12 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
         Err(ServiceGraphRetirementError::Stale)
     ));
     assert!(matches!(
+        owner.recover_retired_service_home(expected),
+        Err(RetiredHomeRecoveryError::Retirement(
+            ServiceGraphRetirementError::Stale
+        ))
+    ));
+    assert!(matches!(
         owner.retire_failed_service_graph(expected),
         Err(ServiceGraphRetirementError::Stale)
     ));
@@ -189,6 +307,12 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
     assert!(matches!(
         owner.take_retired_service_home(later),
         Err(ServiceGraphRetirementError::Stale)
+    ));
+    assert!(matches!(
+        owner.recover_retired_service_home(later),
+        Err(RetiredHomeRecoveryError::Retirement(
+            ServiceGraphRetirementError::Stale
+        ))
     ));
     assert!(matches!(
         owner.finish_service_graph_retirement(later),
@@ -217,6 +341,12 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
     assert!(matches!(
         owner.take_retired_service_home(expected),
         Err(ServiceGraphRetirementError::Incomplete)
+    ));
+    assert!(matches!(
+        owner.recover_retired_service_home(expected),
+        Err(RetiredHomeRecoveryError::Retirement(
+            ServiceGraphRetirementError::Incomplete
+        ))
     ));
     assert!(matches!(
         owner.finish_service_graph_retirement(expected),

@@ -1,6 +1,14 @@
 use super::*;
 use crate::cas_projection::CasRetirementFailure;
-use beryl_home_store::{HomeGeneration, HomeHealthState};
+use beryl_home_store::{HomeGeneration, HomeHealthState, HomeRecoveryCandidate, HomeRecoveryError};
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum RetiredHomeRecoveryError {
+    #[error(transparent)]
+    Retirement(#[from] ServiceGraphRetirementError),
+    #[error(transparent)]
+    Reopen(#[from] HomeRecoveryError),
+}
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RetiredProcessWorkError {
@@ -44,6 +52,21 @@ pub(crate) enum ServiceGraphRetirementError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn recover_retired_service_home(
+        &mut self,
+        expected: HomeGeneration,
+    ) -> Result<HomeRecoveryCandidate, RetiredHomeRecoveryError> {
+        let home = self.take_retired_service_home(expected)?;
+        match home.recover_same_home() {
+            Ok(candidate) => Ok(candidate),
+            Err(failure) => {
+                let (home, error) = failure.into_parts();
+                self.recovery_retirement.as_mut().unwrap().home = Some(home);
+                Err(RetiredHomeRecoveryError::Reopen(error))
+            }
+        }
+    }
+
     pub(crate) fn settle_retired_process_work(
         &self,
         candidate: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,

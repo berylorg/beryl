@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 784: Transfer Exact Retired Home Custody (finished)
+# Phase 785: Construct The Retired Home Recovery Candidate (finished)
 
-Production recovery can now transfer the owned failed home only after complete service retirement
-for the exact generation. Refused and duplicate transfers preserve custody, process fencing and
-native reservations. Fourteen retirement/native Exit tests passed in
-`1605b93a-efe7-4d2c-a670-34167fe35b43`; compilation, formatting and independent review passed.
-Candidate construction, whole-graph publication and coherent reopening remain pending.
+Exact completed retirement now constructs an unpublished same-home candidate. Returned reopening
+failure restores the failed home to existing custody and preserves typed errors, lock,
+reconciliation, native reservations and fencing. Six focused retirement tests passed in
+`e18d6069-2fb2-49cc-8e2d-afe5b6e67f1d`; compilation, formatting and independent review passed.
+The new fault fixture joins its scanner before injection to avoid competing fault consumption.
+Running-owner construction scheduling, service preparation and complete publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -127,7 +128,9 @@ Phase 781 routes that settlement through the complete retained draft set and exa
 Phase 782 supplies the retired service owner's fresh-candidate settlement of retained process work.
 Phase 783 routes that contribution through the existing candidate worker with typed outcome custody.
 Phase 784 supplies exact retired-home custody transfer for production recovery.
-Complete candidate construction, whole-graph publication and coherent reopening composition;
+Phase 785 constructs the private storage candidate and restores failed-home custody on reopen error.
+Complete running-owner candidate construction scheduling, fresh service preparation, whole-graph
+publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
