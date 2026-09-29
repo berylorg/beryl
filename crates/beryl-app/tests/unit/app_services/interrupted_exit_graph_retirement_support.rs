@@ -19,6 +19,22 @@ pub(super) async fn verify(
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {
         assert!(
+            RunningProcessOwner::settle_interrupted_exit_candidate(
+                owner,
+                request,
+                candidate,
+                app,
+                |_, _| panic!("settlement before graph retirement"),
+            )
+            .unwrap_err()
+            .contains("has not returned")
+        );
+        assert!(candidate.is_some());
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(
             RunningProcessOwner::retire_interrupted_exit_graph(
                 owner,
                 &foreign,

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 759: Gate Graph Retirement On The Original Shutdown Residents (finished)
+# Phase 760: Require Successful Graph Retirement Before Candidate Settlement (finished)
 
-Graph-worker admission now runs the exact original shutdown resident retirement pass before
-transferring services. Refusal preserves graph, session and partial resident custody; existing
-foreign/duplicate request checks precede resident mutation. Four native request-owner tests, two
-acquired/restored retirement regressions, the app check and independent lifecycle review pass.
-Whole-shell retirement, candidate settlement and replacement publication remain phase 702.
+Settlement admission now requires the original request's successful graph-retirement result,
+preserving candidate and session custody on absent, pending or failed retirement. Five focused
+native owner tests, the app check and independent lifecycle review pass. Admitted worker unwind
+and foreign-candidate rejection remain covered; successful same-home convergence and publication
+remain phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -108,6 +108,7 @@ bindings and exact draft/work settlement remain prerequisites to recovery comple
 Phases 703–705 supply retained service-graph retirement and its worker handoff. Phase 706 supplies
 resident retirement; service-graph completion alone does not prove whole-resident retirement.
 Phase 759 binds that resident pass to graph-worker admission.
+Phase 760 requires successful graph retirement before candidate settlement can start.
 Acquired/restored opening, claim and source custody still needs whole-shell recovery handling.
 Empty hidden-shell index quiescence remains unqualified as recorded in the
 [custody evidence](failures/initial-composer-custody.md); no full running-shell recovery claim is made.
