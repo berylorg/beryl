@@ -5,6 +5,8 @@ mod composer;
 #[path = "pending_composer_activation/support.rs"]
 mod widget_support;
 
+#[path = "resident_close_flush/candidate_source.rs"]
+mod candidate_source;
 #[path = "resident_close_flush/final_disposal.rs"]
 mod final_disposal;
 #[path = "resident_close_flush/host.rs"]

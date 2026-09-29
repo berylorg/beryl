@@ -50,6 +50,7 @@ pub(in crate::main_window) use prepublication::{
 pub use realization::*;
 pub use recovery::{MainWindowComposerRecoveryResources, MainWindowComposerRecoverySnapshot};
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
+pub use service::MainWindowComposerCandidateSource;
 pub use service::MainWindowConversationComposerService;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 #[cfg(feature = "test-faults")]

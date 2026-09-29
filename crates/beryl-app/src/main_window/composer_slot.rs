@@ -14,10 +14,10 @@ use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
 mod close;
 mod close_retirement;
-mod dispatch;
+pub(in crate::main_window) mod dispatch;
 mod lifecycle;
 mod model;
-mod native_lineage;
+pub(in crate::main_window) mod native_lineage;
 mod retirement;
 mod state;
 mod submission;

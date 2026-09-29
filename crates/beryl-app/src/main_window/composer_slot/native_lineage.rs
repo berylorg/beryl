@@ -101,7 +101,7 @@ impl MainWindowComposerSlot {
     }
 }
 
-fn position(
+pub(in crate::main_window) fn position(
     position: SourcePosition,
 ) -> Result<DraftCompositePositionV1, MainWindowComposerSlotError> {
     let marker = |id: gpui_text_input::InlineObjectId| {

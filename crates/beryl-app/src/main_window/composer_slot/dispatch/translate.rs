@@ -16,9 +16,9 @@ use syndic_storage::{
 };
 
 use crate::composer_host::{
-    ComposerHostBinding, ComposerHostReadTarget, ComposerHostRequestId, ComposerHostRequestKey,
-    ComposerHostRequestKind, ComposerHostRequestPurpose, ComposerHostResponse,
-    ComposerHostResponseValue, SyndicComposerHost,
+    ComposerHostBinding, ComposerHostError, ComposerHostReadTarget, ComposerHostRequestId,
+    ComposerHostRequestKey, ComposerHostRequestKind, ComposerHostRequestPurpose,
+    ComposerHostResponse, ComposerHostResponseValue, SyndicComposerHost,
 };
 
 use super::MainWindowComposerDispatchError;
@@ -32,21 +32,7 @@ pub(super) fn text_page(
 ) -> Result<RangePage, MainWindowComposerDispatchError> {
     let key = request.key();
     validate_binding(binding, key.binding(), key.revision())?;
-    let demand = match key.demand() {
-        PageDemandEnvelope::Adjacent {
-            anchor,
-            direction: PageDirection::Forward,
-            ..
-        } => DraftPieceTextDemandV1::Forward(anchor.get()),
-        PageDemandEnvelope::Adjacent {
-            anchor,
-            direction: PageDirection::Backward,
-            ..
-        } => DraftPieceTextDemandV1::Backward(anchor.get()),
-        PageDemandEnvelope::Validation { candidate, .. } => {
-            DraftPieceTextDemandV1::Validate(candidate.get())
-        }
-    };
+    let demand = text_demand(key);
     let host_key = host_key(binding, host_request_id, page_purpose(key.purpose())?)?;
     let pending = host.begin_request(
         host_key,
@@ -66,6 +52,24 @@ pub(super) fn text_page(
         return Err(MainWindowComposerDispatchError::StaleSelection);
     }
     translate_text_result(key, candidate.value())
+}
+
+fn text_demand(key: gpui_text_input::PageRequestKey) -> DraftPieceTextDemandV1 {
+    match key.demand() {
+        PageDemandEnvelope::Adjacent {
+            anchor,
+            direction: PageDirection::Forward,
+            ..
+        } => DraftPieceTextDemandV1::Forward(anchor.get()),
+        PageDemandEnvelope::Adjacent {
+            anchor,
+            direction: PageDirection::Backward,
+            ..
+        } => DraftPieceTextDemandV1::Backward(anchor.get()),
+        PageDemandEnvelope::Validation { candidate, .. } => {
+            DraftPieceTextDemandV1::Validate(candidate.get())
+        }
+    }
 }
 
 pub(super) fn object_page(
@@ -115,37 +119,11 @@ fn object_page_for_target(
     if key.presentation_generation().get() != binding.presentation_generation().get() {
         return Err(MainWindowComposerDispatchError::StaleSelection);
     }
-    let envelope = key.demand();
-    let (scope, cursor) = match envelope {
-        ObjectDemandEnvelope::Range { range, cursor, .. } => (
-            DraftPieceMarkerScopeV1::InclusiveRange {
-                start: range.start().get(),
-                end: range.end().get(),
-            },
-            cursor.map(storage_cursor).transpose()?,
-        ),
-        ObjectDemandEnvelope::Anchor { anchor, cursor, .. } => (
-            DraftPieceMarkerScopeV1::ExactAnchor(anchor.get()),
-            cursor.map(storage_cursor).transpose()?,
-        ),
-    };
-    let direction = match envelope.direction() {
-        ObjectDirection::Forward => DraftPieceMarkerDirectionV1::Forward,
-        ObjectDirection::Backward => DraftPieceMarkerDirectionV1::Backward,
-    };
+    let demand = marker_demand(key)?;
     let host_key = host_key(binding, host_request_id, object_purpose(key.purpose())?)?;
     let pending = host.begin_request(
         host_key,
-        ComposerHostRequestKind::Markers {
-            target,
-            demand: DraftPieceMarkerDemandV1::new(
-                scope,
-                direction,
-                cursor,
-                envelope.max_objects(),
-                envelope.max_retained_bytes(),
-            ),
-        },
+        ComposerHostRequestKind::Markers { target, demand },
     )?;
     let execution = host.execute_pending(store, pending);
     let response = host.complete_request(execution)?;
@@ -166,6 +144,75 @@ fn object_page_for_target(
         _ => return Err(MainWindowComposerDispatchError::Malformed),
     };
     translate_marker_result(key, result)
+}
+
+fn marker_demand(
+    key: gpui_text_input::ObjectRequestKey,
+) -> Result<DraftPieceMarkerDemandV1, MainWindowComposerDispatchError> {
+    let envelope = key.demand();
+    let (scope, cursor) = match envelope {
+        ObjectDemandEnvelope::Range { range, cursor, .. } => (
+            DraftPieceMarkerScopeV1::InclusiveRange {
+                start: range.start().get(),
+                end: range.end().get(),
+            },
+            cursor.map(storage_cursor).transpose()?,
+        ),
+        ObjectDemandEnvelope::Anchor { anchor, cursor, .. } => (
+            DraftPieceMarkerScopeV1::ExactAnchor(anchor.get()),
+            cursor.map(storage_cursor).transpose()?,
+        ),
+    };
+    let direction = match envelope.direction() {
+        ObjectDirection::Forward => DraftPieceMarkerDirectionV1::Forward,
+        ObjectDirection::Backward => DraftPieceMarkerDirectionV1::Backward,
+    };
+    Ok(DraftPieceMarkerDemandV1::new(
+        scope,
+        direction,
+        cursor,
+        envelope.max_objects(),
+        envelope.max_retained_bytes(),
+    ))
+}
+
+pub(in crate::main_window) fn candidate_text_page(
+    storage: &syndic_storage::SyndicStorage,
+    access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    binding: ComposerHostBinding,
+    request: PageRequest,
+) -> Result<RangePage, MainWindowComposerDispatchError> {
+    let key = request.key();
+    validate_binding(binding, key.binding(), key.revision())?;
+    page_purpose(key.purpose())?;
+    let result = storage
+        .draft_piece_text_demand_candidate(
+            access,
+            binding.root(),
+            text_demand(key),
+            usize::try_from(key.max_payload_bytes())
+                .map_err(|_| MainWindowComposerDispatchError::Malformed)?,
+        )
+        .map_err(ComposerHostError::from)?;
+    translate_text_result(key, &result)
+}
+
+pub(in crate::main_window) fn candidate_object_page(
+    storage: &syndic_storage::SyndicStorage,
+    access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    binding: ComposerHostBinding,
+    request: ObjectRequest,
+) -> Result<ObjectPage, MainWindowComposerDispatchError> {
+    let key = request.key();
+    validate_binding(binding, key.binding(), key.revision())?;
+    if key.presentation_generation().get() != binding.presentation_generation().get() {
+        return Err(MainWindowComposerDispatchError::StaleSelection);
+    }
+    object_purpose(key.purpose())?;
+    let result = storage
+        .draft_piece_marker_demand_candidate(access, binding.root(), marker_demand(key)?)
+        .map_err(ComposerHostError::from)?;
+    translate_marker_result(key, &result)
 }
 
 pub(in crate::main_window) fn initial_response(

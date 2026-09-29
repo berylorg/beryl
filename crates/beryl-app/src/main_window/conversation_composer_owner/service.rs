@@ -22,10 +22,13 @@ use super::prepublication::MainWindowNativeLineagePrepublicationSource;
 use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease};
 use crate::main_window::MainWindowComposerSlot;
 
+mod candidate_source;
 mod close;
 mod retirement;
 mod close_cleanup;
 mod native_disposal;
+
+pub use candidate_source::MainWindowComposerCandidateSource;
 
 pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
     CapacityFull { epoch: u64 },

@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 746: Read Preserved Draft Ranges Through Candidate Access (finished)
+# Phase 747: Authenticate The Candidate Resident Preparation Source (finished)
 
-Added candidate-only exact-root text, marker, marker-edge and restoration reads through the shared
-bounded reader. Ordinary access stays health-gated. All 68 selected storage regressions and the app
-consumer check pass; independent access/lifecycle review accepted. Fresh source/claim validation
-and recovery worker custody remain in 744; no candidate publication or widget attachment is implied.
+Added the candidate-backed resident preparation source with private fresh service custody, exact
+checkpoint/history/claim authentication and unchanged captured presentation positions. Candidate
+reads reuse bounded widget page translation. App check and all 67 selected app regressions pass;
+independent source review accepted. Worker ownership, GUI preparation and attachment remain below.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -105,7 +105,7 @@ GUI steps. Verify stale flight/generation rejection, capacity/environment refusa
 lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
 fenced. Independently review the fresh-source and worker-custody boundary.
 
-Use the candidate-only reads accepted in 746. The ordinary native-lineage service route requires
+Use the candidate-only reads accepted in 746 and authenticated source from 747. The ordinary native-lineage service route requires
 Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
 retained recovery work and borrow candidate access inside the worker, following the existing
 interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.

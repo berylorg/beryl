@@ -24,27 +24,8 @@ impl MainWindowComposerRetiredClose {
         (Self, MainWindowComposerSlotError),
     > {
         let result = (|| {
-            let session = state.session();
-            let bootstrap = session
-                .minimal_bootstrap_candidate(access)?
-                .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+            self.selection.validate_candidate_claim(access, state)?;
             let claim = self.selection.claim();
-            if !bootstrap.windows().iter().any(|window| {
-                window.window_id() == self.selection.window_id()
-                    && window.selected_thread() == Some(claim)
-            }) {
-                return Err(MainWindowComposerSlotError::IdentityMismatch);
-            }
-            let paired = session
-                .window_claim_catalog_source_candidate(access, self.selection.window_id())?;
-            if !paired.claim().is_some_and(|paired| {
-                paired.thread_id() == claim.thread_id()
-                    && paired.generation() == claim.generation()
-                    && paired.revision() == claim.revision()
-                    && paired.state() == beryl_state::ThreadClaimState::Active
-            }) {
-                return Err(MainWindowComposerSlotError::IdentityMismatch);
-            }
             let assets = state.assets();
             assets.revision_candidate(access)?;
             let host = self.host.reconstruct_candidate(access, storage.clone())?;
@@ -75,6 +56,35 @@ impl MainWindowComposerRetiredClose {
 
     pub const fn host(&self) -> &ComposerHostRetiredClose {
         &self.host
+    }
+}
+
+impl MainWindowComposerSelectionIdentity {
+    pub(in crate::main_window) fn validate_candidate_claim(
+        self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        state: &beryl_state::BerylState,
+    ) -> Result<(), MainWindowComposerSlotError> {
+        let session = state.session();
+        let bootstrap = session
+            .minimal_bootstrap_candidate(access)?
+            .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+        let claim = self.claim();
+        if !bootstrap.windows().iter().any(|window| {
+            window.window_id() == self.window_id() && window.selected_thread() == Some(claim)
+        }) {
+            return Err(MainWindowComposerSlotError::IdentityMismatch);
+        }
+        let paired = session.window_claim_catalog_source_candidate(access, self.window_id())?;
+        if !paired.claim().is_some_and(|paired| {
+            paired.thread_id() == claim.thread_id()
+                && paired.generation() == claim.generation()
+                && paired.revision() == claim.revision()
+                && paired.state() == beryl_state::ThreadClaimState::Active
+        }) {
+            return Err(MainWindowComposerSlotError::IdentityMismatch);
+        }
+        Ok(())
     }
 }
 

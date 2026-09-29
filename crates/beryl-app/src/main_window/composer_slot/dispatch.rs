@@ -14,7 +14,7 @@ use super::{MainWindowComposerSelectionIdentity, MainWindowComposerSlot};
 mod evidence;
 mod proof;
 mod terminal;
-mod translate;
+pub(in crate::main_window) mod translate;
 
 use terminal::{
     MainWindowComposerEarlyTerminal, accept_early_terminal_page, capture_early_terminal,
