@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 799: Consume Settled Recovery Preparation Failure (finished)
+# Phase 800: Bind Recovery Composers To The Prepared Graph Marker Service (finished)
 
-Confirmed preparation failures now return home custody and transfer the typed outcome atomically,
-freeing the existing worker slot while preserving original cancelled-Exit evidence and fences.
-Three focused tests passed serially (db7fea3f-53a1-419a-b157-e3c3bf2d5852), including subsequent
-production candidate construction and settlement in the native Exit fixture. Compilation,
-formatting and independent review passed. Retry timing, attachment and publication remain pending.
+Composer adapters now derive from the complete private graph and share its single marker service.
+Unused adapter disposal preserves graph custody; cancellation retires surviving copies. Foreign
+home and stale generation requests are refused before binding. Eight focused tests passed serially
+(7aca12d3-b4d2-49ad-98f4-a74b8647445e), including resident attachment and shared retirement.
+Compilation, formatting and independent review passed. Running-owner attachment and whole-graph
+publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -147,6 +148,8 @@ Phase 798 returns confirmed preparation-failure home custody to the retired owne
 exact request while retaining typed errors and original session evidence.
 Phase 799 transfers that typed failure to the caller after successful home return, freeing the
 single worker slot for subsequent candidate construction without releasing cancelled-Exit fences.
+Phase 800 derives composer adapters from the prepared graph's single marker service, retaining
+graph-owned retirement and exact candidate identity refusal.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

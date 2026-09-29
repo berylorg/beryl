@@ -1,4 +1,7 @@
 use super::*;
+use crate::composer_marker_seal::{
+    DraftMarkerSealServiceLimits, initial_preparation::PreparedMarkerServices,
+};
 use crate::main_window::{
     MainWindowComposerRecoveryPreparation as Preparation,
     MainWindowComposerRecoveryProgress as Progress,
@@ -9,6 +12,7 @@ use beryl_home_store::test_faults::FaultPoint;
 use gpui::{EntityInputHandler, TestAppContext};
 use gpui_text_input::*;
 use std::{num::NonZeroUsize, sync::Arc};
+use syndic_storage::SyndicStorage;
 
 #[path = "../syndic_composer_history/support.rs"]
 mod composer;
@@ -163,7 +167,7 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         home: candidate.home_id(),
         generation: candidate.generation(),
         assets: state.assets(),
-        marker,
+        marker: marker.into_service(),
         submission: support::submission_source(),
         native: NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap()),
     });

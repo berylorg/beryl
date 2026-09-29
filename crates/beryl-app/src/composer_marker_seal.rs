@@ -290,6 +290,14 @@ impl DraftMarkerSealService {
         }
     }
 
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_generation_retired(&self) -> bool {
+        matches!(
+            lock_state(&self.inner).lifecycle,
+            ServiceLifecycle::Retired(_)
+        )
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_hold_state_lock(
         &self,

@@ -1,5 +1,9 @@
 use super::*;
+use crate::composer_marker_seal::{
+    DraftMarkerSealServiceLimits, initial_preparation::PreparedMarkerServices,
+};
 use std::num::NonZeroUsize;
+use syndic_storage::SyndicStorage;
 
 pub(crate) fn adapters(candidate: &mut HomeRecoveryCandidate) -> PreparedComposerRecoveryAdapters {
     let assets = beryl_state::BerylState::reacquire_candidate(candidate)
@@ -21,7 +25,7 @@ pub(crate) fn adapters(candidate: &mut HomeRecoveryCandidate) -> PreparedCompose
         home: candidate.home_id(),
         generation: candidate.generation(),
         assets,
-        marker,
+        marker: marker.into_service(),
         submission: MainWindowComposerSubmissionRequestSource::new(
             crate::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             crate::cas_projection::ProjectionServiceConfig::try_new(

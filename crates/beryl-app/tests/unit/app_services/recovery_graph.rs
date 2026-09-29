@@ -48,6 +48,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
         }
         let config = configuration();
+        let requirement = config.projection.turn_start_admission_requirement();
         if mode == "cas_failure" {
             faults.fail_next(FaultPoint::BeforeReadConfirmation);
         }
@@ -106,7 +107,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             owner.recovery_retirement = saved_retirement;
         }
         let mut failure = match result {
-            Ok(prepared) => {
+            Ok(mut prepared) => {
                 assert_eq!(mode, "cancel");
                 assert!(candidate.is_none());
                 assert_eq!(reference.health().state(), HomeHealthState::Reopening);
@@ -114,7 +115,40 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
                 assert!(owner.graph().is_none());
                 assert!(owner.process.execution_permit().commit(|| ()).is_err());
                 assert!(!observation.wait_until_reached(Duration::from_millis(60)));
-                RecoveryServicePreparationError::App(prepared.cancel())
+                let home = reference.home_id();
+                assert!(
+                    prepared
+                        .composer_recovery_adapters(home, expected, requirement)
+                        .is_err()
+                );
+                assert!(
+                    prepared
+                        .composer_recovery_adapters(
+                            BerylHomeId::from_bytes([99; 16]),
+                            generation,
+                            requirement,
+                        )
+                        .is_err()
+                );
+                let first = prepared
+                    .composer_recovery_adapters(home, generation, requirement)
+                    .unwrap();
+                assert!(first.matches(home, generation));
+                let (_, first_marker, _, _) = first.into_parts();
+                let unused = prepared
+                    .composer_recovery_adapters(home, generation, requirement)
+                    .unwrap();
+                drop(unused);
+                assert!(!first_marker.test_generation_retired());
+                let second = prepared
+                    .composer_recovery_adapters(home, generation, requirement)
+                    .unwrap();
+                let failure = prepared.cancel();
+                assert!(first_marker.test_generation_retired());
+                let (_, second_marker, _, _) = second.into_parts();
+                assert!(second_marker.test_generation_retired());
+                drop((first_marker, second_marker));
+                RecoveryServicePreparationError::App(failure)
             }
             Err(failure) => failure,
         };

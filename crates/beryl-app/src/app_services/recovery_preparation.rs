@@ -67,6 +67,36 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn composer_recovery_adapters(
+        &mut self,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        assets: beryl_state::AssetState,
+        requirement: beryl_home_store::TurnStartAdmissionRequirement,
+    ) -> Result<super::recovery_composer::PreparedComposerRecoveryAdapters, String> {
+        let (candidate, cas) = self
+            .cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+            .ok_or_else(|| "recovery handoff is unavailable".to_owned())?;
+        if candidate.home_id() != home || candidate.generation() != generation {
+            return Err("composer recovery request belongs to another candidate".into());
+        }
+        Ok(
+            super::recovery_composer::PreparedComposerRecoveryAdapters::from_prepared(
+                candidate,
+                assets,
+                cas,
+                self.marker
+                    .as_ref()
+                    .expect("prepared recovery marker custody")
+                    .service(),
+                requirement,
+            ),
+        )
+    }
+
     pub(crate) fn prepare(
         cas: PreparedRecoveryCasServices,
         state: &BerylState,

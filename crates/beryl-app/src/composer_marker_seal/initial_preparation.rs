@@ -20,6 +20,12 @@ pub(crate) enum MarkerPreparationError {
 }
 
 impl PreparedMarkerServices {
+    pub(crate) fn service(&self) -> &DraftMarkerSealService {
+        self.service
+            .as_ref()
+            .expect("prepared marker service custody")
+    }
+
     pub(crate) fn into_service(mut self) -> DraftMarkerSealService {
         self.service
             .take()

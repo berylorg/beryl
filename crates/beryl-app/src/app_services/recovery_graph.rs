@@ -143,6 +143,18 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn composer_recovery_adapters(
+        &mut self,
+        home: BerylHomeId,
+        generation: HomeGeneration,
+        requirement: beryl_home_store::TurnStartAdmissionRequirement,
+    ) -> Result<super::recovery_composer::PreparedComposerRecoveryAdapters, String> {
+        self.services
+            .as_mut()
+            .expect("prepared recovery services")
+            .composer_recovery_adapters(home, generation, self.state.assets(), requirement)
+    }
+
     pub(crate) fn cancel(mut self) -> RecoveryAppServicePreparationFailure {
         self.services
             .take()

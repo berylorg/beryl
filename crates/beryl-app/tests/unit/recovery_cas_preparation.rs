@@ -7,13 +7,6 @@ use beryl_home_store::{
 use beryl_state::BerylState;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-mod composer_adapters {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/recovery_composer_adapters.rs"
-    ));
-}
-
 mod discussion_handoff {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
