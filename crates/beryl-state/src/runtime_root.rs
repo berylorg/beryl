@@ -383,6 +383,22 @@ impl RuntimeRootState {
         )
     }
 
+    pub fn has_runtimes_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<bool, ReadError> {
+        let page = access.read_cursor::<RuntimeRootDomain, RuntimeRecordCodec>(
+            &self.handle,
+            &CursorRange::closed(
+                RuntimeId::from_bytes([0; 16]),
+                RuntimeId::from_bytes([u8::MAX; 16]),
+            ),
+            CursorDirection::Forward,
+            CursorReadLimits::new(1, 256 * 1024).unwrap(),
+        )?;
+        Ok(!page.records().is_empty() || page.has_more())
+    }
+
     pub fn runtime(
         &self,
         store: &HomeStore,

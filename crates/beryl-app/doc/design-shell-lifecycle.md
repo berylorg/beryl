@@ -439,6 +439,13 @@ by the executable composition root.
   entry. Success renews the captured resident ticket synchronously with shell adoption, returns
   candidate/session custody once and consumes the flight. Missing or busy drafts, stale request
   identity and unready or cancelled preparation refuse attachment without discarding custody.
+- Threadless recovery authenticates the exact surviving window in the replacement generation of
+  the same home through fresh candidate handles. The session must retain its sole threadless
+  member, without a selected thread, remembered target, fallback, reverse claim or configured
+  runtime. Bounded reads must observe one unchanged home revision. The worker retains only the
+  fixed-size window record and home/generation identity; explicit revalidation rejects changed
+  facts. This proof neither begins startup restoration nor grants shell attachment, publication
+  or interaction release by itself.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

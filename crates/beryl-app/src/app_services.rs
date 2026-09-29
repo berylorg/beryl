@@ -36,6 +36,7 @@ mod preparation;
 mod published;
 pub(crate) mod recovery_composer;
 mod recovery_retirement;
+pub(crate) mod recovery_threadless;
 mod shutdown;
 mod window_services;
 use attempt::InitialServiceAttemptState;

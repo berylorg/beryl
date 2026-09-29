@@ -59,6 +59,9 @@ This entry point governs these bounded normative supplements:
 
 - `SessionState::revision_candidate` reads the session domain revision through explicit candidate
   recovery access, retaining typed home and generation checks without ordinary read admission.
+- `RuntimeRootState::has_runtimes_candidate` checks runtime presence with a single bounded cursor
+  page through explicit candidate recovery access. It preserves typed handle qualification and
+  read failures without opening ordinary admission or retaining the registry.
 - `SessionState::minimal_bootstrap_candidate` reads the bounded session header and exactly its
   referenced windows through borrowed explicit candidate recovery access, then rereads the header
   to reject mixed publication. It preserves the ordinary snapshot reader's identity/revision checks,
