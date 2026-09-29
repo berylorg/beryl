@@ -23,6 +23,7 @@ fn session(
 ) -> (
     RangePrepublicationSession,
     RangePrepublicationValidationRequest,
+    RangePrepublicationEnvironment,
 ) {
     let mut result = None;
     cx.add_window_view(|window, _| {
@@ -30,7 +31,7 @@ fn session(
         let cleanup = RangePrepublicationCleanupLedger::new(window.text_system(), 64).unwrap();
         let environment =
             RangePrepublicationEnvironment::new(1, config, window.text_system(), cleanup).unwrap();
-        let mut session = RangePrepublicationSession::new(seed, environment).unwrap();
+        let mut session = RangePrepublicationSession::new(seed, environment.clone()).unwrap();
         let request = session
             .service(window.text_system())
             .effects
@@ -40,7 +41,7 @@ fn session(
                 _ => None,
             })
             .unwrap();
-        result = Some((session, request));
+        result = Some((session, request, environment));
         View
     });
     result.unwrap()
@@ -81,12 +82,22 @@ fn authentication_returns_source_before_notification_and_binds_once(cx: &mut Tes
     assert_eq!(source.predecessor(), predecessor);
     assert_eq!(source.seed().selection, seed.selection);
     assert_eq!(source.seed().scroll, seed.scroll);
-    let (session, request) = session(
+    let (_, _, wrong_environment) = session(
+        cx,
+        seed,
+        source.selection().binding().presentation_generation(),
+    );
+    let (mut session, request, environment) = session(
         cx,
         source.seed(),
         source.selection().binding().presentation_generation(),
     );
     drop(source);
+    assert!(
+        worker
+            .bind_prepublication(session.generation(), &wrong_environment)
+            .is_err()
+    );
     assert!(
         cx.update(|app| worker.start(
             RangePrepublicationEffect::ValidateOwner(request),
@@ -95,8 +106,14 @@ fn authentication_returns_source_before_notification_and_binds_once(cx: &mut Tes
         ))
         .is_err()
     );
-    worker.bind_generation(session.generation()).unwrap();
-    assert!(worker.bind_generation(session.generation()).is_err());
+    worker
+        .bind_prepublication(session.generation(), &environment)
+        .unwrap();
+    assert!(
+        worker
+            .bind_prepublication(session.generation(), &environment)
+            .is_err()
+    );
     cx.update(|app| {
         worker
             .start(
@@ -107,9 +124,17 @@ fn authentication_returns_source_before_notification_and_binds_once(cx: &mut Tes
             .unwrap()
     });
     finish(&custody, cx);
-    assert!(custody.take_completion().unwrap().result.is_ok());
+    assert!(custody.completion().unwrap().result.is_ok());
+    assert_eq!(
+        custody.deliver_completion(&mut session).unwrap(),
+        Some(RangePrepublicationDelivery::Accepted)
+    );
     let (candidate, source) = custody.take_resources().unwrap();
-    assert!(worker.bind_generation(session.generation()).is_err());
+    assert!(
+        worker
+            .bind_prepublication(session.generation(), &environment)
+            .is_err()
+    );
     assert!(custody.take_resources().is_none());
     assert!(candidate.service_reference().home_revision().is_err());
     drop(source);
@@ -123,7 +148,8 @@ fn authentication_failure_returns_original_retirement_custody(cx: &mut TestAppCo
     let predecessor = facts.close_ticket();
     let selection = facts.selection();
     let seed = seed(&facts);
-    let (session, _) = session(cx, seed, selection.binding().presentation_generation());
+    let (session, _, environment) =
+        session(cx, seed, selection.binding().presentation_generation());
     fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(fixture.store.home_revision().is_err());
     let candidate = fixture.store.recover_same_home().unwrap();
@@ -132,12 +158,20 @@ fn authentication_failure_returns_original_retirement_custody(cx: &mut TestAppCo
     fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
     let (mut worker, mut custody) =
         cx.update(|app| Worker::prepare(candidate, facts, storage, state, seed, app, |_| {}));
-    assert!(worker.bind_generation(session.generation()).is_err());
+    assert!(
+        worker
+            .bind_prepublication(session.generation(), &environment)
+            .is_err()
+    );
     assert!(custody.take_refused_resources().is_none());
     finish(&custody, cx);
     assert!(custody.source().is_none());
     assert!(custody.take_resources().is_none());
-    assert!(worker.bind_generation(session.generation()).is_err());
+    assert!(
+        worker
+            .bind_prepublication(session.generation(), &environment)
+            .is_err()
+    );
     let error = custody.preparation_error().unwrap();
     let (candidate, facts, returned_error) = custody.take_refused_resources().unwrap();
     assert_eq!(returned_error, error);
@@ -158,7 +192,7 @@ fn authentication_cancellation_and_abandoned_delivery_retain_resources(cx: &mut 
         );
         let facts = slot_close::retired(&fixture, cx.new(|_| ()).entity_id());
         let seed = seed(&facts);
-        let (session, _) = session(
+        let (session, _, environment) = session(
             cx,
             seed,
             facts.selection().binding().presentation_generation(),
@@ -197,7 +231,7 @@ fn authentication_cancellation_and_abandoned_delivery_retain_resources(cx: &mut 
             worker
                 .as_mut()
                 .unwrap()
-                .bind_generation(session.generation())
+                .bind_prepublication(session.generation(), &environment)
                 .is_err()
         );
         if abandon {
@@ -216,7 +250,11 @@ fn authentication_cancellation_and_abandoned_delivery_retain_resources(cx: &mut 
         assert!(custody.cancelled());
         assert_eq!(notified.get(), !abandon);
         if let Some(worker) = worker.as_mut() {
-            assert!(worker.bind_generation(session.generation()).is_err());
+            assert!(
+                worker
+                    .bind_prepublication(session.generation(), &environment)
+                    .is_err()
+            );
         }
         let (candidate, source) = custody.take_resources().unwrap();
         drop(source);

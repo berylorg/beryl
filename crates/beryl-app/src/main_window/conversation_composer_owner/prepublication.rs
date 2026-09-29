@@ -219,6 +219,32 @@ impl MainWindowNativeLineagePrepublicationSource {
         };
     }
 
+    pub(in crate::main_window) fn finish_delivery(&self, token: RangePrepublicationCleanupToken) {
+        let Ok(mut flights) = self.flights.lock() else {
+            return;
+        };
+        let Some(flight) = flights
+            .iter_mut()
+            .flatten()
+            .find(|flight| flight.token == token)
+        else {
+            return;
+        };
+        if let FlightState::Pending {
+            cancel_requested,
+            release_requested,
+        } = flight.state
+        {
+            flight.state = if release_requested {
+                FlightState::ReleasedTerminal
+            } else if cancel_requested {
+                FlightState::CancelledTerminal
+            } else {
+                FlightState::Delivered
+            };
+        }
+    }
+
     pub(in crate::main_window) fn take(
         &self,
         token: RangePrepublicationCleanupToken,

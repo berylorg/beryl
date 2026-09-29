@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 750: Authenticate Resident Recovery Sources On The Worker (finished)
+# Phase 751: Connect Candidate Workers To Prepublication Cleanup (finished)
 
-The existing retained worker slot now authenticates sources off the GUI thread and returns the
-candidate with either a fresh source or original retirement facts before notification. Session
-binding is one-shot after success; cancellation and abandoned delivery preserve cleanup custody.
-All 59 resident-close tests and the app library check pass; independent lifecycle review accepted.
+Candidate reads now use the existing bounded cleanup tracker, with direct exact-session delivery
+and cancellation disposal before notification. Retained custody settles undispatched effects even
+after worker abandonment. All 64 resident-close tests and the app library check pass; independent
+lifecycle review accepted. The [custody lesson](failures/composer-candidate-worker-custody.md)
+records the corrected result-transfer boundary.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -112,8 +113,11 @@ settle returned resources. The ordinary route requires
 Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
 retained recovery work and borrow candidate access inside the worker, following the existing
 interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
-Use `prepare` before deriving the successor seed, then bind the admitted widget session generation.
-Copy source facts and release the `source()` borrow before starting, cancelling or dropping the worker.
+Use `prepare` before deriving the successor seed, then `bind_prepublication` with the admitted widget
+session generation and its environment. Use `deliver_completion` for direct session delivery; retain
+emitted effects and settle undispatched ones through custody after cancellation. Drive bounded cleanup
+until drained, retaining the receiver independently of GUI delivery and through later widget adoption.
+Copy source facts and release `source()` or `completion()` borrows before mutating the worker or custody.
 The [abandoned-custody lesson](failures/composer-candidate-worker-custody.md) remains applicable.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)

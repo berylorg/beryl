@@ -36,10 +36,12 @@ impl MainWindowComposerCandidateWorker {
         before_authentication: impl Future<Output = ()> + Send + 'static,
     ) -> (Self, MainWindowComposerCandidateCustody) {
         let state = Rc::new(RefCell::new(State {
+            generation: None,
             resources: None,
             completion: None,
             pending: true,
             cancelled: false,
+            cleanup: None,
         }));
         let retained = state.clone();
         let work = app.background_executor().spawn(async move {
@@ -65,7 +67,6 @@ impl MainWindowComposerCandidateWorker {
         .detach();
         (
             Self {
-                generation: None,
                 state: state.clone(),
             },
             MainWindowComposerCandidateCustody { state },
