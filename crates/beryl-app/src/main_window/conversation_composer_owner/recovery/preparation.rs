@@ -13,10 +13,10 @@ pub enum MainWindowComposerRecoveryProgress {
     Ready,
 }
 
-pub struct MainWindowComposerRecoveryPreparation {
+pub struct MainWindowComposerRecoveryPreparation<C = HomeRecoveryCandidate> {
     predecessor: RangeRestorationSeed,
-    worker: MainWindowComposerCandidateWorker,
-    custody: MainWindowComposerCandidateCustody,
+    worker: MainWindowComposerCandidateWorker<C>,
+    custody: MainWindowComposerCandidateCustody<C>,
     session: Option<RangePrepublicationSession>,
     environment: Option<RangePrepublicationEnvironment>,
     reservation: Option<RangeResidentReservation>,
@@ -44,6 +44,16 @@ impl MainWindowComposerRecoveryPreparation {
             app,
             completed,
         );
+        Self::from_worker(predecessor, worker, custody)
+    }
+}
+
+impl<C: Send + 'static> MainWindowComposerRecoveryPreparation<C> {
+    fn from_worker(
+        predecessor: RangeRestorationSeed,
+        worker: MainWindowComposerCandidateWorker<C>,
+        custody: MainWindowComposerCandidateCustody<C>,
+    ) -> Self {
         Self {
             predecessor,
             worker,
@@ -201,7 +211,7 @@ impl MainWindowComposerRecoveryPreparation {
         current: gpui_text_input::RangePrepublicationCurrent,
         window: &mut Window,
         cx: &mut Context<RangeTextInput>,
-    ) -> Result<(HomeRecoveryCandidate, MainWindowComposerCandidateSource), String> {
+    ) -> Result<(C, MainWindowComposerCandidateSource), String> {
         if self.candidate.is_none() || self.reservation.is_none() || !self.effects.is_empty() {
             return Err("resident preparation is not ready for adoption".into());
         }
@@ -238,7 +248,7 @@ impl MainWindowComposerRecoveryPreparation {
         cx: &mut Context<MainWindowConversationComposer>,
     ) -> Result<
         (
-            HomeRecoveryCandidate,
+            C,
             Arc<MainWindowConversationComposerService>,
             MainWindowConversationComposerCloseTicket,
         ),
@@ -307,7 +317,7 @@ impl MainWindowComposerRecoveryPreparation {
     pub fn take_cancelled_resources(
         &mut self,
     ) -> Option<(
-        HomeRecoveryCandidate,
+        C,
         Result<
             MainWindowComposerCandidateSource,
             (crate::main_window::MainWindowComposerRetiredClose, String),
@@ -323,5 +333,28 @@ impl MainWindowComposerRecoveryPreparation {
         self.custody
             .take_refused_resources()
             .map(|(candidate, retired, error)| (candidate, Err((retired, error))))
+    }
+}
+
+impl
+    MainWindowComposerRecoveryPreparation<
+        crate::app_services::recovery_graph::PreparedRecoveryServiceGraph,
+    >
+{
+    pub(crate) fn prepare_graph(
+        graph: crate::app_services::recovery_graph::PreparedRecoveryServiceGraph,
+        retired: crate::main_window::MainWindowComposerRetiredClose,
+        predecessor: RangeRestorationSeed,
+        app: &mut App,
+        completed: impl FnOnce(&mut App) + 'static,
+    ) -> Self {
+        let (worker, custody) = MainWindowComposerCandidateWorker::prepare_graph(
+            graph,
+            retired,
+            predecessor,
+            app,
+            completed,
+        );
+        Self::from_worker(predecessor, worker, custody)
     }
 }

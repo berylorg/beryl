@@ -9,6 +9,9 @@ mod resident_fixture;
 #[path = "recovery_graph_resident_worker.rs"]
 mod worker_tests;
 
+#[path = "recovery_graph_resident_preparation.rs"]
+mod preparation_tests;
+
 fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServiceGraph {
     let one = NonZeroUsize::new(1).unwrap();
     let owner = ProcessServiceOwner::new(candidate.home_id(), one, one);
