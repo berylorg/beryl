@@ -85,7 +85,12 @@ impl MainWindowShell {
             .read(app)
             .controller
             .as_ref()
-            .is_some_and(|controller| matches!(controller.content, ShellContent::Retired { .. }))
+            .is_some_and(|controller| {
+                matches!(
+                    controller.content,
+                    ShellContent::Retired { .. } | ShellContent::Recovered { .. }
+                )
+            })
         {
             return Err(failure(
                 self,
@@ -232,7 +237,8 @@ impl MainWindowShell {
                         match controller {
                             Some(controller) => {
                                 let retirement = match controller.content {
-                                    ShellContent::Retired { .. } => unreachable!(
+                                    ShellContent::Retired { .. }
+                                    | ShellContent::Recovered { .. } => unreachable!(
                                         "running recovery cannot enter startup disposal"
                                     ),
                                     ShellContent::Acquired { custody, .. } if preserve_records => {

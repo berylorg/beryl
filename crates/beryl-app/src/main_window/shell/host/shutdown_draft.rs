@@ -7,9 +7,9 @@ use crate::main_window::{
 mod recovery;
 
 pub struct MainWindowShutdownDraft {
-    root: gpui::EntityId,
-    retirement: Option<recovery::ResidentRetirement>,
-    composer: Option<(
+    pub(super) root: gpui::EntityId,
+    pub(super) retirement: Option<recovery::ResidentRetirement>,
+    pub(super) composer: Option<(
         Entity<MainWindowConversationComposerMount>,
         gpui::EntityId,
         MainWindowConversationComposerCloseTicket,

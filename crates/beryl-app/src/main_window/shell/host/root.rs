@@ -43,6 +43,9 @@ impl MainWindowShellRoot {
     )> {
         let controller = self.controller.as_ref()?;
         let (selection, target) = match &controller.content {
+            ShellContent::Recovered {
+                window, selection, ..
+            } => (*selection, window.remembered_target()?),
             ShellContent::Acquired { custody, selection } => {
                 (*selection, custody.acquisition.target())
             }

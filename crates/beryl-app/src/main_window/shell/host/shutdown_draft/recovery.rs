@@ -3,7 +3,7 @@ use crate::main_window::{
     MainWindowComposerMountRecoveryResources, MainWindowComposerRetiredClose,
 };
 
-pub(super) enum ResidentRetirement {
+pub(in crate::main_window::shell::host) enum ResidentRetirement {
     Detached(MainWindowComposerMountRecoveryResources),
     Retired(MainWindowComposerRetiredClose),
 }
@@ -22,7 +22,7 @@ impl MainWindowShellController {
             ShellContent::Restored { custody, .. } => {
                 custody.composer.validate_recovery_retirement()?;
             }
-            ShellContent::Threadless { .. } => {}
+            ShellContent::Threadless { .. } | ShellContent::Recovered { .. } => {}
         }
         let retired = ShellContent::Retired {
             window_id: self.window_id(),
@@ -34,6 +34,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => custody.reservation,
             ShellContent::Restored { custody, .. } => custody.reservation,
             ShellContent::Threadless { reservation, .. } => reservation,
+            ShellContent::Recovered { reservation, .. } => reservation,
             ShellContent::Retired { .. } => unreachable!(),
         };
         let ShellContent::Retired {
@@ -107,6 +108,7 @@ impl MainWindowShellRoot {
                     ShellContent::Restored { custody, .. } => {
                         custody.composer.release_recovery_service(service)?;
                     }
+                    ShellContent::Recovered { .. } => {}
                     ShellContent::Threadless { .. } | ShellContent::Retired { .. } => {
                         unreachable!()
                     }

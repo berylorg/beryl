@@ -139,6 +139,28 @@ App library compilation and independent lifecycle review passed. Native attachme
 identity, selection and target presence; complete-record equality is checked at the source boundary.
 Shell installation, fresh draft settlement and complete recovery remain phase 702 work.
 
+Phase 768 adds selected-shell adoption around the accepted mount boundary. Exact gated shell,
+mount, resident, draft and authenticated candidate identities are checked before adoption. On
+success, the shell synchronously replaces retired construction facts with one fixed-size window
+record and fresh selection, transfers its existing reservation and renews the retained draft ticket.
+No worker, queue or storage write is added. Old appearance prevents interaction release, and the
+recovered shell remains excluded from startup publication/disposal.
+
+The acquired-shell fixtures exercise edited-draft retirement, adoption, exact full-record
+installation, unchanged editor/focus/reservation occupancy, duplicate refusal and foreign-root,
+stale-ticket and capacity refusal. A widget capacity refusal cancels preparation: its resources are
+explicitly drained, not immediately retried. Fixture corrections also moved drawing outside the
+root update, captured predecessor identity after edit flush and explicitly released the controller
+at teardown. That teardown is fixture cleanup, not evidence of production native destruction.
+
+Run `39db29dc-02bd-43a3-8729-b331fa64653b` passed all 18 existing mount/owner regression cases;
+its two new shell cases exposed the fixture corrections above. Final run
+`1ea1a73e-153c-42b1-ad25-661bf1e54818` passed both corrected shell cases. Run
+`f4eb3da3-b940-4d22-a15a-309764608e06` passed all 14 focused existing shell retirement,
+shutdown-draft and startup-interaction cases. App library compilation and independent lifecycle
+review passed. Restored-shell adoption, threadless binding, fresh appearance/notice ownership and
+running-owner composition are not accepted by this component evidence; full recovery remains 702.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.

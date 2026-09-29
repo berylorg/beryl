@@ -47,7 +47,7 @@ impl MainWindowShell {
                     return Err("startup appearance generation changed".to_owned());
                 }
                 match &controller.content {
-                    ShellContent::Retired { .. } => {
+                    ShellContent::Retired { .. } | ShellContent::Recovered { .. } => {
                         Err("retired shell cannot enter startup".into())
                     }
                     ShellContent::Threadless { source, .. } => {

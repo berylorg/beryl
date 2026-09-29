@@ -422,6 +422,14 @@ by the executable composition root.
   reconciliation outcomes. It neither calls startup begin-restore on surviving windows nor infers
   Running from a healthy replacement graph alone. Service rebinding and resident draft/work
   settlement remain separate prerequisites to atomic coherent reopening of the cancelled request.
+- Selected-shell adoption validates the exact gated root, mount, resident and retained draft against
+  authenticated candidate window facts before invoking resident adoption. Success synchronously
+  installs the fixed-size window record and fresh selection, transfers the existing native-window
+  reservation and renews that draft's close ticket. Refusal preserves shell and draft custody;
+  preparation follows its existing cancellation/cleanup contract. The recovered shell cannot enter
+  startup publication or disposal, and old-generation appearance prevents interaction release.
+  Threadless bindings, appearance/notice replacement and process recovery settlement are separate
+  prerequisites; this shell adapter alone grants no publication or reopening authority.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 767: Carry Authenticated Window Facts Through Resident Attachment (finished)
+# Phase 768: Rebind The Retired Selected Shell And Its Draft Together (finished)
 
-Candidate reconstruction now preserves the exact fixed-size window record already read during
-claim validation and returns it through successful owner attachment. Source servicing rejects
-changed records even when the thread claim is unchanged. All 24 focused tests, app compilation
-and independent lifecycle review passed. See [custody evidence](failures/initial-composer-custody.md).
+Selected-shell adoption now installs authenticated window facts and renews its draft ticket only
+after successful resident adoption, preserving the native reservation, editor and focus. Refusal
+retains custody; old appearance still blocks interaction release. All 34 focused tests, app
+compilation and independent lifecycle review passed. See [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -111,6 +111,9 @@ Phase 760 requires successful graph retirement before candidate settlement can s
 Phase 764 retires settled acquired/restored opening, claim and source custody and threadless source
 custody. Fresh shell bindings must replace that retired state before coherent interaction release.
 Phase 767 supplies authenticated window facts with resident attachment for that shell rebinding.
+Phase 768 supplies selected-shell adoption and synchronous draft-ticket renewal. Connect that
+adapter to the running owner; threadless bindings, fresh appearance/notice ownership and exact
+draft/work settlement still precede whole-graph publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

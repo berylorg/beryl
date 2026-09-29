@@ -41,6 +41,7 @@ impl MainWindowShellRoot {
         if matches!(controller.content, ShellContent::Retired { .. }) {
             return Err("retired shell requires fresh bindings before interaction release".into());
         }
+        controller.validate_recovered_appearance()?;
         if !controller.is_threadless() {
             let composer = controller
                 .composer_mount
@@ -75,6 +76,9 @@ impl MainWindowShellRoot {
             .ok_or_else(|| "shutdown shell lost its controller".to_owned())?;
         if !gated && matches!(controller.content, ShellContent::Retired { .. }) {
             return Err("retired shell requires fresh bindings before interaction release".into());
+        }
+        if !gated {
+            controller.validate_recovered_appearance()?;
         }
         if !controller.is_threadless() {
             let composer = controller

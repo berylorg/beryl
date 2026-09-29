@@ -5,6 +5,7 @@ mod threadless;
 pub use threadless::*;
 mod construction;
 mod exit_command;
+mod recovery;
 mod restored;
 mod selected;
 mod shutdown;
@@ -30,6 +31,11 @@ mod startup_disposal;
 pub use startup_disposal::*;
 
 enum ShellContent {
+    Recovered {
+        window: beryl_state::SessionWindowRecord,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+    },
     Retired {
         window_id: beryl_model::WindowId,
         placement: beryl_model::WindowPlacement,
@@ -183,7 +189,9 @@ impl GpuiMainWindowShellHost<'_> {
         #[cfg(target_os = "windows")]
         {
             let (window_id, saved, required) = match &prepared.content {
-                ShellContent::Retired { .. } => unreachable!("retired shells cannot be allocated"),
+                ShellContent::Retired { .. } | ShellContent::Recovered { .. } => {
+                    unreachable!("running recovery shells cannot be allocated")
+                }
                 ShellContent::Acquired { custody, .. } => (
                     custody.window_id(),
                     custody.acquisition.placement(),
@@ -339,6 +347,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => Some(&custody.acquisition),
             ShellContent::Threadless { .. }
             | ShellContent::Restored { .. }
+            | ShellContent::Recovered { .. }
             | ShellContent::Retired { .. } => None,
         }
     }
@@ -356,6 +365,7 @@ impl MainWindowShellController {
 
     pub fn placement(&self) -> &beryl_model::WindowPlacement {
         match &self.content {
+            ShellContent::Recovered { window, .. } => window.placement(),
             ShellContent::Retired { placement, .. } => placement,
             ShellContent::Acquired { custody, .. } => custody.acquisition.placement(),
             ShellContent::Threadless { source, .. } => source.placement(),
@@ -369,6 +379,7 @@ impl MainWindowShellController {
     #[must_use]
     pub fn window_id(&self) -> beryl_model::WindowId {
         match &self.content {
+            ShellContent::Recovered { window, .. } => window.window_id(),
             ShellContent::Retired { window_id, .. } => *window_id,
             ShellContent::Acquired { custody, .. } => custody.window_id(),
             ShellContent::Threadless { source, .. } => source.window_id(),
@@ -392,6 +403,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => custody,
             ShellContent::Threadless { .. }
             | ShellContent::Restored { .. }
+            | ShellContent::Recovered { .. }
             | ShellContent::Retired { .. } => {
                 unreachable!("only acquired shells have acquisition abandonment")
             }
@@ -465,7 +477,9 @@ impl MainWindowShell {
                             && appearance.active
                             && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
                             && match &controller.content {
-                                ShellContent::Retired { .. } => false,
+                                ShellContent::Retired { .. } | ShellContent::Recovered { .. } => {
+                                    false
+                                }
                                 ShellContent::Threadless { source, .. } => {
                                     source.validate_lifetime().is_ok()
                                         && controller.composer_mount.is_none()
