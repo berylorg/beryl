@@ -525,6 +525,56 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                 ));
             })
             .unwrap();
+        let fresh = resident.read_with(cx, |resident, _| {
+            old_close.with_recovered_selection(resident.selection_identity())
+        });
+        let service = mount.read_with(cx, |mount, _| mount.bound_service().unwrap().clone());
+        assert!(service.test_window_close_is_current(fresh));
+        cx.update(|app| {
+            mount.update(app, |mount, cx| {
+                assert!(mount.release_interrupted_exit_draft(old_close, cx).is_err());
+                let retained = mount.test_window_close_worker(|| {}).unwrap();
+                assert!(mount.release_interrupted_exit_draft(fresh, cx).is_err());
+                assert!(service.test_window_close_is_current(fresh));
+                drop(retained);
+                service.test_with_close_slot_locked(|| {
+                    assert_eq!(
+                        mount.release_interrupted_exit_draft(fresh, cx).unwrap(),
+                        MainWindowConversationComposerCloseRelease::Pending
+                    );
+                });
+                assert!(service.test_window_close_is_current(fresh));
+                assert!(mount.recovery_binding_current(fresh));
+                for _ in 0..2 {
+                    assert_eq!(
+                        mount.release_interrupted_exit_draft(fresh, cx).unwrap(),
+                        MainWindowConversationComposerCloseRelease::Released
+                    );
+                    assert!(!service.test_window_close_is_current(fresh));
+                    assert!(mount.recovery_binding_current(fresh));
+                }
+                assert!(mount.release_interrupted_exit_draft(old_close, cx).is_err());
+            });
+        });
+        window
+            .update(cx, |root, window, cx| {
+                assert!(root.shutdown_interaction_gated);
+                assert!(!resident.read(cx).is_live());
+                assert!(resident.read(cx).recovery_binding_current(fresh));
+                assert!(!input.read(cx).is_enabled());
+                assert_eq!(resident.read(cx).selection_identity(), fresh.selection());
+                mount.update(cx, |mount, cx| {
+                    assert!(mount.advance_window_close(fresh, window, cx).is_err());
+                    assert!(mount.release_window_close(fresh, window, cx).is_err());
+                    assert!(
+                        mount
+                            .release_window_close_with_evidence(fresh, window, cx)
+                            .is_err()
+                    );
+                });
+            })
+            .unwrap();
+        drop(service);
         owner
     });
     window

@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 779: Validate The Complete Recovered Shell Binding Set (finished)
+# Phase 780: Settle The Recovered Composer Close Ticket (finished)
 
-The running owner now checks every retained published shell against its exact draft, candidate
-appearance/notice ownership and renewed resident binding without caching success or releasing
-gates. Twenty-two focused tests passed in `d26765da-de06-4b01-a0a2-4a5664c9eeb0`; seven shell tests
-passed again after explicit stale-owner coverage in `420bf1a4-da15-46dd-9b94-490be325fded`.
-Compilation, formatting and independent lifecycle review passed. Multiwindow set matching was
-source-reviewed; native execution covered the sole threadless window.
+The recovered mount now releases its exact fresh service close ticket through nonblocking access,
+retaining existing completion evidence and all local recovery/shutdown fences. Busy access stays
+pending; retained workers and stale custody refuse settlement. Ordinary release cannot consume
+this partial completion. Seventeen focused tests passed in `28bef5c2-5d97-4c6c-b4b2-a0c6f766fd67`
+and seven close/disposal integration tests in `57ae3f42-27b7-4cfe-9349-a6341d5268f7`.
+Library compilation, formatting and independent lifecycle review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -123,7 +123,8 @@ their settled native destruction enrollment.
 Phase 777 supplies the running-owner route for appearance binding through retained published shells.
 Phase 778 supplies read-only revalidation of retained successful candidate session settlement.
 Phase 779 supplies uncached validation of the complete retained shell binding set.
-Exact draft/work settlement still precedes whole-graph publication and coherent reopening;
+Phase 780 supplies exact fresh composer service-close settlement while retaining local fences.
+Aggregate/process draft and work settlement still precedes whole-graph publication and coherent reopening;
 session and shell validation alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

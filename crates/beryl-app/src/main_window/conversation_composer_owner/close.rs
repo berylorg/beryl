@@ -2,6 +2,28 @@ use super::*;
 use crate::main_window::MainWindowConversationComposerCloseTicket;
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn recovered_close_release_ready(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if !self.recovery_binding_current(ticket)
+            || !self.shutdown_interaction_gated
+            || self.startup_interaction_gated
+        {
+            return Err("recovered composer close binding is not fenced".into());
+        }
+        if let Some(error) = &self.last_error {
+            return Err(error.clone());
+        }
+        Ok(self.active_flight.is_none()
+            && self.pending_dispatch.is_none()
+            && self.propagated_clipboard.is_none()
+            && self
+                .input
+                .update(cx, |input, _| input.is_semantically_quiescent()))
+    }
+
     pub(in crate::main_window) fn begin_window_close_gate(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,

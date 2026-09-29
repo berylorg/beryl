@@ -5,6 +5,49 @@ use crate::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(crate) fn release_interrupted_exit_draft(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowConversationComposerCloseRelease, String> {
+        if ticket.owner != cx.entity_id() || !self.recovery_binding_current(ticket) {
+            return Err("recovered draft close ticket is stale".into());
+        }
+        let close = self.window_close.as_ref().unwrap();
+        if self.window_close_task.is_some()
+            || self.window_close_workers.retained() != 0
+            || close.flush.is_some()
+            || close.release_requested
+            || close.disposal_captured
+            || close.state != MainWindowConversationComposerCloseAdvance::Preparing
+        {
+            return Err("recovered draft close custody is unsettled".into());
+        }
+        let resident = self
+            .contribution
+            .clone()
+            .ok_or("recovered draft has no resident")?;
+        if !resident.update(cx, |resident, cx| {
+            resident.recovered_close_release_ready(ticket, cx)
+        })? {
+            return Ok(MainWindowConversationComposerCloseRelease::Pending);
+        }
+        if self.window_close_released == Some(ticket) {
+            return Ok(MainWindowConversationComposerCloseRelease::Released);
+        }
+        match self
+            .bound_service()?
+            .release_window_close_gate(ticket, None)?
+        {
+            None => Ok(MainWindowConversationComposerCloseRelease::Pending),
+            Some(false) => Err("recovered draft service close ticket is stale".into()),
+            Some(true) => {
+                self.window_close_released = Some(ticket);
+                Ok(MainWindowConversationComposerCloseRelease::Released)
+            }
+        }
+    }
+
     pub(in crate::main_window) fn recovery_binding_current(
         &self,
         ticket: MainWindowConversationComposerCloseTicket,

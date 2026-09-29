@@ -502,6 +502,13 @@ by the executable composition root.
   exact renewed resident and mount close ticket; threadless shells must have neither composer nor
   composer draft. Validation retains all gates and custody and does not cache success. It performs
   no storage reads and cannot substitute for fresh durable validation or draft/work settlement.
+- An adopted resident's renewed service close ticket may be released while its local recovery and
+  shutdown fences remain installed. Admission requires the exact recovered resident/mount binding,
+  no predecessor snapshot, pending resident mutation or close worker, and no fresh flush or disposal.
+  Use nonblocking service access and retain exact completion in the mount's existing release slot;
+  busy access remains pending without another worker. Repeated completion preserves the same local
+  ticket and fences. This settles only fresh service close custody, performs no durable write and
+  grants no graph publication, ordinary close, disposal or interaction release authority.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

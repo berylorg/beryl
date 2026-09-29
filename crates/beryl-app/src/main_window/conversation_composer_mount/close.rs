@@ -350,6 +350,9 @@ impl MainWindowConversationComposerMount {
         if ticket.owner != cx.entity_id() || ticket.generation != self.window_close_generation {
             return Ok(MainWindowConversationComposerCloseRelease::Stale);
         }
+        if self.recovery_fenced() {
+            return Err("window close is retained for recovery".to_owned());
+        }
         if self.window_close_released == Some(ticket) {
             return Ok(MainWindowConversationComposerCloseRelease::Released);
         }
