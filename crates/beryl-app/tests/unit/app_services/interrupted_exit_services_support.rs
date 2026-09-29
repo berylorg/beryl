@@ -3,6 +3,7 @@ pub(super) async fn verify(
     request: &crate::startup_owner::RunningExitRequest,
     candidate: InterruptedExitCandidate,
     generation: beryl_home_store::HomeGeneration,
+    window: beryl_model::WindowId,
     faults: &FaultController,
     cx: &mut AsyncApp,
 ) -> InterruptedExitCandidate {
@@ -26,6 +27,21 @@ pub(super) async fn verify(
                 requirement,
             )
         };
+        cx.update(|app| {
+            assert!(
+                RunningProcessOwner::prepare_interrupted_exit_threadless_window(
+                    owner,
+                    request,
+                    home,
+                    generation,
+                    window,
+                    app,
+                    |_, _, _| panic!("missing graph callback"),
+                )
+                .is_err()
+            );
+        })
+        .unwrap();
         assert!(adapters(request).is_err());
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
@@ -179,6 +195,89 @@ pub(super) async fn verify(
                     )
                     .is_err()
             );
+            for (source_home, source_generation, source_window, stale, succeeds) in [
+                (
+                    beryl_model::BerylHomeId::from_bytes([99; 16]),
+                    generation,
+                    window,
+                    false,
+                    false,
+                ),
+                (home, fresh_generation, window, false, false),
+                (
+                    home,
+                    generation,
+                    beryl_model::WindowId::from_bytes([99; 16]),
+                    false,
+                    false,
+                ),
+                (home, generation, window, true, false),
+                (home, generation, window, false, true),
+            ] {
+                let (sender, receiver) = futures_channel::oneshot::channel();
+                cx.update(|app| {
+                    let refused = |request, app: &mut gpui::App| {
+                        RunningProcessOwner::prepare_interrupted_exit_threadless_window(
+                            owner,
+                            request,
+                            home,
+                            generation,
+                            window,
+                            app,
+                            |_, _, _| panic!("refused window authentication callback"),
+                        )
+                    };
+                    assert!(refused(&foreign, app).is_err());
+                    for retirement in [None, Some(Err("failed retirement".into()))] {
+                        owner
+                            .borrow()
+                            .test_set_resident_graph_retirement(retirement);
+                        assert!(refused(request, app).is_err());
+                    }
+                    owner
+                        .borrow()
+                        .test_set_resident_graph_retirement(Some(Ok(())));
+                    RunningProcessOwner::prepare_interrupted_exit_threadless_window(
+                        owner,
+                        request,
+                        source_home,
+                        source_generation,
+                        source_window,
+                        app,
+                        move |owner, result, _| {
+                            assert!(owner.borrow().interrupted_exit_session().is_some());
+                            assert!(owner.borrow().test_services().graph().is_none());
+                            assert!(sender.send(result).is_ok());
+                        },
+                    )
+                    .unwrap();
+                    assert!(refused(request, app).is_err());
+                    assert!(adapters(request).is_err());
+                    assert!(!RunningProcessOwner::finish_exit(owner, request));
+                    if stale {
+                        owner
+                            .borrow_mut()
+                            .test_replace_interrupted_exit_request(&foreign);
+                    }
+                })
+                .unwrap();
+                let result = receiver.await.unwrap();
+                assert_eq!(result.is_ok(), succeeds);
+                if let Ok(authenticated) = result {
+                    assert_eq!(authenticated.home_id(), home);
+                    assert_eq!(authenticated.generation(), fresh_generation);
+                    assert_eq!(authenticated.window().window_id(), window);
+                }
+                if stale {
+                    owner
+                        .borrow_mut()
+                        .test_replace_interrupted_exit_request(request);
+                }
+                owner
+                    .borrow()
+                    .interrupted_exit_services_result(request)
+                    .unwrap();
+            }
             let prepared = adapters(request).unwrap();
             assert!(prepared.matches(home, fresh_generation));
             let (_, marker, _, _) = prepared.into_parts();
@@ -260,6 +359,21 @@ pub(super) async fn verify(
             assert!(owner.borrow().test_services().graph().is_none());
             assert!(!RunningProcessOwner::finish_exit(owner, request));
         }
+        cx.update(|app| {
+            assert!(
+                RunningProcessOwner::prepare_interrupted_exit_threadless_window(
+                    owner,
+                    request,
+                    home,
+                    generation,
+                    window,
+                    app,
+                    |_, _, _| panic!("failed graph callback"),
+                )
+                .is_err()
+            );
+        })
+        .unwrap();
         let evidence = owner
             .borrow()
             .interrupted_exit_services_result(request)

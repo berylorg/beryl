@@ -255,7 +255,8 @@ pub(super) async fn verify(
     let candidate = revalidation::verify(owner, request, candidate, &appearance, cx).await;
     let candidate = process_work::verify(owner, request, candidate, cx).await;
     let candidate =
-        service_preparation::verify(owner, request, candidate, generation, faults, cx).await;
+        service_preparation::verify(owner, request, candidate, generation, window_id, faults, cx)
+            .await;
     cx.background_executor()
         .spawn(async move {
             drop(candidate.session);

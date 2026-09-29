@@ -4,6 +4,63 @@ use crate::{
 };
 
 impl RunningProcessOwner {
+    pub(crate) fn prepare_interrupted_exit_threadless_window(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired_home: beryl_model::BerylHomeId,
+        retired_generation: beryl_home_store::HomeGeneration,
+        window: beryl_model::WindowId,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, Result<ThreadlessRecoveryWindow, String>, &mut App)
+        + 'static,
+    ) -> Result<(), String> {
+        let (slot, mut graph) = {
+            let retained = owner.borrow();
+            retained.interrupted_exit_services_result(request)?;
+            let recovery = retained.interrupted_exit.as_ref().unwrap();
+            if recovery.session.borrow().is_none()
+                || recovery.resident.is_some()
+                || recovery
+                    .pending_resident_frame
+                    .as_ref()
+                    .is_some_and(|wake| wake.strong_count() != 0)
+            {
+                return Err("Interrupted Exit recovery custody is unavailable".into());
+            }
+            let slot = recovery.settlement.clone();
+            let Some(settlement::CandidateSettlement::Services(Ok(graph))) = slot
+                .borrow_mut()
+                .replace(settlement::CandidateSettlement::Pending)
+            else {
+                unreachable!()
+            };
+            (slot, graph)
+        };
+        let identity = request.identity();
+        let retained = owner.clone();
+        let work = app.background_executor().spawn(async move {
+            let result = graph.threadless_recovery_window(retired_home, retired_generation, window);
+            (graph, result)
+        });
+        app.spawn(async move |cx| {
+            let (graph, mut result) = work.await;
+            *slot.borrow_mut() = Some(settlement::CandidateSettlement::Services(Ok(graph)));
+            {
+                let owner = retained.borrow();
+                if !owner.process.commands.is_active_identity(&identity)
+                    || !owner
+                        .interrupted_exit
+                        .as_ref()
+                        .is_some_and(|recovery| Rc::ptr_eq(&recovery.request, &identity))
+                {
+                    result = Err("Interrupted Exit request changed".into());
+                }
+            }
+            let _ = cx.update(|app| completed(&retained, result, app));
+        })
+        .detach();
+        Ok(())
+    }
     pub(crate) fn attach_interrupted_exit_threadless(
         &mut self,
         request: &RunningExitRequest,

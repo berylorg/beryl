@@ -67,6 +67,31 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn threadless_recovery_window(
+        &mut self,
+        state: &BerylState,
+        retired_home: beryl_model::BerylHomeId,
+        retired_generation: beryl_home_store::HomeGeneration,
+        window: beryl_model::WindowId,
+    ) -> Result<super::recovery_threadless::ThreadlessRecoveryWindow, String> {
+        let (candidate, _) = self
+            .cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+            .ok_or("recovery handoff is unavailable")?;
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        super::recovery_threadless::ThreadlessRecoveryWindow::prepare(
+            &access,
+            state,
+            retired_home,
+            retired_generation,
+            window,
+        )
+    }
+
     pub(super) fn composer_recovery_adapters(
         &mut self,
         home: beryl_model::BerylHomeId,

@@ -143,6 +143,18 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn threadless_recovery_window(
+        &mut self,
+        retired_home: BerylHomeId,
+        retired_generation: HomeGeneration,
+        window: beryl_model::WindowId,
+    ) -> Result<super::recovery_threadless::ThreadlessRecoveryWindow, String> {
+        self.services
+            .as_mut()
+            .expect("prepared recovery services")
+            .threadless_recovery_window(&self.state, retired_home, retired_generation, window)
+    }
+
     pub(crate) fn composer_recovery_adapters(
         &mut self,
         home: BerylHomeId,
