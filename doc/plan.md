@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 754: Prepare Marker Publication Services From Recovery Candidates (finished)
+# Phase 755: Transfer Prepared Recovery CAS Custody (finished)
 
-Recovery marker services now reuse startup preparation's typed candidate validation, bounded
-state and abandonment retirement without publishing the home or starting work. All 10 focused
-preparation tests and the app check pass; independent lifecycle review accepted. Prepared widget
-adoption and retained cleanup custody are already accepted; mount association and remaining fresh
-adapters stay in phase 745.
+Recovery composition can consume the existing fresh CAS service, same-home candidate and
+unreleased worker-start owner together without publishing or starting ordinary work. All seven
+focused recovery preparation tests and the app check pass; independent lifecycle review accepted.
+Recovery marker preparation, widget adoption and retained cleanup custody are already accepted.
+The exact resident/mount association and remaining fresh adapter composition stay in phase 745.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 

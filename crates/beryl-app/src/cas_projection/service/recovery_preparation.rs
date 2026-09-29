@@ -44,6 +44,22 @@ impl RecoveryCasPreparationFailure {
 }
 
 impl PreparedRecoveryCasServices {
+    pub(crate) fn into_recovery_parts(
+        mut self,
+    ) -> (
+        HomeRecoveryCandidate,
+        ProjectionConnectionService,
+        InitialStartOwner,
+    ) {
+        let candidate = self.candidate.take().expect("reopening candidate custody");
+        let service = self.service.take().expect("prepared recovery CAS service");
+        let initial_start = self
+            .initial_start
+            .take()
+            .expect("publication fence custody");
+        (candidate, service, initial_start)
+    }
+
     pub(crate) fn prepare(
         process: crate::process_admission::ProcessAdmissionGate,
         candidate: HomeRecoveryCandidate,

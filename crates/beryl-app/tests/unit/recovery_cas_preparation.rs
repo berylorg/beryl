@@ -20,6 +20,7 @@ struct Provider {
     cancel_on_attach: Option<ProjectionCancellationToken>,
     fail_scheduler_start: bool,
     fail_cleanup: bool,
+    shutdown_state: HomeHealthState,
 }
 
 impl ScheduledOrdinaryExecutionProvider for Provider {
@@ -44,7 +45,7 @@ impl ScheduledOrdinaryExecutionProvider for Provider {
     }
 
     fn shutdown(&mut self) {
-        assert_eq!(self.home.health().state(), HomeHealthState::Reopening);
+        assert_eq!(self.home.health().state(), self.shutdown_state);
         self.probe.shutdown.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -93,6 +94,89 @@ fn provider(candidate: &HomeRecoveryCandidate, probe: &Arc<Probe>) -> Provider {
         cancel_on_attach: None,
         fail_scheduler_start: false,
         fail_cleanup: false,
+        shutdown_state: HomeHealthState::Reopening,
+    }
+}
+
+#[test]
+fn recovery_handoff_preserves_exact_custody_until_explicit_release_or_cancellation() {
+    for publish in [false, true] {
+        let (directory, candidate, storage, _, _) = fixture();
+        let reference = candidate.service_reference();
+        let home_id = candidate.home_id();
+        let generation = candidate.generation();
+        let probe = Arc::new(Probe::default());
+        let mut provider = provider(&candidate, &probe);
+        if publish {
+            provider.shutdown_state = HomeHealthState::Healthy;
+        }
+        let prepared = match PreparedRecoveryCasServices::prepare(
+            Default::default(),
+            candidate,
+            storage.clone(),
+            config(),
+            Box::new(provider),
+            &ProjectionCancellationToken::new(),
+        ) {
+            Ok(prepared) => prepared,
+            Err(_) => panic!("fresh candidate preparation failed"),
+        };
+        let gate = prepared.initial_start.as_ref().unwrap().gate();
+        let signal = prepared.service.as_ref().unwrap().scheduler_signal.clone();
+        let service_generation = prepared.service.as_ref().unwrap().service_generation();
+        let (mut candidate, service, start) = prepared.into_recovery_parts();
+        assert_eq!(candidate.home_id(), home_id);
+        assert_eq!(candidate.generation(), generation);
+        assert_eq!(service.home_id(), home_id);
+        assert_eq!(service.home_generation(), generation);
+        assert_eq!(service.service_generation(), service_generation);
+        assert!(Arc::ptr_eq(&gate, &start.gate()));
+        assert!(
+            service
+                .submission_execution_wake()
+                .matches_binding(home_id, generation)
+        );
+        assert!(
+            storage
+                .revision_candidate(&candidate.recovery_access().unwrap())
+                .is_ok()
+        );
+        assert_eq!(reference.health().state(), HomeHealthState::Reopening);
+        assert!(reference.home_revision().is_err());
+        assert_eq!(signal.diagnostics().pass_count(), 0);
+        assert_eq!(probe.attached.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.issued.load(Ordering::SeqCst), 0);
+        assert_eq!(probe.shutdown.load(Ordering::SeqCst), 0);
+        assert!(
+            HomeOpenCandidate::open(HomeOpenOptions::new(
+                directory.path(),
+                HomeSchemaVersion::CURRENT,
+            ))
+            .is_err()
+        );
+        let home = if publish {
+            let home = candidate.publish().unwrap();
+            assert!(start.release());
+            assert!(gate.wait());
+            service.close().unwrap();
+            home
+        } else {
+            drop(start);
+            assert!(!gate.wait());
+            service.close().unwrap();
+            assert_eq!(reference.health().state(), HomeHealthState::Reopening);
+            candidate.abort()
+        };
+        assert!(signal.diagnostics().stopped());
+        assert_eq!(probe.shutdown.load(Ordering::SeqCst), 1);
+        home.close().unwrap();
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap()
+        .close()
+        .unwrap();
     }
 }
 
