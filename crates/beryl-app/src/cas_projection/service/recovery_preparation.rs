@@ -45,6 +45,13 @@ impl RecoveryCasPreparationFailure {
 }
 
 impl PreparedRecoveryCasServices {
+    pub(crate) fn app_preparation_parts(
+        &mut self,
+    ) -> Option<(&mut HomeRecoveryCandidate, &ProjectionConnectionService)> {
+        self.handoff.as_ref()?;
+        Some((self.candidate.as_mut()?, self.service.as_ref()?))
+    }
+
     pub(crate) fn into_recovery_parts(
         mut self,
     ) -> (

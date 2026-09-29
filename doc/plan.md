@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 793: Settle The Running Owner's Constructed Recovery Candidate (finished)
+# Phase 794: Assemble Private Recovery Service Preparation (finished)
 
-The running owner now transfers its constructed candidate into the existing session convergence
-worker using fresh handles and the retained custody slot. Refusal, duplicate work and stale
-completion preserve custody and interaction fences. All 20 focused native regressions passed
-(a5e3bc71-8319-498e-94b7-6d8c1d1ddbdd), with compilation, formatting and independent review.
-Complete fresh graph preparation and publication remain pending.
+One private owner now assembles prepared recovery CAS/handoff with fresh marker, Activity and
+Theme services. Cancellation and failed preparation join ancillary services before CAS abort;
+typed preparation/disposal errors and retry-home custody remain preserved. All 13 focused recovery
+regressions passed (3ec4318c-edb5-4133-ba68-cd12d4cfaca8), with compilation, formatting and
+independent review. Running-owner integration and complete graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -136,6 +136,7 @@ Phase 790 supplies recovery CAS handoff preparation and preserves convergence ou
 Phase 791 supplies fresh candidate Activity preparation using the shared dormant implementation.
 Phase 792 supplies fresh candidate Theme preparation using the existing dormant watcher.
 Phase 793 connects the running owner's constructed candidate to retained session convergence.
+Phase 794 assembles private recovery services and their ordered failure/cancellation disposal.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

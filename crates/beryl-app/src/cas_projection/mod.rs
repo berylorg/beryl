@@ -167,6 +167,7 @@ pub use runtime_interest::{
 };
 #[cfg(feature = "test-faults")]
 pub use runtime_interest::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};
+pub(crate) use runtime_work::RuntimeWorkError;
 pub use scheduled_ordinary::{
     OrdinaryDynamicToolAuthority, ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
     ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionLease,
@@ -176,7 +177,9 @@ pub use scheduled_ordinary::{
 #[cfg(any(test, feature = "test-faults"))]
 pub use service::SubmissionExecutionWakeTestProbe;
 pub(crate) use service::initial_preparation::{CasPreparationError, PreparedCasServices};
-pub(crate) use runtime_work::RuntimeWorkError;
+pub(crate) use service::recovery_preparation::{
+    PreparedRecoveryCasServices, RecoveryCasCloseFailure, RecoveryCasPreparationFailure,
+};
 pub(crate) use service::recovery_retirement::{CasRetirementDisposalFailure, CasRetirementFailure};
 pub use service::{
     CasProjectionCoordinator, DiscussionResolutionOutcome, LiveHomeCommand, ProcessWorkCursor,

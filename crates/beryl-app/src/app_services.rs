@@ -35,6 +35,7 @@ mod initial_disposal;
 mod preparation;
 mod published;
 pub(crate) mod recovery_composer;
+pub(crate) mod recovery_preparation;
 mod recovery_retirement;
 pub(crate) use recovery_retirement::{RetiredHomeRecoveryError, RetiredProcessWorkError};
 pub(crate) mod recovery_threadless;
@@ -71,6 +72,8 @@ pub(crate) enum AppServiceOpenError {
     Cancelled,
     #[error("prepared runtime Activity authority is unavailable")]
     RuntimeUnavailable,
+    #[error("prepared recovery handoff authority is unavailable")]
+    HandoffUnavailable,
     #[error("prepared worker startup was cancelled")]
     StartupCancelled,
     #[error("initial service reopening failed: {0}")]

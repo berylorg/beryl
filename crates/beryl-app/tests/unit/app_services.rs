@@ -17,6 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "app_services/recovery_preparation.rs"]
+mod recovery_preparation;
 #[path = "app_services/recovery_retirement.rs"]
 mod recovery_retirement;
 #[path = "app_services/recovery_support.rs"]
