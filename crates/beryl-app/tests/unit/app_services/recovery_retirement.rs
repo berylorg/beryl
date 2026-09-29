@@ -44,7 +44,18 @@ fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
         ))
         .is_err()
     );
-    let home = owner.test_retired_service_home().unwrap();
+    let home = owner.take_retired_service_home(expected).unwrap();
+    assert!(matches!(
+        owner.take_retired_service_home(expected),
+        Err(ServiceGraphRetirementError::HomeTransferred)
+    ));
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .is_err()
+    );
     assert_eq!(home.pending_reconciliations().len(), 1);
     let mut candidate = home.recover_same_home().unwrap();
     let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
@@ -133,7 +144,11 @@ fn retired_process_work_refuses_absent_incomplete_and_foreign_retirement() {
                 result,
                 Err(RetiredProcessWorkError::StaleCandidate)
             ));
-            owner.test_retired_service_home().unwrap().close().unwrap();
+            owner
+                .take_retired_service_home(expected)
+                .unwrap()
+                .close()
+                .unwrap();
         }
         assert!(owner.process.execution_permit().commit(|| ()).is_err());
         candidate.abort().close().unwrap();
@@ -144,6 +159,10 @@ fn retired_process_work_refuses_absent_incomplete_and_foreign_retirement() {
 fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption() {
     let (_directory, mut owner, faults) = installed();
     let expected = owner.graph().unwrap().home().health().generation().unwrap();
+    assert!(matches!(
+        owner.take_retired_service_home(expected),
+        Err(ServiceGraphRetirementError::Stale)
+    ));
     assert!(matches!(
         owner.retire_failed_service_graph(expected),
         Err(ServiceGraphRetirementError::Stale)
@@ -168,11 +187,19 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
     assert!(owner.graph().is_some());
     owner.retire_failed_service_graph(expected).unwrap();
     assert!(matches!(
+        owner.take_retired_service_home(later),
+        Err(ServiceGraphRetirementError::Stale)
+    ));
+    assert!(matches!(
         owner.finish_service_graph_retirement(later),
         Err(ServiceGraphRetirementError::Stale)
     ));
     owner.finish_service_graph_retirement(expected).unwrap();
-    owner.test_retired_service_home().unwrap().close().unwrap();
+    owner
+        .take_retired_service_home(expected)
+        .unwrap()
+        .close()
+        .unwrap();
     recovered.abort().close().unwrap();
 }
 
@@ -187,7 +214,10 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
         Err(ServiceGraphRetirementError::Incomplete)
     ));
     assert!(owner.graph().is_none());
-    assert!(owner.test_retired_service_home().is_none());
+    assert!(matches!(
+        owner.take_retired_service_home(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
     assert!(matches!(
         owner.finish_service_graph_retirement(expected),
         Err(ServiceGraphRetirementError::Incomplete)
@@ -232,7 +262,10 @@ fn recovery_retirement_waits_for_admitted_marker_drive_without_reopening_admissi
         Err(ServiceGraphRetirementError::MarkerDrivesPending)
     ));
     assert!(owner.graph().is_none());
-    assert!(owner.test_retired_service_home().is_none());
+    assert!(matches!(
+        owner.take_retired_service_home(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
     assert!(matches!(
         owner.finish_service_graph_retirement(expected),
         Err(ServiceGraphRetirementError::MarkerDrivesPending)
@@ -252,5 +285,9 @@ fn recovery_retirement_waits_for_admitted_marker_drive_without_reopening_admissi
     owner.finish_service_graph_retirement(expected).unwrap();
     assert!(owner.process.execution_permit().commit(|| ()).is_err());
     assert!(!owner.initial_attempt_is_settled());
-    owner.test_retired_service_home().unwrap().close().unwrap();
+    owner
+        .take_retired_service_home(expected)
+        .unwrap()
+        .close()
+        .unwrap();
 }
