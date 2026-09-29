@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 809: Bind The Prepared Recovery Appearance (finished)
+# Phase 810: Validate Bindings Against The Prepared Recovery Graph (finished)
 
-The running owner now obtains the appearance retained by the prepared recovery graph. Shell
-attachment requires that exact appearance and rejects same-generation substitutes, preserving
-custody and closed interaction. All 24 focused recovery/theme tests passed
-(79f91a50-adb9-4ed1-939a-c6eead15e70c), plus app compilation, formatting and independent review.
-Complete graph publication and coherent interaction release remain pending.
+Complete binding validation and exact draft cleanup now require the retained prepared graph and
+its exact appearance, preserving session custody and closed interaction. All 11 native recovery
+tests and five session-publication tests passed, including the direct prepared-graph consumer
+(cbb093d6-c140-4465-b6fb-016b57366586), plus app compilation, formatting and independent review.
+Whole-graph publication and coherent interaction release remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -164,6 +164,7 @@ freshness checks and activity cleanup. Phase 807 supplies bounded candidate sett
 persisted active-theme input. Phase 808 resolves and retains production appearance before initial
 or recovery publication, using shared loading and fallback behavior; connect it to complete fresh
 graph attachment next. Phase 809 connects its retained appearance to exact-request shell binding.
+Phase 810 connects complete binding validation and exact draft cleanup to that retained graph.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

@@ -36,7 +36,7 @@ impl RunningProcessOwner {
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<(), String> {
-        self.interrupted_exit_graph_retirement_result(request)?;
+        self.interrupted_exit_services_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
         if recovery.resident.is_some()
             || recovery.session.borrow().is_none()
@@ -47,22 +47,19 @@ impl RunningProcessOwner {
         {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
-        let settlement = recovery.settlement.borrow();
-        let Some(settlement::CandidateSettlement::Returned {
-            candidate,
-            result: Ok(()),
-        }) = settlement.as_ref()
-        else {
-            return Err("Interrupted Exit candidate has no successful settlement".into());
+        let mut settlement = recovery.settlement.borrow_mut();
+        let Some(settlement::CandidateSettlement::Services(Ok(graph))) = settlement.as_mut() else {
+            unreachable!("validated prepared recovery services")
         };
         let snapshot = appearance.read(app).target().snapshot();
         let home = snapshot.current.prepared().home();
-        if !snapshot.active
-            || home.home_id() != candidate.candidate.home_id()
-            || home.home_generation() != candidate.candidate.generation()
-        {
+        if !snapshot.active || !graph.matches_candidate(home.home_id(), home.home_generation()) {
             return Err("Recovery appearance candidate identity changed".into());
         }
+        if !std::sync::Arc::ptr_eq(&snapshot.current, &graph.appearance()) {
+            return Err("Recovery appearance differs from the prepared graph".into());
+        }
+        drop(settlement);
         let drafts = self
             .shutdown
             .as_ref()

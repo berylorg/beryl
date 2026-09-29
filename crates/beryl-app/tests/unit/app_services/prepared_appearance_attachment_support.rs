@@ -7,6 +7,12 @@ pub(super) fn assert_unavailable(
     app: &mut gpui::App,
 ) {
     assert!(owner.borrow().interrupted_exit_appearance(request).is_err());
+    assert!(
+        owner
+            .borrow()
+            .release_interrupted_exit_drafts(request, appearance, app)
+            .is_err()
+    );
     let window = owner.borrow().test_process().windows.shells()[0].window();
     assert!(
         owner
@@ -28,6 +34,14 @@ pub(super) fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let foreign = request.test_foreign();
     let mut running = owner.borrow_mut();
+    let unavailable = |running: &RunningProcessOwner, request, appearance, app: &mut gpui::App| {
+        assert!(
+            running
+                .release_interrupted_exit_drafts(request, appearance, app)
+                .is_err()
+        );
+    };
+    unavailable(&running, &foreign, appearance, app);
     assert!(running.interrupted_exit_appearance(&foreign).is_err());
     assert!(std::sync::Arc::ptr_eq(
         &running.interrupted_exit_appearance(request).unwrap(),
@@ -42,6 +56,7 @@ pub(super) fn verify(
             .contains("request changed")
     );
     running.test_replace_interrupted_exit_request(&foreign);
+    unavailable(&running, request, appearance, app);
     assert!(
         bind(&mut running, request, appearance, app)
             .unwrap_err()
@@ -50,9 +65,17 @@ pub(super) fn verify(
     running.test_replace_interrupted_exit_request(request);
     for retirement in [None, Some(Err("failed retirement".into()))] {
         running.test_set_resident_graph_retirement(retirement);
+        unavailable(&running, request, appearance, app);
         assert!(bind(&mut running, request, appearance, app).is_err());
     }
     running.test_set_resident_graph_retirement(Some(Ok(())));
+    assert!(
+        running
+            .validate_interrupted_exit_bindings(request, substituted, app)
+            .unwrap_err()
+            .contains("differs from the prepared graph")
+    );
+    unavailable(&running, request, previous, app);
     assert!(
         bind(&mut running, request, substituted, app)
             .unwrap_err()
@@ -69,12 +92,14 @@ pub(super) fn verify(
         app,
     );
     inactive.update(app, |set, _| set.retire());
+    unavailable(&running, request, &inactive, app);
     assert!(
         bind(&mut running, request, &inactive, app)
             .unwrap_err()
             .contains("candidate identity changed")
     );
     let drafts = running.test_replace_recovery_drafts(None).unwrap();
+    unavailable(&running, request, appearance, app);
     assert!(
         bind(&mut running, request, appearance, app)
             .unwrap_err()
@@ -82,6 +107,7 @@ pub(super) fn verify(
     );
     running.test_replace_recovery_drafts(Some(drafts.clone()));
     let borrowed = drafts.borrow_mut();
+    unavailable(&running, request, appearance, app);
     assert!(
         bind(&mut running, request, appearance, app)
             .unwrap_err()
@@ -89,12 +115,14 @@ pub(super) fn verify(
     );
     drop(borrowed);
     drafts.borrow_mut().test_recovery_driving(true);
+    unavailable(&running, request, appearance, app);
     assert!(
         bind(&mut running, request, appearance, app)
             .unwrap_err()
             .contains("not available for binding")
     );
     drafts.borrow_mut().test_recovery_driving(false);
+    unavailable(&running, request, appearance, app);
     assert!(bind(&mut running, request, appearance, app).is_err());
     assert_eq!(appearance.read(app).target().snapshot().count, 0);
     previous.update(app, |set, _| set.retire());
@@ -103,11 +131,28 @@ pub(super) fn verify(
     assert!(bind(&mut running, request, appearance, app).is_err());
     assert_eq!(appearance.read(app).target().snapshot().count, 1);
     assert!(!drafts.borrow().test_recovery_ready());
-    assert!(
-        running
-            .release_interrupted_exit_drafts(request, appearance, app)
-            .is_err()
+    let unbound = GpuiAppearanceWindowSet::new(
+        appearance.read(app).target().snapshot().current,
+        NonZeroUsize::new(4).unwrap(),
+        app,
     );
+    unavailable(&running, request, &unbound, app);
+    unbound.update(app, |set, _| set.retire());
+    for _ in 0..2 {
+        running
+            .validate_interrupted_exit_bindings(request, appearance, app)
+            .unwrap();
+        assert!(
+            running
+                .release_interrupted_exit_drafts(request, appearance, app)
+                .unwrap()
+        );
+    }
+    window
+        .update(app, |root, _, _| {
+            assert_eq!(root.test_exit_presentation().0, "Exiting…");
+        })
+        .unwrap();
     assert_eq!(
         original,
         format!("{:?}", running.interrupted_exit_session().unwrap())
