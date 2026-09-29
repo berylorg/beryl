@@ -41,7 +41,7 @@ impl RunningProcessOwner {
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_settle: impl FnOnce() + Send + 'static,
     ) -> Result<(), String> {
-        let (session_slot, settlement_slot, mut original, mut candidate) = {
+        let (session_slot, settlement_slot, original, candidate) = {
             let owner = owner.borrow();
             let recovery = owner
                 .interrupted_exit
@@ -68,11 +68,106 @@ impl RunningProcessOwner {
                 candidate.take().unwrap(),
             )
         };
+        Self::run_interrupted_exit_candidate_pass(
+            owner,
+            session_slot,
+            settlement_slot,
+            original,
+            candidate,
+            app,
+            completed,
+            move |original, candidate| {
+                before_settle();
+                original.converge_candidate(&mut candidate.candidate, &candidate.session)
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn revalidate_interrupted_exit_candidate(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<(), String> {
+        Self::revalidate_interrupted_exit_candidate_with(owner, request, app, completed, |_| {})
+    }
+
+    fn revalidate_interrupted_exit_candidate_with(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+        before_validate: impl FnOnce(&mut InterruptedExitCandidate) + Send + 'static,
+    ) -> Result<(), String> {
+        let (session_slot, settlement_slot, original, candidate) = {
+            let owner = owner.borrow();
+            owner.interrupted_exit_graph_retirement_result(request)?;
+            let recovery = owner.interrupted_exit.as_ref().unwrap();
+            if recovery.resident.is_some()
+                || recovery.session.borrow().is_none()
+                || recovery
+                    .pending_resident_frame
+                    .as_ref()
+                    .is_some_and(|wake| wake.strong_count() != 0)
+            {
+                return Err("Interrupted Exit recovery custody is unavailable".into());
+            }
+            let mut settlement = recovery.settlement.borrow_mut();
+            if !matches!(
+                settlement.as_ref(),
+                Some(CandidateSettlement::Returned { result: Ok(()), .. })
+            ) {
+                return Err("Interrupted Exit candidate has no successful settlement".into());
+            }
+            let Some(CandidateSettlement::Returned { candidate, .. }) =
+                settlement.replace(CandidateSettlement::Pending)
+            else {
+                unreachable!()
+            };
+            let original = recovery.session.borrow_mut().take().unwrap();
+            (
+                recovery.session.clone(),
+                recovery.settlement.clone(),
+                original,
+                candidate,
+            )
+        };
+        Self::run_interrupted_exit_candidate_pass(
+            owner,
+            session_slot,
+            settlement_slot,
+            original,
+            candidate,
+            app,
+            completed,
+            move |original, candidate| {
+                before_validate(candidate);
+                original.revalidate_candidate(&mut candidate.candidate, &candidate.session)
+            },
+        );
+        Ok(())
+    }
+
+    fn run_interrupted_exit_candidate_pass(
+        owner: &Rc<RefCell<Self>>,
+        session_slot: Rc<RefCell<Option<RunningShutdownSession>>>,
+        settlement_slot: Rc<RefCell<Option<CandidateSettlement>>>,
+        mut original: RunningShutdownSession,
+        mut candidate: InterruptedExitCandidate,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+        operation: impl FnOnce(
+            &mut RunningShutdownSession,
+            &mut InterruptedExitCandidate,
+        ) -> Result<(), String>
+        + Send
+        + 'static,
+    ) {
         let retained = owner.clone();
         let work = app.background_executor().spawn(async move {
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                before_settle();
-                original.converge_candidate(&mut candidate.candidate, &candidate.session)
+                operation(&mut original, &mut candidate)
             }))
             .unwrap_or_else(|_| Err("Interrupted Exit candidate settlement unwound".into()));
             (original, candidate, result)
@@ -85,7 +180,23 @@ impl RunningProcessOwner {
             let _ = cx.update(|app| completed(&retained, app));
         })
         .detach();
-        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_revalidate_interrupted_exit_candidate(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+        before_validate: impl FnOnce(&mut InterruptedExitCandidate) + Send + 'static,
+    ) -> Result<(), String> {
+        Self::revalidate_interrupted_exit_candidate_with(
+            owner,
+            request,
+            app,
+            completed,
+            before_validate,
+        )
     }
 
     pub(crate) fn interrupted_exit_candidate_result(

@@ -5,6 +5,102 @@ fn recover_session(home: HomeStore) -> (beryl_home_store::HomeRecoveryCandidate,
 }
 
 #[test]
+fn interrupted_exit_revalidation_reads_exact_running_state_without_commands() {
+    use crate::running_owner::RunningShutdownSession;
+    for committed_exit in [false, true] {
+        let faults = FaultController::new();
+        let (_directory, home, session) = open_with_faults(3, faults.clone());
+        faults.fail_next(if committed_exit {
+            FaultPoint::AfterPersist
+        } else {
+            FaultPoint::BeforeCommit
+        });
+        let outcome = execute_exit_session(&home, &session, placements(3)).unwrap();
+        let (mut candidate, fresh) = recover_session(home);
+        let mut original = RunningShutdownSession::Settled(Ok(outcome));
+        let before = candidate
+            .recovery_access()
+            .unwrap()
+            .home_revision()
+            .unwrap();
+        assert_eq!(
+            original
+                .revalidate_candidate(&mut candidate, &fresh)
+                .is_ok(),
+            !committed_exit
+        );
+        assert_eq!(
+            candidate
+                .recovery_access()
+                .unwrap()
+                .home_revision()
+                .unwrap(),
+            before
+        );
+        assert!(
+            RunningShutdownSession::Unwound
+                .revalidate_candidate(&mut candidate, &fresh)
+                .is_err()
+        );
+        original.converge_candidate(&mut candidate, &fresh).unwrap();
+        let before = candidate
+            .recovery_access()
+            .unwrap()
+            .home_revision()
+            .unwrap();
+        let evidence = format!("{original:?}");
+        for _ in 0..2 {
+            original
+                .revalidate_candidate(&mut candidate, &fresh)
+                .unwrap();
+            assert_eq!(
+                candidate
+                    .recovery_access()
+                    .unwrap()
+                    .home_revision()
+                    .unwrap(),
+                before
+            );
+            assert_eq!(format!("{original:?}"), evidence);
+        }
+        let access = candidate.recovery_access().unwrap();
+        let snapshot = fresh.minimal_bootstrap_candidate(&access).unwrap().unwrap();
+        let record = &snapshot.windows()[2];
+        let mut command = HomeCommand::new(before);
+        command
+            .add(fresh.update_placement(
+                fresh.revision_candidate(&access).unwrap(),
+                UpdateWindowPlacement::new(
+                    snapshot.header().revision(),
+                    record.window_id(),
+                    record.revision(),
+                    placement(888),
+                ),
+            ))
+            .unwrap();
+        committed(access.execute(command));
+        let changed = access.home_revision().unwrap();
+        drop(access);
+        assert!(
+            original
+                .revalidate_candidate(&mut candidate, &fresh)
+                .unwrap_err()
+                .contains("no longer matches")
+        );
+        assert_eq!(
+            candidate
+                .recovery_access()
+                .unwrap()
+                .home_revision()
+                .unwrap(),
+            changed
+        );
+        assert_eq!(format!("{original:?}"), evidence);
+        candidate.abort().close().unwrap();
+    }
+}
+
+#[test]
 fn exit_candidate_validates_known_outcomes_without_writes_or_old_receipts() {
     for count in [1, 3, MAX_RESTORABLE_WINDOWS] {
         for committed in [false, true] {

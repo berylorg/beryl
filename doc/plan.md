@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 777: Route Recovered Appearance Through The Running Owner (finished)
+# Phase 778: Revalidate Retained Recovery Session Without Writes (finished)
 
-The running owner now binds fresh appearance through the exact cancelled request, successful graph
-retirement, candidate identity, idle retained draft and published shell. Original session, draft
-readiness and process publication custody remain retained; no worker or queue was added. Ten focused
-recovery tests passed in run `eee96b8c-26cc-40de-a8f6-63894aeb79d4`, including native binding and
-cleanup. Compilation, formatting and independent lifecycle review passed.
+The running owner now revalidates successful candidate session settlement with fresh reads through
+the existing single worker slot. No command is repeated; original outcome and candidate custody
+remain retained through pending work, stale request and unwind. Thirteen focused tests passed in
+run `48f7ec4f-b6b3-45de-b1ce-ca8e3c263a75`, including native noncommit recovery and component-level
+resumed-state validation. Compilation, formatting and independent lifecycle review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -120,8 +120,9 @@ candidate identity. Phase 775 supplies fresh appearance/notice registration on s
 Phase 776 extends that registration to process-retained published shell handles and preserves
 their settled native destruction enrollment.
 Phase 777 supplies the running-owner route for appearance binding through retained published shells.
-Candidate-state revalidation and exact session/draft/work settlement still precede whole-graph
-publication and coherent reopening.
+Phase 778 supplies read-only revalidation of retained successful candidate session settlement.
+Complete fresh-binding validation and exact draft/work settlement still precede whole-graph
+publication and coherent reopening; session validation alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

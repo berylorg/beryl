@@ -7,6 +7,30 @@ use beryl_home_store::HomeRecoveryCandidate;
 use beryl_state::SessionState;
 
 impl RunningShutdownSession {
+    pub(crate) fn revalidate_candidate(
+        &self,
+        candidate: &mut HomeRecoveryCandidate,
+        session: &SessionState,
+    ) -> Result<(), String> {
+        let running = match self {
+            Self::Settled(Ok(outcome)) => outcome
+                .validate_candidate(candidate, session)
+                .map(|state| state == ExitSessionValidation::UnchangedRunning),
+            Self::Reconciled(outcome) => outcome
+                .validate_candidate(candidate, session)
+                .map(|state| state == ExitSessionValidation::UnchangedRunning),
+            Self::Resuming(resume) => resume
+                .validate_candidate(candidate, session)
+                .map(|state| state == ResumeSessionValidation::ResumedRunning),
+            _ => return Err("Interrupted Exit session outcome remains unproven".into()),
+        }
+        .map_err(|error| error.to_string())?;
+        if !running {
+            return Err("Interrupted Exit candidate has not resumed Running".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn converge_candidate(
         &mut self,
         candidate: &mut HomeRecoveryCandidate,

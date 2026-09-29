@@ -488,6 +488,13 @@ by the executable composition root.
   unreleased draft entry and retained published shell must both identify the exact native window.
   Binding preserves candidate/session custody, draft readiness and process publication ownership;
   it installs only the shell's fresh appearance/notice ownership and keeps interaction fenced.
+- A returned successful candidate settlement may be revalidated through the same single worker
+  slot under the exact cancelled request and successful retirement. Fresh reads must prove either
+  the original noncommit Running state or the exact committed resume result. This pass performs no
+  command execution or reconciliation. Pending work excludes another pass; refusal and worker
+  return preserve original outcome and candidate custody, including after a stale request or
+  unwind. Failed validation remains retained and fenced. Revalidation alone grants no publication,
+  draft/work release or interaction reopening.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
