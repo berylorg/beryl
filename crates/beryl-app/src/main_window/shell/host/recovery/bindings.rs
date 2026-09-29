@@ -25,6 +25,27 @@ impl MainWindowShell {
 }
 
 impl MainWindowShellRoot {
+    pub(crate) fn release_interrupted_exit_draft(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        target: &Arc<GpuiAppearancePublicationTarget>,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        self.validate_interrupted_exit_binding(draft, target, cx)?;
+        let Some((mount, _, close)) = &draft.composer else {
+            return Ok(true);
+        };
+        match mount.update(cx, |mount, cx| {
+            mount.release_interrupted_exit_draft(*close, cx)
+        })? {
+            crate::main_window::MainWindowConversationComposerCloseRelease::Pending => Ok(false),
+            crate::main_window::MainWindowConversationComposerCloseRelease::Released => Ok(true),
+            crate::main_window::MainWindowConversationComposerCloseRelease::Stale => {
+                Err("Recovery draft close ticket changed".into())
+            }
+        }
+    }
+
     pub(crate) fn validate_interrupted_exit_binding(
         &self,
         draft: &MainWindowShutdownDraft,

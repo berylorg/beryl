@@ -11,7 +11,7 @@ pub(super) async fn verify(
         assert!(
             owner
                 .borrow()
-                .validate_interrupted_exit_bindings(request, appearance, app)
+                .release_interrupted_exit_drafts(request, appearance, app)
                 .is_err()
         );
         assert!(
@@ -47,13 +47,13 @@ pub(super) async fn verify(
         let mut running = owner.borrow_mut();
         assert!(
             running
-                .validate_interrupted_exit_bindings(&foreign, appearance, app)
+                .release_interrupted_exit_drafts(&foreign, appearance, app)
                 .is_err()
         );
         let old = running.test_process_appearance();
         assert!(
             running
-                .validate_interrupted_exit_bindings(request, &old, app)
+                .release_interrupted_exit_drafts(request, &old, app)
                 .is_err()
         );
         let impostor = GpuiAppearanceWindowSet::new(
@@ -63,35 +63,37 @@ pub(super) async fn verify(
         );
         assert!(
             running
-                .validate_interrupted_exit_bindings(request, &impostor, app)
+                .release_interrupted_exit_drafts(request, &impostor, app)
                 .is_err()
         );
         impostor.update(app, |owner, _| owner.retire());
         let drafts = running.test_replace_recovery_drafts(None).unwrap();
         assert!(
             running
-                .validate_interrupted_exit_bindings(request, appearance, app)
+                .release_interrupted_exit_drafts(request, appearance, app)
                 .is_err()
         );
         running.test_replace_recovery_drafts(Some(drafts.clone()));
         let borrow = drafts.borrow_mut();
         assert!(
             running
-                .validate_interrupted_exit_bindings(request, appearance, app)
+                .release_interrupted_exit_drafts(request, appearance, app)
                 .is_err()
         );
         drop(borrow);
         drafts.borrow_mut().test_recovery_driving(true);
         assert!(
             running
-                .validate_interrupted_exit_bindings(request, appearance, app)
+                .release_interrupted_exit_drafts(request, appearance, app)
                 .is_err()
         );
         drafts.borrow_mut().test_recovery_driving(false);
         for _ in 0..2 {
-            running
-                .validate_interrupted_exit_bindings(request, appearance, app)
-                .unwrap();
+            assert!(
+                running
+                    .release_interrupted_exit_drafts(request, appearance, app)
+                    .unwrap()
+            );
         }
         assert!(!drafts.borrow().test_recovery_ready());
     })
@@ -143,7 +145,7 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow()
-                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .release_interrupted_exit_drafts(request, appearance, app)
                     .is_err()
             );
             assert!(
@@ -183,7 +185,7 @@ pub(super) async fn verify(
             assert_eq!(
                 owner
                     .borrow()
-                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .release_interrupted_exit_drafts(request, appearance, app)
                     .is_err(),
                 unwind
             );

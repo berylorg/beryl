@@ -530,6 +530,27 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         });
         let service = mount.read_with(cx, |mount, _| mount.bound_service().unwrap().clone());
         assert!(service.test_window_close_is_current(fresh));
+        if let Some(draft) = draft.as_mut() {
+            let target = cx.update(|app| owner.read(app).target());
+            window
+                .update(cx, |root, _, cx| {
+                    draft.composer.as_mut().unwrap().2 = old_close;
+                    assert!(
+                        root.release_interrupted_exit_draft(draft, &target, cx)
+                            .is_err()
+                    );
+                    draft.composer.as_mut().unwrap().2 = fresh;
+                    service.test_with_close_slot_locked(|| {
+                        assert!(
+                            !root
+                                .release_interrupted_exit_draft(draft, &target, cx)
+                                .unwrap()
+                        );
+                    });
+                    assert!(service.test_window_close_is_current(fresh));
+                })
+                .unwrap();
+        }
         cx.update(|app| {
             mount.update(app, |mount, cx| {
                 assert!(mount.release_interrupted_exit_draft(old_close, cx).is_err());
@@ -545,14 +566,34 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                 });
                 assert!(service.test_window_close_is_current(fresh));
                 assert!(mount.recovery_binding_current(fresh));
-                for _ in 0..2 {
-                    assert_eq!(
-                        mount.release_interrupted_exit_draft(fresh, cx).unwrap(),
-                        MainWindowConversationComposerCloseRelease::Released
-                    );
-                    assert!(!service.test_window_close_is_current(fresh));
-                    assert!(mount.recovery_binding_current(fresh));
-                }
+            });
+        });
+        for _ in 0..2 {
+            if let Some(draft) = draft.as_ref() {
+                let target = cx.update(|app| owner.read(app).target());
+                window
+                    .update(cx, |root, _, cx| {
+                        assert!(
+                            root.release_interrupted_exit_draft(draft, &target, cx)
+                                .unwrap()
+                        );
+                    })
+                    .unwrap();
+            } else {
+                cx.update(|app| {
+                    mount.update(app, |mount, cx| {
+                        assert_eq!(
+                            mount.release_interrupted_exit_draft(fresh, cx).unwrap(),
+                            MainWindowConversationComposerCloseRelease::Released
+                        );
+                    })
+                });
+            }
+            assert!(!service.test_window_close_is_current(fresh));
+            assert!(mount.read_with(cx, |mount, _| mount.recovery_binding_current(fresh)));
+        }
+        cx.update(|app| {
+            mount.update(app, |mount, cx| {
                 assert!(mount.release_interrupted_exit_draft(old_close, cx).is_err());
             });
         });

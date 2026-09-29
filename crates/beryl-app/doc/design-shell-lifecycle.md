@@ -509,6 +509,14 @@ by the executable composition root.
   busy access remains pending without another worker. Repeated completion preserves the same local
   ticket and fences. This settles only fresh service close custody, performs no durable write and
   grants no graph publication, ordinary close, disposal or interaction release authority.
+- The running owner routes recovered draft release under the same exact cancelled request and
+  successful retained candidate settlement as complete binding validation. Validate every published
+  shell and its unique retained draft before releasing any renewed service ticket. Each selected
+  shell uses the existing close-release boundary; a validated threadless shell is already settled.
+  Pending or failed passes retain every draft and any completed mount evidence for a later explicit
+  pass. No aggregate readiness/release flag changes, worker, collection or storage operation is
+  introduced. Completion settles service close custody only; work settlement, graph publication
+  and coherent interaction release remain separate prerequisites.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

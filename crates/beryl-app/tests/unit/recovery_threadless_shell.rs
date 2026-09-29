@@ -393,18 +393,25 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
                 let exact_root = draft.root;
                 draft.root = owner.entity_id();
                 assert!(
-                    root.validate_interrupted_exit_binding(&draft, &target, cx)
+                    root.release_interrupted_exit_draft(&draft, &target, cx)
                         .is_err()
                 );
                 draft.root = exact_root;
                 root.shutdown_interaction_gated = false;
                 assert!(
-                    root.validate_interrupted_exit_binding(&draft, &target, cx)
+                    root.release_interrupted_exit_draft(&draft, &target, cx)
                         .is_err()
                 );
                 root.shutdown_interaction_gated = true;
                 root.validate_interrupted_exit_binding(&draft, &target, cx)
                     .unwrap();
+                for _ in 0..2 {
+                    assert!(
+                        root.release_interrupted_exit_draft(&draft, &target, cx)
+                            .unwrap()
+                    );
+                    assert!(root.shutdown_interaction_gated);
+                }
             })
             .unwrap();
         if let Some(shell) = &retained_shell {

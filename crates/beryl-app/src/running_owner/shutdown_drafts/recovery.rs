@@ -11,6 +11,26 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(in crate::running_owner) fn release_recovered_drafts(
+        &self,
+        published: &crate::main_window::PublishedMainWindowRestoreSet,
+        appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        self.validate_recovered_bindings(published, appearance, app)?;
+        let target = appearance.read(app).target();
+        let mut released = true;
+        for (window, draft) in &self.windows {
+            let draft = draft.as_ref().map_err(Clone::clone)?;
+            released &= window
+                .update(app, |root, _, cx| {
+                    root.release_interrupted_exit_draft(draft, &target, cx)
+                })
+                .map_err(|error| error.to_string())??;
+        }
+        Ok(released)
+    }
+
     pub(in crate::running_owner) fn validate_recovered_bindings(
         &self,
         published: &crate::main_window::PublishedMainWindowRestoreSet,
