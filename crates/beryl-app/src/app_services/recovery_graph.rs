@@ -143,6 +143,17 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn composer_recovery_read(
+        &mut self,
+        source: &crate::main_window::MainWindowComposerCandidateSource,
+        effect: &gpui_text_input::RangePrepublicationEffect,
+    ) -> Result<crate::main_window::MainWindowComposerCandidateRead, String> {
+        self.services
+            .as_mut()
+            .expect("prepared recovery services")
+            .composer_recovery_read(source, effect)
+    }
+
     pub(crate) fn composer_recovery_source(
         &mut self,
         retired: crate::main_window::MainWindowComposerRetiredClose,

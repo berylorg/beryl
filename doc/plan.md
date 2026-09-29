@@ -89,14 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 811: Authenticate Resident Sources From The Prepared Recovery Graph (finished)
+# Phase 812: Retain The Prepared Graph In The Composer Worker (finished)
 
-Resident source authentication now borrows the prepared graph's sole candidate and uses its fresh
-state/storage handles, returning retired facts on refusal and preserving unpublished custody.
-The native test covers foreign-home and restoration refusal followed by successful fresh binding;
-all 12 resident tests (319f2830-ee5d-47de-9285-b0b1bac4edc5), the graph custody test, app compilation,
-formatting and independent review passed. GUI worker integration and whole-graph publication remain
-pending.
+The existing composer worker now retains the complete unpublished graph through authentication,
+validation and bounded page reads, sharing its single-task and cancellation machinery with the
+storage-candidate route. Native coverage proves graph/source return, refused retirement custody,
+pending cancellation and drained read cleanup. All 15 focused native cases and 12 worker regressions,
+app compilation, formatting and independent review passed. Three initial watchdog failures passed
+in the isolated rerun (f537b517-fb94-47dc-998a-48ad0de16a83), without timeout or production changes.
+Running-owner GUI preparation and whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -167,7 +168,9 @@ or recovery publication, using shared loading and fallback behavior; connect it 
 graph attachment next. Phase 809 connects its retained appearance to exact-request shell binding.
 Phase 810 connects complete binding validation and exact draft cleanup to that retained graph.
 Phase 811 authenticates resident sources using that graph's candidate and fresh domain handles;
-connect the source to the existing GUI preparation worker next.
+phase 812 retains that graph in the existing composer worker for authentication and reads.
+Connect it to running-owner GUI preparation next, retaining custody through settlement and
+disposing returned graphs on the background worker.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

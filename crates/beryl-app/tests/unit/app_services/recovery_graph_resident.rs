@@ -6,6 +6,9 @@ use std::{cell::Cell, rc::Rc};
 #[path = "running_resident_recovery_support.rs"]
 mod resident_fixture;
 
+#[path = "recovery_graph_resident_worker.rs"]
+mod worker_tests;
+
 fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServiceGraph {
     let one = NonZeroUsize::new(1).unwrap();
     let owner = ProcessServiceOwner::new(candidate.home_id(), one, one);

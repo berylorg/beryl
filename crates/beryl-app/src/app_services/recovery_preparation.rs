@@ -67,6 +67,20 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn composer_recovery_read(
+        &mut self,
+        source: &crate::main_window::MainWindowComposerCandidateSource,
+        effect: &gpui_text_input::RangePrepublicationEffect,
+    ) -> Result<crate::main_window::MainWindowComposerCandidateRead, String> {
+        let (candidate, _) = self
+            .cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+            .ok_or("recovery handoff is unavailable")?;
+        source.read_prepublication(candidate, effect)
+    }
+
     pub(super) fn composer_recovery_source(
         &mut self,
         state: &BerylState,

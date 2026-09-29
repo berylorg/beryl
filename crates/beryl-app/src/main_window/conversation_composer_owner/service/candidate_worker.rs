@@ -23,6 +23,12 @@ mod cleanup;
 type PreparedSource =
     Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>;
 
+type CandidateRead<C> = fn(
+    &mut C,
+    &MainWindowComposerCandidateSource,
+    &RangePrepublicationEffect,
+) -> Result<MainWindowComposerCandidateRead, String>;
+
 pub enum MainWindowComposerCandidateRead {
     Validation(RangePrepublicationValidationResponse),
     Page(RangePage),
@@ -34,21 +40,22 @@ pub struct MainWindowComposerCandidateCompletion {
     pub result: Result<MainWindowComposerCandidateRead, String>,
 }
 
-struct State {
+struct State<C> {
     generation: Option<RangePrepublicationSessionGeneration>,
-    resources: Option<(HomeRecoveryCandidate, PreparedSource)>,
+    resources: Option<(C, PreparedSource)>,
+    read: CandidateRead<C>,
     completion: Option<MainWindowComposerCandidateCompletion>,
     pending: bool,
     cancelled: bool,
     cleanup: Option<Arc<MainWindowNativeLineagePrepublicationSource>>,
 }
 
-pub struct MainWindowComposerCandidateWorker {
-    state: Rc<RefCell<State>>,
+pub struct MainWindowComposerCandidateWorker<C = HomeRecoveryCandidate> {
+    state: Rc<RefCell<State<C>>>,
 }
 
-pub struct MainWindowComposerCandidateCustody {
-    state: Rc<RefCell<State>>,
+pub struct MainWindowComposerCandidateCustody<C = HomeRecoveryCandidate> {
+    state: Rc<RefCell<State<C>>>,
 }
 
 impl MainWindowComposerCandidateWorker {
@@ -59,6 +66,7 @@ impl MainWindowComposerCandidateWorker {
         let state = Rc::new(RefCell::new(State {
             generation: None,
             resources: Some((candidate, Ok(source))),
+            read,
             completion: None,
             pending: false,
             cancelled: false,
@@ -71,7 +79,9 @@ impl MainWindowComposerCandidateWorker {
             MainWindowComposerCandidateCustody { state },
         )
     }
+}
 
+impl<C> MainWindowComposerCandidateWorker<C> {
     pub fn cancel(&mut self) {
         let mut state = self.state.borrow_mut();
         state.cancelled = true;
@@ -110,7 +120,9 @@ impl MainWindowComposerCandidateWorker {
         state.generation = Some(generation);
         Ok(())
     }
+}
 
+impl<C: Send + 'static> MainWindowComposerCandidateWorker<C> {
     pub fn start(
         &mut self,
         effect: RangePrepublicationEffect,
@@ -156,6 +168,7 @@ impl MainWindowComposerCandidateWorker {
             unreachable!("authenticated source checked before taking resources")
         };
         state.pending = true;
+        let read = state.read;
         drop(state);
         let retained = self.state.clone();
         let work = app.background_executor().spawn(async move {
@@ -202,13 +215,13 @@ impl MainWindowComposerCandidateWorker {
     }
 }
 
-impl Drop for MainWindowComposerCandidateWorker {
+impl<C> Drop for MainWindowComposerCandidateWorker<C> {
     fn drop(&mut self) {
         self.cancel();
     }
 }
 
-impl MainWindowComposerCandidateCustody {
+impl<C> MainWindowComposerCandidateCustody<C> {
     pub(in crate::main_window) fn retain_adoption_cleanup(
         &self,
         executor: gpui::BackgroundExecutor,
@@ -284,9 +297,7 @@ impl MainWindowComposerCandidateCustody {
         Ok(Some(delivery))
     }
 
-    pub fn take_resources(
-        &mut self,
-    ) -> Option<(HomeRecoveryCandidate, MainWindowComposerCandidateSource)> {
+    pub fn take_resources(&mut self) -> Option<(C, MainWindowComposerCandidateSource)> {
         let mut state = self.state.borrow_mut();
         if state.pending
             || state.completion.is_some()
@@ -302,11 +313,7 @@ impl MainWindowComposerCandidateCustody {
 
     pub fn take_refused_resources(
         &mut self,
-    ) -> Option<(
-        HomeRecoveryCandidate,
-        MainWindowComposerRetiredClose,
-        String,
-    )> {
+    ) -> Option<(C, MainWindowComposerRetiredClose, String)> {
         let mut state = self.state.borrow_mut();
         if state.pending
             || state.completion.is_some()
@@ -326,16 +333,27 @@ fn read(
     source: &MainWindowComposerCandidateSource,
     effect: &RangePrepublicationEffect,
 ) -> Result<MainWindowComposerCandidateRead, String> {
-    let access = candidate.recovery_access().map_err(|e| e.to_string())?;
-    match effect {
-        RangePrepublicationEffect::ValidateOwner(request) => source
-            .validate(&access, *request)
-            .map(MainWindowComposerCandidateRead::Validation),
-        RangePrepublicationEffect::Page { request, .. } => source
-            .text_page(&access, *request)
-            .map(MainWindowComposerCandidateRead::Page),
-        RangePrepublicationEffect::ObjectPage { request, .. } => source
-            .object_page(&access, *request)
-            .map(MainWindowComposerCandidateRead::ObjectPage),
+    source.read_prepublication(candidate, effect)
+}
+
+impl MainWindowComposerCandidateSource {
+    pub(crate) fn read_prepublication(
+        &self,
+        candidate: &mut HomeRecoveryCandidate,
+        effect: &RangePrepublicationEffect,
+    ) -> Result<MainWindowComposerCandidateRead, String> {
+        let source = self;
+        let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+        match effect {
+            RangePrepublicationEffect::ValidateOwner(request) => source
+                .validate(&access, *request)
+                .map(MainWindowComposerCandidateRead::Validation),
+            RangePrepublicationEffect::Page { request, .. } => source
+                .text_page(&access, *request)
+                .map(MainWindowComposerCandidateRead::Page),
+            RangePrepublicationEffect::ObjectPage { request, .. } => source
+                .object_page(&access, *request)
+                .map(MainWindowComposerCandidateRead::ObjectPage),
+        }
     }
 }
