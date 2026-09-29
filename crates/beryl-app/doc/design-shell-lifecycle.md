@@ -475,6 +475,13 @@ by the executable composition root.
 - Successful resident adoption releases its exact invalidated predecessor widget protection before
   discarding the predecessor snapshot. This consumes obsolete protection custody only; the widget
   remains disabled and the resident remains recovery-fenced until process recovery settles.
+- A surviving published shell may retain its native handle in the process restore set or already
+  have transferred release ownership to its root. Recovery uses the same registration validation
+  for both custody forms. A retained handle replaces its appearance owner only after registration
+  succeeds and installs fresh root-release ownership. Settled startup destruction enrollment and
+  its exact receipt remain retained; active or incomplete disposal refuses binding. Later handle
+  release, where allowed, also uses the fresh owner. Refusal preserves custody,
+  and neither form releases shutdown interaction or grants whole-graph publication.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

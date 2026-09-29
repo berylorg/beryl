@@ -36,6 +36,68 @@ fn record() -> NoticeRecord {
     }
 }
 
+pub(super) fn verify_retained(
+    shell: &mut MainWindowShell,
+    fresh: Arc<AppearanceGeneration>,
+    cx: &mut TestAppContext,
+) -> Entity<GpuiAppearanceWindowSet> {
+    let window = shell.window();
+    let old_owner = shell.appearance_owner.clone();
+    let owner = cx.update(|app| {
+        GpuiAppearanceWindowSet::new(fresh.clone(), NonZeroUsize::new(1).unwrap(), app)
+    });
+    assert!(
+        cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+            .is_err()
+    );
+    assert_eq!(shell.appearance_owner.entity_id(), old_owner.entity_id());
+    cx.update(|app| old_owner.update(app, |owner, _| owner.retire()));
+    shell.published = false;
+    assert!(
+        cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+            .is_err()
+    );
+    shell.published = true;
+    shell.appearance_registered = false;
+    assert!(
+        cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+            .is_err()
+    );
+    shell.appearance_registered = true;
+    assert_eq!(shell.appearance_owner.entity_id(), old_owner.entity_id());
+    assert!(
+        cx.update(|app| MainWindowShellRoot::bind_interrupted_exit_appearance(window, &owner, app))
+            .is_err()
+    );
+    window
+        .update(cx, |root, _, cx| {
+            root.appearance_release = Some(cx.on_release(|_, _| {}));
+        })
+        .unwrap();
+    cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+        .unwrap();
+    assert_eq!(shell.appearance_owner.entity_id(), owner.entity_id());
+    assert!(
+        cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+            .is_err()
+    );
+    window
+        .read_with(cx, |root, _| {
+            assert!(root.shutdown_interaction_gated);
+            assert!(root.appearance_release.is_some());
+            assert!(Arc::ptr_eq(
+                &root.controller.as_ref().unwrap().appearance.generation,
+                &fresh
+            ));
+        })
+        .unwrap();
+    assert_eq!(
+        cx.update(|app| owner.read(app).target().snapshot().count),
+        1
+    );
+    owner
+}
+
 pub(super) fn verify(
     window: WindowHandle<MainWindowShellRoot>,
     old_owner: Entity<GpuiAppearanceWindowSet>,

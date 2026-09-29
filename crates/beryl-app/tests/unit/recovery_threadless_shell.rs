@@ -125,27 +125,39 @@ fn placement() -> WindowPlacement {
 fn threadless_shell_recovery_adopts_facts_and_preserves_gate_and_reservation(
     cx: &mut TestAppContext,
 ) {
-    run(cx, false, false, false);
+    run(cx, false, false, AppearanceBinding::None);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_refuses_wrong_draft_home_and_unretired_shell(cx: &mut TestAppContext) {
-    run(cx, true, false, false);
+    run(cx, true, false, AppearanceBinding::None);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_retained_drafts_preserve_refusals_and_invalidate_readiness(
     cx: &mut TestAppContext,
 ) {
-    run(cx, false, true, false);
+    run(cx, false, true, AppearanceBinding::None);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_replaces_appearance_and_notice_ownership(cx: &mut TestAppContext) {
-    run(cx, false, false, true);
+    run(cx, false, false, AppearanceBinding::Released);
 }
 
-fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
+#[gpui::test]
+fn threadless_shell_recovery_rebinds_retained_published_handle(cx: &mut TestAppContext) {
+    run(cx, false, false, AppearanceBinding::Retained);
+}
+
+#[derive(Clone, Copy)]
+enum AppearanceBinding {
+    None,
+    Released,
+    Retained,
+}
+
+fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: AppearanceBinding) {
     let (home, attempt, lifetime, process, prepared, appearance) = std::thread::spawn(|| {
         let home = Home::new();
         let (attempt, lifetime) = RestoredWindowPreparationAttempt::new_for_test(
@@ -201,7 +213,16 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
         app.update_window(window.into(), |_, window, app| window.draw(app).clear())
             .unwrap();
     });
-    cx.update(|app| shell.publish(app)).unwrap();
+    cx.update(|app| {
+        if matches!(bindings, AppearanceBinding::Retained) {
+            shell.gate_startup_interaction(app).unwrap();
+        }
+        shell.publish(app).unwrap();
+        if matches!(bindings, AppearanceBinding::Retained) {
+            MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
+                .unwrap();
+        }
+    });
     let mut draft = window
         .update(cx, |root, window, cx| {
             root.set_shutdown_interaction_gated(true, cx).unwrap();
@@ -226,7 +247,8 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
         .unwrap();
     let (candidate, source, directory, fresh_appearance) = std::thread::spawn(move || {
         let (candidate, source, directory) = home.recover();
-        let fresh = bindings.then(|| appearance::prepare(&candidate));
+        let fresh =
+            (!matches!(bindings, AppearanceBinding::None)).then(|| appearance::prepare(&candidate));
         (candidate, source, directory, fresh)
     })
     .join()
@@ -340,10 +362,27 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
     assert_eq!(process.main_window_occupancy(), 1);
     assert!(!cx.update(|app| shell.ready_to_publish(app)));
     let old_owner = shell.appearance_owner.clone();
-    cx.update(|app| shell.release_published_handle(app))
-        .unwrap_or_else(|_| panic!("published shell handoff"));
-    let fresh_owner =
-        fresh_appearance.map(|fresh| appearance::verify(window, old_owner, fresh, cx));
+    let retained_owner = if matches!(bindings, AppearanceBinding::Retained) {
+        Some(appearance::verify_retained(
+            &mut shell,
+            fresh_appearance.as_ref().unwrap().clone(),
+            cx,
+        ))
+    } else {
+        None
+    };
+    let retained_shell = if matches!(bindings, AppearanceBinding::Retained) {
+        Some(shell)
+    } else {
+        cx.update(|app| shell.release_published_handle(app))
+            .unwrap_or_else(|_| panic!("published shell handoff"));
+        None
+    };
+    let fresh_owner = if matches!(bindings, AppearanceBinding::Retained) {
+        retained_owner
+    } else {
+        fresh_appearance.map(|fresh| appearance::verify(window, old_owner, fresh, cx))
+    };
     std::thread::spawn(move || {
         drop(candidate.abort());
         directory.close().unwrap();
@@ -361,6 +400,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: bool) {
     window
         .update(cx, |_, window, _| window.remove_window())
         .unwrap();
+    drop(retained_shell);
     cx.run_until_parked();
     assert_eq!(process.main_window_occupancy(), 0);
     if let Some(owner) = fresh_owner {

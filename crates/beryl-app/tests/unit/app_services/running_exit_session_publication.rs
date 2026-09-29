@@ -148,6 +148,7 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                         .request_exit();
                     app.spawn(async move |cx| {
                         let mut recovered_threadless = false;
+                        let mut recovered_appearance = None;
                         let request = next_request(&owner, cx).await;
                         let identity = request.identity();
                         let (request, error) = cx
@@ -432,7 +433,7 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                                 &owner, &request, candidate, settlement_unwind, cx,
                             ).await;
                             if matches!(fault, Some(FaultPoint::BeforeCommit)) && !settlement_unwind {
-                                threadless_recovery::verify(&owner, &request, &candidate, cx).await;
+                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, cx).await);
                                 recovered_threadless = true;
                             }
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
@@ -484,12 +485,12 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             .into_inner()
                             .test_into_process();
                         if consumer && fault.is_some() {
-                            dispose_failed_fixture(running, true, recovered_threadless, cx).await;
+                            dispose_failed_fixture(running, true, recovered_threadless, recovered_appearance, cx).await;
                         } else if matches!(
                             fault,
                             Some(FaultPoint::BeforeCommit | FaultPoint::AfterPersist)
                         ) {
-                            dispose_failed_fixture(running, false, false, cx).await;
+                            dispose_failed_fixture(running, false, false, None, cx).await;
                         } else {
                             support::dispose_running(running, cx).await;
                         }
@@ -511,8 +512,35 @@ async fn dispose_failed_fixture(
     mut running: startup_owner::StartedProcess,
     retired: bool,
     home_closed: bool,
+    recovered_appearance: Option<Arc<crate::theme_runtime::AppearanceGeneration>>,
     cx: &mut AsyncApp,
 ) {
+    let fresh_owner = if let Some(appearance) = recovered_appearance {
+        Some(
+            cx.update(|app| {
+                running.appearance.update(app, |owner, _| owner.retire());
+                let owner = crate::theme_runtime::GpuiAppearanceWindowSet::new(
+                    appearance,
+                    NonZeroUsize::new(4).unwrap(),
+                    app,
+                );
+                let shell = running.windows.test_recovery_shell();
+                shell.bind_interrupted_exit_appearance(&owner, app).unwrap();
+                assert!(shell.bind_interrupted_exit_appearance(&owner, app).is_err());
+                shell
+                    .window()
+                    .update(app, |root, window, cx| {
+                        let mut draft = root.begin_shutdown_draft(window, cx).unwrap();
+                        assert!(root.retire_shutdown_draft(&mut draft, cx).unwrap());
+                    })
+                    .unwrap();
+                owner
+            })
+            .unwrap(),
+        )
+    } else {
+        None
+    };
     if retired {
         cx.update(|app| {
             for shell in running.windows.shells() {
@@ -530,6 +558,13 @@ async fn dispose_failed_fixture(
         })
         .unwrap();
         cx.update(|app| assert!(app.windows().is_empty())).unwrap();
+        if let Some(owner) = fresh_owner {
+            use crate::theme_runtime::AppearancePublicationTarget;
+            cx.update(|app| {
+                assert_eq!(owner.read(app).target().snapshot().count, 0);
+            })
+            .unwrap();
+        }
     } else {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {

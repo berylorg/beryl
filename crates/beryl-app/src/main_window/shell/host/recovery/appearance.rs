@@ -10,12 +10,41 @@ struct PreparedRecoveryAppearance {
     target: Arc<GpuiAppearancePublicationTarget>,
     id: WindowAdapterId,
     appearance: MainWindowShellAppearance,
+    retained_handle: bool,
+}
+
+impl MainWindowShell {
+    pub(crate) fn bind_interrupted_exit_appearance(
+        &mut self,
+        owner: &Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        if !self.startup_publication_allowed() {
+            return Err("Recovery shell disposal is pending".into());
+        }
+        if !self.published || !self.appearance_registered {
+            return Err("Recovery shell has no published appearance custody".into());
+        }
+        MainWindowShellRoot::register_interrupted_exit_appearance(self.window, owner, true, app)?;
+        self.appearance_owner = owner.clone();
+        Ok(())
+    }
 }
 
 impl MainWindowShellRoot {
     pub(crate) fn bind_interrupted_exit_appearance(
         window: WindowHandle<Self>,
         owner: &Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        Self::register_interrupted_exit_appearance(window, owner, false, app)
+    }
+
+    fn register_interrupted_exit_appearance(
+        window: WindowHandle<Self>,
+        owner: &Entity<GpuiAppearanceWindowSet>,
+        retained_handle: bool,
         app: &mut App,
     ) -> Result<(), String> {
         let id = window
@@ -36,6 +65,7 @@ impl MainWindowShellRoot {
                         target,
                         id,
                         appearance: MainWindowShellAppearance::prepare(generation),
+                        retained_handle,
                     }))
                 },
                 cx,
@@ -53,7 +83,7 @@ impl PreparedWindowAppearance for PreparedRecoveryAppearance {
                 let controller = root.controller.as_ref().ok_or(reject)?;
                 if !root.shutdown_interaction_gated
                     || root.startup_interaction_gated()
-                    || root.appearance_release.is_none()
+                    || (!self.retained_handle && root.appearance_release.is_none())
                     || !root.notices.publication_retired()
                 {
                     return Err(reject);

@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 775: Replace Recovered Shell Appearance And Notice Bindings (finished)
+# Phase 776: Rebind Appearance Through Retained Published Shell Handles (finished)
 
-Recovered selected and threadless shells now replace appearance, notice lifetime and native-release
-ownership through bounded registration after old-target retirement. Exact predecessor widget
-protection is consumed after successful adoption without reopening the editor; the
-[appearance correction](failures/recovery-appearance.md) records the discovered custody gap.
-Eighteen focused recovery, resident-association and native appearance tests passed in runs
-`981e8b11-a1f9-4574-a068-4450e8c83462`, `91ef3117-3f30-47c0-b161-d0df0bca1c42` and
-`93a348a6-1b8c-4edf-b4d4-6780b5519fc5`. Compilation, formatting and independent review passed.
+Retained published shells now use the same recovery registration while preserving settled native
+destruction custody and shutdown fences. Fresh handle/root ownership cleans up the replacement
+adapter on release. Ten focused recovery tests passed in run
+`34778411-0736-4761-93cf-861ae0aa4665`, including actual startup-restored shell binding and cleanup.
+Compilation, formatting and independent lifecycle review passed. The
+[appearance evidence](failures/recovery-appearance.md) records custody and fixture corrections.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -119,6 +118,8 @@ retained-draft aggregate to the running owner. Phase 771 supplies fresh bounded 
 authentication; phases 772–773 supply attachment through its surviving shell and retained draft
 aggregate. Phase 774 binds threadless attachment to the running owner's exact request and
 candidate identity. Phase 775 supplies fresh appearance/notice registration on surviving shells.
+Phase 776 extends that registration to process-retained published shell handles and preserves
+their settled native destruction enrollment.
 Running-owner composition of those bindings, candidate-state revalidation and exact session/draft/
 work settlement still precede whole-graph publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

@@ -1,18 +1,25 @@
 use crate::app_services::recovery_threadless::ThreadlessRecoveryWindow;
 use crate::running_owner::InterruptedExitCandidate;
 
+mod native_appearance {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/support/native_shell_appearance.rs"
+    ));
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     foreign_candidate: &InterruptedExitCandidate,
     cx: &mut AsyncApp,
-) {
+) -> Arc<crate::theme_runtime::AppearanceGeneration> {
     let window = owner.borrow().test_process().windows.shells()[0].window();
     let window_id = window
         .read_with(cx, |root, _| root.controller().unwrap().window_id())
         .unwrap();
     let home = owner.borrow_mut().test_take_retired_recovery_home();
-    let (candidate, mut source) = cx
+    let (candidate, mut source, appearance) = cx
         .background_executor()
         .spawn(async move {
             let home_id = home.home_id();
@@ -26,12 +33,20 @@ pub(super) async fn verify(
                     .unwrap();
             source.revalidate(&access, &state).unwrap();
             assert_eq!(before, access.home_revision().unwrap());
+            let appearance = crate::theme_runtime::AppearanceCoordinator::new(
+                crate::theme_runtime::AppearanceCoordinatorConfig::new(
+                    NonZeroUsize::new(4).unwrap(),
+                ),
+                native_appearance::system_font_appearance(&state),
+            )
+            .current();
             (
                 InterruptedExitCandidate {
                     candidate,
                     session: state.session(),
                 },
                 Some(source),
+                appearance,
             )
         })
         .await;
@@ -129,8 +144,6 @@ pub(super) async fn verify(
                     .unwrap_err()
                     .contains("fresh appearance")
             );
-            let mut draft = root.begin_shutdown_draft(window, app).unwrap();
-            assert!(root.retire_shutdown_draft(&mut draft, app).unwrap());
         })
         .unwrap();
     assert_eq!(
@@ -144,4 +157,5 @@ pub(super) async fn verify(
             candidate.candidate.abort().close().unwrap();
         })
         .await;
+    appearance
 }
