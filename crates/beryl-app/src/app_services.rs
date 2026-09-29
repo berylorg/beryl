@@ -35,6 +35,7 @@ mod initial_disposal;
 mod preparation;
 mod published;
 pub(crate) mod recovery_composer;
+pub(crate) mod recovery_graph;
 pub(crate) mod recovery_preparation;
 mod recovery_retirement;
 pub(crate) use recovery_retirement::{RetiredHomeRecoveryError, RetiredProcessWorkError};

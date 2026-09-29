@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 794: Assemble Private Recovery Service Preparation (finished)
+# Phase 795: Prepare The Retired Owner's Complete Private Service Bundle (finished)
 
-One private owner now assembles prepared recovery CAS/handoff with fresh marker, Activity and
-Theme services. Cancellation and failed preparation join ancillary services before CAS abort;
-typed preparation/disposal errors and retry-home custody remain preserved. All 13 focused recovery
-regressions passed (3ec4318c-edb5-4133-ba68-cd12d4cfaca8), with compilation, formatting and
-independent review. Running-owner integration and complete graph publication remain pending.
+The retired owner now prepares fresh domains, sessions, attention, CAS/handoff and ancillary
+services together. Refusal preserves caller custody; preparation failure and cancellation retain
+typed outcomes and retry-home custody while workers remain dormant. The ten-case factory test
+passed (3b2c94c0-4306-4a7f-ab01-6dc2da61ac66), alongside 13 existing recovery regressions,
+compilation, formatting and independent review. Running-owner admission, attachment and publication
+remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -137,6 +138,8 @@ Phase 791 supplies fresh candidate Activity preparation using the shared dormant
 Phase 792 supplies fresh candidate Theme preparation using the existing dormant watcher.
 Phase 793 connects the running owner's constructed candidate to retained session convergence.
 Phase 794 assembles private recovery services and their ordered failure/cancellation disposal.
+Phase 795 connects complete private service preparation to the retired owner with fresh domain,
+session and attention custody and preflight refusal before candidate transfer.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
