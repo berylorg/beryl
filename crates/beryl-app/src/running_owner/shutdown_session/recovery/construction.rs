@@ -1,5 +1,6 @@
 use super::*;
-use beryl_home_store::HomeGeneration;
+use crate::app_services::RetiredHomeRecoveryError;
+use beryl_home_store::{CommandCancellation, HomeGeneration};
 use settlement::CandidateSettlement;
 
 impl RunningProcessOwner {
@@ -65,12 +66,16 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,
+        cancellation: CommandCancellation,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
         let (mut services, slot) = {
             let mut owner = owner.borrow_mut();
             owner.interrupted_exit_graph_retirement_result(request)?;
+            if cancellation.is_cancelled() {
+                return Err(RetiredHomeRecoveryError::Cancelled.to_string());
+            }
             let recovery = owner.interrupted_exit.as_ref().unwrap();
             if recovery.session.borrow().is_none()
                 || recovery.resident.is_some()
@@ -102,7 +107,27 @@ impl RunningProcessOwner {
             (services, result)
         });
         app.spawn(async move |cx| {
-            let (services, result) = work.await;
+            let (mut services, mut result) = work.await;
+            if cancellation.is_cancelled() {
+                match result {
+                    Ok(candidate) => {
+                        services = cx
+                            .background_executor()
+                            .spawn(async move {
+                                let mut home = Some(candidate.abort());
+                                services
+                                    .return_retired_service_home(generation, &mut home)
+                                    .expect(
+                                        "exclusive retired custody accepts cancelled candidate",
+                                    );
+                                services
+                            })
+                            .await;
+                        result = Err(RetiredHomeRecoveryError::Cancelled);
+                    }
+                    Err(error) => result = Err(error),
+                }
+            }
             retained.borrow_mut().process.services = Some(services);
             *slot.borrow_mut() = Some(CandidateSettlement::Constructed(result));
             let _ = cx.update(|app| completed(&retained, app));

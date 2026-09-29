@@ -14,6 +14,7 @@ pub(super) async fn verify(
                 owner,
                 &foreign,
                 generation,
+                beryl_home_store::CommandCancellation::new(),
                 app,
                 |_, _| panic!("foreign construction")
             )
@@ -25,6 +26,7 @@ pub(super) async fn verify(
                 owner,
                 request,
                 generation,
+                beryl_home_store::CommandCancellation::new(),
                 app,
                 |_, _| panic!("unproven retirement")
             )
@@ -38,6 +40,7 @@ pub(super) async fn verify(
                 owner,
                 request,
                 generation,
+                beryl_home_store::CommandCancellation::new(),
                 app,
                 |_, _| panic!("failed retirement")
             )
@@ -47,11 +50,27 @@ pub(super) async fn verify(
         owner
             .borrow()
             .test_set_resident_graph_retirement(Some(Ok(())));
+        let cancellation = beryl_home_store::CommandCancellation::new();
+        cancellation.cancel();
+        assert_eq!(
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                cancellation,
+                app,
+                |_, _| panic!("pre-cancelled construction")
+            )
+            .unwrap_err(),
+            "recovery candidate construction was cancelled"
+        );
+        assert!(!owner.borrow().test_services_on_worker());
     })
     .unwrap();
     for (pass, fault) in [
         Some(FaultPoint::BeforeReopen),
         Some(FaultPoint::AfterReopen),
+        None,
         None,
         None,
     ]
@@ -62,11 +81,13 @@ pub(super) async fn verify(
             faults.fail_next(fault);
         }
         let (sender, receiver) = futures_channel::oneshot::channel();
+        let cancellation = beryl_home_store::CommandCancellation::new();
         cx.update(|app| {
             RunningProcessOwner::construct_interrupted_exit_candidate(
                 owner,
                 request,
                 generation,
+                cancellation.clone(),
                 app,
                 move |owner, _| {
                     assert!(!owner.borrow().test_services_on_worker());
@@ -75,6 +96,9 @@ pub(super) async fn verify(
             )
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
+            if pass == 0 || pass == 2 {
+                cancellation.cancel();
+            }
             assert!(
                 RunningProcessOwner::abort_constructed_exit_candidate(
                     owner,
@@ -96,6 +120,7 @@ pub(super) async fn verify(
                     owner,
                     request,
                     generation,
+                    beryl_home_store::CommandCancellation::new(),
                     app,
                     |_, _| panic!("overlapping construction")
                 )
@@ -137,14 +162,27 @@ pub(super) async fn verify(
         let result = owner.borrow().interrupted_exit_construction_result(request);
         if fault.is_some() {
             assert!(result.is_err());
+            let prefix = match fault.unwrap() {
+                FaultPoint::BeforeReopen => {
+                    "same-home recovery rejected the physical database layout:"
+                }
+                FaultPoint::AfterReopen => "reopened home persistence barrier failed:",
+                _ => unreachable!(),
+            };
+            assert!(result.as_ref().unwrap_err().starts_with(prefix));
             assert_eq!(
                 result,
                 owner.borrow().interrupted_exit_construction_result(request)
             );
+        } else if pass == 2 {
+            assert_eq!(
+                result.unwrap_err(),
+                "recovery candidate construction was cancelled"
+            );
         } else {
             result.unwrap();
         }
-        if pass == 2 {
+        if pass == 3 {
             let (sender, receiver) = futures_channel::oneshot::channel();
             cx.update(|app| {
                 for (target, expected) in [(&foreign, generation), (request, stale_generation)] {
@@ -191,6 +229,7 @@ pub(super) async fn verify(
                         owner,
                         request,
                         generation,
+                        beryl_home_store::CommandCancellation::new(),
                         app,
                         |_, _| panic!("construct during abort")
                     )
@@ -245,6 +284,7 @@ pub(super) async fn verify(
                 owner,
                 request,
                 generation,
+                beryl_home_store::CommandCancellation::new(),
                 app,
                 |_, _| panic!("duplicate construction")
             )

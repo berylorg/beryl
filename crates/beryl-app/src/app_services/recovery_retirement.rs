@@ -4,6 +4,8 @@ use beryl_home_store::{HomeGeneration, HomeHealthState, HomeRecoveryCandidate, H
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RetiredHomeRecoveryError {
+    #[error("recovery candidate construction was cancelled")]
+    Cancelled,
     #[error(transparent)]
     Retirement(#[from] ServiceGraphRetirementError),
     #[error(transparent)]
