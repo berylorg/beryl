@@ -4,6 +4,63 @@ use beryl_home_store::{CommandCancellation, HomeGeneration};
 use settlement::CandidateSettlement;
 
 impl RunningProcessOwner {
+    pub(crate) fn settle_constructed_exit_candidate(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<(), String> {
+        let (session_slot, settlement_slot, original, candidate) = {
+            let owner = owner.borrow();
+            owner.interrupted_exit_graph_retirement_result(request)?;
+            let recovery = owner.interrupted_exit.as_ref().unwrap();
+            if recovery.session.borrow().is_none()
+                || recovery.resident.is_some()
+                || recovery
+                    .pending_resident_frame
+                    .as_ref()
+                    .is_some_and(|wake| wake.strong_count() != 0)
+            {
+                return Err("Interrupted Exit recovery custody is unavailable".into());
+            }
+            let mut settlement = recovery.settlement.borrow_mut();
+            let Some(CandidateSettlement::Constructed(Ok(candidate))) = settlement.as_ref() else {
+                return Err("Interrupted Exit has no constructed storage candidate".into());
+            };
+            let session = beryl_state::BerylState::reacquire_candidate(candidate)
+                .map_err(|error| error.to_string())?
+                .session();
+            let Some(CandidateSettlement::Constructed(Ok(candidate))) =
+                settlement.replace(CandidateSettlement::Pending)
+            else {
+                unreachable!()
+            };
+            let original = recovery.session.borrow_mut().take().unwrap();
+            (
+                recovery.session.clone(),
+                recovery.settlement.clone(),
+                original,
+                InterruptedExitCandidate { candidate, session },
+            )
+        };
+        Self::run_interrupted_exit_candidate_pass(
+            owner,
+            session_slot,
+            settlement_slot,
+            original,
+            candidate,
+            None,
+            app,
+            completed,
+            |original, candidate, _| {
+                original
+                    .converge_candidate(&mut candidate.candidate, &candidate.session)
+                    .map_err(settlement::CandidateSettlementError::Candidate)
+            },
+        );
+        Ok(())
+    }
+
     pub(crate) fn abort_constructed_exit_candidate(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
@@ -153,24 +210,6 @@ impl RunningProcessOwner {
                 result.as_ref().map(|_| ()).map_err(ToString::to_string)
             }
             _ => Err("Interrupted Exit candidate construction has not returned".into()),
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_take_constructed_exit_candidate(
-        &self,
-    ) -> beryl_home_store::HomeRecoveryCandidate {
-        match self
-            .interrupted_exit
-            .as_ref()
-            .unwrap()
-            .settlement
-            .borrow_mut()
-            .take()
-            .unwrap()
-        {
-            CandidateSettlement::Constructed(Ok(candidate)) => candidate,
-            _ => panic!("constructed candidate unavailable"),
         }
     }
 }

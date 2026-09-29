@@ -292,7 +292,12 @@ pub(super) async fn verify(
         );
     })
     .unwrap();
-    let candidate = owner.borrow().test_take_constructed_exit_candidate();
+    let candidate = constructed_settlement::verify(owner, request, generation, cx).await;
     assert_ne!(candidate.generation(), generation);
     candidate
+}
+
+mod constructed_settlement {
+    use super::*;
+    include!("interrupted_exit_constructed_settlement_support.rs");
 }

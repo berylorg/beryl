@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 792: Prepare Theme Runtime For A Fresh Recovery Candidate (finished)
+# Phase 793: Settle The Running Owner's Constructed Recovery Candidate (finished)
 
-Recovery Theme preparation now uses the existing dormant recovered subscription and shares initial
-watcher bounds. Fresh identity, publication-gated release and joined disposal before abort passed
-all 10 focused Theme cases (b0108e1c-a150-4c15-a28d-4c4702caead4), compilation, formatting and
-independent semantic review. Full fresh graph composition remains pending.
+The running owner now transfers its constructed candidate into the existing session convergence
+worker using fresh handles and the retained custody slot. Refusal, duplicate work and stale
+completion preserve custody and interaction fences. All 20 focused native regressions passed
+(a5e3bc71-8319-498e-94b7-6d8c1d1ddbdd), with compilation, formatting and independent review.
+Complete fresh graph preparation and publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -134,6 +135,7 @@ Phase 789 settles cancellation during construction before custody return and com
 Phase 790 supplies recovery CAS handoff preparation and preserves convergence outcomes through disposal.
 Phase 791 supplies fresh candidate Activity preparation using the shared dormant implementation.
 Phase 792 supplies fresh candidate Theme preparation using the existing dormant watcher.
+Phase 793 connects the running owner's constructed candidate to retained session convergence.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
