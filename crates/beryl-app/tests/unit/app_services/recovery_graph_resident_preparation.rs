@@ -8,6 +8,7 @@ use gpui_text_input::*;
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Adopt,
+    Shell,
     Cancel,
     Refuse,
 }
@@ -15,6 +16,10 @@ enum Mode {
 #[test]
 fn native_prepared_graph_resident_adopts_and_returns_graph() {
     run(Mode::Adopt);
+}
+#[test]
+fn native_prepared_graph_shell_preserves_custody_and_renews_draft() {
+    run(Mode::Shell);
 }
 #[test]
 fn native_prepared_graph_resident_cancels_queued_realization() {
@@ -40,7 +45,7 @@ fn run(mode: Mode) {
                     retired,
                     directory,
                     mount,
-                    drafts,
+                    mut drafts,
                     shell,
                 } = resident_fixture::prepare(cx).await;
                 eprintln!("graph preparation fixture: {}", directory.path().display());
@@ -60,9 +65,23 @@ fn run(mode: Mode) {
                 if mode == Mode::Refuse {
                     seed.history = None;
                 }
-                let graph = cx
+                let (graph, mut adapters) = cx
                     .background_executor()
-                    .spawn(async move { prepared(candidate) })
+                    .spawn(async move {
+                        let mut graph = prepared(candidate);
+                        let adapters = (mode == Mode::Shell).then(|| {
+                            graph
+                                .composer_recovery_adapters(
+                                    home,
+                                    generation,
+                                    crate::app_services::tests::configuration()
+                                        .projection
+                                        .turn_start_admission_requirement(),
+                                )
+                                .unwrap()
+                        });
+                        (graph, adapters)
+                    })
                     .await;
                 let (notify, notified) = futures_channel::oneshot::channel();
                 let mut preparation = cx
@@ -136,7 +155,7 @@ fn run(mode: Mode) {
                             notified.await.unwrap();
                         }
                     }
-                    if mode == Mode::Adopt {
+                    if matches!(mode, Mode::Adopt | Mode::Shell) {
                         assert!(ready);
                         let current = RangePrepublicationCurrent {
                             binding: fresh.binding,
@@ -146,21 +165,119 @@ fn run(mode: Mode) {
                                 items: environment.config().limits.max_surface_items,
                             },
                         };
-                        let (graph, service, fresh_close) = window
-                            .update(cx, |_, window, app| {
-                                composer.update(app, |resident, cx| {
-                                    preparation.adopt_resident(resident, close, current, window, cx)
+                        let (graph, service, fresh_close) = if mode == Mode::Shell {
+                            let mut configurator: Option<
+                                crate::main_window::MainWindowConversationComposerConfigurator,
+                            > = Some(Box::new(resident_fixture::configure));
+                            let (graph, fresh_close) = window
+                                .update(cx, |root, window, cx| {
+                                    let focus = window.focused(cx);
+                                    for (resident, missing_configurator) in
+                                        [(input.entity_id(), false), (composer.entity_id(), true)]
+                                    {
+                                        let saved = missing_configurator
+                                            .then(|| configurator.take().unwrap());
+                                        assert!(
+                                            drafts
+                                                .adopt_recovered_shell(
+                                                    root,
+                                                    resident,
+                                                    close,
+                                                    &mut preparation,
+                                                    &mut adapters,
+                                                    &mut configurator,
+                                                    current,
+                                                    window,
+                                                    cx,
+                                                )
+                                                .is_err()
+                                        );
+                                        if let Some(saved) = saved {
+                                            assert!(configurator.is_none());
+                                            configurator = Some(saved);
+                                        }
+                                        assert!(adapters.is_some() && configurator.is_some());
+                                        assert!(
+                                            drafts.recovery_residents()
+                                                == vec![(
+                                                    window.window_handle(),
+                                                    composer.entity_id(),
+                                                    close
+                                                )]
+                                        );
+                                        assert!(root.test_shell_construction_retired());
+                                        assert!(
+                                            preparation.authenticated_source().unwrap().is_some()
+                                        );
+                                    }
+                                    let adopted = drafts
+                                        .adopt_recovered_shell(
+                                            root,
+                                            composer.entity_id(),
+                                            close,
+                                            &mut preparation,
+                                            &mut adapters,
+                                            &mut configurator,
+                                            current,
+                                            window,
+                                            cx,
+                                        )
+                                        .unwrap();
+                                    assert!(
+                                        drafts.recovery_residents()
+                                            == vec![(
+                                                window.window_handle(),
+                                                composer.entity_id(),
+                                                adopted.1
+                                            )]
+                                    );
+                                    assert!(!drafts.test_recovery_ready());
+                                    assert!(adapters.is_none() && configurator.is_none());
+                                    assert!(!root.test_shell_construction_retired());
+                                    assert_eq!(window.focused(cx), focus);
+                                    assert_eq!(composer.read(cx).gpui_input(), input);
+                                    assert!(!input.read(cx).is_enabled());
+                                    assert!(
+                                        drafts
+                                            .adopt_recovered_shell(
+                                                root,
+                                                composer.entity_id(),
+                                                close,
+                                                &mut preparation,
+                                                &mut adapters,
+                                                &mut configurator,
+                                                current,
+                                                window,
+                                                cx,
+                                            )
+                                            .is_err()
+                                    );
+                                    assert!(
+                                        root.set_shutdown_interaction_gated(false, cx).is_err()
+                                    );
+                                    adopted
                                 })
-                            })
-                            .unwrap()
-                            .unwrap();
+                                .unwrap();
+                            (graph, None, fresh_close)
+                        } else {
+                            let (graph, service, fresh_close) = window
+                                .update(cx, |_, window, app| {
+                                    composer.update(app, |resident, cx| {
+                                        preparation
+                                            .adopt_resident(resident, close, current, window, cx)
+                                    })
+                                })
+                                .unwrap()
+                                .unwrap();
+                            (graph, Some(service), fresh_close)
+                        };
                         assert_ne!(fresh_close, close);
                         composer
                             .read_with(cx, |resident, _| {
                                 assert!(resident.recovery_snapshot().is_none())
                             })
                             .unwrap();
-                        (graph, None, Some(service))
+                        (graph, None, service)
                     } else {
                         preparation.cancel();
                         for _ in 0..64 {

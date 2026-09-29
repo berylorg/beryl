@@ -60,22 +60,16 @@ impl MainWindowShellRoot {
         Ok(())
     }
 
-    pub(crate) fn adopt_interrupted_exit_shell(
+    pub(crate) fn adopt_interrupted_exit_shell<C: Send + 'static>(
         &mut self,
         draft: &mut MainWindowShutdownDraft,
-        preparation: &mut MainWindowComposerRecoveryPreparation,
+        preparation: &mut MainWindowComposerRecoveryPreparation<C>,
         adapters: &mut Option<PreparedComposerRecoveryAdapters>,
         configurator: &mut Option<MainWindowConversationComposerConfigurator>,
         current: gpui_text_input::RangePrepublicationCurrent,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Result<
-        (
-            beryl_home_store::HomeRecoveryCandidate,
-            MainWindowConversationComposerCloseTicket,
-        ),
-        String,
-    > {
+    ) -> Result<(C, MainWindowConversationComposerCloseTicket), String> {
         if draft.root != cx.entity_id()
             || !self.shutdown_interaction_gated
             || self.startup_interaction_gated()

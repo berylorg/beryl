@@ -102,12 +102,12 @@ impl RunningShutdownDrafts {
         Ok(())
     }
 
-    pub(crate) fn adopt_recovered_shell(
+    pub(crate) fn adopt_recovered_shell<C: Send + 'static>(
         &mut self,
         root: &mut MainWindowShellRoot,
         resident: gpui::EntityId,
         close: crate::main_window::MainWindowConversationComposerCloseTicket,
-        preparation: &mut crate::main_window::MainWindowComposerRecoveryPreparation,
+        preparation: &mut crate::main_window::MainWindowComposerRecoveryPreparation<C>,
         adapters: &mut Option<
             crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
         >,
@@ -117,7 +117,7 @@ impl RunningShutdownDrafts {
         cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<
         (
-            beryl_home_store::HomeRecoveryCandidate,
+            C,
             crate::main_window::MainWindowConversationComposerCloseTicket,
         ),
         String,

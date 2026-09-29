@@ -62,23 +62,17 @@ impl MainWindowConversationComposerMount {
             && self.native_lineage_recovery.is_some()
     }
 
-    pub(crate) fn adopt_interrupted_exit_resident(
+    pub(crate) fn adopt_interrupted_exit_resident<C: Send + 'static>(
         &mut self,
         resident: &Entity<MainWindowConversationComposer>,
         close: MainWindowConversationComposerCloseTicket,
-        preparation: &mut MainWindowComposerRecoveryPreparation,
+        preparation: &mut MainWindowComposerRecoveryPreparation<C>,
         adapters: &mut Option<PreparedComposerRecoveryAdapters>,
         configurator: &mut Option<MainWindowConversationComposerConfigurator>,
         current: gpui_text_input::RangePrepublicationCurrent,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Result<
-        (
-            beryl_home_store::HomeRecoveryCandidate,
-            MainWindowConversationComposerCloseTicket,
-        ),
-        String,
-    > {
+    ) -> Result<(C, MainWindowConversationComposerCloseTicket), String> {
         self.validate_recovery_retirement(close, cx)?;
         if self.contribution.as_ref() != Some(resident) {
             return Err("recovery mount belongs to another resident".into());

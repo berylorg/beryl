@@ -89,13 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 813: Retain The Prepared Graph Through Resident Preparation (finished)
+# Phase 814: Carry Prepared Graph Custody Through Shell Attachment (finished)
 
-The existing GUI preparation now retains the complete prepared graph through realization,
-adoption and cancelled cleanup, sharing the storage-candidate implementation. Three native cases
-and all 15 preparation regressions passed, as did compilation, formatting and independent review.
-The native adoption fixture's capacity input was corrected before the passing rerun
-(1045f898-049d-4770-a058-ae230fd3328f). Running-owner integration and publication remain pending.
+The shared mount, shell and retained-draft attachment path now carries the complete prepared graph,
+preserving identity checks, synchronous ticket renewal and closed gates. All 24 focused cases,
+compilation, formatting and independent review passed. The new test's invalid retry after capacity
+cancellation was replaced with a recoverable configurator refusal before the passing rerun
+(f208a33e-c791-4f29-bfc0-89e3d3e3aaa5); existing capacity-cancellation coverage passed unchanged.
+Running-owner integration and publication remain pending.
+
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
 Connect process-supervisor Exit custody to the existing whole-graph retirement and same-home
@@ -167,6 +169,7 @@ Phase 810 connects complete binding validation and exact draft cleanup to that r
 Phase 811 authenticates resident sources using that graph's candidate and fresh domain handles;
 phase 812 retains that graph in the existing composer worker for authentication and reads.
 Phase 813 carries it through the shared GUI realization, adoption and cancelled cleanup path.
+Phase 814 carries it through mount, shell and retained-draft attachment with exact ticket renewal.
 Connect it to running-owner GUI preparation next, retaining custody through settlement and
 disposing returned graphs on the background worker.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
