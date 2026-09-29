@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 785: Construct The Retired Home Recovery Candidate (finished)
+# Phase 786: Retain Running-Owner Candidate Construction (finished)
 
-Exact completed retirement now constructs an unpublished same-home candidate. Returned reopening
-failure restores the failed home to existing custody and preserves typed errors, lock,
-reconciliation, native reservations and fencing. Six focused retirement tests passed in
-`e18d6069-2fb2-49cc-8e2d-afe5b6e67f1d`; compilation, formatting and independent review passed.
-The new fault fixture joins its scanner before injection to avoid competing fault consumption.
-Running-owner construction scheduling, service preparation and complete publication remain pending.
+The exact cancelled Exit now constructs its private candidate on a worker using the existing
+candidate slot. Service custody and candidate or typed error return before GUI delivery, including
+stale delivery; failed reopening permits explicit retry while preserving the original session and
+fences. Nine native Exit tests passed in `6387e49f-3a4e-4bdf-a9b9-3297f7788300`; compilation,
+formatting and independent review passed. Fresh service preparation, retry-delay scheduling and
+whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -129,7 +129,8 @@ Phase 782 supplies the retired service owner's fresh-candidate settlement of ret
 Phase 783 routes that contribution through the existing candidate worker with typed outcome custody.
 Phase 784 supplies exact retired-home custody transfer for production recovery.
 Phase 785 constructs the private storage candidate and restores failed-home custody on reopen error.
-Complete running-owner candidate construction scheduling, fresh service preparation, whole-graph
+Phase 786 supplies retained running-owner candidate construction using the existing worker slot.
+Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

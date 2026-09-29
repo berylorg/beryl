@@ -9,6 +9,7 @@ pub(crate) struct InterruptedExitCandidate {
 
 pub(super) enum CandidateSettlement {
     Pending,
+    Constructed(Result<HomeRecoveryCandidate, crate::app_services::RetiredHomeRecoveryError>),
     Returned {
         candidate: InterruptedExitCandidate,
         result: Result<(), CandidateSettlementError>,
@@ -260,7 +261,7 @@ impl RunningProcessOwner {
             .unwrap()
         {
             CandidateSettlement::Returned { candidate, .. } => candidate,
-            CandidateSettlement::Pending => panic!("candidate still in worker"),
+            _ => panic!("candidate settlement unavailable"),
         }
     }
 

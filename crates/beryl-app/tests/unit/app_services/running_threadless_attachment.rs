@@ -11,6 +11,11 @@ mod process_work {
     include!("interrupted_exit_process_work_support.rs");
 }
 
+mod construction {
+    use super::*;
+    include!("interrupted_exit_construction_support.rs");
+}
+
 mod native_appearance {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -22,19 +27,20 @@ pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     foreign_candidate: &InterruptedExitCandidate,
+    generation: beryl_home_store::HomeGeneration,
+    faults: &FaultController,
     cx: &mut AsyncApp,
 ) -> gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet> {
     let window = owner.borrow().test_process().windows.shells()[0].window();
     let window_id = window
         .read_with(cx, |root, _| root.controller().unwrap().window_id())
         .unwrap();
-    let home = owner.borrow_mut().test_take_retired_recovery_home();
+    let candidate = construction::verify(owner, request, generation, faults, cx).await;
     let (candidate, mut source, appearance) = cx
         .background_executor()
         .spawn(async move {
-            let home_id = home.home_id();
-            let generation = home.health().generation().unwrap();
-            let mut candidate = home.recover_same_home().unwrap();
+            let home_id = candidate.home_id();
+            let mut candidate = candidate;
             let state = BerylState::reacquire_candidate(&candidate).unwrap();
             let access = candidate.recovery_access().unwrap();
             let before = access.home_revision().unwrap();

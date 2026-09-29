@@ -1,0 +1,149 @@
+pub(super) async fn verify(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    generation: beryl_home_store::HomeGeneration,
+    faults: &FaultController,
+    cx: &mut AsyncApp,
+) -> beryl_home_store::HomeRecoveryCandidate {
+    let foreign = request.test_foreign();
+    let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                &foreign,
+                generation,
+                app,
+                |_, _| panic!("foreign construction")
+            )
+            .is_err()
+        );
+        owner.borrow().test_set_resident_graph_retirement(None);
+        assert!(
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                app,
+                |_, _| panic!("unproven retirement")
+            )
+            .is_err()
+        );
+        owner
+            .borrow()
+            .test_set_resident_graph_retirement(Some(Err("failed retirement".into())));
+        assert_eq!(
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                app,
+                |_, _| panic!("failed retirement")
+            )
+            .unwrap_err(),
+            "failed retirement"
+        );
+        owner
+            .borrow()
+            .test_set_resident_graph_retirement(Some(Ok(())));
+    })
+    .unwrap();
+    for fault in [
+        Some(FaultPoint::BeforeReopen),
+        Some(FaultPoint::AfterReopen),
+        None,
+    ] {
+        if let Some(fault) = fault {
+            faults.fail_next(fault);
+        }
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                app,
+                move |owner, _| {
+                    assert!(!owner.borrow().test_services_on_worker());
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+            assert!(owner.borrow().test_services_on_worker());
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_construction_result(request)
+                    .is_err()
+            );
+            assert!(
+                RunningProcessOwner::construct_interrupted_exit_candidate(
+                    owner,
+                    request,
+                    generation,
+                    app,
+                    |_, _| panic!("overlapping construction")
+                )
+                .is_err()
+            );
+            let mut absent = None;
+            assert!(
+                RunningProcessOwner::settle_interrupted_exit_candidate(
+                    owner,
+                    request,
+                    &mut absent,
+                    app,
+                    |_, _| panic!("overlapping settlement")
+                )
+                .is_err()
+            );
+            owner
+                .borrow_mut()
+                .test_replace_interrupted_exit_request(&foreign);
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        assert!(
+            owner
+                .borrow()
+                .interrupted_exit_construction_result(request)
+                .unwrap_err()
+                .contains("request changed")
+        );
+        owner
+            .borrow_mut()
+            .test_replace_interrupted_exit_request(request);
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        assert!(owner.borrow().test_services().graph().is_none());
+        let result = owner.borrow().interrupted_exit_construction_result(request);
+        if fault.is_some() {
+            assert!(result.is_err());
+            assert_eq!(
+                result,
+                owner.borrow().interrupted_exit_construction_result(request)
+            );
+        } else {
+            result.unwrap();
+        }
+    }
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                app,
+                |_, _| panic!("duplicate construction")
+            )
+            .is_err()
+        );
+    })
+    .unwrap();
+    let candidate = owner.borrow().test_take_constructed_exit_candidate();
+    assert_ne!(candidate.generation(), generation);
+    candidate
+}

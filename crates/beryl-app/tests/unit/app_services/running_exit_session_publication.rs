@@ -428,12 +428,13 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                             let mut candidate = Some(candidate);
+                            let retired_generation = owner.borrow().test_services().graph().unwrap().home().health().generation().unwrap();
                             graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
                             let candidate = candidate_settlement_support::verify(
                                 &owner, &request, candidate, settlement_unwind, cx,
                             ).await;
                             if matches!(fault, Some(FaultPoint::BeforeCommit)) && !settlement_unwind {
-                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, cx).await);
+                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, cx).await);
                                 recovered_threadless = true;
                             }
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
