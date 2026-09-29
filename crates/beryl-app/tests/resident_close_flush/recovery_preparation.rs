@@ -64,6 +64,30 @@ fn prepared_adoption_refuses_changed_history_and_drains(cx: &mut TestAppContext)
     run(cx, Scenario::AdoptionHistory);
 }
 
+#[gpui::test]
+fn resident_association_preserves_identity_and_remains_fenced(cx: &mut TestAppContext) {
+    run(cx, Scenario::Associate);
+}
+
+#[gpui::test]
+fn resident_association_refuses_stale_close_without_consuming_preparation(cx: &mut TestAppContext) {
+    run(cx, Scenario::AssociationClose);
+}
+
+#[gpui::test]
+fn resident_association_refuses_changed_protection_without_partial_attachment(
+    cx: &mut TestAppContext,
+) {
+    run(cx, Scenario::AssociationProtection);
+}
+
+#[gpui::test]
+fn resident_association_refuses_widget_adoption_without_partial_attachment(
+    cx: &mut TestAppContext,
+) {
+    run(cx, Scenario::AssociationCapacity);
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Scenario {
     Ready,
@@ -77,6 +101,10 @@ enum Scenario {
     AdoptionProtection,
     AdoptionCapacity,
     AdoptionHistory,
+    Associate,
+    AssociationClose,
+    AssociationProtection,
+    AssociationCapacity,
 }
 
 struct Empty;
@@ -91,6 +119,14 @@ impl gpui::Render for Empty {
 }
 
 fn run(cx: &mut TestAppContext, scenario: Scenario) {
+    let associates = matches!(
+        scenario,
+        Scenario::Associate
+            | Scenario::AssociationClose
+            | Scenario::AssociationProtection
+            | Scenario::AssociationCapacity
+    );
+    let adopts = matches!(scenario, Scenario::Adopt | Scenario::Associate);
     let mut foreign_text_system = None;
     if scenario == Scenario::WindowChanged {
         cx.add_window_view(|window, _| {
@@ -116,7 +152,7 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
     let focus = cx.update(|window, app| {
         input.update(app, |input, cx| {
             input.focus(window);
-            if scenario == Scenario::Adopt {
+            if adopts {
                 input.replace_and_mark_text_in_range(
                     None,
                     "retained adoption pages",
@@ -143,7 +179,7 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         .unwrap()
             == CloseAdvance::Ready
     });
-    if scenario == Scenario::Adopt {
+    if adopts {
         cx.simulate_keystrokes("ctrl-home shift-right");
     }
     support::drive_until(cx, "preparation quiescence", |cx| {
@@ -341,14 +377,19 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
         cx.run_until_parked();
     }
     assert!(finished);
-    if matches!(
-        scenario,
-        Scenario::Adopt
-            | Scenario::AdoptionProtection
-            | Scenario::AdoptionCapacity
-            | Scenario::AdoptionHistory
-    ) {
-        if scenario == Scenario::AdoptionProtection {
+    if associates
+        || matches!(
+            scenario,
+            Scenario::Adopt
+                | Scenario::AdoptionProtection
+                | Scenario::AdoptionCapacity
+                | Scenario::AdoptionHistory
+        )
+    {
+        if matches!(
+            scenario,
+            Scenario::AdoptionProtection | Scenario::AssociationProtection
+        ) {
             input.update(cx, |input, cx| {
                 assert!(
                     input
@@ -357,33 +398,89 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
                 );
             });
         }
-        if scenario == Scenario::AdoptionCapacity {
+        if matches!(
+            scenario,
+            Scenario::AdoptionCapacity | Scenario::AssociationCapacity
+        ) {
             current.available_capacity = RangeSurfaceCharge { bytes: 0, items: 0 };
         }
         if scenario == Scenario::AdoptionHistory {
             current.history = None;
         }
         let adopted = cx.update(|window, app| {
-            input.update(app, |input, cx| {
-                preparation.adopt(input, current, window, cx)
-            })
+            if associates {
+                composer.update(app, |resident, cx| {
+                    let predecessor = resident.selection_identity();
+                    let ticket = if scenario == Scenario::AssociationClose {
+                        beryl_app::main_window::MainWindowConversationComposerCloseTicket::for_test(
+                            mount.entity_id(),
+                            u64::MAX,
+                            predecessor,
+                        )
+                    } else {
+                        close.ticket
+                    };
+                    let result = preparation.adopt_resident(resident, ticket, current, window, cx);
+                    match &result {
+                        Ok((_, service, fresh_close)) => {
+                            assert_eq!(resident.selection_identity(), selection);
+                            assert_eq!(service.selected_identity(), Some(selection));
+                            assert_ne!(*fresh_close, close.ticket);
+                            assert_eq!(resident.gpui_input(), input);
+                            assert!(resident.recovery_snapshot().is_none());
+                            assert!(
+                                resident
+                                    .test_set_shutdown_interaction_gated(false, cx)
+                                    .is_err()
+                            );
+                            assert!(
+                                preparation
+                                    .adopt_resident(resident, *fresh_close, current, window, cx)
+                                    .is_err()
+                            );
+                        }
+                        Err(_) => {
+                            assert_eq!(resident.selection_identity(), predecessor);
+                            assert_eq!(
+                                resident.recovery_snapshot().unwrap().close_ticket(),
+                                close.ticket
+                            );
+                            assert_eq!(
+                                preparation.authenticated_source().unwrap(),
+                                Some((fresh, selection))
+                            );
+                        }
+                    }
+                    result.map(|(candidate, _, _)| candidate)
+                })
+            } else {
+                input.update(app, |input, cx| {
+                    preparation
+                        .adopt(input, current, window, cx)
+                        .map(|(candidate, source)| {
+                            assert_eq!(source.seed(), fresh);
+                            candidate
+                        })
+                })
+            }
         });
         cx.update(|window, app| {
             assert_eq!(window.focused(app), focus);
             input.update(app, |input, cx| {
                 assert!(!input.is_enabled());
-                assert!(preparation.adopt(input, current, window, cx).is_err());
+                if !associates || adopts {
+                    assert!(preparation.adopt(input, current, window, cx).is_err());
+                }
             });
         });
-        if scenario == Scenario::Adopt {
-            let (candidate, source) = adopted.unwrap();
-            assert_eq!(source.seed(), fresh);
+        if adopts {
+            let candidate = adopted.unwrap();
             input.read_with(cx, |input, _| {
                 assert_eq!(input.export_restoration(fresh.history).unwrap(), fresh);
                 assert!(!input.resident_protection_is_current(protection));
             });
             assert_resources_retained(&mut preparation);
-            drop((preparation, source));
+            drop(preparation);
             assert!(environment.cleanup().ownership().active > 0);
             cx.update(|window, app| {
                 input.update(app, |input, cx| {
@@ -438,7 +535,9 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
             input.resident_protection_is_current(protection),
             !matches!(
                 scenario,
-                Scenario::ProtectionChanged | Scenario::AdoptionProtection
+                Scenario::ProtectionChanged
+                    | Scenario::AdoptionProtection
+                    | Scenario::AssociationProtection
             )
         );
         assert!(!input.is_enabled());

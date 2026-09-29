@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 755: Transfer Prepared Recovery CAS Custody (finished)
+# Phase 756: Associate The Adopted Resident With Its Fresh Service (finished)
 
-Recovery composition can consume the existing fresh CAS service, same-home candidate and
-unreleased worker-start owner together without publishing or starting ordinary work. All seven
-focused recovery preparation tests and the app check pass; independent lifecycle review accepted.
-Recovery marker preparation, widget adoption and retained cleanup custody are already accepted.
-The exact resident/mount association and remaining fresh adapter composition stay in phase 745.
+Checked widget adoption now installs the matching resident service, selection, clipboard writer
+and fresh close ticket in one GUI call while preserving identity, presentation, focus and fencing.
+All 90 resident-close, pending-activation and native-window-operation tests and the app check pass;
+independent lifecycle review accepted. Recovery CAS custody transfer and marker preparation are
+already accepted. Mount adapter attachment and request-owner completion remain in phase 745.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 

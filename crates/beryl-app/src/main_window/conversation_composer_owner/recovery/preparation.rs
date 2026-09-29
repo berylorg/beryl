@@ -219,6 +219,51 @@ impl MainWindowComposerRecoveryPreparation {
         Ok(resources)
     }
 
+    pub fn adopt_resident(
+        &mut self,
+        resident: &mut MainWindowConversationComposer,
+        close: MainWindowConversationComposerCloseTicket,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut Window,
+        cx: &mut Context<MainWindowConversationComposer>,
+    ) -> Result<
+        (
+            HomeRecoveryCandidate,
+            Arc<MainWindowConversationComposerService>,
+            MainWindowConversationComposerCloseTicket,
+        ),
+        String,
+    > {
+        resident.validate_recovery_retirement(close, cx)?;
+        let snapshot = resident.recovery_snapshot.as_ref().unwrap();
+        if snapshot.restoration != self.predecessor || snapshot.retired.is_some() {
+            return Err("resident recovery predecessor is not owned by preparation".into());
+        }
+        {
+            let source = self
+                .custody
+                .source()
+                .ok_or("resident recovery source is unavailable")?;
+            if source.predecessor() != close {
+                return Err("resident recovery source belongs to another close".into());
+            }
+        }
+        let clipboard_writer = MainWindowConversationComposer::production_clipboard_writer();
+        let (candidate, source) = resident
+            .input
+            .update(cx, |input, cx| self.adopt(input, current, window, cx))?;
+        let selection = source.selection();
+        let fresh_close = source.close_ticket();
+        let service = source.into_service();
+        resident.selection = selection;
+        resident.service = Some(service.clone());
+        resident.clipboard_writer = Some(clipboard_writer);
+        resident.window_close = Some(fresh_close);
+        resident.recovery_snapshot = None;
+        resident.admitted_positions = None;
+        Ok((candidate, service, fresh_close))
+    }
+
     pub fn cancel(&mut self) {
         self.worker.cancel();
         self.candidate.take();
