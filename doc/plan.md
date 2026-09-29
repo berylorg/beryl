@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 764: Retire Failed-Generation Shell Construction Custody (finished)
+# Phase 765: Validate Graph Retirement Before Shell Mutation (finished)
 
-Acquired/restored construction and threadless source custody now retire after exact resident
-retirement, retaining window identity, placement and native reservation. No old-generation storage
-cleanup runs; startup reuse and interaction release remain refused until fresh binding. Twenty
-focused native tests and five native Exit tests pass; app compilation and independent lifecycle
-review accepted. See [custody evidence](failures/initial-composer-custody.md).
+The running owner now validates the exact published failed generation before shell retirement,
+sharing the existing service predicate and preserving its worker-side recheck. Native tests prove
+stale and healthy refusals preserve construction, session and service custody. Fourteen focused
+tests passed, followed by five native tests after coverage strengthening; app compilation and
+independent lifecycle review accepted. See [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -16,6 +16,36 @@ pub(super) async fn verify(
         .unwrap();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let foreign = request.test_foreign();
+    if matches!(fault, FaultPoint::AfterCommitBeforePersist) {
+        cx.update(|app| {
+            assert!(
+                RunningProcessOwner::retire_interrupted_exit_graph(
+                    owner,
+                    request,
+                    generation,
+                    app,
+                    |_, _| panic!("healthy generation retirement"),
+                )
+                .unwrap_err()
+                .contains("exact published failed generation")
+            );
+            assert!(!owner.borrow().test_services_on_worker());
+            assert!(owner.borrow().test_services().graph().is_some());
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_graph_retirement_result(request)
+                    .unwrap_err()
+                    .contains("has not returned")
+            );
+            assert_eq!(
+                original,
+                format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+            );
+        })
+        .unwrap();
+        return;
+    }
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {
         assert!(
@@ -146,14 +176,6 @@ pub(super) async fn verify(
         }
         FaultPoint::AfterPersist => {
             assert!(result.unwrap_err().contains("unwound"));
-            assert!(owner.borrow().test_services().graph().is_some());
-        }
-        FaultPoint::AfterCommitBeforePersist => {
-            assert!(
-                result
-                    .unwrap_err()
-                    .contains("exact published failed generation")
-            );
             assert!(owner.borrow().test_services().graph().is_some());
         }
         _ => unreachable!(),

@@ -376,7 +376,27 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            let (directory, candidate) = cx.background_executor().spawn(async {
+                                foreign_recovery_candidate()
+                            }).await;
                             cx.update(|app| {
+                                let generation = owner.borrow().test_services().graph().unwrap().home().health().generation().unwrap();
+                                let stale = candidate.candidate.generation();
+                                assert_ne!(generation, stale);
+                                assert!(RunningProcessOwner::retire_interrupted_exit_graph(
+                                    &owner, &request, stale, app,
+                                    |_, _| panic!("stale generation retirement"),
+                                ).unwrap_err().contains("exact published failed generation"));
+                                if matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                                    assert!(RunningProcessOwner::retire_interrupted_exit_graph(
+                                        &owner, &request, generation, app,
+                                        |_, _| panic!("healthy generation retirement"),
+                                    ).unwrap_err().contains("exact published failed generation"));
+                                }
+                                assert!(!window.read(app).unwrap().test_shell_construction_retired());
+                                assert!(!owner.borrow().test_services_on_worker());
+                                assert!(owner.borrow().test_services().graph().is_some());
+                                assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&foreign, app).is_err());
                                 window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(false, cx)).unwrap().unwrap();
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
@@ -384,7 +404,12 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                                 assert!(RunningProcessOwner::retire_interrupted_exit_graph(
                                     &owner, &request, generation, app,
                                     |_, _| panic!("retirement with an ungated original window"),
-                                ).unwrap_err().contains("exact gated shell"));
+                                ).unwrap_err().contains(if matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                                    "exact published failed generation"
+                                } else {
+                                    "exact gated shell"
+                                }));
+                                assert!(!window.read(app).unwrap().test_shell_construction_retired());
                                 assert!(!owner.borrow().test_services_on_worker());
                                 window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(true, cx)).unwrap().unwrap();
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
@@ -395,9 +420,6 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             assert!(owner.borrow_mut().retain_interrupted_exit_session(&request).is_err());
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
-                            let (directory, candidate) = cx.background_executor().spawn(async {
-                                foreign_recovery_candidate()
-                            }).await;
                             let mut candidate = Some(candidate);
                             graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
                             let candidate = candidate_settlement_support::verify(

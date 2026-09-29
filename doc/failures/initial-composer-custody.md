@@ -96,6 +96,21 @@ noncommit, postcommit failure, indeterminate reconciliation and settlement unwin
 check passes and independent lifecycle review accepted. Fresh shell bindings, remaining graph
 ownership and coherent recovery publication remain phase 702; this is not full recovery acceptance.
 
+Phase 765 corrects an admission ordering gap found while continuing replacement composition:
+the running owner previously retired residents and shell construction before the graph worker
+checked the supplied generation and failed-home state. An invalid request could therefore alter
+shell custody before being refused. The existing service-owner predicate is now shared with an
+early read-only check, before resident retirement, pending-result retention or worker transfer.
+The worker retains its own check. No new state, recovery capability or cleanup write is introduced.
+
+Run `c85be3dd-8c12-43ab-90d5-9bd94edef6d9` passed 14 native Exit and service-retirement tests.
+After review suggested directly checking healthy refusal on an otherwise gated, intact shell,
+run `e6a9c4ab-3123-42a0-a0ba-f3fa6f4ddb36` passed all five affected native Exit cases. Both stale
+and healthy requests preserve construction custody, session evidence and service availability.
+Existing healthy reconciliation fixtures now expect synchronous admission refusal rather than a
+worker-returned refusal. The app library check and independent lifecycle review passed. Complete
+fresh binding and publication remain phase 702 work.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.

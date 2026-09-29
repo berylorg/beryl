@@ -48,10 +48,14 @@ impl RunningProcessOwner {
             if recovery.retirement.borrow().is_some() {
                 return Err("Interrupted Exit graph retirement is already retained".into());
             }
-            if owner.process.services.is_none() {
-                return Err("The complete service owner is on a worker".into());
-            }
             let result_slot = recovery.retirement.clone();
+            owner
+                .process
+                .services
+                .as_ref()
+                .ok_or("The complete service owner is on a worker")?
+                .validate_failed_service_graph_retirement(generation)
+                .map_err(|error| error.to_string())?;
             if !owner.retire_interrupted_exit_residents(request, app)? {
                 return Err("Interrupted Exit resident retirement is not ready".into());
             }

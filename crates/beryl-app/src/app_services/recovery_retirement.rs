@@ -26,8 +26,8 @@ pub(crate) enum ServiceGraphRetirementError {
 }
 
 impl ProcessServiceOwner {
-    pub(crate) fn retire_failed_service_graph(
-        &mut self,
+    pub(crate) fn validate_failed_service_graph_retirement(
+        &self,
         expected: HomeGeneration,
     ) -> Result<(), ServiceGraphRetirementError> {
         if self.recovery_retirement.is_some() {
@@ -46,6 +46,14 @@ impl ProcessServiceOwner {
         {
             return Err(ServiceGraphRetirementError::Stale);
         }
+        Ok(())
+    }
+
+    pub(crate) fn retire_failed_service_graph(
+        &mut self,
+        expected: HomeGeneration,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        self.validate_failed_service_graph_retirement(expected)?;
         self.process.fence()?;
         self.attempt = InitialServiceAttemptState::Blocked;
         self.recovery_retirement = Some(ServiceGraphRetirement {
