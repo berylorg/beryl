@@ -12,6 +12,21 @@ pub(super) async fn verify(
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     for mode in ["success", "theme_failure", "cancel"] {
+        let fresh = candidate.as_ref().unwrap();
+        let home = fresh.candidate.home_id();
+        let fresh_generation = fresh.candidate.generation();
+        let requirement = configuration()
+            .projection
+            .turn_start_admission_requirement();
+        let adapters = |request| {
+            owner.borrow().interrupted_exit_composer_adapters(
+                request,
+                home,
+                fresh_generation,
+                requirement,
+            )
+        };
+        assert!(adapters(request).is_err());
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             RunningProcessOwner::settle_interrupted_exit_candidate(
@@ -92,6 +107,7 @@ pub(super) async fn verify(
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
             assert!(owner.borrow().interrupted_exit_session().is_none());
+            assert!(adapters(request).is_err());
             assert!(
                 owner
                     .borrow_mut()
@@ -109,6 +125,7 @@ pub(super) async fn verify(
         if let Some(canceller) = canceller {
             canceller.join().unwrap();
         }
+        assert!(adapters(request).is_err());
         assert!(
             owner
                 .borrow()
@@ -134,6 +151,44 @@ pub(super) async fn verify(
                     .is_err()
             );
         }
+        assert!(adapters(&foreign).is_err());
+        let retained_marker = if mode == "success" {
+            for retirement in [None, Some(Err("failed retirement".into()))] {
+                owner
+                    .borrow()
+                    .test_set_resident_graph_retirement(retirement);
+                assert!(adapters(request).is_err());
+            }
+            owner
+                .borrow()
+                .test_set_resident_graph_retirement(Some(Ok(())));
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_composer_adapters(request, home, generation, requirement,)
+                    .is_err()
+            );
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_composer_adapters(
+                        request,
+                        beryl_model::BerylHomeId::from_bytes([99; 16]),
+                        fresh_generation,
+                        requirement,
+                    )
+                    .is_err()
+            );
+            let prepared = adapters(request).unwrap();
+            assert!(prepared.matches(home, fresh_generation));
+            let (_, marker, _, _) = prepared.into_parts();
+            drop(adapters(request).unwrap());
+            assert!(!marker.test_generation_retired());
+            Some(marker)
+        } else {
+            assert!(adapters(request).is_err());
+            None
+        };
         assert_eq!(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
@@ -196,6 +251,8 @@ pub(super) async fn verify(
             owner
                 .borrow_mut()
                 .test_replace_interrupted_exit_request(request);
+            assert!(adapters(request).is_err());
+            assert!(retained_marker.as_ref().unwrap().test_generation_retired());
             assert_eq!(
                 original,
                 format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())

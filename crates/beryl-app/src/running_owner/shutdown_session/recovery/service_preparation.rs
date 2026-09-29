@@ -7,6 +7,26 @@ use settlement::{CandidateSettlement, CandidateSettlementError};
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) fn interrupted_exit_composer_adapters(
+        &self,
+        request: &RunningExitRequest,
+        home: beryl_model::BerylHomeId,
+        generation: HomeGeneration,
+        requirement: beryl_home_store::TurnStartAdmissionRequirement,
+    ) -> Result<crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters, String>
+    {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if recovery.session.borrow().is_none() {
+            return Err("Interrupted Exit session custody is unavailable".into());
+        }
+        let mut settlement = recovery.settlement.borrow_mut();
+        let Some(CandidateSettlement::Services(Ok(graph))) = settlement.as_mut() else {
+            return Err("Interrupted Exit has no prepared service graph".into());
+        };
+        graph.composer_recovery_adapters(home, generation, requirement)
+    }
+
     pub(crate) fn take_interrupted_exit_preparation_failure(
         &mut self,
         request: &RunningExitRequest,
