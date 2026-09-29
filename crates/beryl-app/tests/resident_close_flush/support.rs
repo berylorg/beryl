@@ -115,8 +115,20 @@ pub fn mounted_with_sources<'a>(
     configurator: beryl_app::main_window::MainWindowConversationComposerConfigurator,
     submission_source: impl FnOnce(&HomeStore) -> MainWindowComposerSubmissionRequestSource,
 ) -> (Mounted, &'a mut gpui::VisualTestContext) {
+    mounted_observing_faults(cx, name, seed, configurator, submission_source, |_| {})
+}
+
+pub fn mounted_observing_faults<'a>(
+    cx: &'a mut gpui::TestAppContext,
+    name: &str,
+    seed: u8,
+    configurator: beryl_app::main_window::MainWindowConversationComposerConfigurator,
+    submission_source: impl FnOnce(&HomeStore) -> MainWindowComposerSubmissionRequestSource,
+    observe: impl FnOnce(beryl_home_store::test_faults::FaultController),
+) -> (Mounted, &'a mut gpui::VisualTestContext) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let fixture = Fixture::new(name, seed);
+    observe(fixture.faults.clone());
     let claim = fixture.claims().0;
     let assets = fixture.assets();
     let seals = fixture.marker_seals();
@@ -185,7 +197,7 @@ pub fn configure(
     MainWindowConversationComposerConfig::new(selection, config).map_err(|error| error.to_string())
 }
 
-fn submission_source() -> MainWindowComposerSubmissionRequestSource {
+pub fn submission_source() -> MainWindowComposerSubmissionRequestSource {
     MainWindowComposerSubmissionRequestSource::new(
         beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         ProjectionServiceConfig::try_new(1, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())

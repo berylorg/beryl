@@ -43,6 +43,8 @@ mod recovery_native_control;
 mod recovery_native_lineage;
 #[path = "resident_close_flush/recovery_pending_cleanup.rs"]
 mod recovery_pending_cleanup;
+#[path = "resident_close_flush/recovery_preparation.rs"]
+mod recovery_preparation;
 #[path = "resident_close_flush/recovery_protection.rs"]
 mod recovery_protection;
 #[path = "resident_close_flush/recovery_resources.rs"]

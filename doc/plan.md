@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 751: Connect Candidate Workers To Prepublication Cleanup (finished)
+# Phase 752: Compose Bounded Candidate Realization And Cleanup (finished)
 
-Candidate reads now use the existing bounded cleanup tracker, with direct exact-session delivery
-and cancellation disposal before notification. Retained custody settles undispatched effects even
-after worker abandonment. All 64 resident-close tests and the app library check pass; independent
-lifecycle review accepted. The [custody lesson](failures/composer-candidate-worker-custody.md)
-records the corrected result-transfer boundary.
+The preparation driver now composes authentication, protected combined-capacity admission, serial
+candidate reads, bounded GUI realization and retained cancellation cleanup. Seven mounted cases
+cover readiness, refusals and cancellation; all 71 resident-close tests and the app check pass.
+Independent lifecycle review accepted. Process-owner association and coherent adoption remain below.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -105,6 +104,15 @@ the successor seed; dispatch bounded reads off the GUI thread and realize throug
 GUI steps. Verify stale flight/generation rejection, capacity/environment refusal, actual worker
 lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
 fenced. Independently review the fresh-source and worker-custody boundary.
+
+Retain `MainWindowComposerRecoveryPreparation` from 752 under that owner independently of GUI
+consumers. Its `prepare` authenticates off-thread; `authenticated_source` supplies copied source
+facts for environment construction, `admit` reserves the protected predecessor's combined capacity,
+and `advance` performs one delivery, dispatch or bounded widget step. Schedule those calls explicitly
+with exact request/resident/close/candidate-generation checks. Cancellation uses `cancel`, bounded
+`advance_cleanup`, then `take_cancelled_resources` for explicit returned-resource settlement.
+Keep the driver retained through later adoption; its ready candidate and reservation remain private
+until 745 supplies the checked handoff. Do not duplicate its worker, effect queue or cleanup driver.
 
 Use the candidate-only reads accepted in 746, authenticated source from 747 and protected resident
 snapshot from 748. Retain the worker custody receiver from 749 under the recovery owner independently

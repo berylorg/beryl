@@ -24,3 +24,10 @@ Cancellation must discard its payload before terminal marking and notification; 
 notification can drain cleanup while the return task still holds that payload. Undispatched effects
 also need settlement through the retained receiver after the GUI worker disappears. A positive
 abandonment-before-dispatch test must exercise a real emitted effect, not an empty remainder queue.
+
+During phase 752 verification, expanding a shared mounted-test function with repeated owning
+resource-result assertions overflowed the Windows test executor stack during authentication.
+The reconstructed source occupied 51,424 bytes in that build; each owning result temporary added
+to the caller's stack frame. Factoring extraction assertions and explicit resource closure into
+small test helpers restored all seven scenarios without increasing stack limits or changing
+production ownership. Avoid accumulating large owning-result temporaries in lifecycle fixtures.

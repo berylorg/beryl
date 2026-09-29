@@ -3,6 +3,9 @@ use crate::{
     composer_host::ComposerHostFlushTicket, main_window::MainWindowConversationComposerCloseTicket,
 };
 
+mod preparation;
+pub use preparation::{MainWindowComposerRecoveryPreparation, MainWindowComposerRecoveryProgress};
+
 pub struct MainWindowComposerRecoverySnapshot {
     selection: MainWindowComposerSelectionIdentity,
     close: MainWindowConversationComposerCloseTicket,

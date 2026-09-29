@@ -48,15 +48,18 @@ pub(in crate::main_window) use prepublication::{
     MainWindowNativeLineagePrepublicationWork,
 };
 pub use realization::*;
-pub use recovery::{MainWindowComposerRecoveryResources, MainWindowComposerRecoverySnapshot};
+pub use recovery::{
+    MainWindowComposerRecoveryPreparation, MainWindowComposerRecoveryProgress,
+    MainWindowComposerRecoveryResources, MainWindowComposerRecoverySnapshot,
+};
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowComposerCandidateSource;
+pub use service::MainWindowConversationComposerService;
+pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 pub use service::{
     MainWindowComposerCandidateCompletion, MainWindowComposerCandidateCustody,
     MainWindowComposerCandidateRead, MainWindowComposerCandidateWorker,
 };
-pub use service::MainWindowConversationComposerService;
-pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 #[cfg(feature = "test-faults")]
 pub use service::{
     MainWindowNativeLineageCleanupTestWitness, MainWindowNativeLineageCleanupTestWitnessSnapshot,
