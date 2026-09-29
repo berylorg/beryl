@@ -1,14 +1,32 @@
 use super::*;
 use crate::app_services::{
-    AppServiceConfiguration,
-    recovery_graph::{PreparedRecoveryServiceGraph, RecoveryServicePreparationError},
+    AppServiceConfiguration, recovery_graph::RecoveryServicePreparationError,
 };
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use settlement::{CandidateSettlement, CandidateSettlementError};
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
-    pub(crate) fn return_interrupted_exit_preparation_home(
+    pub(crate) fn take_interrupted_exit_preparation_failure(
+        &mut self,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+    ) -> Result<RecoveryServicePreparationError, String> {
+        self.return_interrupted_exit_preparation_home(request, generation)?;
+        let Some(CandidateSettlement::Services(Err(failure))) = self
+            .interrupted_exit
+            .as_ref()
+            .unwrap()
+            .settlement
+            .borrow_mut()
+            .take()
+        else {
+            unreachable!("validated preparation failure retains exclusive custody")
+        };
+        Ok(failure)
+    }
+
+    fn return_interrupted_exit_preparation_home(
         &mut self,
         request: &RunningExitRequest,
         generation: HomeGeneration,
@@ -232,24 +250,6 @@ impl RunningProcessOwner {
                 .map(|_| ())
                 .map_err(|error| format!("{error:?}")),
             _ => Err("Interrupted Exit service preparation has not returned".into()),
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_take_interrupted_exit_services(
-        &self,
-    ) -> Result<PreparedRecoveryServiceGraph, RecoveryServicePreparationError> {
-        match self
-            .interrupted_exit
-            .as_ref()
-            .unwrap()
-            .settlement
-            .borrow_mut()
-            .take()
-            .unwrap()
-        {
-            CandidateSettlement::Services(result) => result,
-            _ => panic!("prepared services unavailable"),
         }
     }
 }

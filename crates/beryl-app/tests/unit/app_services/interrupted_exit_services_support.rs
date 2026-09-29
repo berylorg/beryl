@@ -95,7 +95,7 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow_mut()
-                    .return_interrupted_exit_preparation_home(request, generation)
+                    .take_interrupted_exit_preparation_failure(request, generation)
                     .is_err()
             );
             assert!(start(request, CommandCancellation::new(), app).is_err());
@@ -130,7 +130,7 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow_mut()
-                    .return_interrupted_exit_preparation_home(request, generation)
+                    .take_interrupted_exit_preparation_failure(request, generation)
                     .is_err()
             );
         }
@@ -210,7 +210,7 @@ pub(super) async fn verify(
         assert!(
             owner
                 .borrow_mut()
-                .return_interrupted_exit_preparation_home(&foreign, generation)
+                .take_interrupted_exit_preparation_failure(&foreign, generation)
                 .is_err()
         );
         for retirement in [None, Some(Err("failed retirement".into()))] {
@@ -220,62 +220,84 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow_mut()
-                    .return_interrupted_exit_preparation_home(request, generation)
+                    .take_interrupted_exit_preparation_failure(request, generation)
                     .is_err()
             );
         }
         owner
             .borrow()
             .test_set_resident_graph_retirement(Some(Ok(())));
-        owner
+        let failure = owner
             .borrow_mut()
-            .return_interrupted_exit_preparation_home(request, generation)
+            .take_interrupted_exit_preparation_failure(request, generation)
             .unwrap();
         assert!(
             owner
                 .borrow_mut()
-                .return_interrupted_exit_preparation_home(request, generation)
+                .take_interrupted_exit_preparation_failure(request, generation)
                 .is_err()
         );
-        assert_eq!(
-            evidence,
-            owner
-                .borrow()
-                .interrupted_exit_services_result(request)
-                .unwrap_err()
-        );
+        assert_eq!(evidence, format!("{failure:?}"));
         assert_eq!(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
         );
         assert!(!RunningProcessOwner::finish_exit(owner, request));
-        let home = owner.borrow_mut().test_take_retired_recovery_home();
-        let result = owner.borrow().test_take_interrupted_exit_services();
-        candidate = Some(
-            cx.background_executor()
-                .spawn(async move {
-                    let failure = match result {
-                        Ok(_) => panic!("cancelled services remained prepared"),
-                        Err(RecoveryServicePreparationError::App(failure)) => {
-                            if mode != "theme_failure" {
-                                assert!(matches!(failure.error(), AppServiceOpenError::Cancelled));
-                            } else {
-                                assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
-                            }
-                            failure
-                        }
-                        Err(error) => panic!("unexpected preparation failure: {error:?}"),
-                    };
-                    assert!(failure.into_retry_parts().is_err());
-                    let candidate = home.recover_same_home().unwrap();
-                    let state = BerylState::reacquire_candidate(&candidate).unwrap();
-                    InterruptedExitCandidate {
-                        candidate,
-                        session: state.session(),
-                    }
-                })
-                .await,
+        match failure {
+            RecoveryServicePreparationError::App(failure) => {
+                if mode != "theme_failure" {
+                    assert!(matches!(failure.error(), AppServiceOpenError::Cancelled));
+                } else {
+                    assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
+                }
+                assert!(failure.into_retry_parts().is_err());
+            }
+            error => panic!("unexpected preparation failure: {error:?}"),
+        }
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                CommandCancellation::new(),
+                app,
+                move |_, _| {
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        owner
+            .borrow()
+            .interrupted_exit_construction_result(request)
+            .unwrap();
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::settle_constructed_exit_candidate(
+                owner,
+                request,
+                app,
+                move |_, _| {
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        owner
+            .borrow()
+            .interrupted_exit_candidate_result(request)
+            .unwrap();
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
         );
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        candidate = Some(owner.borrow().test_take_interrupted_exit_candidate());
     }
     candidate.unwrap()
 }
