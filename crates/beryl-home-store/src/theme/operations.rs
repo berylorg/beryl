@@ -7,7 +7,9 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::{HomeDurabilityTier, HomeStore, fault::FaultPoint};
+use crate::{
+    HomeDurabilityTier, HomeStore, candidate_access::StoreOperationAccess, fault::FaultPoint,
+};
 
 use super::*;
 
@@ -31,7 +33,15 @@ impl HomeStore {
         &self,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeRepositorySnapshot, ThemeRepositoryError> {
-        let admission = self.health.admit_generation(self.admitted_generation)?;
+        self.theme_repository_snapshot_with_access(StoreOperationAccess::Ordinary, limits)
+    }
+
+    pub(crate) fn theme_repository_snapshot_with_access(
+        &self,
+        access: StoreOperationAccess,
+        limits: ThemeOperationLimits,
+    ) -> Result<ThemeRepositorySnapshot, ThemeRepositoryError> {
+        let admission = access.admit(self)?;
         let generation = self
             .generation
             .read()
@@ -67,7 +77,28 @@ impl HomeStore {
         max_bytes: NonZeroUsize,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeFileRange, ThemeRepositoryError> {
-        let admission = self.health.admit_generation(self.admitted_generation)?;
+        self.read_theme_file_range_with_access(
+            StoreOperationAccess::Ordinary,
+            snapshot,
+            selector,
+            expected,
+            offset,
+            max_bytes,
+            limits,
+        )
+    }
+
+    pub(crate) fn read_theme_file_range_with_access(
+        &self,
+        access: StoreOperationAccess,
+        snapshot: &ThemeRepositorySnapshot,
+        selector: &ThemeFileSelector,
+        expected: ThemeFileIdentity,
+        offset: u64,
+        max_bytes: NonZeroUsize,
+        limits: ThemeOperationLimits,
+    ) -> Result<ThemeFileRange, ThemeRepositoryError> {
+        let admission = access.admit(self)?;
         let generation = self.validate_snapshot(snapshot, limits)?;
         if max_bytes.get() as u64 > limits.max_source_bytes() {
             return Err(ThemeRepositoryError::LimitExceeded);
@@ -115,7 +146,22 @@ impl HomeStore {
         selector: &ThemeFileSelector,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeFileIdentity, ThemeRepositoryError> {
-        let admission = self.health.admit_generation(self.admitted_generation)?;
+        self.observe_theme_file_with_access(
+            StoreOperationAccess::Ordinary,
+            snapshot,
+            selector,
+            limits,
+        )
+    }
+
+    pub(crate) fn observe_theme_file_with_access(
+        &self,
+        access: StoreOperationAccess,
+        snapshot: &ThemeRepositorySnapshot,
+        selector: &ThemeFileSelector,
+        limits: ThemeOperationLimits,
+    ) -> Result<ThemeFileIdentity, ThemeRepositoryError> {
+        let admission = access.admit(self)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         let identity = observe_required(
             &selector_path(self.canonical_path(), selector),

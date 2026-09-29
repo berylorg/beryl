@@ -61,6 +61,44 @@ impl<'a> HomeCandidateRecoveryAccess<'a> {
         self.store.home_revision_with_access(self.access)
     }
 
+    pub fn theme_repository_snapshot(
+        &self,
+        limits: crate::ThemeOperationLimits,
+    ) -> Result<crate::ThemeRepositorySnapshot, crate::ThemeRepositoryError> {
+        self.store
+            .theme_repository_snapshot_with_access(self.access, limits)
+    }
+
+    pub fn observe_theme_file(
+        &self,
+        snapshot: &crate::ThemeRepositorySnapshot,
+        selector: &crate::ThemeFileSelector,
+        limits: crate::ThemeOperationLimits,
+    ) -> Result<crate::ThemeFileIdentity, crate::ThemeRepositoryError> {
+        self.store
+            .observe_theme_file_with_access(self.access, snapshot, selector, limits)
+    }
+
+    pub fn read_theme_file_range(
+        &self,
+        snapshot: &crate::ThemeRepositorySnapshot,
+        selector: &crate::ThemeFileSelector,
+        expected: crate::ThemeFileIdentity,
+        offset: u64,
+        max_bytes: std::num::NonZeroUsize,
+        limits: crate::ThemeOperationLimits,
+    ) -> Result<crate::ThemeFileRange, crate::ThemeRepositoryError> {
+        self.store.read_theme_file_range_with_access(
+            self.access,
+            snapshot,
+            selector,
+            expected,
+            offset,
+            max_bytes,
+            limits,
+        )
+    }
+
     pub fn domain_revision<D: StorageDomain>(
         &self,
         handle: &DomainHandle<D>,

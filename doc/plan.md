@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 804: Bind Recovery Appearance Through The Retained Service Graph (finished)
+# Phase 805: Read Theme Files Through Explicit Candidate Access (finished)
 
-Appearance binding now validates the exact interrupted Exit's retained prepared graph instead
-of requiring a separate candidate. Existing draft/window registration preserves graph and session
-custody and keeps interaction gated. Seven focused tests passed, followed by the native consumer
-with latest-registration teardown verification (6d87043d-961a-4beb-843d-c160f667d2bd); compilation,
-formatting and independent review passed. Production appearance preparation, selected residents
-and whole-graph publication remain pending.
+Private initial and recovered candidates can now read bounded theme snapshots, file identities
+and ranges through the existing physical reader. Exact admission, snapshot/file checks and limits
+remain shared with ordinary healthy-only reads. All 24 focused tests passed
+(0610eb3a-cb30-4ee9-a6fa-937f8fc54ee3), plus compilation, formatting and independent review.
+State-level loading, production appearance preparation and whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -158,6 +157,8 @@ Phase 803 attaches threadless shells through the retained graph with exact candi
 preserving graph/session custody and closed interaction gates.
 Phase 804 binds fresh appearance through that retained graph with exact candidate identity and
 existing draft/window registration, preserving custody and closed interaction gates.
+Phase 805 supplies explicit candidate-only bounded physical theme reads using the ordinary reader's
+identity, file and limit checks, enabling subsequent private appearance preparation.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

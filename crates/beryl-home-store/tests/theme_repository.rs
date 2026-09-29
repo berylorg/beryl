@@ -8,6 +8,9 @@ use beryl_home_store::{
 };
 use sha2::{Digest, Sha256};
 
+#[path = "theme_repository/candidate_reads.rs"]
+mod candidate_reads;
+
 fn limits() -> ThemeOperationLimits {
     ThemeOperationLimits::new(
         64 * 1024,
