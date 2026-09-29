@@ -213,8 +213,7 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
     assert!(graph.handoff.is_some() && graph.activity.is_some() && graph.marker.is_some());
     assert_eq!(themes.diagnostics().active_subscriptions(), 1);
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));
-    let revision = graph.state().settings().revision(graph.home()).unwrap();
-    graph.load_theme(revision, None).unwrap();
+    graph.release_theme().unwrap();
     assert!(observation.wait_until_reached(Duration::from_secs(3)));
     observation.release();
     assert!(graph.theme().unwrap().current().is_some());

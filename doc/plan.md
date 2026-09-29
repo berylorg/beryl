@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 807: Read Candidate Settings Before Appearance Preparation (finished)
+# Phase 808: Prepare Production Appearance Before Home Publication (finished)
 
-Initial and recovered candidates now read settings revisions and individual records through
-explicit access using existing codecs and point limits. Fresh-handle qualification, ordinary
-read denial and confirmation failures are preserved. All 10 focused tests passed
-(af4052bc-e1ae-4345-9d3b-6def7f4c31a2), plus state compilation, formatting and independent review.
-Production appearance preparation remains next.
+Initial and recovered Theme preparation now resolves persisted settings and appearance through
+shared bounded candidate reads, retaining one runtime and a dormant watcher. Publication releases
+that watcher without loading appearance or rereading settings. All 13 preparation cases, 202
+regression cases (f89155c7-5f32-4d2d-bc24-04c5b5b077c6) and the corrected retirement fixture passed,
+plus app compilation, formatting and independent review. The retirement fixture now joins its
+scanner before injecting a shared read fault. Complete recovery graph attachment remains next.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -161,7 +162,9 @@ Phase 805 supplies explicit candidate-only bounded physical theme reads using th
 identity, file and limit checks, enabling subsequent private appearance preparation.
 Phase 806 supplies shared typed candidate manifest and document loading with bounded pages,
 freshness checks and activity cleanup. Phase 807 supplies bounded candidate settings reads for the
-persisted active-theme input; production appearance preparation remains next.
+persisted active-theme input. Phase 808 resolves and retains production appearance before initial
+or recovery publication, using shared loading and fallback behavior; connect it to complete fresh
+graph attachment next.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

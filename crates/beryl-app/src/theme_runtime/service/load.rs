@@ -10,6 +10,9 @@ use beryl_state::{
 use super::{ThemeRuntimeConfig, ThemeRuntimeFailureClass, ThemeRuntimeStartError};
 use crate::theme_runtime::DurablePublicationError;
 
+mod access;
+pub(crate) use access::ThemeLoadAccess;
+
 pub(super) enum ActiveLoadError {
     Missing,
     Repository,
@@ -25,9 +28,9 @@ impl ActiveLoadError {
     }
 }
 
-pub(super) fn load_prepared(
+pub(super) fn load_prepared<'a>(
     service: &ThemeService,
-    store: &HomeStore,
+    store: impl Into<ThemeLoadAccess<'a>>,
     repository: &ThemeRepositoryObservation,
     active: &InstalledThemeId,
     settings: ThemeSettingsIdentity,
@@ -55,37 +58,33 @@ pub(super) fn load_prepared(
     Ok((prepared, identity))
 }
 
-pub(super) fn load_observed(
+pub(super) fn load_observed<'a>(
     service: &ThemeService,
-    store: &HomeStore,
+    store: impl Into<ThemeLoadAccess<'a>>,
     repository: &ThemeRepositoryObservation,
     active: &InstalledThemeId,
     previous: Option<&ThemeDocumentIdentity>,
     config: ThemeRuntimeConfig,
     pages_read: &mut u64,
 ) -> Result<ThemeObservedDocument, ActiveLoadError> {
+    let store = store.into();
     let selection = find_selection(service, store, repository, active, config, pages_read)
         .map_err(|_| ActiveLoadError::Repository)?
         .ok_or(ActiveLoadError::Missing)?;
-    service
-        .load_document(store, repository, &selection, previous)
+    store
+        .load_document(service, repository, &selection, previous)
         .map_err(ActiveLoadError::Document)
 }
 
 fn find_selection(
     service: &ThemeService,
-    store: &HomeStore,
+    store: ThemeLoadAccess<'_>,
     repository: &ThemeRepositoryObservation,
     active: &InstalledThemeId,
     config: ThemeRuntimeConfig,
     pages_read: &mut u64,
 ) -> Result<Option<InstalledThemeSelection>, ThemeRepositoryLoadError> {
-    let mut session = service.open_manifest(
-        store,
-        repository,
-        config.max_manifest_bytes,
-        config.manifest_read,
-    )?;
+    let mut session = store.open_manifest(service, repository, config)?;
     let mut cursor = ThemeManifestCursor::first(session.header().identity());
     loop {
         let page = session.read_page(cursor, config.page)?;

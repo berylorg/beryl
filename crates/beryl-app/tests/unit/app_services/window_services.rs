@@ -32,8 +32,7 @@ fn installed() -> (tempfile::TempDir, ProcessServiceOwner, FaultController) {
 
 fn appearance(owner: &mut ProcessServiceOwner) -> Arc<AppearanceGeneration> {
     let graph = owner.graph_mut().unwrap();
-    let revision = graph.state().settings().revision(graph.home()).unwrap();
-    graph.load_theme(revision, None).unwrap();
+    graph.release_theme().unwrap();
     graph.theme().unwrap().current().unwrap()
 }
 

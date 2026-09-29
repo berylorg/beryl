@@ -1,7 +1,5 @@
 use super::*;
 use crate::theme_runtime::ThemeRuntime;
-use beryl_model::DomainRevision;
-use beryl_state::SettingRecord;
 
 #[derive(Debug)]
 pub(crate) enum AppThemeLoadError {
@@ -62,18 +60,14 @@ impl PublishedAppServices {
         self.loaded_theme.as_mut()
     }
 
-    pub(crate) fn load_theme(
-        &mut self,
-        revision: DomainRevision,
-        active: Option<&SettingRecord>,
-    ) -> Result<(), AppThemeLoadError> {
+    pub(crate) fn release_theme(&mut self) -> Result<(), AppThemeLoadError> {
         let prepared = self
             .theme
             .take()
             .ok_or(AppThemeLoadError::AlreadyAttempted)?;
         self.loaded_theme = Some(
             prepared
-                .load_published(self.home(), revision, active)
+                .release_published(self.home())
                 .map_err(AppThemeLoadError::Start)?,
         );
         Ok(())

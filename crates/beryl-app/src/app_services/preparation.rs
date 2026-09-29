@@ -134,6 +134,7 @@ impl PreparedAppServices {
             prepared.theme = Some(PreparedThemeRuntime::prepare(
                 candidate,
                 prepared.state.themes(),
+                &prepared.state.settings(),
                 configuration.theme,
             )?);
             check_cancellation(cancellation)?;

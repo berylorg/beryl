@@ -177,6 +177,7 @@ impl PreparedRecoveryAppServices {
             prepared.theme = Some(PreparedThemeRuntime::prepare_recovery(
                 candidate,
                 state.themes(),
+                &state.settings(),
                 configuration.theme,
             )?);
             check_cancellation(cancellation)?;

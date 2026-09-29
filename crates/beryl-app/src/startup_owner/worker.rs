@@ -8,7 +8,6 @@ use crate::{
     theme_runtime::AppearanceGeneration,
 };
 use beryl_home_store::HomeHealthState;
-use beryl_state::SettingKey;
 use std::{
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -176,16 +175,8 @@ impl Worker {
     ) -> Result<(Arc<AppearanceGeneration>, MainWindowRestoreSet), String> {
         let services = self.services.as_mut().expect("published startup services");
         let graph = services.graph_mut().expect("published startup graph");
-        let settings = graph.state().settings();
-        let revision = settings.revision(graph.home()).map_err(|e| e.to_string())?;
-        let active = settings
-            .setting(graph.home(), SettingKey::ActiveThemeId)
-            .map_err(|e| e.to_string())?;
-        if settings.revision(graph.home()).map_err(|e| e.to_string())? != revision {
-            return Err("Settings changed during startup".to_owned());
-        }
         graph
-            .load_theme(revision, active.as_ref())
+            .release_theme()
             .map_err(|e| format!("Theme loading failed: {e:?}"))?;
         let appearance = graph
             .theme()

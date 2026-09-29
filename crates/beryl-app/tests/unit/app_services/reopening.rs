@@ -39,8 +39,7 @@ fn reopen(
 fn assert_fresh_graph_works(owner: &mut ProcessServiceOwner) {
     owner.process.execution_permit().commit(|| ()).unwrap();
     let graph = owner.graph_mut().unwrap();
-    let revision = graph.state().settings().revision(graph.home()).unwrap();
-    graph.load_theme(revision, None).unwrap();
+    graph.release_theme().unwrap();
     assert!(graph.theme().unwrap().current().is_some());
     assert!(
         graph

@@ -147,6 +147,16 @@ fn retired_home_construction_preserves_failed_custody_and_returns_private_candid
 #[test]
 fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
     let (directory, mut owner, faults) = installed();
+    // Join the fixture scanner before arming a process-wide read fault.
+    owner
+        .graph
+        .as_mut()
+        .unwrap()
+        .handoff
+        .as_mut()
+        .unwrap()
+        .shutdown()
+        .unwrap();
     let reservation = owner
         .windows
         .reserve_main_window(WindowId::from_bytes([152; 16]))

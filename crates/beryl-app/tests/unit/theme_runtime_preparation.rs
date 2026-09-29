@@ -57,13 +57,14 @@ fn preparation_stays_dormant_until_published_loading_and_retirement_joins() {
     let (_directory, mut candidate, state, faults) = candidate();
     let observer = state.themes();
     let observation = faults.block_next(FaultPoint::BeforeThemeWatchObservation);
-    let prepared = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config()).unwrap();
+    let prepared =
+        PreparedThemeRuntime::prepare(&mut candidate, state.themes(), &state.settings(), config())
+            .unwrap();
     assert_eq!(observer.diagnostics().active_subscriptions(), 1);
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));
     let store = candidate.publish().unwrap();
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));
-    let revision = state.settings().revision(&store).unwrap();
-    let mut runtime = prepared.load_published(&store, revision, None).unwrap();
+    let mut runtime = prepared.release_published(&store).unwrap();
     assert!(observation.wait_until_reached(Duration::from_secs(3)));
     observation.release();
     assert!(runtime.current().is_some());
@@ -83,13 +84,22 @@ fn spawn_failure_and_abandonment_return_candidate_watcher_capacity() {
     let (_directory, mut candidate, state, faults) = candidate();
     let observer = state.themes();
     faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
-    let error = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config())
-        .err()
-        .unwrap();
+    let error =
+        PreparedThemeRuntime::prepare(&mut candidate, state.themes(), &state.settings(), config())
+            .err()
+            .unwrap();
     assert_eq!(error.class(), ThemeRuntimeFailureClass::Subscription);
     assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     for _ in 0..2 {
-        drop(PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config()).unwrap());
+        drop(
+            PreparedThemeRuntime::prepare(
+                &mut candidate,
+                state.themes(),
+                &state.settings(),
+                config(),
+            )
+            .unwrap(),
+        );
         assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     }
     candidate.close().unwrap();
@@ -100,11 +110,10 @@ fn unpublished_home_cannot_load_and_failed_release_joins() {
     let (_directory, mut candidate, state, _) = candidate();
     let reference = candidate.service_reference();
     let observer = state.themes();
-    let prepared = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config()).unwrap();
-    let error = prepared
-        .load_published(&reference, DomainRevision::new(1).unwrap(), None)
-        .err()
-        .unwrap();
+    let prepared =
+        PreparedThemeRuntime::prepare(&mut candidate, state.themes(), &state.settings(), config())
+            .unwrap();
+    let error = prepared.release_published(&reference).err().unwrap();
     assert_eq!(error.class(), ThemeRuntimeFailureClass::Subscription);
     assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     candidate.close().unwrap();
@@ -117,12 +126,11 @@ fn foreign_home_is_rejected_before_worker_release_or_loading() {
     let other = other.publish().unwrap();
     let observer = state.themes();
     let observation = faults.block_next(FaultPoint::BeforeThemeWatchObservation);
-    let prepared = PreparedThemeRuntime::prepare(&mut original, state.themes(), config()).unwrap();
+    let prepared =
+        PreparedThemeRuntime::prepare(&mut original, state.themes(), &state.settings(), config())
+            .unwrap();
     let original = original.publish().unwrap();
-    let error = prepared
-        .load_published(&other, DomainRevision::new(1).unwrap(), None)
-        .err()
-        .unwrap();
+    let error = prepared.release_published(&other).err().unwrap();
     assert_eq!(error.class(), ThemeRuntimeFailureClass::Identity);
     assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));
@@ -137,9 +145,10 @@ fn invalid_watcher_bounds_fail_before_allocating_activity() {
     let observer = state.themes();
     let mut config = config();
     config.watch_interval = Duration::ZERO;
-    let error = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config)
-        .err()
-        .unwrap();
+    let error =
+        PreparedThemeRuntime::prepare(&mut candidate, state.themes(), &state.settings(), config)
+            .err()
+            .unwrap();
     assert_eq!(error.class(), ThemeRuntimeFailureClass::Subscription);
     assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     candidate.close().unwrap();
@@ -150,18 +159,16 @@ fn recovered_generation_cannot_release_old_runtime() {
     let (_directory, mut candidate, state, faults) = candidate();
     let observer = state.themes();
     let observation = faults.block_next(FaultPoint::BeforeThemeWatchObservation);
-    let prepared = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config()).unwrap();
+    let prepared =
+        PreparedThemeRuntime::prepare(&mut candidate, state.themes(), &state.settings(), config())
+            .unwrap();
     let store = candidate.publish().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
     let recovered = store.recover_same_home().unwrap();
-    let fresh = BerylState::reacquire_candidate(&recovered).unwrap();
+    BerylState::reacquire_candidate(&recovered).unwrap();
     let store = recovered.publish().unwrap();
-    let revision = fresh.settings().revision(&store).unwrap();
-    let error = prepared
-        .load_published(&store, revision, None)
-        .err()
-        .unwrap();
+    let error = prepared.release_published(&store).err().unwrap();
     assert_eq!(error.class(), ThemeRuntimeFailureClass::Identity);
     assert_eq!(observer.diagnostics().active_subscriptions(), 0);
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));
@@ -169,50 +176,5 @@ fn recovered_generation_cannot_release_old_runtime() {
     store.close().unwrap();
 }
 
-#[test]
-fn published_loading_preserves_missing_document_fallback_provenance() {
-    use beryl_home_store::{CommandOutcome, HomeCommand};
-    use beryl_state::{
-        ApplySettings, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
-    };
-
-    let (_directory, mut candidate, state, _) = candidate();
-    let prepared = PreparedThemeRuntime::prepare(&mut candidate, state.themes(), config()).unwrap();
-    let store = candidate.publish().unwrap();
-    let revision = state.settings().revision(&store).unwrap();
-    let contribution = state.settings().apply(
-        revision,
-        ApplySettings::new(vec![SettingUpdate::new(
-            SettingKey::ActiveThemeId,
-            ExpectedSettingRevision::Absent,
-            SettingValue::active_theme_id("missing").unwrap(),
-        )])
-        .unwrap(),
-    );
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    assert!(matches!(
-        store.execute(command),
-        CommandOutcome::Committed { .. }
-    ));
-    let revision = state.settings().revision(&store).unwrap();
-    let record = state
-        .settings()
-        .setting(&store, SettingKey::ActiveThemeId)
-        .unwrap()
-        .unwrap();
-    let mut runtime = prepared
-        .load_published(&store, revision, Some(&record))
-        .unwrap();
-    assert_eq!(
-        runtime.diagnostics().last_failure(),
-        Some(ThemeRuntimeFailureClass::DocumentMissing)
-    );
-    assert!(matches!(
-        runtime.current().unwrap().prepared().source(),
-        beryl_state::ThemeAppearanceSource::BuiltinFallback(_)
-    ));
-    runtime.retire();
-    assert_eq!(state.themes().diagnostics().active_subscriptions(), 0);
-    store.close().unwrap();
-}
+#[path = "theme_runtime_candidate_appearance.rs"]
+mod candidate_appearance;

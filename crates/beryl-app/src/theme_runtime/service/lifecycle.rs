@@ -35,15 +35,28 @@ impl ThemeRuntime {
         config: ThemeRuntimeConfig,
         subscription: ThemeChangeSubscription,
     ) -> Result<Self, ThemeRuntimeStartError> {
+        let mut runtime = Self::load_initial(
+            store.into(),
+            service,
+            domain_revision,
+            active_setting,
+            config,
+        )?;
+        runtime.subscription = Some(subscription);
+        Ok(runtime)
+    }
+
+    pub(super) fn load_initial(
+        access: load::ThemeLoadAccess<'_>,
+        service: ThemeService,
+        domain_revision: DomainRevision,
+        active_setting: Option<&SettingRecord>,
+        config: ThemeRuntimeConfig,
+    ) -> Result<Self, ThemeRuntimeStartError> {
         let active = ThemeService::active_theme_from_setting(active_setting)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Identity))?;
         let settings = service.settings_identity(domain_revision, active_setting);
-        let (repository, repository_failure) = match service.observe_repository(
-            store,
-            config.max_manifest_bytes,
-            config.manifest_read,
-            None,
-        ) {
+        let (repository, repository_failure) = match access.observe(&service, config) {
             Ok(repository) => (Some(repository), None),
             Err(error) => (None, Some(map_repository_load_failure(&error))),
         };
@@ -53,7 +66,7 @@ impl ThemeRuntime {
             (Some(_), None) => Err(ThemeLoadFailure::RepositoryUnavailable),
             (Some(active), Some(repository)) => load_prepared(
                 &service,
-                store,
+                access,
                 repository,
                 active,
                 settings,
@@ -75,7 +88,7 @@ impl ThemeRuntime {
             retired_state: service.diagnostics(),
             service: Some(service),
             repository,
-            subscription: Some(subscription),
+            subscription: None,
             appearance: Some(appearance),
             settings,
             active,
