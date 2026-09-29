@@ -18,7 +18,6 @@ impl RunningProcessOwner {
         cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<
         (
-            InterruptedExitCandidate,
             MainWindowConversationComposerCloseTicket,
             beryl_state::SessionWindowRecord,
         ),
@@ -60,7 +59,7 @@ impl RunningProcessOwner {
         if flight.cancelled
             || flight.result != Ok(Progress::Ready)
             || flight.scheduled.is_some()
-            || flight.session.is_none()
+            || recovery.session.borrow().is_none()
         {
             return Err("Resident preparation is not ready for attachment".into());
         }
@@ -78,7 +77,11 @@ impl RunningProcessOwner {
             return Err("Resident recovery candidate generation changed".into());
         }
         let record = flight.preparation.authenticated_window()?;
-        let (candidate, close) = drafts.adopt_recovered_shell(
+        let mut slot = recovery.settlement.borrow_mut();
+        if !matches!(slot.as_ref(), Some(CandidateSettlement::Pending)) {
+            return Err("Resident preparation graph custody changed".into());
+        }
+        let (graph, close) = drafts.adopt_recovered_shell(
             root,
             resident.entity_id(),
             flight.close,
@@ -90,11 +93,8 @@ impl RunningProcessOwner {
             cx,
         )?;
         captured.2 = close;
-        let candidate = InterruptedExitCandidate {
-            candidate,
-            session: flight.session.take().unwrap(),
-        };
+        *slot = Some(CandidateSettlement::Services(Ok(graph)));
         recovery.resident.take();
-        Ok((candidate, close, record))
+        Ok((close, record))
     }
 }

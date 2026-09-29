@@ -226,5 +226,9 @@ impl Drop for PreparedRecoveryServiceGraph {
 }
 
 #[cfg(all(test, feature = "test-faults", target_os = "windows"))]
+#[path = "../../tests/unit/app_services/recovery_graph_resident_support.rs"]
+pub(crate) mod resident_test_support;
+
+#[cfg(all(test, feature = "test-faults", target_os = "windows"))]
 #[path = "../../tests/unit/app_services/recovery_graph_resident.rs"]
 mod resident_tests;

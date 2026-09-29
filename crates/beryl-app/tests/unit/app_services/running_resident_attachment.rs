@@ -34,7 +34,7 @@ pub(super) fn attempt(
     scenario: ResidentScenario,
     window: &mut gpui::Window,
     app: &mut gpui::Context<MainWindowShellRoot>,
-) -> Option<crate::running_owner::InterruptedExitCandidate> {
+) -> bool {
     let input = resident.read(app).gpui_input();
     input.update(app, |input, _| input.focus(window));
     let focus = window.focused(app);
@@ -151,9 +151,9 @@ pub(super) fn attempt(
             drafts.borrow().recovery_residents()
                 == vec![(window.window_handle(), resident.entity_id(), close)]
         );
-        return None;
+        return false;
     }
-    let (candidate, fresh_close, record) =
+    let (fresh_close, record) =
         result.unwrap_or_else(|error| panic!("attachment refused: {error}"));
     assert_ne!(fresh_close, close);
     assert!(!drafts.borrow().test_recovery_ready());
@@ -216,5 +216,5 @@ pub(super) fn attempt(
             .update(app, |mount, cx| mount.begin_window_close(window, cx))
             .is_err()
     );
-    Some(candidate)
+    true
 }

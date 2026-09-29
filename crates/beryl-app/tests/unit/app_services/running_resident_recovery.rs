@@ -101,7 +101,7 @@ fn resident_run(scenario: ResidentScenario) {
                             window,
                             composer,
                             close,
-                            mut candidate,
+                            candidate,
                             retired,
                             directory: resident_directory,
                             mount,
@@ -112,26 +112,23 @@ fn resident_run(scenario: ResidentScenario) {
                         owner
                             .borrow_mut()
                             .test_replace_recovery_drafts(Some(drafts.clone()));
+                        eprintln!("running graph fixture: {}", resident_directory.path().display());
+                        let home = candidate.home_id();
+                        let generation = candidate.generation();
+                        let reference = candidate.service_reference();
+                        let graph = cx.background_executor().spawn(async move {
+                            crate::app_services::recovery_graph::resident_test_support::prepared(candidate)
+                        }).await;
                         owner.borrow_mut().test_retain_resident_recovery(
                             &request,
                             (window.into(), composer.entity_id(), close),
+                            graph,
                         );
-                        let state = BerylState::reacquire_candidate(&candidate).unwrap();
-                        let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-                        let generation = candidate.generation();
-                        let mut adapters = Some(
-                            crate::app_services::recovery_composer::test_support::adapters(
-                                &mut candidate,
-                            ),
-                        );
+                        let mut adapters = None;
                         let current = Rc::new(RefCell::new(None));
                         let captured_current = current.clone();
                         let cleanup = Rc::new(RefCell::new(None));
                         let captured_cleanup = cleanup.clone();
-                        let mut candidate = Some(crate::running_owner::InterruptedExitCandidate {
-                            candidate,
-                            session: state.session(),
-                        });
                         let mut retired = Some(retired);
                         let original = composer
                             .read_with(cx, |composer, _| {
@@ -152,17 +149,15 @@ fn resident_run(scenario: ResidentScenario) {
                                         &composer,
                                         close,
                                         window.into(),
-                                        &mut candidate,
+                                        generation,
                                         &mut retired,
-                                        storage.clone(),
-                                        state.clone(),
                                         resident_fixture::environment,
                                         app,
                                         |_, _| panic!("foreign admission"),
                                     )
                                     .is_err()
                                 );
-                                assert!(candidate.is_some() && retired.is_some());
+                                assert!(retired.is_some());
                                 for (next, expected) in [
                                     (None, "graph retirement has not returned"),
                                     (
@@ -178,10 +173,8 @@ fn resident_run(scenario: ResidentScenario) {
                                             &composer,
                                             close,
                                             window.into(),
-                                            &mut candidate,
+                                            generation,
                                             &mut retired,
-                                            storage.clone(),
-                                            state.clone(),
                                             |_, _, _| {
                                                 panic!("unretired graph admitted preparation")
                                             },
@@ -191,11 +184,7 @@ fn resident_run(scenario: ResidentScenario) {
                                         .err()
                                         .expect("preparation requires successful graph retirement");
                                     assert!(error.contains(expected), "{error}");
-                                    assert!(candidate.is_some() && retired.is_some());
-                                    assert_eq!(
-                                        candidate.as_ref().unwrap().candidate.generation(),
-                                        generation
-                                    );
+                                    assert!(retired.is_some());
                                     assert_eq!(retired.as_ref().unwrap().close_ticket(), close);
                                     assert_eq!(completions.get(), 0);
                                     let resident = composer.read(app);
@@ -215,10 +204,8 @@ fn resident_run(scenario: ResidentScenario) {
                                         &composer,
                                         close,
                                         foreign_window.into(),
-                                        &mut candidate,
+                                        generation,
                                         &mut retired,
-                                        storage.clone(),
-                                        state.clone(),
                                         resident_fixture::environment,
                                         app,
                                         |_, _| panic!("unassociated resident"),
@@ -227,17 +214,28 @@ fn resident_run(scenario: ResidentScenario) {
                                     .unwrap()
                                     .contains("not captured")
                                 );
-                                assert!(candidate.is_some() && retired.is_some());
+                                assert!(retired.is_some());
+                                let old_generation = composer.read(app).recovery_snapshot().unwrap()
+                                    .selection().binding().home_generation();
+                                assert!(RunningProcessOwner::prepare_interrupted_exit_resident(
+                                    &owner, &request, &composer, close, window.into(),
+                                    old_generation, &mut retired, resident_fixture::environment,
+                                    app, |_, _| panic!("old generation admitted"),
+                                ).is_err());
+                                owner.borrow().interrupted_exit_services_result(&request).unwrap();
+                                assert!(retired.is_some());
+                                adapters = Some(owner.borrow().interrupted_exit_composer_adapters(
+                                    &request, home, generation,
+                                    crate::app_services::tests::configuration().projection.turn_start_admission_requirement(),
+                                ).unwrap());
                                 let key = RunningProcessOwner::prepare_interrupted_exit_resident(
                                     &owner,
                                     &request,
                                     &composer,
                                     close,
                                     window.into(),
-                                    &mut candidate,
+                                    generation,
                                     &mut retired,
-                                    storage.clone(),
-                                    state.clone(),
                                     move |seed, selection, window| {
                                         if scenario == ResidentScenario::Environment {
                                             Err("injected environment refusal".into())
@@ -272,7 +270,11 @@ fn resident_run(scenario: ResidentScenario) {
                                     },
                                 )
                                 .unwrap();
-                                assert!(candidate.is_none() && retired.is_none());
+                                assert!(retired.is_none());
+                                assert!(owner.borrow().interrupted_exit_services_result(&request).is_err());
+                                assert!(RunningProcessOwner::cancel_interrupted_exit_services(
+                                    &owner, &request, app, |_, _| panic!("overlapping disposal"),
+                                ).is_err());
                                 assert!(
                                     RunningProcessOwner::prepare_interrupted_exit_resident(
                                         &owner,
@@ -280,10 +282,8 @@ fn resident_run(scenario: ResidentScenario) {
                                         &composer,
                                         close,
                                         window.into(),
-                                        &mut candidate,
+                                        generation,
                                         &mut retired,
-                                        storage.clone(),
-                                        state.clone(),
                                         resident_fixture::environment,
                                         app,
                                         |_, _| panic!("duplicate admission"),
@@ -294,7 +294,7 @@ fn resident_run(scenario: ResidentScenario) {
                                     RunningProcessOwner::settle_interrupted_exit_candidate(
                                         &owner,
                                         &request,
-                                        &mut candidate,
+                                        &mut None,
                                         app,
                                         |_, _| panic!("overlapping settlement")
                                     )
@@ -432,9 +432,9 @@ fn resident_run(scenario: ResidentScenario) {
                                 })
                                 .unwrap()
                         } else {
-                            None
+                            false
                         };
-                        let recovered = if let Some(candidate) = attached {
+                        if attached {
                             window
                                 .update(cx, |_, window, app| {
                                     let input = composer.read(app).gpui_input();
@@ -443,7 +443,6 @@ fn resident_run(scenario: ResidentScenario) {
                                     });
                                 })
                                 .unwrap();
-                            candidate
                         } else {
                             cx.update(|app| {
                                 RunningProcessOwner::cancel_interrupted_exit_resident(
@@ -479,10 +478,8 @@ fn resident_run(scenario: ResidentScenario) {
                                             &composer,
                                             close,
                                             window.into(),
-                                            &mut candidate,
+                                            generation,
                                             &mut retired,
-                                            storage.clone(),
-                                            state.clone(),
                                             resident_fixture::environment,
                                             app,
                                             |_, _| panic!("second suspended frame"),
@@ -493,10 +490,7 @@ fn resident_run(scenario: ResidentScenario) {
                                     .unwrap();
                                 assert!(refusal.contains("frame has not returned"));
                             }
-                            assert_eq!(resources.candidate.candidate.generation(), generation);
-                            let resources = *resources;
-                            drop(resources.source);
-                            resources.candidate
+                            drop(resources);
                         };
                         drop(adapters);
                         drop(owner.borrow_mut().test_replace_recovery_drafts(None));
@@ -506,7 +500,7 @@ fn resident_run(scenario: ResidentScenario) {
                                 .update(cx, |_, window, _| window.remove_window())
                                 .unwrap();
                         }
-                        drop((composer, mount, storage, state, shell));
+                        drop((composer, mount, shell));
                         cx.background_executor()
                             .timer(Duration::from_millis(200))
                             .await;
@@ -521,12 +515,22 @@ fn resident_run(scenario: ResidentScenario) {
                                 (0, 0, 0)
                             );
                         }
-                        cx.background_executor()
-                            .spawn(async move {
-                                drop(recovered.session);
-                                recovered.candidate.abort().close().unwrap();
-                            })
-                            .await;
+                        owner.borrow_mut().test_replace_interrupted_exit_request(&request);
+                        owner.borrow().interrupted_exit_services_result(&request).unwrap();
+                        drop(owner.borrow().interrupted_exit_composer_adapters(
+                            &request, home, generation,
+                            crate::app_services::tests::configuration().projection.turn_start_admission_requirement(),
+                        ).unwrap());
+                        assert_eq!(reference.health().state(), beryl_home_store::HomeHealthState::Reopening);
+                        let (disposed, disposal) = futures_channel::oneshot::channel();
+                        cx.update(|app| {
+                            RunningProcessOwner::cancel_interrupted_exit_services(
+                                &owner, &request, app, move |_, _| { disposed.send(()).unwrap(); },
+                            ).unwrap();
+                        }).unwrap();
+                        disposal.await.unwrap();
+                        let failure = owner.borrow().test_take_resident_graph_failure();
+                        cx.background_executor().spawn(async move { failure.close().unwrap(); }).await;
                         resident_directory.close().unwrap();
                         let running = Rc::try_unwrap(owner)
                             .ok()

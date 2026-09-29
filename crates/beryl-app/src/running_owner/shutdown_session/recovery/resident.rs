@@ -1,5 +1,6 @@
 use super::*;
 mod attachment;
+use crate::app_services::recovery_graph::PreparedRecoveryServiceGraph;
 use crate::main_window::{
     MainWindowComposerCandidateSource, MainWindowComposerRecoveryPreparation,
     MainWindowComposerRecoveryProgress as Progress, MainWindowComposerRetiredClose,
@@ -8,6 +9,7 @@ use crate::main_window::{
 };
 use gpui::{AnyWindowHandle, WeakEntity, Window};
 use gpui_text_input::{RangePrepublicationEnvironment, RangeRestorationSeed, RangeSurfaceCharge};
+use settlement::CandidateSettlement;
 
 type Environment = Box<
     dyn FnOnce(
@@ -21,10 +23,9 @@ type Completion = Box<dyn FnOnce(&Rc<RefCell<RunningProcessOwner>>, &mut App)>;
 #[derive(Clone)]
 pub(crate) struct ResidentPreparationKey(Rc<()>);
 
-pub(crate) struct CancelledResidentPreparation {
-    pub(crate) candidate: InterruptedExitCandidate,
-    pub(crate) source:
-        Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>,
+struct CancelledResidentPreparation {
+    graph: PreparedRecoveryServiceGraph,
+    source: Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>,
 }
 
 pub(super) struct ResidentPreparation {
@@ -35,8 +36,7 @@ pub(super) struct ResidentPreparation {
     home: beryl_model::BerylHomeId,
     generation: beryl_home_store::HomeGeneration,
     window: AnyWindowHandle,
-    preparation: MainWindowComposerRecoveryPreparation,
-    session: Option<beryl_state::SessionState>,
+    preparation: MainWindowComposerRecoveryPreparation<PreparedRecoveryServiceGraph>,
     environment: Option<Environment>,
     result: Result<Progress, String>,
     cancelled: bool,
@@ -89,18 +89,38 @@ impl RunningProcessOwner {
             gpui::EntityId,
             MainWindowConversationComposerCloseTicket,
         ),
+        graph: PreparedRecoveryServiceGraph,
     ) {
         assert!(self.interrupted_exit.is_none());
         assert!(self.process.commands.is_active(request));
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
             session: Rc::new(RefCell::new(Some(RunningShutdownSession::Unwound))),
-            settlement: Rc::new(RefCell::new(None)),
+            settlement: Rc::new(RefCell::new(Some(CandidateSettlement::Services(Ok(graph))))),
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,
             residents: vec![captured],
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_take_resident_graph_failure(
+        &self,
+    ) -> crate::app_services::recovery_preparation::RecoveryAppServicePreparationFailure {
+        let Some(CandidateSettlement::Services(Err(
+            crate::app_services::recovery_graph::RecoveryServicePreparationError::App(failure),
+        ))) = self
+            .interrupted_exit
+            .as_ref()
+            .unwrap()
+            .settlement
+            .borrow_mut()
+            .take()
+        else {
+            panic!("resident graph disposal has not returned")
+        };
+        failure
     }
 
     #[cfg(test)]
@@ -122,10 +142,8 @@ impl RunningProcessOwner {
         resident: &Entity<MainWindowConversationComposer>,
         close: MainWindowConversationComposerCloseTicket,
         window: AnyWindowHandle,
-        candidate: &mut Option<InterruptedExitCandidate>,
+        generation: beryl_home_store::HomeGeneration,
         retired: &mut Option<MainWindowComposerRetiredClose>,
-        storage: syndic_storage::SyndicStorage,
-        state: beryl_state::BerylState,
         environment: impl FnOnce(
             RangeRestorationSeed,
             MainWindowComposerSelectionIdentity,
@@ -137,7 +155,7 @@ impl RunningProcessOwner {
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<ResidentPreparationKey, String> {
         let mut retained = owner.borrow_mut();
-        retained.interrupted_exit_graph_retirement_result(request)?;
+        retained.interrupted_exit_services_result(request)?;
         let recovery = retained
             .interrupted_exit
             .as_mut()
@@ -155,10 +173,7 @@ impl RunningProcessOwner {
         {
             return Err("Previous resident frame has not returned".into());
         }
-        if recovery.resident.is_some()
-            || recovery.settlement.borrow().is_some()
-            || recovery.session.borrow().is_none()
-        {
+        if recovery.resident.is_some() || recovery.session.borrow().is_none() {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
         let composer = resident.read(app);
@@ -167,15 +182,17 @@ impl RunningProcessOwner {
         let source = retired
             .as_ref()
             .ok_or("Resident retirement is unavailable")?;
-        let fresh = candidate
-            .as_ref()
-            .ok_or("Recovery candidate is unavailable")?;
+        let home = snapshot.selection().binding().home_id();
+        let mut slot = recovery.settlement.borrow_mut();
+        let Some(CandidateSettlement::Services(Ok(graph))) = slot.as_mut() else {
+            unreachable!("validated prepared service custody")
+        };
         if source.close_ticket() != close
             || source.selection() != snapshot.selection()
             || source.host().close_ticket() != snapshot.flush_ticket()
             || snapshot.retired_close().is_some()
-            || fresh.candidate.home_id() != snapshot.selection().binding().home_id()
-            || fresh.candidate.generation() == snapshot.selection().binding().home_generation()
+            || generation == snapshot.selection().binding().home_generation()
+            || !graph.matches_candidate(home, generation)
         {
             return Err("Resident recovery source correspondence changed".into());
         }
@@ -183,9 +200,12 @@ impl RunningProcessOwner {
         let key = ResidentPreparationKey(Rc::new(()));
         let wake_owner = owner.clone();
         let wake_key = key.clone();
-        let fresh = candidate.take().unwrap();
-        let home = fresh.candidate.home_id();
-        let generation = fresh.candidate.generation();
+        let Some(CandidateSettlement::Services(Ok(graph))) =
+            slot.replace(CandidateSettlement::Pending)
+        else {
+            unreachable!("validated prepared service custody")
+        };
+        drop(slot);
         let weak_owner = Rc::downgrade(owner);
         let closed_key = key.clone();
         let window_closed = app.on_window_closed(move |app| {
@@ -195,11 +215,9 @@ impl RunningProcessOwner {
                 }
             }
         });
-        let preparation = MainWindowComposerRecoveryPreparation::prepare(
-            fresh.candidate,
+        let preparation = MainWindowComposerRecoveryPreparation::prepare_graph(
+            graph,
             retired.take().unwrap(),
-            storage,
-            state,
             predecessor,
             app,
             move |app| Self::schedule_resident_preparation(&wake_owner, &wake_key, app),
@@ -213,7 +231,6 @@ impl RunningProcessOwner {
             generation,
             window,
             preparation,
-            session: Some(fresh.session),
             environment: Some(Box::new(environment)),
             result: Ok(Progress::Waiting),
             cancelled: false,
@@ -359,16 +376,10 @@ impl RunningProcessOwner {
             let again = if flight.cancelled {
                 match flight.preparation.advance_cleanup() {
                     Ok(true) => {
-                        if let Some((candidate, source)) =
-                            flight.preparation.take_cancelled_resources()
+                        if let Some((graph, source)) = flight.preparation.take_cancelled_resources()
                         {
-                            flight.returned = Some(Box::new(CancelledResidentPreparation {
-                                candidate: InterruptedExitCandidate {
-                                    candidate,
-                                    session: flight.session.take().unwrap(),
-                                },
-                                source,
-                            }));
+                            flight.returned =
+                                Some(Box::new(CancelledResidentPreparation { graph, source }));
                         }
                         false
                     }
@@ -445,15 +456,21 @@ impl RunningProcessOwner {
     pub(crate) fn take_cancelled_resident_preparation(
         &mut self,
         key: &ResidentPreparationKey,
-    ) -> Option<Box<CancelledResidentPreparation>> {
-        let slot = &mut self.interrupted_exit.as_mut()?.resident;
-        let flight = slot.as_mut()?;
+    ) -> Option<Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>>
+    {
+        let recovery = self.interrupted_exit.as_mut()?;
+        let flight = recovery.resident.as_mut()?;
         if !Rc::ptr_eq(&flight.key.0, &key.0) {
             return None;
         }
-        let resources = flight.returned.take()?;
-        slot.take();
-        Some(resources)
+        let mut slot = recovery.settlement.borrow_mut();
+        if !matches!(slot.as_ref(), Some(CandidateSettlement::Pending)) {
+            return None;
+        }
+        let resources = *flight.returned.take()?;
+        *slot = Some(CandidateSettlement::Services(Ok(resources.graph)));
+        recovery.resident.take();
+        Some(resources.source)
     }
 }
 

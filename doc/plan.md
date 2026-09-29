@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 814: Carry Prepared Graph Custody Through Shell Attachment (finished)
+# Phase 815: Retain Prepared Graphs Through Running Resident Recovery (finished)
 
-The shared mount, shell and retained-draft attachment path now carries the complete prepared graph,
-preserving identity checks, synchronous ticket renewal and closed gates. All 24 focused cases,
-compilation, formatting and independent review passed. The new test's invalid retry after capacity
-cancellation was replaced with a recoverable configurator refusal before the passing rerun
-(f208a33e-c791-4f29-bfc0-89e3d3e3aaa5); existing capacity-cancellation coverage passed unchanged.
-Running-owner integration and publication remain pending.
+The running owner's resident path now uses its retained complete prepared graph, returning custody
+through the same settlement slot after attachment or drained cancellation. Original session
+custody, exact ticket renewal and interaction fences remain intact; disposal uses the existing
+background service-cancellation path. All 28 native cases, compilation, formatting and independent
+review passed. Whole-graph publication and automatic recovery orchestration remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -170,8 +169,10 @@ Phase 811 authenticates resident sources using that graph's candidate and fresh 
 phase 812 retains that graph in the existing composer worker for authentication and reads.
 Phase 813 carries it through the shared GUI realization, adoption and cancelled cleanup path.
 Phase 814 carries it through mount, shell and retained-draft attachment with exact ticket renewal.
-Connect it to running-owner GUI preparation next, retaining custody through settlement and
-disposing returned graphs on the background worker.
+Phase 815 connects it to running-owner GUI preparation and attachment, restoring its retained
+settlement slot after adoption or drained cancellation and reusing background graph disposal.
+Connect the retained complete graph to supervisor attachment and publication next, preserving
+session outcome custody and the existing single-worker exclusion.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
