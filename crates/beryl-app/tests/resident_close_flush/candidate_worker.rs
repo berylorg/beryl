@@ -13,6 +13,9 @@ use syndic_storage::SyndicStorage;
 use super::{composer, support::slot_close, widget_support};
 use widget_support::fixture::Fixture;
 
+#[path = "candidate_worker/authentication.rs"]
+mod authentication;
+
 struct View;
 impl gpui::Render for View {
     fn render(

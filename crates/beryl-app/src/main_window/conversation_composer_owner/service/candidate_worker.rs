@@ -1,4 +1,9 @@
-use std::{cell::RefCell, future::Future, panic::AssertUnwindSafe, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    future::Future,
+    panic::AssertUnwindSafe,
+    rc::Rc,
+};
 
 use beryl_home_store::HomeRecoveryCandidate;
 use gpui::{App, AppContext};
@@ -8,6 +13,12 @@ use gpui_text_input::{
 };
 
 use super::MainWindowComposerCandidateSource;
+use crate::main_window::MainWindowComposerRetiredClose;
+
+mod authentication;
+
+type PreparedSource =
+    Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>;
 
 pub enum MainWindowComposerCandidateRead {
     Validation(RangePrepublicationValidationResponse),
@@ -21,14 +32,14 @@ pub struct MainWindowComposerCandidateCompletion {
 }
 
 struct State {
-    resources: Option<(HomeRecoveryCandidate, MainWindowComposerCandidateSource)>,
+    resources: Option<(HomeRecoveryCandidate, PreparedSource)>,
     completion: Option<MainWindowComposerCandidateCompletion>,
     pending: bool,
     cancelled: bool,
 }
 
 pub struct MainWindowComposerCandidateWorker {
-    generation: RangePrepublicationSessionGeneration,
+    generation: Option<RangePrepublicationSessionGeneration>,
     state: Rc<RefCell<State>>,
 }
 
@@ -43,14 +54,14 @@ impl MainWindowComposerCandidateWorker {
         generation: RangePrepublicationSessionGeneration,
     ) -> (Self, MainWindowComposerCandidateCustody) {
         let state = Rc::new(RefCell::new(State {
-            resources: Some((candidate, source)),
+            resources: Some((candidate, Ok(source))),
             completion: None,
             pending: false,
             cancelled: false,
         }));
         (
             Self {
-                generation,
+                generation: Some(generation),
                 state: state.clone(),
             },
             MainWindowComposerCandidateCustody { state },
@@ -59,6 +70,23 @@ impl MainWindowComposerCandidateWorker {
 
     pub fn cancel(&mut self) {
         self.state.borrow_mut().cancelled = true;
+    }
+
+    pub fn bind_generation(
+        &mut self,
+        generation: RangePrepublicationSessionGeneration,
+    ) -> Result<(), String> {
+        let state = self.state.borrow();
+        if self.generation.is_some()
+            || state.cancelled
+            || state.pending
+            || state.completion.is_some()
+            || !matches!(state.resources, Some((_, Ok(_))))
+        {
+            return Err("candidate preparation source is unavailable or already bound".into());
+        }
+        self.generation = Some(generation);
+        Ok(())
     }
 
     pub fn start(
@@ -83,18 +111,20 @@ impl MainWindowComposerCandidateWorker {
             | RangePrepublicationEffect::ObjectPage { generation, .. } => *generation,
         };
         let mut state = self.state.borrow_mut();
-        if generation != self.generation
+        if Some(generation) != self.generation
             || state.cancelled
             || state.pending
             || state.completion.is_some()
-            || state.resources.is_none()
+            || !matches!(state.resources, Some((_, Ok(_))))
         {
             return Err((
                 effect,
                 "candidate preparation worker is unavailable or stale".into(),
             ));
         }
-        let (mut candidate, source) = state.resources.take().unwrap();
+        let (mut candidate, Ok(source)) = state.resources.take().unwrap() else {
+            unreachable!("authenticated source checked before taking resources")
+        };
         state.pending = true;
         drop(state);
         let retained = self.state.clone();
@@ -114,7 +144,7 @@ impl MainWindowComposerCandidateWorker {
             let (candidate, source, completion) = work.await;
             {
                 let mut state = retained.borrow_mut();
-                state.resources = Some((candidate, source));
+                state.resources = Some((candidate, Ok(source)));
                 state.completion = Some(completion);
                 state.pending = false;
             }
@@ -143,6 +173,24 @@ impl Drop for MainWindowComposerCandidateWorker {
 }
 
 impl MainWindowComposerCandidateCustody {
+    pub fn source(&self) -> Option<Ref<'_, MainWindowComposerCandidateSource>> {
+        Ref::filter_map(self.state.borrow(), |state| {
+            state.resources.as_ref()?.1.as_ref().ok()
+        })
+        .ok()
+    }
+
+    pub fn preparation_error(&self) -> Option<String> {
+        self.state
+            .borrow()
+            .resources
+            .as_ref()?
+            .1
+            .as_ref()
+            .err()
+            .map(|(_, error)| error.clone())
+    }
+
     pub fn pending(&self) -> bool {
         self.state.borrow().pending
     }
@@ -159,10 +207,36 @@ impl MainWindowComposerCandidateCustody {
         &mut self,
     ) -> Option<(HomeRecoveryCandidate, MainWindowComposerCandidateSource)> {
         let mut state = self.state.borrow_mut();
-        if state.pending || state.completion.is_some() {
+        if state.pending
+            || state.completion.is_some()
+            || !matches!(state.resources, Some((_, Ok(_))))
+        {
             return None;
         }
-        state.resources.take()
+        let (candidate, Ok(source)) = state.resources.take()? else {
+            unreachable!("authenticated source checked before taking resources")
+        };
+        Some((candidate, source))
+    }
+
+    pub fn take_refused_resources(
+        &mut self,
+    ) -> Option<(
+        HomeRecoveryCandidate,
+        MainWindowComposerRetiredClose,
+        String,
+    )> {
+        let mut state = self.state.borrow_mut();
+        if state.pending
+            || state.completion.is_some()
+            || !matches!(state.resources, Some((_, Err(_))))
+        {
+            return None;
+        }
+        let (candidate, Err((retired, error))) = state.resources.take()? else {
+            unreachable!("refused source checked before taking resources")
+        };
+        Some((candidate, retired, error))
     }
 }
 

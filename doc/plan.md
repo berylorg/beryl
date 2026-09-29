@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 749: Retain Candidate Preparation Worker Custody (finished)
+# Phase 750: Authenticate Resident Recovery Sources On The Worker (finished)
 
-A single-slot worker moves the unpublished candidate/source through bounded background reads,
-returns exact keyed results before notification, and rejects stale or overlapping work. A separate
-recovery custody receiver survives cancellation and lost consumers for explicit settlement.
-All 56 resident-close tests and the app library check pass; independent lifecycle review accepted.
-The [abandoned-custody lesson](failures/composer-candidate-worker-custody.md) records the correction.
+The existing retained worker slot now authenticates sources off the GUI thread and returns the
+candidate with either a fresh source or original retirement facts before notification. Session
+binding is one-shot after success; cancellation and abandoned delivery preserve cleanup custody.
+All 59 resident-close tests and the app library check pass; independent lifecycle review accepted.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -108,10 +107,14 @@ fenced. Independently review the fresh-source and worker-custody boundary.
 
 Use the candidate-only reads accepted in 746, authenticated source from 747 and protected resident
 snapshot from 748. Retain the worker custody receiver from 749 under the recovery owner independently
-of GUI consumers; consume keyed results and explicitly settle returned resources. The ordinary route requires
+of GUI consumers, including the authentication startup from 750; consume keyed results and explicitly
+settle returned resources. The ordinary route requires
 Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
 retained recovery work and borrow candidate access inside the worker, following the existing
 interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
+Use `prepare` before deriving the successor seed, then bind the admitted widget session generation.
+Copy source facts and release the `source()` borrow before starting, cancelling or dropping the worker.
+The [abandoned-custody lesson](failures/composer-candidate-worker-custody.md) remains applicable.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 
