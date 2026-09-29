@@ -23,12 +23,14 @@ use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease
 use crate::main_window::MainWindowComposerSlot;
 
 mod candidate_source;
+mod candidate_worker;
 mod close;
 mod retirement;
 mod close_cleanup;
 mod native_disposal;
 
 pub use candidate_source::MainWindowComposerCandidateSource;
+pub use candidate_worker::*;
 
 pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
     CapacityFull { epoch: u64 },

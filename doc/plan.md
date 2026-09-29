@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 748: Protect The Preserved Recovery Widget (finished)
+# Phase 749: Retain Candidate Preparation Worker Custody (finished)
 
-The existing recovery fence now retains the widget's resident-protection token and exact seed
-after checking live binding/history. Invalidated protection refuses repeated fencing and resource
-handoff while preserving disabled presentation and custody. App check and all 52 resident-close
-regressions pass; independent lifecycle review accepted. Preparation driving remains 744.
+A single-slot worker moves the unpublished candidate/source through bounded background reads,
+returns exact keyed results before notification, and rejects stale or overlapping work. A separate
+recovery custody receiver survives cancellation and lost consumers for explicit settlement.
+All 56 resident-close tests and the app library check pass; independent lifecycle review accepted.
+The [abandoned-custody lesson](failures/composer-candidate-worker-custody.md) records the correction.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -106,7 +107,8 @@ lifetime through cancellation and abandoned delivery, and complete cleanup while
 fenced. Independently review the fresh-source and worker-custody boundary.
 
 Use the candidate-only reads accepted in 746, authenticated source from 747 and protected resident
-snapshot from 748. The ordinary native-lineage service route requires
+snapshot from 748. Retain the worker custody receiver from 749 under the recovery owner independently
+of GUI consumers; consume keyed results and explicitly settle returned resources. The ordinary route requires
 Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
 retained recovery work and borrow candidate access inside the worker, following the existing
 interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
