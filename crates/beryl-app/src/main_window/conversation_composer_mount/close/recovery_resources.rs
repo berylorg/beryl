@@ -85,7 +85,7 @@ impl MainWindowConversationComposerMount {
             })
     }
 
-    fn validate_recovery_retirement(
+    pub(super) fn validate_recovery_retirement(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
         cx: &Context<Self>,

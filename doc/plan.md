@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 757: Prepare Same-Candidate Resident Mount Adapters (finished)
+# Phase 758: Attach Prepared Recovery Resources To The Preserved Mount (finished)
 
-Recovery now prepares a bounded publication, submission and native-recovery adapter bundle against
-one private candidate, refusing mismatched CAS/domain inputs and retiring abandoned marker state.
-All 20 focused CAS/marker preparation tests and the app check pass; independent lifecycle review
-accepted. Preparation starts no additional workers and preserves publication fencing.
+Checked mount attachment now transfers fresh service/adapters only after resident adoption,
+preserving editor identity, focus and recovery fencing while replacing the predecessor close proof.
+Seven attachment tests, the app check and independent lifecycle review pass. The broader recovery
+run passed 44/45 tests; the existing service-graph retirement occupancy test returned `Incomplete`
+once and passed unchanged in isolation. Exact cancelled-request completion remains phase 745.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 
@@ -104,9 +105,9 @@ association, late completion and exact cleanup. Keep all interaction fenced for 
 graph and draft/work convergence; independently review lifecycle composition. Whole-resident
 retirement remains phase 706 and whole-home publication remains phase 702.
 
-The preparation flight, checked widget/resident adoption, marker preparation, CAS custody transfer
-and same-candidate adapter bundle are accepted. Mount adapter attachment and exact request-owner
-completion remain here; preserve the existing editor entity, focus and recovery fences.
+The preparation flight, checked widget/resident adoption, marker preparation, CAS custody transfer,
+same-candidate adapter bundle and checked mount attachment are accepted. Exact request-owner
+completion remains here; preserve the existing editor entity, focus and recovery fences.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 

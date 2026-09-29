@@ -21,6 +21,10 @@ pub(crate) struct PreparedComposerRecoveryAdapters {
     native: NativeLineageRecoveryControl,
 }
 
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../tests/unit/recovery_mount_attachment.rs"]
+mod mount_attachment;
+
 impl PreparedComposerRecoveryAdapters {
     pub(crate) fn prepare(
         candidate: &mut HomeRecoveryCandidate,
