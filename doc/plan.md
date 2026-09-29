@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 756: Associate The Adopted Resident With Its Fresh Service (finished)
+# Phase 757: Prepare Same-Candidate Resident Mount Adapters (finished)
 
-Checked widget adoption now installs the matching resident service, selection, clipboard writer
-and fresh close ticket in one GUI call while preserving identity, presentation, focus and fencing.
-All 90 resident-close, pending-activation and native-window-operation tests and the app check pass;
-independent lifecycle review accepted. Recovery CAS custody transfer and marker preparation are
-already accepted. Mount adapter attachment and request-owner completion remain in phase 745.
+Recovery now prepares a bounded publication, submission and native-recovery adapter bundle against
+one private candidate, refusing mismatched CAS/domain inputs and retiring abandoned marker state.
+All 20 focused CAS/marker preparation tests and the app check pass; independent lifecycle review
+accepted. Preparation starts no additional workers and preserves publication fencing.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 
@@ -104,6 +103,10 @@ in one checked GUI completion. Verify preserved presentation and focus, refusal 
 association, late completion and exact cleanup. Keep all interaction fenced for separate session,
 graph and draft/work convergence; independently review lifecycle composition. Whole-resident
 retirement remains phase 706 and whole-home publication remains phase 702.
+
+The preparation flight, checked widget/resident adoption, marker preparation, CAS custody transfer
+and same-candidate adapter bundle are accepted. Mount adapter attachment and exact request-owner
+completion remain here; preserve the existing editor entity, focus and recovery fences.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 

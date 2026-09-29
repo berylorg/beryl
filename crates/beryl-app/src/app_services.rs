@@ -34,6 +34,7 @@ mod failed_retirement;
 mod initial_disposal;
 mod preparation;
 mod published;
+pub(crate) mod recovery_composer;
 mod recovery_retirement;
 mod shutdown;
 mod window_services;
