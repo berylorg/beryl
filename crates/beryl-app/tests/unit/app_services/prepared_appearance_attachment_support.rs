@@ -6,6 +6,7 @@ pub(super) fn assert_unavailable(
     appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
     app: &mut gpui::App,
 ) {
+    assert!(owner.borrow().interrupted_exit_appearance(request).is_err());
     let window = owner.borrow().test_process().windows.shells()[0].window();
     assert!(
         owner
@@ -19,6 +20,7 @@ pub(super) fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
+    substituted: &gpui::Entity<GpuiAppearanceWindowSet>,
     previous: &gpui::Entity<GpuiAppearanceWindowSet>,
     app: &mut gpui::App,
 ) {
@@ -26,6 +28,11 @@ pub(super) fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let foreign = request.test_foreign();
     let mut running = owner.borrow_mut();
+    assert!(running.interrupted_exit_appearance(&foreign).is_err());
+    assert!(std::sync::Arc::ptr_eq(
+        &running.interrupted_exit_appearance(request).unwrap(),
+        &appearance.read(app).target().snapshot().current,
+    ));
     let bind = |running: &mut RunningProcessOwner, request, appearance, app: &mut gpui::App| {
         running.bind_interrupted_exit_appearance(request, window, appearance, app)
     };
@@ -46,6 +53,11 @@ pub(super) fn verify(
         assert!(bind(&mut running, request, appearance, app).is_err());
     }
     running.test_set_resident_graph_retirement(Some(Ok(())));
+    assert!(
+        bind(&mut running, request, substituted, app)
+            .unwrap_err()
+            .contains("differs from the prepared graph")
+    );
     assert!(
         bind(&mut running, request, previous, app)
             .unwrap_err()

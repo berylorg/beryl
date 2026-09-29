@@ -2,6 +2,18 @@ use super::*;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 
 impl RunningProcessOwner {
+    pub(crate) fn interrupted_exit_appearance(
+        &self,
+        request: &RunningExitRequest,
+    ) -> Result<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>, String> {
+        self.interrupted_exit_services_result(request)?;
+        let settlement = self.interrupted_exit.as_ref().unwrap().settlement.borrow();
+        let Some(settlement::CandidateSettlement::Services(Ok(graph))) = settlement.as_ref() else {
+            unreachable!("validated prepared recovery services")
+        };
+        Ok(graph.appearance())
+    }
+
     pub(crate) fn release_interrupted_exit_drafts(
         &self,
         request: &RunningExitRequest,
@@ -93,6 +105,9 @@ impl RunningProcessOwner {
         };
         if !snapshot.active || !graph.matches_candidate(home.home_id(), home.home_generation()) {
             return Err("Recovery appearance candidate identity changed".into());
+        }
+        if !std::sync::Arc::ptr_eq(&snapshot.current, &graph.appearance()) {
+            return Err("Recovery appearance differs from the prepared graph".into());
         }
         drop(settlement);
         let drafts = self

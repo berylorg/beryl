@@ -67,6 +67,13 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn appearance(&self) -> Arc<crate::theme_runtime::AppearanceGeneration> {
+        self.theme
+            .as_ref()
+            .expect("prepared recovery theme")
+            .current()
+    }
+
     pub(super) fn matches_candidate(
         &mut self,
         home: beryl_model::BerylHomeId,

@@ -231,6 +231,21 @@ pub(super) async fn verify(
             );
         }
         assert!(adapters(&foreign).is_err());
+        let substituted_appearance = appearance;
+        let appearance = if mode == "success" {
+            let prepared = owner.borrow().interrupted_exit_appearance(request).unwrap();
+            cx.update(|app| {
+                crate::theme_runtime::GpuiAppearanceWindowSet::new(
+                    prepared,
+                    NonZeroUsize::new(4).unwrap(),
+                    app,
+                )
+            })
+            .unwrap()
+        } else {
+            assert!(owner.borrow().interrupted_exit_appearance(request).is_err());
+            substituted_appearance.clone()
+        };
         let retained_marker = if mode == "success" {
             for retirement in [None, Some(Err("failed retirement".into()))] {
                 owner
@@ -344,6 +359,7 @@ pub(super) async fn verify(
                             owner,
                             request,
                             &appearance,
+                            &substituted_appearance,
                             previous_appearance,
                             app,
                         );

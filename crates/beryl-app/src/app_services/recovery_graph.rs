@@ -143,6 +143,13 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn appearance(&self) -> Arc<crate::theme_runtime::AppearanceGeneration> {
+        self.services
+            .as_ref()
+            .expect("prepared recovery services")
+            .appearance()
+    }
+
     pub(crate) fn matches_candidate(
         &mut self,
         home: BerylHomeId,
