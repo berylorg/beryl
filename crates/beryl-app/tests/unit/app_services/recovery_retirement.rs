@@ -71,6 +71,33 @@ fn retired_home_construction_preserves_failed_custody_and_returns_private_candid
             assert!(owner.process.execution_permit().commit(|| ()).is_err());
         }
         let mut candidate = owner.recover_retired_service_home(expected).unwrap();
+        let aborted_generation = candidate.generation();
+        let mut returned = Some(candidate.abort());
+        assert!(matches!(
+            owner.return_retired_service_home(aborted_generation, &mut returned),
+            Err(ServiceGraphRetirementError::Stale)
+        ));
+        assert!(returned.is_some());
+        owner
+            .return_retired_service_home(expected, &mut returned)
+            .unwrap();
+        assert!(returned.is_none());
+        assert!(matches!(
+            owner.return_retired_service_home(expected, &mut returned),
+            Err(ServiceGraphRetirementError::InvalidHomeReturn)
+        ));
+        assert!(
+            HomeOpenCandidate::open(HomeOpenOptions::new(
+                directory.path(),
+                HomeSchemaVersion::CURRENT,
+            ))
+            .is_err()
+        );
+        assert_eq!(owner.enrollments.pending_count(), 1);
+        assert_eq!(owner.windows.main_window_occupancy(), 1);
+        assert!(owner.process.execution_permit().commit(|| ()).is_err());
+        candidate = owner.recover_retired_service_home(expected).unwrap();
+        assert_ne!(candidate.generation(), aborted_generation);
         assert_eq!(candidate.home_id(), home_id);
         assert_ne!(candidate.generation(), expected);
         assert_eq!(
@@ -272,6 +299,10 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
     let (_directory, mut owner, faults) = installed();
     let expected = owner.graph().unwrap().home().health().generation().unwrap();
     assert!(matches!(
+        owner.return_retired_service_home(expected, &mut None),
+        Err(ServiceGraphRetirementError::Stale)
+    ));
+    assert!(matches!(
         owner.take_retired_service_home(expected),
         Err(ServiceGraphRetirementError::Stale)
     ));
@@ -319,12 +350,22 @@ fn recovery_retirement_refuses_healthy_and_stale_generation_without_consumption(
         Err(ServiceGraphRetirementError::Stale)
     ));
     owner.finish_service_graph_retirement(expected).unwrap();
+    let mut foreign = Some(recovered.abort());
+    assert!(matches!(
+        owner.return_retired_service_home(expected, &mut foreign),
+        Err(ServiceGraphRetirementError::InvalidHomeReturn)
+    ));
+    assert!(foreign.is_some());
     owner
         .take_retired_service_home(expected)
         .unwrap()
         .close()
         .unwrap();
-    recovered.abort().close().unwrap();
+    assert!(matches!(
+        owner.return_retired_service_home(expected, &mut foreign),
+        Err(ServiceGraphRetirementError::InvalidHomeReturn)
+    ));
+    foreign.take().unwrap().close().unwrap();
 }
 
 #[test]
@@ -338,6 +379,10 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
         Err(ServiceGraphRetirementError::Incomplete)
     ));
     assert!(owner.graph().is_none());
+    assert!(matches!(
+        owner.return_retired_service_home(expected, &mut None),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
     assert!(matches!(
         owner.take_retired_service_home(expected),
         Err(ServiceGraphRetirementError::Incomplete)

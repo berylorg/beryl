@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 786: Retain Running-Owner Candidate Construction (finished)
+# Phase 787: Return Aborted Candidate Home Custody (finished)
 
-The exact cancelled Exit now constructs its private candidate on a worker using the existing
-candidate slot. Service custody and candidate or typed error return before GUI delivery, including
-stale delivery; failed reopening permits explicit retry while preserving the original session and
-fences. Nine native Exit tests passed in `6387e49f-3a4e-4bdf-a9b9-3297f7788300`; compilation,
-formatting and independent review passed. Fresh service preparation, retry-delay scheduling and
-whole-graph publication remain pending.
+The retired service owner accepts the same failed home after candidate disposal only into vacant,
+exact completed retirement custody. Refusal preserves caller ownership; return/retry preserves
+the lock, reconciliation, reservations and process fence. Ten focused tests passed in
+`02ba6766-42f3-4f1b-b5b0-2f3569db88ab`; compilation, formatting and independent review passed.
+Running-owner cancellation routing and prepared-service disposal remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -130,6 +129,7 @@ Phase 783 routes that contribution through the existing candidate worker with ty
 Phase 784 supplies exact retired-home custody transfer for production recovery.
 Phase 785 constructs the private storage candidate and restores failed-home custody on reopen error.
 Phase 786 supplies retained running-owner candidate construction using the existing worker slot.
+Phase 787 supplies failed-home custody return to the retired service owner after candidate disposal.
 Complete fresh service preparation, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

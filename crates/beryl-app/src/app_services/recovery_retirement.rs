@@ -47,11 +47,37 @@ pub(crate) enum ServiceGraphRetirementError {
     MarkerDrivesPending,
     #[error("retired home custody has already transferred")]
     HomeTransferred,
+    #[error("return requires vacant retired custody and the same failed home")]
+    InvalidHomeReturn,
     #[error(transparent)]
     Admission(#[from] ProcessAdmissionError),
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn return_retired_service_home(
+        &mut self,
+        expected: HomeGeneration,
+        home: &mut Option<HomeStore>,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        let retirement = self
+            .recovery_retirement
+            .as_mut()
+            .filter(|retirement| retirement.generation == expected)
+            .ok_or(ServiceGraphRetirementError::Stale)?;
+        if !retirement.complete {
+            return Err(ServiceGraphRetirementError::Incomplete);
+        }
+        if retirement.home.is_some()
+            || !home.as_ref().is_some_and(|home| {
+                home.home_id() == self.home_id && home.health().state() == HomeHealthState::Failed
+            })
+        {
+            return Err(ServiceGraphRetirementError::InvalidHomeReturn);
+        }
+        retirement.home = home.take();
+        Ok(())
+    }
+
     pub(crate) fn recover_retired_service_home(
         &mut self,
         expected: HomeGeneration,
