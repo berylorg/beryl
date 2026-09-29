@@ -7,17 +7,36 @@ fn shutdown_retirement_retains_refused_service_and_preserves_exact_resident(
 ) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, shell) = startup_interaction::shell(cx, 101);
-    verify_retirement(cx, fixture, shell);
+    verify_retirement(cx, fixture, shell, true);
 }
 
 #[gpui::test]
 fn restored_shutdown_retirement_releases_construction_service(cx: &mut gpui::TestAppContext) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, shell, _attempt, _service) = restored_native::shell_for_recovery(cx);
-    verify_retirement(cx, fixture, shell);
+    verify_retirement(cx, fixture, shell, true);
 }
 
-fn verify_retirement(cx: &mut gpui::TestAppContext, fixture: Fixture, shell: MainWindowShell) {
+#[gpui::test]
+fn untouched_empty_acquired_resident_retires(cx: &mut gpui::TestAppContext) {
+    cx.update(gpui_text_input::ensure_text_input_bindings);
+    let (fixture, shell) = startup_interaction::shell(cx, 101);
+    verify_retirement(cx, fixture, shell, false);
+}
+
+#[gpui::test]
+fn untouched_empty_restored_resident_retires(cx: &mut gpui::TestAppContext) {
+    cx.update(gpui_text_input::ensure_text_input_bindings);
+    let (fixture, shell, _attempt, _service) = restored_native::shell_for_empty_recovery(cx);
+    verify_retirement(cx, fixture, shell, false);
+}
+
+fn verify_retirement(
+    cx: &mut gpui::TestAppContext,
+    fixture: Fixture,
+    shell: MainWindowShell,
+    edit: bool,
+) {
     let (_other_fixture, other) = startup_interaction::shell(cx, 111);
     startup_interaction::drive(&shell, cx);
     let mount = shell
@@ -28,12 +47,25 @@ fn verify_retirement(cx: &mut gpui::TestAppContext, fixture: Fixture, shell: Mai
         .unwrap();
     let resident = mount.read_with(cx, |mount, _| mount.contribution().unwrap());
     let input = resident.read_with(cx, |resident, _| resident.gpui_input());
+    if !edit {
+        assert_eq!(
+            mount.read_with(cx, |mount, _| mount
+                .selected_identity()
+                .unwrap()
+                .binding()
+                .logical_extent()
+                .logical_utf8_bytes()),
+            0
+        );
+    }
     let mut draft = shell
         .window()
         .update(cx, |root, window, cx| {
-            input.update(cx, |input, cx| {
-                input.replace_text_in_range(None, "preserved resident draft", window, cx);
-            });
+            if edit {
+                input.update(cx, |input, cx| {
+                    input.replace_text_in_range(None, "preserved resident draft", window, cx);
+                });
+            }
             root.test_set_shutdown_interaction_gated(true, cx).unwrap();
             input.focus_handle(cx).focus(window);
             root.test_begin_shutdown_draft(window, cx).unwrap()

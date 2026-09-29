@@ -56,9 +56,22 @@ superseded index arrives first. Its exact settlement, composition and selection 
 
 Independent lifecycle review accepted the correction. All 550 widget tests pass in run
 `ae089efa-40e9-447e-b12a-092e449cffc3`; default-feature library compilation also passes, using LLVM,
-one job, no debug information and nonincremental builds. Canonical publication and untouched empty
-acquired/restored application qualification remain phase 763. This does not establish complete
-running-shell recovery; exact retirement and quiescence checks remain unchanged.
+one job, no debug information and nonincremental builds.
+
+Phase 763 published widget `2c3ae40ced71301a0ce5286aaef90ce9d594a5ac` and settings
+`5b2e072b55e3ad99534926721f4aa892041cd869`. Root pins and the canonical lock now resolve one
+widget, settings and GPUI package each. Isolated checkouts without `.cargo/local.toml` verified
+the published Git graph; canonical settings and app library checks and locked metadata passed.
+The root lock changes only the affected dependency identities and removes the older duplicate widget.
+
+Native tests now cover untouched zero-byte acquired and restored residents alongside existing
+edited cases. The empty restored fixture skips text mutation and requires the clean WindowClose
+result `State(CloseReady)`; requiring a captured publication was invalid for an unchanged draft.
+All 16 focused retirement/restored-shell tests pass against canonical dependencies in run
+`2f66e478-bc05-4172-bd90-36be3086379f`. Exact held-worker/service refusal and retry, shell/editor/focus
+identity, transferred-facts readiness, strict quiescence and empty disposal cleanup remain checked.
+Independent review accepted. This does not establish complete running-shell recovery;
+opening, claim and source custody still require phase 702 whole-shell handling.
 
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection

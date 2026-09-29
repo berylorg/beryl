@@ -8,8 +8,31 @@ pub(crate) fn shell_for_recovery(
     RestoredWindowPreparationAttempt,
     RestoredWindowServiceTestLifetime,
 ) {
+    shell_with_text(cx, SAVED_TEXT)
+}
+
+pub(crate) fn shell_for_empty_recovery(
+    cx: &mut gpui::TestAppContext,
+) -> (
+    Fixture,
+    MainWindowShell,
+    RestoredWindowPreparationAttempt,
+    RestoredWindowServiceTestLifetime,
+) {
+    shell_with_text(cx, "")
+}
+
+fn shell_with_text(
+    cx: &mut gpui::TestAppContext,
+    text: &'static str,
+) -> (
+    Fixture,
+    MainWindowShell,
+    RestoredWindowPreparationAttempt,
+    RestoredWindowServiceTestLifetime,
+) {
     let (fixture, prepared, attempt, service, appearance) = home_support::join(
-        home_support::worker(|| {
+        home_support::worker(move || {
             let PreparedFixture {
                 prepared,
                 attempt,
@@ -18,7 +41,7 @@ pub(crate) fn shell_for_recovery(
                 appearance,
                 seals,
                 ..
-            } = prepared_fixture(141);
+            } = prepared_fixture_with_text(141, None, text);
             let prepared = RestoredWindowShellPrepared::prepare(
                 prepared,
                 &attempt,

@@ -89,21 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 762: Keep Widget Index Custody Coherent Through Local Target Publication (finished)
+# Phase 763: Publish And Qualify Empty Resident Retirement (finished)
 
-Accepted exact index retirement through the widget's existing prepared release set. Seven new
-tests cover empty/nonterminal local targets, queued/dispatched requests, delayed responses,
-refusal and deferred-index preservation; disabling the correction fails five retirement tests.
-All 550 widget tests and default-feature compilation pass; independent lifecycle review accepted.
-See the [custody correction evidence](failures/initial-composer-custody.md). Canonical publication
-and untouched empty acquired/restored application qualification remain next.
-
-# Phase 763: Publish And Qualify Empty Resident Retirement (pending)
-
-Publish the accepted widget correction through the canonical dependency path and qualify untouched
-empty acquired and restored shell retirement. Preserve exact service refusal/retry, editor/focus
-identity and request cleanup. Update native regression coverage and verify the app before returning
-to whole-shell recovery composition; empty-resident success alone does not complete phase 702.
+Published widget `2c3ae40` and settings `5b2e072`; canonical pins and lock select one widget graph.
+All 16 focused native tests pass, including untouched empty acquired/restored retirement with
+exact refusal/retry, editor/focus preservation and request cleanup. Canonical app compilation and
+locked metadata pass; independent review accepted. See the
+[custody evidence](failures/initial-composer-custody.md). Whole-shell recovery remains phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -118,9 +110,9 @@ resident retirement; service-graph completion alone does not prove whole-residen
 Phase 759 binds that resident pass to graph-worker admission.
 Phase 760 requires successful graph retirement before candidate settlement can start.
 Acquired/restored opening, claim and source custody still needs whole-shell recovery handling.
-The empty-resident index ownership defect recorded in the
-[custody evidence](failures/initial-composer-custody.md) is diagnosed; phases 762–763 supply its
-correction and native qualification. No full running-shell recovery claim is made.
+Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
+recorded in the [custody evidence](failures/initial-composer-custody.md).
+No full running-shell recovery claim is made.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

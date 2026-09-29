@@ -2,7 +2,7 @@ use super::restoration_support::*;
 
 #[path = "support/restored_recovery.rs"]
 mod recovery_support;
-pub(super) use recovery_support::shell_for_recovery;
+pub(super) use recovery_support::{shell_for_empty_recovery, shell_for_recovery};
 
 #[cfg(target_os = "windows")]
 #[path = "restored_desktop.rs"]
@@ -97,6 +97,14 @@ fn prepared_fixture_with_history(
     seed: u8,
     history: Option<gpui_text_input::MutationKind>,
 ) -> PreparedFixture {
+    prepared_fixture_with_text(seed, history, SAVED_TEXT)
+}
+
+fn prepared_fixture_with_text(
+    seed: u8,
+    history: Option<gpui_text_input::MutationKind>,
+    text: &str,
+) -> PreparedFixture {
     let fixture = Fixture::new(seed);
     let acquired = fixture.acquire(seed + 1);
     let thread = acquired.thread_id();
@@ -111,17 +119,21 @@ fn prepared_fixture_with_history(
         seed + 2,
         seed + 3,
     );
-    let written = editor::commit_text(
-        &mut host,
-        &fixture.store,
-        binding,
-        1,
-        0,
-        0,
-        SAVED_TEXT,
-        SAVED_TEXT.len() as u64,
-        1,
-    );
+    let written = if text.is_empty() {
+        binding
+    } else {
+        editor::commit_text(
+            &mut host,
+            &fixture.store,
+            binding,
+            1,
+            0,
+            0,
+            text,
+            text.len() as u64,
+            1,
+        )
+    };
     match history {
         Some(gpui_text_input::MutationKind::Undo) => {
             let length = SAVED_TEXT.len() as u64;
@@ -169,8 +181,8 @@ fn prepared_fixture_with_history(
     else {
         panic!("seed flush admission")
     };
-    assert!(matches!(
-        host.capture_flush_publication(
+    let captured = host
+        .capture_flush_publication(
             &fixture.store,
             ticket,
             fixture.state.assets(),
@@ -178,11 +190,22 @@ fn prepared_fixture_with_history(
             editor::operation_id(if history.is_some() { 20 } else { 2 }),
             None,
             SyndicTimestamp::from_unix_millis(1000),
-            &CommandCancellation::new()
+            &CommandCancellation::new(),
         )
-        .unwrap(),
-        ComposerHostFlushCapture::Captured(_)
-    ));
+        .unwrap();
+    if text.is_empty() {
+        assert!(
+            matches!(
+                captured,
+                ComposerHostFlushCapture::State(
+                    beryl_app::composer_host::ComposerHostFlushState::CloseReady
+                )
+            ),
+            "{captured:?}"
+        );
+    } else {
+        assert!(matches!(captured, ComposerHostFlushCapture::Captured(_)));
+    }
     host.advance_flush(&fixture.store, ticket).unwrap();
     assert!(!host.is_dirty());
     assert!(host.release_window_close(ticket).unwrap());
@@ -200,7 +223,7 @@ fn prepared_fixture_with_history(
                 seed + 4,
                 seed + 5,
                 1,
-                SAVED_TEXT.len() as u64,
+                text.len() as u64,
             ),
             composer_support::fixture::operation_id(seed + 6),
             MainWindowComposerMarkerMetadataAuthority::new(fixture.state.assets()),
@@ -222,7 +245,7 @@ fn prepared_fixture_with_history(
             .binding()
             .logical_extent()
             .logical_utf8_bytes(),
-        SAVED_TEXT.len() as u64
+        text.len() as u64
     );
     let snapshot = snapshot(&fixture);
     let appearance = appearance(&fixture);
