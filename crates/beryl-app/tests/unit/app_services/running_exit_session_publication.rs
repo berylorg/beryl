@@ -18,6 +18,11 @@ mod resident_recovery {
     include!("running_resident_recovery.rs");
 }
 
+mod threadless_recovery {
+    use super::*;
+    include!("running_threadless_attachment.rs");
+}
+
 #[test]
 fn native_exit_session_publication_delivers_exact_ready_request() {
     run(None, false);
@@ -142,6 +147,7 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                         .unwrap()
                         .request_exit();
                     app.spawn(async move |cx| {
+                        let mut recovered_threadless = false;
                         let request = next_request(&owner, cx).await;
                         let identity = request.identity();
                         let (request, error) = cx
@@ -425,6 +431,10 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             let candidate = candidate_settlement_support::verify(
                                 &owner, &request, candidate, settlement_unwind, cx,
                             ).await;
+                            if matches!(fault, Some(FaultPoint::BeforeCommit)) && !settlement_unwind {
+                                threadless_recovery::verify(&owner, &request, &candidate, cx).await;
+                                recovered_threadless = true;
+                            }
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
@@ -474,12 +484,12 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                             .into_inner()
                             .test_into_process();
                         if consumer && fault.is_some() {
-                            dispose_failed_fixture(running, true, cx).await;
+                            dispose_failed_fixture(running, true, recovered_threadless, cx).await;
                         } else if matches!(
                             fault,
                             Some(FaultPoint::BeforeCommit | FaultPoint::AfterPersist)
                         ) {
-                            dispose_failed_fixture(running, false, cx).await;
+                            dispose_failed_fixture(running, false, false, cx).await;
                         } else {
                             support::dispose_running(running, cx).await;
                         }
@@ -500,6 +510,7 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
 async fn dispose_failed_fixture(
     mut running: startup_owner::StartedProcess,
     retired: bool,
+    home_closed: bool,
     cx: &mut AsyncApp,
 ) {
     if retired {
@@ -540,15 +551,16 @@ async fn dispose_failed_fixture(
     cx.background_executor()
         .spawn(async move {
             if running.services.graph().is_none() {
-                running
-                    .services
-                    .test_retired_service_home()
-                    .unwrap()
-                    .close()
-                    .unwrap();
+                let home = running.services.test_retired_service_home();
+                if home_closed {
+                    assert!(home.is_none());
+                } else {
+                    home.unwrap().close().unwrap();
+                }
                 return;
             }
-            if running.services.graph().unwrap().home().health().state() == HomeHealthState::Healthy {
+            if running.services.graph().unwrap().home().health().state() == HomeHealthState::Healthy
+            {
                 close(&mut running.services);
                 return;
             }

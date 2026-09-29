@@ -135,7 +135,7 @@ impl ProcessServiceOwner {
     }
 
     #[cfg(test)]
-    pub(super) fn test_retired_service_home(&mut self) -> Option<HomeStore> {
+    pub(crate) fn test_retired_service_home(&mut self) -> Option<HomeStore> {
         let retirement = self.recovery_retirement.as_mut()?;
         retirement
             .complete

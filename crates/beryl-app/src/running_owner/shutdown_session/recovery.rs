@@ -7,6 +7,7 @@ mod resident_retirement;
 mod resume;
 mod retirement;
 mod settlement;
+mod threadless;
 pub(crate) use settlement::InterruptedExitCandidate;
 
 pub(in crate::running_owner) struct InterruptedExitRecovery {

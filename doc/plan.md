@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 773: Route Threadless Shell Adoption Through Retained Drafts (finished)
+# Phase 774: Bind Threadless Attachment To The Interrupted Exit Owner (finished)
 
-The retained aggregate now routes threadless shell adoption through its exact window entry,
-preserving custody on refusal and clearing readiness on success. Seven focused shell/aggregate
-tests passed in run `40f1981c-8cea-4707-87f4-a42ab982e81a`; app compilation, formatting and independent
-lifecycle/persistence review passed. Running-owner candidate validation and request settlement
-remain pending.
+The running owner now routes threadless attachment through exact request, graph-retirement,
+candidate identity and retained-draft checks without adding state or a worker. The native
+noncommit fixture uses its actual recovered home and verifies refusal custody and continued
+interaction fencing. Sixteen focused recovery/session tests passed in runs
+`5210e2d9-9839-4711-96e4-db81215c91c4` and `a48a9e9d-1ea9-45a3-919f-a01803520ff3`;
+app compilation, formatting and independent lifecycle/persistence review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -115,8 +116,9 @@ Phase 767 supplies authenticated window facts with resident attachment for that 
 Phases 768–770 connect selected-shell adoption and synchronous draft-ticket renewal through the
 retained-draft aggregate to the running owner. Phase 771 supplies fresh bounded threadless window
 authentication; phases 772–773 supply attachment through its surviving shell and retained draft
-aggregate. Running-owner threadless routing, fresh appearance/notice ownership and exact
-draft/work settlement still precede whole-graph publication and coherent reopening.
+aggregate. Phase 774 binds threadless attachment to the running owner's exact request and
+candidate identity. Fresh appearance/notice ownership, candidate-state revalidation and exact
+session/draft/work settlement still precede whole-graph publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

@@ -455,8 +455,14 @@ by the executable composition root.
 - Retained shutdown drafts also route threadless adoption through the exact existing window entry
   while prepared, idle and unreleased. Refusal preserves facts and cached readiness; successful
   shell adoption consumes the facts and clears readiness. This route retains the original draft
-  and adds no worker or service custody. Running-owner request and candidate validation remain
-  prerequisites to composing it into recovery.
+  and adds no worker or service custody.
+- Running-owner threadless attachment requires the exact active cancelled request, successful
+  graph retirement and available original session custody, without a resident preparation,
+  settlement or outstanding resident frame. Authenticated facts must match the supplied candidate's
+  home and generation. It routes through the retained drafts without consuming candidate/session
+  custody or performing storage work on the GUI thread. Refusal preserves all inputs; success only
+  consumes the fixed facts and clears draft readiness. Fresh candidate-state revalidation, session
+  settlement and appearance/notice replacement still precede publication and coherent reopening.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
