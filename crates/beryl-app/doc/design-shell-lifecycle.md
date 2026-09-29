@@ -1510,6 +1510,15 @@ by the executable composition root.
   contribution adds no queue or cached readiness, preserves native reservations and process fencing,
   and grants no graph publication or interaction-release authority.
 
+- Interrupted Exit routes this contribution through its existing retained candidate worker slot
+  after successful session settlement, with the exact active cancelled request and successful
+  graph retirement. Original session and complete service custody must be available; resident
+  preparation and outstanding resident frame work exclude admission. The worker reacquires fresh
+  typed State/Syndic participants and returns the service owner, original session, candidate and
+  typed outcome before GUI delivery, even when the request changes or work unwinds. Failure stays
+  in the single slot and blocks another pass; diagnostic reporting borrows that outcome without
+  consuming it. This contribution neither publishes a graph nor releases recovery fences.
+
 - `beryl-app` contributes one complete unpublished app service graph to the process-wide same-home
   replacement. Before candidate construction, the old graph fences admission and disposes its
   connections, brokers, routers, schedulers, projections, leases, workers, custody, subscriptions,

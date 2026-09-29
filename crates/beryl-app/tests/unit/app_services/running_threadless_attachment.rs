@@ -6,6 +6,11 @@ mod revalidation {
     include!("interrupted_exit_revalidation_support.rs");
 }
 
+mod process_work {
+    use super::*;
+    include!("interrupted_exit_process_work_support.rs");
+}
+
 mod native_appearance {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -229,6 +234,7 @@ pub(super) async fn verify(
         .unwrap();
     assert!(!RunningProcessOwner::finish_exit(owner, request));
     let candidate = revalidation::verify(owner, request, candidate, &appearance, cx).await;
+    let candidate = process_work::verify(owner, request, candidate, cx).await;
     cx.background_executor()
         .spawn(async move {
             drop(candidate.session);

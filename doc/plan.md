@@ -89,15 +89,16 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 782: Settle Retained Process Work After Graph Retirement (finished)
+# Phase 783: Retain Interrupted Exit Process-Work Settlement (finished)
 
-The retired service owner now settles existing Activity enrollment and parent nondispatch slots
-through fresh same-home candidate access, preserving typed failures and all interaction fences.
-Five retirement tests passed in `83ca78bb-c389-4f6f-a286-aa71fa295b8d`; twenty recovery regressions
-passed in `e158a144-5c05-4a0b-b0f8-000323e6e809`. Compilation, formatting and independent lifecycle
-review passed. Equal-retired-generation refusal and cancellation between settlement calls were
-source-reviewed; nondispatch failure coverage uses existing owner tests. Running-owner integration
-and coherent reopening remain pending.
+Interrupted Exit now routes process-work settlement through its existing candidate worker slot,
+returning the complete service owner, original session, candidate and typed failure before GUI
+notification. Cancellation, unwind and stale delivery preserve custody and all recovery fences.
+Five retirement tests passed in `3b674fce-c9af-4fc4-bb15-e2b7d7c5e4b9`; nine native Exit tests passed
+in `b88d0fe4-637b-4e81-a205-529a1fd3899d`. Compilation, formatting and independent review passed.
+The new fixture covers empty work slots and typed cancellation; nonempty nondispatch outcomes and
+partial progress rely on accepted owner tests and source review. Whole-graph publication and
+coherent reopening remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -127,8 +128,8 @@ Phase 779 supplies uncached validation of the complete retained shell binding se
 Phase 780 supplies exact fresh composer service-close settlement while retaining local fences.
 Phase 781 routes that settlement through the complete retained draft set and exact running request.
 Phase 782 supplies the retired service owner's fresh-candidate settlement of retained process work.
-Route that contribution through the running owner's retained worker and typed outcome custody before
-whole-graph publication and coherent reopening;
+Phase 783 routes that contribution through the existing candidate worker with typed outcome custody.
+Complete whole-graph publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

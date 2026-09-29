@@ -11,8 +11,16 @@ pub(super) enum CandidateSettlement {
     Pending,
     Returned {
         candidate: InterruptedExitCandidate,
-        result: Result<(), String>,
+        result: Result<(), CandidateSettlementError>,
     },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(super) enum CandidateSettlementError {
+    #[error("{0}")]
+    Candidate(String),
+    #[error(transparent)]
+    ProcessWork(#[from] crate::app_services::RetiredProcessWorkError),
 }
 
 impl RunningProcessOwner {
@@ -74,11 +82,14 @@ impl RunningProcessOwner {
             settlement_slot,
             original,
             candidate,
+            None,
             app,
             completed,
-            move |original, candidate| {
+            move |original, candidate, _| {
                 before_settle();
-                original.converge_candidate(&mut candidate.candidate, &candidate.session)
+                original
+                    .converge_candidate(&mut candidate.candidate, &candidate.session)
+                    .map_err(CandidateSettlementError::Candidate)
             },
         );
         Ok(())
@@ -139,41 +150,53 @@ impl RunningProcessOwner {
             settlement_slot,
             original,
             candidate,
+            None,
             app,
             completed,
-            move |original, candidate| {
+            move |original, candidate, _| {
                 before_validate(candidate);
-                original.revalidate_candidate(&mut candidate.candidate, &candidate.session)
+                original
+                    .revalidate_candidate(&mut candidate.candidate, &candidate.session)
+                    .map_err(CandidateSettlementError::Candidate)
             },
         );
         Ok(())
     }
 
-    fn run_interrupted_exit_candidate_pass(
+    pub(super) fn run_interrupted_exit_candidate_pass(
         owner: &Rc<RefCell<Self>>,
         session_slot: Rc<RefCell<Option<RunningShutdownSession>>>,
         settlement_slot: Rc<RefCell<Option<CandidateSettlement>>>,
         mut original: RunningShutdownSession,
         mut candidate: InterruptedExitCandidate,
+        services: Option<crate::app_services::ProcessServiceOwner>,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         operation: impl FnOnce(
             &mut RunningShutdownSession,
             &mut InterruptedExitCandidate,
-        ) -> Result<(), String>
+            Option<&crate::app_services::ProcessServiceOwner>,
+        ) -> Result<(), CandidateSettlementError>
         + Send
         + 'static,
     ) {
         let retained = owner.clone();
         let work = app.background_executor().spawn(async move {
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                operation(&mut original, &mut candidate)
+                operation(&mut original, &mut candidate, services.as_ref())
             }))
-            .unwrap_or_else(|_| Err("Interrupted Exit candidate settlement unwound".into()));
-            (original, candidate, result)
+            .unwrap_or_else(|_| {
+                Err(CandidateSettlementError::Candidate(
+                    "Interrupted Exit candidate settlement unwound".into(),
+                ))
+            });
+            (original, candidate, services, result)
         });
         app.spawn(async move |cx| {
-            let (original, candidate, result) = work.await;
+            let (original, candidate, services, result) = work.await;
+            if let Some(services) = services {
+                retained.borrow_mut().process.services = Some(services);
+            }
             *session_slot.borrow_mut() = Some(original);
             *settlement_slot.borrow_mut() =
                 Some(CandidateSettlement::Returned { candidate, result });
@@ -213,7 +236,9 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit request changed".into());
         }
         match recovery.settlement.borrow().as_ref() {
-            Some(CandidateSettlement::Returned { result, .. }) => result.clone(),
+            Some(CandidateSettlement::Returned { result, .. }) => {
+                result.as_ref().map(|_| ()).map_err(ToString::to_string)
+            }
             _ => Err("Interrupted Exit candidate settlement has not returned".into()),
         }
     }
