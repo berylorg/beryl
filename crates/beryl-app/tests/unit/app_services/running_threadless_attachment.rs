@@ -35,7 +35,15 @@ pub(super) async fn verify(
     let window_id = window
         .read_with(cx, |root, _| root.controller().unwrap().window_id())
         .unwrap();
-    let candidate = construction::verify(owner, request, generation, faults, cx).await;
+    let candidate = construction::verify(
+        owner,
+        request,
+        generation,
+        foreign_candidate.candidate.generation(),
+        faults,
+        cx,
+    )
+    .await;
     let (candidate, mut source, appearance) = cx
         .background_executor()
         .spawn(async move {

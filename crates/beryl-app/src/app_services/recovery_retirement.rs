@@ -59,22 +59,30 @@ impl ProcessServiceOwner {
         expected: HomeGeneration,
         home: &mut Option<HomeStore>,
     ) -> Result<(), ServiceGraphRetirementError> {
+        self.validate_retired_service_home_return(expected, home.as_ref().map(HomeStore::home_id))?;
+        if home.as_ref().unwrap().health().state() != HomeHealthState::Failed {
+            return Err(ServiceGraphRetirementError::InvalidHomeReturn);
+        }
+        self.recovery_retirement.as_mut().unwrap().home = home.take();
+        Ok(())
+    }
+
+    pub(crate) fn validate_retired_service_home_return(
+        &self,
+        expected: HomeGeneration,
+        home_id: Option<beryl_model::BerylHomeId>,
+    ) -> Result<(), ServiceGraphRetirementError> {
         let retirement = self
             .recovery_retirement
-            .as_mut()
+            .as_ref()
             .filter(|retirement| retirement.generation == expected)
             .ok_or(ServiceGraphRetirementError::Stale)?;
         if !retirement.complete {
             return Err(ServiceGraphRetirementError::Incomplete);
         }
-        if retirement.home.is_some()
-            || !home.as_ref().is_some_and(|home| {
-                home.home_id() == self.home_id && home.health().state() == HomeHealthState::Failed
-            })
-        {
+        if retirement.home.is_some() || home_id != Some(self.home_id) {
             return Err(ServiceGraphRetirementError::InvalidHomeReturn);
         }
-        retirement.home = home.take();
         Ok(())
     }
 

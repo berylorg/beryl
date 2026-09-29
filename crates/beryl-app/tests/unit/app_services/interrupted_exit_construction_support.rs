@@ -2,6 +2,7 @@ pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     generation: beryl_home_store::HomeGeneration,
+    stale_generation: beryl_home_store::HomeGeneration,
     faults: &FaultController,
     cx: &mut AsyncApp,
 ) -> beryl_home_store::HomeRecoveryCandidate {
@@ -48,11 +49,15 @@ pub(super) async fn verify(
             .test_set_resident_graph_retirement(Some(Ok(())));
     })
     .unwrap();
-    for fault in [
+    for (pass, fault) in [
         Some(FaultPoint::BeforeReopen),
         Some(FaultPoint::AfterReopen),
         None,
-    ] {
+        None,
+    ]
+    .into_iter()
+    .enumerate()
+    {
         if let Some(fault) = fault {
             faults.fail_next(fault);
         }
@@ -70,6 +75,16 @@ pub(super) async fn verify(
             )
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
+            assert!(
+                RunningProcessOwner::abort_constructed_exit_candidate(
+                    owner,
+                    request,
+                    generation,
+                    app,
+                    |_, _| panic!("abort during construction")
+                )
+                .is_err()
+            );
             assert!(
                 owner
                     .borrow()
@@ -128,6 +143,100 @@ pub(super) async fn verify(
             );
         } else {
             result.unwrap();
+        }
+        if pass == 2 {
+            let (sender, receiver) = futures_channel::oneshot::channel();
+            cx.update(|app| {
+                for (target, expected) in [(&foreign, generation), (request, stale_generation)] {
+                    assert!(
+                        RunningProcessOwner::abort_constructed_exit_candidate(
+                            owner,
+                            target,
+                            expected,
+                            app,
+                            |_, _| panic!("stale abort")
+                        )
+                        .is_err()
+                    );
+                    owner
+                        .borrow()
+                        .interrupted_exit_construction_result(request)
+                        .unwrap();
+                    assert!(!owner.borrow().test_services_on_worker());
+                }
+                RunningProcessOwner::abort_constructed_exit_candidate(
+                    owner,
+                    request,
+                    generation,
+                    app,
+                    move |owner, _| {
+                        assert!(!owner.borrow().test_services_on_worker());
+                        sender.send(()).unwrap();
+                    },
+                )
+                .unwrap();
+                assert!(owner.borrow().test_services_on_worker());
+                assert!(
+                    RunningProcessOwner::abort_constructed_exit_candidate(
+                        owner,
+                        request,
+                        generation,
+                        app,
+                        |_, _| panic!("duplicate abort")
+                    )
+                    .is_err()
+                );
+                assert!(
+                    RunningProcessOwner::construct_interrupted_exit_candidate(
+                        owner,
+                        request,
+                        generation,
+                        app,
+                        |_, _| panic!("construct during abort")
+                    )
+                    .is_err()
+                );
+                owner
+                    .borrow_mut()
+                    .test_replace_interrupted_exit_request(&foreign);
+            })
+            .unwrap();
+            receiver.await.unwrap();
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_construction_result(request)
+                    .unwrap_err()
+                    .contains("request changed")
+            );
+            owner
+                .borrow_mut()
+                .test_replace_interrupted_exit_request(request);
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_construction_result(request)
+                    .is_err()
+            );
+            assert_eq!(
+                original,
+                format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(!RunningProcessOwner::finish_exit(owner, request));
+            assert!(owner.borrow().test_services().graph().is_none());
+            cx.update(|app| {
+                assert!(
+                    RunningProcessOwner::abort_constructed_exit_candidate(
+                        owner,
+                        request,
+                        generation,
+                        app,
+                        |_, _| panic!("abort without candidate")
+                    )
+                    .is_err()
+                );
+            })
+            .unwrap();
         }
     }
     cx.update(|app| {
