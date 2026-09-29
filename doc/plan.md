@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 805: Read Theme Files Through Explicit Candidate Access (finished)
+# Phase 806: Load Typed Themes Through Candidate Access (finished)
 
-Private initial and recovered candidates can now read bounded theme snapshots, file identities
-and ranges through the existing physical reader. Exact admission, snapshot/file checks and limits
-remain shared with ordinary healthy-only reads. All 24 focused tests passed
-(0610eb3a-cb30-4ee9-a6fa-937f8fc54ee3), plus compilation, formatting and independent review.
-State-level loading, production appearance preparation and whole-graph publication remain pending.
+Initial and recovered candidates can now use the shared typed manifest/document loader through
+borrowed explicit access, retaining existing bounds, freshness checks and activity cleanup.
+Empty-manifest opening also validates current admission and snapshot. All 32 focused tests passed
+(b92e9081-271e-4ef5-8e05-5cbfa5debe48), plus state/app compilation, formatting and independent review.
+Production appearance preparation and whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -159,6 +159,8 @@ Phase 804 binds fresh appearance through that retained graph with exact candidat
 existing draft/window registration, preserving custody and closed interaction gates.
 Phase 805 supplies explicit candidate-only bounded physical theme reads using the ordinary reader's
 identity, file and limit checks, enabling subsequent private appearance preparation.
+Phase 806 supplies shared typed candidate manifest and document loading with bounded pages,
+freshness checks and activity cleanup; production appearance preparation remains next.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

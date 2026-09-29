@@ -5,8 +5,9 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeStore, StableThemeFileId, StableThemeFileIdError, ThemeFileIdentity, ThemeFileSelector,
-    ThemeOperationLimits, ThemeOperationLimitsError, ThemeRepositoryError, ThemeRepositorySnapshot,
+    HomeCandidateRecoveryAccess, HomeStore, StableThemeFileId, StableThemeFileIdError,
+    ThemeFileIdentity, ThemeFileSelector, ThemeOperationLimits, ThemeOperationLimitsError,
+    ThemeRepositoryError, ThemeRepositorySnapshot,
 };
 
 use super::{
@@ -18,6 +19,24 @@ const PHYSICAL_IO_BUFFER_BYTES: usize = 64 * 1024;
 const PHYSICAL_MAX_STAGED_FILES: usize = 2;
 const PHYSICAL_MAX_EVIDENCE_FILES: usize = 4;
 const PHYSICAL_MAX_EVIDENCE_BYTES: usize = 512;
+
+#[derive(Clone, Copy)]
+pub(crate) enum ThemeReadAccess<'a> {
+    Ordinary(&'a HomeStore),
+    Candidate(&'a HomeCandidateRecoveryAccess<'a>),
+}
+
+impl<'a> From<&'a HomeStore> for ThemeReadAccess<'a> {
+    fn from(store: &'a HomeStore) -> Self {
+        Self::Ordinary(store)
+    }
+}
+
+impl<'a> From<&'a HomeCandidateRecoveryAccess<'a>> for ThemeReadAccess<'a> {
+    fn from(access: &'a HomeCandidateRecoveryAccess<'a>) -> Self {
+        Self::Candidate(access)
+    }
+}
 
 /// Checked physical-operation bounds selected by the typed theme service.
 ///
@@ -135,20 +154,30 @@ pub(crate) const fn document_identity_parts(
     )
 }
 
-pub(crate) fn repository_snapshot(
-    store: &HomeStore,
+pub(crate) fn repository_snapshot<'a>(
+    store: impl Into<ThemeReadAccess<'a>>,
     limits: PhysicalThemeLimits,
 ) -> Result<ThemeRepositorySnapshot, ThemeRepositoryError> {
-    store.theme_repository_snapshot(limits.operations())
+    match store.into() {
+        ThemeReadAccess::Ordinary(store) => store.theme_repository_snapshot(limits.operations()),
+        ThemeReadAccess::Candidate(access) => access.theme_repository_snapshot(limits.operations()),
+    }
 }
 
-pub(crate) fn observe_file(
-    store: &HomeStore,
+pub(crate) fn observe_file<'a>(
+    store: impl Into<ThemeReadAccess<'a>>,
     snapshot: &ThemeRepositorySnapshot,
     selector: &ThemeFileSelector,
     limits: PhysicalThemeLimits,
 ) -> Result<ThemeFileIdentity, ThemeRepositoryError> {
-    store.observe_theme_file(snapshot, selector, limits.operations())
+    match store.into() {
+        ThemeReadAccess::Ordinary(store) => {
+            store.observe_theme_file(snapshot, selector, limits.operations())
+        }
+        ThemeReadAccess::Candidate(access) => {
+            access.observe_theme_file(snapshot, selector, limits.operations())
+        }
+    }
 }
 
 /// Forward-only range reader bound to one store snapshot and exact file identity.
@@ -157,7 +186,7 @@ pub(crate) fn observe_file(
 /// `beryl-home-store` to revalidate the complete exact identity against the same
 /// snapshot before returning bytes.
 pub(crate) struct PhysicalThemeReader<'store> {
-    store: &'store HomeStore,
+    store: ThemeReadAccess<'store>,
     snapshot: ThemeRepositorySnapshot,
     selector: ThemeFileSelector,
     expected: ThemeFileIdentity,
@@ -180,7 +209,7 @@ impl PhysicalThemeReadErrors {
 
 impl<'store> PhysicalThemeReader<'store> {
     pub(crate) fn new(
-        store: &'store HomeStore,
+        store: impl Into<ThemeReadAccess<'store>>,
         snapshot: &ThemeRepositorySnapshot,
         selector: ThemeFileSelector,
         expected: ThemeFileIdentity,
@@ -190,7 +219,7 @@ impl<'store> PhysicalThemeReader<'store> {
             return Err(ThemeRepositoryError::LimitExceeded);
         }
         Ok(Self {
-            store,
+            store: store.into(),
             snapshot: snapshot.clone(),
             selector,
             expected,
@@ -211,14 +240,24 @@ impl<'store> PhysicalThemeReader<'store> {
         if self.buffer_offset < self.buffer.len() || self.eof {
             return Ok(());
         }
-        let range = self.store.read_theme_file_range(
-            &self.snapshot,
-            &self.selector,
-            self.expected,
-            self.next_offset,
-            self.limits.range_bytes(),
-            self.limits.operations(),
-        )?;
+        let range = match self.store {
+            ThemeReadAccess::Ordinary(store) => store.read_theme_file_range(
+                &self.snapshot,
+                &self.selector,
+                self.expected,
+                self.next_offset,
+                self.limits.range_bytes(),
+                self.limits.operations(),
+            ),
+            ThemeReadAccess::Candidate(access) => access.read_theme_file_range(
+                &self.snapshot,
+                &self.selector,
+                self.expected,
+                self.next_offset,
+                self.limits.range_bytes(),
+                self.limits.operations(),
+            ),
+        }?;
         let byte_count =
             u64::try_from(range.bytes().len()).map_err(|_| ThemeRepositoryError::LimitExceeded)?;
         self.next_offset = self

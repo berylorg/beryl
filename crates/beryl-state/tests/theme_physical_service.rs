@@ -19,6 +19,9 @@ use beryl_state::{
     ThemeRepositoryObservation, ThemeService,
 };
 
+#[path = "theme_physical_service/candidate_reads.rs"]
+mod candidate_reads;
+
 const VALID_DOCUMENT: &[u8] = br##"schema = 1
 id = "active"
 name = "Active"
