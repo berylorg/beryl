@@ -1,6 +1,7 @@
 use super::*;
 use crate::startup_owner::RunningExitRequest;
 
+mod appearance;
 mod resident;
 pub(crate) use resident::ResidentPreparationKey;
 mod resident_retirement;

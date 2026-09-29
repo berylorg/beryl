@@ -512,21 +512,13 @@ async fn dispose_failed_fixture(
     mut running: startup_owner::StartedProcess,
     retired: bool,
     home_closed: bool,
-    recovered_appearance: Option<Arc<crate::theme_runtime::AppearanceGeneration>>,
+    recovered_appearance: Option<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>>,
     cx: &mut AsyncApp,
 ) {
-    let fresh_owner = if let Some(appearance) = recovered_appearance {
+    let fresh_owner = if let Some(owner) = recovered_appearance {
         Some(
             cx.update(|app| {
-                running.appearance.update(app, |owner, _| owner.retire());
-                let owner = crate::theme_runtime::GpuiAppearanceWindowSet::new(
-                    appearance,
-                    NonZeroUsize::new(4).unwrap(),
-                    app,
-                );
-                let shell = running.windows.test_recovery_shell();
-                shell.bind_interrupted_exit_appearance(&owner, app).unwrap();
-                assert!(shell.bind_interrupted_exit_appearance(&owner, app).is_err());
+                let shell = &running.windows.shells()[0];
                 shell
                     .window()
                     .update(app, |root, window, cx| {

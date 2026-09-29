@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 776: Rebind Appearance Through Retained Published Shell Handles (finished)
+# Phase 777: Route Recovered Appearance Through The Running Owner (finished)
 
-Retained published shells now use the same recovery registration while preserving settled native
-destruction custody and shutdown fences. Fresh handle/root ownership cleans up the replacement
-adapter on release. Ten focused recovery tests passed in run
-`34778411-0736-4761-93cf-861ae0aa4665`, including actual startup-restored shell binding and cleanup.
-Compilation, formatting and independent lifecycle review passed. The
-[appearance evidence](failures/recovery-appearance.md) records custody and fixture corrections.
+The running owner now binds fresh appearance through the exact cancelled request, successful graph
+retirement, candidate identity, idle retained draft and published shell. Original session, draft
+readiness and process publication custody remain retained; no worker or queue was added. Ten focused
+recovery tests passed in run `eee96b8c-26cc-40de-a8f6-63894aeb79d4`, including native binding and
+cleanup. Compilation, formatting and independent lifecycle review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -120,8 +119,9 @@ aggregate. Phase 774 binds threadless attachment to the running owner's exact re
 candidate identity. Phase 775 supplies fresh appearance/notice registration on surviving shells.
 Phase 776 extends that registration to process-retained published shell handles and preserves
 their settled native destruction enrollment.
-Running-owner composition of those bindings, candidate-state revalidation and exact session/draft/
-work settlement still precede whole-graph publication and coherent reopening.
+Phase 777 supplies the running-owner route for appearance binding through retained published shells.
+Candidate-state revalidation and exact session/draft/work settlement still precede whole-graph
+publication and coherent reopening.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

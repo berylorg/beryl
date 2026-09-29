@@ -72,12 +72,6 @@ impl PreparedNativeMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
-    #[cfg(test)]
-    pub(crate) fn test_recovery_shell(&mut self) -> &mut MainWindowShell {
-        assert_eq!(self.shells.len(), 1);
-        &mut self.shells[0]
-    }
-
     pub fn test_dispose(
         self,
         completion: impl FnOnce(MainWindowNativeRestoreSetFailure, &mut App) + 'static,

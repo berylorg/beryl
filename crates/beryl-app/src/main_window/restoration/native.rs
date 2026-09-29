@@ -35,6 +35,19 @@ pub struct PublishedMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
+    pub(crate) fn bind_interrupted_exit_appearance(
+        &mut self,
+        window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+        appearance: &Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        self.shells
+            .iter_mut()
+            .find(|shell| shell.window() == window)
+            .ok_or("Recovery window is absent from the published set")?
+            .bind_interrupted_exit_appearance(appearance, app)
+    }
+
     pub fn window_ids(&self) -> &[WindowId] {
         &self.owner.expected_windows
     }

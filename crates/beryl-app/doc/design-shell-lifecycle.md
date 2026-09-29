@@ -482,6 +482,12 @@ by the executable composition root.
   its exact receipt remain retained; active or incomplete disposal refuses binding. Later handle
   release, where allowed, also uses the fresh owner. Refusal preserves custody,
   and neither form releases shutdown interaction or grants whole-graph publication.
+- Running-owner appearance binding requires the exact active cancelled request, successful graph
+  retirement and available original session custody, with no preparation, settlement or outstanding
+  resident frame. The fresh appearance target must match the candidate identity. An idle, prepared,
+  unreleased draft entry and retained published shell must both identify the exact native window.
+  Binding preserves candidate/session custody, draft readiness and process publication ownership;
+  it installs only the shell's fresh appearance/notice ownership and keeps interaction fenced.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

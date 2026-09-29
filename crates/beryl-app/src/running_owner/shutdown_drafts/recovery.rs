@@ -11,6 +11,23 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(in crate::running_owner) fn require_recovery_window(
+        &self,
+        window: WindowHandle<MainWindowShellRoot>,
+    ) -> Result<(), String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("Interrupted Exit draft set is not available for binding".into());
+        }
+        self.windows
+            .iter()
+            .find(|(handle, _)| *handle == window)
+            .ok_or("Recovery window is absent from retained drafts")?
+            .1
+            .as_ref()
+            .map(|_| ())
+            .map_err(Clone::clone)
+    }
+
     pub(crate) fn adopt_recovered_threadless_shell(
         &mut self,
         root: &mut MainWindowShellRoot,
