@@ -41,9 +41,24 @@ the geometry owner still holds an Index job while the widget has no active geome
 immediate empty-target path retains the geometry owner's ongoing index but clears the widget's
 job tracking. The stranded Index state is observed; this originating transition is inferred from
 source and was not directly traced. See the [source diagnosis](../memory/github.com/berylorg/gpui-text-input/commit/45c200a5e78f299f2f6436cda75097c75253eca7/empty-target-index-custody.md).
-The probes and fixture changes were removed. Correct the widget's index ownership transition and
-verify untouched empty acquired/restored residents before claiming complete running-shell coverage;
-keep exact retirement and quiescence checks unchanged.
+The probes and fixture changes were removed. Phase 762 corrects local target replacement by
+including the active index and its exact text/object request in the existing prepared release set.
+Commit clears only released jobs. Deferred targets retain indexing and rejected preparation
+preserves prior custody; no worker or quiescence exception was added.
+
+Seven public-path widget regressions cover empty/nonterminal replacement, queued/dispatched text,
+delayed object response, refusal and deferred-index preservation. Disabling local index retirement
+fails five affected tests (run `7480c0a2-72d6-4474-8537-3eefe5edf9f8`). Correct retirement removes an
+obsolete queued object response before delivery; its old delivered-response-counter expectation
+was replaced with exact custody cleanup assertions. The marked-replacement fixture now verifies
+bounded index response processing after successor target publication, rather than assuming the
+superseded index arrives first. Its exact settlement, composition and selection checks remain.
+
+Independent lifecycle review accepted the correction. All 550 widget tests pass in run
+`ae089efa-40e9-447e-b12a-092e449cffc3`; default-feature library compilation also passes, using LLVM,
+one job, no debug information and nonincremental builds. Canonical publication and untouched empty
+acquired/restored application qualification remain phase 763. This does not establish complete
+running-shell recovery; exact retirement and quiescence checks remain unchanged.
 
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection

@@ -89,23 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 761: Qualify Empty Composer Retirement Quiescence (finished)
+# Phase 762: Keep Widget Index Custody Coherent Through Local Target Publication (finished)
 
-Reproduced stranded index ownership in the untouched empty acquired fixture and captured the
-geometry owner's retained Index job behind repeated Busy refusal. Independent review accepted
-the [bounded diagnosis](failures/initial-composer-custody.md), distinguishing the observed state
-from the source-inferred originating transition. All probes were removed; both original resident
-retirement tests pass. The restored fixture's saved text does not establish empty coverage.
-
-# Phase 762: Keep Widget Index Custody Coherent Through Local Target Publication (pending)
-
-Under the [widget transition contract](../../gpui-text-input/doc/design.md#range-backed-atomic-interaction-publication),
-correct the index ownership mismatch identified by phase 761. Coordinate the sibling plan before
-implementation. Reproduce immediate empty-target publication during active indexing in a focused
-widget test; keep geometry and widget job ownership aligned with exact pending/dispatched request
-settlement. Cover terminal and nonterminal local targets, refusal, delayed response and eventual
-quiescence. Preserve bounded prepared transitions and strict quiescence; no synthetic edit, flag
-clearing shortcut or new worker. Require focused widget checks and independent lifecycle review.
+Accepted exact index retirement through the widget's existing prepared release set. Seven new
+tests cover empty/nonterminal local targets, queued/dispatched requests, delayed responses,
+refusal and deferred-index preservation; disabling the correction fails five retirement tests.
+All 550 widget tests and default-feature compilation pass; independent lifecycle review accepted.
+See the [custody correction evidence](failures/initial-composer-custody.md). Canonical publication
+and untouched empty acquired/restored application qualification remain next.
 
 # Phase 763: Publish And Qualify Empty Resident Retirement (pending)
 
