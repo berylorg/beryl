@@ -3,6 +3,11 @@ mod threadless_attachment {
     include!("prepared_threadless_attachment_support.rs");
 }
 
+mod appearance_attachment {
+    use super::*;
+    include!("prepared_appearance_attachment_support.rs");
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -10,14 +15,19 @@ pub(super) async fn verify(
     generation: beryl_home_store::HomeGeneration,
     window: beryl_model::WindowId,
     faults: &FaultController,
+    previous_appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
     cx: &mut AsyncApp,
-) -> InterruptedExitCandidate {
+) -> (
+    InterruptedExitCandidate,
+    gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+) {
     use crate::app_services::recovery_graph::RecoveryServicePreparationError;
     use beryl_home_store::CommandCancellation;
     let mut candidate = Some(candidate);
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let mut stale_source = None;
+    let mut attached_appearance = None;
     for mode in ["theme_failure", "success", "cancel"] {
         if stale_source.is_none() {
             let fresh = candidate.take().unwrap();
@@ -39,6 +49,31 @@ pub(super) async fn verify(
             candidate = Some(fresh);
             stale_source = Some(source);
         }
+        let fresh = candidate.take().unwrap();
+        let (fresh, appearance) = cx
+            .background_executor()
+            .spawn(async move {
+                let state = BerylState::reacquire_candidate(&fresh.candidate).unwrap();
+                let appearance = crate::theme_runtime::AppearanceCoordinator::new(
+                    crate::theme_runtime::AppearanceCoordinatorConfig::new(
+                        NonZeroUsize::new(4).unwrap(),
+                    ),
+                    native_appearance::system_font_appearance(&state),
+                )
+                .current();
+                (fresh, appearance)
+            })
+            .await;
+        candidate = Some(fresh);
+        let appearance = cx
+            .update(|app| {
+                crate::theme_runtime::GpuiAppearanceWindowSet::new(
+                    appearance,
+                    NonZeroUsize::new(4).unwrap(),
+                    app,
+                )
+            })
+            .unwrap();
         let fresh = candidate.as_ref().unwrap();
         let home = fresh.candidate.home_id();
         let fresh_generation = fresh.candidate.generation();
@@ -55,6 +90,7 @@ pub(super) async fn verify(
         };
         cx.update(|app| {
             threadless_attachment::assert_unavailable(owner, request, app);
+            appearance_attachment::assert_unavailable(owner, request, &appearance, app);
             assert!(
                 RunningProcessOwner::prepare_interrupted_exit_threadless_window(
                     owner,
@@ -279,6 +315,7 @@ pub(super) async fn verify(
                     )
                     .unwrap();
                     threadless_attachment::assert_unavailable(owner, request, app);
+                    appearance_attachment::assert_unavailable(owner, request, &appearance, app);
                     assert!(refused(request, app).is_err());
                     assert!(adapters(request).is_err());
                     assert!(!RunningProcessOwner::finish_exit(owner, request));
@@ -303,6 +340,14 @@ pub(super) async fn verify(
                             &mut stale_source,
                             app,
                         );
+                        appearance_attachment::verify(
+                            owner,
+                            request,
+                            &appearance,
+                            previous_appearance,
+                            app,
+                        );
+                        attached_appearance = Some(appearance.clone());
                     })
                     .unwrap();
                 }
@@ -399,6 +444,7 @@ pub(super) async fn verify(
         }
         cx.update(|app| {
             threadless_attachment::assert_unavailable(owner, request, app);
+            appearance_attachment::assert_unavailable(owner, request, &appearance, app);
             assert!(
                 RunningProcessOwner::prepare_interrupted_exit_threadless_window(
                     owner,
@@ -509,5 +555,5 @@ pub(super) async fn verify(
         assert!(!RunningProcessOwner::finish_exit(owner, request));
         candidate = Some(owner.borrow().test_take_interrupted_exit_candidate());
     }
-    candidate.unwrap()
+    (candidate.unwrap(), attached_appearance.unwrap())
 }

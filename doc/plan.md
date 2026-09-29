@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 803: Attach Threadless Shells Through The Retained Recovery Graph (finished)
+# Phase 804: Bind Recovery Appearance Through The Retained Service Graph (finished)
 
-Threadless attachment now requires the exact interrupted Exit's retained prepared graph and
-matches its candidate identity without storage reads on GPUI. The existing gated shell and draft
-aggregate consume authenticated facts while graph and original session custody remain retained.
-Seven focused tests, compilation, formatting and independent review passed
-(6bab99d0-807f-460c-a2ca-e7dee11b0bf4). Appearance integration, selected residents and whole-graph
-publication remain pending.
+Appearance binding now validates the exact interrupted Exit's retained prepared graph instead
+of requiring a separate candidate. Existing draft/window registration preserves graph and session
+custody and keeps interaction gated. Seven focused tests passed, followed by the native consumer
+with latest-registration teardown verification (6d87043d-961a-4beb-843d-c160f667d2bd); compilation,
+formatting and independent review passed. Production appearance preparation, selected residents
+and whole-graph publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -156,6 +156,8 @@ Phase 802 authenticates threadless window facts from that retained graph on the 
 worker, restoring graph custody before exact-request delivery without releasing interaction.
 Phase 803 attaches threadless shells through the retained graph with exact candidate identity,
 preserving graph/session custody and closed interaction gates.
+Phase 804 binds fresh appearance through that retained graph with exact candidate identity and
+existing draft/window registration, preserving custody and closed interaction gates.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

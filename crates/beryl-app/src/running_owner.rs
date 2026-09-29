@@ -151,6 +151,11 @@ impl RunningProcessOwner {
     }
 
     #[cfg(test)]
+    pub(crate) fn test_process_mut(&mut self) -> &mut RunningProcess {
+        &mut self.process
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_services(&self) -> &ProcessServiceOwner {
         self.process
             .services

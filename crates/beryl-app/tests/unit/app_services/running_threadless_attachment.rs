@@ -80,7 +80,6 @@ pub(super) async fn verify(
         })
         .await;
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
-    let foreign = request.test_foreign();
     window
         .update(cx, |root, window, app| {
             let drafts = owner
@@ -115,77 +114,31 @@ pub(super) async fn verify(
             let fresh =
                 GpuiAppearanceWindowSet::new(appearance, NonZeroUsize::new(4).unwrap(), app);
             let mut running = owner.borrow_mut();
-            let bind = |running: &mut RunningProcessOwner,
-                        request: &crate::startup_owner::RunningExitRequest,
-                        candidate: &InterruptedExitCandidate,
-                        app: &mut gpui::App| {
-                running.bind_interrupted_exit_appearance(request, candidate, window, &fresh, app)
-            };
-            assert!(
-                bind(&mut running, &foreign, &candidate, app)
-                    .unwrap_err()
-                    .contains("request changed")
-            );
-            running.test_set_resident_graph_retirement(None);
-            assert!(
-                bind(&mut running, request, &candidate, app)
-                    .unwrap_err()
-                    .contains("has not returned")
-            );
-            running.test_set_resident_graph_retirement(Some(Err("failed retirement".into())));
-            assert_eq!(
-                bind(&mut running, request, &candidate, app).unwrap_err(),
-                "failed retirement"
-            );
-            running.test_set_resident_graph_retirement(Some(Ok(())));
-            assert!(
-                bind(&mut running, request, foreign_candidate, app)
-                    .unwrap_err()
-                    .contains("candidate identity changed")
-            );
-            let drafts = running.test_replace_recovery_drafts(None).unwrap();
-            assert!(
-                bind(&mut running, request, &candidate, app)
-                    .unwrap_err()
-                    .contains("drafts are unavailable")
-            );
-            running.test_replace_recovery_drafts(Some(drafts.clone()));
-            let borrowed = drafts.borrow_mut();
-            assert!(
-                bind(&mut running, request, &candidate, app)
-                    .unwrap_err()
-                    .contains("drafts are busy")
-            );
-            drop(borrowed);
-            drafts.borrow_mut().test_recovery_driving(true);
-            assert!(
-                bind(&mut running, request, &candidate, app)
-                    .unwrap_err()
-                    .contains("not available for binding")
-            );
-            drafts.borrow_mut().test_recovery_driving(false);
-            assert!(bind(&mut running, request, &candidate, app).is_err());
-            assert_eq!(fresh.read(app).target().snapshot().count, 0);
             let previous = running.test_process_appearance();
             previous.update(app, |owner, _| owner.retire());
-            bind(&mut running, request, &candidate, app).unwrap();
+            running
+                .test_process_mut()
+                .windows
+                .bind_interrupted_exit_appearance(window, &fresh, app)
+                .unwrap();
             assert_eq!(fresh.read(app).target().snapshot().count, 1);
-            assert!(bind(&mut running, request, &candidate, app).is_err());
-            assert_eq!(running.test_process_appearance(), previous);
-            assert!(!drafts.borrow().test_recovery_ready());
-            assert_eq!(
-                original,
-                format!("{:?}", running.interrupted_exit_session().unwrap())
-            );
             fresh
         })
         .unwrap();
     assert!(!RunningProcessOwner::finish_exit(owner, request));
     let candidate = revalidation::verify(owner, request, candidate, &appearance, cx).await;
     let candidate = process_work::verify(owner, request, candidate, cx).await;
-    let candidate =
-        service_preparation::verify(owner, request, candidate, generation, window_id, faults, cx)
-            .await;
+    let (candidate, appearance) = service_preparation::verify(
+        owner,
+        request,
+        candidate,
+        generation,
+        window_id,
+        faults,
+        &appearance,
+        cx,
+    )
+    .await;
     cx.background_executor()
         .spawn(async move {
             drop(candidate.session);
