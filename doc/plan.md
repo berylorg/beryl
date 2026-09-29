@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 802: Authenticate Threadless Windows From The Retained Recovery Graph (finished)
+# Phase 803: Attach Threadless Shells Through The Retained Recovery Graph (finished)
 
-The exact interrupted Exit authenticates threadless window facts from its prepared graph using the
-existing bounded worker slot. Storage reads stay off GPUI; graph custody returns before delivery,
-including stale-request refusal, and interaction fences remain closed. Seven focused tests,
-compilation, formatting and independent review passed (f5721430-ada5-41c9-b79d-26fc8ed70c1c).
-Resident attachment and whole-graph publication remain pending.
+Threadless attachment now requires the exact interrupted Exit's retained prepared graph and
+matches its candidate identity without storage reads on GPUI. The existing gated shell and draft
+aggregate consume authenticated facts while graph and original session custody remain retained.
+Seven focused tests, compilation, formatting and independent review passed
+(6bab99d0-807f-460c-a2ca-e7dee11b0bf4). Appearance integration, selected residents and whole-graph
+publication remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -153,6 +154,8 @@ Phase 801 routes those adapters through the running owner's exact cancelled requ
 successful preparation without transferring graph or session custody.
 Phase 802 authenticates threadless window facts from that retained graph on the existing bounded
 worker, restoring graph custody before exact-request delivery without releasing interaction.
+Phase 803 attaches threadless shells through the retained graph with exact candidate identity,
+preserving graph/session custody and closed interaction gates.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

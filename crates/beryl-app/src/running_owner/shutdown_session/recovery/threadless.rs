@@ -64,16 +64,14 @@ impl RunningProcessOwner {
     pub(crate) fn attach_interrupted_exit_threadless(
         &mut self,
         request: &RunningExitRequest,
-        candidate: &InterruptedExitCandidate,
         root: &mut MainWindowShellRoot,
         source: &mut Option<ThreadlessRecoveryWindow>,
         window: &gpui::Window,
         cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<(), String> {
-        self.interrupted_exit_graph_retirement_result(request)?;
+        self.interrupted_exit_services_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
         if recovery.resident.is_some()
-            || recovery.settlement.borrow().is_some()
             || recovery.session.borrow().is_none()
             || recovery
                 .pending_resident_frame
@@ -85,11 +83,14 @@ impl RunningProcessOwner {
         let facts = source
             .as_ref()
             .ok_or("Threadless recovery source is unavailable")?;
-        if candidate.candidate.home_id() != facts.home_id()
-            || candidate.candidate.generation() != facts.generation()
-        {
+        let mut slot = recovery.settlement.borrow_mut();
+        let Some(settlement::CandidateSettlement::Services(Ok(graph))) = slot.as_mut() else {
+            unreachable!()
+        };
+        if !graph.matches_candidate(facts.home_id(), facts.generation()) {
             return Err("Threadless recovery candidate identity changed".into());
         }
+        drop(slot);
         let drafts = self
             .shutdown
             .as_ref()

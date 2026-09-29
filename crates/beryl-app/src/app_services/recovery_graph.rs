@@ -143,6 +143,17 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn matches_candidate(
+        &mut self,
+        home: BerylHomeId,
+        generation: HomeGeneration,
+    ) -> bool {
+        self.services
+            .as_mut()
+            .expect("prepared recovery services")
+            .matches_candidate(home, generation)
+    }
+
     pub(crate) fn threadless_recovery_window(
         &mut self,
         retired_home: BerylHomeId,

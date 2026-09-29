@@ -83,88 +83,17 @@ pub(super) async fn verify(
     let foreign = request.test_foreign();
     window
         .update(cx, |root, window, app| {
-            let mut attach =
-                |owner: &mut RunningProcessOwner,
-                 request: &crate::startup_owner::RunningExitRequest,
-                 candidate: &InterruptedExitCandidate,
-                 source: &mut Option<ThreadlessRecoveryWindow>| {
-                    owner.attach_interrupted_exit_threadless(
-                        request, candidate, root, source, window, app,
-                    )
-                };
-            assert!(
-                attach(&mut owner.borrow_mut(), &foreign, &candidate, &mut source)
-                    .unwrap_err()
-                    .contains("request changed")
-            );
-            owner
-                .borrow_mut()
-                .test_replace_interrupted_exit_request(&foreign);
-            assert!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut source)
-                    .unwrap_err()
-                    .contains("request changed")
-            );
-            owner
-                .borrow_mut()
-                .test_replace_interrupted_exit_request(request);
-            owner.borrow().test_set_resident_graph_retirement(None);
-            assert!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut source)
-                    .unwrap_err()
-                    .contains("has not returned")
-            );
-            owner
-                .borrow()
-                .test_set_resident_graph_retirement(Some(Err("failed retirement".into())));
-            assert_eq!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut source).unwrap_err(),
-                "failed retirement"
-            );
-            owner
-                .borrow()
-                .test_set_resident_graph_retirement(Some(Ok(())));
-            assert!(
-                attach(
-                    &mut owner.borrow_mut(),
-                    request,
-                    foreign_candidate,
-                    &mut source
-                )
-                .unwrap_err()
-                .contains("candidate identity changed")
-            );
-            assert!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut None)
-                    .unwrap_err()
-                    .contains("source is unavailable")
-            );
             let drafts = owner
                 .borrow_mut()
                 .test_replace_recovery_drafts(None)
                 .unwrap();
-            assert!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut source)
-                    .unwrap_err()
-                    .contains("drafts are unavailable")
-            );
+            drafts
+                .borrow_mut()
+                .adopt_recovered_threadless_shell(root, &mut source, window, app)
+                .unwrap();
             owner
                 .borrow_mut()
-                .test_replace_recovery_drafts(Some(drafts.clone()));
-            let borrowed = drafts.borrow_mut();
-            assert!(
-                attach(&mut owner.borrow_mut(), request, &candidate, &mut source)
-                    .unwrap_err()
-                    .contains("drafts are busy")
-            );
-            drop(borrowed);
-            assert!(source.is_some());
-            assert!(drafts.borrow().test_recovery_ready());
-            attach(&mut owner.borrow_mut(), request, &candidate, &mut source).unwrap();
-            assert!(source.is_none());
-            assert!(!drafts.borrow().test_recovery_ready());
-            assert!(attach(&mut owner.borrow_mut(), request, &candidate, &mut source).is_err());
-            assert!(!drafts.borrow().test_recovery_ready());
+                .test_replace_recovery_drafts(Some(drafts));
             assert!(root.controller().unwrap().is_threadless());
             assert_eq!(root.controller().unwrap().window_id(), window_id);
             assert!(root.controller().unwrap().composer_mount().is_none());

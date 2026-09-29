@@ -67,6 +67,20 @@ impl RecoveryAppServicePreparationFailure {
 }
 
 impl PreparedRecoveryAppServices {
+    pub(super) fn matches_candidate(
+        &mut self,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        self.cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+            .is_some_and(|(candidate, _)| {
+                candidate.home_id() == home && candidate.generation() == generation
+            })
+    }
+
     pub(super) fn threadless_recovery_window(
         &mut self,
         state: &BerylState,

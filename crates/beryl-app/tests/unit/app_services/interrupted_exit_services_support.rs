@@ -1,3 +1,8 @@
+mod threadless_attachment {
+    use super::*;
+    include!("prepared_threadless_attachment_support.rs");
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -12,7 +17,28 @@ pub(super) async fn verify(
     let mut candidate = Some(candidate);
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
-    for mode in ["success", "theme_failure", "cancel"] {
+    let mut stale_source = None;
+    for mode in ["theme_failure", "success", "cancel"] {
+        if stale_source.is_none() {
+            let fresh = candidate.take().unwrap();
+            let (fresh, source) = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut fresh = fresh;
+                    let state = BerylState::reacquire_candidate(&fresh.candidate).unwrap();
+                    let home = fresh.candidate.home_id();
+                    let access = fresh.candidate.recovery_access().unwrap();
+                    let source = ThreadlessRecoveryWindow::prepare(
+                        &access, &state, home, generation, window,
+                    )
+                    .unwrap();
+                    drop(access);
+                    (fresh, source)
+                })
+                .await;
+            candidate = Some(fresh);
+            stale_source = Some(source);
+        }
         let fresh = candidate.as_ref().unwrap();
         let home = fresh.candidate.home_id();
         let fresh_generation = fresh.candidate.generation();
@@ -28,6 +54,7 @@ pub(super) async fn verify(
             )
         };
         cx.update(|app| {
+            threadless_attachment::assert_unavailable(owner, request, app);
             assert!(
                 RunningProcessOwner::prepare_interrupted_exit_threadless_window(
                     owner,
@@ -251,6 +278,7 @@ pub(super) async fn verify(
                         },
                     )
                     .unwrap();
+                    threadless_attachment::assert_unavailable(owner, request, app);
                     assert!(refused(request, app).is_err());
                     assert!(adapters(request).is_err());
                     assert!(!RunningProcessOwner::finish_exit(owner, request));
@@ -267,6 +295,16 @@ pub(super) async fn verify(
                     assert_eq!(authenticated.home_id(), home);
                     assert_eq!(authenticated.generation(), fresh_generation);
                     assert_eq!(authenticated.window().window_id(), window);
+                    cx.update(|app| {
+                        threadless_attachment::verify(
+                            owner,
+                            request,
+                            authenticated,
+                            &mut stale_source,
+                            app,
+                        );
+                    })
+                    .unwrap();
                 }
                 if stale {
                     owner
@@ -360,6 +398,7 @@ pub(super) async fn verify(
             assert!(!RunningProcessOwner::finish_exit(owner, request));
         }
         cx.update(|app| {
+            threadless_attachment::assert_unavailable(owner, request, app);
             assert!(
                 RunningProcessOwner::prepare_interrupted_exit_threadless_window(
                     owner,
