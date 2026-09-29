@@ -5,6 +5,20 @@ use crate::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn recovery_binding_current(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+    ) -> bool {
+        self.window_close.is_some_and(|close| {
+            close.ticket == ticket
+                && close.recovery_fenced
+                && !close.resources_detached
+                && !close.disposing
+        }) && self.service.is_some()
+            && self.configurator.is_some()
+            && self.native_lineage_recovery.is_some()
+    }
+
     pub(crate) fn adopt_interrupted_exit_resident(
         &mut self,
         resident: &Entity<MainWindowConversationComposer>,

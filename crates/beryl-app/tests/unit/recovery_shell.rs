@@ -490,6 +490,31 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         });
         cx.update(|app| MainWindowShellRoot::bind_interrupted_exit_appearance(window, &owner, app))
             .unwrap();
+        if let Some(draft) = draft.as_mut() {
+            use crate::theme_runtime::AppearancePublicationTarget;
+            let target = cx.update(|app| owner.read(app).target());
+            window
+                .update(cx, |root, _, cx| {
+                    root.validate_interrupted_exit_binding(draft, &target, cx)
+                        .unwrap();
+                    let fresh = draft.composer.as_ref().unwrap().2;
+                    draft.composer.as_mut().unwrap().2 = old_close;
+                    assert!(
+                        root.validate_interrupted_exit_binding(draft, &target, cx)
+                            .is_err()
+                    );
+                    draft.composer.as_mut().unwrap().2 = fresh;
+                    let release = root.appearance_release.take();
+                    assert!(
+                        root.validate_interrupted_exit_binding(draft, &target, cx)
+                            .is_err()
+                    );
+                    root.appearance_release = release;
+                    root.validate_interrupted_exit_binding(draft, &target, cx)
+                        .unwrap();
+                })
+                .unwrap();
+        }
         window
             .read_with(cx, |root, app| {
                 assert!(root.shutdown_interaction_gated);

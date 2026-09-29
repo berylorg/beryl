@@ -2,6 +2,50 @@ use super::*;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 
 impl RunningProcessOwner {
+    pub(crate) fn validate_interrupted_exit_bindings(
+        &self,
+        request: &RunningExitRequest,
+        appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if recovery.resident.is_some()
+            || recovery.session.borrow().is_none()
+            || recovery
+                .pending_resident_frame
+                .as_ref()
+                .is_some_and(|wake| wake.strong_count() != 0)
+        {
+            return Err("Interrupted Exit recovery custody is unavailable".into());
+        }
+        let settlement = recovery.settlement.borrow();
+        let Some(settlement::CandidateSettlement::Returned {
+            candidate,
+            result: Ok(()),
+        }) = settlement.as_ref()
+        else {
+            return Err("Interrupted Exit candidate has no successful settlement".into());
+        };
+        let snapshot = appearance.read(app).target().snapshot();
+        let home = snapshot.current.prepared().home();
+        if !snapshot.active
+            || home.home_id() != candidate.candidate.home_id()
+            || home.home_generation() != candidate.candidate.generation()
+        {
+            return Err("Recovery appearance candidate identity changed".into());
+        }
+        let drafts = self
+            .shutdown
+            .as_ref()
+            .and_then(|attempt| attempt.drafts.as_ref())
+            .ok_or("Interrupted Exit drafts are unavailable")?;
+        drafts
+            .try_borrow()
+            .map_err(|_| "Interrupted Exit drafts are busy")?
+            .validate_recovered_bindings(&self.process.windows, appearance, app)
+    }
+
     #[cfg(test)]
     pub(crate) fn test_process_appearance(&self) -> gpui::Entity<GpuiAppearanceWindowSet> {
         self.process.appearance.clone()

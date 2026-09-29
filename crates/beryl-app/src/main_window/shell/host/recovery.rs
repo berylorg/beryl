@@ -8,6 +8,7 @@ use crate::{
 };
 
 mod appearance;
+mod bindings;
 
 impl MainWindowShellRoot {
     pub(crate) fn adopt_interrupted_exit_threadless_shell(

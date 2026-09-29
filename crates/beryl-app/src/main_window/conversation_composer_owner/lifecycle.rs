@@ -1,6 +1,19 @@
 use super::*;
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn recovery_binding_current(
+        &self,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+    ) -> bool {
+        matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::RecoveryFenced
+        ) && self.recovery_snapshot.is_none()
+            && self.service.is_some()
+            && self.window_close == Some(close)
+            && close.matches_editor(self.selection)
+    }
+
     pub(in crate::main_window) fn appearance_applicable(&self) -> bool {
         matches!(
             self.phase,

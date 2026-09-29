@@ -11,6 +11,39 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(in crate::running_owner) fn validate_recovered_bindings(
+        &self,
+        published: &crate::main_window::PublishedMainWindowRestoreSet,
+        appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        if !self.prepared
+            || self.driving
+            || self.releasing
+            || self.released
+            || self.windows.is_empty()
+            || self.windows.len() != published.shells().len()
+        {
+            return Err("Recovery draft set is incomplete or busy".into());
+        }
+        for shell in published.shells() {
+            let mut entries = self
+                .windows
+                .iter()
+                .filter(|(window, _)| *window == shell.window());
+            let (_, draft) = entries.next().ok_or("Recovery draft is missing")?;
+            if entries.next().is_some() {
+                return Err("Recovery draft is duplicated".into());
+            }
+            shell.validate_interrupted_exit_binding(
+                draft.as_ref().map_err(Clone::clone)?,
+                appearance,
+                app,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(in crate::running_owner) fn require_recovery_window(
         &self,
         window: WindowHandle<MainWindowShellRoot>,

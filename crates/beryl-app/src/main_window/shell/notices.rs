@@ -148,6 +148,18 @@ pub(super) struct MainWindowShellNotices {
 }
 
 impl MainWindowShellNotices {
+    pub(super) fn recovery_binding_current(
+        &self,
+        target: &Arc<GpuiAppearancePublicationTarget>,
+        window: beryl_model::WindowId,
+    ) -> bool {
+        !self.retired
+            && self.inert
+            && self.window_id == window
+            && self.scope_current()
+            && Arc::ptr_eq(&self.publication, target)
+    }
+
     pub(super) fn publication_retired(&self) -> bool {
         !self.publication.snapshot().active
     }

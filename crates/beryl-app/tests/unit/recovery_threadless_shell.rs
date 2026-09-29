@@ -383,6 +383,44 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
     } else {
         fresh_appearance.map(|fresh| appearance::verify(window, old_owner, fresh, cx))
     };
+    if let Some(owner) = &fresh_owner {
+        use crate::theme_runtime::AppearancePublicationTarget;
+        let target = cx.update(|app| owner.read(app).target());
+        window
+            .update(cx, |root, _, cx| {
+                root.validate_interrupted_exit_binding(&draft, &target, cx)
+                    .unwrap();
+                let exact_root = draft.root;
+                draft.root = owner.entity_id();
+                assert!(
+                    root.validate_interrupted_exit_binding(&draft, &target, cx)
+                        .is_err()
+                );
+                draft.root = exact_root;
+                root.shutdown_interaction_gated = false;
+                assert!(
+                    root.validate_interrupted_exit_binding(&draft, &target, cx)
+                        .is_err()
+                );
+                root.shutdown_interaction_gated = true;
+                root.validate_interrupted_exit_binding(&draft, &target, cx)
+                    .unwrap();
+            })
+            .unwrap();
+        if let Some(shell) = &retained_shell {
+            cx.update(|app| shell.validate_interrupted_exit_binding(&draft, owner, app))
+                .unwrap();
+        }
+        cx.update(|app| owner.update(app, |owner, _| owner.retire()));
+        window
+            .update(cx, |root, _, cx| {
+                assert!(
+                    root.validate_interrupted_exit_binding(&draft, &target, cx)
+                        .is_err()
+                );
+            })
+            .unwrap();
+    }
     std::thread::spawn(move || {
         drop(candidate.abort());
         directory.close().unwrap();

@@ -495,6 +495,13 @@ by the executable composition root.
   return preserve original outcome and candidate custody, including after a stale request or
   unwind. Failed validation remains retained and fenced. Revalidation alone grants no publication,
   draft/work release or interaction reopening.
+- Complete recovered shell-binding validation reads the existing published set and retained drafts
+  under the exact cancelled request, successful retirement and returned successful session custody.
+  Every published shell must have exactly one idle prepared draft, recovered candidate identity,
+  fresh appearance/notice ownership and native release custody. Selected shells must retain the
+  exact renewed resident and mount close ticket; threadless shells must have neither composer nor
+  composer draft. Validation retains all gates and custody and does not cache success. It performs
+  no storage reads and cannot substitute for fresh durable validation or draft/work settlement.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.

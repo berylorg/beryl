@@ -2,11 +2,18 @@ pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     candidate: InterruptedExitCandidate,
+    appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
     cx: &mut AsyncApp,
 ) -> InterruptedExitCandidate {
     let mut candidate = Some(candidate);
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {
+        assert!(
+            owner
+                .borrow()
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
         assert!(
             RunningProcessOwner::revalidate_interrupted_exit_candidate(
                 owner,
@@ -35,6 +42,60 @@ pub(super) async fn verify(
         .unwrap();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let foreign = request.test_foreign();
+    cx.update(|app| {
+        use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
+        let mut running = owner.borrow_mut();
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(&foreign, appearance, app)
+                .is_err()
+        );
+        let old = running.test_process_appearance();
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, &old, app)
+                .is_err()
+        );
+        let impostor = GpuiAppearanceWindowSet::new(
+            appearance.read(app).target().snapshot().current,
+            NonZeroUsize::new(4).unwrap(),
+            app,
+        );
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, &impostor, app)
+                .is_err()
+        );
+        impostor.update(app, |owner, _| owner.retire());
+        let drafts = running.test_replace_recovery_drafts(None).unwrap();
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
+        running.test_replace_recovery_drafts(Some(drafts.clone()));
+        let borrow = drafts.borrow_mut();
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
+        drop(borrow);
+        drafts.borrow_mut().test_recovery_driving(true);
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
+        drafts.borrow_mut().test_recovery_driving(false);
+        for _ in 0..2 {
+            running
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .unwrap();
+        }
+        assert!(!drafts.borrow().test_recovery_ready());
+    })
+    .unwrap();
     for unwind in [false, true] {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
@@ -82,6 +143,12 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow()
+                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
+                    .borrow()
                     .interrupted_exit_candidate_result(request)
                     .is_err()
             );
@@ -112,6 +179,16 @@ pub(super) async fn verify(
             .borrow_mut()
             .test_replace_interrupted_exit_request(request);
         let result = owner.borrow().interrupted_exit_candidate_result(request);
+        cx.update(|app| {
+            assert_eq!(
+                owner
+                    .borrow()
+                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .is_err(),
+                unwind
+            );
+        })
+        .unwrap();
         if unwind {
             assert!(result.unwrap_err().contains("unwound"));
             cx.update(|app| {
