@@ -11,6 +11,27 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(crate) fn adopt_recovered_threadless_shell(
+        &mut self,
+        root: &mut MainWindowShellRoot,
+        source: &mut Option<crate::app_services::recovery_threadless::ThreadlessRecoveryWindow>,
+        window: &gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<(), String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("Interrupted Exit draft set is not available for adoption".into());
+        }
+        let (_, draft) = self
+            .windows
+            .iter()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("Recovery window is absent from retained drafts")?;
+        let draft = draft.as_ref().map_err(|error| error.clone())?;
+        root.adopt_interrupted_exit_threadless_shell(draft, source, cx)?;
+        self.ready = false;
+        Ok(())
+    }
+
     pub(crate) fn adopt_recovered_shell(
         &mut self,
         root: &mut MainWindowShellRoot,

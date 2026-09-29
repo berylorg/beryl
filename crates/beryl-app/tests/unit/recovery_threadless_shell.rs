@@ -122,15 +122,22 @@ fn placement() -> WindowPlacement {
 fn threadless_shell_recovery_adopts_facts_and_preserves_gate_and_reservation(
     cx: &mut TestAppContext,
 ) {
-    run(cx, false);
+    run(cx, false, false);
 }
 
 #[gpui::test]
 fn threadless_shell_recovery_refuses_wrong_draft_home_and_unretired_shell(cx: &mut TestAppContext) {
-    run(cx, true);
+    run(cx, true, false);
 }
 
-fn run(cx: &mut TestAppContext, refuse: bool) {
+#[gpui::test]
+fn threadless_shell_recovery_retained_drafts_preserve_refusals_and_invalidate_readiness(
+    cx: &mut TestAppContext,
+) {
+    run(cx, false, true);
+}
+
+fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
     let (home, attempt, lifetime, process, prepared, appearance) = std::thread::spawn(|| {
         let home = Home::new();
         let (attempt, lifetime) = RestoredWindowPreparationAttempt::new_for_test(
@@ -253,10 +260,44 @@ fn run(cx: &mut TestAppContext, refuse: bool) {
         .join()
         .unwrap();
     }
-    window
+    let retained_window = window;
+    draft = window
         .update(cx, |root, window, cx| {
-            root.adopt_interrupted_exit_threadless_shell(&draft, &mut source, cx)
-                .unwrap();
+            if aggregate {
+                let mut drafts = crate::running_owner::RunningShutdownDrafts::test_recovery_drafts(
+                    retained_window,
+                    draft,
+                );
+                drafts.test_recovery_driving(true);
+                assert!(
+                    drafts
+                        .adopt_recovered_threadless_shell(root, &mut source, window, cx)
+                        .is_err()
+                );
+                assert!(source.is_some());
+                drafts.test_recovery_driving(false);
+                assert!(drafts.test_recovery_ready());
+                assert!(
+                    drafts
+                        .adopt_recovered_threadless_shell(root, &mut None, window, cx)
+                        .is_err()
+                );
+                assert!(drafts.test_recovery_ready());
+                drafts
+                    .adopt_recovered_threadless_shell(root, &mut source, window, cx)
+                    .unwrap();
+                assert!(!drafts.test_recovery_ready());
+                assert!(
+                    drafts
+                        .adopt_recovered_threadless_shell(root, &mut source, window, cx)
+                        .is_err()
+                );
+                assert!(!drafts.test_recovery_ready());
+                draft = root.begin_shutdown_draft(window, cx).unwrap();
+            } else {
+                root.adopt_interrupted_exit_threadless_shell(&draft, &mut source, cx)
+                    .unwrap();
+            }
             assert!(source.is_none());
             assert!(
                 root.adopt_interrupted_exit_threadless_shell(&draft, &mut source, cx)
@@ -279,6 +320,7 @@ fn run(cx: &mut TestAppContext, refuse: bool) {
                     .contains("fresh appearance")
             );
             assert!(root.shutdown_interaction_gated);
+            draft
         })
         .unwrap();
     assert_eq!(process.main_window_occupancy(), 1);

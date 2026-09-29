@@ -452,6 +452,11 @@ by the executable composition root.
   preserves both inputs. The recovered shell remains threadless, excludes startup paths and
   requires fresh appearance before interaction release. The process recovery owner must still
   revalidate candidate facts and settle the cancelled request before publication and reopening.
+- Retained shutdown drafts also route threadless adoption through the exact existing window entry
+  while prepared, idle and unreleased. Refusal preserves facts and cached readiness; successful
+  shell adoption consumes the facts and clears readiness. This route retains the original draft
+  and adds no worker or service custody. Running-owner request and candidate validation remain
+  prerequisites to composing it into recovery.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
