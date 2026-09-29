@@ -8,6 +8,7 @@ pub struct MainWindowComposerRecoverySnapshot {
     close: MainWindowConversationComposerCloseTicket,
     flush: ComposerHostFlushTicket,
     restoration: RangeRestorationSeed,
+    protection: gpui_text_input::RangeResidentProtection,
     retired: Option<crate::main_window::MainWindowComposerRetiredClose>,
 }
 
@@ -36,6 +37,10 @@ impl MainWindowComposerRecoverySnapshot {
 
     pub const fn restoration(&self) -> &RangeRestorationSeed {
         &self.restoration
+    }
+
+    pub const fn protection(&self) -> gpui_text_input::RangeResidentProtection {
+        self.protection
     }
 }
 
@@ -189,6 +194,13 @@ impl MainWindowConversationComposer {
         {
             return Err("resident detachment requires its exact recovery fence".to_owned());
         }
+        if !self
+            .input
+            .read(cx)
+            .resident_protection_is_current(self.recovery_snapshot.as_ref().unwrap().protection)
+        {
+            return Err("resident recovery widget protection changed".to_owned());
+        }
         if self.active_flight.is_some()
             || self.pending_dispatch.is_some()
             || self.pending_realizer.is_some()
@@ -218,10 +230,16 @@ impl MainWindowConversationComposer {
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
         if let Some(snapshot) = &self.recovery_snapshot {
-            return if snapshot.close == close && snapshot.flush == flush {
+            return if snapshot.close == close
+                && snapshot.flush == flush
+                && self
+                    .input
+                    .read(cx)
+                    .resident_protection_is_current(snapshot.protection)
+            {
                 Ok(true)
             } else {
-                Err("resident recovery snapshot belongs to another close".to_owned())
+                Err("resident recovery snapshot or widget protection changed".to_owned())
             };
         }
         if !self.shutdown_interaction_gated || self.is_pending_target() {
@@ -239,24 +257,31 @@ impl MainWindowConversationComposer {
         {
             return Ok(false);
         }
-        let restoration = self
+        let protection = self
             .input
-            .update(cx, |input, _| {
-                input.export_restoration(Some(self.selection.binding().range_history_frontier()))
+            .update(cx, |input, cx| {
+                if input.history_frontier() != self.selection.binding().range_history_frontier()
+                    || !input.surface().is_some_and(|surface| {
+                        surface.binding() == self.selection.binding().range_binding()
+                    })
+                {
+                    return Err(gpui_text_input::RangeTextInputError::Stale);
+                }
+                input.set_enabled(false, cx);
+                input.protect_resident(cx)
             })
-            .map_err(|error| format!("resident recovery export was rejected: {error:?}"))?;
+            .map_err(|error| format!("resident recovery protection was rejected: {error:?}"))?;
         self.recovery_snapshot = Some(MainWindowComposerRecoverySnapshot {
             selection: self.selection,
             close,
             flush,
-            restoration,
+            restoration: protection.seed(),
+            protection,
             retired: None,
         });
         self.phase = MainWindowConversationComposerPhase::RecoveryFenced;
         self.admitted_positions = None;
         self.scheduled = false;
-        self.input
-            .update(cx, |input, cx| input.set_enabled(false, cx));
         cx.notify();
         Ok(true)
     }

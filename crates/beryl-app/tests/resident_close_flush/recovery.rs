@@ -54,6 +54,30 @@ fn recovery_detaches_publication_adapters_once_without_releasing_the_resident(
             composer.test_set_shutdown_interaction_gated(true, cx)
         })
         .unwrap();
+    let history = input.read_with(cx, |input, _| input.history_frontier());
+    let mismatched = gpui_text_input::RangeHistoryFrontier {
+        id: history.id.wrapping_add(1),
+        ..history
+    };
+    input
+        .update(cx, |input, _| {
+            input.set_history_frontier(history, mismatched)
+        })
+        .unwrap();
+    assert!(
+        fixture
+            .mount
+            .update(cx, |mount, cx| {
+                mount.fence_interrupted_exit_resident(close.ticket, cx)
+            })
+            .is_err()
+    );
+    assert!(composer.read_with(cx, |composer, _| composer.recovery_snapshot().is_none()));
+    input
+        .update(cx, |input, _| {
+            input.set_history_frontier(mismatched, history)
+        })
+        .unwrap();
     fixture.mount.update(cx, |mount, cx| {
         assert!(
             mount
@@ -241,6 +265,7 @@ fn recovery_fence_preserves_the_exact_resident_and_refuses_ordinary_release(
         assert_eq!(snapshot.close_ticket(), close.ticket);
         assert_eq!(snapshot.flush_ticket(), flush);
         assert_eq!(snapshot.restoration(), &restoration);
+        assert_eq!(snapshot.protection().seed(), restoration);
         assert_eq!(composer.gpui_input().entity_id(), input.entity_id());
         assert!(!composer.test_widget_released());
     });
@@ -290,7 +315,17 @@ fn recovery_fence_preserves_the_exact_resident_and_refuses_ordinary_release(
         )),
         before
     );
-    assert!(!input.read_with(cx, |input, _| input.is_enabled()));
+    let protection = composer.read_with(cx, |composer, _| {
+        composer.recovery_snapshot().unwrap().protection()
+    });
+    input.update(cx, |input, cx| {
+        assert!(input.resident_protection_is_current(protection));
+        input.set_enabled(true, cx);
+        assert!(!input.is_enabled());
+        assert!(input.protect_resident(cx).is_err());
+        assert!(input.set_history_frontier(before.2, before.2).is_err());
+        assert!(input.resident_protection_is_current(protection));
+    });
     assert_eq!(
         fixture
             .mount

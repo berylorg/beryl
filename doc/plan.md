@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 747: Authenticate The Candidate Resident Preparation Source (finished)
+# Phase 748: Protect The Preserved Recovery Widget (finished)
 
-Added the candidate-backed resident preparation source with private fresh service custody, exact
-checkpoint/history/claim authentication and unchanged captured presentation positions. Candidate
-reads reuse bounded widget page translation. App check and all 67 selected app regressions pass;
-independent source review accepted. Worker ownership, GUI preparation and attachment remain below.
+The existing recovery fence now retains the widget's resident-protection token and exact seed
+after checking live binding/history. Invalidated protection refuses repeated fencing and resource
+handoff while preserving disabled presentation and custody. App check and all 52 resident-close
+regressions pass; independent lifecycle review accepted. Preparation driving remains 744.
 
 # Phase 744: Drive Fenced Resident Recovery Preparation (pending)
 
@@ -105,7 +105,8 @@ GUI steps. Verify stale flight/generation rejection, capacity/environment refusa
 lifetime through cancellation and abandoned delivery, and complete cleanup while old paint remains
 fenced. Independently review the fresh-source and worker-custody boundary.
 
-Use the candidate-only reads accepted in 746 and authenticated source from 747. The ordinary native-lineage service route requires
+Use the candidate-only reads accepted in 746, authenticated source from 747 and protected resident
+snapshot from 748. The ordinary native-lineage service route requires
 Healthy storage and cannot prepare an unpublished replacement. Move candidate ownership through
 retained recovery work and borrow candidate access inside the worker, following the existing
 interrupted-Exit candidate settlement pattern; keep publication unavailable while work owns it.
