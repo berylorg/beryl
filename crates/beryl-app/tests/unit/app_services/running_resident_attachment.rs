@@ -25,19 +25,21 @@ pub(super) fn attempt(
     request: &crate::startup_owner::RunningExitRequest,
     key: &crate::running_owner::ResidentPreparationKey,
     mount: &gpui::Entity<MainWindowConversationComposerMount>,
+    root: &mut MainWindowShellRoot,
+    drafts: &Rc<RefCell<crate::running_owner::RunningShutdownDrafts>>,
     resident: &gpui::Entity<MainWindowConversationComposer>,
     close: MainWindowConversationComposerCloseTicket,
     adapters: &mut Option<crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters>,
     mut current: gpui_text_input::RangePrepublicationCurrent,
     scenario: ResidentScenario,
     window: &mut gpui::Window,
-    app: &mut gpui::App,
+    app: &mut gpui::Context<MainWindowShellRoot>,
 ) -> Option<crate::running_owner::InterruptedExitCandidate> {
     let input = resident.read(app).gpui_input();
     input.update(app, |input, _| input.focus(window));
     let focus = window.focused(app);
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
-        Some(Box::new(resident_fixture::mounted_support::configure));
+        Some(Box::new(resident_fixture::configure));
     let foreign = request.test_foreign();
     assert!(
         owner
@@ -45,7 +47,7 @@ pub(super) fn attempt(
             .attach_interrupted_exit_resident(
                 &foreign,
                 key,
-                mount,
+                root,
                 adapters,
                 &mut configurator,
                 current,
@@ -55,6 +57,51 @@ pub(super) fn attempt(
             .is_err()
     );
     assert!(adapters.is_some() && configurator.is_some());
+    let retained = owner.borrow_mut().test_replace_recovery_drafts(None);
+    assert!(
+        owner
+            .borrow_mut()
+            .attach_interrupted_exit_resident(
+                request,
+                key,
+                root,
+                adapters,
+                &mut configurator,
+                current,
+                window,
+                app,
+            )
+            .err()
+            .unwrap()
+            .contains("drafts are unavailable")
+    );
+    owner.borrow_mut().test_replace_recovery_drafts(retained);
+    let borrowed = drafts.borrow_mut();
+    assert!(
+        owner
+            .borrow_mut()
+            .attach_interrupted_exit_resident(
+                request,
+                key,
+                root,
+                adapters,
+                &mut configurator,
+                current,
+                window,
+                app,
+            )
+            .err()
+            .unwrap()
+            .contains("drafts are busy")
+    );
+    drop(borrowed);
+    assert_eq!(
+        owner
+            .borrow()
+            .test_captured_recovery_ticket(resident.entity_id()),
+        Some(close)
+    );
+    assert!(root.test_shell_construction_retired());
     if scenario == ResidentScenario::StaleAttachment {
         owner
             .borrow_mut()
@@ -69,7 +116,7 @@ pub(super) fn attempt(
     let result = owner.borrow_mut().attach_interrupted_exit_resident(
         request,
         key,
-        mount,
+        root,
         adapters,
         &mut configurator,
         current,
@@ -92,11 +139,40 @@ pub(super) fn attempt(
             close
         );
         assert!(mount.read(app).selected_identity().is_none());
+        assert!(root.test_shell_construction_retired());
+        assert!(drafts.borrow().test_recovery_ready());
+        assert_eq!(
+            owner
+                .borrow()
+                .test_captured_recovery_ticket(resident.entity_id()),
+            Some(close)
+        );
+        assert!(
+            drafts.borrow().recovery_residents()
+                == vec![(window.window_handle(), resident.entity_id(), close)]
+        );
         return None;
     }
     let (candidate, fresh_close, record) =
         result.unwrap_or_else(|error| panic!("attachment refused: {error}"));
     assert_ne!(fresh_close, close);
+    assert!(!drafts.borrow().test_recovery_ready());
+    assert!(!root.test_shell_construction_retired());
+    assert_eq!(
+        owner
+            .borrow()
+            .test_captured_recovery_ticket(resident.entity_id()),
+        Some(fresh_close)
+    );
+    assert!(
+        drafts.borrow().recovery_residents()
+            == vec![(window.window_handle(), resident.entity_id(), fresh_close)]
+    );
+    assert!(
+        root.set_shutdown_interaction_gated(false, app)
+            .unwrap_err()
+            .contains("fresh appearance")
+    );
     let selection = resident.read(app).selection_identity();
     assert_eq!(record.window_id(), selection.window_id());
     assert_eq!(record.selected_thread(), Some(selection.claim()));
@@ -119,7 +195,7 @@ pub(super) fn attempt(
             .attach_interrupted_exit_resident(
                 request,
                 key,
-                mount,
+                root,
                 adapters,
                 &mut configurator,
                 current,

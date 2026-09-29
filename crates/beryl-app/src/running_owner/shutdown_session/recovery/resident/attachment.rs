@@ -1,9 +1,7 @@
 use super::*;
 use crate::{
     app_services::recovery_composer::PreparedComposerRecoveryAdapters,
-    main_window::{
-        MainWindowConversationComposerConfigurator, MainWindowConversationComposerMount,
-    },
+    main_window::{MainWindowConversationComposerConfigurator, MainWindowShellRoot},
 };
 use gpui_text_input::RangePrepublicationCurrent;
 
@@ -12,12 +10,12 @@ impl RunningProcessOwner {
         &mut self,
         request: &RunningExitRequest,
         key: &ResidentPreparationKey,
-        mount: &Entity<MainWindowConversationComposerMount>,
+        root: &mut MainWindowShellRoot,
         adapters: &mut Option<PreparedComposerRecoveryAdapters>,
         configurator: &mut Option<MainWindowConversationComposerConfigurator>,
         current: RangePrepublicationCurrent,
         window: &mut Window,
-        app: &mut App,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<
         (
             InterruptedExitCandidate,
@@ -29,6 +27,14 @@ impl RunningProcessOwner {
         if !self.process.commands.is_active(request) {
             return Err("Interrupted Exit request changed".into());
         }
+        let drafts = self
+            .shutdown
+            .as_ref()
+            .and_then(|attempt| attempt.drafts.as_ref())
+            .ok_or("Interrupted Exit drafts are unavailable")?;
+        let mut drafts = drafts
+            .try_borrow_mut()
+            .map_err(|_| "Interrupted Exit drafts are busy")?;
         let recovery = self
             .interrupted_exit
             .as_mut()
@@ -41,14 +47,16 @@ impl RunningProcessOwner {
             || !Rc::ptr_eq(&flight.request, &recovery.request)
             || !Rc::ptr_eq(&flight.key.0, &key.0)
             || flight.window != window.window_handle()
-            || !recovery.residents.contains(&(
-                flight.window,
-                flight.resident.entity_id(),
-                flight.close,
-            ))
         {
             return Err("Resident preparation request changed".into());
         }
+        let captured = recovery
+            .residents
+            .iter_mut()
+            .find(|captured| {
+                **captured == (flight.window, flight.resident.entity_id(), flight.close)
+            })
+            .ok_or("Resident is not captured by the interrupted Exit")?;
         if flight.cancelled
             || flight.result != Ok(Progress::Ready)
             || flight.scheduled.is_some()
@@ -70,18 +78,18 @@ impl RunningProcessOwner {
             return Err("Resident recovery candidate generation changed".into());
         }
         let record = flight.preparation.authenticated_window()?;
-        let (candidate, close) = mount.update(app, |mount, cx| {
-            mount.adopt_interrupted_exit_resident(
-                &resident,
-                flight.close,
-                &mut flight.preparation,
-                adapters,
-                configurator,
-                current,
-                window,
-                cx,
-            )
-        })?;
+        let (candidate, close) = drafts.adopt_recovered_shell(
+            root,
+            resident.entity_id(),
+            flight.close,
+            &mut flight.preparation,
+            adapters,
+            configurator,
+            current,
+            window,
+            cx,
+        )?;
+        captured.2 = close;
         let candidate = InterruptedExitCandidate {
             candidate,
             session: flight.session.take().unwrap(),

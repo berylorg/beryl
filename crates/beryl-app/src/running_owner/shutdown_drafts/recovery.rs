@@ -1,5 +1,15 @@
 use super::*;
 
+#[cfg(test)]
+impl RunningProcessOwner {
+    pub(crate) fn test_replace_recovery_drafts(
+        &mut self,
+        drafts: Option<Rc<RefCell<RunningShutdownDrafts>>>,
+    ) -> Option<Rc<RefCell<RunningShutdownDrafts>>> {
+        std::mem::replace(&mut self.shutdown.as_mut().unwrap().drafts, drafts)
+    }
+}
+
 impl RunningShutdownDrafts {
     pub(crate) fn adopt_recovered_shell(
         &mut self,

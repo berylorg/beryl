@@ -48,6 +48,19 @@ pub(super) struct ResidentPreparation {
 
 impl RunningProcessOwner {
     #[cfg(test)]
+    pub(crate) fn test_captured_recovery_ticket(
+        &self,
+        resident: gpui::EntityId,
+    ) -> Option<MainWindowConversationComposerCloseTicket> {
+        self.interrupted_exit
+            .as_ref()?
+            .residents
+            .iter()
+            .find(|(_, entity, _)| *entity == resident)
+            .map(|(_, _, ticket)| *ticket)
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_resident_preparation_state(
         &self,
     ) -> (bool, bool, bool, bool, Result<Progress, String>) {

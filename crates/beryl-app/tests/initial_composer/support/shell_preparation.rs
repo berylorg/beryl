@@ -10,9 +10,6 @@ pub fn prepared_shell(
     fixture: &Fixture,
     custody: MainWindowInitialComposer,
 ) -> MainWindowShellPrepared {
-    let prepared = custody
-        .prepare(&mut config)
-        .unwrap_or_else(|failure| panic!("{}", failure.error));
     let appearance = AppearanceCoordinator::new(
         AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
         beryl_state::PreparedThemeAppearance::fallback(
@@ -23,6 +20,17 @@ pub fn prepared_shell(
         ),
     )
     .current();
+    prepared_shell_with_appearance(fixture, custody, appearance)
+}
+
+pub fn prepared_shell_with_appearance(
+    fixture: &Fixture,
+    custody: MainWindowInitialComposer,
+    appearance: std::sync::Arc<beryl_app::theme_runtime::AppearanceGeneration>,
+) -> MainWindowShellPrepared {
+    let prepared = custody
+        .prepare(&mut config)
+        .unwrap_or_else(|failure| panic!("{}", failure.error));
     let seals = DraftMarkerSealService::test_new(
         &fixture.store,
         fixture.store.health().generation().unwrap(),

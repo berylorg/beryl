@@ -3,7 +3,7 @@ use beryl_home_store::{CommandOutcome, HomeCommand};
 
 #[path = "support/shell_preparation.rs"]
 mod shell_preparation;
-pub use shell_preparation::prepared_shell;
+pub use shell_preparation::{prepared_shell, prepared_shell_with_appearance};
 
 pub struct Fixture {
     pub directory: tempfile::TempDir,

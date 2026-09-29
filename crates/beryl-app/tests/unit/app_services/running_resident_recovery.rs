@@ -76,6 +76,27 @@ fn resident_run(scenario: ResidentScenario) {
                         .request_exit();
                     app.spawn(async move |cx| {
                         let request = next_request(&owner, cx).await;
+                        let job = owner
+                            .borrow()
+                            .test_services()
+                            .prepare_shutdown_observation()
+                            .unwrap();
+                        let idle = cx
+                            .background_executor()
+                            .spawn(async move {
+                                job.collect(&ProjectionCancellationToken::new()).unwrap()
+                            })
+                            .await;
+                        cx.update(|app| {
+                            owner.borrow_mut().try_begin_idle_shutdown(
+                                invoking,
+                                crate::running_owner::ShutdownIntent::ApplicationExit,
+                                &idle,
+                                app,
+                            )
+                        })
+                        .unwrap()
+                        .unwrap();
                         let resident_fixture::Resident {
                             window,
                             composer,
@@ -84,7 +105,13 @@ fn resident_run(scenario: ResidentScenario) {
                             retired,
                             directory: resident_directory,
                             mount,
+                            drafts,
+                            shell,
                         } = resident_fixture::prepare(cx).await;
+                        let drafts = Rc::new(RefCell::new(drafts));
+                        owner
+                            .borrow_mut()
+                            .test_replace_recovery_drafts(Some(drafts.clone()));
                         owner.borrow_mut().test_retain_resident_recovery(
                             &request,
                             (window.into(), composer.entity_id(), close),
@@ -386,12 +413,14 @@ fn resident_run(scenario: ResidentScenario) {
                                 | ResidentScenario::CapacityAttachment
                         ) {
                             window
-                                .update(cx, |_, window, app| {
+                                .update(cx, |root, window, app| {
                                     attachment::attempt(
                                         &owner,
                                         &request,
                                         &key,
                                         &mount,
+                                        root,
+                                        &drafts,
                                         &composer,
                                         close,
                                         &mut adapters,
@@ -470,12 +499,14 @@ fn resident_run(scenario: ResidentScenario) {
                             resources.candidate
                         };
                         drop(adapters);
+                        drop(owner.borrow_mut().test_replace_recovery_drafts(None));
+                        drop(drafts);
                         if scenario != ResidentScenario::Window {
                             window
                                 .update(cx, |_, window, _| window.remove_window())
                                 .unwrap();
                         }
-                        drop((composer, mount, storage, state));
+                        drop((composer, mount, storage, state, shell));
                         cx.background_executor()
                             .timer(Duration::from_millis(200))
                             .await;

@@ -435,6 +435,10 @@ by the executable composition root.
   before adoption. Success keeps the renewed ticket in that entry and clears cached readiness;
   other windows may still adopt before fresh draft readiness is established. This does not settle
   work or complete the cancelled Exit request.
+- Running-owner attachment routes its exact ready preparation flight through that retained draft
+  entry. Success renews the captured resident ticket synchronously with shell adoption, returns
+  candidate/session custody once and consumes the flight. Missing or busy drafts, stale request
+  identity and unready or cancelled preparation refuse attachment without discarding custody.
 - Verify reported-failure cancellation through late exact-new resolution, source evidence across
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
