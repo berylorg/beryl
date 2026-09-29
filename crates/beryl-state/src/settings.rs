@@ -145,6 +145,13 @@ impl SettingsState {
         store.domain_revision(&self.handle)
     }
 
+    pub fn revision_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<beryl_model::DomainRevision, ReadError> {
+        access.domain_revision(&self.handle)
+    }
+
     /// Returns this domain's revision from a still-current successful command.
     pub fn committed_revision(
         &self,
@@ -160,6 +167,14 @@ impl SettingsState {
         key: SettingKey,
     ) -> Result<Option<SettingRecord>, ReadError> {
         store.read_point::<SettingsDomain, SettingRecordCodec>(&self.handle, &key, point_limit())
+    }
+
+    pub fn setting_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        key: SettingKey,
+    ) -> Result<Option<SettingRecord>, ReadError> {
+        access.read_point::<SettingsDomain, SettingRecordCodec>(&self.handle, &key, point_limit())
     }
 
     pub fn list(
