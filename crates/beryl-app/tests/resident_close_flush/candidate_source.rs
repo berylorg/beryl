@@ -199,6 +199,17 @@ fn candidate_source_preserves_directed_seed_and_bounds_exact_pages(cx: &mut Test
     let fixture = Fixture::new("candidate-source-text", 151);
     let (mut facts, old_seed) = edited_retirement(&fixture, cx, false);
     let predecessor = facts.close_ticket();
+    let expected_window = BerylState::reacquire(&fixture.store)
+        .unwrap()
+        .session()
+        .minimal_bootstrap(&fixture.store)
+        .unwrap()
+        .unwrap()
+        .windows()
+        .iter()
+        .find(|window| window.window_id() == fixture.window_id)
+        .unwrap()
+        .clone();
     fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(fixture.store.home_revision().is_err());
     let mut candidate = fixture.store.recover_same_home().unwrap();
@@ -233,6 +244,7 @@ fn candidate_source_preserves_directed_seed_and_bounds_exact_pages(cx: &mut Test
     let source = Source::new(&mut candidate, facts, storage, &state, old_seed)
         .unwrap_or_else(|(_, e)| panic!("{e}"));
     assert_eq!(source.predecessor(), predecessor);
+    assert_eq!(source.window(), &expected_window);
     assert_ne!(source.close_ticket(), predecessor);
     let fresh = source.seed();
     assert_eq!(fresh.caret, old_seed.caret);
@@ -468,3 +480,6 @@ fn candidate_source_rejects_foreign_access_and_stale_handles(cx: &mut TestAppCon
     newer.abort().close().unwrap();
     other.abort().close().unwrap();
 }
+
+#[path = "candidate_window.rs"]
+mod window;

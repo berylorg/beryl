@@ -36,9 +36,12 @@ fn reconstructed_service_keeps_all_close_gates_through_publication(cx: &mut Test
         .unwrap()
         .0;
     assert_eq!(facts.close_ticket(), old_close);
-    let (service, close) = Service::rebind_candidate(&mut candidate, facts, storage, &state)
-        .unwrap_or_else(|(_, error)| panic!("service reconstruction failed: {error}"));
+    let (service, close, window) =
+        Service::rebind_candidate(&mut candidate, facts, storage, &state)
+            .unwrap_or_else(|(_, error)| panic!("service reconstruction failed: {error}"));
     let selected = service.selected_identity().unwrap();
+    assert_eq!(window.window_id(), selected.window_id());
+    assert_eq!(window.selected_thread(), Some(selected.claim()));
     assert_eq!(selected.window_id(), old_selection.window_id());
     assert_eq!(selected.claim(), old_selection.claim());
     assert_ne!(selected.binding(), old_selection.binding());

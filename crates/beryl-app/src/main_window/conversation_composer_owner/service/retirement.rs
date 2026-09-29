@@ -11,7 +11,11 @@ impl MainWindowConversationComposerService {
         storage: syndic_storage::SyndicStorage,
         state: &beryl_state::BerylState,
     ) -> Result<
-        (Self, MainWindowConversationComposerCloseTicket),
+        (
+            Self,
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        ),
         (MainWindowComposerRetiredClose, String),
     > {
         let store = candidate.service_reference();
@@ -19,12 +23,12 @@ impl MainWindowConversationComposerService {
             Ok(access) => access,
             Err(error) => return Err((retired, error.to_string())),
         };
-        let (slot, close) = retired
+        let (slot, close, window) = retired
             .rebind_candidate(&access, storage, state)
             .map_err(|(retired, error)| (retired, error.to_string()))?;
         let mut service = Self::from_boxed_slot(store, slot);
         service.window_close = Mutex::new(Some(close));
-        Ok((service, close))
+        Ok((service, close, window))
     }
 
     pub fn retire_clean_window_close(

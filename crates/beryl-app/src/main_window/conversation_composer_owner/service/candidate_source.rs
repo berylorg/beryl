@@ -13,6 +13,7 @@ pub struct MainWindowComposerCandidateSource {
     predecessor: MainWindowConversationComposerCloseTicket,
     close: MainWindowConversationComposerCloseTicket,
     selection: MainWindowComposerSelectionIdentity,
+    window: beryl_state::SessionWindowRecord,
     selector: syndic_storage::DraftEditorCurrentSelectorV1,
     seed: RangeRestorationSeed,
 }
@@ -51,7 +52,7 @@ impl MainWindowComposerCandidateSource {
         }
         let predecessor = retired.close_ticket();
         let selector = retired.host().selector();
-        let (service, close) = MainWindowConversationComposerService::rebind_candidate(
+        let (service, close, window) = MainWindowConversationComposerService::rebind_candidate(
             candidate,
             retired,
             storage.clone(),
@@ -72,6 +73,7 @@ impl MainWindowComposerCandidateSource {
             predecessor,
             close,
             selection,
+            window,
             selector,
             seed,
         })
@@ -83,6 +85,10 @@ impl MainWindowComposerCandidateSource {
 
     pub fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
+    }
+
+    pub fn window(&self) -> &beryl_state::SessionWindowRecord {
+        &self.window
     }
 
     pub fn predecessor(&self) -> MainWindowConversationComposerCloseTicket {
@@ -140,9 +146,13 @@ impl MainWindowComposerCandidateSource {
         {
             return Err("resident recovery candidate source is stale".into());
         }
-        self.selection
+        let window = self
+            .selection
             .validate_candidate_claim(access, &self.state)
             .map_err(|e| e.to_string())?;
+        if window != self.window {
+            return Err("resident recovery window record changed".into());
+        }
         if !self
             .storage
             .draft_editor_candidate_is_saved_candidate(access, binding.candidate(), self.selector)

@@ -40,10 +40,12 @@ fn recovered_slot_keeps_fresh_close_gates_and_rejects_stale_handles(cx: &mut Tes
         .unwrap()
         .0;
     assert_eq!(facts.selection(), selection);
-    let (mut slot, fresh_close) = facts
+    let (mut slot, fresh_close, window) = facts
         .rebind_candidate(&access, storage, &state)
         .unwrap_or_else(|(_, error)| panic!("slot reconstruction failed: {error}"));
     let fresh = slot.selected_identity().unwrap();
+    assert_eq!(window.window_id(), fresh.window_id());
+    assert_eq!(window.selected_thread(), Some(fresh.claim()));
     assert_eq!(fresh.window_id(), selection.window_id());
     assert_eq!(fresh.claim(), selection.claim());
     assert_eq!(fresh.binding().candidate(), selection.binding().candidate());

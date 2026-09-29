@@ -142,6 +142,11 @@ governed by [design.md](design.md). It does not independently declare engineerin
   returns the original retirement facts; success leaves ordinary interaction fenced and starts
   no native-lineage worker. Construction performs no writes and neither attaches the resident
   widget nor publishes the replacement graph.
+- Reconstruction also returns the exact fixed-size session window record from candidate claim
+  validation. The candidate editor source retains that record and compares it during source
+  validation and page servicing. Successful owner attachment returns the record with the candidate
+  and fresh close ticket for shell rebinding, without GUI storage access. These immutable facts
+  carry no service or publication authority and do not permit interaction release.
 - Retained resident retirement facts may be transferred to recovery work only after rechecking
   the exact recovery fence, detached mount resources and live resident quiescence. The transfer
   moves the facts once, retains the presentation snapshot and leaves interaction closed. While

@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 766: Require Retired Graph Before Resident Preparation (finished)
+# Phase 767: Carry Authenticated Window Facts Through Resident Attachment (finished)
 
-Resident preparation now requires the existing exact-request successful graph-retirement result
-before consuming candidate or retirement custody or starting authentication. Native tests prove
-missing, pending and failed refusals preserve inputs and fences, followed by successful preparation
-and attachment. All 16 focused native tests, app compilation and independent lifecycle review
-passed. See [custody evidence](failures/initial-composer-custody.md).
+Candidate reconstruction now preserves the exact fixed-size window record already read during
+claim validation and returns it through successful owner attachment. Source servicing rejects
+changed records even when the thread claim is unchanged. All 24 focused tests, app compilation
+and independent lifecycle review passed. See [custody evidence](failures/initial-composer-custody.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -111,6 +110,7 @@ Phase 759 binds that resident pass to graph-worker admission.
 Phase 760 requires successful graph retirement before candidate settlement can start.
 Phase 764 retires settled acquired/restored opening, claim and source custody and threadless source
 custody. Fresh shell bindings must replace that retired state before coherent interaction release.
+Phase 767 supplies authenticated window facts with resident attachment for that shell rebinding.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

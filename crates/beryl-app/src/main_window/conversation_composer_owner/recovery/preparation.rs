@@ -69,6 +69,16 @@ impl MainWindowComposerRecoveryPreparation {
             .map(|source| (source.seed(), source.selection())))
     }
 
+    pub(crate) fn authenticated_window(&self) -> Result<beryl_state::SessionWindowRecord, String> {
+        if let Some(error) = self.custody.preparation_error() {
+            return Err(error);
+        }
+        self.custody
+            .source()
+            .map(|source| source.window().clone())
+            .ok_or_else(|| "resident recovery source is unavailable".into())
+    }
+
     pub fn admit(
         &mut self,
         input: &RangeTextInput,

@@ -94,9 +94,13 @@ pub(super) fn attempt(
         assert!(mount.read(app).selected_identity().is_none());
         return None;
     }
-    let (candidate, fresh_close) =
+    let (candidate, fresh_close, record) =
         result.unwrap_or_else(|error| panic!("attachment refused: {error}"));
     assert_ne!(fresh_close, close);
+    let selection = resident.read(app).selection_identity();
+    assert_eq!(record.window_id(), selection.window_id());
+    assert_eq!(record.selected_thread(), Some(selection.claim()));
+    assert!(record.remembered_target().is_some());
     assert!(adapters.is_none() && configurator.is_none());
     assert!(resident.read(app).recovery_snapshot().is_none());
     assert_eq!(

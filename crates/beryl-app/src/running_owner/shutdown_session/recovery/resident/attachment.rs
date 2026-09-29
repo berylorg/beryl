@@ -22,6 +22,7 @@ impl RunningProcessOwner {
         (
             InterruptedExitCandidate,
             MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
         ),
         String,
     > {
@@ -68,6 +69,7 @@ impl RunningProcessOwner {
         {
             return Err("Resident recovery candidate generation changed".into());
         }
+        let record = flight.preparation.authenticated_window()?;
         let (candidate, close) = mount.update(app, |mount, cx| {
             mount.adopt_interrupted_exit_resident(
                 &resident,
@@ -85,6 +87,6 @@ impl RunningProcessOwner {
             session: flight.session.take().unwrap(),
         };
         recovery.resident.take();
-        Ok((candidate, close))
+        Ok((candidate, close, record))
     }
 }

@@ -125,6 +125,20 @@ component evidence; actual graph retirement remains covered by the native Exit f
 Run `d18abfa9-8e53-451d-ba45-fde19bd9a91b` passed all 16 focused native tests. App library compilation
 and independent lifecycle review passed. Fresh shell bindings and full recovery remain phase 702.
 
+Phase 767 preserves the exact fixed-size session window record previously discarded by candidate
+claim validation. Slot/service reconstruction returns it to the resident source, which checks the
+complete record during validation and text/object servicing. Successful owner attachment returns
+it with the candidate and fresh close ticket. This adds no GUI storage read or old-generation
+handle; one bounded immutable record supplies target, placement, selection and revision for later
+shell installation. Failed attachment preserves existing custody and interaction fences.
+
+Run `f519aebd-aa66-4e0f-8a69-f5ff2d66499a` passed eight focused source/slot/service tests, including
+full-record preservation and a changed-placement/revision refusal with an unchanged claim.
+Run `cf3f65f6-d3a9-47df-ab21-b41c8db9f62b` passed all 16 focused native recovery/Exit tests.
+App library compilation and independent lifecycle review passed. Native attachment checks record
+identity, selection and target presence; complete-record equality is checked at the source boundary.
+Shell installation, fresh draft settlement and complete recovery remain phase 702 work.
+
 Phase 290 assumed the accepted composer activation, selected-editor preparation, hidden shell,
 and window-abandonment components could be connected directly for New Window. Source inspection
 and independent review on 2026-09-05 invalidated that integration assumption before source edits.
