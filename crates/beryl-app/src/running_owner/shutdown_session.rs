@@ -7,8 +7,8 @@ use std::panic::AssertUnwindSafe;
 mod readiness;
 mod reconciliation;
 mod recovery;
-pub(crate) use recovery::InterruptedExitCandidate;
 pub(super) use recovery::InterruptedExitRecovery;
+pub(crate) use recovery::{InterruptedExitCandidate, ResidentPreparationKey};
 
 #[derive(Debug)]
 pub(crate) enum RunningShutdownSession {

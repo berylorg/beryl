@@ -2,6 +2,11 @@
 #[path = "running_resident_recovery_support.rs"]
 mod resident_fixture;
 
+mod attachment {
+    use super::*;
+    include!("running_resident_attachment.rs");
+}
+
 #[test]
 fn native_recovery_owner_drives_resident_and_retains_abandoned_delivery() {
     resident_run(ResidentScenario::Ready);
@@ -32,6 +37,10 @@ enum ResidentScenario {
     Window,
     SuspendedFrame,
     Capacity,
+    Attach,
+    StaleAttachment,
+    CancelledAttachment,
+    CapacityAttachment,
 }
 
 #[test]
@@ -71,7 +80,7 @@ fn resident_run(scenario: ResidentScenario) {
                             window,
                             composer,
                             close,
-                            candidate,
+                            mut candidate,
                             retired,
                             directory: resident_directory,
                             mount,
@@ -83,6 +92,15 @@ fn resident_run(scenario: ResidentScenario) {
                         let state = BerylState::reacquire_candidate(&candidate).unwrap();
                         let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
                         let generation = candidate.generation();
+                        let mut adapters = Some(
+                            crate::app_services::recovery_composer::test_support::adapters(
+                                &mut candidate,
+                            ),
+                        );
+                        let current = Rc::new(RefCell::new(None));
+                        let captured_current = current.clone();
+                        let cleanup = Rc::new(RefCell::new(None));
+                        let captured_cleanup = cleanup.clone();
                         let mut candidate = Some(crate::running_owner::InterruptedExitCandidate {
                             candidate,
                             session: state.session(),
@@ -162,6 +180,18 @@ fn resident_run(scenario: ResidentScenario) {
                                                 capacity.bytes = 0;
                                                 capacity.items = 0;
                                             }
+                                            *captured_current.borrow_mut() =
+                                                Some(gpui_text_input::RangePrepublicationCurrent {
+                                                    binding: seed.binding,
+                                                    history: seed.history,
+                                                    available_capacity:
+                                                        gpui_text_input::RangeSurfaceCharge {
+                                                            bytes: capacity.bytes / 2,
+                                                            items: capacity.items / 2,
+                                                        },
+                                                });
+                                            *captured_cleanup.borrow_mut() =
+                                                Some(environment.clone());
                                             Ok((environment, capacity))
                                         }
                                     },
@@ -280,7 +310,14 @@ fn resident_run(scenario: ResidentScenario) {
                                 .await;
                         }
                         let result = owner.borrow().interrupted_exit_resident_result(&key);
-                        if scenario == ResidentScenario::Ready {
+                        if matches!(
+                            scenario,
+                            ResidentScenario::Ready
+                                | ResidentScenario::Attach
+                                | ResidentScenario::StaleAttachment
+                                | ResidentScenario::CancelledAttachment
+                                | ResidentScenario::CapacityAttachment
+                        ) {
                             assert_eq!(
                                 result.unwrap(),
                                 crate::main_window::MainWindowComposerRecoveryProgress::Ready
@@ -298,61 +335,98 @@ fn resident_run(scenario: ResidentScenario) {
                                 );
                             })
                             .unwrap();
-                        cx.update(|app| {
-                            RunningProcessOwner::cancel_interrupted_exit_resident(&owner, &key, app)
-                        })
-                        .unwrap()
-                        .unwrap();
-                        let resources = loop {
-                            if let Some(resources) =
-                                owner.borrow_mut().take_cancelled_resident_preparation(&key)
-                            {
-                                break resources;
-                            }
-                            assert!(Instant::now() < deadline);
-                            cx.background_executor()
-                                .timer(Duration::from_millis(5))
-                                .await;
-                        };
-                        assert!(
-                            owner
-                                .borrow_mut()
-                                .take_cancelled_resident_preparation(&key)
-                                .is_none()
-                        );
-                        assert_eq!(completions.get(), 1);
-                        if scenario == ResidentScenario::SuspendedFrame {
-                            let refusal = cx
-                                .update(|app| {
-                                    RunningProcessOwner::prepare_interrupted_exit_resident(
+                        let attached = if matches!(
+                            scenario,
+                            ResidentScenario::Attach
+                                | ResidentScenario::StaleAttachment
+                                | ResidentScenario::CancelledAttachment
+                                | ResidentScenario::CapacityAttachment
+                        ) {
+                            window
+                                .update(cx, |_, window, app| {
+                                    attachment::attempt(
                                         &owner,
                                         &request,
+                                        &key,
+                                        &mount,
                                         &composer,
                                         close,
-                                        window.into(),
-                                        &mut candidate,
-                                        &mut retired,
-                                        storage.clone(),
-                                        state.clone(),
-                                        resident_fixture::environment,
+                                        &mut adapters,
+                                        current.borrow().unwrap(),
+                                        scenario,
+                                        window,
                                         app,
-                                        |_, _| panic!("second suspended frame"),
                                     )
                                 })
                                 .unwrap()
-                                .err()
+                        } else {
+                            None
+                        };
+                        let recovered = if let Some(candidate) = attached {
+                            window
+                                .update(cx, |_, window, app| {
+                                    let input = composer.read(app).gpui_input();
+                                    input.update(app, |input, cx| {
+                                        assert!(input.dispose(window, cx).is_empty())
+                                    });
+                                })
                                 .unwrap();
-                            assert!(refusal.contains("frame has not returned"));
-                        }
-                        assert_eq!(resources.candidate.candidate.generation(), generation);
-                        cx.background_executor()
-                            .spawn(async move {
-                                let resources = *resources;
-                                drop(resources.source);
-                                drop(resources.candidate.session);
-                                resources.candidate.candidate.abort().close().unwrap();
+                            candidate
+                        } else {
+                            cx.update(|app| {
+                                RunningProcessOwner::cancel_interrupted_exit_resident(
+                                    &owner, &key, app,
+                                )
                             })
-                            .await;
+                            .unwrap()
+                            .unwrap();
+                            let resources = loop {
+                                if let Some(resources) =
+                                    owner.borrow_mut().take_cancelled_resident_preparation(&key)
+                                {
+                                    break resources;
+                                }
+                                assert!(Instant::now() < deadline);
+                                cx.background_executor()
+                                    .timer(Duration::from_millis(5))
+                                    .await;
+                            };
+                            assert!(
+                                owner
+                                    .borrow_mut()
+                                    .take_cancelled_resident_preparation(&key)
+                                    .is_none()
+                            );
+                            assert_eq!(completions.get(), 1);
+                            if scenario == ResidentScenario::SuspendedFrame {
+                                let refusal = cx
+                                    .update(|app| {
+                                        RunningProcessOwner::prepare_interrupted_exit_resident(
+                                            &owner,
+                                            &request,
+                                            &composer,
+                                            close,
+                                            window.into(),
+                                            &mut candidate,
+                                            &mut retired,
+                                            storage.clone(),
+                                            state.clone(),
+                                            resident_fixture::environment,
+                                            app,
+                                            |_, _| panic!("second suspended frame"),
+                                        )
+                                    })
+                                    .unwrap()
+                                    .err()
+                                    .unwrap();
+                                assert!(refusal.contains("frame has not returned"));
+                            }
+                            assert_eq!(resources.candidate.candidate.generation(), generation);
+                            let resources = *resources;
+                            drop(resources.source);
+                            resources.candidate
+                        };
+                        drop(adapters);
                         if scenario != ResidentScenario::Window {
                             window
                                 .update(cx, |_, window, _| window.remove_window())
@@ -360,7 +434,24 @@ fn resident_run(scenario: ResidentScenario) {
                         }
                         drop((composer, mount, storage, state));
                         cx.background_executor()
-                            .timer(Duration::from_millis(5))
+                            .timer(Duration::from_millis(200))
+                            .await;
+                        if let Some(environment) = cleanup.borrow_mut().take() {
+                            let ownership = environment.cleanup().ownership();
+                            assert_eq!(
+                                (
+                                    ownership.active,
+                                    ownership.ready,
+                                    ownership.awaiting_acknowledgement
+                                ),
+                                (0, 0, 0)
+                            );
+                        }
+                        cx.background_executor()
+                            .spawn(async move {
+                                drop(recovered.session);
+                                recovered.candidate.abort().close().unwrap();
+                            })
                             .await;
                         resident_directory.close().unwrap();
                         let running = Rc::try_unwrap(owner)

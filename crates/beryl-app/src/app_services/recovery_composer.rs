@@ -25,6 +25,10 @@ pub(crate) struct PreparedComposerRecoveryAdapters {
 #[path = "../../tests/unit/recovery_mount_attachment.rs"]
 mod mount_attachment;
 
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../tests/unit/recovery_composer_support.rs"]
+pub(crate) mod test_support;
+
 impl PreparedComposerRecoveryAdapters {
     pub(crate) fn prepare(
         candidate: &mut HomeRecoveryCandidate,

@@ -9,7 +9,7 @@ use std::{
 #[path = "../../syndic_composer_history/support.rs"]
 mod composer;
 #[path = "../../resident_close_flush/support.rs"]
-mod mounted_support;
+pub(super) mod mounted_support;
 #[path = "../../pending_composer_activation/support.rs"]
 pub(super) mod widget_support;
 

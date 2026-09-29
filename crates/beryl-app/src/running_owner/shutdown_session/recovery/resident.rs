@@ -1,4 +1,5 @@
 use super::*;
+mod attachment;
 use crate::main_window::{
     MainWindowComposerCandidateSource, MainWindowComposerRecoveryPreparation,
     MainWindowComposerRecoveryProgress as Progress, MainWindowComposerRetiredClose,

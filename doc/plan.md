@@ -89,25 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 758: Attach Prepared Recovery Resources To The Preserved Mount (finished)
+# Phase 745: Attach Fresh Services To Preserved Residents (finished)
 
-Checked mount attachment now transfers fresh service/adapters only after resident adoption,
-preserving editor identity, focus and recovery fencing while replacing the predecessor close proof.
-Seven attachment tests, the app check and independent lifecycle review pass. The broader recovery
-run passed 44/45 tests; the existing service-graph retirement occupancy test returned `Incomplete`
-once and passed unchanged in isolation. Exact cancelled-request completion remains phase 745.
-
-# Phase 745: Attach Fresh Services To Preserved Residents (pending)
-
-Compose the accepted preparation flight and widget adoption with fresh service/adapter association
-in one checked GUI completion. Verify preserved presentation and focus, refusal without partial
-association, late completion and exact cleanup. Keep all interaction fenced for separate session,
-graph and draft/work convergence; independently review lifecycle composition. Whole-resident
-retirement remains phase 706 and whole-home publication remains phase 702.
-
-The preparation flight, checked widget/resident adoption, marker preparation, CAS custody transfer,
-same-candidate adapter bundle and checked mount attachment are accepted. Exact request-owner
-completion remains here; preserve the existing editor entity, focus and recovery fences.
+Exact request-owner completion now checks the preparation key, captured resident/window/close,
+readiness and candidate generation before coherent mount adoption. Successful attachment returns
+candidate/session custody once and preserves editor identity, focus and recovery fences; refused
+and cancelled attachments retain cleanup custody. Eighteen focused native recovery and mount tests,
+the app check and independent lifecycle review pass. Whole-resident retirement remains phase 706;
+session settlement, whole-home publication and reopening remain separate phase 702 work.
 
 # Phase 706: Retire Clean Interrupted Exit Resident Resources (pending)
 
