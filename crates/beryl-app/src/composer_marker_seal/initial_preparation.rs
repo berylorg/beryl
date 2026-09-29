@@ -1,4 +1,7 @@
-use beryl_home_store::{HomeCandidateError, HomeOpenPublication, ReadError};
+use beryl_home_store::{
+    HomeCandidateError, HomeCandidateRecoveryAccess, HomeOpenPublication, HomeRecoveryCandidate,
+    ReadError,
+};
 
 use super::*;
 
@@ -30,11 +33,30 @@ impl PreparedMarkerServices {
         limits: DraftMarkerSealServiceLimits,
     ) -> Result<Self, MarkerPreparationError> {
         let access = candidate.recovery_access()?;
+        Self::prepare_access(&access, storage, assets, limits)
+    }
+
+    pub(crate) fn prepare_recovery(
+        candidate: &mut HomeRecoveryCandidate,
+        storage: SyndicStorage,
+        assets: AssetState,
+        limits: DraftMarkerSealServiceLimits,
+    ) -> Result<Self, MarkerPreparationError> {
+        let access = candidate.recovery_access()?;
+        Self::prepare_access(&access, storage, assets, limits)
+    }
+
+    fn prepare_access(
+        access: &HomeCandidateRecoveryAccess<'_>,
+        storage: SyndicStorage,
+        assets: AssetState,
+        limits: DraftMarkerSealServiceLimits,
+    ) -> Result<Self, MarkerPreparationError> {
         storage
-            .revision_candidate(&access)
+            .revision_candidate(access)
             .map_err(MarkerPreparationError::Syndic)?;
         assets
-            .revision_candidate(&access)
+            .revision_candidate(access)
             .map_err(MarkerPreparationError::Asset)?;
         let home_id = access.home_id();
         let service = DraftMarkerSealService {

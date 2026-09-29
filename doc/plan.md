@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 753: Consume Prepared Resident Adoption Without Losing Custody (finished)
+# Phase 754: Prepare Marker Publication Services From Recovery Candidates (finished)
 
-The preparation driver now adopts through the widget's checked resident boundary and transfers
-fresh resources once. The existing bounded service cleanup driver retains adopted-page obligations
-after preparation disposal; refusal preserves the predecessor and explicit cancellation custody.
-All 92 focused tests and the app check pass; independent lifecycle review accepted. Mount association
-and coherent graph publication remain separate below.
+Recovery marker services now reuse startup preparation's typed candidate validation, bounded
+state and abandonment retirement without publishing the home or starting work. All 10 focused
+preparation tests and the app check pass; independent lifecycle review accepted. Prepared widget
+adoption and retained cleanup custody are already accepted; mount association and remaining fresh
+adapters stay in phase 745.
 
 # Phase 745: Attach Fresh Services To Preserved Residents (pending)
 
