@@ -89,15 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 706: Retire Clean Interrupted Exit Resident Resources (finished)
+# Phase 759: Gate Graph Retirement On The Original Shutdown Residents (finished)
 
-The exact retained shutdown draft set now coordinates fencing, resource detachment and exclusive
-resident service retirement while retaining partial refusals. Acquired and restored construction
-owners release their duplicate service reference only after checked handoff; opening/claim/source
-custody stays retained for whole-shell recovery. Editor identity, focus and recovery fences survive.
-Eight focused shell tests, four native request-owner tests, the app check and independent lifecycle
-review pass. Whole-shell/graph retirement and reopening remain phase 702 work. Empty hidden-shell
-index quiescence remains unqualified as recorded in the [custody evidence](failures/initial-composer-custody.md).
+Graph-worker admission now runs the exact original shutdown resident retirement pass before
+transferring services. Refusal preserves graph, session and partial resident custody; existing
+foreign/duplicate request checks precede resident mutation. Four native request-owner tests, two
+acquired/restored retirement regressions, the app check and independent lifecycle review pass.
+Whole-shell retirement, candidate settlement and replacement publication remain phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -109,6 +107,10 @@ bindings and exact draft/work settlement remain prerequisites to recovery comple
 
 Phases 703–705 supply retained service-graph retirement and its worker handoff. Phase 706 supplies
 resident retirement; service-graph completion alone does not prove whole-resident retirement.
+Phase 759 binds that resident pass to graph-worker admission.
+Acquired/restored opening, claim and source custody still needs whole-shell recovery handling.
+Empty hidden-shell index quiescence remains unqualified as recorded in the
+[custody evidence](failures/initial-composer-custody.md); no full running-shell recovery claim is made.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

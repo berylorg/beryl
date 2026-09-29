@@ -52,6 +52,9 @@ impl RunningProcessOwner {
                 return Err("The complete service owner is on a worker".into());
             }
             let result_slot = recovery.retirement.clone();
+            if !owner.retire_interrupted_exit_residents(request, app)? {
+                return Err("Interrupted Exit resident retirement is not ready".into());
+            }
             *result_slot.borrow_mut() = Some(GraphRetirement::Pending);
             (owner.process.services.take().unwrap(), result_slot)
         };

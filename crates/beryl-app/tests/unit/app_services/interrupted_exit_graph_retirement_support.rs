@@ -29,6 +29,44 @@ pub(super) async fn verify(
             .is_err()
         );
         assert!(!owner.borrow().test_services_on_worker());
+        let window = owner.borrow().test_process().windows.shells()[0].window();
+        window
+            .update(app, |root, _, cx| {
+                root.set_shutdown_interaction_gated(false, cx)
+            })
+            .unwrap()
+            .unwrap();
+        assert!(
+            RunningProcessOwner::retire_interrupted_exit_graph(
+                owner,
+                request,
+                generation,
+                app,
+                |_, _| panic!("retirement with an ungated original window"),
+            )
+            .unwrap_err()
+            .contains("exact gated shell")
+        );
+        assert!(!owner.borrow().test_services_on_worker());
+        assert!(owner.borrow().test_services().graph().is_some());
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(
+            owner
+                .borrow()
+                .interrupted_exit_graph_retirement_result(request)
+                .unwrap_err()
+                .contains("has not returned")
+        );
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        window
+            .update(app, |root, _, cx| {
+                root.set_shutdown_interaction_gated(true, cx)
+            })
+            .unwrap()
+            .unwrap();
         RunningProcessOwner::test_retire_interrupted_exit_graph(
             owner,
             request,
