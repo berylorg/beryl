@@ -1,6 +1,8 @@
 use super::recovery_support::{fail, installed};
 use super::*;
-use crate::app_services::recovery_retirement::ServiceGraphRetirementError;
+use crate::app_services::recovery_retirement::{
+    RetiredProcessWorkError, ServiceGraphRetirementError,
+};
 use beryl_model::WindowId;
 
 #[test]
@@ -42,11 +44,23 @@ fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
         ))
         .is_err()
     );
-    drop(reservation);
     let home = owner.test_retired_service_home().unwrap();
     assert_eq!(home.pending_reconciliations().len(), 1);
     let mut candidate = home.recover_same_home().unwrap();
     let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let state = BerylState::reacquire_candidate(&candidate).unwrap();
+    let cancelled = CommandCancellation::new();
+    cancelled.cancel();
+    assert!(matches!(
+        owner.settle_retired_process_work(
+            &candidate.recovery_access().unwrap(),
+            &state,
+            &syndic,
+            &cancelled,
+        ),
+        Err(RetiredProcessWorkError::Cancelled)
+    ));
+    assert_eq!(owner.enrollments.pending_count(), 1);
     assert!(matches!(
         candidate
             .recovery_access()
@@ -55,16 +69,75 @@ fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
             .unwrap(),
         beryl_home_store::ReconciliationResolution::ExactNew { .. }
     ));
-    owner
-        .enrollments
-        .settle_retired_candidate(
-            &candidate.recovery_access().unwrap(),
+    for _ in 0..2 {
+        owner
+            .settle_retired_process_work(
+                &candidate.recovery_access().unwrap(),
+                &state,
+                &syndic,
+                &CommandCancellation::new(),
+            )
+            .unwrap();
+    }
+    assert_eq!(owner.enrollments.pending_count(), 0);
+    assert_eq!(owner.settlements.pending_nondispatch_count(), 0);
+    assert_eq!(owner.windows.main_window_occupancy(), 1);
+    assert!(owner.graph().is_none());
+    assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    drop(reservation);
+    candidate.abort().close().unwrap();
+}
+
+#[test]
+fn retired_process_work_refuses_absent_incomplete_and_foreign_retirement() {
+    for incomplete in [false, true] {
+        let (_directory, mut owner, faults) = installed();
+        let expected = owner.graph().unwrap().home().health().generation().unwrap();
+        let (_other_directory, candidate, _, _, other_faults) = fixture();
+        let home = candidate.publish().unwrap();
+        other_faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        assert!(home.home_revision().is_err());
+        let mut candidate = home.recover_same_home().unwrap();
+        let state = BerylState::reacquire_candidate(&candidate).unwrap();
+        let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+        let access = candidate.recovery_access().unwrap();
+        assert!(matches!(
+            owner.settle_retired_process_work(
+                &access,
+                &state,
+                &syndic,
+                &CommandCancellation::new()
+            ),
+            Err(RetiredProcessWorkError::RetirementIncomplete)
+        ));
+        fail(&owner, &faults);
+        if incomplete {
+            owner.test_fail_shutdown_completion();
+            assert!(owner.retire_failed_service_graph(expected).is_err());
+        } else {
+            owner.retire_failed_service_graph(expected).unwrap();
+        }
+        let result = owner.settle_retired_process_work(
+            &access,
+            &state,
             &syndic,
             &CommandCancellation::new(),
-        )
-        .unwrap();
-    assert_eq!(owner.enrollments.pending_count(), 0);
-    candidate.abort().close().unwrap();
+        );
+        if incomplete {
+            assert!(matches!(
+                result,
+                Err(RetiredProcessWorkError::RetirementIncomplete)
+            ));
+        } else {
+            assert!(matches!(
+                result,
+                Err(RetiredProcessWorkError::StaleCandidate)
+            ));
+            owner.test_retired_service_home().unwrap().close().unwrap();
+        }
+        assert!(owner.process.execution_permit().commit(|| ()).is_err());
+        candidate.abort().close().unwrap();
+    }
 }
 
 #[test]

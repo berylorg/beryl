@@ -1501,6 +1501,15 @@ by the executable composition root.
   final shutdown readiness and successful pending preservation. If shutdown cannot settle them,
   it reports failed shutdown and retains custody rather than completing process exit.
 
+- After successful whole-service-graph retirement, the retained process owner may settle its
+  Activity enrollment and parent nondispatch slots with fresh same-home replacement candidate
+  access and typed State/Syndic participants. Refuse absent or incomplete retirement and old or
+  foreign candidate identity before settlement. Run the existing enrollment settlement followed by
+  nondispatch convergence, preserving typed failure/outcome custody and already completed slots on
+  cancellation or failure. Success requires both retained owners to be empty. This worker-side
+  contribution adds no queue or cached readiness, preserves native reservations and process fencing,
+  and grants no graph publication or interaction-release authority.
+
 - `beryl-app` contributes one complete unpublished app service graph to the process-wide same-home
   replacement. Before candidate construction, the old graph fences admission and disposes its
   connections, brokers, routers, schedulers, projections, leases, workers, custody, subscriptions,

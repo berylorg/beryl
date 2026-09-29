@@ -2,6 +2,22 @@ use super::*;
 use crate::cas_projection::CasRetirementFailure;
 use beryl_home_store::{HomeGeneration, HomeHealthState};
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum RetiredProcessWorkError {
+    #[error("process work settlement requires completed graph retirement")]
+    RetirementIncomplete,
+    #[error("process work settlement requires a replacement candidate for the same home")]
+    StaleCandidate,
+    #[error("process work settlement was cancelled")]
+    Cancelled,
+    #[error(transparent)]
+    Enrollment(#[from] ActivityEnrollmentCustodyError),
+    #[error(transparent)]
+    Settlement(#[from] HandoffCandidateConvergenceError),
+    #[error(transparent)]
+    Custody(#[from] AppServiceCloseError),
+}
+
 pub(super) struct ServiceGraphRetirement {
     generation: HomeGeneration,
     graph: Option<PublishedAppServices>,
@@ -26,6 +42,36 @@ pub(crate) enum ServiceGraphRetirementError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn settle_retired_process_work(
+        &self,
+        candidate: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        state: &BerylState,
+        syndic: &SyndicStorage,
+        cancellation: &CommandCancellation,
+    ) -> Result<(), RetiredProcessWorkError> {
+        let retirement = self
+            .recovery_retirement
+            .as_ref()
+            .filter(|retirement| retirement.complete)
+            .ok_or(RetiredProcessWorkError::RetirementIncomplete)?;
+        if candidate.home_id() != self.home_id || candidate.generation() == retirement.generation {
+            return Err(RetiredProcessWorkError::StaleCandidate);
+        }
+        if cancellation.is_cancelled() {
+            return Err(RetiredProcessWorkError::Cancelled);
+        }
+        self.enrollments
+            .settle_retired_candidate(candidate, syndic, cancellation)?;
+        self.settlements.settle_retained_nondispatch_candidate(
+            candidate,
+            state,
+            syndic,
+            cancellation.clone(),
+        )?;
+        self.require_settled_custody()?;
+        Ok(())
+    }
+
     pub(crate) fn validate_failed_service_graph_retirement(
         &self,
         expected: HomeGeneration,
