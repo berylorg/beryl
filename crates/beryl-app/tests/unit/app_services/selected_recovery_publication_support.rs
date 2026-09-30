@@ -90,50 +90,121 @@ pub(super) async fn verify_and_dispose(
         }
         let current = Rc::new(RefCell::new(None));
         let captured = current.clone();
-        let (renewed, record) =
-            RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
-                &owner,
-                request,
-                &mut preparation,
-                |app| {
-                    RunningProcessOwner::prepare_interrupted_exit_resident(
-                        &owner,
-                        request,
-                        &composer,
-                        close,
-                        window.into(),
-                        generation,
-                        &mut retirement,
-                        move |seed, selection, window| {
-                            let (environment, capacity) =
-                                resident_fixture::environment(seed, selection, window)?;
-                            *captured.borrow_mut() =
-                                Some(gpui_text_input::RangePrepublicationCurrent {
-                                    binding: seed.binding,
-                                    history: seed.history,
-                                    available_capacity: gpui_text_input::RangeSurfaceCharge {
-                                        bytes: capacity.bytes / 2,
-                                        items: capacity.items / 2,
-                                    },
-                                });
-                            Ok((environment, capacity))
-                        },
-                        app,
-                        |_, _| {},
-                    )
-                },
-                window,
-                &appearance,
-                &mut adapters,
-                &mut configurator,
-                |_, _| Ok(current.borrow_mut().take().unwrap()),
-                CommandCancellation::new(),
-                cx,
-            )
-            .await
-            .unwrap();
+        let refuse_appearance = windows.len() > 1 && index + 1 == windows.len();
+        let attached = RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+            &owner,
+            request,
+            &mut preparation,
+            |app| {
+                RunningProcessOwner::prepare_interrupted_exit_resident(
+                    &owner,
+                    request,
+                    &composer,
+                    close,
+                    window.into(),
+                    generation,
+                    &mut retirement,
+                    move |seed, selection, window| {
+                        let (environment, capacity) =
+                            resident_fixture::environment(seed, selection, window)?;
+                        *captured.borrow_mut() =
+                            Some(gpui_text_input::RangePrepublicationCurrent {
+                                binding: seed.binding,
+                                history: seed.history,
+                                available_capacity: gpui_text_input::RangeSurfaceCharge {
+                                    bytes: capacity.bytes / 2,
+                                    items: capacity.items / 2,
+                                },
+                            });
+                        Ok((environment, capacity))
+                    },
+                    app,
+                    |_, _| {},
+                )
+            },
+            window,
+            if refuse_appearance {
+                &previous
+            } else {
+                &appearance
+            },
+            &mut adapters,
+            &mut configurator,
+            |_, _| Ok(current.borrow_mut().take().unwrap()),
+            CommandCancellation::new(),
+            cx,
+        )
+        .await;
         assert!(preparation.is_none() && retirement.is_none());
         assert!(adapters.is_none() && configurator.is_none());
+        let (renewed, window_id) = if refuse_appearance {
+            assert_eq!(
+                attached.unwrap_err(),
+                "Recovery appearance candidate identity changed"
+            );
+            let renewed = owner
+                .borrow()
+                .test_captured_recovery_ticket(composer.entity_id())
+                .unwrap();
+            assert_ne!(renewed, close);
+            let window_id = cx
+                .update(|app| {
+                    assert!(
+                        owner
+                            .borrow()
+                            .validate_interrupted_exit_bindings(request, &appearance, app)
+                            .is_err()
+                    );
+                    assert!(owner.borrow().test_services().graph().is_none());
+                    for retained_window in &windows {
+                        let root = retained_window.read(app).unwrap();
+                        assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                        if *retained_window != window {
+                            assert!(root.test_notices_inert());
+                        }
+                        let retained_mount = root.controller().unwrap().composer_mount().unwrap();
+                        let retained_composer = retained_mount.read(app).contribution().unwrap();
+                        assert!(
+                            !retained_composer
+                                .read(app)
+                                .gpui_input()
+                                .read(app)
+                                .is_enabled()
+                        );
+                    }
+                    let root = window.read(app).unwrap();
+                    assert_eq!(
+                        root.controller().unwrap().composer_mount().as_ref(),
+                        Some(&mount)
+                    );
+                    assert_eq!(mount.read(app).contribution().as_ref(), Some(&composer));
+                    assert_eq!(composer.read(app).gpui_input(), input);
+                    assert_eq!(composer.read(app).selection_identity().claim(), selection);
+                    assert!(composer.read(app).recovery_snapshot().is_none());
+                    root.controller().unwrap().window_id()
+                })
+                .unwrap();
+            assert_eq!(
+                original,
+                format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(owner.borrow().exit_requested());
+            assert!(!RunningProcessOwner::finish_exit(&owner, request));
+            cx.update(|app| {
+                owner.borrow_mut().bind_interrupted_exit_appearance(
+                    request,
+                    window,
+                    &appearance,
+                    app,
+                )
+            })
+            .unwrap()
+            .unwrap();
+            (renewed, window_id)
+        } else {
+            let (renewed, record) = attached.unwrap();
+            (renewed, record.window_id())
+        };
         assert_ne!(renewed, close);
         assert_eq!(
             original,
@@ -181,7 +252,7 @@ pub(super) async fn verify_and_dispose(
             assert!(!input.read(app).is_enabled());
         })
         .unwrap();
-        residents.push((mount, composer, input, selection, record));
+        residents.push((mount, composer, input, selection, window_id));
     }
 
     RunningProcessOwner::publish_and_complete_interrupted_exit(
@@ -214,7 +285,7 @@ pub(super) async fn verify_and_dispose(
                 .unwrap(),
         );
     }
-    for (window, (mount, composer, input, selection, record)) in windows.iter().zip(&residents) {
+    for (window, (mount, composer, input, selection, window_id)) in windows.iter().zip(&residents) {
         window
             .update(cx, |root, _, app| {
                 assert_eq!(root.test_exit_presentation().0, "Exit");
@@ -227,7 +298,7 @@ pub(super) async fn verify_and_dispose(
                 assert_eq!(&composer.read(app).gpui_input(), input);
                 assert_eq!(&composer.read(app).selection_identity().claim(), selection);
                 assert!(input.read(app).is_enabled());
-                assert_eq!(root.controller().unwrap().window_id(), record.window_id());
+                assert_eq!(&root.controller().unwrap().window_id(), window_id);
             })
             .unwrap();
     }

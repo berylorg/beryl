@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 856: Serialize Interrupted Exit Preparation Drivers (finished)
+# Phase 857: Qualify Selected Attachment With Refused Appearance Binding (finished)
 
-The composed preparation future now reserves exact-request admission before resident waits and
-releases only that reservation on return or drop. Real pending-resident overlap, foreign request,
-cancellation/drop reentry and subsequent recovery passed with existing worker regressions: all 13
-focused native cases (`d6bde208-aa38-4ce1-80e9-de89c66a717d`). Scoped formatting and independent
-lifecycle review passed. Automatic supervision across attachment and publication remains pending.
+Two-window recovery now qualifies refused appearance after final resident adoption across original
+noncommit, commit and reconciled-indeterminate outcomes. Consumed preparation, renewed tickets,
+preserved identities and closed interaction survive refusal; binding-only continuation completes
+publication and cleanup. All seven selected native cases passed
+(`345bde9f-6d8d-42bc-8365-7cf835c54017`), with scoped formatting and independent lifecycle review.
+Automatic supervisor integration remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -239,6 +240,8 @@ Phase 856 reserves the composed preparation future before resident waits, with e
 refusal and cancellation/drop release that preserve worker custody. The outer supervisor must
 still own one driving future across subsequent attachment and publication; preparation admission
 alone does not reserve those later stages or mount automatic recovery.
+Phase 857 qualifies final selected adoption followed by retired-appearance refusal in two-window
+recovery, then binding-only continuation through publication across all three original outcomes.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.
