@@ -11,6 +11,11 @@ fn native_recovery_driver_attaches_resident_after_abandoned_wait() {
 }
 
 #[test]
+fn native_recovery_driver_preserves_adoption_after_appearance_refusal() {
+    resident_run(ResidentScenario::DrivenAppearanceRefusal);
+}
+
+#[test]
 fn native_recovery_driver_cancels_ready_resident_attachment() {
     resident_run(ResidentScenario::DrivenCancelledAttachment);
 }
@@ -35,6 +40,7 @@ pub(super) async fn interrupt_pending(
     request: &RunningExitRequest,
     admit: impl FnOnce(&mut gpui::App) -> Result<ResidentPreparationKey, String>,
     window: WindowHandle<MainWindowShellRoot>,
+    appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
     adapters: &mut Option<PreparedComposerRecoveryAdapters>,
     cancel: bool,
     cx: &mut AsyncApp,
@@ -56,6 +62,7 @@ pub(super) async fn interrupt_pending(
             &mut preparation,
             |_| panic!("refused driver admitted preparation"),
             window,
+            appearance,
             adapters,
             &mut configurator,
             |_, _| panic!("refused driver reached attachment"),
@@ -78,6 +85,7 @@ pub(super) async fn interrupt_pending(
             &mut preparation,
             |_| Err("injected admission refusal".into()),
             window,
+            appearance,
             adapters,
             &mut configurator,
             |_, _| panic!("failed admission reached attachment"),
@@ -100,6 +108,7 @@ pub(super) async fn interrupt_pending(
             &mut preparation,
             admit,
             window,
+            appearance,
             adapters,
             &mut configurator,
             |_, _| panic!("pending preparation reached attachment"),
@@ -223,6 +232,8 @@ pub(super) async fn attempt(
     request: &RunningExitRequest,
     key: &ResidentPreparationKey,
     window: WindowHandle<MainWindowShellRoot>,
+    appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    previous_appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
     resident: &Entity<MainWindowConversationComposer>,
     mount: &Entity<MainWindowConversationComposerMount>,
     drafts: &Rc<RefCell<RunningShutdownDrafts>>,
@@ -243,6 +254,7 @@ pub(super) async fn attempt(
             &mut preparation,
             |_| panic!("existing preparation was readmitted"),
             window,
+            appearance,
             adapters,
             &mut configurator,
             |_, _| panic!("foreign request reached attachment"),
@@ -278,6 +290,11 @@ pub(super) async fn attempt(
         &mut preparation,
         |_| panic!("existing preparation was readmitted"),
         window,
+        if scenario == ResidentScenario::DrivenAppearanceRefusal {
+            previous_appearance
+        } else {
+            appearance
+        },
         adapters,
         &mut configurator,
         |_, _| Ok(current),
@@ -285,16 +302,63 @@ pub(super) async fn attempt(
         cx,
     )
     .await;
-    let attached = scenario == ResidentScenario::DrivenAttachment;
+    let attached = matches!(
+        scenario,
+        ResidentScenario::DrivenAttachment | ResidentScenario::DrivenAppearanceRefusal
+    );
     assert_eq!(preparation.is_none(), attached);
+    let result = if scenario == ResidentScenario::DrivenAppearanceRefusal {
+        let error = result.unwrap_err();
+        assert!(error.contains("appearance"), "{error}");
+        assert!(adapters.is_none() && configurator.is_none());
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        cx.update(|app| {
+            window
+                .update(app, |root, native, app| {
+                    assert_eq!(
+                        native.focused(app),
+                        focus,
+                        "appearance refusal changed focus"
+                    );
+                    assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                    assert!(resident.read(app).recovery_snapshot().is_none());
+                    assert!(!resident.read(app).gpui_input().read(app).is_enabled());
+                })
+                .unwrap();
+            owner
+                .borrow_mut()
+                .bind_interrupted_exit_appearance(request, window, appearance, app)
+                .unwrap();
+        })
+        .unwrap();
+        None
+    } else {
+        Some(result)
+    };
     window
         .update(cx, |root, window, app| {
-            assert_eq!(window.focused(app), focus);
+            let expected_focus = if scenario == ResidentScenario::DrivenAppearanceRefusal {
+                Some(root.notice_safe_focus(app))
+            } else {
+                focus
+            };
+            assert_eq!(window.focused(app), expected_focus);
             assert_eq!(resident.read(app).gpui_input(), input);
             assert!(!input.read(app).is_enabled());
             assert_eq!(mount.read(app).contribution().as_ref(), Some(resident));
             if attached {
-                let (fresh_close, record) = result.unwrap();
+                let fresh_close = owner
+                    .borrow()
+                    .test_captured_recovery_ticket(resident.entity_id())
+                    .unwrap();
+                if let Some(result) = result {
+                    let (returned_close, record) = result.unwrap();
+                    assert_eq!(returned_close, fresh_close);
+                    assert_eq!(
+                        record.selected_thread(),
+                        Some(resident.read(app).selection_identity().claim())
+                    );
+                }
                 assert_ne!(fresh_close, close);
                 assert_eq!(
                     owner
@@ -302,18 +366,12 @@ pub(super) async fn attempt(
                         .test_captured_recovery_ticket(resident.entity_id()),
                     Some(fresh_close)
                 );
-                assert_eq!(
-                    record.selected_thread(),
-                    Some(resident.read(app).selection_identity().claim())
-                );
                 assert!(resident.read(app).recovery_snapshot().is_none());
                 assert!(adapters.is_none() && configurator.is_none());
                 assert!(!drafts.borrow().test_recovery_ready());
-                assert!(
-                    root.set_shutdown_interaction_gated(false, app)
-                        .unwrap_err()
-                        .contains("fresh appearance")
-                );
+                use crate::theme_runtime::AppearancePublicationTarget;
+                assert_eq!(appearance.read(app).target().snapshot().count, 1);
+                assert_eq!(root.test_exit_presentation().0, "Exiting…");
                 owner
                     .borrow()
                     .interrupted_exit_services_result(request)
@@ -325,7 +383,7 @@ pub(super) async fn attempt(
                         .is_err()
                 );
             } else {
-                assert!(result.is_err());
+                assert!(result.unwrap().is_err());
                 assert!(adapters.is_some() && configurator.is_some());
                 assert!(root.test_shell_construction_retired());
                 assert_eq!(
@@ -354,6 +412,7 @@ pub(super) async fn attempt(
                 &mut Some(key.clone()),
                 |_| panic!("duplicate attachment was readmitted"),
                 window,
+                appearance,
                 adapters,
                 &mut configurator,
                 |_, _| panic!("duplicate attachment reached current inputs"),

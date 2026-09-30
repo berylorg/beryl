@@ -49,3 +49,40 @@ its temporary-home path; possible residue has ambiguous ownership and must not b
 Corrected focused run `70429ed4-d6e8-4e9b-b1d1-81e9695c13c0` passed. Remaining lifecycle regression
 run `8dca4692-5b74-433a-9fa5-d98553a26f5b` passed all 43 cases. Production compilation, formatting
 and independent review passed. No task-owned build or test process remains.
+
+## Selected Shell Publication Readiness
+
+Phase 845 initially promoted the resident fixture to a published shell as soon as its composer
+entity existed. Run `1640095b-a83b-4529-ac2a-e7dbe18050cc` aborted all six native driver cases
+with `hidden main-window composer is not first-presentable`. Entity creation precedes completed
+presentation preparation; the fixture must await the existing `selected_first_presentable`
+check before shell publication. This corrects test setup and does not change production readiness.
+The failed fixtures did not print their temporary-home paths before aborting; preserve ambiguous
+temporary residue rather than sweeping the shared directory.
+
+The replacement graph also reloads its persisted theme. Run
+`65463441-e3fe-4d11-b880-51bc1797c482` passed publication but aborted in rendering with
+`Inter font not found`. An in-memory system-font appearance on the predecessor is insufficient.
+Reuse the existing native-test theme installer before failing the fixture home, so candidate
+theme reads select the same installed system-font theme. The exact printed failed home
+`.tmp1gnA5A` was already absent on cleanup inspection.
+
+The composed driver fixture must also use the shell's safe focus target while the editor is
+disabled. Run `9bc4474c-a12d-4dd0-9f91-e9db8eb8cba2` preserved focus after refused binding but
+changed it when fresh binding replaced the old notices. `replace_recovered_notices` removes
+the old record; the [notice interaction contract](../gui/widgets/main-window-notice/spec.md#interaction)
+explicitly returns focus to the owner-supplied safe target on removal. Forcing focus into the
+disabled editor and expecting it across notice replacement was an invalid fixture expectation.
+Removing an attempted gate-release probe and retiring predecessor appearance earlier did not
+change that outcome. Keep the exact original-focus assertion after refusal, then assert the
+documented safe target after the separate binding-only continuation. Other driver scenarios keep
+their original focus assertions. The differing same-pass behavior is not fully localized; no
+deferred adoption refocus was established. This changes no production notice behavior. Printed failed homes
+`.tmpMAVYqG`, `.tmpXtjgIC`, `.tmptKmy2V` and `.tmpjW5gnC` were already absent on exact cleanup checks.
+The attempted safe-target initialization also failed the same-pass case; its printed `.tmpAPwLzZ`
+was absent on inspection. Corrected focused run `a1e7cdec-8d6e-4bc1-9e07-2d5e81944210` passed all
+six driver cases. Independent review accepted the authority-based assertion and ownership boundary.
+
+Final lifecycle run `ad55850b-0a04-4d2f-9a85-09f5fd45f449` passed all 50 cases. Production compilation
+and formatting passed. This accepts the selected attachment/binding boundary, not full same-home
+selected-process publication. No task-owned build or test process remained at phase completion.

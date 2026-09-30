@@ -72,6 +72,11 @@ impl PreparedNativeMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
+    pub(crate) fn test_swap_recovery_shell(&mut self, shell: &mut MainWindowShell) {
+        assert_eq!(self.shells.len(), 1);
+        std::mem::swap(&mut self.shells[0], shell);
+    }
+
     pub fn test_dispose(
         self,
         completion: impl FnOnce(MainWindowNativeRestoreSetFailure, &mut App) + 'static,

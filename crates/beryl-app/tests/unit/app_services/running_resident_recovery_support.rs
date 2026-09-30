@@ -44,10 +44,26 @@ pub(super) struct Resident {
 }
 
 pub(super) async fn prepare(cx: &mut AsyncApp) -> Resident {
+    prepare_inner(cx, false).await.0
+}
+
+pub(super) async fn prepare_for_binding(
+    cx: &mut AsyncApp,
+) -> (Resident, Entity<GpuiAppearanceWindowSet>) {
+    prepare_inner(cx, true).await
+}
+
+async fn prepare_inner(
+    cx: &mut AsyncApp,
+    published: bool,
+) -> (Resident, Entity<GpuiAppearanceWindowSet>) {
     let (fixture, prepared) = cx
         .background_executor()
-        .spawn(async {
+        .spawn(async move {
             let fixture = shell_support::Fixture::new(194);
+            if published {
+                native_appearance::install_native_theme(&fixture.store, &fixture.state);
+            }
             let mut initial = fixture.begin(195);
             initial.advance(&CommandCancellation::new()).unwrap();
             let appearance = crate::theme_runtime::AppearanceCoordinator::new(
@@ -62,7 +78,7 @@ pub(super) async fn prepare(cx: &mut AsyncApp) -> Resident {
             (fixture, prepared)
         })
         .await;
-    let shell = cx
+    let (mut shell, appearance) = cx
         .update(|app| {
             gpui_text_input::ensure_text_input_bindings(app);
             let appearance = GpuiAppearanceWindowSet::new(
@@ -70,9 +86,10 @@ pub(super) async fn prepare(cx: &mut AsyncApp) -> Resident {
                 NonZeroUsize::new(4).unwrap(),
                 app,
             );
-            GpuiMainWindowShellHost::new(app, appearance)
+            let shell = GpuiMainWindowShellHost::new(app, appearance.clone())
                 .construct_hidden(prepared)
-                .unwrap_or_else(|_| panic!("shell construction"))
+                .unwrap_or_else(|_| panic!("shell construction"));
+            (shell, appearance)
         })
         .unwrap();
     let window = shell.window();
@@ -97,6 +114,24 @@ pub(super) async fn prepare(cx: &mut AsyncApp) -> Resident {
             .timer(Duration::from_millis(5))
             .await;
     };
+    if published {
+        while !mount
+            .read_with(cx, |mount, app| mount.selected_first_presentable(app))
+            .unwrap()
+        {
+            assert!(Instant::now() < deadline);
+            cx.background_executor()
+                .timer(Duration::from_millis(5))
+                .await;
+        }
+        cx.update(|app| {
+            shell.gate_startup_interaction(app).unwrap();
+            shell.publish(app).unwrap();
+            MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
+                .unwrap();
+        })
+        .unwrap();
+    }
     let mut draft = window
         .update(cx, |root, window, cx| {
             root.set_shutdown_interaction_gated(true, cx).unwrap();
@@ -177,17 +212,22 @@ pub(super) async fn prepare(cx: &mut AsyncApp) -> Resident {
                 .unwrap()
         })
         .await;
-    Resident {
-        window,
-        composer,
-        close,
-        candidate,
-        retired,
-        directory,
-        mount,
-        drafts: crate::running_owner::RunningShutdownDrafts::test_recovery_drafts(window, draft),
-        shell,
-    }
+    (
+        Resident {
+            window,
+            composer,
+            close,
+            candidate,
+            retired,
+            directory,
+            mount,
+            drafts: crate::running_owner::RunningShutdownDrafts::test_recovery_drafts(
+                window, draft,
+            ),
+            shell,
+        },
+        appearance,
+    )
 }
 
 pub(super) use shell_support::config as configure;

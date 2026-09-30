@@ -51,6 +51,7 @@ enum ResidentScenario {
     DrivenStaleAttachment,
     DrivenCapacityAttachment,
     DrivenPendingCancellation,
+    DrivenAppearanceRefusal,
 }
 
 #[test]
@@ -107,7 +108,7 @@ fn resident_run(scenario: ResidentScenario) {
                         })
                         .unwrap()
                         .unwrap();
-                        let resident_fixture::Resident {
+                        let (resident_fixture::Resident {
                             window,
                             composer,
                             close,
@@ -116,8 +117,8 @@ fn resident_run(scenario: ResidentScenario) {
                             directory: resident_directory,
                             mount,
                             drafts,
-                            shell,
-                        } = resident_fixture::prepare(cx).await;
+                            mut shell,
+                        }, previous_appearance) = resident_fixture::prepare_for_binding(cx).await;
                         let drafts = Rc::new(RefCell::new(drafts));
                         owner
                             .borrow_mut()
@@ -129,11 +130,18 @@ fn resident_run(scenario: ResidentScenario) {
                         let graph = cx.background_executor().spawn(async move {
                             crate::app_services::recovery_graph::resident_test_support::prepared(candidate)
                         }).await;
+                        let graph_appearance = graph.appearance();
                         owner.borrow_mut().test_retain_resident_recovery(
                             &request,
                             (window.into(), composer.entity_id(), close),
                             graph,
                         );
+                        let appearance = cx.update(|app| {
+                            crate::theme_runtime::GpuiAppearanceWindowSet::new(
+                                graph_appearance,
+                                std::num::NonZeroUsize::new(4).unwrap(), app,
+                            )
+                        }).unwrap();
                         let mut adapters = None;
                         let current = Rc::new(RefCell::new(None));
                         let captured_current = current.clone();
@@ -353,7 +361,7 @@ fn resident_run(scenario: ResidentScenario) {
                         };
                         let key = if matches!(scenario, ResidentScenario::DrivenAttachment | ResidentScenario::DrivenPendingCancellation) {
                             attachment_driver::interrupt_pending(
-                                &owner, &request, admit, window, &mut adapters,
+                                &owner, &request, admit, window, &appearance, &mut adapters,
                                 scenario == ResidentScenario::DrivenPendingCancellation, cx,
                             ).await
                         } else {
@@ -409,6 +417,7 @@ fn resident_run(scenario: ResidentScenario) {
                                 | ResidentScenario::DrivenCancelledAttachment
                                 | ResidentScenario::DrivenStaleAttachment
                                 | ResidentScenario::DrivenCapacityAttachment
+                                | ResidentScenario::DrivenAppearanceRefusal
                         ) {
                             assert_eq!(
                                 result.unwrap(),
@@ -433,11 +442,18 @@ fn resident_run(scenario: ResidentScenario) {
                                 | ResidentScenario::DrivenCancelledAttachment
                                 | ResidentScenario::DrivenStaleAttachment
                                 | ResidentScenario::DrivenCapacityAttachment
+                                | ResidentScenario::DrivenAppearanceRefusal
                         ) {
-                            attachment_driver::attempt(
-                                &owner, &request, &key, window, &composer, &mount, &drafts,
+                            owner.borrow_mut().test_process_mut().windows.test_swap_recovery_shell(&mut shell);
+                            cx.update(|app| {
+                                previous_appearance.update(app, |set, _| set.retire());
+                            }).unwrap();
+                            let attached = attachment_driver::attempt(
+                                &owner, &request, &key, window, &appearance, &previous_appearance, &composer, &mount, &drafts,
                                 close, &mut adapters, current.borrow().unwrap(), scenario, cx,
-                            ).await
+                            ).await;
+                            owner.borrow_mut().test_process_mut().windows.test_swap_recovery_shell(&mut shell);
+                            attached
                         } else if matches!(
                             scenario,
                             ResidentScenario::Attach

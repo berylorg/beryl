@@ -16,6 +16,7 @@ impl RunningProcessOwner {
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
         window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         adapters: &mut Option<
             crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
         >,
@@ -48,7 +49,7 @@ impl RunningProcessOwner {
         } else {
             drop(admit);
         }
-        let key = preparation.as_ref().unwrap();
+        let key = preparation.as_ref().unwrap().clone();
         let mut current = Some(current);
         loop {
             let attached = cx
@@ -58,21 +59,21 @@ impl RunningProcessOwner {
                         if !retained.process.commands.is_active(request) {
                             return Err("Interrupted Exit request changed".into());
                         }
-                        retained.interrupted_exit_resident_result(key)?
+                        retained.interrupted_exit_resident_result(&key)?
                     };
                     if cancellation.is_cancelled() {
-                        Self::cancel_interrupted_exit_resident(owner, key, app)?;
+                        Self::cancel_interrupted_exit_resident(owner, &key, app)?;
                         return Err("Interrupted Exit attachment was cancelled".into());
                     }
                     if progress != MainWindowComposerRecoveryProgress::Ready {
                         return Ok(None);
                     }
-                    window
+                    let attached = window
                         .update(app, |root, window, cx| {
                             let current = current.take().unwrap()(window, cx)?;
                             owner.borrow_mut().attach_interrupted_exit_resident(
                                 request,
-                                key,
+                                &key,
                                 root,
                                 adapters,
                                 configurator,
@@ -81,12 +82,15 @@ impl RunningProcessOwner {
                                 cx,
                             )
                         })
-                        .map_err(|error| error.to_string())?
-                        .map(Some)
+                        .map_err(|error| error.to_string())??;
+                    preparation.take();
+                    owner
+                        .borrow_mut()
+                        .bind_interrupted_exit_appearance(request, window, appearance, app)?;
+                    Ok::<_, String>(Some(attached))
                 })
                 .map_err(|error| error.to_string())??;
             if let Some(attached) = attached {
-                preparation.take();
                 return Ok(attached);
             }
             cx.background_executor()
