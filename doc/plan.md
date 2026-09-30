@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 840: Await Interrupted Exit Service Preparation (finished)
+# Phase 841: Drive Threadless Recovery Attachment (finished)
 
-The async driver now awaits private service preparation and checks its retained actual result
-under the exact cancelled request. No retained state, worker or retry loop was added. Forty-four
-lifecycle checks, production compilation, formatting and independent review passed. Native cases
-cover success, theme failure, cancellation, stale delivery and dropped callers with subsequent
-attachment and cleanup; late cancellation after worker return is source-reviewed. Interaction stays fenced.
+The async driver now composes threadless authentication, shell attachment and appearance binding
+using existing custody and workers. Forty-four lifecycle checks, production compilation, formatting
+and independent review passed, including cancellation, stale delivery, caller loss and successful
+completion. Interaction remains fenced until the existing publication/completion operation.
+The [fixture correction](failures/recovery-mount-fixture.md#threadless-attachment-appearance-retirement)
+records required predecessor appearance retirement and verification evidence.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -213,8 +214,11 @@ Phase 837 composes prepared publication through that completion in one async ope
 on errors with custody retained and polling only pending mount cleanup. It does not resume an
 already-published attempt. Phase 838 supplies the composed retired-home construction/session/process-work operation.
 Phase 839 composes earlier resident and graph retirement into that operation. Phase 840 supplies
-awaited private service preparation with retained outcomes across caller loss. Connect subsequent
-service attachment and failed-home retry-delay scheduling through the outer recovery
+awaited private service preparation with retained outcomes across caller loss. Phase 841 composes
+threadless authentication, attachment and appearance binding. If binding fails after attachment,
+resume the existing appearance-binding operation; the whole adapter cannot repeat shell adoption.
+This partial result remains fenced and is covered by component evidence and review. Connect selected
+resident attachment and failed-home retry-delay scheduling through the outer recovery
 driver. That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

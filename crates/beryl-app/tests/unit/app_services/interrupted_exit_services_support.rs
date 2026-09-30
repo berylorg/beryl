@@ -3,6 +3,11 @@ mod service_driver {
     include!("recovery_service_driver_support.rs");
 }
 
+mod attachment_driver {
+    use super::*;
+    include!("recovery_threadless_driver_support.rs");
+}
+
 mod threadless_attachment {
     use super::*;
     include!("prepared_threadless_attachment_support.rs");
@@ -229,109 +234,120 @@ pub(super) async fn verify(
                     )
                     .is_err()
             );
-            for (source_home, source_generation, source_window, stale, succeeds) in [
-                (
-                    beryl_model::BerylHomeId::from_bytes([99; 16]),
-                    generation,
-                    window,
-                    false,
-                    false,
-                ),
-                (home, fresh_generation, window, false, false),
-                (
-                    home,
-                    generation,
-                    beryl_model::WindowId::from_bytes([99; 16]),
-                    false,
-                    false,
-                ),
-                (home, generation, window, true, false),
-                (home, generation, window, false, true),
-            ] {
-                let (sender, receiver) = futures_channel::oneshot::channel();
+            if mode == "publish" {
                 cx.update(|app| {
-                    let refused = |request, app: &mut gpui::App| {
+                    attached_appearance
+                        .as_ref()
+                        .unwrap_or(previous_appearance)
+                        .update(app, |set, _| set.retire());
+                })
+                .unwrap();
+                attachment_driver::verify(owner, request, home, generation, &appearance, cx).await;
+            } else {
+                for (source_home, source_generation, source_window, stale, succeeds) in [
+                    (
+                        beryl_model::BerylHomeId::from_bytes([99; 16]),
+                        generation,
+                        window,
+                        false,
+                        false,
+                    ),
+                    (home, fresh_generation, window, false, false),
+                    (
+                        home,
+                        generation,
+                        beryl_model::WindowId::from_bytes([99; 16]),
+                        false,
+                        false,
+                    ),
+                    (home, generation, window, true, false),
+                    (home, generation, window, false, true),
+                ] {
+                    let (sender, receiver) = futures_channel::oneshot::channel();
+                    cx.update(|app| {
+                        let refused = |request, app: &mut gpui::App| {
+                            RunningProcessOwner::prepare_interrupted_exit_threadless_window(
+                                owner,
+                                request,
+                                home,
+                                generation,
+                                window,
+                                app,
+                                |_, _, _| panic!("refused window authentication callback"),
+                            )
+                        };
+                        assert!(refused(&foreign, app).is_err());
+                        for retirement in [None, Some(Err("failed retirement".into()))] {
+                            owner
+                                .borrow()
+                                .test_set_resident_graph_retirement(retirement);
+                            assert!(refused(request, app).is_err());
+                        }
+                        owner
+                            .borrow()
+                            .test_set_resident_graph_retirement(Some(Ok(())));
                         RunningProcessOwner::prepare_interrupted_exit_threadless_window(
                             owner,
                             request,
-                            home,
-                            generation,
-                            window,
+                            source_home,
+                            source_generation,
+                            source_window,
                             app,
-                            |_, _, _| panic!("refused window authentication callback"),
+                            move |owner, result, _| {
+                                assert!(owner.borrow().interrupted_exit_session().is_some());
+                                assert!(owner.borrow().test_services().graph().is_none());
+                                assert!(sender.send(result).is_ok());
+                            },
                         )
-                    };
-                    assert!(refused(&foreign, app).is_err());
-                    for retirement in [None, Some(Err("failed retirement".into()))] {
-                        owner
-                            .borrow()
-                            .test_set_resident_graph_retirement(retirement);
+                        .unwrap();
+                        threadless_attachment::assert_unavailable(owner, request, app);
+                        appearance_attachment::assert_unavailable(owner, request, &appearance, app);
                         assert!(refused(request, app).is_err());
-                    }
-                    owner
-                        .borrow()
-                        .test_set_resident_graph_retirement(Some(Ok(())));
-                    RunningProcessOwner::prepare_interrupted_exit_threadless_window(
-                        owner,
-                        request,
-                        source_home,
-                        source_generation,
-                        source_window,
-                        app,
-                        move |owner, result, _| {
-                            assert!(owner.borrow().interrupted_exit_session().is_some());
-                            assert!(owner.borrow().test_services().graph().is_none());
-                            assert!(sender.send(result).is_ok());
-                        },
-                    )
+                        assert!(adapters(request).is_err());
+                        assert!(!RunningProcessOwner::finish_exit(owner, request));
+                        if stale {
+                            owner
+                                .borrow_mut()
+                                .test_replace_interrupted_exit_request(&foreign);
+                        }
+                    })
                     .unwrap();
-                    threadless_attachment::assert_unavailable(owner, request, app);
-                    appearance_attachment::assert_unavailable(owner, request, &appearance, app);
-                    assert!(refused(request, app).is_err());
-                    assert!(adapters(request).is_err());
-                    assert!(!RunningProcessOwner::finish_exit(owner, request));
+                    let result = receiver.await.unwrap();
+                    assert_eq!(result.is_ok(), succeeds);
+                    if let Ok(authenticated) = result {
+                        assert_eq!(authenticated.home_id(), home);
+                        assert_eq!(authenticated.generation(), fresh_generation);
+                        assert_eq!(authenticated.window().window_id(), window);
+                        cx.update(|app| {
+                            threadless_attachment::verify(
+                                owner,
+                                request,
+                                authenticated,
+                                &mut stale_source,
+                                app,
+                            );
+                            appearance_attachment::verify(
+                                owner,
+                                request,
+                                &appearance,
+                                &substituted_appearance,
+                                attached_appearance.as_ref().unwrap_or(previous_appearance),
+                                app,
+                            );
+                            attached_appearance = Some(appearance.clone());
+                        })
+                        .unwrap();
+                    }
                     if stale {
                         owner
                             .borrow_mut()
-                            .test_replace_interrupted_exit_request(&foreign);
+                            .test_replace_interrupted_exit_request(request);
                     }
-                })
-                .unwrap();
-                let result = receiver.await.unwrap();
-                assert_eq!(result.is_ok(), succeeds);
-                if let Ok(authenticated) = result {
-                    assert_eq!(authenticated.home_id(), home);
-                    assert_eq!(authenticated.generation(), fresh_generation);
-                    assert_eq!(authenticated.window().window_id(), window);
-                    cx.update(|app| {
-                        threadless_attachment::verify(
-                            owner,
-                            request,
-                            authenticated,
-                            &mut stale_source,
-                            app,
-                        );
-                        appearance_attachment::verify(
-                            owner,
-                            request,
-                            &appearance,
-                            &substituted_appearance,
-                            attached_appearance.as_ref().unwrap_or(previous_appearance),
-                            app,
-                        );
-                        attached_appearance = Some(appearance.clone());
-                    })
-                    .unwrap();
-                }
-                if stale {
                     owner
-                        .borrow_mut()
-                        .test_replace_interrupted_exit_request(request);
+                        .borrow()
+                        .interrupted_exit_services_result(request)
+                        .unwrap();
                 }
-                owner
-                    .borrow()
-                    .interrupted_exit_services_result(request)
-                    .unwrap();
             }
             let prepared = adapters(request).unwrap();
             assert!(prepared.matches(home, fresh_generation));

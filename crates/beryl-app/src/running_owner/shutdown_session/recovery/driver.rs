@@ -1,11 +1,72 @@
 use super::*;
 use crate::app_services::AppServiceConfiguration;
+use crate::main_window::MainWindowShellRoot;
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::{AsyncApp, Entity};
 use std::time::Duration;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) async fn attach_interrupted_exit_threadless_window(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired_home: beryl_model::BerylHomeId,
+        retired_generation: HomeGeneration,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit attachment was cancelled".into());
+            }
+            let window_id = window
+                .read_with(app, |root, _| {
+                    root.controller()
+                        .map(|controller| controller.window_id())
+                        .ok_or("Interrupted Exit window controller is unavailable")
+                })
+                .map_err(|error| error.to_string())??;
+            Self::prepare_interrupted_exit_threadless_window(
+                owner,
+                request,
+                retired_home,
+                retired_generation,
+                window_id,
+                app,
+                move |_, result, _| {
+                    let _ = sender.send(result);
+                },
+            )
+        })
+        .map_err(|error| error.to_string())??;
+        let mut source = Some(receiver.await.map_err(|_| {
+            "Interrupted Exit window authentication delivery is unavailable".to_string()
+        })??);
+        cx.update(|app| {
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit attachment was cancelled".into());
+            }
+            window
+                .update(app, |root, window, cx| {
+                    owner.borrow_mut().attach_interrupted_exit_threadless(
+                        request,
+                        root,
+                        &mut source,
+                        window,
+                        cx,
+                    )
+                })
+                .map_err(|error| error.to_string())??;
+            owner
+                .borrow_mut()
+                .bind_interrupted_exit_appearance(request, window, appearance, app)
+        })
+        .map_err(|error| error.to_string())?
+    }
+
     pub(crate) async fn prepare_interrupted_exit_service_graph(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

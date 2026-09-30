@@ -35,3 +35,17 @@ verified absent. Corrected focused run `791310ad-eb92-4a31-9f5c-cc3c8b50e8c0` pa
 run `39d969a6-7964-4ca5-84fe-2d8163473ab1` passed all 38 publication, shell-recovery and admission
 cases. Production compilation, formatting and independent review also passed. No task-owned test
 or build process remains.
+
+## Threadless Attachment Appearance Retirement
+
+Phase 841's composed attachment fixture skipped the previous appearance retirement that its
+former component helper performed. Run `6f6dc6d6-01f2-4f93-bc3e-e596a7988f45` correctly refused
+binding with `window adapter rejected current appearance`, then aborted on the fixture unwrap.
+Retire the previous appearance target before entering the composed attachment operation; retiring
+the shell draft alone does not retire that registration. Production authority already requires
+old appearance retirement. No production contract change is needed. The failed run did not print
+its temporary-home path; possible residue has ambiguous ownership and must not be swept.
+
+Corrected focused run `70429ed4-d6e8-4e9b-b1d1-81e9695c13c0` passed. Remaining lifecycle regression
+run `8dca4692-5b74-433a-9fa5-d98553a26f5b` passed all 43 cases. Production compilation, formatting
+and independent review passed. No task-owned build or test process remains.
