@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 #[cfg(test)]
 impl RunningProcessOwner {
@@ -17,33 +18,66 @@ impl RunningShutdownDrafts {
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<bool, String> {
+        self.release_recovered_mounts_after(published, appearance, app, || Ok(()))
+    }
+
+    pub(crate) fn release_recovered_mounts_after(
+        &self,
+        published: &crate::main_window::PublishedMainWindowRestoreSet,
+        appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        app: &mut App,
+        settle: impl FnOnce() -> Result<(), String>,
+    ) -> Result<bool, String> {
         if !self.release_recovered_drafts(published, appearance, app)? {
             return Ok(false);
         }
         let target = appearance.read(app).target();
+        self.release_prepared_recovered_mounts_after(&target, app, settle)
+    }
+
+    fn release_prepared_recovered_mounts_after(
+        &self,
+        target: &Arc<crate::theme_runtime::GpuiAppearancePublicationTarget>,
+        app: &mut App,
+        settle: impl FnOnce() -> Result<(), String>,
+    ) -> Result<bool, String> {
         for (window, draft) in &self.windows {
             let draft = draft.as_ref().map_err(Clone::clone)?;
             if !window
                 .update(app, |root, _, cx| {
-                    root.prepare_interrupted_exit_mount(draft, &target, cx)
+                    root.prepare_interrupted_exit_mount(draft, target, cx)
                 })
                 .map_err(|error| error.to_string())??
             {
                 return Ok(false);
             }
         }
+        // Settlement cannot reenter GUI state or invalidate the prepared bindings.
+        settle()?;
         for (window, draft) in &self.windows {
-            let draft = draft.as_ref().map_err(Clone::clone)?;
-            if !window
+            let draft = draft.as_ref().expect("validated recovered draft");
+            let released = window
                 .update(app, |root, _, cx| {
-                    root.release_interrupted_exit_mount(draft, &target, cx)
+                    root.release_interrupted_exit_mount(draft, target, cx)
                 })
-                .map_err(|error| error.to_string())??
-            {
-                return Err("Recovered mount readiness changed during release".into());
-            }
+                .expect("prepared recovery window remains live during synchronous release")
+                .expect("prepared recovery binding remains current during synchronous release");
+            assert!(
+                released,
+                "prepared recovered mount remains ready during release"
+            );
         }
         Ok(true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_release_prepared_recovered_mounts_after(
+        &self,
+        target: &Arc<crate::theme_runtime::GpuiAppearancePublicationTarget>,
+        app: &mut App,
+        settle: impl FnOnce() -> Result<(), String>,
+    ) -> Result<bool, String> {
+        self.release_prepared_recovered_mounts_after(target, app, settle)
     }
 
     pub(in crate::running_owner) fn release_recovered_drafts(

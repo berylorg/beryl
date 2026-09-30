@@ -45,6 +45,11 @@ fn retained_drafts_preserve_custody_after_refused_adoption(cx: &mut TestAppConte
     run(cx, true, true);
 }
 
+#[gpui::test]
+fn retained_mount_settlement_refusal_preserves_selected_tickets(cx: &mut TestAppContext) {
+    run_with_settlement(cx, false, true, true);
+}
+
 fn drive(shell: &MainWindowShell, cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update(|app| {
@@ -56,6 +61,15 @@ fn drive(shell: &MainWindowShell, cx: &mut TestAppContext) {
 }
 
 fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
+    run_with_settlement(cx, refuse, aggregate, false);
+}
+
+fn run_with_settlement(
+    cx: &mut TestAppContext,
+    refuse: bool,
+    aggregate: bool,
+    settle_mounts: bool,
+) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, prepared) = home_support::join(
         home_support::worker(|| {
@@ -676,120 +690,181 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         drop(service);
         owner
     });
-    window
-        .update(cx, |root, window, cx| {
-            if fresh_owner.is_some() {
-                let fresh =
-                    old_close.with_recovered_selection(resident.read(cx).selection_identity());
-                mount.update(cx, |mount, cx| {
-                    assert!(mount.release_interrupted_exit_mount(old_close, cx).is_err());
-                    assert!(!input.read(cx).is_enabled());
-                    let retained = mount.test_window_close_worker(|| {}).unwrap();
-                    assert!(mount.prepare_interrupted_exit_mount(fresh, cx).is_err());
-                    assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
-                    assert!(!input.read(cx).is_enabled());
-                    assert!(mount.recovery_binding_current(fresh));
-                    assert!(resident.read(cx).recovery_binding_current(fresh));
-                    drop(retained);
-                });
-                let service = mount.read(cx).bound_service().unwrap().clone();
-                if let Some(draft) = draft.as_mut() {
-                    let target = fresh_owner.as_ref().unwrap().read(cx).target();
-                    let old_target = old_owner.read(cx).target();
-                    assert!(
-                        root.release_interrupted_exit_mount(draft, &old_target, cx)
-                            .is_err()
-                    );
-                    draft.composer.as_mut().unwrap().2 = old_close;
-                    assert!(
-                        root.release_interrupted_exit_mount(draft, &target, cx)
-                            .is_err()
-                    );
-                    draft.composer.as_mut().unwrap().2 = fresh;
-                    let worker = mount.update(cx, |mount, _| {
-                        mount.test_window_close_worker(|| {}).unwrap()
+    cx.update(|app| {
+        if settle_mounts {
+            use crate::theme_runtime::AppearancePublicationTarget;
+            let retained = retained.as_ref().unwrap();
+            let calls = std::cell::Cell::new(0);
+            let target = fresh_owner.as_ref().unwrap().read(app).target();
+            let fresh = old_close.with_recovered_selection(resident.read(app).selection_identity());
+            let worker = mount.update(app, |mount, _| {
+                mount.test_window_close_worker(|| {}).unwrap()
+            });
+            assert!(
+                retained
+                    .test_release_prepared_recovered_mounts_after(&target, app, || panic!(
+                        "unprepared mount reached settlement"
+                    ))
+                    .is_err()
+            );
+            drop(worker);
+            for _ in 0..2 {
+                assert_eq!(
+                    retained
+                        .test_release_prepared_recovered_mounts_after(&target, app, || {
+                            calls.set(calls.get() + 1);
+                            Err("process admission is busy".into())
+                        })
+                        .unwrap_err(),
+                    "process admission is busy"
+                );
+                assert!(mount.read(app).recovery_binding_current(fresh));
+                assert!(resident.read(app).recovery_binding_current(fresh));
+                assert!(!resident.read(app).is_live());
+                assert!(resident.read(app).mutation_gated());
+                assert!(input.read(app).is_enabled());
+                assert!(window.read(app).unwrap().shutdown_interaction_gated);
+            }
+            let service = mount.read(app).bound_service().unwrap().clone();
+            service.test_with_close_slot_locked(|| {
+                assert!(
+                    retained
+                        .test_release_prepared_recovered_mounts_after(&target, app, || {
+                            calls.set(calls.get() + 1);
+                            Ok(())
+                        })
+                        .unwrap()
+                );
+            });
+            assert_eq!(calls.get(), 3);
+            assert!(resident.read(app).is_live());
+            assert!(!resident.read(app).recovery_binding_current(fresh));
+            assert!(!mount.read(app).recovery_binding_current(fresh));
+            assert!(resident.read(app).mutation_gated());
+            assert!(window.read(app).unwrap().shutdown_interaction_gated);
+            assert!(
+                retained
+                    .test_release_prepared_recovered_mounts_after(&target, app, || panic!(
+                        "consumed ticket reached settlement"
+                    ))
+                    .is_err()
+            );
+        }
+        window
+            .update(app, |root, window, cx| {
+                if fresh_owner.is_some() && !settle_mounts {
+                    let fresh =
+                        old_close.with_recovered_selection(resident.read(cx).selection_identity());
+                    mount.update(cx, |mount, cx| {
+                        assert!(mount.release_interrupted_exit_mount(old_close, cx).is_err());
+                        assert!(!input.read(cx).is_enabled());
+                        let retained = mount.test_window_close_worker(|| {}).unwrap();
+                        assert!(mount.prepare_interrupted_exit_mount(fresh, cx).is_err());
+                        assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                        assert!(!input.read(cx).is_enabled());
+                        assert!(mount.recovery_binding_current(fresh));
+                        assert!(resident.read(cx).recovery_binding_current(fresh));
+                        drop(retained);
                     });
-                    assert!(
-                        root.prepare_interrupted_exit_mount(draft, &target, cx)
-                            .is_err()
-                    );
-                    assert!(
-                        root.release_interrupted_exit_mount(draft, &target, cx)
-                            .is_err()
-                    );
-                    assert!(resident.read(cx).recovery_binding_current(fresh));
-                    assert!(!input.read(cx).is_enabled());
-                    drop(worker);
-                    service.test_with_close_slot_locked(|| {
-                        for _ in 0..2 {
-                            assert!(
-                                root.prepare_interrupted_exit_mount(draft, &target, cx)
-                                    .unwrap()
-                            );
-                            assert!(input.read(cx).is_enabled());
-                            assert!(!resident.read(cx).is_live());
-                            assert!(resident.read(cx).recovery_binding_current(fresh));
-                            assert!(mount.read(cx).recovery_binding_current(fresh));
-                            assert!(resident.read(cx).mutation_gated());
-                            assert!(root.shutdown_interaction_gated);
-                        }
+                    let service = mount.read(cx).bound_service().unwrap().clone();
+                    if let Some(draft) = draft.as_mut() {
+                        let target = fresh_owner.as_ref().unwrap().read(cx).target();
+                        let old_target = old_owner.read(cx).target();
+                        assert!(
+                            root.release_interrupted_exit_mount(draft, &old_target, cx)
+                                .is_err()
+                        );
+                        draft.composer.as_mut().unwrap().2 = old_close;
                         assert!(
                             root.release_interrupted_exit_mount(draft, &target, cx)
+                                .is_err()
+                        );
+                        draft.composer.as_mut().unwrap().2 = fresh;
+                        let worker = mount.update(cx, |mount, _| {
+                            mount.test_window_close_worker(|| {}).unwrap()
+                        });
+                        assert!(
+                            root.prepare_interrupted_exit_mount(draft, &target, cx)
+                                .is_err()
+                        );
+                        assert!(
+                            root.release_interrupted_exit_mount(draft, &target, cx)
+                                .is_err()
+                        );
+                        assert!(resident.read(cx).recovery_binding_current(fresh));
+                        assert!(!input.read(cx).is_enabled());
+                        drop(worker);
+                        service.test_with_close_slot_locked(|| {
+                            for _ in 0..2 {
+                                assert!(
+                                    root.prepare_interrupted_exit_mount(draft, &target, cx)
+                                        .unwrap()
+                                );
+                                assert!(input.read(cx).is_enabled());
+                                assert!(!resident.read(cx).is_live());
+                                assert!(resident.read(cx).recovery_binding_current(fresh));
+                                assert!(mount.read(cx).recovery_binding_current(fresh));
+                                assert!(resident.read(cx).mutation_gated());
+                                assert!(root.shutdown_interaction_gated);
+                            }
+                            assert!(
+                                root.release_interrupted_exit_mount(draft, &target, cx)
+                                    .unwrap()
+                            );
+                        });
+                        assert!(
+                            root.release_interrupted_exit_mount(draft, &target, cx)
+                                .is_err()
+                        );
+                    } else {
+                        mount.update(cx, |mount, cx| {
+                            service.test_with_close_slot_locked(|| {
+                                assert!(mount.prepare_interrupted_exit_mount(fresh, cx).unwrap());
+                                assert!(mount.recovery_binding_current(fresh));
+                                assert!(resident.read(cx).recovery_binding_current(fresh));
+                                assert!(!resident.read(cx).is_live());
+                                assert!(input.read(cx).is_enabled());
+                                assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
+                            });
+                            assert!(!mount.recovery_binding_current(fresh));
+                            assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                        });
+                    }
+                    resident.update(cx, |resident, cx| {
+                        assert!(
+                            resident
+                                .release_interrupted_exit_resident(old_close, cx)
+                                .is_err()
+                        );
+                        assert!(resident.is_live());
+                        assert!(!resident.recovery_binding_current(fresh));
+                        assert!(resident.mutation_gated());
+                        assert!(
+                            !resident
+                                .release_window_close_gate(fresh, window, cx)
                                 .unwrap()
                         );
+                        assert!(
+                            resident
+                                .release_interrupted_exit_resident(fresh, cx)
+                                .is_err()
+                        );
+                        assert_eq!(resident.selection_identity(), fresh.selection());
                     });
-                    assert!(
-                        root.release_interrupted_exit_mount(draft, &target, cx)
-                            .is_err()
-                    );
-                } else {
-                    mount.update(cx, |mount, cx| {
-                        service.test_with_close_slot_locked(|| {
-                            assert!(mount.prepare_interrupted_exit_mount(fresh, cx).unwrap());
-                            assert!(mount.recovery_binding_current(fresh));
-                            assert!(resident.read(cx).recovery_binding_current(fresh));
-                            assert!(!resident.read(cx).is_live());
-                            assert!(input.read(cx).is_enabled());
-                            assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
-                        });
-                        assert!(!mount.recovery_binding_current(fresh));
-                        assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
-                    });
+                    assert!(input.read(cx).is_enabled());
+                    assert!(root.shutdown_interaction_gated);
+                    assert!(!mount.read(cx).recovery_binding_current(fresh));
                 }
-                resident.update(cx, |resident, cx| {
-                    assert!(
-                        resident
-                            .release_interrupted_exit_resident(old_close, cx)
-                            .is_err()
-                    );
-                    assert!(resident.is_live());
-                    assert!(!resident.recovery_binding_current(fresh));
-                    assert!(resident.mutation_gated());
-                    assert!(
-                        !resident
-                            .release_window_close_gate(fresh, window, cx)
-                            .unwrap()
-                    );
-                    assert!(
-                        resident
-                            .release_interrupted_exit_resident(fresh, cx)
-                            .is_err()
-                    );
-                    assert_eq!(resident.selection_identity(), fresh.selection());
-                });
-                assert!(input.read(cx).is_enabled());
-                assert!(root.shutdown_interaction_gated);
-                assert!(!mount.read(cx).recovery_binding_current(fresh));
-            }
-            assert!(
-                input
-                    .update(cx, |input, cx| input.dispose(window, cx))
-                    .is_empty()
-            );
-            drop(root.controller.take());
-            window.remove_window();
-        })
-        .unwrap();
+                assert!(
+                    input
+                        .update(cx, |input, cx| input.dispose(window, cx))
+                        .is_empty()
+                );
+                drop(root.controller.take());
+                window.remove_window();
+            })
+            .unwrap();
+    });
     drop((
         draft,
         retained,

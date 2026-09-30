@@ -500,7 +500,12 @@ fn verify_published_bindings(
     assert!(
         drafts
             .borrow()
-            .release_recovered_mounts(&running.test_process().windows, appearance, app)
+            .release_recovered_mounts_after(
+                &running.test_process().windows,
+                appearance,
+                app,
+                || panic!("busy aggregate reached settlement")
+            )
             .is_err()
     );
     drafts.borrow_mut().test_recovery_driving(false);
@@ -535,6 +540,41 @@ fn verify_published_bindings(
         .unwrap();
     assert!(command.disabled_reason().is_some());
     command.request_exit();
+    let calls = Cell::new(0);
+    assert_eq!(
+        drafts
+            .borrow()
+            .release_recovered_mounts_after(
+                &running.test_process().windows,
+                appearance,
+                app,
+                || {
+                    calls.set(calls.get() + 1);
+                    Err("process admission is busy".into())
+                }
+            )
+            .unwrap_err(),
+        "process admission is busy"
+    );
+    running
+        .validate_interrupted_exit_bindings(request, appearance, app)
+        .unwrap();
+    assert!(command.disabled_reason().is_some());
+    assert!(
+        drafts
+            .borrow()
+            .release_recovered_mounts_after(
+                &running.test_process().windows,
+                appearance,
+                app,
+                || {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                }
+            )
+            .unwrap()
+    );
+    assert_eq!(calls.get(), 2);
     for _ in 0..2 {
         running
             .validate_interrupted_exit_bindings(request, appearance, app)

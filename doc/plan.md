@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 834: Retain And Reopen The Recovery Process Fence (finished)
+# Phase 835: Settle Recovery Before Consuming Prepared Mount Tickets (finished)
 
-The exact process fence now survives graph retirement and publication in existing lifecycle custody.
-Checked reopening consumes it only on success; refusal retains the token and closed admission.
-Fourteen focused tests, compilation, formatting and independent lifecycle review passed. The
-[fixture cleanup lesson](failures/recovery-admission-fixture.md) records the corrected test path.
-The running-owner's atomic shell release and cancelled-request completion remain phase 702 work.
+The retained mount aggregate now admits fallible synchronous settlement only after complete
+preparation and before ticket consumption. Refusal preserves exact retry custody; success proceeds
+through the prepared local commit without new retained state or workers. Thirty-five focused tests,
+production compilation, formatting and independent lifecycle review passed. The
+[fixture lesson](failures/recovery-mount-fixture.md) records same-update test disposal.
+Final coherent running-owner completion and recovery-driver mounting remain phase 702 work.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -202,6 +203,10 @@ Phase 832 also requires installed process rebinding before that consumption, usi
 Phase 833 supplies validated shell gate release after a fallible synchronous process settlement.
 Phase 834 retains the exact retirement fence through graph publication and supplies checked
 service-owner admission reopening; use it only within the final coherent running-owner transition.
+Phase 835 supplies a fallible settlement callback after all mount preparation and before consuming
+selected tickets. Place checked admission reopening at that boundary; a refusal after consumption
+cannot repeat complete binding validation. The callback must not reenter GUI state. Keep successful
+ticket consumption, remaining shell gates and cancelled-request settlement in the same GUI update.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
