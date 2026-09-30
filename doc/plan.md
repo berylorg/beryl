@@ -89,14 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 835: Settle Recovery Before Consuming Prepared Mount Tickets (finished)
+# Phase 836: Complete Published Interrupted Exit Recovery Coherently (finished)
 
-The retained mount aggregate now admits fallible synchronous settlement only after complete
-preparation and before ticket consumption. Refusal preserves exact retry custody; success proceeds
-through the prepared local commit without new retained state or workers. Thirty-five focused tests,
-production compilation, formatting and independent lifecycle review passed. The
-[fixture lesson](failures/recovery-mount-fixture.md) records same-update test disposal.
-Final coherent running-owner completion and recovery-driver mounting remain phase 702 work.
+The running owner now composes checked admission reopening, prepared mount consumption, shell and
+notice gate release, cancelled-request settlement and dormant worker release in one GUI update.
+No retained state or worker was added. Thirty-eight focused tests, production compilation,
+formatting and independent lifecycle review passed. Full owner completion is exercised threadless;
+selected composition relies on reviewed ordering and accepted selected-mount tests. The
+[fixture lesson](failures/recovery-mount-fixture.md) records corrected terminal cleanup.
+Automatic recovery-driver mounting remains phase 702 work.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -207,8 +208,11 @@ Phase 835 supplies a fallible settlement callback after all mount preparation an
 selected tickets. Place checked admission reopening at that boundary; a refusal after consumption
 cannot repeat complete binding validation. The callback must not reenter GUI state. Keep successful
 ticket consumption, remaining shell gates and cancelled-request settlement in the same GUI update.
+Phase 836 supplies that complete synchronous owner operation, including fresh notice activation,
+original recovery/shutdown custody release and dormant worker start. Refused admission remains
+retryable; success completes only the original cancelled request and preserves independent gates.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
-and coherent reopening; publication alone cannot complete the cancelled request.
+and this completion operation; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

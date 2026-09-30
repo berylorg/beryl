@@ -71,11 +71,22 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
     Ready,
+    Complete,
     Stale,
     Cancelled,
     ThemeActivationFailure,
     ThemeActivationUnwind,
     ThemeActivationCancelled,
+}
+
+#[test]
+fn native_exit_recovery_completes_cancelled_request_without_replaying_exit() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Complete,
+    );
 }
 
 #[test]
@@ -515,7 +526,13 @@ fn run_with_recovery_delivery(
                                 recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, publication_delivery, cx).await);
                                 recovered_threadless = true;
                             }
-                            assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
+                            if matches!(publication_delivery, RecoveryPublicationDelivery::Complete) {
+                                assert!(owner.borrow().interrupted_exit_session().is_none());
+                                assert!(owner.borrow().shutdown_status().is_none());
+                                recovered_threadless = false;
+                            } else {
+                                assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
+                            }
                             assert!(owner.borrow().require_shutdown_session_ready().is_err());
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                             cx.background_executor().spawn(async move {
@@ -602,6 +619,7 @@ async fn dispose_failed_fixture(
                 shell
                     .window()
                     .update(app, |root, window, cx| {
+                        root.set_shutdown_interaction_gated(true, cx).unwrap();
                         let mut draft = root.begin_shutdown_draft(window, cx).unwrap();
                         assert!(root.retire_shutdown_draft(&mut draft, cx).unwrap());
                     })

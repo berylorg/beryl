@@ -24,6 +24,7 @@ pub(super) async fn verify(
         let cancellation = CommandCancellation::new();
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
+            assert!(RunningProcessOwner::complete_interrupted_exit(owner, request, app).is_err());
             assert!(
                 RunningProcessOwner::activate_interrupted_exit_theme(
                     owner,
@@ -255,6 +256,7 @@ pub(super) async fn verify(
         if mode == "publish" {
             match delivery {
                 RecoveryPublicationDelivery::Ready
+                | RecoveryPublicationDelivery::Complete
                 | RecoveryPublicationDelivery::ThemeActivationFailure
                 | RecoveryPublicationDelivery::ThemeActivationUnwind
                 | RecoveryPublicationDelivery::ThemeActivationCancelled => delivered.unwrap(),
@@ -318,6 +320,11 @@ pub(super) async fn verify(
             cx.update(|app| {
                 if activated {
                     verify_published_bindings(owner, request, appearance, app);
+                } else {
+                    assert!(
+                        RunningProcessOwner::complete_interrupted_exit(owner, request, app)
+                            .is_err()
+                    );
                 }
                 assert!(
                     RunningProcessOwner::publish_interrupted_exit_services(
@@ -334,6 +341,11 @@ pub(super) async fn verify(
                 );
             })
             .unwrap();
+            if matches!(delivery, RecoveryPublicationDelivery::Complete) {
+                cx.update(|app| verify_completion(owner, request, appearance, app))
+                    .unwrap();
+                return;
+            }
             let start = owner.borrow().test_take_interrupted_exit_start();
             let gate = start.gate();
             drop(start);
@@ -415,6 +427,92 @@ pub(super) async fn verify(
         })
         .unwrap();
     }
+}
+
+fn verify_completion(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    app: &mut gpui::App,
+) {
+    let foreign = request.test_foreign();
+    assert!(RunningProcessOwner::complete_interrupted_exit(owner, &foreign, app).is_err());
+    let (window, command, gate, admission) = {
+        let running = owner.borrow();
+        let window = running.test_process().windows.shells()[0].window();
+        let command = running
+            .window_exit_command(running.test_process().windows.window_ids()[0], app)
+            .unwrap();
+        (
+            window,
+            command,
+            running.test_interrupted_exit_start_gate(),
+            running.test_services().process.clone(),
+        )
+    };
+    let previous = std::mem::replace(
+        &mut owner.borrow_mut().test_services_mut().attempt,
+        InitialServiceAttemptState::Published(None),
+    );
+    let InitialServiceAttemptState::Published(Some(fence)) = previous else {
+        panic!("published recovery fence is retained");
+    };
+    // Establish real outstanding work under the fixture's process gate before refencing it.
+    fence.reopen_if(true).unwrap();
+    let predecessor = admission.execution_permit();
+    let reservation = predecessor.reserve().unwrap();
+    owner.borrow_mut().test_services_mut().attempt =
+        InitialServiceAttemptState::Published(Some(admission.fence().unwrap()));
+    for _ in 0..2 {
+        assert!(
+            RunningProcessOwner::complete_interrupted_exit(owner, request, app)
+                .unwrap_err()
+                .contains("not settled")
+        );
+        owner
+            .borrow()
+            .validate_interrupted_exit_bindings(request, appearance, app)
+            .unwrap();
+        assert!(owner.borrow().exit_requested());
+        assert!(owner.borrow().interrupted_exit_session().is_some());
+        assert!(admission.execution_permit().reserve().is_err());
+        assert!(command.disabled_reason().is_some());
+        command.request_exit();
+        assert_eq!(
+            window.read(app).unwrap().test_exit_presentation().0,
+            "Exiting…"
+        );
+        assert!(window.read(app).unwrap().test_notices_inert());
+    }
+    drop(reservation);
+    owner.borrow().set_exit_gate(
+        crate::startup_owner::RunningExitGate::SettingsReconciliation,
+        true,
+    );
+    assert!(RunningProcessOwner::complete_interrupted_exit(owner, request, app).unwrap());
+    assert!(gate.wait());
+    assert!(owner.borrow().interrupted_exit_session().is_none());
+    assert!(owner.borrow().shutdown_status().is_none());
+    assert!(!owner.borrow().exit_requested());
+    assert!(command.disabled_reason().is_some());
+    drop(admission.execution_permit().reserve().unwrap());
+    assert!(predecessor.reserve().is_err());
+    assert_eq!(window.read(app).unwrap().test_exit_presentation().0, "Exit");
+    assert!(!window.read(app).unwrap().test_notices_inert());
+    assert_eq!(
+        owner.borrow().test_process().windows.shells()[0].window(),
+        window
+    );
+    assert!(RunningProcessOwner::complete_interrupted_exit(owner, request, app).is_err());
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
+    owner.borrow().set_exit_gate(
+        crate::startup_owner::RunningExitGate::SettingsReconciliation,
+        false,
+    );
+    assert!(!owner.borrow().exit_requested());
+    assert!(command.disabled_reason().is_none());
+    command.request_exit();
+    assert!(owner.borrow().exit_requested());
 }
 
 fn verify_published_bindings(

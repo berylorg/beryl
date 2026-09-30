@@ -2,6 +2,7 @@ use super::*;
 use crate::startup_owner::RunningExitRequest;
 
 mod appearance;
+mod completion;
 mod construction;
 mod process_work;
 mod resident;

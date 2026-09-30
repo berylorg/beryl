@@ -21,3 +21,17 @@ Corrected run `9ec99559-ff13-4bef-9067-845b1f883c5e` passed all ten shell tests,
 selected refusal and successful retry case. Independent review accepted the correction; production
 compilation and formatting also passed. The earlier twenty-five publication tests remained valid
 because only this shell fixture changed after their successful run.
+
+## Published Owner Completion Cleanup
+
+Phase 836's full threadless completion test passed its recovery assertions, then reused disposal
+that assumed the original shutdown gate remained installed. Run
+`c47c3e5f-e4e5-4e0c-8b49-2a8be9aeac2b` aborted at `begin_shutdown_draft` with
+`shutdown draft requires the running shutdown interaction gate`. Successful completion releases
+that gate; fixture disposal must explicitly reinstall it before its terminal retirement pass.
+The printed task-owned home was `C:\Users\user\AppData\Local\Temp\.tmpMHx81p`.
+The exact printed directory was removed with `cleanup-dir.exe` after the test process exited and
+verified absent. Corrected focused run `791310ad-eb92-4a31-9f5c-cc3c8b50e8c0` passed; final regression
+run `39d969a6-7964-4ca5-84fe-2d8163473ab1` passed all 38 publication, shell-recovery and admission
+cases. Production compilation, formatting and independent review also passed. No task-owned test
+or build process remains.

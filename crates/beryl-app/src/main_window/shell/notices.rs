@@ -269,6 +269,11 @@ impl MainWindowShellRoot {
             .update(cx, |widget, cx| widget.set_inert(inert, window, cx));
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_notices_inert(&self) -> bool {
+        self.notices.inert
+    }
+
     pub(super) fn refresh_startup_notice_gate(
         &mut self,
         window: &mut Window,
