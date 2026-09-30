@@ -553,6 +553,8 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         }
         cx.update(|app| {
             mount.update(app, |mount, cx| {
+                assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                assert!(mount.recovery_binding_current(fresh));
                 assert!(mount.release_interrupted_exit_draft(old_close, cx).is_err());
                 let retained = mount.test_window_close_worker(|| {}).unwrap();
                 assert!(mount.release_interrupted_exit_draft(fresh, cx).is_err());
@@ -623,17 +625,25 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
             if fresh_owner.is_some() {
                 let fresh =
                     old_close.with_recovered_selection(resident.read(cx).selection_identity());
+                mount.update(cx, |mount, cx| {
+                    assert!(mount.release_interrupted_exit_mount(old_close, cx).is_err());
+                    let retained = mount.test_window_close_worker(|| {}).unwrap();
+                    assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                    assert!(mount.recovery_binding_current(fresh));
+                    assert!(resident.read(cx).recovery_binding_current(fresh));
+                    drop(retained);
+                    let service = mount.bound_service().unwrap().clone();
+                    service.test_with_close_slot_locked(|| {
+                        assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
+                    });
+                    assert!(!mount.recovery_binding_current(fresh));
+                    assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                });
                 resident.update(cx, |resident, cx| {
                     assert!(
                         resident
                             .release_interrupted_exit_resident(old_close, cx)
                             .is_err()
-                    );
-                    assert!(resident.recovery_binding_current(fresh));
-                    assert!(
-                        resident
-                            .release_interrupted_exit_resident(fresh, cx)
-                            .unwrap()
                     );
                     assert!(resident.is_live());
                     assert!(!resident.recovery_binding_current(fresh));
@@ -652,7 +662,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                 });
                 assert!(!input.read(cx).is_enabled());
                 assert!(root.shutdown_interaction_gated);
-                assert!(mount.read(cx).recovery_binding_current(fresh));
+                assert!(!mount.read(cx).recovery_binding_current(fresh));
             }
             assert!(
                 input

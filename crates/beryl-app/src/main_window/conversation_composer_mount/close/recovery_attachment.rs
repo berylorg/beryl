@@ -5,6 +5,31 @@ use crate::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn release_interrupted_exit_mount(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if self.window_close_released != Some(ticket) {
+            return Err("recovered draft service close is not released".into());
+        }
+        // The retained completion makes this a local readiness check, without service access.
+        if self.release_interrupted_exit_draft(ticket, cx)?
+            != MainWindowConversationComposerCloseRelease::Released
+        {
+            return Ok(false);
+        }
+        let resident = self.contribution.as_ref().unwrap().clone();
+        if !resident.update(cx, |resident, cx| {
+            resident.release_interrupted_exit_resident(ticket, cx)
+        })? {
+            return Ok(false);
+        }
+        self.window_close = None;
+        cx.notify();
+        Ok(true)
+    }
+
     pub(crate) fn release_interrupted_exit_draft(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
