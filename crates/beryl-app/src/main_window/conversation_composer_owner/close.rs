@@ -7,6 +7,21 @@ impl MainWindowConversationComposer {
         ticket: MainWindowConversationComposerCloseTicket,
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
+        if !self.prepare_interrupted_exit_resident(ticket, cx)? {
+            return Ok(false);
+        }
+        self.phase = MainWindowConversationComposerPhase::Live;
+        self.window_close = None;
+        self.sync_mutation_gate(cx);
+        cx.notify();
+        Ok(true)
+    }
+
+    pub(in crate::main_window) fn prepare_interrupted_exit_resident(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
         if !self.recovered_close_release_ready(ticket, cx)? {
             return Ok(false);
         }
@@ -19,10 +34,6 @@ impl MainWindowConversationComposer {
                 Err("recovered composer could not enable input".to_owned())
             }
         })?;
-        self.phase = MainWindowConversationComposerPhase::Live;
-        self.window_close = None;
-        self.sync_mutation_gate(cx);
-        cx.notify();
         Ok(true)
     }
 

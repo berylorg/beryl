@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 824: Route Recovered Mount Release Through Exact Shell Bindings (finished)
+# Phase 825: Compose Retained Recovery Mount Release (finished)
 
-The shell now validates its exact retained draft and fresh appearance before the synchronous
-mount/resident release contribution. Selected and threadless paths retain shutdown gating and
-native custody without new state or service access. Nine focused recovery tests, compilation,
-formatting and independent lifecycle review passed. Process-wide coherent reopening remains.
+Retained drafts now settle every service close and prepare all widgets under read-only gates before
+consuming any local recovery ticket. Preparation refusal retains retryable bindings; shutdown gates,
+native custody and aggregate flags remain. Sixteen tests, compilation, formatting and independent
+lifecycle review passed. Selected preparation retry is tested; multi-selected and enable-capacity
+failure ordering is source-reviewed. Process-wide coherent reopening remains.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -182,8 +183,9 @@ Phase 820 supplies the synchronous resident lifecycle transition for the later r
 Phase 821 couples it to exact settled mount close cleanup without service access. Phase 822 enables
 the recovered widget under its shutdown read-only gate within that synchronous contribution;
 Phase 823 prepares clean recovered autosave with retained settings before service-close completion;
-Phase 824 routes synchronous mount release through exact shell binding validation; coherent process
-interaction release remains required.
+Phase 824 routes synchronous mount release through exact shell binding validation. Phase 825
+composes the retained draft set with all widget preparation before any local ticket consumption,
+preserving retryability on preparation refusal. Coherent process interaction release remains required.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

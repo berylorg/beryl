@@ -25,6 +25,21 @@ impl MainWindowShell {
 }
 
 impl MainWindowShellRoot {
+    pub(crate) fn prepare_interrupted_exit_mount(
+        &mut self,
+        draft: &MainWindowShutdownDraft,
+        target: &Arc<GpuiAppearancePublicationTarget>,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        self.validate_interrupted_exit_binding(draft, target, cx)?;
+        let Some((mount, _, close)) = &draft.composer else {
+            return Ok(true);
+        };
+        mount.update(cx, |mount, cx| {
+            mount.prepare_interrupted_exit_mount(*close, cx)
+        })
+    }
+
     pub(crate) fn release_interrupted_exit_mount(
         &mut self,
         draft: &MainWindowShutdownDraft,

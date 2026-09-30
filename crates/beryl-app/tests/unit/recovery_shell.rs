@@ -685,6 +685,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     assert!(mount.release_interrupted_exit_mount(old_close, cx).is_err());
                     assert!(!input.read(cx).is_enabled());
                     let retained = mount.test_window_close_worker(|| {}).unwrap();
+                    assert!(mount.prepare_interrupted_exit_mount(fresh, cx).is_err());
                     assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
                     assert!(!input.read(cx).is_enabled());
                     assert!(mount.recovery_binding_current(fresh));
@@ -709,6 +710,10 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                         mount.test_window_close_worker(|| {}).unwrap()
                     });
                     assert!(
+                        root.prepare_interrupted_exit_mount(draft, &target, cx)
+                            .is_err()
+                    );
+                    assert!(
                         root.release_interrupted_exit_mount(draft, &target, cx)
                             .is_err()
                     );
@@ -716,6 +721,18 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     assert!(!input.read(cx).is_enabled());
                     drop(worker);
                     service.test_with_close_slot_locked(|| {
+                        for _ in 0..2 {
+                            assert!(
+                                root.prepare_interrupted_exit_mount(draft, &target, cx)
+                                    .unwrap()
+                            );
+                            assert!(input.read(cx).is_enabled());
+                            assert!(!resident.read(cx).is_live());
+                            assert!(resident.read(cx).recovery_binding_current(fresh));
+                            assert!(mount.read(cx).recovery_binding_current(fresh));
+                            assert!(resident.read(cx).mutation_gated());
+                            assert!(root.shutdown_interaction_gated);
+                        }
                         assert!(
                             root.release_interrupted_exit_mount(draft, &target, cx)
                                 .unwrap()
@@ -728,6 +745,11 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                 } else {
                     mount.update(cx, |mount, cx| {
                         service.test_with_close_slot_locked(|| {
+                            assert!(mount.prepare_interrupted_exit_mount(fresh, cx).unwrap());
+                            assert!(mount.recovery_binding_current(fresh));
+                            assert!(resident.read(cx).recovery_binding_current(fresh));
+                            assert!(!resident.read(cx).is_live());
+                            assert!(input.read(cx).is_enabled());
                             assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
                         });
                         assert!(!mount.recovery_binding_current(fresh));

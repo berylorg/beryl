@@ -11,6 +11,41 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(crate) fn release_recovered_mounts(
+        &self,
+        published: &crate::main_window::PublishedMainWindowRestoreSet,
+        appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        if !self.release_recovered_drafts(published, appearance, app)? {
+            return Ok(false);
+        }
+        let target = appearance.read(app).target();
+        for (window, draft) in &self.windows {
+            let draft = draft.as_ref().map_err(Clone::clone)?;
+            if !window
+                .update(app, |root, _, cx| {
+                    root.prepare_interrupted_exit_mount(draft, &target, cx)
+                })
+                .map_err(|error| error.to_string())??
+            {
+                return Ok(false);
+            }
+        }
+        for (window, draft) in &self.windows {
+            let draft = draft.as_ref().map_err(Clone::clone)?;
+            if !window
+                .update(app, |root, _, cx| {
+                    root.release_interrupted_exit_mount(draft, &target, cx)
+                })
+                .map_err(|error| error.to_string())??
+            {
+                return Err("Recovered mount readiness changed during release".into());
+            }
+        }
+        Ok(true)
+    }
+
     pub(in crate::running_owner) fn release_recovered_drafts(
         &self,
         published: &crate::main_window::PublishedMainWindowRestoreSet,

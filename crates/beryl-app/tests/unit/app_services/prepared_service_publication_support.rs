@@ -365,6 +365,22 @@ fn verify_published_bindings(
         refused(&running, request, appearance, app);
     }
     running.test_set_resident_graph_retirement(Some(Ok(())));
+    for target in [&previous, &unbound] {
+        assert!(
+            drafts
+                .borrow()
+                .release_recovered_mounts(&running.test_process().windows, target, app)
+                .is_err()
+        );
+    }
+    drafts.borrow_mut().test_recovery_driving(true);
+    assert!(
+        drafts
+            .borrow()
+            .release_recovered_mounts(&running.test_process().windows, appearance, app)
+            .is_err()
+    );
+    drafts.borrow_mut().test_recovery_driving(false);
     for _ in 0..2 {
         running
             .validate_interrupted_exit_bindings(request, appearance, app)
@@ -377,6 +393,12 @@ fn verify_published_bindings(
         running
             .interrupted_exit_publication_result(request)
             .unwrap();
+        assert!(
+            drafts
+                .borrow()
+                .release_recovered_mounts(&running.test_process().windows, appearance, app)
+                .unwrap()
+        );
     }
     assert!(!drafts.borrow().test_recovery_ready());
     assert_ne!(running.test_process_appearance(), *appearance);
