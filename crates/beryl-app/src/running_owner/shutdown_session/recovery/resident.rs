@@ -105,6 +105,8 @@ impl RunningProcessOwner {
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,
+            reopen_schedule: Default::default(),
+            reopen_deadline: None,
             residents: vec![captured],
         });
     }

@@ -149,6 +149,12 @@ impl RunningProcessOwner {
             ) {
                 return Err("Interrupted Exit candidate work is already retained".into());
             }
+            if recovery
+                .reopen_deadline
+                .is_some_and(|deadline| deadline > std::time::Instant::now())
+            {
+                return Err("Interrupted Exit reopening retry is delayed".into());
+            }
             let slot = recovery.settlement.clone();
             let services = owner
                 .process
@@ -156,6 +162,7 @@ impl RunningProcessOwner {
                 .take()
                 .ok_or("The complete service owner is on a worker")?;
             *slot.borrow_mut() = Some(CandidateSettlement::Pending);
+            owner.interrupted_exit.as_mut().unwrap().reopen_deadline = None;
             (services, slot)
         };
         let retained = owner.clone();
@@ -185,7 +192,17 @@ impl RunningProcessOwner {
                     Err(error) => result = Err(error),
                 }
             }
-            retained.borrow_mut().process.services = Some(services);
+            {
+                let mut owner = retained.borrow_mut();
+                owner.process.services = Some(services);
+                let recovery = owner.interrupted_exit.as_mut().unwrap();
+                recovery.reopen_deadline =
+                    if matches!(&result, Err(RetiredHomeRecoveryError::Reopen(_))) {
+                        Some(std::time::Instant::now() + recovery.reopen_schedule.next_delay())
+                    } else {
+                        None
+                    };
+            }
             *slot.borrow_mut() = Some(CandidateSettlement::Constructed(result));
             let _ = cx.update(|app| completed(&retained, app));
         })
@@ -211,5 +228,14 @@ impl RunningProcessOwner {
             }
             _ => Err("Interrupted Exit candidate construction has not returned".into()),
         }
+    }
+
+    pub(crate) fn interrupted_exit_reopen_deadline(
+        &self,
+        request: &RunningExitRequest,
+    ) -> Result<Option<std::time::Instant>, String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        Ok(recovery.reopen_deadline)
     }
 }

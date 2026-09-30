@@ -2,6 +2,7 @@ pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     retired: beryl_home_store::HomeGeneration,
+    faults: &FaultController,
     delivery: RecoveryPublicationDelivery,
     cx: &mut AsyncApp,
 ) -> beryl_home_store::HomeRecoveryCandidate {
@@ -32,6 +33,9 @@ pub(super) async fn verify(
         );
     }
     let cancellation = CommandCancellation::new();
+    if matches!(delivery, RecoveryPublicationDelivery::Driven) {
+        faults.fail_next(FaultPoint::BeforeReopen);
+    }
     let mut drive_cx = cx.clone();
     let mut drive = Box::pin(RunningProcessOwner::construct_and_settle_interrupted_exit(
         owner,
@@ -62,10 +66,26 @@ pub(super) async fn verify(
             .timer(Duration::from_millis(10))
             .await;
     }
-    owner
-        .borrow()
-        .interrupted_exit_construction_result(request)
-        .unwrap();
+    if matches!(delivery, RecoveryPublicationDelivery::Driven) {
+        assert!(
+            owner
+                .borrow()
+                .interrupted_exit_construction_result(request)
+                .is_err()
+        );
+        assert!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap()
+                .is_some()
+        );
+    } else {
+        owner
+            .borrow()
+            .interrupted_exit_construction_result(request)
+            .unwrap();
+    }
     match delivery {
         RecoveryPublicationDelivery::DrivenCancelled => cancellation.cancel(),
         RecoveryPublicationDelivery::DrivenStale => owner

@@ -260,23 +260,50 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let (sender, receiver) = futures_channel::oneshot::channel();
-        cx.update(|app| {
-            Self::construct_interrupted_exit_candidate(
-                owner,
-                request,
-                retired,
-                cancellation.clone(),
-                app,
-                move |_, _| {
-                    let _ = sender.send(());
-                },
-            )
-        })
-        .map_err(|error| error.to_string())??;
-        receiver
-            .await
-            .map_err(|_| "Interrupted Exit construction delivery is unavailable")?;
+        loop {
+            loop {
+                let deadline = owner.borrow().interrupted_exit_reopen_deadline(request)?;
+                if cancellation.is_cancelled() {
+                    return Err("Interrupted Exit candidate construction was cancelled".into());
+                }
+                let Some(delay) = deadline.and_then(|deadline| {
+                    deadline.checked_duration_since(std::time::Instant::now())
+                }) else {
+                    break;
+                };
+                cx.background_executor()
+                    .timer(delay.min(Duration::from_millis(50)))
+                    .await;
+            }
+            let (sender, receiver) = futures_channel::oneshot::channel();
+            cx.update(|app| {
+                Self::construct_interrupted_exit_candidate(
+                    owner,
+                    request,
+                    retired,
+                    cancellation.clone(),
+                    app,
+                    move |_, _| {
+                        let _ = sender.send(());
+                    },
+                )
+            })
+            .map_err(|error| error.to_string())??;
+            receiver
+                .await
+                .map_err(|_| "Interrupted Exit construction delivery is unavailable")?;
+            if owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)?
+                .is_some()
+            {
+                continue;
+            }
+            owner
+                .borrow()
+                .interrupted_exit_construction_result(request)?;
+            break;
+        }
 
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {

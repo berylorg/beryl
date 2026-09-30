@@ -13,7 +13,7 @@ pub(super) async fn verify(
             | RecoveryPublicationDelivery::DrivenCancelled
             | RecoveryPublicationDelivery::DrivenStale
     ) {
-        return driver::verify(owner, request, generation, delivery, cx).await;
+        return driver::verify(owner, request, generation, faults, delivery, cx).await;
     }
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
@@ -183,6 +183,7 @@ pub(super) async fn verify(
                 result,
                 owner.borrow().interrupted_exit_construction_result(request)
             );
+            retry_delay::verify(owner, request, generation, pass, cx).await;
         } else if pass == 2 {
             assert_eq!(
                 result.unwrap_err(),
@@ -314,4 +315,9 @@ mod constructed_settlement {
 mod driver {
     use super::*;
     include!("recovery_candidate_driver_support.rs");
+}
+
+mod retry_delay {
+    use super::*;
+    include!("recovery_reopen_delay_support.rs");
 }

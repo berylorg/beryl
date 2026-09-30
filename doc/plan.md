@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 845: Bind Selected Recovery Appearance In The Attachment Driver (finished)
+# Phase 846: Retain Failed-Home Reopen Backoff Across Driver Resumption (finished)
 
-Selected adoption now binds fresh appearance in the same GUI pass. It clears the consumed
-preparation key before binding; refusal retains the adopted resident and renewed ticket for
-binding-only continuation. No worker, queue or retained state was added. All 50 lifecycle checks
-passed (`ad55850b-0a04-4d2f-9a85-09f5fd45f449`), along with production compilation, formatting and
-independent review. The fixture proves selected-shell binding through a substituted published
-shell entry, not complete same-home selected-process publication. Fixture readiness, theme and
-notice-focus corrections are retained in [the failure note](failures/recovery-mount-fixture.md#selected-shell-publication-readiness).
+Failed reopening now retains the accepted retry schedule and one deadline in the recovery owner.
+Early construction is refused without taking custody; the driver waits and retries only reopening,
+while dropped, cancelled and stale callers preserve the deadline and actual outcome. No worker or
+queue was added. All 39 session-publication lifecycle checks passed
+(`b695eefb-8662-4084-b0b5-edf4e2efe257`), including real reopen faults and successful retry,
+with production compilation, formatting and independent lifecycle review also passing.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -223,8 +222,8 @@ Phase 842 supplies awaited selected-resident attachment from an existing prepara
 fresh GUI inputs and retained cancellation cleanup. Phase 843 connects preparation admission to
 that driver with caller-owned key custody across waiting and resumption. Phase 845 composes its
 selected adoption and appearance binding; binding refusal after adoption consumes the preparation
-key and must resume binding alone. Connect the accepted operations and failed-home retry-delay
-scheduling through the outer recovery driver.
+key and must resume binding alone. Phase 846 supplies retained failed-reopen backoff and retries
+through the construction driver. Connect these accepted operations through the outer recovery driver.
 Phase 844 supplies explicit cancellation/draining of that key with retained cleanup-failure reporting.
 That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
