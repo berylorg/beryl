@@ -20,10 +20,12 @@ pub(super) async fn verify(
         (request, generation, cancelled),
     ] {
         assert!(
-            RunningProcessOwner::retire_and_settle_interrupted_exit(
+            RunningProcessOwner::retire_and_prepare_interrupted_exit(
                 owner,
                 request,
                 generation,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 cx,
             )
@@ -40,10 +42,12 @@ pub(super) async fn verify(
 
     let cancellation = CommandCancellation::new();
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::retire_and_settle_interrupted_exit(
+    let mut drive = Box::pin(RunningProcessOwner::retire_and_prepare_interrupted_exit(
         owner,
         request,
         generation,
+        configuration(),
+        SyndicTimestamp::from_unix_millis(2),
         cancellation.clone(),
         &mut drive_cx,
     ));
@@ -54,10 +58,12 @@ pub(super) async fn verify(
     .await;
     assert!(owner.borrow().test_services_on_worker());
     assert!(
-        RunningProcessOwner::retire_and_settle_interrupted_exit(
+        RunningProcessOwner::retire_and_prepare_interrupted_exit(
             owner,
             request,
             generation,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
             cx,
         )
@@ -123,10 +129,12 @@ pub(super) async fn verify(
         }
     }
     assert!(
-        RunningProcessOwner::retire_and_settle_interrupted_exit(
+        RunningProcessOwner::retire_and_prepare_interrupted_exit(
             owner,
             request,
             generation,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
             cx,
         )
@@ -149,16 +157,57 @@ pub(super) async fn verify(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
         );
-        RunningProcessOwner::construct_and_settle_interrupted_exit(
-            owner,
-            request,
-            generation,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
+    } else {
+        owner
+            .borrow()
+            .interrupted_exit_services_result(request)
+            .unwrap();
+        assert!(!owner.borrow().test_services_on_worker());
+        assert!(owner.borrow().test_services().graph().is_none());
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(owner.borrow().exit_requested());
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        cx.update(|app| {
+            let root = window.read(app).unwrap();
+            assert_eq!(root.test_exit_presentation().0, "Exiting…");
+        })
         .unwrap();
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::cancel_interrupted_exit_services(
+                owner,
+                request,
+                app,
+                move |_, _| {
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        assert!(!owner.borrow().test_services_on_worker());
+        let failure = owner
+            .borrow_mut()
+            .take_interrupted_exit_preparation_failure(request, generation)
+            .unwrap();
+        assert!(matches!(
+            failure,
+            crate::app_services::recovery_graph::RecoveryServicePreparationError::App(_)
+        ));
     }
+    RunningProcessOwner::construct_and_settle_interrupted_exit(
+        owner,
+        request,
+        generation,
+        CommandCancellation::new(),
+        cx,
+    )
+    .await
+    .unwrap();
     owner
         .borrow()
         .interrupted_exit_candidate_result(request)

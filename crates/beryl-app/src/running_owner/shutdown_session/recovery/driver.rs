@@ -194,10 +194,12 @@ impl RunningProcessOwner {
         Ok(())
     }
 
-    pub(crate) async fn retire_and_settle_interrupted_exit(
+    pub(crate) async fn retire_and_prepare_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -249,8 +251,24 @@ impl RunningProcessOwner {
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit retirement was cancelled".into());
         }
-        Self::construct_and_settle_interrupted_exit(owner, request, generation, cancellation, cx)
-            .await
+        Self::construct_and_settle_interrupted_exit(
+            owner,
+            request,
+            generation,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
+        Self::prepare_interrupted_exit_service_graph(
+            owner,
+            request,
+            generation,
+            configuration,
+            at,
+            cancellation,
+            cx,
+        )
+        .await
     }
 
     pub(crate) async fn construct_and_settle_interrupted_exit(
