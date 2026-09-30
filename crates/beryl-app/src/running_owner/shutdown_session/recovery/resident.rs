@@ -1,5 +1,6 @@
 use super::*;
 mod attachment;
+mod drain;
 use crate::app_services::recovery_graph::PreparedRecoveryServiceGraph;
 use crate::main_window::{
     MainWindowComposerCandidateSource, MainWindowComposerRecoveryPreparation,
@@ -40,6 +41,7 @@ pub(super) struct ResidentPreparation {
     environment: Option<Environment>,
     result: Result<Progress, String>,
     cancelled: bool,
+    cleanup_failed: bool,
     scheduled: Option<Rc<()>>,
     returned: Option<Box<CancelledResidentPreparation>>,
     completed: Option<Completion>,
@@ -237,6 +239,7 @@ impl RunningProcessOwner {
             environment: Some(Box::new(environment)),
             result: Ok(Progress::Waiting),
             cancelled: false,
+            cleanup_failed: false,
             scheduled: None,
             returned: None,
             completed: Some(Box::new(completed)),
@@ -396,6 +399,7 @@ impl RunningProcessOwner {
             } else {
                 flight.result == Ok(Progress::Advancing)
             };
+            flight.cleanup_failed = cleanup_failed;
             let completed = if flight.returned.is_some()
                 || flight.result == Ok(Progress::Ready)
                 || cleanup_failed

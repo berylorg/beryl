@@ -89,16 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 843: Admit Selected Preparation Through The Recovery Driver (finished)
+# Phase 844: Drain Cancelled Selected Preparation Through The Recovery Driver (finished)
 
-The selected-resident driver now admits preparation into a caller-owned key before awaiting,
-resumes that key without readmission, and consumes it only after attachment. Cancellation and
-refusal preserve explicit cleanup custody. Five driver tests, the other lifecycle checks,
-production compilation, formatting and independent review passed across verification runs.
-One unchanged retired-home construction test initially failed in run
-`008de990-4f8b-427f-a476-5be5473de859`; output filtering omitted its assertion. Its isolated rerun
-and all eleven retirement-group checks then passed (`2a21bb70-432e-4080-a527-8caf423a85c9`).
-The initial cause remains unknown; no correction or resolved-failure claim is made.
+The driver now cancels and drains the exact retained resident preparation, preserving caller key
+custody across abandonment or failure and returning source custody once after graph restoration.
+Cleanup remains available after request staleness; retained cleanup failure refuses further driver
+scheduling. No worker, queue or interaction release was added. All 49 lifecycle checks passed
+(`b425cb59-68b4-45b2-b0bb-3623797af585`), as did production compilation, formatting and independent
+review. Failure-state injection verifies driver refusal; the cleanup engine's error-to-state
+assignment was source-reviewed, not exercised by a real cleanup failure.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -223,8 +222,9 @@ This partial result remains fenced and is covered by component evidence and revi
 Phase 842 supplies awaited selected-resident attachment from an existing preparation key, with
 fresh GUI inputs and retained cancellation cleanup. Phase 843 connects preparation admission to
 that driver with caller-owned key custody across waiting and resumption. Connect selected attachment,
-appearance binding and failed-home retry-delay scheduling through the outer recovery driver. Retain its preparation key through refusal or cancellation so existing cleanup can be
-drained explicitly. That supervisor must own one driving future: worker custody rejects overlapping graph
+appearance binding and failed-home retry-delay scheduling through the outer recovery driver.
+Phase 844 supplies explicit cancellation/draining of that key with retained cleanup-failure reporting.
+That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

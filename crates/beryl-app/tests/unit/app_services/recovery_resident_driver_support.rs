@@ -129,6 +129,95 @@ pub(super) async fn interrupt_pending(
     preparation.expect("abandoned or cancelled waiting lost the admitted key")
 }
 
+pub(super) async fn drain(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &RunningExitRequest,
+    key: &ResidentPreparationKey,
+    must_wait: bool,
+    cx: &mut AsyncApp,
+) -> Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)> {
+    use std::future::Future;
+    let mut preparation = None;
+    assert_eq!(
+        RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+            owner,
+            &mut preparation,
+            cx
+        )
+        .await
+        .err()
+        .unwrap(),
+        "No resident preparation key"
+    );
+    preparation = Some(key.clone());
+    let mut driver = Box::pin(
+        RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+            owner,
+            &mut preparation,
+            cx,
+        ),
+    );
+    let returned = std::future::poll_fn(|cx| {
+        std::task::Poll::Ready(match driver.as_mut().poll(cx) {
+            std::task::Poll::Ready(result) => Some(result.unwrap()),
+            std::task::Poll::Pending => None,
+        })
+    })
+    .await;
+    drop(driver);
+    if must_wait {
+        assert!(
+            returned.is_none(),
+            "ready preparation skipped pending cleanup coverage"
+        );
+    }
+    let returned = if let Some(returned) = returned {
+        returned
+    } else {
+        assert!(preparation.is_some());
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        owner.borrow_mut().test_set_resident_cleanup_failure(true);
+        assert_eq!(
+            RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+                owner,
+                &mut preparation,
+                cx
+            )
+            .await
+            .err()
+            .unwrap(),
+            "injected resident cleanup failure"
+        );
+        assert!(preparation.is_some());
+        assert!(
+            owner
+                .borrow_mut()
+                .take_cancelled_resident_preparation(key)
+                .is_none()
+        );
+        owner.borrow_mut().test_set_resident_cleanup_failure(false);
+        RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(owner, &mut preparation, cx)
+            .await
+            .unwrap()
+    };
+    assert!(preparation.is_none());
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
+    preparation = Some(key.clone());
+    assert_eq!(
+        RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+            owner,
+            &mut preparation,
+            cx
+        )
+        .await
+        .err()
+        .unwrap(),
+        "No resident preparation"
+    );
+    assert!(preparation.is_some());
+    returned
+}
+
 pub(super) async fn attempt(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &RunningExitRequest,

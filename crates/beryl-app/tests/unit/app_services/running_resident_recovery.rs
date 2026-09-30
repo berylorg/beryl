@@ -477,24 +477,10 @@ fn resident_run(scenario: ResidentScenario) {
                                 })
                                 .unwrap();
                         } else {
-                            cx.update(|app| {
-                                RunningProcessOwner::cancel_interrupted_exit_resident(
-                                    &owner, &key, app,
-                                )
-                            })
-                            .unwrap()
-                            .unwrap();
-                            let resources = loop {
-                                if let Some(resources) =
-                                    owner.borrow_mut().take_cancelled_resident_preparation(&key)
-                                {
-                                    break resources;
-                                }
-                                assert!(Instant::now() < deadline);
-                                cx.background_executor()
-                                    .timer(Duration::from_millis(5))
-                                    .await;
-                            };
+                            let resources = attachment_driver::drain(
+                                &owner, &request, &key,
+                                scenario == ResidentScenario::DrivenCapacityAttachment, cx,
+                            ).await;
                             assert!(
                                 owner
                                     .borrow_mut()
