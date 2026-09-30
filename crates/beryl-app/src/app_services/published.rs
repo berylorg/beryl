@@ -14,6 +14,12 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(crate) fn prepared_appearance(
+        &self,
+    ) -> Option<Arc<crate::theme_runtime::AppearanceGeneration>> {
+        self.theme.as_ref().map(|theme| theme.current())
+    }
+
     pub(crate) fn restored_window_attempt(
         &self,
     ) -> Result<crate::main_window::RestoredWindowPreparationAttempt, String> {

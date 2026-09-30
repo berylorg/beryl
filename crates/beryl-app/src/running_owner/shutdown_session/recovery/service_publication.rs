@@ -41,6 +41,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let (mut services, session_slot, settlement_slot, publication_slot, original, graph, home) = {
             let mut owner = owner.borrow_mut();
+            owner.interrupted_exit_services_result(request)?;
             owner.validate_interrupted_exit_bindings(request, appearance, app)?;
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit publication was cancelled".into());

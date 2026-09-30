@@ -163,6 +163,18 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow()
+                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
+                    .borrow()
+                    .release_interrupted_exit_drafts(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
+                    .borrow()
                     .interrupted_exit_publication_result(request)
                     .is_err()
             );
@@ -209,6 +221,15 @@ pub(super) async fn verify(
                             .interrupted_exit_publication_result(request)
                             .is_err()
                     );
+                    cx.update(|app| {
+                        assert!(
+                            owner
+                                .borrow()
+                                .validate_interrupted_exit_bindings(request, appearance, app)
+                                .is_err()
+                        );
+                    })
+                    .unwrap();
                     owner
                         .borrow_mut()
                         .test_replace_interrupted_exit_request(request);
@@ -225,10 +246,36 @@ pub(super) async fn verify(
                     .interrupted_exit_services_result(request)
                     .is_err()
             );
+            cx.update(|app| {
+                verify_published_bindings(owner, request, appearance, app);
+                assert!(
+                    RunningProcessOwner::publish_interrupted_exit_services(
+                        owner,
+                        request,
+                        retired,
+                        generation,
+                        appearance,
+                        CommandCancellation::new(),
+                        app,
+                        |_, _, _| panic!("published graph cannot be published twice"),
+                    )
+                    .is_err()
+                );
+            })
+            .unwrap();
             let start = owner.borrow().test_take_interrupted_exit_start();
             let gate = start.gate();
             drop(start);
             assert!(!gate.wait());
+            cx.update(|app| {
+                assert!(
+                    owner
+                        .borrow()
+                        .validate_interrupted_exit_bindings(request, appearance, app)
+                        .is_err()
+                );
+            })
+            .unwrap();
         } else {
             let reason = match mode {
                 "unproven" => "unproven",
@@ -270,4 +317,67 @@ pub(super) async fn verify(
         })
         .unwrap();
     }
+}
+
+fn verify_published_bindings(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    app: &mut gpui::App,
+) {
+    use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
+    let mut running = owner.borrow_mut();
+    let refused = |running: &RunningProcessOwner, request, appearance, app: &mut gpui::App| {
+        assert!(
+            running
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
+        assert!(
+            running
+                .release_interrupted_exit_drafts(request, appearance, app)
+                .is_err()
+        );
+    };
+    let foreign = request.test_foreign();
+    let previous = running.test_process_appearance();
+    refused(&running, &foreign, appearance, app);
+    refused(&running, request, &previous, app);
+    let unbound = GpuiAppearanceWindowSet::new(
+        appearance.read(app).target().snapshot().current,
+        NonZeroUsize::new(4).unwrap(),
+        app,
+    );
+    refused(&running, request, &unbound, app);
+    unbound.update(app, |set, _| set.retire());
+    refused(&running, request, &unbound, app);
+    let drafts = running.test_replace_recovery_drafts(None).unwrap();
+    refused(&running, request, appearance, app);
+    running.test_replace_recovery_drafts(Some(drafts.clone()));
+    let busy = drafts.borrow_mut();
+    refused(&running, request, appearance, app);
+    drop(busy);
+    drafts.borrow_mut().test_recovery_driving(true);
+    refused(&running, request, appearance, app);
+    drafts.borrow_mut().test_recovery_driving(false);
+    for retirement in [None, Some(Err("failed retirement".into()))] {
+        running.test_set_resident_graph_retirement(retirement);
+        refused(&running, request, appearance, app);
+    }
+    running.test_set_resident_graph_retirement(Some(Ok(())));
+    for _ in 0..2 {
+        running
+            .validate_interrupted_exit_bindings(request, appearance, app)
+            .unwrap();
+        assert!(
+            running
+                .release_interrupted_exit_drafts(request, appearance, app)
+                .unwrap()
+        );
+        running
+            .interrupted_exit_publication_result(request)
+            .unwrap();
+    }
+    assert!(!drafts.borrow().test_recovery_ready());
+    assert_ne!(running.test_process_appearance(), *appearance);
 }

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 818: Retain Running-Owner Recovery Publication (finished)
+# Phase 819: Revalidate Published Recovery Bindings (finished)
 
-The running owner now publishes a complete recovery graph through its existing worker after fresh
-session validation and complete binding/draft checks. It retains failed prepared graphs and actual
-publication outcomes, including dormant-worker ownership after stale or cancelled delivery, while
-interaction remains fenced. All 54 selected tests, compilation, formatting and independent review
-passed. Coherent reopening remains pending.
+Complete shell-binding and draft-release checks now also validate the actual published recovery
+graph and its exact prepared appearance. Pending, stale and incomplete custody remain fenced;
+repeated successful checks preserve original session evidence and dormant worker ownership.
+All 24 selected tests, compilation, formatting and independent review passed. Coherent interaction
+release and the ordinary recovery driver remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -172,14 +172,13 @@ Phase 814 carries it through mount, shell and retained-draft attachment with exa
 Phase 815 connects it to running-owner GUI preparation and attachment, restoring its retained
 settlement slot after adoption or drained cancellation and reusing background graph disposal.
 Phase 816 supplies exact-process preflight and complete-graph publication into the process owner,
-retaining the existing worker-start custody and closed process admission. Connect that boundary
-to the running owner next, with fresh session and complete-window validation, retained original
-outcomes and the existing single-worker exclusion.
+retaining the existing worker-start custody and closed process admission.
 Phase 817 supplies fresh prepared-graph session reads with retained original evidence and bounded
 result custody through the running worker. Phase 818 binds complete shell/draft checks and a fresh
 session read to running-owner graph publication, retaining actual publication outcomes and dormant
 worker ownership even after stale or cancelled delivery. Publication does not complete the cancelled
-Exit or reopen interaction; compose the coherent release and ordinary recovery driver next.
+Exit or reopen interaction. Phase 819 extends complete binding and draft-release checks across
+publication using the retained actual result and exact published appearance, preserving all fences.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

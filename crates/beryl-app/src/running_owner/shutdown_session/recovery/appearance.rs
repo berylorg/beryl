@@ -36,7 +36,7 @@ impl RunningProcessOwner {
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<(), String> {
-        self.interrupted_exit_services_result(request)?;
+        self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
         if recovery.resident.is_some()
             || recovery.session.borrow().is_none()
@@ -48,15 +48,30 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
         let mut settlement = recovery.settlement.borrow_mut();
-        let Some(settlement::CandidateSettlement::Services(Ok(graph))) = settlement.as_mut() else {
-            unreachable!("validated prepared recovery services")
-        };
         let snapshot = appearance.read(app).target().snapshot();
         let home = snapshot.current.prepared().home();
-        if !snapshot.active || !graph.matches_candidate(home.home_id(), home.home_generation()) {
+        if !snapshot.active {
             return Err("Recovery appearance candidate identity changed".into());
         }
-        if !std::sync::Arc::ptr_eq(&snapshot.current, &graph.appearance()) {
+        let expected = match settlement.as_mut() {
+            Some(settlement::CandidateSettlement::Services(Ok(graph))) => {
+                if !graph.matches_candidate(home.home_id(), home.home_generation()) {
+                    return Err("Recovery appearance candidate identity changed".into());
+                }
+                graph.appearance()
+            }
+            Some(settlement::CandidateSettlement::Published) => {
+                self.interrupted_exit_publication_result(request)?;
+                self.process
+                    .services
+                    .as_ref()
+                    .and_then(|services| services.graph())
+                    .and_then(|graph| graph.prepared_appearance())
+                    .ok_or("Published recovery graph is unavailable or already started")?
+            }
+            _ => return Err("Interrupted Exit recovery graph is unavailable".into()),
+        };
+        if !std::sync::Arc::ptr_eq(&snapshot.current, &expected) {
             return Err("Recovery appearance differs from the prepared graph".into());
         }
         drop(settlement);
