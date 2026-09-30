@@ -122,7 +122,7 @@ fn recovery_publication_installs_complete_graph_without_releasing_interaction() 
         assert!(graph.activity.is_some() && graph.marker.is_some() && graph.cas.is_some());
         assert!(Arc::ptr_eq(
             &appearance,
-            &graph.theme.as_ref().unwrap().current()
+            &graph.current_appearance().unwrap()
         ));
         assert_eq!(graph.handoff.as_ref().unwrap().test_completed_passes(), 0);
         assert!(!observation.wait_until_reached(Duration::from_millis(60)));
@@ -145,11 +145,25 @@ fn recovery_publication_installs_complete_graph_without_releasing_interaction() 
                 std::thread::sleep(Duration::from_millis(10));
             }
             graph.release_theme().unwrap();
+            assert!(graph.theme.is_none());
+            assert!(Arc::ptr_eq(
+                &appearance,
+                &graph.current_appearance().unwrap()
+            ));
+            assert!(graph.release_theme().is_err());
+            assert!(Arc::ptr_eq(
+                &appearance,
+                &graph.current_appearance().unwrap()
+            ));
             assert!(observation.wait_until_reached(Duration::from_secs(3)));
         } else {
             drop(start);
         }
         observation.release();
+        if release {
+            graph.theme().unwrap().retire();
+            assert!(graph.current_appearance().is_none());
+        }
         assert!(
             owner
                 .publish_recovery_service_graph(

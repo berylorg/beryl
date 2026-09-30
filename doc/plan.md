@@ -89,14 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 828: Bind Published Recovery Services To The Running Owner (finished)
+# Phase 829: Preserve Published Appearance Across Theme Activation (finished)
 
-The running owner derives command health from the retained published graph and installs its
-validated appearance under the exact cancelled request. Refusal preserves bindings; success keeps
-interaction fenced and workers dormant. Thirty-nine focused tests, compilation, formatting and
-independent lifecycle review passed. Runtime binding coverage uses threadless windows; selected
-window ordering was source-reviewed.
-
+Published appearance validation now reads the existing prepared or activated theme runtime,
+retaining exact identity without cached state. Missing or retired appearance refuses recovery.
+Twenty-seven focused tests, compilation, formatting and independent lifecycle review passed.
+Owner coverage remains threadless; production theme activation orchestration is still pending.
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
 Connect process-supervisor Exit custody to the existing whole-graph retirement and same-home
@@ -191,6 +189,9 @@ release remains required. Phase 827 supplies fenced replacement of the command-c
 binding under the exact request. Phase 828 derives that reference from the retained published graph
 and installs its validated appearance on the running owner. Bind before consuming selected-window
 tickets; continuation after pending mount preparation must not repeat this one-time binding.
+Phase 829 keeps current graph appearance available across theme activation for those binding
+checks. Activation starts the theme subscription; retained initial-start custody still holds other
+prepared workers. Activation orchestration must preserve fencing and handle its fallible outcome.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

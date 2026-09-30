@@ -164,6 +164,14 @@ impl RunningProcessOwner {
     }
 
     #[cfg(test)]
+    pub(crate) fn test_services_mut(&mut self) -> &mut ProcessServiceOwner {
+        self.process
+            .services
+            .as_mut()
+            .expect("services retained on GUI")
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_into_process(self) -> StartedProcess {
         assert_ne!(self.startup_cleanup, StartupCleanup::Pending);
         assert!(self.progress.is_none());

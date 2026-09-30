@@ -276,6 +276,22 @@ pub(super) async fn verify(
                 .interrupted_exit_publication_result(request)
                 .unwrap();
             assert!(owner.borrow().test_services().graph().is_some());
+            cx.update(|app| {
+                owner
+                    .borrow()
+                    .validate_interrupted_exit_bindings(request, appearance, app)
+                    .unwrap();
+            })
+            .unwrap();
+            {
+                let mut running = owner.borrow_mut();
+                let graph = running.test_services_mut().graph_mut().unwrap();
+                let prepared = graph.current_appearance().unwrap();
+                graph.release_theme().unwrap();
+                assert!(graph.theme.is_none());
+                assert!(Arc::ptr_eq(&prepared, &graph.current_appearance().unwrap()));
+                assert!(graph.release_theme().is_err());
+            }
             assert!(
                 owner
                     .borrow()
@@ -416,6 +432,19 @@ fn verify_published_bindings(
     };
     let foreign = request.test_foreign();
     let previous = running.test_process_appearance();
+    let theme = running
+        .test_services_mut()
+        .graph_mut()
+        .unwrap()
+        .loaded_theme
+        .take();
+    assert!(theme.is_some());
+    refused(&mut running, request, appearance, app);
+    running
+        .test_services_mut()
+        .graph_mut()
+        .unwrap()
+        .loaded_theme = theme;
     refused(&mut running, &foreign, appearance, app);
     refused(&mut running, request, &previous, app);
     let unbound = GpuiAppearanceWindowSet::new(

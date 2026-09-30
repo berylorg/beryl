@@ -104,8 +104,8 @@ impl RunningProcessOwner {
                     .services
                     .as_ref()
                     .and_then(|services| services.graph())
-                    .and_then(|graph| graph.prepared_appearance())
-                    .ok_or("Published recovery graph is unavailable or already started")?
+                    .and_then(|graph| graph.current_appearance())
+                    .ok_or("Published recovery graph appearance is unavailable")?
             }
             _ => return Err("Interrupted Exit recovery graph is unavailable".into()),
         };
