@@ -57,6 +57,13 @@ pub(super) async fn verify(
                 .interrupted_exit_theme_activation_result(request)
                 .is_err()
         );
+        assert!(
+            owner
+                .borrow()
+                .release_interrupted_exit_mounts(request, appearance, app)
+                .unwrap_err()
+                .contains("not settled")
+        );
         RunningProcessOwner::test_activate_interrupted_exit_theme(
             owner,
             request,
@@ -94,6 +101,12 @@ pub(super) async fn verify(
         .unwrap();
         assert!(owner.borrow().test_services_on_worker());
         assert!(owner.borrow().interrupted_exit_session().is_some());
+        assert!(
+            owner
+                .borrow()
+                .release_interrupted_exit_mounts(request, appearance, app)
+                .is_err()
+        );
         refuse(request, appearance, CommandCancellation::new(), app);
         assert!(
             owner
@@ -160,6 +173,19 @@ pub(super) async fn verify(
         format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
     );
     cx.update(|app| {
+        if let Some(reason) = failure {
+            assert!(
+                owner
+                    .borrow()
+                    .release_interrupted_exit_mounts(request, appearance, app)
+                    .unwrap_err()
+                    .contains(reason)
+            );
+            owner
+                .borrow()
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .unwrap();
+        }
         assert!(
             RunningProcessOwner::activate_interrupted_exit_theme(
                 owner,

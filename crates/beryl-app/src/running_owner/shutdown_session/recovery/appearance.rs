@@ -57,7 +57,7 @@ impl RunningProcessOwner {
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<bool, String> {
-        self.interrupted_exit_publication_result(request)?;
+        self.interrupted_exit_theme_activation_result(request)?;
         self.validate_interrupted_exit_bindings(request, appearance, app)?;
         self.shutdown
             .as_ref()
