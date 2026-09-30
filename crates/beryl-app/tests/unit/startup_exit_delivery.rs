@@ -5,6 +5,14 @@ use std::{
     task::{Context, Wake},
 };
 
+mod recovery {
+    use super::*;
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/startup_exit_recovery.rs"
+    ));
+}
+
 fn producer() -> StartupCommands {
     StartupCommands(Rc::new(RefCell::new(Commands {
         stage: Stage::Waiting,

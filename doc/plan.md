@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 826: Route Recovered Mount Release Through The Running Owner (finished)
+# Phase 827: Rebind Exit Command Health During Recovery (finished)
 
-Recovered mount release now requires the exact cancelled request, retained successful publication
-and complete current shell bindings. It reuses retained drafts without new state or workers and
-preserves shutdown gates and command/session custody. Sixteen focused tests, compilation, formatting
-and independent lifecycle review passed. Owner success is tested threadless; selected behavior uses
-existing contribution evidence. Coherent process reopening remains.
+The private command controller can replace its same-home health binding under the exact active
+request while explicitly preserving command fencing, wake, origin and request custody. Refusal
+preserves state; recovery never queues Exit. Twelve focused tests, compilation, formatting and
+independent lifecycle review passed. Running-owner integration must supply the published graph's
+reference; health observation is not proof of fresh durable authority.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -187,7 +187,8 @@ Phase 824 routes synchronous mount release through exact shell binding validatio
 composes the retained draft set with all widget preparation before any local ticket consumption,
 preserving retryability on preparation refusal. Phase 826 routes that aggregate through the exact
 request with retained successful publication and current binding checks. Coherent process interaction
-release remains required.
+release remains required. Phase 827 supplies fenced replacement of the command-controller health
+binding under the exact request; derive its reference from the published graph during owner integration.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

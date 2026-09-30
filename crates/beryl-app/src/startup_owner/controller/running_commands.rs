@@ -58,7 +58,10 @@ pub(crate) struct RunningExitRequest {
 impl RunningExitRequest {
     #[cfg(test)]
     pub(crate) fn test_foreign(&self) -> Self {
-        Self { identity: Rc::new(()), invoking: self.invoking }
+        Self {
+            identity: Rc::new(()),
+            invoking: self.invoking,
+        }
     }
 
     pub(crate) fn invoking_window(&self) -> Option<WindowId> {
@@ -103,6 +106,38 @@ impl RunningExitCommands {
 
     pub(crate) fn set_gate(&self, gate: RunningExitGate, blocked: bool) {
         self.0.0.borrow_mut().exit_gates.set(gate, blocked);
+    }
+
+    pub(crate) fn bind_recovered_home(
+        &self,
+        request: &RunningExitRequest,
+        home: beryl_home_store::HomeServiceReference,
+    ) -> Result<(), String> {
+        let mut state = self.0.0.borrow_mut();
+        if !state
+            .active_exit
+            .as_ref()
+            .is_some_and(|active| Rc::ptr_eq(active, &request.identity))
+        {
+            return Err("Recovered Exit home requires the active request".into());
+        }
+        let (previous, generation) = state
+            .exit_gates
+            .home
+            .as_ref()
+            .ok_or("Exit home is not bound")?;
+        let health = home.health();
+        if previous.home_id() != home.home_id()
+            || generation.is_none()
+            || health.state() != beryl_home_store::HomeHealthState::Healthy
+            || health.generation().is_none()
+            || health.generation() == *generation
+        {
+            return Err("Recovered Exit home requires a healthy same-home replacement".into());
+        }
+        state.exit_gates.home_unavailable = true;
+        state.exit_gates.home = Some((home, health.generation()));
+        Ok(())
     }
 
     pub(super) fn new(commands: StartupCommands) -> Self {
