@@ -4,6 +4,7 @@ use crate::startup_owner::RunningExitRequest;
 mod appearance;
 mod completion;
 mod construction;
+mod driver;
 mod process_work;
 mod resident;
 pub(crate) use resident::ResidentPreparationKey;

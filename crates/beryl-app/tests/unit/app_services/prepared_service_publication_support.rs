@@ -3,6 +3,11 @@ mod theme_activation {
     include!("recovery_theme_activation_support.rs");
 }
 
+mod driver {
+    use super::*;
+    include!("recovery_publication_driver_support.rs");
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -13,6 +18,18 @@ pub(super) async fn verify(
     cx: &mut AsyncApp,
 ) {
     use beryl_home_store::CommandCancellation;
+    if matches!(
+        delivery,
+        RecoveryPublicationDelivery::Driven
+            | RecoveryPublicationDelivery::DrivenCancelled
+            | RecoveryPublicationDelivery::DrivenStale
+    ) {
+        driver::verify(
+            owner, request, retired, generation, appearance, delivery, cx,
+        )
+        .await;
+        return;
+    }
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     for mode in ["unproven", "unwind", "cancel", "publish"] {
@@ -257,6 +274,9 @@ pub(super) async fn verify(
             match delivery {
                 RecoveryPublicationDelivery::Ready
                 | RecoveryPublicationDelivery::Complete
+                | RecoveryPublicationDelivery::Driven
+                | RecoveryPublicationDelivery::DrivenCancelled
+                | RecoveryPublicationDelivery::DrivenStale
                 | RecoveryPublicationDelivery::ThemeActivationFailure
                 | RecoveryPublicationDelivery::ThemeActivationUnwind
                 | RecoveryPublicationDelivery::ThemeActivationCancelled => delivered.unwrap(),

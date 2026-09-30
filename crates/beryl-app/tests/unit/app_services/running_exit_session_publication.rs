@@ -72,11 +72,44 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 enum RecoveryPublicationDelivery {
     Ready,
     Complete,
+    Driven,
+    DrivenCancelled,
+    DrivenStale,
     Stale,
     Cancelled,
     ThemeActivationFailure,
     ThemeActivationUnwind,
     ThemeActivationCancelled,
+}
+
+#[test]
+fn native_exit_recovery_drives_prepared_graph_to_running() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+    );
+}
+
+#[test]
+fn native_exit_recovery_driver_stops_after_publication_cancellation() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::DrivenCancelled,
+    );
+}
+
+#[test]
+fn native_exit_recovery_driver_rejects_stale_publication_delivery() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::DrivenStale,
+    );
 }
 
 #[test]
@@ -526,7 +559,7 @@ fn run_with_recovery_delivery(
                                 recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, publication_delivery, cx).await);
                                 recovered_threadless = true;
                             }
-                            if matches!(publication_delivery, RecoveryPublicationDelivery::Complete) {
+                            if matches!(publication_delivery, RecoveryPublicationDelivery::Complete | RecoveryPublicationDelivery::Driven) {
                                 assert!(owner.borrow().interrupted_exit_session().is_none());
                                 assert!(owner.borrow().shutdown_status().is_none());
                                 recovered_threadless = false;
