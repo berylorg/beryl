@@ -367,6 +367,40 @@ impl RunningProcessOwner {
         Ok(())
     }
 
+    pub(crate) async fn attach_and_complete_interrupted_exit_threadless(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired_home: beryl_model::BerylHomeId,
+        retired: HomeGeneration,
+        generation: HomeGeneration,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        Self::attach_interrupted_exit_threadless_window(
+            owner,
+            request,
+            retired_home,
+            retired,
+            window,
+            appearance,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
+        Self::publish_and_complete_interrupted_exit(
+            owner,
+            request,
+            retired,
+            generation,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
     pub(crate) async fn publish_and_complete_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

@@ -242,7 +242,21 @@ pub(super) async fn verify(
                         .update(app, |set, _| set.retire());
                 })
                 .unwrap();
-                attachment_driver::verify(owner, request, home, generation, &appearance, cx).await;
+                attachment_driver::verify(
+                    owner,
+                    request,
+                    home,
+                    generation,
+                    &appearance,
+                    !matches!(
+                        publication_delivery,
+                        RecoveryPublicationDelivery::Driven
+                            | RecoveryPublicationDelivery::DrivenCancelled
+                            | RecoveryPublicationDelivery::DrivenStale
+                    ),
+                    cx,
+                )
+                .await;
             } else {
                 for (source_home, source_generation, source_window, stale, succeeds) in [
                     (

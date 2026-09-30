@@ -13,15 +13,24 @@ pub(super) async fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let previous = owner.borrow().test_process_appearance();
     let window = owner.borrow().test_process().windows.shells()[0].window();
+    let home = owner
+        .borrow()
+        .interrupted_exit_appearance(request)
+        .unwrap()
+        .prepared()
+        .home()
+        .home_id();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     for (request, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
-            RunningProcessOwner::publish_and_complete_interrupted_exit(
+            RunningProcessOwner::attach_and_complete_interrupted_exit_threadless(
                 owner,
                 request,
+                home,
                 retired,
                 generation,
+                window,
                 appearance,
                 cancellation,
                 cx,
@@ -32,40 +41,50 @@ pub(super) async fn verify(
         assert!(!owner.borrow().test_services_on_worker());
     }
 
-    let replaced = owner
-        .borrow()
-        .test_replace_interrupted_exit_session(RunningShutdownSession::Unwound);
-    assert!(
-        RunningProcessOwner::publish_and_complete_interrupted_exit(
-            owner,
-            request,
-            retired,
-            generation,
-            appearance,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .unwrap_err()
-        .contains("unproven")
-    );
-    assert!(owner.borrow().test_services().graph().is_none());
-    assert_eq!(owner.borrow().test_process_appearance(), previous);
-    owner
-        .borrow()
-        .test_replace_interrupted_exit_session(replaced);
-
     let cancellation = CommandCancellation::new();
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::publish_and_complete_interrupted_exit(
-        owner,
-        request,
-        retired,
-        generation,
-        appearance,
-        cancellation.clone(),
-        &mut drive_cx,
-    ));
+    let mut drive = Box::pin(
+        RunningProcessOwner::attach_and_complete_interrupted_exit_threadless(
+            owner,
+            request,
+            home,
+            retired,
+            generation,
+            window,
+            appearance,
+            cancellation.clone(),
+            &mut drive_cx,
+        ),
+    );
+    std::future::poll_fn(|task| {
+        assert!(drive.as_mut().poll(task).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    while owner
+        .borrow()
+        .interrupted_exit_services_result(request)
+        .is_err()
+    {
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
+    assert!(owner.borrow().test_services().graph().is_none());
+    assert!(owner.borrow().exit_requested());
+    cx.update(|app| {
+        assert!(
+            owner
+                .borrow()
+                .validate_interrupted_exit_bindings(request, appearance, app)
+                .is_err()
+        );
+        assert_eq!(
+            window.read(app).unwrap().test_exit_presentation().0,
+            "Exiting…"
+        );
+    })
+    .unwrap();
     std::future::poll_fn(|task| {
         assert!(drive.as_mut().poll(task).is_pending());
         Poll::Ready(())

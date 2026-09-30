@@ -4,6 +4,7 @@ pub(super) async fn verify(
     home: beryl_model::BerylHomeId,
     generation: beryl_home_store::HomeGeneration,
     appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    attach_ready: bool,
     cx: &mut AsyncApp,
 ) {
     use beryl_home_store::CommandCancellation;
@@ -47,6 +48,9 @@ pub(super) async fn verify(
             .unwrap();
     }
     for mode in ["dropped", "cancelled", "stale", "ready"] {
+        if mode == "ready" && !attach_ready {
+            break;
+        }
         let cancellation = CommandCancellation::new();
         let mut drive_cx = cx.clone();
         let mut drive = Box::pin(

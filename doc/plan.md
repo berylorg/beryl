@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 847: Drive Retirement Through Private Service Preparation (finished)
+# Phase 848: Drive Threadless Rebinding Through Recovery Completion (finished)
 
-The existing driver now carries exact graph retirement through candidate settlement and private
-service preparation, retaining actual outcomes and closed interaction gates without new workers
-or state. The fixture proves unpublished graph retention, disposal and subsequent same-home
-construction. All 39 lifecycle checks passed (`200fadf5-6924-471d-b4d7-128c3a23f810`),
-with production compilation, formatting and independent lifecycle review also passing.
+The threadless driver now connects native authentication, adoption and appearance binding to
+prepared publication and cancelled-Exit completion using existing workers and retained outcomes.
+All 39 lifecycle checks passed (`78a1429c-b84e-4f01-8228-6c3be7d80e0d`), including combined
+success and cancelled/stale publication delivery; production compilation, formatting and
+independent lifecycle review passed. No additional runtime state or worker was introduced.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -223,7 +223,9 @@ that driver with caller-owned key custody across waiting and resumption. Phase 8
 selected adoption and appearance binding; binding refusal after adoption consumes the preparation
 key and must resume binding alone. Phase 846 supplies retained failed-reopen backoff and retries
 through the construction driver. Phase 847 extends retirement through private service preparation.
-Connect native rebinding and publication through the outer recovery driver.
+Phase 848 connects threadless native rebinding through publication and completion in one awaited
+initial-entry operation. After adoption or publication, resume the retained component stage rather
+than repeating initial entry. Connect selected-resident rebinding and the outer recovery supervisor.
 Phase 844 supplies explicit cancellation/draining of that key with retained cleanup-failure reporting.
 That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
