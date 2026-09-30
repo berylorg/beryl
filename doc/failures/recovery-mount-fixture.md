@@ -1,5 +1,31 @@
 # Recovery Mount Fixture GUI Lifetime
 
+## Selected Original Exit Outcomes
+
+Phase 854 extends the real selected path beyond proven noncommit. The retained session envelope
+must evolve from a committed original Exit into a separate Running-resume outcome; comparing the
+entire envelope's Debug text rejects valid recovery. Compare immutable publication evidence,
+preserve the original execution kind and receipt, and assert the distinct committed resume.
+For pending original execution, assert no candidate resolution before recovery and exact-new
+candidate reconciliation afterward. Run `2632036f-0e0f-45e0-8b72-3791b4e23dc9` exposed the obsolete
+envelope-equality assertion after successful committed candidate settlement.
+
+An indeterminate command alone deliberately does not fail the whole home. Run
+`0b1962b9-2b6c-4735-9f75-6a14d324e180` passed committed recovery, then correctly refused healthy-home
+graph retirement in the pending-outcome case. To qualify pending custody across home replacement,
+inject a subsequent actual home read failure on a background worker while leaving that original
+command unresolved. Do not weaken retirement admission or pre-reconcile the original through the
+healthy graph. Both failed processes exited; their exact printed homes `.tmpwKrmT8` and `.tmpFrzGwg`
+were checked, removed with `cleanup-dir.exe`, and confirmed absent.
+
+Corrected focused run `22778192-304e-465e-8420-ec036fd6cca1` passed all four selected cases.
+All 43 Exit-publication regressions passed in `0be9434e-7c64-4e2c-9909-1c26d0f83430`; scoped
+formatting and independent lifecycle/persistence review passed. No production source changed.
+This qualifies one selected window with committed-original and candidate-reconciled exact-new
+outcomes, not every reconciliation result or the automatic recovery supervisor.
+
+## Resident Disposal Timing
+
 The selected recovery fixture holds candidate-backed editor resources without publishing its
 replacement service graph. Its successful local release and terminal widget disposal must occur
 within one outer GUI update. Returning to GPUI with that resident live allows additional editor

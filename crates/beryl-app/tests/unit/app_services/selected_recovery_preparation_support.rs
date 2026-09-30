@@ -13,7 +13,24 @@ pub(super) async fn verify_and_dispose(
             graph.home().health().generation().unwrap(),
         )
     };
-    let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
+    let (original, execution, resume_expected) = {
+        let retained = owner.borrow();
+        let session = retained.interrupted_exit_session().unwrap();
+        let RunningShutdownSession::Settled(Ok(outcome)) = &*session else {
+            panic!("selected recovery must retain the original execution");
+        };
+        if let ExitSessionExecution::Indeterminate(pending) = outcome {
+            assert!(pending.candidate_resolution().is_none());
+        }
+        (
+            publication_evidence(&session),
+            std::mem::discriminant(outcome),
+            !matches!(
+                &*session,
+                RunningShutdownSession::Settled(Ok(ExitSessionExecution::NotCommitted { .. }))
+            ),
+        )
+    };
     let (mount, composer, input, selection, close) = window
         .update(cx, |root, _, app| {
             assert!(!root.controller().unwrap().is_threadless());
@@ -55,10 +72,50 @@ pub(super) async fn verify_and_dispose(
         let candidate = appearance.prepared().home();
         assert_eq!(candidate.home_id(), home);
         assert_ne!(candidate.home_generation(), retired);
-        assert_eq!(
-            original,
-            format!("{:?}", retained.interrupted_exit_session().unwrap())
-        );
+        let session = retained.interrupted_exit_session().unwrap();
+        assert_eq!(original, publication_evidence(&session));
+        if resume_expected {
+            let RunningShutdownSession::Resuming(resume) = &*session else {
+                panic!("committed Exit must retain a distinct Running resume");
+            };
+            assert!(resume.result_revision().is_some());
+            let Some(crate::exit_session::ResumeSessionOutcome::Committed {
+                receipt,
+                later_failure: None,
+                local_finalization: None,
+            }) = resume.outcome()
+            else {
+                panic!("Running resume must retain its successful commit");
+            };
+            assert_eq!(receipt.generation(), candidate.home_generation());
+            let crate::exit_session::InterruptedExit::Executed(outcome) = resume.exit() else {
+                panic!("candidate settlement must preserve the original execution");
+            };
+            assert_eq!(execution, std::mem::discriminant(outcome));
+            match outcome {
+                ExitSessionExecution::Committed {
+                    receipt,
+                    later_failure: Some(_),
+                    ..
+                } => {
+                    assert_eq!(receipt.generation(), retired);
+                }
+                ExitSessionExecution::Indeterminate(pending) => {
+                    assert!(matches!(
+                        pending.candidate_resolution(),
+                        Some(Ok(
+                            beryl_home_store::ReconciliationResolution::ExactNew { .. }
+                        ))
+                    ));
+                }
+                _ => panic!("expected original commit or candidate-reconciled commit"),
+            }
+        } else {
+            assert!(matches!(
+                &*session,
+                RunningShutdownSession::Settled(Ok(ExitSessionExecution::NotCommitted { .. }))
+            ));
+        }
         assert!(retained.exit_requested());
         assert_eq!(retained.test_process().windows.shells()[0].window(), window);
         assert_eq!(
@@ -136,4 +193,14 @@ pub(super) async fn verify_and_dispose(
                 .unwrap();
         })
         .await;
+}
+
+fn publication_evidence(session: &RunningShutdownSession) -> String {
+    let publication = match session {
+        RunningShutdownSession::Settled(Ok(outcome)) => outcome.publication(),
+        RunningShutdownSession::Reconciled(outcome) => outcome.publication(),
+        RunningShutdownSession::Resuming(resume) => resume.exit().publication(),
+        _ => panic!("expected retained original Exit evidence"),
+    };
+    format!("{publication:?}")
 }

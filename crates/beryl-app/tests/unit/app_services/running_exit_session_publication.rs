@@ -51,6 +51,30 @@ fn native_exit_selected_session_publication_completes_same_home_recovery() {
 }
 
 #[test]
+fn native_exit_selected_session_publication_recovers_committed_exit() {
+    run_with_window(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        true,
+    );
+}
+
+#[test]
+fn native_exit_selected_session_publication_recovers_indeterminate_exit_after_home_failure() {
+    run_with_window(
+        Some(FaultPoint::AfterCommitBeforePersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        true,
+    );
+}
+
+#[test]
 fn native_exit_selected_session_publication_prepares_same_home_recovery() {
     run_with_window(
         Some(FaultPoint::BeforeCommit),
@@ -604,7 +628,17 @@ fn run_with_window(
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
                         assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                         if consumer && fault.is_some() {
-                            if matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                            if selected && matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
+                                let home = owner.borrow().test_services().graph().unwrap().home().service_reference();
+                                let read_faults = faults.clone();
+                                cx.background_executor().spawn(async move {
+                                    assert_eq!(home.health().state(), HomeHealthState::Healthy);
+                                    read_faults.fail_next(FaultPoint::BeforeReadConfirmation);
+                                    assert!(home.home_revision().is_err());
+                                    assert_eq!(home.health().state(), HomeHealthState::Failed);
+                                }).await;
+                            }
+                            if !selected && matches!(fault, Some(FaultPoint::AfterCommitBeforePersist)) {
                                 let (sender, receiver) = futures_channel::oneshot::channel();
                                 cx.update(|app| RunningProcessOwner::reconcile_shutdown_session(
                                     &owner, app, move |_, _| { sender.send(()).unwrap(); }

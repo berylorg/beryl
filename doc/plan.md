@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 851: Qualify Same-Home Selected Recovery Publication (finished)
+# Phase 854: Qualify Selected Recovery Across Exit Outcomes (finished)
 
-One real selected native window now recovers a proven-noncommit failed Exit through same-home
-retirement, preparation, attachment, publication and coherent completion, preserving the window,
-editor and selection. A subsequent close, cleanup and same-home reopen pass. All 74 affected tests,
-production compilation, formatting and independent review passed (`8a1c6e86-9950-4710-a762-3f8f421ac30a`).
-Phases 852–853 corrected draft cleanliness and host close release. Other Exit outcomes, multiple
-windows and outer supervisor mounting are not qualified by this case.
+The actual selected same-home path now also passes committed Exit with later failure and unresolved
+Exit followed by home failure, retaining candidate exact-new reconciliation and a separate committed
+Running resume. Window/editor/claim preservation, subsequent close, cleanup and same-home reopen
+pass. All 43 Exit-publication regressions, formatting and independent review passed
+(`0be9434e-7c64-4e2c-9909-1c26d0f83430`). Production code is unchanged. Multiple windows, other
+reconciliation outcomes and automatic supervisor mounting remain unqualified.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -230,8 +230,9 @@ than repeating initial entry. Phase 850 corrects overlapping selected-startup st
 actual same-home selected retirement and private preparation, including native and storage cleanup.
 Phases 852–853 correct clean opening draft state and reconstructed host close release. Phase 851
 qualifies one selected same-home proven-noncommit path through rebinding, publication, coherent
-completion and subsequent close/cleanup. Connect the outer recovery supervisor with its remaining
-outcome and window-set qualification.
+completion and subsequent close/cleanup. Phase 854 adds committed original Exit and initially
+indeterminate original Exit with later home failure and exact-new candidate reconciliation.
+Connect the outer recovery supervisor with its remaining outcome and window-set qualification.
 Phase 844 supplies explicit cancellation/draining of that key with retained cleanup-failure reporting.
 That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
