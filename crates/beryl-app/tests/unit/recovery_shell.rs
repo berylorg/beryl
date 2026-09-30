@@ -566,6 +566,11 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                             .is_err()
                     );
                     draft.composer.as_mut().unwrap().2 = fresh;
+                    assert!(
+                        root.release_interrupted_exit_mount(draft, &target, cx)
+                            .is_err()
+                    );
+                    assert!(!resident.read(cx).is_live());
                     service.test_with_close_slot_locked(|| {
                         assert!(
                             !root
@@ -685,14 +690,50 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     assert!(mount.recovery_binding_current(fresh));
                     assert!(resident.read(cx).recovery_binding_current(fresh));
                     drop(retained);
-                    let service = mount.bound_service().unwrap().clone();
-                    service.test_with_close_slot_locked(|| {
-                        assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
-                    });
-                    assert!(!mount.recovery_binding_current(fresh));
-                    assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
-                    assert!(input.read(cx).is_enabled());
                 });
+                let service = mount.read(cx).bound_service().unwrap().clone();
+                if let Some(draft) = draft.as_mut() {
+                    let target = fresh_owner.as_ref().unwrap().read(cx).target();
+                    let old_target = old_owner.read(cx).target();
+                    assert!(
+                        root.release_interrupted_exit_mount(draft, &old_target, cx)
+                            .is_err()
+                    );
+                    draft.composer.as_mut().unwrap().2 = old_close;
+                    assert!(
+                        root.release_interrupted_exit_mount(draft, &target, cx)
+                            .is_err()
+                    );
+                    draft.composer.as_mut().unwrap().2 = fresh;
+                    let worker = mount.update(cx, |mount, _| {
+                        mount.test_window_close_worker(|| {}).unwrap()
+                    });
+                    assert!(
+                        root.release_interrupted_exit_mount(draft, &target, cx)
+                            .is_err()
+                    );
+                    assert!(resident.read(cx).recovery_binding_current(fresh));
+                    assert!(!input.read(cx).is_enabled());
+                    drop(worker);
+                    service.test_with_close_slot_locked(|| {
+                        assert!(
+                            root.release_interrupted_exit_mount(draft, &target, cx)
+                                .unwrap()
+                        );
+                    });
+                    assert!(
+                        root.release_interrupted_exit_mount(draft, &target, cx)
+                            .is_err()
+                    );
+                } else {
+                    mount.update(cx, |mount, cx| {
+                        service.test_with_close_slot_locked(|| {
+                            assert!(mount.release_interrupted_exit_mount(fresh, cx).unwrap());
+                        });
+                        assert!(!mount.recovery_binding_current(fresh));
+                        assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                    });
+                }
                 resident.update(cx, |resident, cx| {
                     assert!(
                         resident

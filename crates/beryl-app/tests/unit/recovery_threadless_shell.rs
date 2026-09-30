@@ -393,11 +393,19 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
                 let exact_root = draft.root;
                 draft.root = owner.entity_id();
                 assert!(
+                    root.release_interrupted_exit_mount(&draft, &target, cx)
+                        .is_err()
+                );
+                assert!(
                     root.release_interrupted_exit_draft(&draft, &target, cx)
                         .is_err()
                 );
                 draft.root = exact_root;
                 root.shutdown_interaction_gated = false;
+                assert!(
+                    root.release_interrupted_exit_mount(&draft, &target, cx)
+                        .is_err()
+                );
                 assert!(
                     root.release_interrupted_exit_draft(&draft, &target, cx)
                         .is_err()
@@ -406,6 +414,10 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
                 root.validate_interrupted_exit_binding(&draft, &target, cx)
                     .unwrap();
                 for _ in 0..2 {
+                    assert!(
+                        root.release_interrupted_exit_mount(&draft, &target, cx)
+                            .unwrap()
+                    );
                     assert!(
                         root.release_interrupted_exit_draft(&draft, &target, cx)
                             .unwrap()
@@ -421,6 +433,10 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
         cx.update(|app| owner.update(app, |owner, _| owner.retire()));
         window
             .update(cx, |root, _, cx| {
+                assert!(
+                    root.release_interrupted_exit_mount(&draft, &target, cx)
+                        .is_err()
+                );
                 assert!(
                     root.validate_interrupted_exit_binding(&draft, &target, cx)
                         .is_err()
