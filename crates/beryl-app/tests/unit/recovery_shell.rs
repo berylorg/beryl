@@ -620,6 +620,40 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
     });
     window
         .update(cx, |root, window, cx| {
+            if fresh_owner.is_some() {
+                let fresh =
+                    old_close.with_recovered_selection(resident.read(cx).selection_identity());
+                resident.update(cx, |resident, cx| {
+                    assert!(
+                        resident
+                            .release_interrupted_exit_resident(old_close, cx)
+                            .is_err()
+                    );
+                    assert!(resident.recovery_binding_current(fresh));
+                    assert!(
+                        resident
+                            .release_interrupted_exit_resident(fresh, cx)
+                            .unwrap()
+                    );
+                    assert!(resident.is_live());
+                    assert!(!resident.recovery_binding_current(fresh));
+                    assert!(resident.mutation_gated());
+                    assert!(
+                        !resident
+                            .release_window_close_gate(fresh, window, cx)
+                            .unwrap()
+                    );
+                    assert!(
+                        resident
+                            .release_interrupted_exit_resident(fresh, cx)
+                            .is_err()
+                    );
+                    assert_eq!(resident.selection_identity(), fresh.selection());
+                });
+                assert!(!input.read(cx).is_enabled());
+                assert!(root.shutdown_interaction_gated);
+                assert!(mount.read(cx).recovery_binding_current(fresh));
+            }
             assert!(
                 input
                     .update(cx, |input, cx| input.dispose(window, cx))

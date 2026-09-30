@@ -2,6 +2,21 @@ use super::*;
 use crate::main_window::MainWindowConversationComposerCloseTicket;
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn release_interrupted_exit_resident(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if !self.recovered_close_release_ready(ticket, cx)? {
+            return Ok(false);
+        }
+        self.phase = MainWindowConversationComposerPhase::Live;
+        self.window_close = None;
+        self.sync_mutation_gate(cx);
+        cx.notify();
+        Ok(true)
+    }
+
     pub(in crate::main_window) fn recovered_close_release_ready(
         &self,
         ticket: MainWindowConversationComposerCloseTicket,
