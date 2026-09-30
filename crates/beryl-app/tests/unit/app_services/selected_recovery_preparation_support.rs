@@ -1,6 +1,7 @@
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
+    publish: bool,
     cx: &mut AsyncApp,
 ) {
     let window = owner.borrow().test_process().windows.shells()[0].window();
@@ -82,6 +83,12 @@ pub(super) async fn verify_and_dispose(
             assert!(!input.read(app).is_enabled());
         })
         .unwrap();
+
+    if publish {
+        drop((mount, composer, input));
+        selected_publication::verify_and_dispose(owner, request, retired, cx).await;
+        return;
+    }
 
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {

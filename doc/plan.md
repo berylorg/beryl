@@ -89,34 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 853: Release Reconstructed Host Close Custody (finished)
+# Phase 851: Qualify Same-Home Selected Recovery Publication (finished)
 
-Recovered service-close settlement now releases its exact host flush under the existing slot lock
-before clearing slot/service gates. Stale/busy calls preserve custody; local interaction fences
-remain. All 74 affected lifecycle/recovery checks, production compilation, formatting and independent
-review passed (`8a1c6e86-9950-4710-a762-3f8f421ac30a`). No worker or retained state was added.
-
-# Phase 851: Qualify Same-Home Selected Recovery Publication (wip)
-
-Extend the real selected-window failed-Exit fixture through accepted resident preparation,
-attachment, fresh appearance binding, graph publication and coherent completion. Use the original
-process home and retained draft custody throughout; preserve the native window, composer, input,
-selection and immutable cancelled-request evidence until completion. Derive this integration from
-the backend runtime's Interrupted Exit contract and app shell lifecycle recovery ownership.
-
-Verify that preparation and attachment leave interaction fenced, renew exact close custody, and
-refuse stale or cancelled entry without consuming preparation. Successful publication must release
-the selected widget and process admission together, clear the cancelled request without automatic
-Exit, and reject duplicate completion. Dispose fresh resident and service resources and prove the
-same home reopens. Existing component cases retain cancellation and partial-adoption coverage.
-Run focused native recovery tests, formatting and independent lifecycle/persistence review.
-Outer supervisor mounting remains phase 702 work; add no new runtime state or wrapper solely for
-this qualification.
-
-Phases 852 and 853 correct the [draft-state mismatch](failures/selected-recovery-draft-state.md)
-and [host close-ticket mismatch](failures/selected-recovery-close-release.md). The retained native
-regression now passes complete recovery, subsequent close, cleanup and same-home reopen. Complete
-the already-reviewed integration acceptance using the unchanged tests and final regression evidence.
+One real selected native window now recovers a proven-noncommit failed Exit through same-home
+retirement, preparation, attachment, publication and coherent completion, preserving the window,
+editor and selection. A subsequent close, cleanup and same-home reopen pass. All 74 affected tests,
+production compilation, formatting and independent review passed (`8a1c6e86-9950-4710-a762-3f8f421ac30a`).
+Phases 852–853 corrected draft cleanliness and host close release. Other Exit outcomes, multiple
+windows and outer supervisor mounting are not qualified by this case.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -248,7 +228,10 @@ Phase 848 connects threadless native rebinding through publication and completio
 initial-entry operation. After adoption or publication, resume the retained component stage rather
 than repeating initial entry. Phase 850 corrects overlapping selected-startup stack frames. Phase 849 qualifies
 actual same-home selected retirement and private preparation, including native and storage cleanup.
-Connect selected-resident rebinding/publication and the outer recovery supervisor.
+Phases 852–853 correct clean opening draft state and reconstructed host close release. Phase 851
+qualifies one selected same-home proven-noncommit path through rebinding, publication, coherent
+completion and subsequent close/cleanup. Connect the outer recovery supervisor with its remaining
+outcome and window-set qualification.
 Phase 844 supplies explicit cancellation/draining of that key with retained cleanup-failure reporting.
 That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.

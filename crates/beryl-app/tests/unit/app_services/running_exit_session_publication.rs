@@ -33,6 +33,23 @@ mod selected_preparation {
     include!("selected_recovery_preparation_support.rs");
 }
 
+mod selected_publication {
+    use super::*;
+    include!("selected_recovery_publication_support.rs");
+}
+
+#[test]
+fn native_exit_selected_session_publication_completes_same_home_recovery() {
+    run_with_window(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        true,
+    );
+}
+
 #[test]
 fn native_exit_selected_session_publication_prepares_same_home_recovery() {
     run_with_window(
@@ -608,7 +625,7 @@ fn run_with_window(
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
                             if selected {
-                                selected_preparation::verify_and_dispose(owner, &request, cx).await;
+                                selected_preparation::verify_and_dispose(owner, &request, matches!(publication_delivery, RecoveryPublicationDelivery::Driven), cx).await;
                                 observed.set(true);
                                 cx.update(|app| app.quit()).unwrap();
                                 return;

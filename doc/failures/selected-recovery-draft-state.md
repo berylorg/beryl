@@ -34,7 +34,8 @@ passed in `e89ca25e-2d5c-4ab7-a5b4-5e4a574836f0`; six selected preparation and s
 passed in `c19b1baf-d9ce-4efd-8079-8046e3174752`. Production compilation, scoped formatting and
 independent review passed. The selected full regression now passes this guard and its recovery
 completion assertions, then exposes the separate [host close-ticket defect](selected-recovery-close-release.md).
-Phase 852 is accepted; phase 851 remains unaccepted.
+Phase 852 is accepted. After the separate host close-ticket correction, phase 851's one-window
+proven-noncommit recovery case also passed with full cleanup and same-home reopen.
 
 The failed test processes exited. Exact printed homes
 `C:\Users\user\AppData\Local\Temp\.tmpK5QQNY` and

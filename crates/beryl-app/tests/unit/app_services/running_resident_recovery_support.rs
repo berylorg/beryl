@@ -268,9 +268,9 @@ async fn prepare_inner(
     )
 }
 
-pub(super) use shell_support::config as configure;
+pub(in super::super) use shell_support::config as configure;
 
-pub(super) fn environment(
+pub(in super::super) fn environment(
     seed: gpui_text_input::RangeRestorationSeed,
     selection: MainWindowComposerSelectionIdentity,
     window: &gpui::Window,
