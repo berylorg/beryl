@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 822: Restore Recovered Widget Availability Under Shutdown Gating (finished)
+# Phase 823: Prepare Recovered Composer Autosave Before Close Release (finished)
 
-The synchronous recovered resident/mount release now enables the widget with its shutdown read-only
-gate installed. Enabling refusal preserves lifecycle and close custody. No state, worker or service
-access was added. All nine focused tests, compilation, formatting and independent review passed.
-Autosave preparation and coherent process reopening remain pending.
+Recovered service-close preparation restores the retained autosave interval onto the fresh clean
+host, requiring drained local custody and nonblocking service access. It clears obsolete local
+autosave fencing/errors without scheduling work or adding state. All nine focused recovery tests,
+compilation, formatting and independent lifecycle review passed. Coherent process reopening remains.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -181,7 +181,8 @@ publication using the retained actual result and exact published appearance, pre
 Phase 820 supplies the synchronous resident lifecycle transition for the later recovery commit.
 Phase 821 couples it to exact settled mount close cleanup without service access. Phase 822 enables
 the recovered widget under its shutdown read-only gate within that synchronous contribution;
-autosave preparation and coherent process interaction release remain required.
+Phase 823 prepares clean recovered autosave with retained settings before service-close completion;
+coherent process interaction release remains required.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

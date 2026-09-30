@@ -24,6 +24,24 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window::conversation_composer_mount) fn prepare_recovered_autosave(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<bool, String> {
+        if self.autosave.recovery_adapters()?.is_none() {
+            return Err("recovered composer autosave adapters are missing".into());
+        }
+        if !self
+            .bound_service()?
+            .prepare_recovered_autosave(selection, self.autosave.settings)?
+        {
+            return Ok(false);
+        }
+        self.autosave.fenced = false;
+        self.autosave.last_error = None;
+        Ok(true)
+    }
+
     pub(super) fn submission_assets(&self) -> Result<beryl_state::AssetState, String> {
         Ok(self.autosave.adapters()?.0.clone())
     }

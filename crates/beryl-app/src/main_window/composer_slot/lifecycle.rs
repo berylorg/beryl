@@ -22,6 +22,37 @@ pub enum MainWindowComposerAutosaveCaptureRequirement {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn prepare_recovered_autosave(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        settings: Option<(u64, ComposerHostAutosaveInterval)>,
+    ) -> Result<(), String> {
+        let selected = self
+            .selected_mut(selection)
+            .map_err(|error| error.to_string())?;
+        if selected.draft_state.is_dirty()
+            || selected.host.is_dirty()
+            || selected.host.autosave_timer().is_some()
+            || selected
+                .host
+                .lifecycle_diagnostics()
+                .joined_publication_ticket()
+                .is_some()
+        {
+            return Err("recovered composer autosave is not clean and idle".into());
+        }
+        if let Some((generation, interval)) = settings {
+            selected
+                .host
+                .publish_autosave_interval(selection.binding(), generation, interval)
+                .map_err(|error| error.to_string())?;
+            if selected.host.autosave_interval() != interval {
+                return Err("recovered composer autosave settings are stale".into());
+            }
+        }
+        Ok(())
+    }
+
     pub fn selected_autosave_timer(
         &self,
         selection: MainWindowComposerSelectionIdentity,

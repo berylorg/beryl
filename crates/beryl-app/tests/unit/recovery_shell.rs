@@ -89,9 +89,19 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         .unwrap();
     let resident = mount.read_with(cx, |mount, _| mount.contribution().unwrap());
     let input = resident.read_with(cx, |resident, _| resident.gpui_input());
+    let interval =
+        crate::composer_host::ComposerHostAutosaveInterval::new(if aggregate { 17 } else { 30 })
+            .unwrap();
     let mut draft = shell
         .window()
         .update(cx, |root, window, cx| {
+            if aggregate {
+                mount.update(cx, |mount, cx| {
+                    mount
+                        .publish_autosave_interval(7, interval, window, cx)
+                        .unwrap();
+                });
+            }
             input.update(cx, |input, cx| {
                 input.focus(window);
                 input.replace_text_in_range(None, "preserved shell draft", window, cx);
@@ -530,6 +540,22 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
         });
         let service = mount.read_with(cx, |mount, _| mount.bound_service().unwrap().clone());
         assert!(service.test_window_close_is_current(fresh));
+        assert!(
+            service
+                .prepare_recovered_autosave(old_close.selection(), None)
+                .is_err()
+        );
+        assert!(
+            service
+                .prepare_recovered_autosave(
+                    fresh.selection(),
+                    Some((
+                        0,
+                        crate::composer_host::ComposerHostAutosaveInterval::new(19).unwrap()
+                    )),
+                )
+                .is_err()
+        );
         if let Some(draft) = draft.as_mut() {
             let target = cx.update(|app| owner.read(app).target());
             window
@@ -560,6 +586,10 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                 assert!(mount.release_interrupted_exit_draft(fresh, cx).is_err());
                 assert!(service.test_window_close_is_current(fresh));
                 drop(retained);
+                let autosave_worker = mount.test_autosave_worker(|| {}).unwrap();
+                assert!(mount.release_interrupted_exit_draft(fresh, cx).is_err());
+                assert!(service.test_window_close_is_current(fresh));
+                drop(autosave_worker);
                 service.test_with_close_slot_locked(|| {
                     assert_eq!(
                         mount.release_interrupted_exit_draft(fresh, cx).unwrap(),
@@ -593,6 +623,27 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
             }
             assert!(!service.test_window_close_is_current(fresh));
             assert!(mount.read_with(cx, |mount, _| mount.recovery_binding_current(fresh)));
+            service.test_with_selected_host(|host| {
+                assert_eq!(host.autosave_interval(), interval);
+                assert!(host.autosave_timer().is_none());
+            });
+            assert!(
+                service
+                    .prepare_recovered_autosave(
+                        fresh.selection(),
+                        aggregate.then_some((7, interval)),
+                    )
+                    .unwrap()
+            );
+            let autosave = mount.read_with(cx, |mount, _| mount.autosave_diagnostics());
+            assert_eq!(
+                autosave.phase(),
+                MainWindowConversationComposerAutosavePhase::Idle
+            );
+            assert_eq!(autosave.retained_tasks(), 0);
+            assert_eq!(autosave.retained_workers(), 0);
+            assert!(!autosave.fenced());
+            assert!(autosave.last_error().is_none());
         }
         cx.update(|app| {
             mount.update(app, |mount, cx| {

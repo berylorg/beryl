@@ -7,6 +7,22 @@ use crate::main_window::MainWindowConversationComposerCloseTicket;
 use std::sync::TryLockError;
 
 impl MainWindowConversationComposerService {
+    pub(in crate::main_window) fn prepare_recovered_autosave(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        settings: Option<(u64, crate::composer_host::ComposerHostAutosaveInterval)>,
+    ) -> Result<bool, String> {
+        let mut slot = match self.slot.try_lock() {
+            Ok(slot) => slot,
+            Err(TryLockError::WouldBlock) => return Ok(false),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err("conversation composer service lock failed".to_owned());
+            }
+        };
+        slot.prepare_recovered_autosave(selection, settings)?;
+        Ok(true)
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_begin_window_close_flush(
         &self,

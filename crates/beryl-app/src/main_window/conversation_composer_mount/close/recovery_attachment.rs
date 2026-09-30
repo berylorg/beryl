@@ -60,6 +60,9 @@ impl MainWindowConversationComposerMount {
         if self.window_close_released == Some(ticket) {
             return Ok(MainWindowConversationComposerCloseRelease::Released);
         }
+        if !self.prepare_recovered_autosave(ticket.selection())? {
+            return Ok(MainWindowConversationComposerCloseRelease::Pending);
+        }
         match self
             .bound_service()?
             .release_window_close_gate(ticket, None)?
