@@ -509,6 +509,7 @@
 - [x] Accepted consuming CAS retirement with retained failed-home lock/reconciliation custody, exact rejection, and terminal-only cleanup errors. Focused recovery evidence, shutdown regressions and independent custody review passed.
 - [x] Accepted fresh reopening-candidate CAS preparation, configuration, cancellation and failure custody through shared convergence and fenced construction; initial/recovery regressions and independent review passed.
 - [x] Gate: independently accepted unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation. This does not accept complete-stack publication or running-window recovery.
+- [x] Qualified explicitly driven interrupted-Exit recovery with two selected windows, preserved resident identities, partial-binding fences and cancelled-Exit settlement across noncommit, commit and candidate-reconciled commit.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff

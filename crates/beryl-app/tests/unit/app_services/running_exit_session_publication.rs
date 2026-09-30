@@ -355,8 +355,63 @@ fn run_with_window(
     retirement_delivery: Option<RetirementDelivery>,
     selected: bool,
 ) {
+    run_with_windows(
+        fault,
+        consumer,
+        settlement_unwind,
+        publication_delivery,
+        retirement_delivery,
+        u8::from(selected),
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_noncommitted_exit() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_committed_exit() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_indeterminate_exit() {
+    run_with_windows(
+        Some(FaultPoint::AfterCommitBeforePersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        None,
+        2,
+    );
+}
+
+fn run_with_windows(
+    fault: Option<FaultPoint>,
+    consumer: bool,
+    settlement_unwind: bool,
+    publication_delivery: RecoveryPublicationDelivery,
+    retirement_delivery: Option<RetirementDelivery>,
+    selected_count: u8,
+) {
+    let selected = selected_count != 0;
     let directory = if selected {
-        resident_recovery::resident_fixture::selected_home()
+        resident_recovery::resident_fixture::selected_home_with_windows(selected_count)
     } else {
         support::native_home()
     };
@@ -402,6 +457,7 @@ fn run_with_window(
                     let StartupCompletion::Running(running) = result else {
                         panic!("startup failed")
                     };
+                    assert_eq!(running.windows.shells().len(), usize::from(selected_count.max(1)));
                     let invoking = running.windows.window_ids()[0];
                     let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::start(running, app);

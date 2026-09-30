@@ -4,7 +4,14 @@ pub(super) async fn verify_and_dispose(
     publish: bool,
     cx: &mut AsyncApp,
 ) {
-    let window = owner.borrow().test_process().windows.shells()[0].window();
+    let windows: Vec<_> = owner
+        .borrow()
+        .test_process()
+        .windows
+        .shells()
+        .iter()
+        .map(|shell| shell.window())
+        .collect();
     let (home, retired) = {
         let retained = owner.borrow();
         let graph = retained.test_services().graph().unwrap();
@@ -31,22 +38,26 @@ pub(super) async fn verify_and_dispose(
             ),
         )
     };
-    let (mount, composer, input, selection, close) = window
-        .update(cx, |root, _, app| {
-            assert!(!root.controller().unwrap().is_threadless());
-            let mount = root.controller().unwrap().composer_mount().unwrap();
-            let composer = mount.read(app).contribution().unwrap();
-            let resident = composer.read(app);
-            let input = resident.gpui_input();
-            assert_eq!(root.test_exit_presentation().0, "Exiting…");
-            let selection = resident.selection_identity().claim();
-            let close = owner
-                .borrow()
-                .test_captured_recovery_ticket(composer.entity_id())
-                .unwrap();
-            (mount, composer.clone(), input, selection, close)
-        })
-        .unwrap();
+    let mut residents = Vec::new();
+    for window in &windows {
+        let snapshot = window
+            .update(cx, |root, _, app| {
+                assert!(!root.controller().unwrap().is_threadless());
+                let mount = root.controller().unwrap().composer_mount().unwrap();
+                let composer = mount.read(app).contribution().unwrap();
+                let resident = composer.read(app);
+                let input = resident.gpui_input();
+                assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                let selection = resident.selection_identity().claim();
+                let close = owner
+                    .borrow()
+                    .test_captured_recovery_ticket(composer.entity_id())
+                    .unwrap();
+                (mount, composer.clone(), input, selection, close)
+            })
+            .unwrap();
+        residents.push(snapshot);
+    }
 
     RunningProcessOwner::retire_and_prepare_interrupted_exit(
         &owner,
@@ -117,32 +128,43 @@ pub(super) async fn verify_and_dispose(
             ));
         }
         assert!(retained.exit_requested());
-        assert_eq!(retained.test_process().windows.shells()[0].window(), window);
         assert_eq!(
-            retained.test_captured_recovery_ticket(composer.entity_id()),
-            Some(close)
+            retained.test_process().windows.shells().len(),
+            windows.len()
         );
+        for (index, (_, composer, _, _, close)) in residents.iter().enumerate() {
+            assert_eq!(
+                retained.test_process().windows.shells()[index].window(),
+                windows[index]
+            );
+            assert_eq!(
+                retained.test_captured_recovery_ticket(composer.entity_id()),
+                Some(*close)
+            );
+        }
     }
     assert!(!RunningProcessOwner::finish_exit(&owner, request));
-    window
-        .update(cx, |root, _, app| {
-            assert!(root.test_shell_construction_retired());
-            assert_eq!(root.test_exit_presentation().0, "Exiting…");
-            assert_eq!(
-                root.controller().unwrap().composer_mount().as_ref(),
-                Some(&mount)
-            );
-            assert_eq!(mount.read(app).contribution().as_ref(), Some(&composer));
-            let resident = composer.read(app);
-            assert_eq!(resident.gpui_input(), input);
-            assert_eq!(resident.selection_identity().claim(), selection);
-            assert_eq!(resident.recovery_snapshot().unwrap().close_ticket(), close);
-            assert!(!input.read(app).is_enabled());
-        })
-        .unwrap();
+    for (window, (mount, composer, input, selection, close)) in windows.iter().zip(&residents) {
+        window
+            .update(cx, |root, _, app| {
+                assert!(root.test_shell_construction_retired());
+                assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                assert_eq!(
+                    root.controller().unwrap().composer_mount().as_ref(),
+                    Some(mount)
+                );
+                assert_eq!(mount.read(app).contribution().as_ref(), Some(composer));
+                let resident = composer.read(app);
+                assert_eq!(&resident.gpui_input(), input);
+                assert_eq!(&resident.selection_identity().claim(), selection);
+                assert_eq!(&resident.recovery_snapshot().unwrap().close_ticket(), close);
+                assert!(!input.read(app).is_enabled());
+            })
+            .unwrap();
+    }
 
     if publish {
-        drop((mount, composer, input));
+        drop(residents);
         selected_publication::verify_and_dispose(owner, request, retired, cx).await;
         return;
     }
@@ -171,9 +193,11 @@ pub(super) async fn verify_and_dispose(
         .into_inner()
         .test_into_process();
     cx.update(|app| {
-        window
-            .update(app, |_, window, _| window.remove_window())
-            .unwrap();
+        for window in windows {
+            window
+                .update(app, |_, window, _| window.remove_window())
+                .unwrap();
+        }
         drop(running.windows);
         running
             .appearance
@@ -181,7 +205,7 @@ pub(super) async fn verify_and_dispose(
         assert!(app.windows().is_empty());
     })
     .unwrap();
-    drop((mount, composer, input));
+    drop(residents);
     cx.background_executor()
         .spawn(async move {
             assert!(running.services.graph().is_none());

@@ -32,9 +32,15 @@ mod shell_support;
 pub(super) use composer_support as widget_support;
 
 pub(in super::super) fn selected_home() -> tempfile::TempDir {
+    selected_home_with_windows(1)
+}
+
+pub(in super::super) fn selected_home_with_windows(count: u8) -> tempfile::TempDir {
     let fixture = shell_support::Fixture::new(194);
     native_appearance::install_native_theme(&fixture.store, &fixture.state);
-    drop(fixture.acquire(195));
+    for index in 0..count {
+        drop(fixture.acquire(195 + index));
+    }
     let shell_support::Fixture {
         directory,
         store,
