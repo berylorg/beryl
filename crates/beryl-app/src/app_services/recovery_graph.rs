@@ -148,6 +148,27 @@ impl ProcessServiceOwner {
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn revalidate_interrupted_exit_session(
+        &mut self,
+        home: BerylHomeId,
+        generation: HomeGeneration,
+        original: &crate::running_owner::RunningShutdownSession,
+    ) -> Result<(), String> {
+        let (candidate, _) = self
+            .services
+            .as_mut()
+            .expect("prepared recovery services")
+            .cas
+            .as_mut()
+            .expect("prepared recovery CAS custody")
+            .app_preparation_parts()
+            .ok_or("recovery handoff is unavailable")?;
+        if candidate.home_id() != home || candidate.generation() != generation {
+            return Err("session validation belongs to another recovery candidate".into());
+        }
+        original.revalidate_candidate(candidate, &self.state.session())
+    }
+
     pub(crate) fn composer_recovery_read(
         &mut self,
         source: &crate::main_window::MainWindowComposerCandidateSource,

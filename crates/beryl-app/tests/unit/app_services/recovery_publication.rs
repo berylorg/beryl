@@ -62,6 +62,42 @@ fn dispose(
 }
 
 #[test]
+fn prepared_graph_session_validation_refuses_unproven_outcome_without_consuming_custody() {
+    let (directory, mut owner, _faults, expected) = retired();
+    let (generation, mut prepared) = replacement(&mut owner, expected);
+    let graph = prepared.as_mut().unwrap();
+    let appearance = graph.appearance();
+    let original = crate::running_owner::RunningShutdownSession::Unwound;
+    for (home, generation, reason) in [
+        (owner.home_id, expected, "another recovery candidate"),
+        (
+            BerylHomeId::from_bytes([99; 16]),
+            generation,
+            "another recovery candidate",
+        ),
+        (owner.home_id, generation, "unproven"),
+    ] {
+        assert!(
+            graph
+                .revalidate_interrupted_exit_session(home, generation, &original)
+                .unwrap_err()
+                .contains(reason)
+        );
+        assert!(Arc::ptr_eq(&appearance, &graph.appearance()));
+        assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    }
+    assert!(graph.matches_candidate(owner.home_id, generation));
+    dispose(&mut owner, expected, prepared.take().unwrap());
+    owner
+        .take_retired_service_home(expected)
+        .unwrap()
+        .close()
+        .unwrap();
+    assert_reopens(&directory);
+    directory.close().unwrap();
+}
+
+#[test]
 fn recovery_publication_installs_complete_graph_without_releasing_interaction() {
     for release in [false, true] {
         let (directory, mut owner, faults, expected) = retired();

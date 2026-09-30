@@ -89,13 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 816: Publish Complete Prepared Recovery Graphs (finished)
+# Phase 817: Revalidate Sessions Through Prepared Recovery Graphs (finished)
 
-The process owner now validates exact process/candidate custody and installs the complete prepared
-replacement graph in one serialized publication. Refusal and storage failure retain the prepared
-graph; success transfers service and attention ownership while preserving worker-start custody
-and process fencing. All 193 selected cases passed after two test-fixture corrections; compilation,
-formatting and independent review passed. Running-owner recovery integration remains pending.
+The running owner now revalidates original Exit evidence against the prepared graph's fresh
+candidate and session domain using its existing worker slot. Graph, original outcome and bounded
+validation-result custody survive cancellation, stale delivery and failure; interaction remains
+fenced. All 44 selected tests, compilation, formatting and independent review passed.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -175,6 +174,10 @@ Phase 816 supplies exact-process preflight and complete-graph publication into t
 retaining the existing worker-start custody and closed process admission. Connect that boundary
 to the running owner next, with fresh session and complete-window validation, retained original
 outcomes and the existing single-worker exclusion.
+Phase 817 supplies fresh prepared-graph session reads with retained original evidence and bounded
+result custody through the running worker. Graph availability is not successful validation; the
+publication composition must require a fresh successful check for its exact candidate and attempt,
+then compose complete bindings and draft/work cleanup before coherent interaction release.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

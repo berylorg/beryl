@@ -97,6 +97,7 @@ impl RunningProcessOwner {
             request: request.identity(),
             session: Rc::new(RefCell::new(Some(RunningShutdownSession::Unwound))),
             settlement: Rc::new(RefCell::new(Some(CandidateSettlement::Services(Ok(graph))))),
+            service_validation: Rc::new(RefCell::new(None)),
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,

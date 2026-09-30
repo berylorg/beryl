@@ -10,6 +10,7 @@ mod resident_retirement;
 mod resume;
 mod retirement;
 mod service_preparation;
+mod service_validation;
 mod settlement;
 mod threadless;
 pub(crate) use settlement::InterruptedExitCandidate;
@@ -18,6 +19,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
+    service_validation: Rc<RefCell<Option<Result<(), String>>>>,
     retirement: Rc<RefCell<Option<retirement::GraphRetirement>>>,
     resident: Option<resident::ResidentPreparation>,
     pending_resident_frame: Option<std::rc::Weak<()>>,
@@ -43,6 +45,7 @@ impl RunningProcessOwner {
             request: request.identity(),
             session: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),
+            service_validation: Rc::new(RefCell::new(None)),
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,

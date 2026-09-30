@@ -8,6 +8,11 @@ mod appearance_attachment {
     include!("prepared_appearance_attachment_support.rs");
 }
 
+mod session_validation {
+    use super::*;
+    include!("prepared_session_validation_support.rs");
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -223,6 +228,8 @@ pub(super) async fn verify(
             mode == "success"
         );
         if mode == "success" {
+            session_validation::verify(owner, request, home, fresh_generation, generation, cx)
+                .await;
             assert!(
                 owner
                     .borrow_mut()
