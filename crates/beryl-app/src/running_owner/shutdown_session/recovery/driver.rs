@@ -10,10 +10,11 @@ use std::time::Duration;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
-    pub(crate) async fn attach_interrupted_exit_resident_window(
+    pub(crate) async fn prepare_and_attach_interrupted_exit_resident_window(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
-        key: &resident::ResidentPreparationKey,
+        preparation: &mut Option<resident::ResidentPreparationKey>,
+        admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
         window: gpui::WindowHandle<MainWindowShellRoot>,
         adapters: &mut Option<
             crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
@@ -32,6 +33,22 @@ impl RunningProcessOwner {
         ),
         String,
     > {
+        if preparation.is_none() {
+            cx.update(|app| {
+                if !owner.borrow().process.commands.is_active(request) {
+                    return Err("Interrupted Exit request changed".to_string());
+                }
+                if cancellation.is_cancelled() {
+                    return Err("Interrupted Exit preparation was cancelled".into());
+                }
+                *preparation = Some(admit(app)?);
+                Ok(())
+            })
+            .map_err(|error| error.to_string())??;
+        } else {
+            drop(admit);
+        }
+        let key = preparation.as_ref().unwrap();
         let mut current = Some(current);
         loop {
             let attached = cx
@@ -69,6 +86,7 @@ impl RunningProcessOwner {
                 })
                 .map_err(|error| error.to_string())??;
             if let Some(attached) = attached {
+                preparation.take();
                 return Ok(attached);
             }
             cx.background_executor()

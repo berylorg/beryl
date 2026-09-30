@@ -33,21 +33,72 @@ fn native_recovery_driver_retains_resident_after_capacity_refusal() {
 pub(super) async fn interrupt_pending(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &RunningExitRequest,
-    key: &ResidentPreparationKey,
+    admit: impl FnOnce(&mut gpui::App) -> Result<ResidentPreparationKey, String>,
     window: WindowHandle<MainWindowShellRoot>,
     adapters: &mut Option<PreparedComposerRecoveryAdapters>,
     cancel: bool,
     cx: &mut AsyncApp,
-) {
+) -> ResidentPreparationKey {
     use std::future::Future;
+    let mut preparation = None;
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
         Some(Box::new(resident_fixture::configure));
     let cancellation = CommandCancellation::new();
-    let mut driver = Box::pin(
-        RunningProcessOwner::attach_interrupted_exit_resident_window(
+    let foreign = request.test_foreign();
+    for pre_cancelled in [false, true] {
+        let token = CommandCancellation::new();
+        if pre_cancelled {
+            token.cancel();
+        }
+        let error = RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+            owner,
+            if pre_cancelled { request } else { &foreign },
+            &mut preparation,
+            |_| panic!("refused driver admitted preparation"),
+            window,
+            adapters,
+            &mut configurator,
+            |_, _| panic!("refused driver reached attachment"),
+            token,
+            cx,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains(if pre_cancelled {
+            "cancelled"
+        } else {
+            "request changed"
+        }));
+        assert!(preparation.is_none());
+    }
+    assert_eq!(
+        RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
             owner,
             request,
-            key,
+            &mut preparation,
+            |_| Err("injected admission refusal".into()),
+            window,
+            adapters,
+            &mut configurator,
+            |_, _| panic!("failed admission reached attachment"),
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err(),
+        "injected admission refusal"
+    );
+    assert!(preparation.is_none());
+    owner
+        .borrow()
+        .interrupted_exit_services_result(request)
+        .unwrap();
+    let mut driver = Box::pin(
+        RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+            owner,
+            request,
+            &mut preparation,
+            admit,
             window,
             adapters,
             &mut configurator,
@@ -75,6 +126,7 @@ pub(super) async fn interrupt_pending(
             .is_err()
     );
     assert!(!RunningProcessOwner::finish_exit(owner, request));
+    preparation.expect("abandoned or cancelled waiting lost the admitted key")
 }
 
 pub(super) async fn attempt(
@@ -91,14 +143,16 @@ pub(super) async fn attempt(
     scenario: ResidentScenario,
     cx: &mut AsyncApp,
 ) -> bool {
+    let mut preparation = Some(key.clone());
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
         Some(Box::new(resident_fixture::configure));
     let foreign = request.test_foreign();
     assert!(
-        RunningProcessOwner::attach_interrupted_exit_resident_window(
+        RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
             owner,
             &foreign,
-            key,
+            &mut preparation,
+            |_| panic!("existing preparation was readmitted"),
             window,
             adapters,
             &mut configurator,
@@ -129,10 +183,11 @@ pub(super) async fn attempt(
             (input, window.focused(app))
         })
         .unwrap();
-    let result = RunningProcessOwner::attach_interrupted_exit_resident_window(
+    let result = RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
         owner,
         request,
-        key,
+        &mut preparation,
+        |_| panic!("existing preparation was readmitted"),
         window,
         adapters,
         &mut configurator,
@@ -142,6 +197,7 @@ pub(super) async fn attempt(
     )
     .await;
     let attached = scenario == ResidentScenario::DrivenAttachment;
+    assert_eq!(preparation.is_none(), attached);
     window
         .update(cx, |root, window, app| {
             assert_eq!(window.focused(app), focus);
@@ -203,10 +259,11 @@ pub(super) async fn attempt(
         .unwrap();
     if attached {
         assert!(
-            RunningProcessOwner::attach_interrupted_exit_resident_window(
+            RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
                 owner,
                 request,
-                key,
+                &mut Some(key.clone()),
+                |_| panic!("duplicate attachment was readmitted"),
                 window,
                 adapters,
                 &mut configurator,

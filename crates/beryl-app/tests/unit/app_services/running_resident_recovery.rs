@@ -150,8 +150,7 @@ fn resident_run(scenario: ResidentScenario) {
                         let completions = Rc::new(Cell::new(0));
                         let completed = completions.clone();
                         let foreign = request.test_foreign();
-                        let key = cx
-                            .update(|app| {
+                        cx.update(|app| {
                                 assert!(
                                     RunningProcessOwner::prepare_interrupted_exit_resident(
                                         &owner,
@@ -238,6 +237,8 @@ fn resident_run(scenario: ResidentScenario) {
                                     &request, home, generation,
                                     crate::app_services::tests::configuration().projection.turn_start_admission_requirement(),
                                 ).unwrap());
+                            }).unwrap();
+                        let admit = |app: &mut gpui::App| {
                                 let key = RunningProcessOwner::prepare_interrupted_exit_resident(
                                     &owner,
                                     &request,
@@ -348,15 +349,16 @@ fn resident_run(scenario: ResidentScenario) {
                                         .update(app, |_, window, _| window.minimize_window())
                                         .unwrap();
                                 }
-                                key
-                            })
-                            .unwrap();
-                        if matches!(scenario, ResidentScenario::DrivenAttachment | ResidentScenario::DrivenPendingCancellation) {
+                                Ok(key)
+                        };
+                        let key = if matches!(scenario, ResidentScenario::DrivenAttachment | ResidentScenario::DrivenPendingCancellation) {
                             attachment_driver::interrupt_pending(
-                                &owner, &request, &key, window, &mut adapters,
+                                &owner, &request, admit, window, &mut adapters,
                                 scenario == ResidentScenario::DrivenPendingCancellation, cx,
-                            ).await;
-                        }
+                            ).await
+                        } else {
+                            cx.update(admit).unwrap().unwrap()
+                        };
                         let deadline = Instant::now() + Duration::from_secs(5);
                         if scenario == ResidentScenario::SuspendedFrame {
                             loop {
