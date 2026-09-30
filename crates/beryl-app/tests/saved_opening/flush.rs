@@ -8,6 +8,75 @@ use syndic_storage::{DraftEditorCandidateSessionReadOutcomeV1, SyndicTimestamp};
 use super::{base, composer, lifecycle, support::Fixture};
 
 #[test]
+fn opening_draft_state_keeps_private_history_clean_until_adoption() {
+    use beryl_app::main_window::MainWindowComposerDraftState;
+    use syndic_storage::DraftRootHistoryPairV1;
+
+    for text in ["", "saved checkpoint"] {
+        let mut fixture = Fixture::reopened("opening-draft-state", 70, text);
+        let initial = fixture.binding();
+        let durable = fixture.current();
+        let revision = fixture.store.home_revision().unwrap();
+        let mut state = MainWindowComposerDraftState::new(
+            initial,
+            durable.draft().history().candidate_generation(),
+            DraftRootHistoryPairV1::new(durable.draft().piece_root(), durable.draft().history()),
+        )
+        .unwrap();
+        assert_ne!(state.adopted().history(), state.published().history());
+        assert!(!state.is_dirty());
+        assert!(!fixture.host.is_dirty());
+        assert_eq!(fixture.store.home_revision().unwrap(), revision);
+
+        composer::commit_text(
+            &mut fixture.host,
+            &fixture.store,
+            initial,
+            101,
+            0,
+            0,
+            "new ",
+            text.len() as u64 + 4,
+            1,
+        );
+        let edited = fixture.binding();
+        state.adopt(initial, edited).unwrap();
+        assert!(state.is_dirty());
+        assert!(fixture.host.is_dirty());
+        assert_eq!(fixture.current(), durable);
+
+        let undone = composer::select_history(
+            &mut fixture.host,
+            &fixture.store,
+            edited,
+            102,
+            gpui_text_input::MutationKind::Undo,
+        );
+        state.adopt(edited, undone).unwrap();
+        assert_eq!(state.adopted().root(), state.published().root());
+        assert!(state.is_dirty());
+        assert!(fixture.host.is_dirty());
+
+        fixture.flush_submission(103);
+        let published = fixture.current();
+        state
+            .publish(
+                undone,
+                fixture.binding(),
+                published.draft().history().candidate_generation(),
+                DraftRootHistoryPairV1::new(
+                    published.draft().piece_root(),
+                    published.draft().history(),
+                ),
+            )
+            .unwrap();
+        assert!(!state.is_dirty());
+        assert!(!fixture.host.is_dirty());
+        assert_eq!(state.published().history(), published.draft().history());
+    }
+}
+
+#[test]
 fn clean_empty_flush_requires_storage_authentication_and_creates_no_publication() {
     for purpose in [
         ComposerHostFlushPurpose::Submission,

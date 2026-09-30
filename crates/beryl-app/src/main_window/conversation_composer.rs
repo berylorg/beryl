@@ -411,9 +411,9 @@ impl MainWindowComposerDraftState {
     }
 
     pub fn is_dirty(self) -> bool {
+        // Opening forks history without an edit; flush and recovery authenticate its saved checkpoint.
         self.adopted.candidate().candidate_generation() != self.published.candidate_generation()
             || self.adopted.root() != self.published.root()
-            || self.adopted.history() != self.published.history()
     }
 
     pub fn adopt(
