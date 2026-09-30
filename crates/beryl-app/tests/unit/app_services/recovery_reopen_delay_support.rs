@@ -87,7 +87,7 @@ pub(super) async fn verify(
             .unwrap(),
         Some(deadline)
     );
-    if let Some(delay) = deadline.checked_duration_since(Instant::now()) {
+    while let Some(delay) = deadline.checked_duration_since(Instant::now()) {
         cx.background_executor().timer(delay).await;
     }
 }

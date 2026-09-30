@@ -86,3 +86,14 @@ six driver cases. Independent review accepted the authority-based assertion and 
 Final lifecycle run `ad55850b-0a04-4d2f-9a85-09f5fd45f449` passed all 50 cases. Production compilation
 and formatting passed. This accepts the selected attachment/binding boundary, not full same-home
 selected-process publication. No task-owned build or test process remained at phase completion.
+
+## Reopening Retry Deadline
+
+Run `a22f6d4c-776f-4c94-8819-50c8a69970b1` exposed a timing assumption in the existing
+`recovery_reopen_delay_support` fixture: its single timer await returned while the retained
+`Instant` deadline still refused construction. Recheck that same fixed deadline after each wake,
+matching production admission, instead of treating wake-up as proof of elapsed time. The early
+retry refusal assertion and real one-/two-second backoff remain intact; production is unchanged.
+The printed failed home `.tmpiVbZk7` was removed and verified absent. The aborted test also creates
+an unprinted foreign-candidate fixture; any residue from it has ambiguous ownership and must not
+be swept. Independent review accepted the deadline-loop correction.

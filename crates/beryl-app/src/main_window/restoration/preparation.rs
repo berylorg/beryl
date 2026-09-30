@@ -98,20 +98,8 @@ impl MainWindowRestoreSet {
 
     #[inline(never)]
     fn restored_step(&mut self) -> Result<PreparationStep, String> {
-        if self.current.is_none() {
-            let Some(window) = self.remaining.front() else {
-                return Ok(PreparationStep::Complete);
-            };
-            let (request, retirement) = (self.activation_source)(window)?;
-            self.current = Some(Box::new(self.attempt.begin(
-                self.expected_revision.unwrap(),
-                window.window_id(),
-                request,
-                retirement,
-                MainWindowComposerMarkerMetadataAuthority::new(self.services.state.assets()),
-            )?));
-            self.remaining.pop_front();
-            self.current_ready = false;
+        if self.current.is_none() && !self.begin_restored()? {
+            return Ok(PreparationStep::Complete);
         }
         let current = self.current.as_mut().unwrap();
         if !self.current_ready {
@@ -139,6 +127,29 @@ impl MainWindowRestoreSet {
                 .checked_next()
                 .map_err(|e| e.to_string())?,
         );
+        self.prepare_restored()
+    }
+
+    #[inline(never)]
+    fn begin_restored(&mut self) -> Result<bool, String> {
+        let Some(window) = self.remaining.front() else {
+            return Ok(false);
+        };
+        let (request, retirement) = (self.activation_source)(window)?;
+        self.current = Some(Box::new(self.attempt.begin(
+            self.expected_revision.unwrap(),
+            window.window_id(),
+            request,
+            retirement,
+            MainWindowComposerMarkerMetadataAuthority::new(self.services.state.assets()),
+        )?));
+        self.remaining.pop_front();
+        self.current_ready = false;
+        Ok(true)
+    }
+
+    #[inline(never)]
+    fn prepare_restored(&mut self) -> Result<PreparationStep, String> {
         let mut configurator = (self.services.configurator_source)();
         let current = *self.current.take().unwrap();
         let prepared = match current.prepare(&self.attempt, &mut configurator) {
@@ -148,6 +159,15 @@ impl MainWindowRestoreSet {
                 return Err(failure.error);
             }
         };
+        self.prepare_restored_shell(prepared, configurator)
+    }
+
+    #[inline(never)]
+    fn prepare_restored_shell(
+        &mut self,
+        prepared: RestoredWindowComposerPrepared,
+        configurator: MainWindowShellComposerConfigurator,
+    ) -> Result<PreparationStep, String> {
         match RestoredWindowShellPrepared::prepare(
             prepared,
             &self.attempt,

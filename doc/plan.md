@@ -89,13 +89,30 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 848: Drive Threadless Rebinding Through Recovery Completion (finished)
+# Phase 850: Bound Selected Startup Call-Stack Use (finished)
 
-The threadless driver now connects native authentication, adoption and appearance binding to
-prepared publication and cancelled-Exit completion using existing workers and retained outcomes.
-All 39 lifecycle checks passed (`78a1429c-b84e-4f01-8228-6c3be7d80e0d`), including combined
-success and cancelled/stale publication delivery; production compilation, formatting and
-independent lifecycle review passed. No additional runtime state or worker was introduced.
+Separated overlapping restoration and composer-service temporary frames without new retained
+state, workers, allocations or changed validation/custody semantics. Actual selected startup and
+same-home private recovery preparation now pass. All 117 affected tests, production compilation,
+formatting and independent review passed; see [stack evidence](failures/selected-process-startup.md).
+
+# Phase 849: Qualify Same-Home Selected Recovery Preparation (wip)
+
+Exercise the existing retirement-through-private-preparation driver with an actual selected native
+window owned by the same running process and configured home. Seed a persisted selected session,
+use ordinary startup restoration, report a failed Exit, and retain its original session evidence.
+Prove old resident and whole-graph retirement precede fresh private graph preparation while the
+native window, selected claim and disabled presentation remain retained. Use no substituted graph,
+window registration or retirement success. Dispose the unpublished graph and verify home custody
+and native cleanup. Selected rebinding/publication and supervisor mounting remain subsequent work.
+
+Verify the focused native case and existing session-publication suite, scoped formatting, and
+independent lifecycle review against backend-runtime same-home/interrupted-Exit authority.
+
+The selected-startup prerequisite is accepted in phase 850. Its clean focused run
+`26f9d4a9-befe-4963-bd18-6ff20a5fd165` now passes the complete selected private-preparation case,
+including disposal. All 117 affected checks and independent review have passed; complete this phase's
+test contribution and acceptance compaction. See [selected process startup evidence](failures/selected-process-startup.md).
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

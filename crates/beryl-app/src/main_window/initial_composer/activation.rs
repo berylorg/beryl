@@ -274,6 +274,18 @@ impl InitialComposerCandidate {
             );
         }
         self.preparation_started = true;
+        let service = self.prepare_selection_service(window_id)?;
+        let prepared =
+            MainWindowConversationComposerMount::prepare_selected(service, configurator)?;
+        validate_source()?;
+        Ok(prepared)
+    }
+
+    #[inline(never)]
+    fn prepare_selection_service(
+        &mut self,
+        window_id: beryl_model::WindowId,
+    ) -> Result<Arc<MainWindowConversationComposerService>, String> {
         let slot = MainWindowComposerSlot::new(
             window_id,
             self.claim,
@@ -287,9 +299,6 @@ impl InitialComposerCandidate {
             slot,
         ));
         self.service = Some(service.clone());
-        let prepared =
-            MainWindowConversationComposerMount::prepare_selected(service, configurator)?;
-        validate_source()?;
-        Ok(prepared)
+        Ok(service)
     }
 }
