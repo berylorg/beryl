@@ -21,6 +21,8 @@ use std::{
 mod recovery_graph;
 #[path = "app_services/recovery_preparation.rs"]
 mod recovery_preparation;
+#[path = "app_services/recovery_publication.rs"]
+mod recovery_publication;
 #[path = "app_services/recovery_retirement.rs"]
 mod recovery_retirement;
 #[path = "app_services/recovery_support.rs"]

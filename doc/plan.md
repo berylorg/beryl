@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 815: Retain Prepared Graphs Through Running Resident Recovery (finished)
+# Phase 816: Publish Complete Prepared Recovery Graphs (finished)
 
-The running owner's resident path now uses its retained complete prepared graph, returning custody
-through the same settlement slot after attachment or drained cancellation. Original session
-custody, exact ticket renewal and interaction fences remain intact; disposal uses the existing
-background service-cancellation path. All 28 native cases, compilation, formatting and independent
-review passed. Whole-graph publication and automatic recovery orchestration remain pending.
+The process owner now validates exact process/candidate custody and installs the complete prepared
+replacement graph in one serialized publication. Refusal and storage failure retain the prepared
+graph; success transfers service and attention ownership while preserving worker-start custody
+and process fencing. All 193 selected cases passed after two test-fixture corrections; compilation,
+formatting and independent review passed. Running-owner recovery integration remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -171,8 +171,10 @@ Phase 813 carries it through the shared GUI realization, adoption and cancelled 
 Phase 814 carries it through mount, shell and retained-draft attachment with exact ticket renewal.
 Phase 815 connects it to running-owner GUI preparation and attachment, restoring its retained
 settlement slot after adoption or drained cancellation and reusing background graph disposal.
-Connect the retained complete graph to supervisor attachment and publication next, preserving
-session outcome custody and the existing single-worker exclusion.
+Phase 816 supplies exact-process preflight and complete-graph publication into the process owner,
+retaining the existing worker-start custody and closed process admission. Connect that boundary
+to the running owner next, with fresh session and complete-window validation, retained original
+outcomes and the existing single-worker exclusion.
 Complete fresh graph attachment, retry-delay scheduling, whole-graph
 publication and coherent reopening composition;
 session and shell validation alone cannot complete the cancelled request.

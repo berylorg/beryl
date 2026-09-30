@@ -13,9 +13,10 @@ use crate::{
 use beryl_home_store::{HomeGeneration, HomeRecoveryCandidate};
 
 pub(crate) struct PreparedRecoveryServiceGraph {
+    process: ProcessAdmissionGate,
     services: Option<PreparedRecoveryAppServices>,
     sessions: ScheduledExecutionSessions,
-    attention: Arc<ProcessLifecycleAttentionPool>,
+    attention: Option<Arc<ProcessLifecycleAttentionPool>>,
     state: BerylState,
     syndic: SyndicStorage,
 }
@@ -79,9 +80,10 @@ impl ProcessServiceOwner {
             .map_err(|error| reject(error.to_string()))?;
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
+            process: self.process.clone(),
             services: None,
             sessions,
-            attention: Arc::new(ProcessLifecycleAttentionPool::new()),
+            attention: Some(Arc::new(ProcessLifecycleAttentionPool::new())),
             state,
             syndic,
         };
@@ -115,7 +117,10 @@ impl ProcessServiceOwner {
                     policy: configuration.session_policy.clone(),
                     token_directories: configuration.token_directories.clone(),
                 },
-                &prepared.attention,
+                prepared
+                    .attention
+                    .as_ref()
+                    .expect("prepared attention owner"),
                 &projection_cancellation,
             )
             .map_err(RecoveryServicePreparationError::Cas)?;
@@ -221,9 +226,13 @@ impl PreparedRecoveryServiceGraph {
 impl Drop for PreparedRecoveryServiceGraph {
     fn drop(&mut self) {
         drop(self.services.take());
-        self.attention.close();
+        if let Some(attention) = self.attention.take() {
+            attention.close();
+        }
     }
 }
+
+mod publication;
 
 #[cfg(all(test, feature = "test-faults", target_os = "windows"))]
 #[path = "../../tests/unit/app_services/recovery_graph_resident_support.rs"]

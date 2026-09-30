@@ -101,6 +101,10 @@ impl Default for ProcessAdmissionGate {
 }
 
 impl ProcessAdmissionGate {
+    pub(crate) fn same_process(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(AdmissionState {

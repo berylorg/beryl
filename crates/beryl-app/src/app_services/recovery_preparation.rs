@@ -8,10 +8,10 @@ use crate::{
 };
 
 pub(crate) struct PreparedRecoveryAppServices {
-    cas: Option<PreparedRecoveryCasServices>,
-    marker: Option<PreparedMarkerServices>,
-    activity: Option<PreparedActivityService>,
-    theme: Option<PreparedThemeRuntime>,
+    pub(super) cas: Option<PreparedRecoveryCasServices>,
+    pub(super) marker: Option<PreparedMarkerServices>,
+    pub(super) activity: Option<PreparedActivityService>,
+    pub(super) theme: Option<PreparedThemeRuntime>,
 }
 
 pub(crate) struct RecoveryAppServicePreparationFailure {

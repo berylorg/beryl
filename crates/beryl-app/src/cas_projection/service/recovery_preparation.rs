@@ -53,6 +53,39 @@ impl RecoveryCasPreparationFailure {
 }
 
 impl PreparedRecoveryCasServices {
+    pub(crate) fn publish(
+        &mut self,
+    ) -> Result<
+        (
+            HomeStore,
+            ProjectionConnectionService,
+            InitialStartOwner,
+            crate::discussion_settlement::coordinator::HandoffCoordinator,
+        ),
+        beryl_home_store::HomeCandidateError,
+    > {
+        assert!(self.service.is_some() && self.initial_start.is_some() && self.handoff.is_some());
+        let home = match self
+            .candidate
+            .take()
+            .expect("reopening candidate custody")
+            .publish()
+        {
+            Ok(home) => home,
+            Err(failure) => {
+                let (error, candidate) = failure.into_parts();
+                self.candidate = Some(candidate);
+                return Err(error);
+            }
+        };
+        Ok((
+            home,
+            self.service.take().unwrap(),
+            self.initial_start.take().unwrap(),
+            self.handoff.take().unwrap(),
+        ))
+    }
+
     pub(crate) fn app_preparation_parts(
         &mut self,
     ) -> Option<(&mut HomeRecoveryCandidate, &ProjectionConnectionService)> {
