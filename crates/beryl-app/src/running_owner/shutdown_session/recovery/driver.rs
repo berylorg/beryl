@@ -476,6 +476,15 @@ impl RunningProcessOwner {
                 .bind_interrupted_exit_process(request, appearance, app)
         })
         .map_err(|error| error.to_string())??;
+        Self::await_interrupted_exit_completion(owner, request, cancellation, cx).await
+    }
+
+    pub(crate) async fn await_interrupted_exit_completion(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         loop {
             let complete = cx
                 .update(|app| {

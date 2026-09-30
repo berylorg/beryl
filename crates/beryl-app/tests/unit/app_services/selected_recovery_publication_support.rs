@@ -255,17 +255,22 @@ pub(super) async fn verify_and_dispose(
         residents.push((mount, composer, input, selection, window_id));
     }
 
-    RunningProcessOwner::publish_and_complete_interrupted_exit(
-        &owner,
-        request,
-        retired,
-        generation,
-        &appearance,
-        CommandCancellation::new(),
-        cx,
-    )
-    .await
-    .unwrap();
+    if windows.len() > 1 {
+        completion_continuation::verify(&owner, request, retired, generation, &appearance, cx)
+            .await;
+    } else {
+        RunningProcessOwner::publish_and_complete_interrupted_exit(
+            &owner,
+            request,
+            retired,
+            generation,
+            &appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap();
+    }
     assert!(!owner.borrow().exit_requested());
     assert!(owner.borrow().interrupted_exit_session().is_none());
     assert!(owner.borrow().shutdown_status().is_none());
@@ -387,4 +392,9 @@ pub(super) async fn verify_and_dispose(
             super::close(&mut running.services);
         })
         .await;
+}
+
+mod completion_continuation {
+    use super::*;
+    include!("selected_recovery_completion_support.rs");
 }
