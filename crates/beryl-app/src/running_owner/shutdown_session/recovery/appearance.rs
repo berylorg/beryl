@@ -59,6 +59,9 @@ impl RunningProcessOwner {
     ) -> Result<bool, String> {
         self.interrupted_exit_theme_activation_result(request)?;
         self.validate_interrupted_exit_bindings(request, appearance, app)?;
+        if self.process.appearance != *appearance {
+            return Err("Interrupted Exit process bindings are not installed".into());
+        }
         self.shutdown
             .as_ref()
             .and_then(|attempt| attempt.drafts.as_ref())

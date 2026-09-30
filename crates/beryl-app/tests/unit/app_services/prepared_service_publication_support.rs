@@ -505,6 +505,22 @@ fn verify_published_bindings(
     );
     drafts.borrow_mut().test_recovery_driving(false);
     running
+        .interrupted_exit_theme_activation_result(request)
+        .unwrap();
+    assert_ne!(running.test_process_appearance(), *appearance);
+    for _ in 0..2 {
+        assert!(
+            running
+                .release_interrupted_exit_mounts(request, appearance, app)
+                .unwrap_err()
+                .contains("process bindings are not installed")
+        );
+        running
+            .validate_interrupted_exit_bindings(request, appearance, app)
+            .unwrap();
+        assert_eq!(running.test_process_appearance(), previous);
+    }
+    running
         .bind_interrupted_exit_process(request, appearance, app)
         .unwrap();
     assert_eq!(running.test_process_appearance(), *appearance);

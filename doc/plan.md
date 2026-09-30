@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 831: Preserve Mount Tickets Until Theme Activation Settles (finished)
+# Phase 832: Preserve Mount Tickets Until Process Rebinding (finished)
 
-Running-owner mount release now requires retained successful theme activation before any ticket
-consumption, without added state. Thirty focused tests, compilation, formatting and independent
-lifecycle review passed. Owner coverage is threadless; selected-ticket preservation follows the
-pre-mutation guard and existing selected contribution evidence. Driver and final release remain pending.
+Running-owner mount release now requires the installed recovered process appearance, preserving
+rebinding tickets without additional state. Thirty focused tests, compilation, formatting and
+independent lifecycle review passed. Owner coverage remains threadless; selected-ticket preservation
+follows the pre-mutation guard and existing selected contribution evidence. Final reopening and
+the recovery driver remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -197,6 +198,7 @@ custody and one retained actual result across cancellation, unwind and stale del
 before consuming selected-window mount tickets; final reopening must require retained activation
 success. Failed or cancelled activation stays fenced and is not automatically retried.
 Phase 831 enforces retained activation success before running-owner mount ticket consumption.
+Phase 832 also requires installed process rebinding before that consumption, using existing appearance identity.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
