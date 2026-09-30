@@ -619,6 +619,26 @@ fn run_with_settlement(
                 assert!(mount.recovery_binding_current(fresh));
             });
         });
+        let host_close = service.test_with_selected_host(|host| {
+            assert_eq!(host.lifecycle_diagnostics().barriers(), 1);
+            host.window_close_ticket().unwrap()
+        });
+        assert_eq!(
+            service
+                .release_recovered_window_close_gate(old_close)
+                .unwrap(),
+            Some(false)
+        );
+        service.test_with_close_slot_locked(|| {
+            assert_eq!(
+                service.release_recovered_window_close_gate(fresh).unwrap(),
+                None
+            );
+        });
+        service.test_with_selected_host(|host| {
+            assert_eq!(host.window_close_ticket(), Some(host_close));
+            assert_eq!(host.lifecycle_diagnostics().barriers(), 1);
+        });
         for _ in 0..2 {
             if let Some(draft) = draft.as_ref() {
                 let target = cx.update(|app| owner.read(app).target());
@@ -645,6 +665,8 @@ fn run_with_settlement(
             service.test_with_selected_host(|host| {
                 assert_eq!(host.autosave_interval(), interval);
                 assert!(host.autosave_timer().is_none());
+                assert!(host.window_close_ticket().is_none());
+                assert_eq!(host.lifecycle_diagnostics().barriers(), 0);
             });
             assert!(
                 service

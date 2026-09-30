@@ -79,7 +79,7 @@ impl MainWindowConversationComposerMount {
         }
         match self
             .bound_service()?
-            .release_window_close_gate(ticket, None)?
+            .release_recovered_window_close_gate(ticket)?
         {
             None => Ok(MainWindowConversationComposerCloseRelease::Pending),
             Some(false) => Err("recovered draft service close ticket is stale".into()),

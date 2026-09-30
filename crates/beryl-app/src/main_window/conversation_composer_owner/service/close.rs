@@ -7,6 +7,31 @@ use crate::main_window::MainWindowConversationComposerCloseTicket;
 use std::sync::TryLockError;
 
 impl MainWindowConversationComposerService {
+    pub(in crate::main_window) fn release_recovered_window_close_gate(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+    ) -> Result<Option<bool>, String> {
+        if !self.window_close_is_current(ticket) {
+            return Ok(Some(false));
+        }
+        let mut slot = match self.slot.try_lock() {
+            Ok(slot) => slot,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err("conversation composer service lock failed".to_owned());
+            }
+        };
+        if !slot.window_close_is_current(ticket) {
+            return Ok(Some(false));
+        }
+        let flush = slot
+            .selected_host()
+            .and_then(|host| host.window_close_ticket())
+            .ok_or("recovered composer host close ticket is missing")?;
+        self.release_window_close_gate_in_slot(&mut slot, ticket, Some(flush))
+            .map(Some)
+    }
+
     pub(in crate::main_window) fn prepare_recovered_autosave(
         &self,
         selection: MainWindowComposerSelectionIdentity,

@@ -89,27 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 852: Recognize Clean Opening Draft State (finished)
+# Phase 853: Release Reconstructed Host Close Custody (finished)
 
-App draft dirtiness now preserves clean opening history forks while generation/root checks keep
-real edits, same-root Undo and newer candidates dirty. No state or publication was added. All 55
-focused composer/recovery checks, production compilation, formatting and independent review passed
-(`e89ca25e-2d5c-4ab7-a5b4-5e4a574836f0`, `c19b1baf-d9ce-4efd-8079-8046e3174752`). The full selected
-regression advances past this check but exposes the separate host close-ticket blocker below.
+Recovered service-close settlement now releases its exact host flush under the existing slot lock
+before clearing slot/service gates. Stale/busy calls preserve custody; local interaction fences
+remain. All 74 affected lifecycle/recovery checks, production compilation, formatting and independent
+review passed (`8a1c6e86-9950-4710-a762-3f8f421ac30a`). No worker or retained state was added.
 
-# Phase 853: Release Reconstructed Host Close Custody (pending)
-
-Correct recovered service-close settlement to release the exact reconstructed host's WindowClose
-flush as well as the slot gate, preserving nonblocking access, exact binding and ticket checks,
-and local interaction fences. Verify actual host barrier disposal, stale/busy refusal, repeated
-settlement, and a subsequent selected-window close in the same-home native regression. Require
-focused lifecycle tests and independent lifecycle/persistence review before resuming phase 851.
-
-Not started: phase 851 exposed this additional production mismatch after the authorized draft-state
-correction. The repository stop-on-invalid-plan instruction requires Operator notification before
-proceeding. See [evidence](failures/selected-recovery-close-release.md).
-
-# Phase 851: Qualify Same-Home Selected Recovery Publication (pending)
+# Phase 851: Qualify Same-Home Selected Recovery Publication (wip)
 
 Extend the real selected-window failed-Exit fixture through accepted resident preparation,
 attachment, fresh appearance binding, graph publication and coherent completion. Use the original
@@ -126,11 +113,10 @@ Run focused native recovery tests, formatting and independent lifecycle/persiste
 Outer supervisor mounting remains phase 702 work; add no new runtime state or wrapper solely for
 this qualification.
 
-Phase 852 fixes the [draft-state mismatch](failures/selected-recovery-draft-state.md). The retained
-regression now passes publication, widget/process admission and cancelled-request assertions, then
-fails the next close because reconstructed host close custody remains installed. Phase 853 must
-resolve that [lifecycle blocker](failures/selected-recovery-close-release.md) before qualification
-can pass; cleanup failure is not accepted as successful recovery evidence.
+Phases 852 and 853 correct the [draft-state mismatch](failures/selected-recovery-draft-state.md)
+and [host close-ticket mismatch](failures/selected-recovery-close-release.md). The retained native
+regression now passes complete recovery, subsequent close, cleanup and same-home reopen. Complete
+the already-reviewed integration acceptance using the unchanged tests and final regression evidence.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
