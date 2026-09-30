@@ -21,6 +21,12 @@ pub(super) async fn verify(
         cx.update(|app| {
             assert!(
                 owner
+                    .borrow_mut()
+                    .bind_interrupted_exit_process(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
                     .borrow()
                     .release_interrupted_exit_mounts(request, appearance, app)
                     .is_err()
@@ -168,6 +174,12 @@ pub(super) async fn verify(
             assert!(owner.borrow().interrupted_exit_session().is_none());
             assert!(
                 owner
+                    .borrow_mut()
+                    .bind_interrupted_exit_process(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
                     .borrow()
                     .release_interrupted_exit_mounts(request, appearance, app)
                     .is_err()
@@ -236,6 +248,12 @@ pub(super) async fn verify(
                     cx.update(|app| {
                         assert!(
                             owner
+                                .borrow_mut()
+                                .bind_interrupted_exit_process(request, appearance, app)
+                                .is_err()
+                        );
+                        assert!(
+                            owner
                                 .borrow()
                                 .release_interrupted_exit_mounts(request, appearance, app)
                                 .is_err()
@@ -288,6 +306,12 @@ pub(super) async fn verify(
             cx.update(|app| {
                 assert!(
                     owner
+                        .borrow_mut()
+                        .bind_interrupted_exit_process(request, appearance, app)
+                        .is_err()
+                );
+                assert!(
+                    owner
                         .borrow()
                         .release_interrupted_exit_mounts(request, appearance, app)
                         .is_err()
@@ -316,6 +340,12 @@ pub(super) async fn verify(
             );
             assert!(owner.borrow().test_services().graph().is_none());
             cx.update(|app| {
+                assert!(
+                    owner
+                        .borrow_mut()
+                        .bind_interrupted_exit_process(request, appearance, app)
+                        .is_err()
+                );
                 assert!(
                     owner
                         .borrow()
@@ -360,7 +390,14 @@ fn verify_published_bindings(
 ) {
     use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
     let mut running = owner.borrow_mut();
-    let refused = |running: &RunningProcessOwner, request, appearance, app: &mut gpui::App| {
+    let refused = |running: &mut RunningProcessOwner, request, appearance, app: &mut gpui::App| {
+        let previous = running.test_process_appearance();
+        assert!(
+            running
+                .bind_interrupted_exit_process(request, appearance, app)
+                .is_err()
+        );
+        assert_eq!(running.test_process_appearance(), previous);
         assert!(
             running
                 .release_interrupted_exit_mounts(request, appearance, app)
@@ -379,28 +416,28 @@ fn verify_published_bindings(
     };
     let foreign = request.test_foreign();
     let previous = running.test_process_appearance();
-    refused(&running, &foreign, appearance, app);
-    refused(&running, request, &previous, app);
+    refused(&mut running, &foreign, appearance, app);
+    refused(&mut running, request, &previous, app);
     let unbound = GpuiAppearanceWindowSet::new(
         appearance.read(app).target().snapshot().current,
         NonZeroUsize::new(4).unwrap(),
         app,
     );
-    refused(&running, request, &unbound, app);
+    refused(&mut running, request, &unbound, app);
     unbound.update(app, |set, _| set.retire());
-    refused(&running, request, &unbound, app);
+    refused(&mut running, request, &unbound, app);
     let drafts = running.test_replace_recovery_drafts(None).unwrap();
-    refused(&running, request, appearance, app);
+    refused(&mut running, request, appearance, app);
     running.test_replace_recovery_drafts(Some(drafts.clone()));
     let busy = drafts.borrow_mut();
-    refused(&running, request, appearance, app);
+    refused(&mut running, request, appearance, app);
     drop(busy);
     drafts.borrow_mut().test_recovery_driving(true);
-    refused(&running, request, appearance, app);
+    refused(&mut running, request, appearance, app);
     drafts.borrow_mut().test_recovery_driving(false);
     for retirement in [None, Some(Err("failed retirement".into()))] {
         running.test_set_resident_graph_retirement(retirement);
-        refused(&running, request, appearance, app);
+        refused(&mut running, request, appearance, app);
     }
     running.test_set_resident_graph_retirement(Some(Ok(())));
     for target in [&previous, &unbound] {
@@ -419,6 +456,21 @@ fn verify_published_bindings(
             .is_err()
     );
     drafts.borrow_mut().test_recovery_driving(false);
+    running
+        .bind_interrupted_exit_process(request, appearance, app)
+        .unwrap();
+    assert_eq!(running.test_process_appearance(), *appearance);
+    assert!(
+        running
+            .bind_interrupted_exit_process(request, appearance, app)
+            .is_err()
+    );
+    assert_eq!(running.test_process_appearance(), *appearance);
+    let command = running
+        .window_exit_command(running.test_process().windows.window_ids()[0], app)
+        .unwrap();
+    assert!(command.disabled_reason().is_some());
+    command.request_exit();
     for _ in 0..2 {
         running
             .validate_interrupted_exit_bindings(request, appearance, app)
@@ -438,5 +490,5 @@ fn verify_published_bindings(
         );
     }
     assert!(!drafts.borrow().test_recovery_ready());
-    assert_ne!(running.test_process_appearance(), *appearance);
+    assert_eq!(running.test_process_appearance(), *appearance);
 }

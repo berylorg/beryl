@@ -2,6 +2,27 @@ use super::*;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 
 impl RunningProcessOwner {
+    pub(crate) fn bind_interrupted_exit_process(
+        &mut self,
+        request: &RunningExitRequest,
+        appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        self.interrupted_exit_publication_result(request)?;
+        self.validate_interrupted_exit_bindings(request, appearance, app)?;
+        let home = self
+            .process
+            .services
+            .as_ref()
+            .and_then(|services| services.graph())
+            .ok_or("Published recovery graph is unavailable")?
+            .home()
+            .service_reference();
+        self.process.commands.bind_recovered_home(request, home)?;
+        self.process.appearance = appearance.clone();
+        Ok(())
+    }
+
     pub(crate) fn interrupted_exit_appearance(
         &self,
         request: &RunningExitRequest,
