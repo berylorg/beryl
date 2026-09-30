@@ -627,8 +627,10 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     old_close.with_recovered_selection(resident.read(cx).selection_identity());
                 mount.update(cx, |mount, cx| {
                     assert!(mount.release_interrupted_exit_mount(old_close, cx).is_err());
+                    assert!(!input.read(cx).is_enabled());
                     let retained = mount.test_window_close_worker(|| {}).unwrap();
                     assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                    assert!(!input.read(cx).is_enabled());
                     assert!(mount.recovery_binding_current(fresh));
                     assert!(resident.read(cx).recovery_binding_current(fresh));
                     drop(retained);
@@ -638,6 +640,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     });
                     assert!(!mount.recovery_binding_current(fresh));
                     assert!(mount.release_interrupted_exit_mount(fresh, cx).is_err());
+                    assert!(input.read(cx).is_enabled());
                 });
                 resident.update(cx, |resident, cx| {
                     assert!(
@@ -660,7 +663,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool) {
                     );
                     assert_eq!(resident.selection_identity(), fresh.selection());
                 });
-                assert!(!input.read(cx).is_enabled());
+                assert!(input.read(cx).is_enabled());
                 assert!(root.shutdown_interaction_gated);
                 assert!(!mount.read(cx).recovery_binding_current(fresh));
             }

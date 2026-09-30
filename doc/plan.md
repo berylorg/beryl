@@ -89,12 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 821: Consume Recovered Mount Close Custody (finished)
+# Phase 822: Restore Recovered Widget Availability Under Shutdown Gating (finished)
 
-Exact completed service-close evidence now permits synchronous resident restoration and mount
-close cleanup while shutdown and widget fences remain installed. No retained state or worker was
-added. All nine focused tests, compilation, formatting and independent review passed. Autosave
-reactivation, widget activation and coherent process reopening remain pending.
+The synchronous recovered resident/mount release now enables the widget with its shutdown read-only
+gate installed. Enabling refusal preserves lifecycle and close custody. No state, worker or service
+access was added. All nine focused tests, compilation, formatting and independent review passed.
+Autosave preparation and coherent process reopening remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -179,8 +179,9 @@ worker ownership even after stale or cancelled delivery. Publication does not co
 Exit or reopen interaction. Phase 819 extends complete binding and draft-release checks across
 publication using the retained actual result and exact published appearance, preserving all fences.
 Phase 820 supplies the synchronous resident lifecycle transition for the later recovery commit.
-Phase 821 couples it to exact settled mount close cleanup without service access; autosave
-reactivation and final widget activation remain required before coherent interaction release.
+Phase 821 couples it to exact settled mount close cleanup without service access. Phase 822 enables
+the recovered widget under its shutdown read-only gate within that synchronous contribution;
+autosave preparation and coherent process interaction release remain required.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

@@ -10,6 +10,15 @@ impl MainWindowConversationComposer {
         if !self.recovered_close_release_ready(ticket, cx)? {
             return Ok(false);
         }
+        self.input.update(cx, |input, cx| {
+            input.set_read_only(true, cx);
+            input.set_enabled(true, cx);
+            if input.is_enabled() {
+                Ok(())
+            } else {
+                Err("recovered composer could not enable input".to_owned())
+            }
+        })?;
         self.phase = MainWindowConversationComposerPhase::Live;
         self.window_close = None;
         self.sync_mutation_gate(cx);
