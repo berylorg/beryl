@@ -1,6 +1,6 @@
 #[allow(dead_code)]
 #[path = "running_resident_recovery_support.rs"]
-mod resident_fixture;
+pub(super) mod resident_fixture;
 
 mod attachment {
     use super::*;

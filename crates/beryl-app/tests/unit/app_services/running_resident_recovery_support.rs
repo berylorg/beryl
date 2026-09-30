@@ -31,6 +31,44 @@ mod native_appearance;
 mod shell_support;
 pub(super) use composer_support as widget_support;
 
+pub(in super::super) fn selected_home() -> tempfile::TempDir {
+    let fixture = shell_support::Fixture::new(194);
+    native_appearance::install_native_theme(&fixture.store, &fixture.state);
+    drop(fixture.acquire(195));
+    let shell_support::Fixture {
+        directory,
+        store,
+        state,
+        storage,
+        service,
+        process,
+        ..
+    } = fixture;
+    drop((state, storage, service, process));
+    Arc::try_unwrap(store).ok().unwrap().close().unwrap();
+    directory
+}
+
+pub(in super::super) fn selected_inputs() -> crate::app_services::MainWindowServiceInputs {
+    crate::app_services::MainWindowServiceInputs {
+        request_source: Arc::new(|_, _| panic!("selected fixture must restore")),
+        activation_source: Arc::new(|_| panic!("selected fixture must restore")),
+        restored_activation_source: Arc::new(|record| {
+            Ok((
+                composer_support::activation(
+                    record.selected_thread().unwrap().thread_id(),
+                    201,
+                    202,
+                    1,
+                    0,
+                ),
+                composer_support::fixture::operation_id(203),
+            ))
+        }),
+        configurator_source: Arc::new(|| Box::new(configure)),
+    }
+}
+
 pub(super) struct Resident {
     pub window: WindowHandle<MainWindowShellRoot>,
     pub composer: Entity<MainWindowConversationComposer>,

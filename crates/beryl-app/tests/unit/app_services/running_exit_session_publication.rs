@@ -28,6 +28,23 @@ mod retirement_driver {
     include!("recovery_retirement_driver_support.rs");
 }
 
+mod selected_preparation {
+    use super::*;
+    include!("selected_recovery_preparation_support.rs");
+}
+
+#[test]
+fn native_exit_selected_session_publication_prepares_same_home_recovery() {
+    run_with_window(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Ready,
+        None,
+        true,
+    );
+}
+
 #[derive(Clone, Copy)]
 enum RetirementDelivery {
     Ready,
@@ -279,14 +296,36 @@ fn run_with_recovery_options(
     publication_delivery: RecoveryPublicationDelivery,
     retirement_delivery: Option<RetirementDelivery>,
 ) {
-    let directory = support::native_home();
+    run_with_window(
+        fault,
+        consumer,
+        settlement_unwind,
+        publication_delivery,
+        retirement_delivery,
+        false,
+    );
+}
+
+fn run_with_window(
+    fault: Option<FaultPoint>,
+    consumer: bool,
+    settlement_unwind: bool,
+    publication_delivery: RecoveryPublicationDelivery,
+    retirement_delivery: Option<RetirementDelivery>,
+    selected: bool,
+) {
+    let directory = if selected {
+        resident_recovery::resident_fixture::selected_home()
+    } else {
+        support::native_home()
+    };
     eprintln!(
         "native Exit publication fixture: {}",
         directory.path().display()
     );
     let faults = FaultController::new();
     let opening_faults = faults.clone();
-    let input = input(directory.path(), move |path, _| {
+    let mut input = input(directory.path(), move |path, _| {
         let mut candidate = HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
             opening_faults.clone(),
@@ -308,6 +347,9 @@ fn run_with_recovery_options(
             syndic,
         }
     });
+    if selected {
+        input.windows = resident_recovery::resident_fixture::selected_inputs();
+    }
     let finished = Rc::new(Cell::new(false));
     let observed = finished.clone();
     Application::new()
@@ -391,13 +433,14 @@ fn run_with_recovery_options(
                             .unwrap();
                         assert!(matches!(error, ExitProgressError::SessionPublication(_)));
                         assert!(owner.borrow().shutdown_session().is_none());
-                        cx.update(|app| {
-                            assert_eq!(
-                                RunningProcessOwner::advance_shutdown_drafts(&owner, app).unwrap(),
-                                RunningShutdownDraftProgress::Ready
-                            )
-                        })
-                        .unwrap();
+                        loop {
+                            let progress = cx.update(|app| {
+                                RunningProcessOwner::advance_shutdown_drafts(&owner, app).unwrap()
+                            }).unwrap();
+                            if progress == RunningShutdownDraftProgress::Ready { break; }
+                            assert!(selected, "threadless draft was not immediately ready");
+                            cx.background_executor().timer(Duration::from_millis(10)).await;
+                        }
                         let (request, error) = cx
                             .update(|app| {
                                 RunningProcessOwner::publish_exit_session(
@@ -564,6 +607,12 @@ fn run_with_recovery_options(
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            if selected {
+                                selected_preparation::verify_and_dispose(owner, &request, cx).await;
+                                observed.set(true);
+                                cx.update(|app| app.quit()).unwrap();
+                                return;
+                            }
                             let (directory, candidate) = cx.background_executor().spawn(async {
                                 foreign_recovery_candidate()
                             }).await;
