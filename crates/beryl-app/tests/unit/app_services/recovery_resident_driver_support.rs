@@ -1,0 +1,222 @@
+use crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters;
+use crate::main_window::*;
+use crate::running_owner::{ResidentPreparationKey, RunningShutdownDrafts};
+use crate::startup_owner::RunningExitRequest;
+use beryl_home_store::CommandCancellation;
+use gpui::{AsyncApp, Entity, WindowHandle};
+
+#[test]
+fn native_recovery_driver_attaches_resident_after_abandoned_wait() {
+    resident_run(ResidentScenario::DrivenAttachment);
+}
+
+#[test]
+fn native_recovery_driver_cancels_ready_resident_attachment() {
+    resident_run(ResidentScenario::DrivenCancelledAttachment);
+}
+
+#[test]
+fn native_recovery_driver_cancels_while_waiting_for_resident() {
+    resident_run(ResidentScenario::DrivenPendingCancellation);
+}
+
+#[test]
+fn native_recovery_driver_refuses_stale_resident_attachment() {
+    resident_run(ResidentScenario::DrivenStaleAttachment);
+}
+
+#[test]
+fn native_recovery_driver_retains_resident_after_capacity_refusal() {
+    resident_run(ResidentScenario::DrivenCapacityAttachment);
+}
+
+pub(super) async fn interrupt_pending(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &RunningExitRequest,
+    key: &ResidentPreparationKey,
+    window: WindowHandle<MainWindowShellRoot>,
+    adapters: &mut Option<PreparedComposerRecoveryAdapters>,
+    cancel: bool,
+    cx: &mut AsyncApp,
+) {
+    use std::future::Future;
+    let mut configurator: Option<MainWindowConversationComposerConfigurator> =
+        Some(Box::new(resident_fixture::configure));
+    let cancellation = CommandCancellation::new();
+    let mut driver = Box::pin(
+        RunningProcessOwner::attach_interrupted_exit_resident_window(
+            owner,
+            request,
+            key,
+            window,
+            adapters,
+            &mut configurator,
+            |_, _| panic!("pending preparation reached attachment"),
+            cancellation.clone(),
+            cx,
+        ),
+    );
+    std::future::poll_fn(|cx| {
+        assert!(driver.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    if cancel {
+        cancellation.cancel();
+        assert!(driver.await.unwrap_err().contains("cancelled"));
+    } else {
+        drop(driver);
+    }
+    assert!(adapters.is_some() && configurator.is_some());
+    assert!(
+        owner
+            .borrow()
+            .interrupted_exit_services_result(request)
+            .is_err()
+    );
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
+}
+
+pub(super) async fn attempt(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &RunningExitRequest,
+    key: &ResidentPreparationKey,
+    window: WindowHandle<MainWindowShellRoot>,
+    resident: &Entity<MainWindowConversationComposer>,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    drafts: &Rc<RefCell<RunningShutdownDrafts>>,
+    close: MainWindowConversationComposerCloseTicket,
+    adapters: &mut Option<PreparedComposerRecoveryAdapters>,
+    mut current: gpui_text_input::RangePrepublicationCurrent,
+    scenario: ResidentScenario,
+    cx: &mut AsyncApp,
+) -> bool {
+    let mut configurator: Option<MainWindowConversationComposerConfigurator> =
+        Some(Box::new(resident_fixture::configure));
+    let foreign = request.test_foreign();
+    assert!(
+        RunningProcessOwner::attach_interrupted_exit_resident_window(
+            owner,
+            &foreign,
+            key,
+            window,
+            adapters,
+            &mut configurator,
+            |_, _| panic!("foreign request reached attachment"),
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("request changed")
+    );
+    let cancellation = CommandCancellation::new();
+    if scenario == ResidentScenario::DrivenCancelledAttachment {
+        cancellation.cancel();
+    }
+    if scenario == ResidentScenario::DrivenStaleAttachment {
+        owner
+            .borrow_mut()
+            .test_replace_interrupted_exit_request(&foreign);
+    }
+    if scenario == ResidentScenario::DrivenCapacityAttachment {
+        current.available_capacity = gpui_text_input::RangeSurfaceCharge { bytes: 0, items: 0 };
+    }
+    let (input, focus) = window
+        .update(cx, |_, window, app| {
+            let input = resident.read(app).gpui_input();
+            input.update(app, |input, _| input.focus(window));
+            (input, window.focused(app))
+        })
+        .unwrap();
+    let result = RunningProcessOwner::attach_interrupted_exit_resident_window(
+        owner,
+        request,
+        key,
+        window,
+        adapters,
+        &mut configurator,
+        |_, _| Ok(current),
+        cancellation,
+        cx,
+    )
+    .await;
+    let attached = scenario == ResidentScenario::DrivenAttachment;
+    window
+        .update(cx, |root, window, app| {
+            assert_eq!(window.focused(app), focus);
+            assert_eq!(resident.read(app).gpui_input(), input);
+            assert!(!input.read(app).is_enabled());
+            assert_eq!(mount.read(app).contribution().as_ref(), Some(resident));
+            if attached {
+                let (fresh_close, record) = result.unwrap();
+                assert_ne!(fresh_close, close);
+                assert_eq!(
+                    owner
+                        .borrow()
+                        .test_captured_recovery_ticket(resident.entity_id()),
+                    Some(fresh_close)
+                );
+                assert_eq!(
+                    record.selected_thread(),
+                    Some(resident.read(app).selection_identity().claim())
+                );
+                assert!(resident.read(app).recovery_snapshot().is_none());
+                assert!(adapters.is_none() && configurator.is_none());
+                assert!(!drafts.borrow().test_recovery_ready());
+                assert!(
+                    root.set_shutdown_interaction_gated(false, app)
+                        .unwrap_err()
+                        .contains("fresh appearance")
+                );
+                owner
+                    .borrow()
+                    .interrupted_exit_services_result(request)
+                    .unwrap();
+                assert!(
+                    owner
+                        .borrow()
+                        .interrupted_exit_resident_result(key)
+                        .is_err()
+                );
+            } else {
+                assert!(result.is_err());
+                assert!(adapters.is_some() && configurator.is_some());
+                assert!(root.test_shell_construction_retired());
+                assert_eq!(
+                    owner
+                        .borrow()
+                        .test_captured_recovery_ticket(resident.entity_id()),
+                    Some(close)
+                );
+                assert_eq!(
+                    resident
+                        .read(app)
+                        .recovery_snapshot()
+                        .unwrap()
+                        .close_ticket(),
+                    close
+                );
+            }
+            assert!(!RunningProcessOwner::finish_exit(owner, request));
+        })
+        .unwrap();
+    if attached {
+        assert!(
+            RunningProcessOwner::attach_interrupted_exit_resident_window(
+                owner,
+                request,
+                key,
+                window,
+                adapters,
+                &mut configurator,
+                |_, _| panic!("duplicate attachment reached current inputs"),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+    }
+    attached
+}

@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 841: Drive Threadless Recovery Attachment (finished)
+# Phase 842: Drive Prepared Selected-Resident Attachment (finished)
 
-The async driver now composes threadless authentication, shell attachment and appearance binding
-using existing custody and workers. Forty-four lifecycle checks, production compilation, formatting
-and independent review passed, including cancellation, stale delivery, caller loss and successful
-completion. Interaction remains fenced until the existing publication/completion operation.
-The [fixture correction](failures/recovery-mount-fixture.md#threadless-attachment-appearance-retirement)
-records required predecessor appearance retirement and verification evidence.
+The async driver now waits for the existing keyed resident preparation and attaches it through
+the retained running owner, preserving custody and fences on refusal or caller loss. Cancellation
+uses existing cleanup. Forty-nine lifecycle checks, production compilation, formatting and
+independent review passed, including pending cancellation, abandoned waiting, stale requests,
+capacity refusal and one-time adoption. Appearance binding remains a separate existing operation.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -217,9 +216,12 @@ Phase 839 composes earlier resident and graph retirement into that operation. Ph
 awaited private service preparation with retained outcomes across caller loss. Phase 841 composes
 threadless authentication, attachment and appearance binding. If binding fails after attachment,
 resume the existing appearance-binding operation; the whole adapter cannot repeat shell adoption.
-This partial result remains fenced and is covered by component evidence and review. Connect selected
-resident attachment and failed-home retry-delay scheduling through the outer recovery
-driver. That supervisor must own one driving future: worker custody rejects overlapping graph
+This partial result remains fenced and is covered by component evidence and review.
+Phase 842 supplies awaited selected-resident attachment from an existing preparation key, with
+fresh GUI inputs and retained cancellation cleanup. Connect preparation admission, selected
+attachment, appearance binding and failed-home retry-delay scheduling through the outer recovery
+driver. Retain its preparation key through refusal or cancellation so existing cleanup can be
+drained explicitly. That supervisor must own one driving future: worker custody rejects overlapping graph
 retirement, while pending resident waits do not independently reserve the outer attempt.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

@@ -7,6 +7,11 @@ mod attachment {
     include!("running_resident_attachment.rs");
 }
 
+mod attachment_driver {
+    use super::*;
+    include!("recovery_resident_driver_support.rs");
+}
+
 #[test]
 fn native_recovery_owner_drives_resident_and_retains_abandoned_delivery() {
     resident_run(ResidentScenario::Ready);
@@ -41,6 +46,11 @@ enum ResidentScenario {
     StaleAttachment,
     CancelledAttachment,
     CapacityAttachment,
+    DrivenAttachment,
+    DrivenCancelledAttachment,
+    DrivenStaleAttachment,
+    DrivenCapacityAttachment,
+    DrivenPendingCancellation,
 }
 
 #[test]
@@ -341,6 +351,12 @@ fn resident_run(scenario: ResidentScenario) {
                                 key
                             })
                             .unwrap();
+                        if matches!(scenario, ResidentScenario::DrivenAttachment | ResidentScenario::DrivenPendingCancellation) {
+                            attachment_driver::interrupt_pending(
+                                &owner, &request, &key, window, &mut adapters,
+                                scenario == ResidentScenario::DrivenPendingCancellation, cx,
+                            ).await;
+                        }
                         let deadline = Instant::now() + Duration::from_secs(5);
                         if scenario == ResidentScenario::SuspendedFrame {
                             loop {
@@ -387,6 +403,10 @@ fn resident_run(scenario: ResidentScenario) {
                                 | ResidentScenario::StaleAttachment
                                 | ResidentScenario::CancelledAttachment
                                 | ResidentScenario::CapacityAttachment
+                                | ResidentScenario::DrivenAttachment
+                                | ResidentScenario::DrivenCancelledAttachment
+                                | ResidentScenario::DrivenStaleAttachment
+                                | ResidentScenario::DrivenCapacityAttachment
                         ) {
                             assert_eq!(
                                 result.unwrap(),
@@ -406,6 +426,17 @@ fn resident_run(scenario: ResidentScenario) {
                             })
                             .unwrap();
                         let attached = if matches!(
+                            scenario,
+                            ResidentScenario::DrivenAttachment
+                                | ResidentScenario::DrivenCancelledAttachment
+                                | ResidentScenario::DrivenStaleAttachment
+                                | ResidentScenario::DrivenCapacityAttachment
+                        ) {
+                            attachment_driver::attempt(
+                                &owner, &request, &key, window, &composer, &mount, &drafts,
+                                close, &mut adapters, current.borrow().unwrap(), scenario, cx,
+                            ).await
+                        } else if matches!(
                             scenario,
                             ResidentScenario::Attach
                                 | ResidentScenario::StaleAttachment

@@ -1,12 +1,82 @@
 use super::*;
 use crate::app_services::AppServiceConfiguration;
-use crate::main_window::MainWindowShellRoot;
+use crate::main_window::{
+    MainWindowComposerRecoveryProgress, MainWindowConversationComposerCloseTicket,
+    MainWindowConversationComposerConfigurator, MainWindowShellRoot,
+};
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::{AsyncApp, Entity};
 use std::time::Duration;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) async fn attach_interrupted_exit_resident_window(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        key: &resident::ResidentPreparationKey,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<MainWindowConversationComposerConfigurator>,
+        current: impl FnOnce(
+            &gpui::Window,
+            &mut App,
+        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<
+        (
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        ),
+        String,
+    > {
+        let mut current = Some(current);
+        loop {
+            let attached = cx
+                .update(|app| {
+                    let progress = {
+                        let retained = owner.borrow();
+                        if !retained.process.commands.is_active(request) {
+                            return Err("Interrupted Exit request changed".into());
+                        }
+                        retained.interrupted_exit_resident_result(key)?
+                    };
+                    if cancellation.is_cancelled() {
+                        Self::cancel_interrupted_exit_resident(owner, key, app)?;
+                        return Err("Interrupted Exit attachment was cancelled".into());
+                    }
+                    if progress != MainWindowComposerRecoveryProgress::Ready {
+                        return Ok(None);
+                    }
+                    window
+                        .update(app, |root, window, cx| {
+                            let current = current.take().unwrap()(window, cx)?;
+                            owner.borrow_mut().attach_interrupted_exit_resident(
+                                request,
+                                key,
+                                root,
+                                adapters,
+                                configurator,
+                                current,
+                                window,
+                                cx,
+                            )
+                        })
+                        .map_err(|error| error.to_string())?
+                        .map(Some)
+                })
+                .map_err(|error| error.to_string())??;
+            if let Some(attached) = attached {
+                return Ok(attached);
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+        }
+    }
+
     pub(crate) async fn attach_interrupted_exit_threadless_window(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
