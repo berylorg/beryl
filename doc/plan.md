@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 825: Compose Retained Recovery Mount Release (finished)
+# Phase 826: Route Recovered Mount Release Through The Running Owner (finished)
 
-Retained drafts now settle every service close and prepare all widgets under read-only gates before
-consuming any local recovery ticket. Preparation refusal retains retryable bindings; shutdown gates,
-native custody and aggregate flags remain. Sixteen tests, compilation, formatting and independent
-lifecycle review passed. Selected preparation retry is tested; multi-selected and enable-capacity
-failure ordering is source-reviewed. Process-wide coherent reopening remains.
+Recovered mount release now requires the exact cancelled request, retained successful publication
+and complete current shell bindings. It reuses retained drafts without new state or workers and
+preserves shutdown gates and command/session custody. Sixteen focused tests, compilation, formatting
+and independent lifecycle review passed. Owner success is tested threadless; selected behavior uses
+existing contribution evidence. Coherent process reopening remains.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -185,7 +185,9 @@ the recovered widget under its shutdown read-only gate within that synchronous c
 Phase 823 prepares clean recovered autosave with retained settings before service-close completion;
 Phase 824 routes synchronous mount release through exact shell binding validation. Phase 825
 composes the retained draft set with all widget preparation before any local ticket consumption,
-preserving retryability on preparation refusal. Coherent process interaction release remains required.
+preserving retryability on preparation refusal. Phase 826 routes that aggregate through the exact
+request with retained successful publication and current binding checks. Coherent process interaction
+release remains required.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

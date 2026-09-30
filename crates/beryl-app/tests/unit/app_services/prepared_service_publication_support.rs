@@ -19,6 +19,12 @@ pub(super) async fn verify(
         let cancellation = CommandCancellation::new();
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
+            assert!(
+                owner
+                    .borrow()
+                    .release_interrupted_exit_mounts(request, appearance, app)
+                    .is_err()
+            );
             let refused =
                 |request, retired, generation, appearance, cancellation, app: &mut gpui::App| {
                     RunningProcessOwner::publish_interrupted_exit_services(
@@ -163,6 +169,12 @@ pub(super) async fn verify(
             assert!(
                 owner
                     .borrow()
+                    .release_interrupted_exit_mounts(request, appearance, app)
+                    .is_err()
+            );
+            assert!(
+                owner
+                    .borrow()
                     .validate_interrupted_exit_bindings(request, appearance, app)
                     .is_err()
             );
@@ -225,6 +237,12 @@ pub(super) async fn verify(
                         assert!(
                             owner
                                 .borrow()
+                                .release_interrupted_exit_mounts(request, appearance, app)
+                                .is_err()
+                        );
+                        assert!(
+                            owner
+                                .borrow()
                                 .validate_interrupted_exit_bindings(request, appearance, app)
                                 .is_err()
                         );
@@ -271,6 +289,12 @@ pub(super) async fn verify(
                 assert!(
                     owner
                         .borrow()
+                        .release_interrupted_exit_mounts(request, appearance, app)
+                        .is_err()
+                );
+                assert!(
+                    owner
+                        .borrow()
                         .validate_interrupted_exit_bindings(request, appearance, app)
                         .is_err()
                 );
@@ -291,6 +315,15 @@ pub(super) async fn verify(
                     .contains(reason)
             );
             assert!(owner.borrow().test_services().graph().is_none());
+            cx.update(|app| {
+                assert!(
+                    owner
+                        .borrow()
+                        .release_interrupted_exit_mounts(request, appearance, app)
+                        .is_err()
+                );
+            })
+            .unwrap();
             owner
                 .borrow()
                 .interrupted_exit_services_result(request)
@@ -328,6 +361,11 @@ fn verify_published_bindings(
     use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
     let mut running = owner.borrow_mut();
     let refused = |running: &RunningProcessOwner, request, appearance, app: &mut gpui::App| {
+        assert!(
+            running
+                .release_interrupted_exit_mounts(request, appearance, app)
+                .is_err()
+        );
         assert!(
             running
                 .validate_interrupted_exit_bindings(request, appearance, app)
@@ -394,9 +432,8 @@ fn verify_published_bindings(
             .interrupted_exit_publication_result(request)
             .unwrap();
         assert!(
-            drafts
-                .borrow()
-                .release_recovered_mounts(&running.test_process().windows, appearance, app)
+            running
+                .release_interrupted_exit_mounts(request, appearance, app)
                 .unwrap()
         );
     }

@@ -30,6 +30,23 @@ impl RunningProcessOwner {
             .release_recovered_drafts(&self.process.windows, appearance, app)
     }
 
+    pub(crate) fn release_interrupted_exit_mounts(
+        &self,
+        request: &RunningExitRequest,
+        appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        self.interrupted_exit_publication_result(request)?;
+        self.validate_interrupted_exit_bindings(request, appearance, app)?;
+        self.shutdown
+            .as_ref()
+            .and_then(|attempt| attempt.drafts.as_ref())
+            .ok_or("Interrupted Exit drafts are unavailable")?
+            .try_borrow()
+            .map_err(|_| "Interrupted Exit drafts are busy")?
+            .release_recovered_mounts(&self.process.windows, appearance, app)
+    }
+
     pub(crate) fn validate_interrupted_exit_bindings(
         &self,
         request: &RunningExitRequest,
