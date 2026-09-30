@@ -13,7 +13,7 @@ impl ProcessServiceOwner {
         if graph.home().health().state() != HomeHealthState::Failed {
             return Err(AppServiceCloseError::NotFailed);
         }
-        if !matches!(self.attempt, InitialServiceAttemptState::Published)
+        if !matches!(self.attempt, InitialServiceAttemptState::Published(_))
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
             || self.windows.main_window_occupancy() != 0

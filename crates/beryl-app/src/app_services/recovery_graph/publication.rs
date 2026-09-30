@@ -57,9 +57,31 @@ impl ProcessServiceOwner {
             syndic: graph.syndic.clone(),
             home: Some(home),
         });
-        self.recovery_retirement = None;
-        self.attempt = InitialServiceAttemptState::Published;
+        let retirement = self.recovery_retirement.take().unwrap();
+        self.attempt = InitialServiceAttemptState::Published(Some(retirement.fence));
         drop(prepared.take());
         Ok(start)
+    }
+
+    pub(crate) fn reopen_recovery_admission(
+        &mut self,
+        generation: HomeGeneration,
+    ) -> Result<(), String> {
+        let InitialServiceAttemptState::Published(Some(fence)) = &self.attempt else {
+            return Err("Published recovery admission fence is unavailable".into());
+        };
+        let graph = self
+            .graph
+            .as_ref()
+            .ok_or("Published recovery graph is unavailable")?;
+        if graph.home().health().generation() != Some(generation) {
+            return Err("Published recovery generation changed".into());
+        }
+        graph
+            .cas()
+            .try_reopen_shutdown_admission(fence)
+            .map_err(|error| error.to_string())?;
+        self.attempt = InitialServiceAttemptState::Published(None);
+        Ok(())
     }
 }

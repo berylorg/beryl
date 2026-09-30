@@ -3,7 +3,7 @@ use super::*;
 pub(super) enum InitialServiceAttemptState {
     Initial,
     Preparing,
-    Published,
+    Published(Option<ProcessAdmissionFence>),
     Retired(ProcessAdmissionFence),
     Blocked,
 }

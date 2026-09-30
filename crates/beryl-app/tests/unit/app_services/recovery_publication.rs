@@ -347,3 +347,99 @@ fn recovery_publication_refuses_foreign_prepared_graph() {
     assert_reopens(&directory);
     assert_reopens(&foreign_directory);
 }
+
+#[test]
+fn recovery_admission_retains_exact_fence_until_successful_settlement() {
+    let (directory, mut owner, faults) = installed();
+    let expected = owner.graph().unwrap().home().health().generation().unwrap();
+    assert!(owner.reopen_recovery_admission(expected).is_err());
+    let predecessor = owner.process.execution_permit();
+    let reservation = predecessor.reserve().unwrap();
+    owner
+        .graph
+        .as_mut()
+        .unwrap()
+        .handoff
+        .as_mut()
+        .unwrap()
+        .shutdown()
+        .unwrap();
+    fail(&owner, &faults);
+    owner.retire_failed_service_graph(expected).unwrap();
+    assert!(owner.reopen_recovery_admission(expected).is_err());
+    let (generation, mut prepared) = replacement(&mut owner, expected);
+    let start = owner
+        .publish_recovery_service_graph(
+            expected,
+            generation,
+            &mut prepared,
+            &CommandCancellation::new(),
+        )
+        .unwrap();
+    assert!(owner.reopen_recovery_admission(expected).is_err());
+    assert!(
+        owner
+            .reopen_recovery_admission(generation)
+            .unwrap_err()
+            .contains("not settled")
+    );
+    assert!(matches!(
+        owner.attempt,
+        InitialServiceAttemptState::Published(Some(_))
+    ));
+    assert!(owner.process.execution_permit().reserve().is_err());
+    assert_eq!(
+        owner
+            .graph()
+            .unwrap()
+            .handoff
+            .as_ref()
+            .unwrap()
+            .test_completed_passes(),
+        0
+    );
+    drop(reservation);
+    owner.reopen_recovery_admission(generation).unwrap();
+    assert!(matches!(
+        owner.attempt,
+        InitialServiceAttemptState::Published(None)
+    ));
+    assert!(predecessor.reserve().is_err());
+    drop(owner.process.execution_permit().reserve().unwrap());
+    assert!(owner.reopen_recovery_admission(generation).is_err());
+    let next = owner.process.fence().unwrap();
+    assert!(owner.reopen_recovery_admission(generation).is_err());
+    assert!(owner.process.execution_permit().reserve().is_err());
+    drop(next);
+    drop(start);
+    owner.graph.take().unwrap().dispose_unstarted().unwrap();
+    assert_reopens(&directory);
+    directory.close().unwrap();
+}
+
+#[test]
+fn recovery_admission_preserves_fence_when_published_home_fails() {
+    let (directory, mut owner, faults, expected) = retired();
+    let (generation, mut prepared) = replacement(&mut owner, expected);
+    let start = owner
+        .publish_recovery_service_graph(
+            expected,
+            generation,
+            &mut prepared,
+            &CommandCancellation::new(),
+        )
+        .unwrap();
+    fail(&owner, &faults);
+    for _ in 0..2 {
+        assert!(owner.reopen_recovery_admission(generation).is_err());
+        assert!(matches!(
+            owner.attempt,
+            InitialServiceAttemptState::Published(Some(_))
+        ));
+        assert!(owner.process.execution_permit().reserve().is_err());
+    }
+    drop(start);
+    owner.graph.take().unwrap().dispose_unstarted().unwrap();
+    assert_reopens(&directory);
+    directory.close().unwrap();
+}

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 833: Couple Shell Interaction Release To Process Settlement (finished)
+# Phase 834: Retain And Reopen The Recovery Process Fence (finished)
 
-Shell interaction release now runs one fallible synchronous settlement callback after all windows
-validate and before any gate opens, with no added retained state. Four focused tests, compilation,
-formatting and independent lifecycle review passed. Callback refusal preserves every shell gate;
-the future caller must keep settlement bounded, non-reentrant and preserve process custody on
-refusal. Process admission wiring and cancelled-request completion remain in phase 702.
+The exact process fence now survives graph retirement and publication in existing lifecycle custody.
+Checked reopening consumes it only on success; refusal retains the token and closed admission.
+Fourteen focused tests, compilation, formatting and independent lifecycle review passed. The
+[fixture cleanup lesson](failures/recovery-admission-fixture.md) records the corrected test path.
+The running-owner's atomic shell release and cancelled-request completion remain phase 702 work.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -199,6 +199,9 @@ before consuming selected-window mount tickets; final reopening must require ret
 success. Failed or cancelled activation stays fenced and is not automatically retried.
 Phase 831 enforces retained activation success before running-owner mount ticket consumption.
 Phase 832 also requires installed process rebinding before that consumption, using existing appearance identity.
+Phase 833 supplies validated shell gate release after a fallible synchronous process settlement.
+Phase 834 retains the exact retirement fence through graph publication and supplies checked
+service-owner admission reopening; use it only within the final coherent running-owner transition.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

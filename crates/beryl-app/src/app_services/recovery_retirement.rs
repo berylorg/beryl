@@ -29,6 +29,7 @@ pub(crate) enum RetiredProcessWorkError {
 }
 
 pub(super) struct ServiceGraphRetirement {
+    pub(super) fence: ProcessAdmissionFence,
     generation: HomeGeneration,
     graph: Option<PublishedAppServices>,
     marker: Option<DraftMarkerSealService>,
@@ -147,7 +148,7 @@ impl ProcessServiceOwner {
         let health = graph.home().health();
         if health.state() != HomeHealthState::Failed
             || health.generation() != Some(expected)
-            || !matches!(self.attempt, InitialServiceAttemptState::Published)
+            || !matches!(self.attempt, InitialServiceAttemptState::Published(_))
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
         {
@@ -161,9 +162,10 @@ impl ProcessServiceOwner {
         expected: HomeGeneration,
     ) -> Result<(), ServiceGraphRetirementError> {
         self.validate_failed_service_graph_retirement(expected)?;
-        self.process.fence()?;
+        let fence = self.process.fence()?;
         self.attempt = InitialServiceAttemptState::Blocked;
         self.recovery_retirement = Some(ServiceGraphRetirement {
+            fence,
             generation: expected,
             graph: self.graph.take(),
             marker: None,

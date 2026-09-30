@@ -260,7 +260,7 @@ impl ProcessServiceOwner {
                 rejected_candidate: None,
             });
         }
-        self.attempt = InitialServiceAttemptState::Published;
+        self.attempt = InitialServiceAttemptState::Published(None);
         Ok(())
     }
 }
