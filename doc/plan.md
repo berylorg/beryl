@@ -89,12 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 829: Preserve Published Appearance Across Theme Activation (finished)
+# Phase 830: Retain Published Recovery Theme Activation (finished)
 
-Published appearance validation now reads the existing prepared or activated theme runtime,
-retaining exact identity without cached state. Missing or retired appearance refuses recovery.
-Twenty-seven focused tests, compilation, formatting and independent lifecycle review passed.
-Owner coverage remains threadless; production theme activation orchestration is still pending.
+Exact-request theme activation now runs off-GUI with exclusive service-owner custody and one
+retained outcome, preserving session, dormant initial-start ownership and interaction fences.
+Thirty focused tests, compilation, formatting and independent lifecycle review passed. Owner
+coverage is threadless; injected loader error covers AlreadyAttempted, with subscription-start
+failure cleanup source-reviewed. Recovery-driver scheduling and coherent reopening remain pending.
+
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
 Connect process-supervisor Exit custody to the existing whole-graph retirement and same-home
@@ -191,7 +193,10 @@ and installs its validated appearance on the running owner. Bind before consumin
 tickets; continuation after pending mount preparation must not repeat this one-time binding.
 Phase 829 keeps current graph appearance available across theme activation for those binding
 checks. Activation starts the theme subscription; retained initial-start custody still holds other
-prepared workers. Activation orchestration must preserve fencing and handle its fallible outcome.
+prepared workers. Phase 830 supplies exact-request off-GUI activation with restored service-owner
+custody and one retained actual result across cancellation, unwind and stale delivery. Activate
+before consuming selected-window mount tickets; final reopening must require retained activation
+success. Failed or cancelled activation stays fenced and is not automatically retried.
 Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
 and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect

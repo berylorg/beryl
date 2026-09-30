@@ -73,6 +73,39 @@ enum RecoveryPublicationDelivery {
     Ready,
     Stale,
     Cancelled,
+    ThemeActivationFailure,
+    ThemeActivationUnwind,
+    ThemeActivationCancelled,
+}
+
+#[test]
+fn native_exit_recovery_theme_activation_retains_failure() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::ThemeActivationFailure,
+    );
+}
+
+#[test]
+fn native_exit_recovery_theme_activation_retains_unwind() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::ThemeActivationUnwind,
+    );
+}
+
+#[test]
+fn native_exit_recovery_theme_activation_retains_worker_cancellation() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::ThemeActivationCancelled,
+    );
 }
 
 #[test]

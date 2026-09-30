@@ -13,6 +13,7 @@ mod service_preparation;
 mod service_publication;
 mod service_validation;
 mod settlement;
+mod theme_activation;
 mod threadless;
 pub(crate) use settlement::InterruptedExitCandidate;
 
@@ -21,6 +22,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
     service_validation: Rc<RefCell<Option<Result<(), String>>>>,
+    theme_activation: Rc<RefCell<Option<Result<(), String>>>>,
     publication: Rc<
         RefCell<Option<Result<crate::cas_projection::initial_start::InitialStartOwner, String>>>,
     >,
@@ -50,6 +52,7 @@ impl RunningProcessOwner {
             session: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),
             service_validation: Rc::new(RefCell::new(None)),
+            theme_activation: Rc::new(RefCell::new(None)),
             publication: Rc::new(RefCell::new(None)),
             retirement: Rc::new(RefCell::new(None)),
             resident: None,

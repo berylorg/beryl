@@ -1,3 +1,8 @@
+mod theme_activation {
+    use super::*;
+    include!("recovery_theme_activation_support.rs");
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -19,6 +24,17 @@ pub(super) async fn verify(
         let cancellation = CommandCancellation::new();
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
+            assert!(
+                RunningProcessOwner::activate_interrupted_exit_theme(
+                    owner,
+                    request,
+                    appearance,
+                    CommandCancellation::new(),
+                    app,
+                    |_, _, _| panic!("activation before publication"),
+                )
+                .is_err()
+            );
             assert!(
                 owner
                     .borrow_mut()
@@ -163,7 +179,12 @@ pub(super) async fn verify(
                     _ => {}
                 },
                 move || {
-                    if mode == "publish" && !matches!(delivery, RecoveryPublicationDelivery::Ready)
+                    if mode == "publish"
+                        && matches!(
+                            delivery,
+                            RecoveryPublicationDelivery::Cancelled
+                                | RecoveryPublicationDelivery::Stale
+                        )
                     {
                         after.cancel();
                     }
@@ -233,7 +254,10 @@ pub(super) async fn verify(
         let delivered = receiver.await.unwrap();
         if mode == "publish" {
             match delivery {
-                RecoveryPublicationDelivery::Ready => delivered.unwrap(),
+                RecoveryPublicationDelivery::Ready
+                | RecoveryPublicationDelivery::ThemeActivationFailure
+                | RecoveryPublicationDelivery::ThemeActivationUnwind
+                | RecoveryPublicationDelivery::ThemeActivationCancelled => delivered.unwrap(),
                 RecoveryPublicationDelivery::Cancelled => {
                     assert!(delivered.unwrap_err().contains("cancelled"))
                 }
@@ -283,15 +307,8 @@ pub(super) async fn verify(
                     .unwrap();
             })
             .unwrap();
-            {
-                let mut running = owner.borrow_mut();
-                let graph = running.test_services_mut().graph_mut().unwrap();
-                let prepared = graph.current_appearance().unwrap();
-                graph.release_theme().unwrap();
-                assert!(graph.theme.is_none());
-                assert!(Arc::ptr_eq(&prepared, &graph.current_appearance().unwrap()));
-                assert!(graph.release_theme().is_err());
-            }
+            let activated =
+                theme_activation::verify(owner, request, appearance, delivery, cx).await;
             assert!(
                 owner
                     .borrow()
@@ -299,7 +316,9 @@ pub(super) async fn verify(
                     .is_err()
             );
             cx.update(|app| {
-                verify_published_bindings(owner, request, appearance, app);
+                if activated {
+                    verify_published_bindings(owner, request, appearance, app);
+                }
                 assert!(
                     RunningProcessOwner::publish_interrupted_exit_services(
                         owner,
