@@ -34,6 +34,7 @@ pub(super) async fn verify(
     foreign_candidate: &InterruptedExitCandidate,
     generation: beryl_home_store::HomeGeneration,
     faults: &FaultController,
+    publication_delivery: RecoveryPublicationDelivery,
     cx: &mut AsyncApp,
 ) -> gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet> {
     let window = owner.borrow().test_process().windows.shells()[0].window();
@@ -128,7 +129,7 @@ pub(super) async fn verify(
     assert!(!RunningProcessOwner::finish_exit(owner, request));
     let candidate = revalidation::verify(owner, request, candidate, &appearance, cx).await;
     let candidate = process_work::verify(owner, request, candidate, cx).await;
-    let (candidate, appearance) = service_preparation::verify(
+    service_preparation::verify(
         owner,
         request,
         candidate,
@@ -136,14 +137,8 @@ pub(super) async fn verify(
         window_id,
         faults,
         &appearance,
+        publication_delivery,
         cx,
     )
-    .await;
-    cx.background_executor()
-        .spawn(async move {
-            drop(candidate.session);
-            candidate.candidate.abort().close().unwrap();
-        })
-        .await;
-    appearance
+    .await
 }

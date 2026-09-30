@@ -8,6 +8,11 @@ mod appearance_attachment {
     include!("prepared_appearance_attachment_support.rs");
 }
 
+mod service_publication {
+    use super::*;
+    include!("prepared_service_publication_support.rs");
+}
+
 mod session_validation {
     use super::*;
     include!("prepared_session_validation_support.rs");
@@ -21,11 +26,9 @@ pub(super) async fn verify(
     window: beryl_model::WindowId,
     faults: &FaultController,
     previous_appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    publication_delivery: RecoveryPublicationDelivery,
     cx: &mut AsyncApp,
-) -> (
-    InterruptedExitCandidate,
-    gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
-) {
+) -> gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet> {
     use crate::app_services::recovery_graph::RecoveryServicePreparationError;
     use beryl_home_store::CommandCancellation;
     let mut candidate = Some(candidate);
@@ -33,7 +36,7 @@ pub(super) async fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let mut stale_source = None;
     let mut attached_appearance = None;
-    for mode in ["theme_failure", "success", "cancel"] {
+    for mode in ["theme_failure", "success", "cancel", "publish"] {
         if stale_source.is_none() {
             let fresh = candidate.take().unwrap();
             let (fresh, source) = cx
@@ -225,9 +228,9 @@ pub(super) async fn verify(
                 .borrow()
                 .interrupted_exit_services_result(request)
                 .is_ok(),
-            mode == "success"
+            matches!(mode, "success" | "publish")
         );
-        if mode == "success" {
+        if matches!(mode, "success" | "publish") {
             session_validation::verify(owner, request, home, fresh_generation, generation, cx)
                 .await;
             assert!(
@@ -239,7 +242,7 @@ pub(super) async fn verify(
         }
         assert!(adapters(&foreign).is_err());
         let substituted_appearance = appearance;
-        let appearance = if mode == "success" {
+        let appearance = if matches!(mode, "success" | "publish") {
             let prepared = owner.borrow().interrupted_exit_appearance(request).unwrap();
             cx.update(|app| {
                 crate::theme_runtime::GpuiAppearanceWindowSet::new(
@@ -253,7 +256,7 @@ pub(super) async fn verify(
             assert!(owner.borrow().interrupted_exit_appearance(request).is_err());
             substituted_appearance.clone()
         };
-        let retained_marker = if mode == "success" {
+        let retained_marker = if matches!(mode, "success" | "publish") {
             for retirement in [None, Some(Err("failed retirement".into()))] {
                 owner
                     .borrow()
@@ -367,7 +370,7 @@ pub(super) async fn verify(
                             request,
                             &appearance,
                             &substituted_appearance,
-                            previous_appearance,
+                            attached_appearance.as_ref().unwrap_or(previous_appearance),
                             app,
                         );
                         attached_appearance = Some(appearance.clone());
@@ -400,6 +403,19 @@ pub(super) async fn verify(
         );
         assert!(owner.borrow().test_services().graph().is_none());
         assert!(!RunningProcessOwner::finish_exit(owner, request));
+        if mode == "publish" {
+            service_publication::verify(
+                owner,
+                request,
+                generation,
+                fresh_generation,
+                &appearance,
+                publication_delivery,
+                cx,
+            )
+            .await;
+            return appearance;
+        }
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             let cancel = |request, app: &mut gpui::App| {
@@ -411,7 +427,7 @@ pub(super) async fn verify(
                 )
             };
             assert!(cancel(&foreign, app).is_err());
-            if mode != "success" {
+            if !matches!(mode, "success" | "publish") {
                 assert!(cancel(request, app).is_err());
                 return;
             }
@@ -444,7 +460,7 @@ pub(super) async fn verify(
                 .test_replace_interrupted_exit_request(&foreign);
         })
         .unwrap();
-        if mode == "success" {
+        if matches!(mode, "success" | "publish") {
             receiver.await.unwrap();
             assert!(
                 owner
@@ -578,5 +594,5 @@ pub(super) async fn verify(
         assert!(!RunningProcessOwner::finish_exit(owner, request));
         candidate = Some(owner.borrow().test_take_interrupted_exit_candidate());
     }
-    (candidate.unwrap(), attached_appearance.unwrap())
+    unreachable!("the final fixture pass publishes its graph")
 }

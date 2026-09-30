@@ -9,6 +9,7 @@ pub(crate) struct InterruptedExitCandidate {
 
 pub(super) enum CandidateSettlement {
     Pending,
+    Published,
     Constructed(Result<HomeRecoveryCandidate, crate::app_services::RetiredHomeRecoveryError>),
     Services(
         Result<

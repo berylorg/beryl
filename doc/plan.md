@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 817: Revalidate Sessions Through Prepared Recovery Graphs (finished)
+# Phase 818: Retain Running-Owner Recovery Publication (finished)
 
-The running owner now revalidates original Exit evidence against the prepared graph's fresh
-candidate and session domain using its existing worker slot. Graph, original outcome and bounded
-validation-result custody survive cancellation, stale delivery and failure; interaction remains
-fenced. All 44 selected tests, compilation, formatting and independent review passed.
+The running owner now publishes a complete recovery graph through its existing worker after fresh
+session validation and complete binding/draft checks. It retains failed prepared graphs and actual
+publication outcomes, including dormant-worker ownership after stale or cancelled delivery, while
+interaction remains fenced. All 54 selected tests, compilation, formatting and independent review
+passed. Coherent reopening remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -175,12 +176,12 @@ retaining the existing worker-start custody and closed process admission. Connec
 to the running owner next, with fresh session and complete-window validation, retained original
 outcomes and the existing single-worker exclusion.
 Phase 817 supplies fresh prepared-graph session reads with retained original evidence and bounded
-result custody through the running worker. Graph availability is not successful validation; the
-publication composition must require a fresh successful check for its exact candidate and attempt,
-then compose complete bindings and draft/work cleanup before coherent interaction release.
-Complete fresh graph attachment, retry-delay scheduling, whole-graph
-publication and coherent reopening composition;
-session and shell validation alone cannot complete the cancelled request.
+result custody through the running worker. Phase 818 binds complete shell/draft checks and a fresh
+session read to running-owner graph publication, retaining actual publication outcomes and dormant
+worker ownership even after stale or cancelled delivery. Publication does not complete the cancelled
+Exit or reopen interaction; compose the coherent release and ordinary recovery driver next.
+Connect the accepted attachment/publication path to the recovery driver, retry-delay scheduling
+and coherent reopening; publication alone cannot complete the cancelled request.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

@@ -68,6 +68,33 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
     run_with_settlement_unwind(Some(FaultPoint::BeforeCommit), true, true);
 }
 
+#[derive(Clone, Copy)]
+enum RecoveryPublicationDelivery {
+    Ready,
+    Stale,
+    Cancelled,
+}
+
+#[test]
+fn native_exit_recovery_publication_delivers_success() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Ready,
+    );
+}
+
+#[test]
+fn native_exit_recovery_publication_retains_cancelled_success() {
+    run_with_recovery_delivery(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Cancelled,
+    );
+}
+
 fn foreign_recovery_candidate() -> (
     tempfile::TempDir,
     crate::running_owner::InterruptedExitCandidate,
@@ -102,7 +129,25 @@ fn run(fault: Option<FaultPoint>, consumer: bool) {
 }
 
 fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlement_unwind: bool) {
+    run_with_recovery_delivery(
+        fault,
+        consumer,
+        settlement_unwind,
+        RecoveryPublicationDelivery::Stale,
+    );
+}
+
+fn run_with_recovery_delivery(
+    fault: Option<FaultPoint>,
+    consumer: bool,
+    settlement_unwind: bool,
+    publication_delivery: RecoveryPublicationDelivery,
+) {
     let directory = support::native_home();
+    eprintln!(
+        "native Exit publication fixture: {}",
+        directory.path().display()
+    );
     let faults = FaultController::new();
     let opening_faults = faults.clone();
     let input = input(directory.path(), move |path, _| {
@@ -434,7 +479,7 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
                                 &owner, &request, candidate, settlement_unwind, cx,
                             ).await;
                             if matches!(fault, Some(FaultPoint::BeforeCommit)) && !settlement_unwind {
-                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, cx).await);
+                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, publication_delivery, cx).await);
                                 recovered_threadless = true;
                             }
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
@@ -507,12 +552,13 @@ fn run_with_settlement_unwind(fault: Option<FaultPoint>, consumer: bool, settlem
         });
     assert!(finished.get());
     assert_reopens(&directory);
+    directory.close().unwrap();
 }
 
 async fn dispose_failed_fixture(
     mut running: startup_owner::StartedProcess,
     retired: bool,
-    home_closed: bool,
+    unstarted_recovery: bool,
     recovered_appearance: Option<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>>,
     cx: &mut AsyncApp,
 ) {
@@ -580,16 +626,23 @@ async fn dispose_failed_fixture(
         .spawn(async move {
             if running.services.graph().is_none() {
                 let home = running.services.test_retired_service_home();
-                if home_closed {
-                    assert!(home.is_none());
-                } else {
-                    home.unwrap().close().unwrap();
-                }
+                assert!(!unstarted_recovery);
+                home.unwrap().close().unwrap();
                 return;
             }
             if running.services.graph().unwrap().home().health().state() == HomeHealthState::Healthy
             {
-                close(&mut running.services);
+                if unstarted_recovery {
+                    running
+                        .services
+                        .graph
+                        .take()
+                        .unwrap()
+                        .dispose_unstarted()
+                        .unwrap();
+                } else {
+                    close(&mut running.services);
+                }
                 return;
             }
             assert_eq!(
