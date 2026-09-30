@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 838: Drive Retired Exit Recovery To A Settled Candidate (finished)
+# Phase 839: Drive Failed Exit Retirement Into Candidate Settlement (finished)
 
-One async operation now composes candidate construction, retained session settlement and retired
-process-work settlement without new owner state, workers or retries. Forty focused lifecycle
-checks, production compilation, formatting and independent review passed. Native threadless tests
-exercise success and post-construction cancellation/staleness; later faults and dropped-delivery
-custody rely on accepted component tests and source review. The original request and actual
-outcomes remain retained; this operation grants no publication or interaction release.
+The async driver now composes failed-generation preflight, resident and whole-graph retirement,
+then candidate construction and settlement using existing custody. Forty-four lifecycle checks,
+production compilation, formatting and independent review passed. Native threadless cases prove
+success and preserved retirement after cancellation, stale delivery and a dropped caller;
+selected pending cleanup relies on component evidence and source review. No interaction is released.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -213,8 +212,10 @@ retryable; success completes only the original cancelled request and preserves i
 Phase 837 composes prepared publication through that completion in one async operation, stopping
 on errors with custody retained and polling only pending mount cleanup. It does not resume an
 already-published attempt. Phase 838 supplies the composed retired-home construction/session/process-work operation.
-Connect earlier retirement and subsequent service preparation/attachment and failed-home
-retry-delay scheduling to this operation through the outer recovery driver.
+Phase 839 composes earlier resident and graph retirement into that operation. Connect subsequent
+service preparation/attachment and failed-home retry-delay scheduling through the outer recovery
+driver. That supervisor must own one driving future: worker custody rejects overlapping graph
+retirement, while pending resident waits do not independently reserve the outer attempt.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

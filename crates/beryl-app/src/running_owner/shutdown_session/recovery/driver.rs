@@ -4,6 +4,65 @@ use gpui::{AsyncApp, Entity};
 use std::time::Duration;
 
 impl RunningProcessOwner {
+    pub(crate) async fn retire_and_settle_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let receiver = loop {
+            let (sender, receiver) = futures_channel::oneshot::channel();
+            let admitted = cx
+                .update(|app| -> Result<bool, String> {
+                    if cancellation.is_cancelled() {
+                        return Err("Interrupted Exit retirement was cancelled".into());
+                    }
+                    {
+                        let mut owner = owner.borrow_mut();
+                        owner
+                            .process
+                            .services
+                            .as_ref()
+                            .ok_or("The complete service owner is on a worker")?
+                            .validate_failed_service_graph_retirement(generation)
+                            .map_err(|error| error.to_string())?;
+                        if !owner.retire_interrupted_exit_residents(request, app)? {
+                            return Ok(false);
+                        }
+                    }
+                    Self::retire_interrupted_exit_graph(
+                        owner,
+                        request,
+                        generation,
+                        app,
+                        move |_, _| {
+                            let _ = sender.send(());
+                        },
+                    )?;
+                    Ok(true)
+                })
+                .map_err(|error| error.to_string())??;
+            if admitted {
+                break receiver;
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+        };
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit retirement delivery is unavailable")?;
+        owner
+            .borrow()
+            .interrupted_exit_graph_retirement_result(request)?;
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit retirement was cancelled".into());
+        }
+        Self::construct_and_settle_interrupted_exit(owner, request, generation, cancellation, cx)
+            .await
+    }
+
     pub(crate) async fn construct_and_settle_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

@@ -35,22 +35,27 @@ pub(super) async fn verify(
     generation: beryl_home_store::HomeGeneration,
     faults: &FaultController,
     publication_delivery: RecoveryPublicationDelivery,
+    settled_candidate: Option<beryl_home_store::HomeRecoveryCandidate>,
     cx: &mut AsyncApp,
 ) -> gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet> {
     let window = owner.borrow().test_process().windows.shells()[0].window();
     let window_id = window
         .read_with(cx, |root, _| root.controller().unwrap().window_id())
         .unwrap();
-    let candidate = construction::verify(
-        owner,
-        request,
-        generation,
-        foreign_candidate.candidate.generation(),
-        faults,
-        publication_delivery,
-        cx,
-    )
-    .await;
+    let candidate = if let Some(candidate) = settled_candidate {
+        candidate
+    } else {
+        construction::verify(
+            owner,
+            request,
+            generation,
+            foreign_candidate.candidate.generation(),
+            faults,
+            publication_delivery,
+            cx,
+        )
+        .await
+    };
     let (candidate, mut source, appearance) = cx
         .background_executor()
         .spawn(async move {

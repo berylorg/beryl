@@ -23,6 +23,49 @@ mod threadless_recovery {
     include!("running_threadless_attachment.rs");
 }
 
+mod retirement_driver {
+    use super::*;
+    include!("recovery_retirement_driver_support.rs");
+}
+
+#[derive(Clone, Copy)]
+enum RetirementDelivery {
+    Ready,
+    Cancelled,
+    Stale,
+    Dropped,
+}
+
+#[test]
+fn native_exit_recovery_driver_retires_failed_graph_before_construction() {
+    run_with_retirement_delivery(Some(RetirementDelivery::Ready));
+}
+
+#[test]
+fn native_exit_recovery_driver_retains_cancelled_retirement() {
+    run_with_retirement_delivery(Some(RetirementDelivery::Cancelled));
+}
+
+#[test]
+fn native_exit_recovery_driver_retains_stale_retirement() {
+    run_with_retirement_delivery(Some(RetirementDelivery::Stale));
+}
+
+#[test]
+fn native_exit_recovery_driver_retains_dropped_retirement() {
+    run_with_retirement_delivery(Some(RetirementDelivery::Dropped));
+}
+
+fn run_with_retirement_delivery(delivery: Option<RetirementDelivery>) {
+    run_with_recovery_options(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Driven,
+        delivery,
+    );
+}
+
 #[test]
 fn native_exit_session_publication_delivers_exact_ready_request() {
     run(None, false);
@@ -219,6 +262,22 @@ fn run_with_recovery_delivery(
     consumer: bool,
     settlement_unwind: bool,
     publication_delivery: RecoveryPublicationDelivery,
+) {
+    run_with_recovery_options(
+        fault,
+        consumer,
+        settlement_unwind,
+        publication_delivery,
+        None,
+    );
+}
+
+fn run_with_recovery_options(
+    fault: Option<FaultPoint>,
+    consumer: bool,
+    settlement_unwind: bool,
+    publication_delivery: RecoveryPublicationDelivery,
+    retirement_delivery: Option<RetirementDelivery>,
 ) {
     let directory = support::native_home();
     eprintln!(
@@ -541,8 +600,10 @@ fn run_with_recovery_delivery(
                                 assert!(!window.read(app).unwrap().test_shell_construction_retired());
                                 assert!(!owner.borrow().test_services_on_worker());
                                 window.update(app, |root, _, cx| root.set_shutdown_interaction_gated(true, cx)).unwrap().unwrap();
-                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
-                                assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
+                                if retirement_delivery.is_none() {
+                                    assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
+                                    assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).unwrap());
+                                }
                             }).unwrap();
                             assert_eq!(before, format!("{:?}", owner.borrow().interrupted_exit_session().unwrap()));
                             assert!(matches!(owner.borrow().shutdown_session(), Some(RunningShutdownSession::RecoveryOwned)));
@@ -551,12 +612,21 @@ fn run_with_recovery_delivery(
                             assert!(!RunningProcessOwner::finish_exit(&owner, &request));
                             let mut candidate = Some(candidate);
                             let retired_generation = owner.borrow().test_services().graph().unwrap().home().health().generation().unwrap();
-                            graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
-                            let candidate = candidate_settlement_support::verify(
-                                &owner, &request, candidate, settlement_unwind, cx,
-                            ).await;
+                            let settled_candidate = if let Some(delivery) = retirement_delivery {
+                                Some(retirement_driver::verify(&owner, &request, retired_generation, candidate.as_ref().unwrap().candidate.generation(), delivery, cx).await)
+                            } else {
+                                graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
+                                None
+                            };
+                            let candidate = if retirement_delivery.is_some() {
+                                candidate.unwrap()
+                            } else {
+                                candidate_settlement_support::verify(
+                                    &owner, &request, candidate, settlement_unwind, cx,
+                                ).await
+                            };
                             if matches!(fault, Some(FaultPoint::BeforeCommit)) && !settlement_unwind {
-                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, publication_delivery, cx).await);
+                                recovered_appearance = Some(threadless_recovery::verify(&owner, &request, &candidate, retired_generation, &faults, publication_delivery, settled_candidate, cx).await);
                                 recovered_threadless = true;
                             }
                             if matches!(publication_delivery, RecoveryPublicationDelivery::Complete | RecoveryPublicationDelivery::Driven) {
