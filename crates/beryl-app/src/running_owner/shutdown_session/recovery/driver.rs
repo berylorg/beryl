@@ -1,9 +1,46 @@
 use super::*;
+use crate::app_services::AppServiceConfiguration;
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::{AsyncApp, Entity};
 use std::time::Duration;
+use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) async fn prepare_interrupted_exit_service_graph(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            Self::prepare_interrupted_exit_services(
+                owner,
+                request,
+                retired,
+                configuration,
+                at,
+                cancellation.clone(),
+                app,
+                move |_, _| {
+                    let _ = sender.send(());
+                },
+            )
+        })
+        .map_err(|error| error.to_string())??;
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit service preparation delivery is unavailable")?;
+        owner.borrow().interrupted_exit_services_result(request)?;
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit service preparation was cancelled".into());
+        }
+        Ok(())
+    }
+
     pub(crate) async fn retire_and_settle_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

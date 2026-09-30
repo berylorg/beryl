@@ -1,3 +1,8 @@
+mod service_driver {
+    use super::*;
+    include!("recovery_service_driver_support.rs");
+}
+
 mod threadless_attachment {
     use super::*;
     include!("prepared_threadless_attachment_support.rs");
@@ -36,7 +41,7 @@ pub(super) async fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let mut stale_source = None;
     let mut attached_appearance = None;
-    for mode in ["theme_failure", "success", "cancel", "publish"] {
+    for mode in ["theme_failure", "success", "dropped", "cancel", "publish"] {
         if stale_source.is_none() {
             let fresh = candidate.take().unwrap();
             let (fresh, source) = cx
@@ -149,66 +154,7 @@ pub(super) async fn verify(
         } else {
             None
         };
-        let (sender, receiver) = futures_channel::oneshot::channel();
-        cx.update(|app| {
-            let start = |request, cancellation, app: &mut gpui::App| {
-                RunningProcessOwner::prepare_interrupted_exit_services(
-                    owner,
-                    request,
-                    generation,
-                    configuration(),
-                    SyndicTimestamp::from_unix_millis(2),
-                    cancellation,
-                    app,
-                    |_, _| panic!("refused preparation callback"),
-                )
-            };
-            assert!(start(&foreign, CommandCancellation::new(), app).is_err());
-            for retirement in [None, Some(Err("failed retirement".into()))] {
-                owner
-                    .borrow()
-                    .test_set_resident_graph_retirement(retirement);
-                assert!(start(request, CommandCancellation::new(), app).is_err());
-            }
-            owner
-                .borrow()
-                .test_set_resident_graph_retirement(Some(Ok(())));
-            let cancelled = CommandCancellation::new();
-            cancelled.cancel();
-            assert!(start(request, cancelled, app).is_err());
-            assert!(owner.borrow().interrupted_exit_session().is_some());
-            RunningProcessOwner::prepare_interrupted_exit_services(
-                owner,
-                request,
-                generation,
-                configuration(),
-                SyndicTimestamp::from_unix_millis(2),
-                cancellation,
-                app,
-                move |owner, _| {
-                    assert!(!owner.borrow().test_services_on_worker());
-                    assert!(owner.borrow().interrupted_exit_session().is_some());
-                    sender.send(()).unwrap();
-                },
-            )
-            .unwrap();
-            assert!(owner.borrow().test_services_on_worker());
-            assert!(owner.borrow().interrupted_exit_session().is_none());
-            assert!(adapters(request).is_err());
-            assert!(
-                owner
-                    .borrow_mut()
-                    .take_interrupted_exit_preparation_failure(request, generation)
-                    .is_err()
-            );
-            assert!(start(request, CommandCancellation::new(), app).is_err());
-            assert!(!RunningProcessOwner::finish_exit(owner, request));
-            owner
-                .borrow_mut()
-                .test_replace_interrupted_exit_request(&foreign);
-        })
-        .unwrap();
-        receiver.await.unwrap();
+        service_driver::verify(owner, request, generation, cancellation, mode, cx).await;
         if let Some(canceller) = canceller {
             canceller.join().unwrap();
         }
@@ -228,9 +174,9 @@ pub(super) async fn verify(
                 .borrow()
                 .interrupted_exit_services_result(request)
                 .is_ok(),
-            matches!(mode, "success" | "publish")
+            matches!(mode, "success" | "dropped" | "publish")
         );
-        if matches!(mode, "success" | "publish") {
+        if matches!(mode, "success" | "dropped" | "publish") {
             session_validation::verify(owner, request, home, fresh_generation, generation, cx)
                 .await;
             assert!(
@@ -242,7 +188,7 @@ pub(super) async fn verify(
         }
         assert!(adapters(&foreign).is_err());
         let substituted_appearance = appearance;
-        let appearance = if matches!(mode, "success" | "publish") {
+        let appearance = if matches!(mode, "success" | "dropped" | "publish") {
             let prepared = owner.borrow().interrupted_exit_appearance(request).unwrap();
             cx.update(|app| {
                 crate::theme_runtime::GpuiAppearanceWindowSet::new(
@@ -256,7 +202,7 @@ pub(super) async fn verify(
             assert!(owner.borrow().interrupted_exit_appearance(request).is_err());
             substituted_appearance.clone()
         };
-        let retained_marker = if matches!(mode, "success" | "publish") {
+        let retained_marker = if matches!(mode, "success" | "dropped" | "publish") {
             for retirement in [None, Some(Err("failed retirement".into()))] {
                 owner
                     .borrow()
@@ -427,7 +373,7 @@ pub(super) async fn verify(
                 )
             };
             assert!(cancel(&foreign, app).is_err());
-            if !matches!(mode, "success" | "publish") {
+            if !matches!(mode, "success" | "dropped" | "publish") {
                 assert!(cancel(request, app).is_err());
                 return;
             }
@@ -460,7 +406,7 @@ pub(super) async fn verify(
                 .test_replace_interrupted_exit_request(&foreign);
         })
         .unwrap();
-        if matches!(mode, "success" | "publish") {
+        if matches!(mode, "success" | "dropped" | "publish") {
             receiver.await.unwrap();
             assert!(
                 owner
