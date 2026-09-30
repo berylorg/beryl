@@ -47,6 +47,7 @@ pub(super) async fn verify(
         generation,
         foreign_candidate.candidate.generation(),
         faults,
+        publication_delivery,
         cx,
     )
     .await;

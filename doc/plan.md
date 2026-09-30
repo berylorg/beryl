@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 837: Drive Prepared Interrupted Exit Publication To Completion (finished)
+# Phase 838: Drive Retired Exit Recovery To A Settled Candidate (finished)
 
-One async operation now composes prepared publication, theme activation, process binding and
-coherent completion, with a single pending-cleanup timer and no new owner state or worker.
-Forty-one focused lifecycle tests, production compilation, formatting and independent review
-passed. Threadless driver success and post-publication cancellation/staleness are exercised;
-selected pending composition remains source-reviewed against accepted component tests.
-The outer recovery driver and failed-home retry scheduling remain phase 702 work.
+One async operation now composes candidate construction, retained session settlement and retired
+process-work settlement without new owner state, workers or retries. Forty focused lifecycle
+checks, production compilation, formatting and independent review passed. Native threadless tests
+exercise success and post-construction cancellation/staleness; later faults and dropped-delivery
+custody rely on accepted component tests and source review. The original request and actual
+outcomes remain retained; this operation grants no publication or interaction release.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -212,7 +212,8 @@ original recovery/shutdown custody release and dormant worker start. Refused adm
 retryable; success completes only the original cancelled request and preserves independent gates.
 Phase 837 composes prepared publication through that completion in one async operation, stopping
 on errors with custody retained and polling only pending mount cleanup. It does not resume an
-already-published attempt. Connect earlier retirement/construction/attachment and failed-home
+already-published attempt. Phase 838 supplies the composed retired-home construction/session/process-work operation.
+Connect earlier retirement and subsequent service preparation/attachment and failed-home
 retry-delay scheduling to this operation through the outer recovery driver.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

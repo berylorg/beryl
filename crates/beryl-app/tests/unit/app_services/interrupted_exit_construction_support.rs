@@ -4,8 +4,17 @@ pub(super) async fn verify(
     generation: beryl_home_store::HomeGeneration,
     stale_generation: beryl_home_store::HomeGeneration,
     faults: &FaultController,
+    delivery: RecoveryPublicationDelivery,
     cx: &mut AsyncApp,
 ) -> beryl_home_store::HomeRecoveryCandidate {
+    if matches!(
+        delivery,
+        RecoveryPublicationDelivery::Driven
+            | RecoveryPublicationDelivery::DrivenCancelled
+            | RecoveryPublicationDelivery::DrivenStale
+    ) {
+        return driver::verify(owner, request, generation, delivery, cx).await;
+    }
     let foreign = request.test_foreign();
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     cx.update(|app| {
@@ -300,4 +309,9 @@ pub(super) async fn verify(
 mod constructed_settlement {
     use super::*;
     include!("interrupted_exit_constructed_settlement_support.rs");
+}
+
+mod driver {
+    use super::*;
+    include!("recovery_candidate_driver_support.rs");
 }

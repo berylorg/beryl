@@ -4,6 +4,75 @@ use gpui::{AsyncApp, Entity};
 use std::time::Duration;
 
 impl RunningProcessOwner {
+    pub(crate) async fn construct_and_settle_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            Self::construct_interrupted_exit_candidate(
+                owner,
+                request,
+                retired,
+                cancellation.clone(),
+                app,
+                move |_, _| {
+                    let _ = sender.send(());
+                },
+            )
+        })
+        .map_err(|error| error.to_string())??;
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit construction delivery is unavailable")?;
+
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            owner
+                .borrow()
+                .interrupted_exit_construction_result(request)?;
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit candidate settlement was cancelled".into());
+            }
+            Self::settle_constructed_exit_candidate(owner, request, app, move |_, _| {
+                let _ = sender.send(());
+            })
+        })
+        .map_err(|error| error.to_string())??;
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit candidate settlement delivery is unavailable")?;
+
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            owner.borrow().interrupted_exit_candidate_result(request)?;
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit process-work settlement was cancelled".into());
+            }
+            Self::settle_interrupted_exit_process_work(
+                owner,
+                request,
+                cancellation.clone(),
+                app,
+                move |_, _| {
+                    let _ = sender.send(());
+                },
+            )
+        })
+        .map_err(|error| error.to_string())??;
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit process-work settlement delivery is unavailable")?;
+        owner.borrow().interrupted_exit_candidate_result(request)?;
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit process-work settlement was cancelled".into());
+        }
+        Ok(())
+    }
+
     pub(crate) async fn publish_and_complete_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
