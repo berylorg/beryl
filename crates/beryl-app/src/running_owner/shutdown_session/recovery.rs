@@ -31,6 +31,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     retirement: Rc<RefCell<Option<retirement::GraphRetirement>>>,
     resident: Option<resident::ResidentPreparation>,
     pending_resident_frame: Option<std::rc::Weak<()>>,
+    preparation_driver: std::rc::Weak<()>,
     reopen_schedule: beryl_home_store::RecoveryRetrySchedule,
     reopen_deadline: Option<std::time::Instant>,
     residents: Vec<(
@@ -61,6 +62,7 @@ impl RunningProcessOwner {
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,
+            preparation_driver: std::rc::Weak::new(),
             reopen_schedule: Default::default(),
             reopen_deadline: None,
             residents: self

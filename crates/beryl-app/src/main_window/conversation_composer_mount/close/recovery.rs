@@ -1,6 +1,13 @@
 use super::*;
 
 impl MainWindowConversationComposerMount {
+    #[cfg(test)]
+    pub(crate) fn test_retain_recovery_service(
+        &self,
+    ) -> Arc<MainWindowConversationComposerService> {
+        self.bound_service().unwrap().clone()
+    }
+
     pub(in crate::main_window::conversation_composer_mount) fn recovery_fenced(&self) -> bool {
         self.window_close.is_some_and(|close| close.recovery_fenced)
     }

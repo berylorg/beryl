@@ -59,6 +59,7 @@ pub(super) async fn verify_and_dispose(
         residents.push(snapshot);
     }
 
+    verify_exclusive_preparation(&owner, request, retired, &residents[0].0, cx).await;
     RunningProcessOwner::retire_and_prepare_interrupted_exit(
         &owner,
         request,
@@ -217,6 +218,72 @@ pub(super) async fn verify_and_dispose(
                 .unwrap();
         })
         .await;
+}
+
+async fn verify_exclusive_preparation(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    retired: beryl_home_store::HomeGeneration,
+    mount: &gpui::Entity<crate::main_window::MainWindowConversationComposerMount>,
+    cx: &mut AsyncApp,
+) {
+    use std::{future::Future, task::Poll};
+
+    let service = cx
+        .update(|app| mount.read(app).test_retain_recovery_service())
+        .unwrap();
+    let original = publication_evidence(&owner.borrow().interrupted_exit_session().unwrap());
+    for cancel in [true, false] {
+        let cancellation = CommandCancellation::new();
+        let mut drive_cx = cx.clone();
+        let mut drive = Box::pin(RunningProcessOwner::retire_and_prepare_interrupted_exit(
+            owner,
+            request,
+            retired,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            cancellation.clone(),
+            &mut drive_cx,
+        ));
+        std::future::poll_fn(|task| {
+            assert!(drive.as_mut().poll(task).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        assert!(!owner.borrow().test_services_on_worker());
+        assert!(owner.borrow().test_services().graph().is_some());
+        let foreign = request.test_foreign();
+        for (attempt, expected) in [
+            (&foreign, "request changed"),
+            (request, "already being driven"),
+        ] {
+            let error = RunningProcessOwner::retire_and_prepare_interrupted_exit(
+                owner,
+                attempt,
+                retired,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains(expected), "{error}");
+        }
+        assert_eq!(
+            original,
+            publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(owner.borrow().exit_requested());
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+        if cancel {
+            cancellation.cancel();
+            assert!(drive.await.unwrap_err().contains("cancelled"));
+        } else {
+            drop(drive);
+        }
+    }
+    drop(service);
 }
 
 fn publication_evidence(session: &RunningShutdownSession) -> String {

@@ -510,6 +510,7 @@
 - [x] Accepted fresh reopening-candidate CAS preparation, configuration, cancellation and failure custody through shared convergence and fenced construction; initial/recovery regressions and independent review passed.
 - [x] Gate: independently accepted unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation. This does not accept complete-stack publication or running-window recovery.
 - [x] Qualified explicitly driven interrupted-Exit recovery with two selected windows, preserved resident identities, partial-binding fences and cancelled-Exit settlement across noncommit, commit and candidate-reconciled commit.
+- [x] Serialized interrupted-Exit preparation before pending resident retirement, with exact-request overlap refusal and cancellation/drop release that preserve recovery custody; focused native regressions and independent lifecycle review passed.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
