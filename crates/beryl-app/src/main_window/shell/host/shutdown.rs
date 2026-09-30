@@ -5,6 +5,14 @@ impl MainWindowShellRoot {
         windows: &[WindowHandle<Self>],
         app: &mut App,
     ) -> Result<(), String> {
+        Self::release_shutdown_interaction_gates_after(windows, app, || Ok(()))
+    }
+
+    pub(crate) fn release_shutdown_interaction_gates_after(
+        windows: &[WindowHandle<Self>],
+        app: &mut App,
+        settle: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         let (first, rest) = windows
             .split_first()
             .ok_or("shutdown interaction release has no published windows")?;
@@ -17,6 +25,7 @@ impl MainWindowShellRoot {
                         .map_err(|error| error.to_string())?
                         .validate_shutdown_interaction_release(cx)?;
                 }
+                settle()?;
                 root.set_shutdown_interaction_gated(false, cx)
                     .expect("validated composer remains live during synchronous gate release");
                 for window in rest {
@@ -61,6 +70,15 @@ impl MainWindowShellRoot {
         app: &mut App,
     ) -> Result<(), String> {
         Self::release_shutdown_interaction_gates(windows, app)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_release_shutdown_interaction_gates_after(
+        windows: &[WindowHandle<Self>],
+        app: &mut App,
+        settle: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        Self::release_shutdown_interaction_gates_after(windows, app, settle)
     }
 
     pub(crate) fn set_shutdown_interaction_gated(

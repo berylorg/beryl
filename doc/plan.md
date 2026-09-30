@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 832: Preserve Mount Tickets Until Process Rebinding (finished)
+# Phase 833: Couple Shell Interaction Release To Process Settlement (finished)
 
-Running-owner mount release now requires the installed recovered process appearance, preserving
-rebinding tickets without additional state. Thirty focused tests, compilation, formatting and
-independent lifecycle review passed. Owner coverage remains threadless; selected-ticket preservation
-follows the pre-mutation guard and existing selected contribution evidence. Final reopening and
-the recovery driver remain pending.
+Shell interaction release now runs one fallible synchronous settlement callback after all windows
+validate and before any gate opens, with no added retained state. Four focused tests, compilation,
+formatting and independent lifecycle review passed. Callback refusal preserves every shell gate;
+the future caller must keep settlement bounded, non-reentrant and preserve process custody on
+refusal. Process admission wiring and cancelled-request completion remain in phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

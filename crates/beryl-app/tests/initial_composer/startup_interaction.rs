@@ -436,7 +436,11 @@ fn shutdown_release_validates_all_windows_before_clearing_any_gate(cx: &mut gpui
         .unwrap();
     assert!(
         cx.update(
-            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app)
+            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates_after(
+                &windows,
+                app,
+                || panic!("invalid windows must not settle process recovery")
+            )
         )
         .is_err()
     );
@@ -462,8 +466,39 @@ fn shutdown_release_validates_all_windows_before_clearing_any_gate(cx: &mut gpui
             });
         })
         .unwrap();
-    cx.update(|app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app))
-        .unwrap();
+    let calls = std::cell::Cell::new(0);
+    assert_eq!(
+        cx.update(|app| {
+            MainWindowShellRoot::test_release_shutdown_interaction_gates_after(
+                &windows,
+                app,
+                || {
+                    calls.set(calls.get() + 1);
+                    Err("process settlement refused".to_owned())
+                },
+            )
+        }),
+        Err("process settlement refused".to_owned())
+    );
+    assert_eq!(calls.get(), 1);
+    for window in windows {
+        window
+            .read_with(cx, |root, app| {
+                assert_eq!(
+                    root.new_window_disabled_reason(app).as_deref(),
+                    Some("Application Exit is waiting for active work and durable state.")
+                );
+            })
+            .unwrap();
+    }
+    cx.update(|app| {
+        MainWindowShellRoot::test_release_shutdown_interaction_gates_after(&windows, app, || {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+    })
+    .unwrap();
+    assert_eq!(calls.get(), 2);
     for window in windows {
         window
             .read_with(cx, |root, app| {
@@ -497,7 +532,11 @@ fn shutdown_release_validates_all_windows_before_clearing_any_gate(cx: &mut gpui
         .unwrap();
     assert!(
         cx.update(
-            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&windows, app)
+            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates_after(
+                &windows,
+                app,
+                || panic!("invalid windows must not settle process recovery")
+            )
         )
         .is_err()
     );
@@ -511,8 +550,14 @@ fn shutdown_release_validates_all_windows_before_clearing_any_gate(cx: &mut gpui
         })
         .unwrap();
     assert!(
-        cx.update(|app| MainWindowShellRoot::test_release_shutdown_interaction_gates(&[], app))
-            .is_err()
+        cx.update(
+            |app| MainWindowShellRoot::test_release_shutdown_interaction_gates_after(
+                &[],
+                app,
+                || panic!("empty windows must not settle process recovery")
+            )
+        )
+        .is_err()
     );
     cx.update(|app| first.release_published_handle(app))
         .unwrap_or_else(|_| panic!("released first shell"));
