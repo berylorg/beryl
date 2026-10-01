@@ -61,6 +61,7 @@ pub(super) async fn verify(
         Poll::Ready(())
     })
     .await;
+    assert_reserved(owner, request, retired, generation, appearance, cx).await;
     while owner
         .borrow()
         .interrupted_exit_services_result(request)
@@ -70,6 +71,7 @@ pub(super) async fn verify(
             .timer(Duration::from_millis(10))
             .await;
     }
+    assert_reserved(owner, request, retired, generation, appearance, cx).await;
     assert!(owner.borrow().test_services().graph().is_none());
     assert!(owner.borrow().exit_requested());
     cx.update(|app| {
@@ -91,24 +93,13 @@ pub(super) async fn verify(
     })
     .await;
     assert!(owner.borrow().test_services_on_worker());
-    assert!(
-        RunningProcessOwner::publish_and_complete_interrupted_exit(
-            owner,
-            request,
-            retired,
-            generation,
-            appearance,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .is_err()
-    );
+    assert_reserved(owner, request, retired, generation, appearance, cx).await;
     while owner.borrow().test_services_on_worker() {
         cx.background_executor()
             .timer(Duration::from_millis(10))
             .await;
     }
+    assert_reserved(owner, request, retired, generation, appearance, cx).await;
     owner
         .borrow()
         .interrupted_exit_publication_result(request)
@@ -221,4 +212,57 @@ pub(super) async fn verify(
         .await
         .is_err()
     );
+}
+
+async fn assert_reserved(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    retired: beryl_home_store::HomeGeneration,
+    generation: beryl_home_store::HomeGeneration,
+    appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    cx: &mut AsyncApp,
+) {
+    use beryl_home_store::CommandCancellation;
+    let on_worker = owner.borrow().test_services_on_worker();
+    assert!(
+        RunningProcessOwner::publish_and_complete_interrupted_exit(
+            owner,
+            request,
+            retired,
+            generation,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert!(
+        RunningProcessOwner::await_interrupted_exit_completion(
+            owner,
+            request,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert!(
+        RunningProcessOwner::retry_interrupted_exit_preparation(
+            owner,
+            request,
+            retired,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            CommandCancellation::new(),
+            |_| panic!("competing retry"),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert_eq!(owner.borrow().test_services_on_worker(), on_worker);
 }

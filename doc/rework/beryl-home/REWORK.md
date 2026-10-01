@@ -485,6 +485,14 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Extended the shared exact-request recovery driver reservation through composed threadless
+  attachment, publication and completion, including completion-only continuation. Internal passes
+  avoid nested admission; cancellation, stale delivery and dropped waits preserve retained custody
+  and release the reservation for stage-appropriate continuation. Twenty-one native cases passed
+  (run `97a22498-3ee7-4bcc-86bf-93b3c201706d`, 141.432s), including competing calls during active
+  and returned workers and pending/partially prepared mounts. Cargo check, formatting and independent
+  lifecycle/persistence review passed. Initial preparation-to-publication supervisor mounting remains
+  separate.
 - [x] Connected preparation retry to typed once-only handoff of prior resume-command and
   reconciliation outcomes after settled attempts, including successful preparation. Request and
   cancellation are revalidated between callbacks; cancellation disposes prepared custody and stale

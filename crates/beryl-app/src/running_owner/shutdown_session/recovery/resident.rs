@@ -106,7 +106,7 @@ impl RunningProcessOwner {
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,
-            preparation_driver: std::rc::Weak::new(),
+            driver: std::rc::Weak::new(),
             reopen_schedule: Default::default(),
             reopen_deadline: None,
             residents: vec![captured],

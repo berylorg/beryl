@@ -146,6 +146,18 @@ async fn verify_pending_wait(
         })
         .unwrap();
         assert_retained(owner, request, appearance, original, deferred_mount, cx);
+        assert!(
+            RunningProcessOwner::await_interrupted_exit_completion(
+                owner,
+                request,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+            .contains("already being driven")
+        );
+        assert_retained(owner, request, appearance, original, deferred_mount, cx);
         if cancel {
             cancellation.cancel();
             assert!(drive.await.unwrap_err().contains("cancelled"));

@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 881: Hand Off Prior Resume Outcomes During Preparation Retry (finished)
+# Phase 882: Reserve Recovery Publication And Completion Drivers (finished)
 
-Composed preparation now hands off each retained prior resume-command or reconciliation outcome
-through the typed callback, revalidating request and cancellation between deliveries. Repeated
-noncommit/reconciliation failure retries, callback cancellation and stale-request refusal preserve
-current/original evidence and closed gates. Twenty-one native recovery cases and six strengthened
-resume cases passed, with Cargo check, formatting and independent persistence/lifecycle review.
-Production supervisor mounting remains under 702.
+Composed threadless attachment, publication and completion-only continuation now retain the shared
+exact-request driver reservation. Internal passes avoid nested admission; competing calls refuse
+before side effects. Twenty-one native recovery cases passed, including active/returned workers,
+pending/partial mounts, cancellation, drop and later continuation, with Cargo check, formatting
+and independent lifecycle/persistence review. Automatic supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

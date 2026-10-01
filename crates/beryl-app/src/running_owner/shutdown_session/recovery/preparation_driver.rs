@@ -6,7 +6,7 @@ use settlement::CandidateSettlement;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
-    pub(super) fn reserve_interrupted_exit_preparation(
+    pub(super) fn reserve_interrupted_exit_driver(
         &mut self,
         request: &RunningExitRequest,
     ) -> Result<Rc<()>, String> {
@@ -20,11 +20,11 @@ impl RunningProcessOwner {
         if !Rc::ptr_eq(&recovery.request, &request.identity()) {
             return Err("Interrupted Exit request changed".into());
         }
-        if recovery.preparation_driver.upgrade().is_some() {
-            return Err("Interrupted Exit preparation is already being driven".into());
+        if recovery.driver.upgrade().is_some() {
+            return Err("Interrupted Exit recovery is already being driven".into());
         }
         let driver = Rc::new(());
-        recovery.preparation_driver = Rc::downgrade(&driver);
+        recovery.driver = Rc::downgrade(&driver);
         Ok(driver)
     }
 
@@ -39,7 +39,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
-            .reserve_interrupted_exit_preparation(request)?;
+            .reserve_interrupted_exit_driver(request)?;
         owner
             .borrow()
             .validate_interrupted_exit_preparation(request, generation)?;

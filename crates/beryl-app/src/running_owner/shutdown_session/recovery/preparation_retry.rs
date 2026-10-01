@@ -27,7 +27,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
-            .reserve_interrupted_exit_preparation(request)?;
+            .reserve_interrupted_exit_driver(request)?;
         Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
@@ -53,7 +53,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
-            .reserve_interrupted_exit_preparation(request)?;
+            .reserve_interrupted_exit_driver(request)?;
         Self::retire_interrupted_exit_for_preparation(
             owner,
             request,
