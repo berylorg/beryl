@@ -33,13 +33,11 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
     ) -> Result<RecoveryServicePreparationError, String> {
         self.return_interrupted_exit_preparation_home(request, generation)?;
-        let Some(CandidateSettlement::Services(Err(failure))) = self
-            .interrupted_exit
-            .as_ref()
-            .unwrap()
-            .settlement
-            .borrow_mut()
-            .take()
+        let recovery = self.interrupted_exit.as_mut().unwrap();
+        recovery.reopen_deadline =
+            Some(std::time::Instant::now() + recovery.reopen_schedule.next_delay());
+        let Some(CandidateSettlement::Services(Err(failure))) =
+            recovery.settlement.borrow_mut().take()
         else {
             unreachable!("validated preparation failure retains exclusive custody")
         };

@@ -3,6 +3,11 @@ mod service_driver {
     include!("recovery_service_driver_support.rs");
 }
 
+mod retry_delay {
+    use super::*;
+    include!("recovery_preparation_delay_support.rs");
+}
+
 mod attachment_driver {
     use super::*;
     include!("recovery_threadless_driver_support.rs");
@@ -46,6 +51,7 @@ pub(super) async fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let mut stale_source = None;
     let mut attached_appearance = None;
+    let mut previous_delay = None;
     for mode in ["theme_failure", "success", "dropped", "cancel", "publish"] {
         if stale_source.is_none() {
             let fresh = candidate.take().unwrap();
@@ -478,6 +484,13 @@ pub(super) async fn verify(
             .borrow()
             .interrupted_exit_services_result(request)
             .unwrap_err();
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap(),
+            None
+        );
         assert!(
             owner
                 .borrow_mut()
@@ -498,9 +511,27 @@ pub(super) async fn verify(
         owner
             .borrow()
             .test_set_resident_graph_retirement(Some(Ok(())));
+        assert!(
+            owner
+                .borrow_mut()
+                .take_interrupted_exit_preparation_failure(request, fresh_generation)
+                .is_err()
+        );
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap(),
+            None
+        );
         let failure = owner
             .borrow_mut()
             .take_interrupted_exit_preparation_failure(request, generation)
+            .unwrap();
+        let deadline = owner
+            .borrow()
+            .interrupted_exit_reopen_deadline(request)
+            .unwrap()
             .unwrap();
         assert!(
             owner
@@ -509,6 +540,13 @@ pub(super) async fn verify(
                 .is_err()
         );
         assert_eq!(evidence, format!("{failure:?}"));
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap(),
+            Some(deadline)
+        );
         assert_eq!(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
@@ -525,6 +563,9 @@ pub(super) async fn verify(
             }
             error => panic!("unexpected preparation failure: {error:?}"),
         }
+        previous_delay = Some(
+            retry_delay::verify(owner, request, generation, deadline, previous_delay, cx).await,
+        );
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             RunningProcessOwner::construct_interrupted_exit_candidate(

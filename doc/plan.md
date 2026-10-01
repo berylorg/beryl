@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 872: Dispose Failed Candidates In Composed Preparation (finished)
+# Phase 873: Retain Retry Delay After Service Preparation Failure (finished)
 
-Composed preparation now awaits failed-candidate disposal before reporting the attempt error,
-retaining typed failure and retry custody. All thirteen native recovery cases, focused Cargo check,
-formatting and independent persistence/lifecycle review passed. Native coverage includes pending
-and delivered waiter abandonment, exact one-time transfer and reconstruction. Overall supervisor
-retry orchestration remains pending under phase 702.
+Successful failed-home return from service preparation now advances the shared retry schedule
+exactly once while transferring typed failure. Twenty-one native cases, focused Cargo check,
+formatting and independent persistence/lifecycle review passed, covering refused transfers,
+increasing delays across reconstruction and retained cancellation/drop custody. The first
+preparation delay uses real time; later deadlines are expired only after early-admission checks.
+Complete supervisor attempt orchestration remains under phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

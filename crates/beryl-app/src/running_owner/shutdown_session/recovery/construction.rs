@@ -238,4 +238,14 @@ impl RunningProcessOwner {
         let recovery = self.interrupted_exit.as_ref().unwrap();
         Ok(recovery.reopen_deadline)
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_expire_interrupted_exit_reopen_deadline(
+        &mut self,
+        expected: std::time::Instant,
+    ) {
+        let recovery = self.interrupted_exit.as_mut().unwrap();
+        assert_eq!(recovery.reopen_deadline, Some(expected));
+        recovery.reopen_deadline = Some(std::time::Instant::now());
+    }
 }
