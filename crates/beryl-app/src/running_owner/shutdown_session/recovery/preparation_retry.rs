@@ -1,0 +1,72 @@
+use super::*;
+use crate::app_services::{
+    AppServiceConfiguration, recovery_graph::RecoveryServicePreparationError,
+};
+use beryl_home_store::{CommandCancellation, HomeGeneration};
+use gpui::AsyncApp;
+use settlement::CandidateSettlement;
+use syndic_storage::SyndicTimestamp;
+
+impl RunningProcessOwner {
+    pub(crate) async fn retry_interrupted_exit_service_preparation(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        mut failed: impl FnMut(RecoveryServicePreparationError),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_preparation(request)?;
+        loop {
+            owner
+                .borrow()
+                .validate_interrupted_exit_preparation(request, generation)?;
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit preparation was cancelled".into());
+            }
+            let result = Self::prepare_interrupted_exit_attempt(
+                owner,
+                request,
+                generation,
+                configuration.clone(),
+                at,
+                cancellation.clone(),
+                cx,
+            )
+            .await;
+            if result.is_ok() || cancellation.is_cancelled() {
+                return result;
+            }
+            let failure = {
+                let mut owner = owner.borrow_mut();
+                owner.interrupted_exit_graph_retirement_result(request)?;
+                let disposed = matches!(
+                    owner
+                        .interrupted_exit
+                        .as_ref()
+                        .unwrap()
+                        .settlement
+                        .borrow()
+                        .as_ref(),
+                    Some(CandidateSettlement::DisposedPreparationFailure { .. })
+                );
+                if !disposed {
+                    return result;
+                }
+                owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("The complete service owner is on a worker")?
+                    .validate_retired_service_home(generation)
+                    .map_err(|error| error.to_string())?;
+                owner.take_interrupted_exit_preparation_failure(request, generation)?
+            };
+            failed(failure);
+        }
+    }
+}

@@ -40,33 +40,9 @@ impl RunningProcessOwner {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_preparation(request)?;
-        {
-            let owner = owner.borrow();
-            owner.interrupted_exit_graph_retirement_result(request)?;
-            let recovery = owner.interrupted_exit.as_ref().unwrap();
-            if recovery.session.borrow().is_none()
-                || recovery.resident.is_some()
-                || recovery
-                    .pending_resident_frame
-                    .as_ref()
-                    .is_some_and(|wake| wake.strong_count() != 0)
-            {
-                return Err("Interrupted Exit recovery custody is unavailable".into());
-            }
-            if !matches!(
-                recovery.settlement.borrow().as_ref(),
-                None | Some(CandidateSettlement::Constructed(Err(_)))
-            ) {
-                return Err("Interrupted Exit candidate work is already retained".into());
-            }
-            owner
-                .process
-                .services
-                .as_ref()
-                .ok_or("The complete service owner is on a worker")?
-                .validate_retired_service_home(generation)
-                .map_err(|error| error.to_string())?;
-        }
+        owner
+            .borrow()
+            .validate_interrupted_exit_preparation(request, generation)?;
         Self::prepare_interrupted_exit_attempt(
             owner,
             request,
@@ -77,6 +53,36 @@ impl RunningProcessOwner {
             cx,
         )
         .await
+    }
+
+    pub(super) fn validate_interrupted_exit_preparation(
+        &self,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+    ) -> Result<(), String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if recovery.session.borrow().is_none()
+            || recovery.resident.is_some()
+            || recovery
+                .pending_resident_frame
+                .as_ref()
+                .is_some_and(|wake| wake.strong_count() != 0)
+        {
+            return Err("Interrupted Exit recovery custody is unavailable".into());
+        }
+        if !matches!(
+            recovery.settlement.borrow().as_ref(),
+            None | Some(CandidateSettlement::Constructed(Err(_)))
+        ) {
+            return Err("Interrupted Exit candidate work is already retained".into());
+        }
+        self.process
+            .services
+            .as_ref()
+            .ok_or("The complete service owner is on a worker")?
+            .validate_retired_service_home(generation)
+            .map_err(|error| error.to_string())
     }
 
     pub(super) async fn prepare_interrupted_exit_attempt(

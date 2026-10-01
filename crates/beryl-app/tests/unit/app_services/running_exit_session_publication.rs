@@ -941,7 +941,7 @@ fn run_with_windows(
                 },
                 app,
             );
-            support::watchdog(app);
+            support::watchdog_with_timeout(app, std::time::Duration::from_secs(30));
         });
     assert!(finished.get());
     assert_reopens(&directory);

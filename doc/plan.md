@@ -89,13 +89,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 877: Dispose Cancelled Preparation Between Worker Stages (finished)
+# Phase 878: Retry Disposed Service Preparation Under One Driver (finished)
 
-Composed preparation now awaits cancellation disposal after construction, settlement or service
-preparation delivery, preserving original/resume evidence, existing failures and closed gates.
-Twenty-one native recovery cases, Cargo check, formatting and independent persistence/lifecycle
-review passed, including stale refusal, abandoned disposal, typed transfer and reconstruction.
-Lower construction-driver retention is unchanged; automatic supervisor retries remain under 702.
+Already-retired preparation now retries confirmed disposed service failures after once-only typed
+caller delivery, holding one driver reservation and honoring the shared retry schedule. Repeated
+failure/success, cancellation, dropped waits and stale callback reentry preserve custody and gates.
+All twenty-one native recovery cases, Cargo check, formatting and independent lifecycle review
+passed. The extended fixture's watchdog adjustment is recorded in
+[recovery fixture evidence](failures/recovery-mount-fixture.md#extended-preparation-retry-fixture-budget).
+Full resume-failure orchestration and running supervisor mounting remain under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -181,5 +181,5 @@ pub(super) async fn verify(
         previous_delay =
             retry_delay::verify(owner, request, retired, deadline, Some(previous_delay), cx).await;
     }
-    previous_delay
+    preparation_retry::verify(owner, request, retired, faults, previous_delay, cx).await
 }

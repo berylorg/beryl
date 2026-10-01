@@ -204,3 +204,15 @@ retry refusal assertion and real one-/two-second backoff remain intact; producti
 The printed failed home `.tmpiVbZk7` was removed and verified absent. The aborted test also creates
 an unprinted foreign-candidate fixture; any residue from it has ambiguous ownership and must not
 be swept. Independent review accepted the deadline-loop correction.
+
+## Extended Preparation Retry Fixture Budget
+
+Run `43092be0-1ea1-4ae8-848d-f9dc1c6cabc2` aborted the first native recovery case at
+`startup_owner_support`'s fifteen-second watchdog after adding repeated complete preparation
+attempts. The existing fixture already approached that total budget. Give this extended
+session-publication fixture a thirty-second watchdog while retaining five-second per-scenario
+retry bounds; other startup fixtures keep fifteen seconds. This changes no production timeout.
+The printed failed home `.tmpBCD21U` was removed after verifying its exact temporary path.
+
+Corrected run `0d160988-ac08-401d-8183-422ea887fa9f` passed all twenty-one cases; the extended
+case completed in 17.617 seconds. Independent review accepted the bounded test-only adjustment.

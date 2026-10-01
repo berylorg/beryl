@@ -64,10 +64,12 @@ pub(super) async fn dispose_running(mut running: startup_owner::StartedProcess, 
 }
 
 pub(super) fn watchdog(app: &mut gpui::App) {
+    watchdog_with_timeout(app, Duration::from_secs(15));
+}
+
+pub(super) fn watchdog_with_timeout(app: &mut gpui::App, timeout: Duration) {
     app.spawn(async move |cx| {
-        cx.background_executor()
-            .timer(Duration::from_secs(15))
-            .await;
+        cx.background_executor().timer(timeout).await;
         panic!("native startup test completion deadline");
     })
     .detach();
