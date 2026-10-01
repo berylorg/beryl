@@ -12,6 +12,30 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let appearance =
+            Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
+        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
+            .await
+    }
+
+    pub(crate) async fn recover_activated_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let appearance =
+            Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
+        Self::bind_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
+            .await
+    }
+
+    fn retained_interrupted_exit_appearance(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: &CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>, String> {
         let threadless = cx
             .update(|app| -> Result<_, String> {
                 let mut owner = owner.borrow_mut();
@@ -22,17 +46,15 @@ impl RunningProcessOwner {
                 Ok(owner.interrupted_exit_threadless_window(app)?.is_some())
             })
             .map_err(|error| error.to_string())??;
-        let appearance = if threadless {
+        if threadless {
             owner
                 .borrow_mut()
-                .interrupted_exit_threadless_appearance(request)?
+                .interrupted_exit_threadless_appearance(request)
         } else {
             owner
                 .borrow_mut()
-                .interrupted_exit_selected_appearance(request)?
-        };
-        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
+                .interrupted_exit_selected_appearance(request)
+        }
     }
 
     pub(crate) async fn recover_interrupted_exit(

@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Activated recovery uses one inventory-checked retained-appearance continuation for selected and threadless binding and completion.
 - [x] Published recovery selects retained selected-window or sole-threadless appearance through one exact-request continuation before existing activation and completion.
 - [x] Shared retired recovery derives its old generation from completed service retirement with retained home custody under exact-request admission.
 - [x] Retired recovery dispatches from retained window inventory through one exact-request entry to selected-window or sole-threadless continuation while preserving stage refusal and configuration custody.

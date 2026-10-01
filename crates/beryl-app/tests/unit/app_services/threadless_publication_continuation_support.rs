@@ -14,7 +14,7 @@ pub(super) async fn assert_refused(
         .is_err()
     );
     assert!(
-        RunningProcessOwner::bind_and_complete_interrupted_exit_threadless(
+        RunningProcessOwner::recover_activated_interrupted_exit(
             owner,
             request,
             CommandCancellation::new(),
@@ -114,11 +114,9 @@ pub(super) async fn verify(
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     assert!(
-        RunningProcessOwner::bind_and_complete_interrupted_exit_threadless(
-            owner, request, cancelled, cx,
-        )
-        .await
-        .is_err()
+        RunningProcessOwner::recover_activated_interrupted_exit(owner, request, cancelled, cx,)
+            .await
+            .is_err()
     );
     assert_eq!(
         original,
@@ -126,7 +124,7 @@ pub(super) async fn verify(
     );
     assert_eq!(previous, owner.borrow().test_process_appearance());
     assert!(owner.borrow().exit_requested());
-    RunningProcessOwner::bind_and_complete_interrupted_exit_threadless(
+    RunningProcessOwner::recover_activated_interrupted_exit(
         owner,
         request,
         CommandCancellation::new(),

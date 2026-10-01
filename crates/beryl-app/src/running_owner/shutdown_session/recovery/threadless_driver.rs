@@ -20,19 +20,6 @@ impl RunningProcessOwner {
             .ok_or_else(|| "Interrupted Exit threadless appearance is not prepared".into())
     }
 
-    pub(crate) async fn bind_and_complete_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
-        cancellation: CommandCancellation,
-        cx: &mut AsyncApp,
-    ) -> Result<(), String> {
-        let appearance = owner
-            .borrow_mut()
-            .interrupted_exit_threadless_appearance(request)?;
-        Self::bind_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
-    }
-
     pub(crate) async fn recover_interrupted_exit_threadless(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

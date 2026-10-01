@@ -207,19 +207,6 @@ impl RunningProcessOwner {
             .ok_or_else(|| "Interrupted Exit selected recovery appearance is not prepared".into())
     }
 
-    pub(crate) async fn bind_and_complete_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
-        cancellation: CommandCancellation,
-        cx: &mut AsyncApp,
-    ) -> Result<(), String> {
-        let appearance = owner
-            .borrow_mut()
-            .interrupted_exit_selected_appearance(request)?;
-        Self::bind_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
-    }
-
     #[cfg(test)]
     pub(crate) fn test_selected_recovery_appearance(
         &self,

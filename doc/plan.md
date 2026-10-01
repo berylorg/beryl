@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 910: Share Published Recovery Continuation (finished)
+# Phase 911: Share Activated Recovery Continuation (finished)
 
-Published recovery selects retained appearance from the complete shell inventory through one
-exact-request entry and delegates to existing activation and completion. All 24 focused native
-recovery cases passed (run `266ee6b9-d272-4496-9270-d260a31806a5`); the app library check, scoped
-formatting and independent lifecycle review passed. Invalid inventory refusal was reviewed
-structurally. Automatic supervisor mounting remains pending under 702.
+Post-activation recovery now selects owner-retained appearance through one inventory-checked
+entry shared with published recovery, then delegates to existing binding and completion. All
+24 focused native cases passed (run `e1454434-0d99-431f-844c-0dbeb9bea296`); the app library
+check, scoped formatting and independent lifecycle review passed. Invalid inventory refusal was
+reviewed structurally. Automatic supervisor mounting remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
