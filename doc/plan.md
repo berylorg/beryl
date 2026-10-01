@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 870: Drive Carried Resume Outcomes During Candidate Reconstruction (finished)
+# Phase 871: Drive Failed Candidate Disposal And Failure Transfer (finished)
 
-Reconstruction now selects and drives one eligible carried resume retry while preserving known
-commit, exact reconciliation and previous-outcome custody. Thirteen native cases passed
-(`0e019b5c-ce36-4b31-8600-82375b6d74cb`), alongside focused Cargo check, formatting and independent
-persistence/lifecycle review. Failed retry and abandonment during the composed retry have structural
-and inherited primitive coverage. Overall supervisor disposal and attempt orchestration remain pending.
+The awaited disposal driver returns the typed failure after home return and preserves owner custody
+when its wait is abandoned. Thirteen native cases passed (`1a2d5753-d183-4c0f-b739-b3bc92c3e3e8`),
+including stale/duplicate refusal, pending-wait abandonment and later reconstruction; focused Cargo
+check, formatting and independent persistence/lifecycle review passed. Drop after delivery has
+structural coverage. Overall supervisor attempt orchestration remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -265,7 +265,8 @@ resume registry custody through candidate disposal and reconstruction before tha
 Phase 869 applies the same retained retry schedule after failed candidate disposal and verifies
 delayed reconstruction with preserved outcome custody. Phase 870 selects and drives one eligible
 carried resume retry during reconstruction, retaining known commit and previous evidence. Overall
-supervisor disposal and attempt orchestration remain pending.
+supervisor attempt orchestration remains pending. Phase 871 supplies awaited failed-candidate
+disposal and typed failure transfer, retaining owner custody through abandoned delivery.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

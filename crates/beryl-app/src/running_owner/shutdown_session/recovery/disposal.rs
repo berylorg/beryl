@@ -3,6 +3,33 @@ use beryl_home_store::HomeGeneration;
 use settlement::{CandidateSettlement, CandidateSettlementError};
 
 impl RunningProcessOwner {
+    pub(crate) async fn dispose_and_take_interrupted_exit_candidate_failure(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<CandidateSettlementError, String> {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            Self::dispose_failed_interrupted_exit_candidate(
+                owner,
+                request,
+                generation,
+                app,
+                move |_, _| {
+                    let _ = sender.send(());
+                },
+            )
+        })
+        .map_err(|error| error.to_string())??;
+        receiver
+            .await
+            .map_err(|_| "Interrupted Exit candidate disposal delivery is unavailable")?;
+        owner
+            .borrow_mut()
+            .take_interrupted_exit_candidate_failure(request)
+    }
+
     pub(crate) fn take_interrupted_exit_candidate_failure(
         &mut self,
         request: &RunningExitRequest,
