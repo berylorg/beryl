@@ -13,6 +13,7 @@ mod publication_driver;
 pub(crate) use preparation_retry::RecoveryPreparationFailure;
 mod process_work;
 mod resident;
+mod resident_publication_driver;
 pub(crate) use resident::ResidentPreparationKey;
 mod resident_retirement;
 mod resume;

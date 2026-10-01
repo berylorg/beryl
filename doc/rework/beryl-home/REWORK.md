@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Selected resident preparation and attachment continue through publication and completion under one driver reservation, preserving abandoned-wait continuation and complete-binding gates.
 - [x] Threadless recovery holds one driver reservation from initial retirement through completion,
   retaining fresh appearance for continuation after interrupted attachment.
 - [x] Standalone resident and threadless attachment share recovery driver admission with preparation

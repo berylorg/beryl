@@ -69,9 +69,11 @@ pub(super) async fn verify_and_dispose(
             [(&foreign, CommandCancellation::new()), (request, cancelled)]
         {
             assert!(
-                RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+                RunningProcessOwner::prepare_and_complete_interrupted_exit_resident_window(
                     &owner,
                     attempt,
+                    retired,
+                    generation,
                     &mut preparation,
                     |_| panic!("refused entry admitted preparation"),
                     window,
@@ -91,50 +93,137 @@ pub(super) async fn verify_and_dispose(
         let current = Rc::new(RefCell::new(None));
         let captured = current.clone();
         let refuse_appearance = windows.len() > 1 && index + 1 == windows.len();
-        let attached = RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
-            &owner,
-            request,
-            &mut preparation,
-            |app| {
-                RunningProcessOwner::prepare_interrupted_exit_resident(
+        let admit = |app: &mut gpui::App| {
+            RunningProcessOwner::prepare_interrupted_exit_resident(
+                &owner,
+                request,
+                &composer,
+                close,
+                window.into(),
+                generation,
+                &mut retirement,
+                move |seed, selection, window| {
+                    let (environment, capacity) =
+                        resident_fixture::environment(seed, selection, window)?;
+                    *captured.borrow_mut() = Some(gpui_text_input::RangePrepublicationCurrent {
+                        binding: seed.binding,
+                        history: seed.history,
+                        available_capacity: gpui_text_input::RangeSurfaceCharge {
+                            bytes: capacity.bytes / 2,
+                            items: capacity.items / 2,
+                        },
+                    });
+                    Ok((environment, capacity))
+                },
+                app,
+                |_, _| {},
+            )
+        };
+        let attached = if windows.len() == 1 {
+            let mut drive_cx = cx.clone();
+            let mut drive = Box::pin(
+                RunningProcessOwner::prepare_and_complete_interrupted_exit_resident_window(
                     &owner,
                     request,
-                    &composer,
-                    close,
-                    window.into(),
+                    retired,
                     generation,
-                    &mut retirement,
-                    move |seed, selection, window| {
-                        let (environment, capacity) =
-                            resident_fixture::environment(seed, selection, window)?;
-                        *captured.borrow_mut() =
-                            Some(gpui_text_input::RangePrepublicationCurrent {
-                                binding: seed.binding,
-                                history: seed.history,
-                                available_capacity: gpui_text_input::RangeSurfaceCharge {
-                                    bytes: capacity.bytes / 2,
-                                    items: capacity.items / 2,
-                                },
-                            });
-                        Ok((environment, capacity))
-                    },
-                    app,
-                    |_, _| {},
+                    &mut preparation,
+                    admit,
+                    window,
+                    &appearance,
+                    &mut adapters,
+                    &mut configurator,
+                    |_, _| Ok(current.borrow_mut().take().unwrap()),
+                    CommandCancellation::new(),
+                    &mut drive_cx,
+                ),
+            );
+            {
+                use std::future::Future;
+                let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(drive.as_mut().poll(&mut context).is_pending());
+            }
+            assert_eq!(
+                RunningProcessOwner::await_interrupted_exit_completion(
+                    &owner,
+                    request,
+                    CommandCancellation::new(),
+                    cx,
                 )
-            },
-            window,
-            if refuse_appearance {
-                &previous
-            } else {
-                &appearance
-            },
-            &mut adapters,
-            &mut configurator,
-            |_, _| Ok(current.borrow_mut().take().unwrap()),
-            CommandCancellation::new(),
-            cx,
-        )
-        .await;
+                .await
+                .unwrap_err(),
+                "Interrupted Exit recovery is already being driven"
+            );
+            drop(drive);
+            assert!(preparation.is_some());
+            assert!(adapters.is_some() && configurator.is_some());
+            assert!(owner.borrow().exit_requested());
+            assert!(!RunningProcessOwner::finish_exit(&owner, request));
+            let mut drive = Box::pin(
+                RunningProcessOwner::prepare_and_complete_interrupted_exit_resident_window(
+                    &owner,
+                    request,
+                    retired,
+                    generation,
+                    &mut preparation,
+                    |_| panic!("retained preparation must not be admitted twice"),
+                    window,
+                    &appearance,
+                    &mut adapters,
+                    &mut configurator,
+                    |_, _| Ok(current.borrow_mut().take().unwrap()),
+                    CommandCancellation::new(),
+                    &mut drive_cx,
+                ),
+            );
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let result = loop {
+                let polled = {
+                    use std::future::Future;
+                    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+                    drive.as_mut().poll(&mut context)
+                };
+                if let std::task::Poll::Ready(result) = polled {
+                    break result;
+                }
+                assert!(std::time::Instant::now() < deadline);
+                assert_eq!(
+                    RunningProcessOwner::await_interrupted_exit_completion(
+                        &owner,
+                        request,
+                        CommandCancellation::new(),
+                        cx,
+                    )
+                    .await
+                    .unwrap_err(),
+                    "Interrupted Exit recovery is already being driven"
+                );
+                cx.background_executor()
+                    .timer(Duration::from_millis(10))
+                    .await;
+            };
+            drop(drive);
+            result
+        } else {
+            RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+                &owner,
+                request,
+                &mut preparation,
+                admit,
+                window,
+                if refuse_appearance {
+                    &previous
+                } else {
+                    &appearance
+                },
+                &mut adapters,
+                &mut configurator,
+                |_, _| Ok(current.borrow_mut().take().unwrap()),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+        };
         assert!(preparation.is_none() && retirement.is_none());
         assert!(adapters.is_none() && configurator.is_none());
         let (renewed, window_id) = if refuse_appearance {
@@ -206,6 +295,10 @@ pub(super) async fn verify_and_dispose(
             (renewed, record.window_id())
         };
         assert_ne!(renewed, close);
+        if windows.len() == 1 {
+            residents.push((mount, composer, input, selection, window_id));
+            continue;
+        }
         assert_eq!(
             original,
             format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
@@ -258,18 +351,6 @@ pub(super) async fn verify_and_dispose(
     if windows.len() > 1 {
         completion_continuation::verify(&owner, request, retired, generation, &appearance, cx)
             .await;
-    } else {
-        RunningProcessOwner::publish_and_complete_interrupted_exit(
-            &owner,
-            request,
-            retired,
-            generation,
-            &appearance,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .unwrap();
     }
     assert!(!owner.borrow().exit_requested());
     assert!(owner.borrow().interrupted_exit_session().is_none());

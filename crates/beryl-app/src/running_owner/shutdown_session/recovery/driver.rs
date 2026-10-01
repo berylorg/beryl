@@ -37,6 +37,46 @@ impl RunningProcessOwner {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
+        Self::prepare_and_attach_interrupted_exit_resident_pass(
+            owner,
+            request,
+            preparation,
+            admit,
+            window,
+            appearance,
+            adapters,
+            configurator,
+            current,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    pub(super) async fn prepare_and_attach_interrupted_exit_resident_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        preparation: &mut Option<resident::ResidentPreparationKey>,
+        admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<MainWindowConversationComposerConfigurator>,
+        current: impl FnOnce(
+            &gpui::Window,
+            &mut App,
+        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<
+        (
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        ),
+        String,
+    > {
         if preparation.is_none() {
             cx.update(|app| {
                 if !owner.borrow().process.commands.is_active(request) {
