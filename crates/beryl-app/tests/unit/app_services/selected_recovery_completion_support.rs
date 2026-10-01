@@ -63,9 +63,11 @@ pub(super) async fn verify(
             .await
             .is_err()
         );
-        assert_retained(owner, request, appearance, &original, cx);
+        assert_retained(owner, request, appearance, &original, 0, cx);
     }
-    verify_pending_wait(owner, request, appearance, &original, cx).await;
+    for deferred_mount in [0, 1] {
+        verify_pending_wait(owner, request, appearance, &original, deferred_mount, cx).await;
+    }
     RunningProcessOwner::await_interrupted_exit_completion(
         owner,
         request,
@@ -91,6 +93,7 @@ async fn verify_pending_wait(
     request: &crate::startup_owner::RunningExitRequest,
     appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
     original: &str,
+    deferred_mount: usize,
     cx: &mut AsyncApp,
 ) {
     use std::{future::Future, task::Poll};
@@ -102,7 +105,7 @@ async fn verify_pending_wait(
                 .test_process()
                 .windows
                 .shells()
-                .first()
+                .get(deferred_mount)
                 .unwrap()
                 .window();
             let mount = root
@@ -142,14 +145,14 @@ async fn verify_pending_wait(
             })
         })
         .unwrap();
-        assert_retained(owner, request, appearance, original, cx);
+        assert_retained(owner, request, appearance, original, deferred_mount, cx);
         if cancel {
             cancellation.cancel();
             assert!(drive.await.unwrap_err().contains("cancelled"));
         } else {
             drop(drive);
         }
-        assert_retained(owner, request, appearance, original, cx);
+        assert_retained(owner, request, appearance, original, deferred_mount, cx);
     }
 }
 
@@ -158,6 +161,7 @@ fn assert_retained(
     request: &crate::startup_owner::RunningExitRequest,
     appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
     original: &str,
+    prepared_mounts: usize,
     cx: &mut AsyncApp,
 ) {
     assert_eq!(
@@ -183,13 +187,28 @@ fn assert_retained(
             .is_err()
     );
     cx.update(|app| {
-        for shell in retained.test_process().windows.shells() {
+        for (index, shell) in retained.test_process().windows.shells().iter().enumerate() {
             let root = shell.window().read(app).unwrap();
             assert_eq!(root.test_exit_presentation().0, "Exiting…");
             assert!(root.test_notices_inert());
             let mount = root.controller().unwrap().composer_mount().unwrap();
             let resident = mount.read(app).contribution().unwrap();
-            assert!(!resident.read(app).gpui_input().read(app).is_enabled());
+            let input = resident.read(app).gpui_input();
+            assert_eq!(input.read(app).is_enabled(), index < prepared_mounts);
+            if index < prepared_mounts {
+                input.update(app, |input, cx| {
+                    assert!(matches!(
+                        input.insert_inline_object_at_selection(
+                            gpui_text_input::InlineObjectId::new(1),
+                            gpui_text_input::InlineObjectOrder::new(1),
+                            0,
+                            0,
+                            cx,
+                        ),
+                        Err(gpui_text_input::RangeTextInputError::ReadOnly)
+                    ));
+                });
+            }
         }
     })
     .unwrap();

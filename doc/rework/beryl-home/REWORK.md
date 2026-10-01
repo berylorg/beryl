@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Qualified pending completion after partial resident preparation: enabled prepared editors remain read-only, exact evidence and gates survive cancellation/drop, and fresh continuation completes all three original Exit outcomes. Seven native cases and independent lifecycle review passed; automatic supervisor mounting remains separate.
 - [x] Established exact pinned evidence requiring unavailable repair for the current supported thread population, with the [source limitation](../../failures/cas-terminal-repair-full-view-is-not-completeness.md) retained.
 - [x] Accepted ordinary and candidate startup recovery through explicit incomplete history, with retained repair provenance, bounded finalization, reconciliation custody and gate release. Product mounting and fresh-service replacement remain separate.
 - [ ] Add the private bounded exact terminal-turn backend adapter only after new exact source evidence proves eligibility, with no cursor traversal or history fallback.

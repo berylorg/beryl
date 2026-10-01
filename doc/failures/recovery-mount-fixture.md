@@ -147,6 +147,20 @@ Corrected run `4bb2f73a-82f3-458e-9809-f60202a80d8e` passed all seven native cas
 first-mount deferral. Scoped formatting and independent lifecycle review passed. This proves
 pending completion cancellation/drop, not real service-lock contention.
 
+## Partially Prepared Completion Mutation Probe
+
+Phase 860 run `d3597641-9fde-4001-abab-94533f7d0316` passed four single-window cases,
+then invalidated a test probe requiring platform text replacement to return `ReadOnly` for
+the prepared first resident. That API checks interactive surface readiness before the read-only
+flag, so its refusal cannot reliably isolate that flag at this intermediate mount boundary.
+Use inline-object insertion instead: it checks enabled/read-only state before surface readiness
+or mutation work. With enabled state separately asserted, exact `ReadOnly` proves the prepared
+editor remains fenced. This corrects the fixture, with no production behavior change. The printed
+failed home `.tmptpmyOK` was removed and verified absent.
+
+Corrected run `34634fc2-2f45-4a5c-b18b-c7b6a4b5cca4` passed all seven native cases.
+Scoped formatting and independent lifecycle review passed; no production correction was needed.
+
 ## Reopening Retry Deadline
 
 Run `a22f6d4c-776f-4c94-8819-50c8a69970b1` exposed a timing assumption in the existing
