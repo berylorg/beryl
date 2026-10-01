@@ -211,8 +211,19 @@ pub(super) async fn verify_and_dispose(
             fresh,
             &mut retirements[index],
             move |seed, selection, window| {
-                let (environment, capacity) =
-                    resident_fixture::environment(seed, selection, window)?;
+                let config = resident_fixture::configure(selection)?;
+                let mut invalid = seed;
+                invalid.history = None;
+                assert!(
+                    config
+                        .resident_recovery_environment(invalid, window)
+                        .is_err()
+                );
+                let environment = config.resident_recovery_environment(seed, window)?;
+                let capacity = gpui_text_input::RangeSurfaceCharge {
+                    bytes: environment.config().limits.max_surface_bytes * 2,
+                    items: environment.config().limits.max_surface_items * 2,
+                };
                 captured.borrow_mut()[index] = Some(gpui_text_input::RangePrepublicationCurrent {
                     binding: seed.binding,
                     history: seed.history,

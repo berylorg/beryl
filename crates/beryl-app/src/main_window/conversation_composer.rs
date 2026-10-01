@@ -326,6 +326,25 @@ impl MainWindowConversationComposerConfig {
         .map_err(|error| format!("composer prepublication environment was rejected: {error:?}"))
     }
 
+    pub(crate) fn resident_recovery_environment(
+        &self,
+        seed: gpui_text_input::RangeRestorationSeed,
+        window: &Window,
+    ) -> Result<gpui_text_input::RangePrepublicationEnvironment, String> {
+        let current = self.native_lineage_current();
+        if seed.binding != current.binding || seed.history != current.history {
+            return Err("composer recovery configuration has another source or history".into());
+        }
+        let cleanup = gpui_text_input::RangePrepublicationCleanupLedger::new(
+            window.text_system(),
+            self.native_lineage_cleanup_slots()?,
+        )
+        .map_err(|error| {
+            format!("composer prepublication cleanup ledger was rejected: {error:?}")
+        })?;
+        self.native_lineage_environment(1, window.text_system(), cleanup)
+    }
+
     pub(super) const fn native_lineage_current(
         &self,
     ) -> gpui_text_input::RangePrepublicationCurrent {

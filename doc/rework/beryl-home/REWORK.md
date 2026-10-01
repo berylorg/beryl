@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Resident recovery derives its environment and bounded cleanup ledger from ordinary composer configuration with exact source/history validation.
 - [x] Resident preparation derives exact captured resident and close-ticket identity through retained native shells, preserving transferred retirement custody on refusal.
 - [x] Complete selected-window recovery holds one driver reservation from initial retirement through completion, retaining fresh appearance and partial attachment for prepared continuation.
 - [x] Sole selected-window recovery holds one driver reservation from initial retirement through completion, retaining fresh appearance and resident inputs for abandoned-wait continuation.
