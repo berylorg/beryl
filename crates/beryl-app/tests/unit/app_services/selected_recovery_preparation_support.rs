@@ -192,9 +192,10 @@ pub(super) async fn verify_and_dispose(
     dispose_retired(owner, windows, None, cx).await;
 }
 
-pub(super) async fn verify_resume_noncommit(
+pub(super) async fn verify_resume_failure(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
+    fault: beryl_home_store::test_faults::FaultPoint,
     cx: &mut AsyncApp,
 ) {
     let windows: Vec<_> = owner
@@ -255,10 +256,29 @@ pub(super) async fn verify_resume_noncommit(
                 ..
             })
         ));
-        assert!(matches!(
-            resume.outcome(),
-            Some(crate::exit_session::ResumeSessionOutcome::NotCommitted { .. })
-        ));
+        use crate::exit_session::ResumeSessionOutcome;
+        use beryl_home_store::test_faults::FaultPoint;
+        match fault {
+            FaultPoint::BeforeCommit => assert!(matches!(
+                resume.outcome(),
+                Some(ResumeSessionOutcome::NotCommitted { .. })
+            )),
+            FaultPoint::AfterCommitBeforePersist => assert!(matches!(
+                resume.outcome(),
+                Some(ResumeSessionOutcome::Indeterminate {
+                    reconciliation: Some(Err(_)),
+                    ..
+                })
+            )),
+            FaultPoint::AfterPersist => assert!(matches!(
+                resume.outcome(),
+                Some(ResumeSessionOutcome::Committed {
+                    later_failure: Some(_),
+                    ..
+                })
+            )),
+            _ => panic!("unsupported resume failure"),
+        }
         assert!(resume.result_revision().is_some());
         assert_eq!(
             retained.test_process().windows.shells().len(),
@@ -290,11 +310,37 @@ pub(super) async fn verify_resume_noncommit(
             })
             .unwrap();
     }
-    let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+    let reconciliation = {
+        let borrowed = owner.borrow();
+        let retained = borrowed.interrupted_exit_session().unwrap();
+        match &*retained {
+            RunningShutdownSession::Resuming(resume) => match resume.outcome() {
+                Some(crate::exit_session::ResumeSessionOutcome::Indeterminate {
+                    handle, ..
+                }) => Some(handle.clone()),
+                _ => None,
+            },
+            _ => panic!("resume outcome lost before disposal"),
+        }
+    };
+    let mut candidate = owner.borrow().test_take_interrupted_exit_candidate();
     drop(candidate.session);
     let home = cx
         .background_executor()
-        .spawn(async move { candidate.candidate.abort() })
+        .spawn(async move {
+            if let Some(handle) = reconciliation {
+                assert!(matches!(
+                    candidate
+                        .candidate
+                        .recovery_access()
+                        .unwrap()
+                        .retry_reconciliation(&handle)
+                        .unwrap(),
+                    beryl_home_store::ReconciliationResolution::ExactNew { .. }
+                ));
+            }
+            candidate.candidate.abort()
+        })
         .await;
     dispose_retired(owner, windows, Some(home), cx).await;
 }

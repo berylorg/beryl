@@ -1,5 +1,25 @@
 # Recovery Mount Fixture GUI Lifetime
 
+## Resume Uncertainty Reconciliation
+
+The initial selected resume-uncertainty fixture assumed `AfterCommitBeforePersist` would leave
+the resume unresolved. Run `06233699-f56f-4040-84c1-413eead1c805` passed nine cases, but that
+case prepared successfully: ordinary durability uncertainty leaves the candidate usable, and
+the production convergence driver immediately reconciles the resume. To qualify unresolved
+uncertainty, also arm the existing `BeforeReconciliationSnapshot` fault after retaining the
+original committed Exit; assert the resume's distinct indeterminate outcome and retained failed
+reconciliation. Do not weaken healthy reconciliation or expect uncertainty alone to fail recovery.
+The failed test process exited; its exact printed directory `.tmp0U6zCW` was removed.
+
+Failed snapshot reconciliation retains its registry scope. Independent review identified that
+ordinary home close must refuse it; run `3160803d-489c-47b2-b176-a3266dbdaa7a` confirmed the
+retained-outcome assertions passed before close refused one pending reconciliation scope. After
+all unavailable-state assertions, teardown retries that exact resume handle, requires `ExactNew`,
+then aborts the candidate and closes the home. This cleanup does not execute another resume or
+qualify production later-attempt recovery. The exact failed directory `.tmpyaSNDy` was removed.
+Corrected run `1a9917f9-13d8-4485-b161-d2d1a683c558` passed all ten selected native cases,
+including exact-handle teardown and home reopen; independent lifecycle review passed.
+
 ## Resume Home-Command Fault Routing
 
 The selected two-window resume-noncommit fixture initially armed a typed scoped `BeforeCommit`

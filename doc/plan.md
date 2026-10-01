@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 861: Qualify Selected Recovery Resume Noncommit (finished)
+# Phase 862: Qualify Selected Recovery Resume Failure Outcomes (finished)
 
-Two selected windows retain original committed Exit evidence and distinct resume noncommit while
-replacement services and interaction remain unavailable. Native/candidate cleanup and home reopen
-passed with all eight selected cases (`8d7a596b-1f04-41cd-a9e9-5edb42208e79`), scoped formatting
-and independent lifecycle review. The [fault-routing correction](failures/recovery-mount-fixture.md#resume-home-command-fault-routing)
-is retained. Automatic supervisor mounting and later-attempt retry remain pending.
+Two selected windows preserve original Exit evidence and closed gates through unresolved resume
+uncertainty and committed resume later failure. All ten selected native cases passed
+(`1a9917f9-13d8-4485-b161-d2d1a683c558`), including exact-handle teardown and home reopen;
+scoped formatting and independent lifecycle review passed. The
+[fixture corrections](failures/recovery-mount-fixture.md#resume-uncertainty-reconciliation) are retained.
+Automatic supervisor composition and subsequent-attempt reconciliation/retry remain separate.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -250,6 +251,8 @@ Phase 860 extends that qualification to partially prepared mounts, proving the e
 editor remains read-only through cancellation/drop before fresh continuation and coherent release.
 Phase 861 qualifies a separate resume noncommit after committed Exit with two selected windows,
 retained original evidence and closed recovery gates; retry on a later attempt remains separate.
+Phase 862 extends that qualification to unresolved resume reconciliation and committed resume
+later failure; exact-handle reconciliation during fixture teardown does not accept production retry.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.
