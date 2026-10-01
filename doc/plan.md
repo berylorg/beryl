@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 914: Share Retained Resident Recovery Continuation (finished)
+# Phase 915: Derive Published Recovery Continuation From Retained Activation (finished)
 
-Selected and sole-threadless attachment now resume through one inventory-checked entry deriving
-home and generation identities from retained appearance and completed same-home retirement.
-All 24 focused native cases passed (run `579fc824-70e8-4a6e-ac73-5b78a2ca1350`); app library
-compilation, scoped formatting and independent lifecycle review passed. Invalid inventories and
-late-stage refusal were reviewed structurally. Automatic supervisor mounting remains pending
-under 702.
+Published recovery now derives activation versus binding from retained results through one entry,
+refusing pending worker custody and retained activation failure without replaying successful work.
+All 24 focused native cases passed (run `69d1c9ed-a5c0-4fbd-9f38-de0bfabedeeb`); app library
+compilation, scoped formatting and independent lifecycle review passed. Failed-result refusal was
+reviewed structurally. Automatic supervisor mounting remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

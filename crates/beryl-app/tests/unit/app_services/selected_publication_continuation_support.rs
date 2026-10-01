@@ -13,16 +13,6 @@ pub(super) async fn assert_refused(
         .await
         .is_err()
     );
-    assert!(
-        RunningProcessOwner::recover_activated_interrupted_exit(
-            owner,
-            request,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .is_err()
-    );
 }
 
 pub(super) async fn verify(
@@ -124,7 +114,7 @@ pub(super) async fn verify(
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     assert!(
-        RunningProcessOwner::recover_activated_interrupted_exit(owner, request, cancelled, cx,)
+        RunningProcessOwner::recover_published_interrupted_exit(owner, request, cancelled, cx,)
             .await
             .is_err()
     );
@@ -134,7 +124,7 @@ pub(super) async fn verify(
     );
     assert_eq!(previous, owner.borrow().test_process_appearance());
     assert!(owner.borrow().exit_requested());
-    RunningProcessOwner::recover_activated_interrupted_exit(
+    RunningProcessOwner::recover_published_interrupted_exit(
         owner,
         request,
         CommandCancellation::new(),

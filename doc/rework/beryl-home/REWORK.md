@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Published recovery derives activation or binding from its retained activation result through one continuation while refusing busy or failed activation.
 - [x] Retained resident recovery uses one inventory-checked continuation deriving home and generation identity before selected or sole-threadless attachment.
 - [x] Prepared recovery derives its retired generation from completed service retirement after validating transferred same-home custody against retained prepared services.
 - [x] Prepared recovery uses one inventory-checked continuation for selected and sole-threadless completion with retained generation and configuration validation.

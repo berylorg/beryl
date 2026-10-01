@@ -118,20 +118,40 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let appearance =
             Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
-        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
+        let activated = {
+            let mut owner = owner.borrow_mut();
+            let _driver = owner.reserve_interrupted_exit_driver(request)?;
+            owner.interrupted_exit_publication_result(request)?;
+            if owner.process.services.is_none() {
+                return Err("The complete service owner is on a worker".into());
+            }
+            let activation = owner
+                .interrupted_exit
+                .as_ref()
+                .unwrap()
+                .theme_activation
+                .borrow();
+            match activation.as_ref() {
+                Some(result) => {
+                    result.clone()?;
+                    true
+                }
+                None => false,
+            }
+        };
+        if activated {
+            Self::bind_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
+                .await
+        } else {
+            Self::activate_and_complete_interrupted_exit(
+                owner,
+                request,
+                &appearance,
+                cancellation,
+                cx,
+            )
             .await
-    }
-
-    pub(crate) async fn recover_activated_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
-        cancellation: CommandCancellation,
-        cx: &mut AsyncApp,
-    ) -> Result<(), String> {
-        let appearance =
-            Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
-        Self::bind_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
+        }
     }
 
     fn retained_interrupted_exit_appearance(
