@@ -3,14 +3,12 @@ use crate::theme_runtime::AppearancePublicationTarget;
 pub(super) async fn assert_refused(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    retired: beryl_home_store::HomeGeneration,
     cx: &mut AsyncApp,
 ) {
     assert!(
         RunningProcessOwner::recover_retired_interrupted_exit(
             owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
             |_| panic!("refused retired recovery"),
@@ -24,7 +22,6 @@ pub(super) async fn assert_refused(
 pub(super) async fn verify_refusals(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    retired: beryl_home_store::HomeGeneration,
     cx: &mut AsyncApp,
 ) {
     let previous = owner.borrow().test_process_appearance();
@@ -36,7 +33,6 @@ pub(super) async fn verify_refusals(
             RunningProcessOwner::recover_retired_interrupted_exit(
                 owner,
                 supplied,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 |_| panic!("refused retired recovery"),

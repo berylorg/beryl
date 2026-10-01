@@ -1,6 +1,6 @@
 use super::*;
 use crate::main_window::MainWindowShellRoot;
-use beryl_home_store::{CommandCancellation, HomeGeneration};
+use beryl_home_store::CommandCancellation;
 use gpui::{App, AsyncApp, WindowHandle};
 use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
@@ -85,21 +85,28 @@ impl RunningProcessOwner {
     pub(crate) async fn recover_retired_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
-        retired: HomeGeneration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let threadless = cx
+        let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let mut owner = owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
+                owner.interrupted_exit_graph_retirement_result(request)?;
+                let retired = owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("Interrupted Exit service owner is unavailable")?
+                    .retired_service_generation()
+                    .map_err(|error| format!("{error:?}"))?;
                 owner.validate_interrupted_exit_preparation(request, retired)?;
-                owner.interrupted_exit_threadless_window(app)
+                Ok((owner.interrupted_exit_threadless_window(app)?, retired))
             })
             .map_err(|error| error.to_string())??;
         if let Some(window) = threadless {

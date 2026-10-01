@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 908: Dispatch Retired Recovery From Retained Windows (finished)
+# Phase 909: Derive Retired Recovery Generation From Service Custody (finished)
 
-A shared retired-recovery entry routes retained selected windows or the sole threadless window
-after exact-request, cancellation, retirement and generation validation, reusing owner-retained
-configuration and existing stage checks. All 24 focused native recovery cases passed (run
-`900d3dac-b521-45c0-96ba-11009c01813d`); the app library check, scoped formatting and independent
-lifecycle review passed. Invalid inventories and wrong-generation refusal were reviewed structurally.
-Automatic supervisor mounting remains pending under 702.
+The shared retired-recovery entry derives its old generation from completed service retirement
+with retained home custody under exact-request admission, removing the caller's generation input.
+All 24 focused native recovery cases passed (run `bc78d0c1-9534-4820-be49-b5d5d3392516`); the app
+library check, scoped formatting and independent lifecycle review passed. Missing, incomplete and
+transferred-home accessor refusals were reviewed structurally. Automatic supervisor mounting
+remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

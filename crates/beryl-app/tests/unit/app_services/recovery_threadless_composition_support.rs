@@ -107,7 +107,7 @@ pub(super) async fn verify_and_dispose(
         .unwrap();
     }
     for supplied in [&foreign, request] {
-        assert_retired_refused(&owner, supplied, retired, CommandCancellation::new(), cx).await;
+        assert_retired_refused(&owner, supplied, CommandCancellation::new(), cx).await;
         assert!(
             RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
                 &owner,
@@ -182,10 +182,10 @@ pub(super) async fn verify_and_dispose(
                 .is_ok()
         {
             drop(drive);
-            assert_retired_refused(&owner, &foreign, retired, CommandCancellation::new(), cx).await;
+            assert_retired_refused(&owner, &foreign, CommandCancellation::new(), cx).await;
             let cancelled = CommandCancellation::new();
             cancelled.cancel();
-            assert_retired_refused(&owner, request, retired, cancelled, cx).await;
+            assert_retired_refused(&owner, request, cancelled, cx).await;
             assert!(
                 owner
                     .borrow()
@@ -208,7 +208,6 @@ pub(super) async fn verify_and_dispose(
             drive = Box::pin(RunningProcessOwner::recover_retired_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation.clone(),
                 &failed,
@@ -224,7 +223,7 @@ pub(super) async fn verify_and_dispose(
                 .is_ok()
         {
             drop(drive);
-            assert_retired_refused(&owner, request, retired, CommandCancellation::new(), cx).await;
+            assert_retired_refused(&owner, request, CommandCancellation::new(), cx).await;
             assert!(
                 owner
                     .borrow()
@@ -500,7 +499,6 @@ fn publication_evidence(session: &RunningShutdownSession) -> String {
 async fn assert_retired_refused(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    retired: beryl_home_store::HomeGeneration,
     cancellation: beryl_home_store::CommandCancellation,
     cx: &mut AsyncApp,
 ) {
@@ -508,7 +506,6 @@ async fn assert_retired_refused(
         RunningProcessOwner::recover_retired_interrupted_exit(
             owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             cancellation,
             |_| panic!("refused retired threadless preparation"),
@@ -529,7 +526,6 @@ async fn assert_reserved(
     assert_retired_refused(
         owner,
         request,
-        retired,
         beryl_home_store::CommandCancellation::new(),
         cx,
     )

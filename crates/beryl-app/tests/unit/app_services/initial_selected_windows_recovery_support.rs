@@ -198,7 +198,7 @@ pub(super) async fn verify_and_dispose(
     }
     assert_eq!(*configured_counts.borrow(), [0, 0]);
     prepared_continuation::assert_refused(&owner, request, retired, cx).await;
-    retired_continuation::assert_refused(&owner, request, retired, cx).await;
+    retired_continuation::assert_refused(&owner, request, cx).await;
     let factory_calls = std::cell::Cell::new(0);
     let mut configure = |window| {
         let index = factory_calls.get();
@@ -266,7 +266,7 @@ pub(super) async fn verify_and_dispose(
                 .is_ok()
         {
             drop(drive);
-            retired_continuation::verify_refusals(&owner, request, retired, cx).await;
+            retired_continuation::verify_refusals(&owner, request, cx).await;
             assert_eq!(*configured_counts.borrow(), [0, 0]);
             assert_eq!(
                 original,
@@ -277,7 +277,6 @@ pub(super) async fn verify_and_dispose(
             drive = Box::pin(RunningProcessOwner::recover_retired_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
                 |_| panic!("unexpected continued recovery failure"),
@@ -322,7 +321,7 @@ pub(super) async fn verify_and_dispose(
         }
         assert!(std::time::Instant::now() < deadline);
         prepared_continuation::assert_refused(&owner, request, retired, cx).await;
-        retired_continuation::assert_refused(&owner, request, retired, cx).await;
+        retired_continuation::assert_refused(&owner, request, cx).await;
         cx.update(|app| {
             let result = owner
                 .borrow_mut()
@@ -380,7 +379,7 @@ pub(super) async fn verify_and_dispose(
     };
     let generation = generation.get().unwrap();
     if abandon {
-        retired_continuation::assert_refused(&owner, request, retired, cx).await;
+        retired_continuation::assert_refused(&owner, request, cx).await;
         prepared_continuation::assert_refused(&owner, request, retired, cx).await;
         assert_eq!(*configured_counts.borrow(), [2, 1]);
         assert_eq!(

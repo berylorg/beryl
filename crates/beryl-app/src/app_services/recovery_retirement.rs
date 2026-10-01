@@ -257,6 +257,18 @@ impl ProcessServiceOwner {
             .unwrap())
     }
 
+    pub(crate) fn retired_service_generation(
+        &self,
+    ) -> Result<HomeGeneration, ServiceGraphRetirementError> {
+        let generation = self
+            .recovery_retirement
+            .as_ref()
+            .ok_or(ServiceGraphRetirementError::Stale)?
+            .generation;
+        self.validate_retired_service_home(generation)?;
+        Ok(generation)
+    }
+
     pub(crate) fn validate_retired_service_home(
         &self,
         expected: HomeGeneration,
