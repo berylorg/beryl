@@ -23,7 +23,7 @@ pub(super) async fn verify(
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let previous = owner.borrow().test_process_appearance();
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::recover_resident_interrupted_exit(
+    let mut drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
         owner,
         request,
         CommandCancellation::new(),

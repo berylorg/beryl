@@ -6,7 +6,7 @@ use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
-    pub(crate) async fn recover_resident_interrupted_exit(
+    async fn recover_resident_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
@@ -75,6 +75,22 @@ impl RunningProcessOwner {
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
+                let threadless = owner.interrupted_exit_threadless_window(app)?;
+                let recovery = owner.interrupted_exit.as_ref().unwrap();
+                let retained = if threadless.is_some() {
+                    recovery.threadless_appearance.is_some()
+                } else {
+                    recovery
+                        .selected_windows
+                        .as_ref()
+                        .ok_or("Interrupted Exit selected recovery is not retained")?
+                        .try_borrow()
+                        .map_err(|_| "Interrupted Exit selected recovery is busy")?
+                        .has_appearance()
+                };
+                if retained {
+                    return Ok((threadless, None));
+                }
                 let prepared = owner.interrupted_exit_appearance(request)?;
                 let retired = owner
                     .process
@@ -85,9 +101,12 @@ impl RunningProcessOwner {
                         prepared.prepared().home().home_id(),
                     )
                     .map_err(|error| error.to_string())?;
-                Ok((owner.interrupted_exit_threadless_window(app)?, retired))
+                Ok((threadless, Some(retired)))
             })
             .map_err(|error| error.to_string())??;
+        let Some(retired) = retired else {
+            return Self::recover_resident_interrupted_exit(owner, request, cancellation, cx).await;
+        };
         if let Some(window) = threadless {
             Self::complete_prepared_interrupted_exit_threadless(
                 owner,

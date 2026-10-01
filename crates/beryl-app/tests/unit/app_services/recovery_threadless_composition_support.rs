@@ -119,16 +119,6 @@ pub(super) async fn verify_and_dispose(
             .is_err()
         );
         publication_continuation::assert_refused(&owner, supplied, cx).await;
-        assert!(
-            RunningProcessOwner::recover_resident_interrupted_exit(
-                &owner,
-                supplied,
-                CommandCancellation::new(),
-                cx,
-            )
-            .await
-            .is_err()
-        );
     }
 
     faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
@@ -297,7 +287,7 @@ pub(super) async fn verify_and_dispose(
         );
         assert_reserved(&owner, request, retired, cx).await;
         assert!(
-            RunningProcessOwner::recover_resident_interrupted_exit(
+            RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 request,
                 CommandCancellation::new(),
@@ -379,17 +369,6 @@ pub(super) async fn verify_and_dispose(
     };
     if !matches!(delivery, RetirementDelivery::Ready) {
         assert!(
-            RunningProcessOwner::recover_prepared_interrupted_exit(
-                &owner,
-                request,
-                CommandCancellation::new(),
-                cx,
-            )
-            .await
-            .unwrap_err()
-            .contains("already retained")
-        );
-        assert!(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
@@ -431,7 +410,7 @@ pub(super) async fn verify_and_dispose(
             [(&foreign, CommandCancellation::new()), (request, cancelled)]
         {
             assert!(
-                RunningProcessOwner::recover_resident_interrupted_exit(
+                RunningProcessOwner::recover_prepared_interrupted_exit(
                     &owner,
                     supplied,
                     cancellation,

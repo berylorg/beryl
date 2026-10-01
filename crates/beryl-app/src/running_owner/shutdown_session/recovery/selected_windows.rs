@@ -11,6 +11,12 @@ pub(super) struct SelectedWindowRecovery {
     appearance: Option<Entity<GpuiAppearanceWindowSet>>,
 }
 
+impl SelectedWindowRecovery {
+    pub(super) fn has_appearance(&self) -> bool {
+        self.appearance.is_some()
+    }
+}
+
 impl RunningProcessOwner {
     pub(crate) fn retain_interrupted_exit_selected_windows(
         &mut self,

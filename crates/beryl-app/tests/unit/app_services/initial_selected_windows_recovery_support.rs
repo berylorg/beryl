@@ -377,7 +377,6 @@ pub(super) async fn verify_and_dispose(
     let generation = generation.get().unwrap();
     if abandon {
         retired_continuation::assert_refused(&owner, request, cx).await;
-        prepared_continuation::assert_refused(&owner, request, cx).await;
         assert_eq!(*configured_counts.borrow(), [2, 1]);
         assert_eq!(
             original,
@@ -422,7 +421,7 @@ pub(super) async fn verify_and_dispose(
             "Interrupted Exit original service graph is unavailable"
         );
         assert!(
-            RunningProcessOwner::recover_resident_interrupted_exit(
+            RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 &foreign,
                 CommandCancellation::new(),

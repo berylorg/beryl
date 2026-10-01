@@ -25,12 +25,12 @@ pub(super) async fn verify(
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     assert!(
-        RunningProcessOwner::recover_resident_interrupted_exit(owner, request, cancelled, cx)
+        RunningProcessOwner::recover_prepared_interrupted_exit(owner, request, cancelled, cx)
             .await
             .is_err()
     );
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::recover_resident_interrupted_exit(
+    let mut drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
         owner,
         request,
         CommandCancellation::new(),
@@ -46,7 +46,7 @@ pub(super) async fn verify(
         );
         assert_refused(owner, request, cx).await;
         assert!(
-            RunningProcessOwner::recover_resident_interrupted_exit(
+            RunningProcessOwner::recover_prepared_interrupted_exit(
                 owner,
                 request,
                 CommandCancellation::new(),
