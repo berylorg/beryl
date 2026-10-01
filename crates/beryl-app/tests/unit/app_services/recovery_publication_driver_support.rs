@@ -43,6 +43,17 @@ pub(super) async fn verify(
 
     let cancellation = CommandCancellation::new();
     assert!(
+        RunningProcessOwner::bind_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            cancellation.clone(),
+            cx,
+        )
+        .await
+        .is_err()
+    );
+    assert!(
         RunningProcessOwner::activate_and_complete_interrupted_exit(
             owner,
             request,
@@ -177,13 +188,61 @@ pub(super) async fn verify(
         })
         .await;
         assert_reserved(owner, request, retired, generation, appearance, cx).await;
+        drop(continuation);
+        assert!(
+            RunningProcessOwner::bind_and_complete_interrupted_exit(
+                owner,
+                request,
+                appearance,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+            .contains("not settled")
+        );
         while owner.borrow().test_services_on_worker() {
             cx.background_executor()
                 .timer(Duration::from_millis(10))
                 .await;
         }
-        assert_reserved(owner, request, retired, generation, appearance, cx).await;
-        continuation.await
+        owner
+            .borrow()
+            .interrupted_exit_theme_activation_result(request)
+            .unwrap();
+        let cancelled = CommandCancellation::new();
+        cancelled.cancel();
+        for (request, appearance, cancellation) in [
+            (&foreign, appearance, CommandCancellation::new()),
+            (request, appearance, cancelled),
+            (request, &previous, CommandCancellation::new()),
+        ] {
+            assert!(
+                RunningProcessOwner::bind_and_complete_interrupted_exit(
+                    owner,
+                    request,
+                    appearance,
+                    cancellation,
+                    cx,
+                )
+                .await
+                .is_err()
+            );
+        }
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(owner.borrow().exit_requested());
+        assert_eq!(owner.borrow().test_process_appearance(), previous);
+        RunningProcessOwner::bind_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
     } else {
         drive.await
     };
@@ -289,6 +348,18 @@ async fn assert_reserved(
     use crate::theme_runtime::AppearancePublicationTarget;
     use beryl_home_store::CommandCancellation;
     let on_worker = owner.borrow().test_services_on_worker();
+    assert!(
+        RunningProcessOwner::bind_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
     assert!(
         RunningProcessOwner::activate_and_complete_interrupted_exit(
             owner,

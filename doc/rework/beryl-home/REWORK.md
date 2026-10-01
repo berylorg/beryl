@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Retained successful theme activation supports exact-request process binding and completion continuation under one driver reservation without repeating activation or publication.
 - [x] Retained successful graph publication supports exact-request activation and completion continuation under one driver reservation without republishing or repeating attempted activation.
 - [x] The interrupted-Exit owner retains complete selected-window inputs and fresh appearance across abandoned initial waits and explicit prepared continuation, releasing them with successful request completion.
 - [x] Selected multiwindow drivers own resident admission and fresh adoption configuration through retained per-window inputs, preserving retirement custody and partial progress across refused or abandoned waits.

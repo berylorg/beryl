@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 895: Continue Recovery After Retained Graph Publication (finished)
+# Phase 896: Continue Recovery After Retained Theme Activation (finished)
 
-An exact-request reserved continuation now drives theme activation, process binding and completion
-after retained successful publication without republishing or repeating attempted activation.
-All 47 focused native cases passed (run `98c157bb-4645-4b09-964f-15aa06d2ec1b`), including abandoned
-delivery, invalid continuation and competing-driver refusal. The app library check, scoped
-formatting and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
+An exact-request reserved continuation now binds the process and completes recovery after retained
+successful theme activation without republishing or repeating activation. All 47 focused native
+cases passed (run `e496563c-2f3d-49e8-a6d8-819dd9f2bde5`), including abandoned activation delivery,
+pending and failed activation, invalid continuations and coherent release. The app library check,
+scoped formatting and independent lifecycle review passed. Automatic supervisor mounting remains
+under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

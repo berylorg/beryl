@@ -150,13 +150,38 @@ impl RunningProcessOwner {
             .await
             .map_err(|_| "Interrupted Exit theme activation delivery is unavailable")??;
 
+        Self::bind_and_complete_interrupted_exit_pass(owner, request, appearance, cancellation, cx)
+            .await
+    }
+
+    pub(crate) async fn bind_and_complete_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        Self::bind_and_complete_interrupted_exit_pass(owner, request, appearance, cancellation, cx)
+            .await
+    }
+
+    async fn bind_and_complete_interrupted_exit_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         cx.update(|app| {
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit completion was cancelled".into());
             }
-            owner
-                .borrow_mut()
-                .bind_interrupted_exit_process(request, appearance, app)
+            let mut running = owner.borrow_mut();
+            running.interrupted_exit_theme_activation_result(request)?;
+            running.bind_interrupted_exit_process(request, appearance, app)
         })
         .map_err(|error| error.to_string())??;
         Self::await_interrupted_exit_completion_pass(owner, request, cancellation, cx).await

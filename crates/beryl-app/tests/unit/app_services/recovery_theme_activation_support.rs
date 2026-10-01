@@ -161,6 +161,21 @@ pub(super) async fn verify(
         .interrupted_exit_theme_activation_result(request);
     if let Some(reason) = failure {
         assert!(actual.unwrap_err().contains(reason));
+        let previous = owner.borrow().test_process_appearance();
+        assert!(
+            RunningProcessOwner::bind_and_complete_interrupted_exit(
+                owner,
+                request,
+                appearance,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+            .contains(reason)
+        );
+        assert_eq!(owner.borrow().test_process_appearance(), previous);
+        assert!(owner.borrow().exit_requested());
     } else {
         actual.unwrap();
         let running = owner.borrow();
