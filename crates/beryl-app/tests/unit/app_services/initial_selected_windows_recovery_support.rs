@@ -77,81 +77,37 @@ pub(super) async fn verify_and_dispose(
     let foreign = request.test_foreign();
     let configured_counts = Rc::new(RefCell::new([0, 0]));
     let generation = Rc::new(std::cell::Cell::new(None));
+    let mut configured = Vec::new();
+    let mut dropped = std::rc::Weak::new();
     assert_eq!(
         RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
+            |window| {
+                configured.push(window);
+                if configured.len() == 2 {
+                    return Err("configuration refused".into());
+                }
+                let capture = Rc::new(());
+                dropped = Rc::downgrade(&capture);
+                Ok(Box::new(move |selection| {
+                    let _retained = &capture;
+                    resident_fixture::recovery_configuration(selection)
+                }))
+            },
             |_| panic!("unconfigured recovery"),
             cx,
         )
         .await
         .unwrap_err(),
-        "Interrupted Exit selected recovery is not retained"
+        "configuration refused"
     );
+    assert_eq!(configured, windows);
+    assert!(dropped.upgrade().is_none());
     assert!(owner.borrow().test_services().graph().is_some());
-    let mut entries = cx
-        .update(|app| {
-            let mut retained = owner.borrow_mut();
-            assert!(
-                retained
-                    .retain_interrupted_exit_selected_windows(&foreign, app, |_| {
-                        panic!("foreign window configuration")
-                    })
-                    .is_err()
-            );
-            let mut configured = Vec::new();
-            let mut dropped = std::rc::Weak::new();
-            assert!(
-                retained
-                    .retain_interrupted_exit_selected_windows(request, app, |window| {
-                        configured.push(window);
-                        if configured.len() == 2 {
-                            return Err("configuration refused".into());
-                        }
-                        let capture = Rc::new(());
-                        dropped = Rc::downgrade(&capture);
-                        Ok(Box::new(move |selection| {
-                            let _retained = &capture;
-                            resident_fixture::recovery_configuration(selection)
-                        }))
-                    })
-                    .is_err()
-            );
-            assert_eq!(configured, windows);
-            assert!(dropped.upgrade().is_none());
-            assert!(retained.test_services().graph().is_some());
-            configured.clear();
-            retained
-                .retain_interrupted_exit_selected_windows(request, app, |window| {
-                    configured.push(window);
-                    let index = configured.len() - 1;
-                    let counts = configured_counts.clone();
-                    let generation = generation.clone();
-                    Ok(Box::new(move |selection| {
-                        counts.borrow_mut()[index] += 1;
-                        let fresh = selection.binding().home_generation();
-                        assert_ne!(fresh, retired);
-                        if let Some(previous) = generation.replace(Some(fresh)) {
-                            assert_eq!(previous, fresh);
-                        }
-                        resident_fixture::recovery_configuration(selection)
-                    }))
-                })
-                .unwrap();
-            assert_eq!(configured, windows);
-            assert_eq!(
-                retained
-                    .retain_interrupted_exit_selected_windows(request, app, |_| panic!(
-                        "duplicate configuration"
-                    ))
-                    .unwrap_err(),
-                "Interrupted Exit selected recovery is already retained"
-            );
-            windows.iter().copied().map(make_entry).collect::<Vec<_>>()
-        })
-        .unwrap();
+    let mut entries = windows.iter().copied().map(make_entry).collect::<Vec<_>>();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     publication_continuation::assert_refused(&owner, request, cx).await;
@@ -221,19 +177,6 @@ pub(super) async fn verify_and_dispose(
     assert!(owner.borrow().test_services().graph().is_some());
     drop(occupied);
     assert_eq!(*configured_counts.borrow(), [0, 0]);
-    assert_eq!(
-        RunningProcessOwner::continue_interrupted_exit_selected_windows(
-            &owner,
-            request,
-            retired,
-            retired,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .unwrap_err(),
-        "Interrupted Exit selected recovery appearance is not prepared"
-    );
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     for (attempt, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
@@ -243,6 +186,7 @@ pub(super) async fn verify_and_dispose(
                 attempt,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
+                |_| panic!("unexpected configuration factory"),
                 |_| panic!("refused owned recovery"),
                 cx,
             )
@@ -255,6 +199,50 @@ pub(super) async fn verify_and_dispose(
     assert_eq!(*configured_counts.borrow(), [0, 0]);
     prepared_continuation::assert_refused(&owner, request, retired, cx).await;
     retired_continuation::assert_refused(&owner, request, retired, cx).await;
+    let factory_calls = std::cell::Cell::new(0);
+    let mut configure = |window| {
+        let index = factory_calls.get();
+        assert_eq!(window, windows[index]);
+        factory_calls.set(index + 1);
+        let counts = configured_counts.clone();
+        let generation = generation.clone();
+        Ok(Box::new(
+            move |selection: crate::main_window::MainWindowComposerSelectionIdentity| {
+                counts.borrow_mut()[index] += 1;
+                let fresh = selection.binding().home_generation();
+                assert_ne!(fresh, retired);
+                if let Some(previous) = generation.replace(Some(fresh)) {
+                    assert_eq!(previous, fresh);
+                }
+                resident_fixture::recovery_configuration(selection)
+            },
+        ) as Box<dyn FnMut(_) -> _>)
+    };
+    if abandon {
+        let cancellation = CommandCancellation::new();
+        assert!(
+            RunningProcessOwner::recover_interrupted_exit(
+                &owner,
+                request,
+                SyndicTimestamp::from_unix_millis(2),
+                cancellation.clone(),
+                |window| {
+                    let result = configure(window);
+                    if factory_calls.get() == windows.len() {
+                        cancellation.cancel();
+                    }
+                    result
+                },
+                |_| panic!("cancelled initial configuration"),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(factory_calls.get(), windows.len());
+        assert_eq!(*configured_counts.borrow(), [0, 0]);
+        assert!(owner.borrow().test_services().graph().is_some());
+    }
     let mut drive_cx = cx.clone();
     let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> =
         Box::pin(RunningProcessOwner::recover_interrupted_exit(
@@ -262,6 +250,7 @@ pub(super) async fn verify_and_dispose(
             request,
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
+            &mut configure,
             |_| panic!("unexpected recovery failure"),
             &mut drive_cx,
         ));
@@ -365,6 +354,7 @@ pub(super) async fn verify_and_dispose(
                 request,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
+                |_| panic!("unexpected configuration factory"),
                 |_| panic!("competing recovery"),
                 cx,
             )
@@ -382,6 +372,7 @@ pub(super) async fn verify_and_dispose(
             .await;
     }
     drop(drive);
+    assert_eq!(factory_calls.get(), windows.len());
     assert_eq!(prepared_continued, !abandon);
     assert_eq!(retired_continued, !abandon);
     let appearance = if abandon {
@@ -428,6 +419,7 @@ pub(super) async fn verify_and_dispose(
                 request,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
+                |_| panic!("unexpected configuration factory"),
                 |_| panic!("repeated initial recovery"),
                 cx,
             )

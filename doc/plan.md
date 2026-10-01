@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 906: Derive Initial Recovery Identity From The Retained Graph (finished)
+# Phase 907: Initialize Selected Recovery At The Shared Entry (finished)
 
-The shared initial recovery entry derives the old generation from the retained service graph
-under exact-request admission; callers no longer supply it. Initial replay after retirement
-refuses without changing recovery custody. All 24 focused native recovery cases passed (run
-`58a481a7-9376-4a3d-ab4a-a3a9471fb1f2`), along with the app library check, scoped formatting
-and independent lifecycle review. Automatic supervisor mounting remains pending under 702.
+The shared initial entry initializes absent selected-window configuration after exact-request,
+inventory and failed-graph validation, preserving retained inputs and skipping the factory for
+threadless recovery. All 24 focused native recovery cases passed (run
+`28c8fb24-3fbb-4a99-8815-35eee6e4e788`), including partial-factory cleanup and cancellation
+followed by retained-state reuse; the app library check, scoped formatting and independent
+lifecycle review also passed. Automatic supervisor mounting remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -85,6 +85,7 @@ pub(super) async fn verify_and_dispose(
                 supplied,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
+                |_| panic!("unexpected configuration factory"),
                 |_| panic!("refused preparation failure"),
                 cx,
             )
@@ -165,6 +166,7 @@ pub(super) async fn verify_and_dispose(
             request,
             SyndicTimestamp::from_unix_millis(2),
             cancellation.clone(),
+            |_| panic!("threadless configuration factory"),
             &failed,
             &mut drive_cx,
         ));
@@ -402,6 +404,7 @@ pub(super) async fn verify_and_dispose(
                 request,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
+                |_| panic!("unexpected configuration factory"),
                 |_| panic!("repeated initial preparation"),
                 cx,
             )
@@ -555,6 +558,7 @@ async fn assert_reserved(
             request,
             SyndicTimestamp::from_unix_millis(2),
             beryl_home_store::CommandCancellation::new(),
+            |_| panic!("unexpected configuration factory"),
             |_| panic!("competing initial preparation"),
             cx,
         )

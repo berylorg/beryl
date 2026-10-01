@@ -1,6 +1,8 @@
 use super::*;
+use crate::main_window::MainWindowShellRoot;
 use beryl_home_store::CommandCancellation;
-use gpui::AsyncApp;
+use gpui::{AsyncApp, WindowHandle};
+use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
@@ -9,6 +11,9 @@ impl RunningProcessOwner {
         request: &RunningExitRequest,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
+        configure: impl FnMut(
+            WindowHandle<MainWindowShellRoot>,
+        ) -> Result<ResidentRecoveryConfigurator, String>,
         failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -52,6 +57,24 @@ impl RunningProcessOwner {
                     .health()
                     .generation()
                     .ok_or("Interrupted Exit original service generation is unavailable")?;
+                owner
+                    .process
+                    .services
+                    .as_ref()
+                    .unwrap()
+                    .validate_failed_service_graph_retirement(retired)
+                    .map_err(|error| format!("{error:?}"))?;
+                drop(_driver);
+                if threadless.is_none()
+                    && owner
+                        .interrupted_exit
+                        .as_ref()
+                        .unwrap()
+                        .selected_windows
+                        .is_none()
+                {
+                    owner.retain_interrupted_exit_selected_windows(request, app, configure)?;
+                }
                 Ok((threadless, retired))
             })
             .map_err(|error| error.to_string())??;
