@@ -522,12 +522,13 @@ pub(super) async fn verify(
             .borrow()
             .interrupted_exit_services_result(request)
             .unwrap_err();
+        let returned_deadline = owner
+            .borrow()
+            .interrupted_exit_reopen_deadline(request)
+            .unwrap();
         assert_eq!(
-            owner
-                .borrow()
-                .interrupted_exit_reopen_deadline(request)
-                .unwrap(),
-            None
+            returned_deadline.is_some(),
+            matches!(mode, "theme_failure" | "cancel")
         );
         assert!(
             owner
@@ -560,7 +561,7 @@ pub(super) async fn verify(
                 .borrow()
                 .interrupted_exit_reopen_deadline(request)
                 .unwrap(),
-            None
+            returned_deadline
         );
         let failure = owner
             .borrow_mut()
@@ -571,6 +572,9 @@ pub(super) async fn verify(
             .interrupted_exit_reopen_deadline(request)
             .unwrap()
             .unwrap();
+        if let Some(returned_deadline) = returned_deadline {
+            assert_eq!(deadline, returned_deadline);
+        }
         assert!(
             owner
                 .borrow_mut()

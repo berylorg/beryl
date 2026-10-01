@@ -34,9 +34,7 @@ impl RunningProcessOwner {
     ) -> Result<RecoveryServicePreparationError, String> {
         self.return_interrupted_exit_preparation_home(request, generation)?;
         let recovery = self.interrupted_exit.as_mut().unwrap();
-        recovery.reopen_deadline =
-            Some(std::time::Instant::now() + recovery.reopen_schedule.next_delay());
-        let Some(CandidateSettlement::Services(Err(failure))) =
+        let Some(CandidateSettlement::DisposedPreparationFailure { failure, .. }) =
             recovery.settlement.borrow_mut().take()
         else {
             unreachable!("validated preparation failure retains exclusive custody")
@@ -44,13 +42,13 @@ impl RunningProcessOwner {
         Ok(failure)
     }
 
-    fn return_interrupted_exit_preparation_home(
+    pub(super) fn return_interrupted_exit_preparation_home(
         &mut self,
         request: &RunningExitRequest,
         generation: HomeGeneration,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
-        let recovery = self.interrupted_exit.as_ref().unwrap();
+        let recovery = self.interrupted_exit.as_mut().unwrap();
         if recovery.session.borrow().is_none()
             || recovery.resident.is_some()
             || recovery
@@ -61,6 +59,15 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
         let mut settlement = recovery.settlement.borrow_mut();
+        if let Some(CandidateSettlement::DisposedPreparationFailure { retired, .. }) =
+            settlement.as_ref()
+        {
+            return if *retired == generation {
+                Ok(())
+            } else {
+                Err("Interrupted Exit retired generation changed".into())
+            };
+        }
         let Some(CandidateSettlement::Services(Err(failure))) = settlement.as_mut() else {
             return Err("Interrupted Exit service preparation has no retained failure".into());
         };
@@ -69,7 +76,17 @@ impl RunningProcessOwner {
             .as_mut()
             .ok_or("The complete service owner is on a worker")?
             .return_recovery_preparation_home(generation, failure)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        let Some(CandidateSettlement::Services(Err(failure))) = settlement.take() else {
+            unreachable!("returned preparation home retains exclusive failure custody")
+        };
+        *settlement = Some(CandidateSettlement::DisposedPreparationFailure {
+            retired: generation,
+            failure,
+        });
+        recovery.reopen_deadline =
+            Some(std::time::Instant::now() + recovery.reopen_schedule.next_delay());
+        Ok(())
     }
 
     pub(crate) fn prepare_interrupted_exit_services(
@@ -267,6 +284,9 @@ impl RunningProcessOwner {
                 .as_ref()
                 .map(|_| ())
                 .map_err(|error| format!("{error:?}")),
+            Some(CandidateSettlement::DisposedPreparationFailure { failure, .. }) => {
+                Err(format!("{failure:?}"))
+            }
             _ => Err("Interrupted Exit service preparation has not returned".into()),
         }
     }

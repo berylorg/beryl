@@ -11,6 +11,10 @@ pub(super) enum CandidateSettlement {
     Pending,
     Published,
     DisposedFailure(CandidateSettlementError),
+    DisposedPreparationFailure {
+        retired: beryl_home_store::HomeGeneration,
+        failure: crate::app_services::recovery_graph::RecoveryServicePreparationError,
+    },
     Constructed(Result<HomeRecoveryCandidate, crate::app_services::RetiredHomeRecoveryError>),
     Services(
         Result<

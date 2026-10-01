@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 874: Dispose Candidates Refused During Service Preparation (finished)
+# Phase 875: Return Failed Preparation Home Custody From The Awaited Driver (finished)
 
-The awaited preparation driver now disposes candidates returned by failed fresh validation or
-preparation refusal, sharing exact-request disposal handling with convergence failure. Twenty-one
-native recovery cases, focused Cargo check, formatting and independent persistence/lifecycle
-review passed. Read-failure coverage proves retained typed failure, once-only transfer, delayed
-reconstruction and subsequent preparation with original Exit custody preserved. Complete supervisor
-retry orchestration remains under phase 702.
+The awaited preparation driver now returns disposed home custody and establishes the shared retry
+deadline before reporting failure, retaining the typed outcome for once-only transfer. Explicit
+returned custody prevents double return or schedule advancement. Twenty-one native recovery cases,
+focused Cargo check, formatting and independent persistence/lifecycle review passed, including
+failure/cancellation, stale and duplicate refusal, retained evidence and unchanged interaction
+fences. Complete supervisor attempt retry orchestration remains under phase 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

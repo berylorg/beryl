@@ -190,6 +190,22 @@ impl RunningProcessOwner {
         let result = owner.borrow().interrupted_exit_services_result(request);
         if let Err(error) = result {
             Self::dispose_returned_interrupted_exit_failure(owner, request, retired, cx).await?;
+            let failed_preparation =
+                owner
+                    .borrow()
+                    .interrupted_exit
+                    .as_ref()
+                    .is_some_and(|recovery| {
+                        matches!(
+                            recovery.settlement.borrow().as_ref(),
+                            Some(super::settlement::CandidateSettlement::Services(Err(_)))
+                        )
+                    });
+            if failed_preparation {
+                owner
+                    .borrow_mut()
+                    .return_interrupted_exit_preparation_home(request, retired)?;
+            }
             return Err(error);
         }
         if cancellation.is_cancelled() {

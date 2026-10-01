@@ -180,6 +180,43 @@ pub(super) async fn verify(
             assert!(result.is_err());
         }
     }
+    if matches!(mode, "theme_failure" | "cancel") {
+        let deadline = owner
+            .borrow()
+            .interrupted_exit_reopen_deadline(request)
+            .unwrap()
+            .unwrap();
+        let evidence = owner
+            .borrow()
+            .interrupted_exit_services_result(request)
+            .unwrap_err();
+        assert!(
+            RunningProcessOwner::prepare_interrupted_exit_service_graph(
+                owner,
+                request,
+                generation,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap(),
+            Some(deadline)
+        );
+        assert_eq!(
+            owner.borrow().interrupted_exit_services_result(request),
+            Err(evidence)
+        );
+        assert!(!owner.borrow().test_services_on_worker());
+        assert!(!RunningProcessOwner::finish_exit(owner, request));
+    }
     owner
         .borrow_mut()
         .test_replace_interrupted_exit_request(&foreign);
