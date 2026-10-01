@@ -9,18 +9,27 @@ impl RunningProcessOwner {
     pub(crate) async fn recover_prepared_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
-        retired: beryl_home_store::HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let threadless = cx
+        let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let mut owner = owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
-                owner.interrupted_exit_threadless_window(app)
+                let prepared = owner.interrupted_exit_appearance(request)?;
+                let retired = owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("The complete service owner is on a worker")?
+                    .retired_service_generation_for_home_return(
+                        prepared.prepared().home().home_id(),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok((owner.interrupted_exit_threadless_window(app)?, retired))
             })
             .map_err(|error| error.to_string())??;
         if let Some(window) = threadless {

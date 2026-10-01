@@ -112,7 +112,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 supplied,
-                retired,
                 CommandCancellation::new(),
                 cx,
             )
@@ -229,27 +228,39 @@ pub(super) async fn verify_and_dispose(
                     .test_threadless_recovery_appearance()
                     .is_none()
             );
-            let generation = owner
-                .borrow()
-                .interrupted_exit_appearance(request)
-                .unwrap()
-                .prepared()
-                .home()
-                .home_generation();
+            let prepared = owner.borrow().interrupted_exit_appearance(request).unwrap();
+            let home = prepared.prepared().home();
+            let services = owner.borrow();
+            assert_eq!(
+                services
+                    .test_services()
+                    .retired_service_generation_for_home_return(home.home_id())
+                    .unwrap(),
+                retired
+            );
+            assert!(
+                services
+                    .test_services()
+                    .validate_retired_service_home_return(
+                        home.home_generation(),
+                        Some(home.home_id())
+                    )
+                    .is_err()
+            );
+            assert!(
+                services
+                    .test_services()
+                    .retired_service_generation()
+                    .is_err()
+            );
+            drop(services);
             let cancelled = CommandCancellation::new();
             cancelled.cancel();
-            for (supplied, supplied_retired, cancel) in [
-                (&foreign, retired, CommandCancellation::new()),
-                (request, generation, CommandCancellation::new()),
-                (request, retired, cancelled),
-            ] {
+            for (supplied, cancel) in [(&foreign, CommandCancellation::new()), (request, cancelled)]
+            {
                 assert!(
                     RunningProcessOwner::recover_prepared_interrupted_exit(
-                        &owner,
-                        supplied,
-                        supplied_retired,
-                        cancel,
-                        cx,
+                        &owner, supplied, cancel, cx,
                     )
                     .await
                     .is_err()
@@ -278,7 +289,6 @@ pub(super) async fn verify_and_dispose(
             drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 cancellation.clone(),
                 &mut drive_cx,
             ));
@@ -380,7 +390,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 CommandCancellation::new(),
                 cx,
             )
@@ -528,7 +537,6 @@ async fn assert_reserved(
         RunningProcessOwner::recover_prepared_interrupted_exit(
             owner,
             request,
-            retired,
             beryl_home_store::CommandCancellation::new(),
             cx,
         )

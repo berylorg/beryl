@@ -197,7 +197,7 @@ pub(super) async fn verify_and_dispose(
         assert!(owner.borrow().test_services().graph().is_some());
     }
     assert_eq!(*configured_counts.borrow(), [0, 0]);
-    prepared_continuation::assert_refused(&owner, request, retired, cx).await;
+    prepared_continuation::assert_refused(&owner, request, cx).await;
     retired_continuation::assert_refused(&owner, request, cx).await;
     let factory_calls = std::cell::Cell::new(0);
     let mut configure = |window| {
@@ -303,7 +303,6 @@ pub(super) async fn verify_and_dispose(
             drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 CommandCancellation::new(),
                 &mut drive_cx,
             ));
@@ -318,7 +317,7 @@ pub(super) async fn verify_and_dispose(
             break;
         }
         assert!(std::time::Instant::now() < deadline);
-        prepared_continuation::assert_refused(&owner, request, retired, cx).await;
+        prepared_continuation::assert_refused(&owner, request, cx).await;
         retired_continuation::assert_refused(&owner, request, cx).await;
         cx.update(|app| {
             let result = owner
@@ -378,7 +377,7 @@ pub(super) async fn verify_and_dispose(
     let generation = generation.get().unwrap();
     if abandon {
         retired_continuation::assert_refused(&owner, request, cx).await;
-        prepared_continuation::assert_refused(&owner, request, retired, cx).await;
+        prepared_continuation::assert_refused(&owner, request, cx).await;
         assert_eq!(*configured_counts.borrow(), [2, 1]);
         assert_eq!(
             original,

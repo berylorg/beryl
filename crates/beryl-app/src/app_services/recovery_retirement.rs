@@ -70,6 +70,19 @@ impl ProcessServiceOwner {
         Ok(())
     }
 
+    pub(crate) fn retired_service_generation_for_home_return(
+        &self,
+        home_id: beryl_model::BerylHomeId,
+    ) -> Result<HomeGeneration, ServiceGraphRetirementError> {
+        let generation = self
+            .recovery_retirement
+            .as_ref()
+            .ok_or(ServiceGraphRetirementError::Stale)?
+            .generation;
+        self.validate_retired_service_home_return(generation, Some(home_id))?;
+        Ok(generation)
+    }
+
     pub(crate) fn validate_retired_service_home_return(
         &self,
         expected: HomeGeneration,

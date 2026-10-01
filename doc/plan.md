@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 912: Share Prepared Recovery Continuation (finished)
+# Phase 913: Derive Prepared Recovery Retirement Identity (finished)
 
-Prepared recovery now dispatches through one exact-request, inventory-checked entry to selected
-or sole-threadless completion while retaining generation validation and configuration custody.
-All 24 focused native cases passed (run `4ac9ea81-7abb-48b2-a840-2cfb3c733dd0`); the app library
-check, scoped formatting and independent lifecycle review passed. Invalid inventory refusal was
-reviewed structurally. Automatic supervisor mounting remains pending under 702.
+Prepared continuation now derives its retired generation from completed service-owner retirement
+and validates transferred same-home custody against retained prepared services before dispatch.
+All 24 focused native cases passed (run `533d9270-54b1-48e5-8099-0e860a0a21fb`); the app library
+check, scoped formatting and independent lifecycle review passed. Missing/incomplete retirement
+and wrong-home refusal were reviewed structurally. Automatic supervisor mounting remains pending
+under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
