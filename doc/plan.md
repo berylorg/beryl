@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 858: Await Retained Interrupted Exit Completion (finished)
+# Phase 859: Qualify Interrupted Exit Completion Wait Cancellation (finished)
 
-The initial publication driver and explicit retained-stage continuation share the completion wait.
-Two-window cases preserve published state and interaction fences on foreign or cancelled entry,
-then complete without replay across all three original session outcomes. Seven native cases passed
-(`ae380339-f05c-4e4f-9362-6acac01592bd`), with scoped formatting and independent lifecycle review.
-Automatic supervisor integration remains pending.
+Two-window recovery preserves published custody and closed interaction gates after cancellation
+or drop of a pending completion wait, then completes without replay across all three original
+outcomes. Seven native cases passed (`4bb2f73a-82f3-458e-9809-f60202a80d8e`), with scoped
+formatting and independent lifecycle review. Test deferral targets first-mount readiness;
+[fixture corrections](failures/recovery-mount-fixture.md#pending-completion-contention-fixture)
+are retained. Automatic supervisor integration remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -244,6 +245,8 @@ recovery, then binding-only continuation through publication across all three or
 Phase 858 exposes the completion-only wait after successful publication, activation and process
 rebinding; foreign or cancelled entry preserves retained state for later continuation. The initial
 publication driver shares that wait, without making its earlier stages repeatable.
+Phase 859 qualifies cancellation and drop after pending mount readiness, followed by completion
+through a fresh continuation across all three original outcomes, with retained gates and evidence.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

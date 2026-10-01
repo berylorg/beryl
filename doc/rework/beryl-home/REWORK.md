@@ -513,6 +513,7 @@
 - [x] Serialized interrupted-Exit preparation before pending resident retirement, with exact-request overlap refusal and cancellation/drop release that preserve recovery custody; focused native regressions and independent lifecycle review passed.
 - [x] Qualified two-window selected adoption with refused stale appearance, preserved tickets and interaction fences, then binding-only continuation through publication and cleanup across all three original outcomes; native cases and independent lifecycle review passed.
 - [x] Exposed the retained completion wait after graph publication, theme activation and process rebinding. Two-window native cases preserve original evidence and closed admission after foreign or cancelled continuation, then complete without replaying earlier stages across all three original outcomes; independent lifecycle review passed.
+- [x] Qualified cancellation and drop after the retained completion wait reaches pending first-mount readiness, preserving published custody and closed gates before a fresh continuation completes across all three original outcomes. Seven native cases and independent lifecycle review passed; the deferral is test-only.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff

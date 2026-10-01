@@ -39,9 +39,18 @@ impl MainWindowConversationComposerMount {
             return Ok(false);
         }
         let resident = self.contribution.as_ref().unwrap().clone();
+        #[cfg(test)]
+        if std::mem::take(&mut self.test_defer_recovered_mount) {
+            return Ok(false);
+        }
         resident.update(cx, |resident, cx| {
             resident.prepare_interrupted_exit_resident(ticket, cx)
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_recovered_mount_deferred(&mut self, deferred: bool) -> bool {
+        std::mem::replace(&mut self.test_defer_recovered_mount, deferred)
     }
 
     pub(crate) fn release_interrupted_exit_draft(

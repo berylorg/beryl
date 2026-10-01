@@ -113,6 +113,40 @@ Final lifecycle run `ad55850b-0a04-4d2f-9a85-09f5fd45f449` passed all 50 cases. 
 and formatting passed. This accepts the selected attachment/binding boundary, not full same-home
 selected-process publication. No task-owned build or test process remained at phase completion.
 
+## Pending Completion Contention Fixture
+
+Phase 859 initially held the composer service slot mutex around polling the asynchronous
+completion driver. Run `2537bd7b-d01b-4412-b1dc-42aa46e5ecc9` passed the four single-window
+cases, then stalled in the first two-window case. Instrumented run
+`a2ea1fcd-c2c1-4c4a-95a3-4ff5d15ec3ac` confirmed that polling did not return while the slot was
+held. This fixture spans `AsyncApp::update` and its deferred GUI effects, beyond the intended
+nonblocking release check; GUI service readers can acquire the same slot. Do not hold a service
+mutex across a whole native GUI update to force readiness pending. The exact blocking reader
+was not localized. Both test processes and their runners were explicitly stopped.
+
+An attempted autosave-readiness deferral also targeted the wrong stage: graph publication has
+already released recovered service-close custody, so completion bypasses autosave preparation.
+Run `e44bb2a1-2c91-4b5e-8636-6237617430fe` failed the pending assertion; diagnostic run
+`4a4af447-9ec9-4a7d-a94e-b78a3d4a4cca` confirmed immediate successful completion. Their printed
+homes `.tmpdMzROx` and `.tmpDEvzny` were removed and verified absent.
+
+Use a per-mount, one-shot unit-test deferral at recovered mount readiness instead. Assert that
+the deferral was consumed before testing cancellation or future drop, so the test proves entry
+into the incomplete release pass. Normal production readiness is unchanged. The diagnostic
+run's printed home `.tmpIq77Yn` was removed and verified absent; the first run did not print its
+home, so ambiguously owned temporary directories were preserved.
+
+Run `2a524531-b8a8-4e9c-b594-71d954c5ebb6` reached the pending mount boundary but invalidated
+the fixture's assumption that every input remains disabled when the last mount is deferred.
+Earlier mounts have already prepared enabled, read-only residents. Defer the first mount when
+qualifying only wait cancellation with the stricter all-disabled assertion. This avoids conflating
+prepared resident presentation with final interaction release. Its printed home `.tmplUcCq7`
+was removed and verified absent.
+
+Corrected run `4bb2f73a-82f3-458e-9809-f60202a80d8e` passed all seven native cases with the
+first-mount deferral. Scoped formatting and independent lifecycle review passed. This proves
+pending completion cancellation/drop, not real service-lock contention.
+
 ## Reopening Retry Deadline
 
 Run `a22f6d4c-776f-4c94-8819-50c8a69970b1` exposed a timing assumption in the existing
