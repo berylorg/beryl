@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 893: Own Selected Window Admission Through Recovery Completion (finished)
+# Phase 894: Retain Selected Recovery Inputs In The Running Owner (finished)
 
-Initial and prepared multiwindow drivers now own resident admission, retirement custody and fresh
-adoption configuration through retained per-window inputs. All 38 focused native cases passed
-(run `535baafd-6a3e-458f-9012-199cdc3bf264`), including configuration refusal and continuation,
-stale-generation retirement retention, abandoned waits and partial appearance failure. The app
-library check, scoped formatting and independent lifecycle review passed. Production supervisor
-mounting remains under 702.
+The exact interrupted-Exit owner now retains selected-window inputs and fresh appearance across
+abandoned waits, with explicit initial and prepared continuation routes. All 38 focused native
+cases passed (run `7f2b5607-7437-48da-bec9-5afd976a2b35`), including original outcomes, refused
+admission and owner-retained partial attachment. The app library check, scoped formatting and
+independent lifecycle review passed. Automatic supervisor task startup remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

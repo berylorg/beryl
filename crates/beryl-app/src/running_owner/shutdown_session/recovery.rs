@@ -15,6 +15,7 @@ mod process_work;
 mod resident;
 mod resident_publication_driver;
 mod resident_windows_driver;
+mod selected_windows;
 pub(crate) use resident::ResidentPreparationKey;
 pub(crate) use resident_windows_driver::ResidentRecoveryWindow;
 mod resident_retirement;
@@ -44,6 +45,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     resident: Option<resident::ResidentPreparation>,
     pending_resident_frame: Option<std::rc::Weak<()>>,
     driver: std::rc::Weak<()>,
+    selected_windows: Option<Rc<RefCell<selected_windows::SelectedWindowRecovery>>>,
     reopen_schedule: beryl_home_store::RecoveryRetrySchedule,
     reopen_deadline: Option<std::time::Instant>,
     residents: Vec<(
@@ -76,6 +78,7 @@ impl RunningProcessOwner {
             resident: None,
             pending_resident_frame: None,
             driver: std::rc::Weak::new(),
+            selected_windows: None,
             reopen_schedule: Default::default(),
             reopen_deadline: None,
             residents: self

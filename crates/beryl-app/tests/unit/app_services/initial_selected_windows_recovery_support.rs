@@ -67,7 +67,7 @@ pub(super) async fn verify_and_dispose(
             let mut retained = owner.borrow_mut();
             assert!(
                 retained
-                    .interrupted_exit_resident_windows(&foreign, app, |_| {
+                    .retain_interrupted_exit_selected_windows(&foreign, app, |_| {
                         panic!("foreign window configuration")
                     })
                     .is_err()
@@ -76,7 +76,7 @@ pub(super) async fn verify_and_dispose(
             let mut dropped = std::rc::Weak::new();
             assert!(
                 retained
-                    .interrupted_exit_resident_windows(request, app, |window| {
+                    .retain_interrupted_exit_selected_windows(request, app, |window| {
                         configured.push(window);
                         if configured.len() == 2 {
                             return Err("configuration refused".into());
@@ -94,8 +94,8 @@ pub(super) async fn verify_and_dispose(
             assert!(dropped.upgrade().is_none());
             assert!(retained.test_services().graph().is_some());
             configured.clear();
-            let entries = retained
-                .interrupted_exit_resident_windows(request, app, |window| {
+            retained
+                .retain_interrupted_exit_selected_windows(request, app, |window| {
                     configured.push(window);
                     let index = configured.len() - 1;
                     let counts = configured_counts.clone();
@@ -112,7 +112,15 @@ pub(super) async fn verify_and_dispose(
                 })
                 .unwrap();
             assert_eq!(configured, windows);
-            entries
+            assert_eq!(
+                retained
+                    .retain_interrupted_exit_selected_windows(request, app, |_| panic!(
+                        "duplicate configuration"
+                    ))
+                    .unwrap_err(),
+                "Interrupted Exit selected recovery is already retained"
+            );
+            windows.iter().copied().map(make_entry).collect::<Vec<_>>()
         })
         .unwrap();
     let cancelled = CommandCancellation::new();
@@ -183,16 +191,48 @@ pub(super) async fn verify_and_dispose(
     assert!(owner.borrow().test_services().graph().is_some());
     drop(occupied);
     assert_eq!(*configured_counts.borrow(), [0, 0]);
-    let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(
-        RunningProcessOwner::recover_interrupted_exit_resident_windows(
+    assert_eq!(
+        RunningProcessOwner::continue_interrupted_exit_selected_windows(
             &owner,
             request,
             retired,
-            &mut entries,
+            retired,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err(),
+        "Interrupted Exit selected recovery appearance is not prepared"
+    );
+    let cancelled = CommandCancellation::new();
+    cancelled.cancel();
+    for (attempt, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
+        assert!(
+            RunningProcessOwner::recover_interrupted_exit_selected_windows(
+                &owner,
+                attempt,
+                retired,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                cancellation,
+                |_| panic!("refused owned recovery"),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+        assert!(owner.borrow().test_selected_recovery_appearance().is_none());
+        assert!(owner.borrow().test_services().graph().is_some());
+    }
+    assert_eq!(*configured_counts.borrow(), [0, 0]);
+    let mut drive_cx = cx.clone();
+    let mut drive = Box::pin(
+        RunningProcessOwner::recover_interrupted_exit_selected_windows(
+            &owner,
+            request,
+            retired,
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
-            &mut appearance,
             CommandCancellation::new(),
             |_| panic!("unexpected recovery failure"),
             &mut drive_cx,
@@ -232,17 +272,13 @@ pub(super) async fn verify_and_dispose(
             .unwrap_err(),
             "Interrupted Exit recovery is already being driven"
         );
-        let mut competing = Vec::new();
-        let mut competing_appearance = None;
         assert_eq!(
-            RunningProcessOwner::recover_interrupted_exit_resident_windows(
+            RunningProcessOwner::recover_interrupted_exit_selected_windows(
                 &owner,
                 request,
                 retired,
-                &mut competing,
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
-                &mut competing_appearance,
                 CommandCancellation::new(),
                 |_| panic!("competing recovery"),
                 cx,
@@ -261,7 +297,11 @@ pub(super) async fn verify_and_dispose(
             .await;
     }
     drop(drive);
-    let appearance = appearance.unwrap();
+    let appearance = if abandon {
+        owner.borrow().test_selected_recovery_appearance().unwrap()
+    } else {
+        owner.borrow().test_process_appearance()
+    };
     let generation = generation.get().unwrap();
     if abandon {
         assert_eq!(*configured_counts.borrow(), [2, 1]);
@@ -293,16 +333,13 @@ pub(super) async fn verify_and_dispose(
             }
         })
         .unwrap();
-        let mut absent_appearance = None;
         assert_eq!(
-            RunningProcessOwner::recover_interrupted_exit_resident_windows(
+            RunningProcessOwner::recover_interrupted_exit_selected_windows(
                 &owner,
                 request,
                 retired,
-                &mut entries,
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
-                &mut absent_appearance,
                 CommandCancellation::new(),
                 |_| panic!("repeated initial recovery"),
                 cx,
@@ -311,13 +348,23 @@ pub(super) async fn verify_and_dispose(
             .unwrap_err(),
             "Interrupted Exit selected recovery inputs are already retained"
         );
-        RunningProcessOwner::prepare_and_complete_interrupted_exit_resident_windows(
+        assert!(
+            RunningProcessOwner::continue_interrupted_exit_selected_windows(
+                &owner,
+                &foreign,
+                retired,
+                generation,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+        RunningProcessOwner::continue_interrupted_exit_selected_windows(
             &owner,
             request,
             retired,
             generation,
-            &mut entries,
-            &appearance,
             CommandCancellation::new(),
             cx,
         )
