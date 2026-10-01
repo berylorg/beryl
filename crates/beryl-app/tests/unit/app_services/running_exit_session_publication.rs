@@ -48,6 +48,78 @@ mod selected_driver {
     include!("selected_recovery_composition_support.rs");
 }
 
+mod selected_windows_driver {
+    use super::*;
+    include!("selected_windows_recovery_composition_support.rs");
+}
+
+#[derive(Clone, Copy)]
+enum SelectedWindowsDelivery {
+    Ready,
+    Dropped,
+    AppearanceRefused,
+}
+
+#[test]
+fn native_exit_selected_windows_drive_noncommitted_recovery() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::Ready),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_drive_committed_recovery() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::Ready),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_drive_indeterminate_recovery() {
+    run_with_windows(
+        Some(FaultPoint::AfterCommitBeforePersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::Ready),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_continue_abandoned_partial_attachment() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::Dropped),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_continue_refused_appearance() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::AppearanceRefused),
+        None,
+        2,
+    );
+}
+
 #[test]
 fn native_exit_selected_recovery_drives_noncommitted_exit_to_running() {
     run_with_window(
@@ -229,6 +301,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    SelectedWindows(SelectedWindowsDelivery),
     WholeSelected(bool),
     Whole(RetirementDelivery),
     DrivenResumeFailure(FaultPoint),
@@ -871,7 +944,7 @@ fn run_with_windows(
                                     cx.update(|app| app.quit()).unwrap();
                                     return;
                                 }
-                                selected_preparation::verify_and_dispose(owner, &request, matches!(publication_delivery, RecoveryPublicationDelivery::Driven), cx).await;
+                                selected_preparation::verify_and_dispose(owner, &request, publication_delivery, cx).await;
                                 observed.set(true);
                                 cx.update(|app| app.quit()).unwrap();
                                 return;

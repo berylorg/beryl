@@ -51,6 +51,7 @@ pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraf
 pub(crate) use shutdown_session::RunningShutdownSession;
 pub(crate) use shutdown_session::{
     InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
+    ResidentRecoveryWindow,
 };
 
 #[derive(Debug, PartialEq, Eq)]

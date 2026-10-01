@@ -151,6 +151,14 @@ The attempted safe-target initialization also failed the same-pass case; its pri
 was absent on inspection. Corrected focused run `a1e7cdec-8d6e-4bc1-9e07-2d5e81944210` passed all
 six driver cases. Independent review accepted the authority-based assertion and ownership boundary.
 
+Run `5be6cffc-e821-4705-b0c1-6ac1d27664de` later exposed this distinction when extracting shared
+batch attachment: placing successful adoption and appearance binding in two consecutive
+`AsyncApp::update` calls changed the abandoned-wait case's focus despite no intervening await.
+Preserve the original single GUI update, retaining the batch's attachment result inside that
+update before binding. A separate update remains appropriate only for continuation after an
+actual binding refusal. The failed resident fixture printed no owned temporary path; preserve
+ambiguous residue. All twenty-two selected-window cases passed before that failure.
+
 Final lifecycle run `ad55850b-0a04-4d2f-9a85-09f5fd45f449` passed all 50 cases. Production compilation
 and formatting passed. This accepts the selected attachment/binding boundary, not full same-home
 selected-process publication. No task-owned build or test process remained at phase completion.
@@ -225,3 +233,19 @@ The printed failed home `.tmpBCD21U` was removed after verifying its exact tempo
 
 Corrected run `0d160988-ac08-401d-8183-422ea887fa9f` passed all twenty-one cases; the extended
 case completed in 17.617 seconds. Independent review accepted the bounded test-only adjustment.
+
+## Prepared Graph Custody During Resident Continuation
+
+The multiwindow driver initially re-read prepared appearance as an entry preflight. A pending
+resident preparation owns that graph, so resuming an abandoned wait cannot require it in the
+returned-services slot. Native run `4bc93cb9-6cb0-492f-bc63-aa1ba0741b53` confirmed refusal with
+`Interrupted Exit service preparation has not returned` after the first window attached and the
+second preparation was retained. Remove that redundant preflight; keep complete membership checks
+and the existing exact candidate checks at attachment and publication. This preserves the existing
+custody protocol without changing design authority. The printed failed home `.tmpemxjJl` was
+removed after checking its exact path. Continuation after publication still requires its own
+stage-appropriate driver, rather than replaying the preparation/attachment batch.
+
+Corrected run `3adb41b8-1c76-448b-8bd9-7b7794724684` passed all thirty-three focused native cases,
+including retained graph custody, partial multiwindow continuation and the single-update focus
+regression. The app library check, scoped formatting and independent lifecycle review also passed.

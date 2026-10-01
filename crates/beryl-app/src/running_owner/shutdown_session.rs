@@ -10,6 +10,7 @@ mod recovery;
 pub(super) use recovery::InterruptedExitRecovery;
 pub(crate) use recovery::{
     InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
+    ResidentRecoveryWindow,
 };
 
 #[derive(Debug)]

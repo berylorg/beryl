@@ -77,6 +77,47 @@ impl RunningProcessOwner {
         ),
         String,
     > {
+        let mut attached = None;
+        Self::attach_and_retain_interrupted_exit_resident_pass(
+            owner,
+            request,
+            preparation,
+            admit,
+            window,
+            appearance,
+            &mut attached,
+            adapters,
+            configurator,
+            current,
+            cancellation,
+            cx,
+        )
+        .await?;
+        Ok(attached.expect("successful resident attachment retained"))
+    }
+
+    pub(super) async fn attach_and_retain_interrupted_exit_resident_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        preparation: &mut Option<resident::ResidentPreparationKey>,
+        admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        attachment: &mut Option<(
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        )>,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<MainWindowConversationComposerConfigurator>,
+        current: impl FnOnce(
+            &gpui::Window,
+            &mut App,
+        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         if preparation.is_none() {
             cx.update(|app| {
                 if !owner.borrow().process.commands.is_active(request) {
@@ -127,10 +168,11 @@ impl RunningProcessOwner {
                         })
                         .map_err(|error| error.to_string())??;
                     preparation.take();
+                    *attachment = Some(attached);
                     owner
                         .borrow_mut()
                         .bind_interrupted_exit_appearance(request, window, appearance, app)?;
-                    Ok::<_, String>(Some(attached))
+                    Ok::<_, String>(Some(()))
                 })
                 .map_err(|error| error.to_string())??;
             if let Some(attached) = attached {

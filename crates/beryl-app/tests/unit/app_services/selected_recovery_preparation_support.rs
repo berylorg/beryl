@@ -16,7 +16,7 @@ mod candidate_disposal {
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    publish: bool,
+    delivery: RecoveryPublicationDelivery,
     cx: &mut AsyncApp,
 ) {
     let windows: Vec<_> = owner
@@ -179,7 +179,12 @@ pub(super) async fn verify_and_dispose(
             .unwrap();
     }
 
-    if publish {
+    if let RecoveryPublicationDelivery::SelectedWindows(delivery) = delivery {
+        drop(residents);
+        selected_windows_driver::verify_and_dispose(owner, request, retired, delivery, cx).await;
+        return;
+    }
+    if matches!(delivery, RecoveryPublicationDelivery::Driven) {
         drop(residents);
         selected_publication::verify_and_dispose(owner, request, retired, cx).await;
         return;

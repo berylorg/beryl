@@ -486,6 +486,7 @@
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
 - [x] Sole selected-window recovery holds one driver reservation from initial retirement through completion, retaining fresh appearance and resident inputs for abandoned-wait continuation.
+- [x] Prepared multiwindow recovery holds one driver reservation through attachment and completion, retaining partial progress for abandoned-wait and appearance-refusal continuation.
 - [x] Selected resident preparation and attachment continue through publication and completion under one driver reservation, preserving abandoned-wait continuation and complete-binding gates.
 - [x] Threadless recovery holds one driver reservation from initial retirement through completion,
   retaining fresh appearance for continuation after interrupted attachment.

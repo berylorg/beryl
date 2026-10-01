@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 886: Compose Initial Selected Recovery Through Completion (finished)
+# Phase 887: Compose Prepared Multiwindow Recovery Through Completion (finished)
 
-Sole selected-window recovery now holds one driver reservation from initial retirement through
-completion, retaining fresh appearance, adapters and preparation for abandoned-wait continuation.
-All 28 focused native cases passed (run `5db1b050-1a34-49be-815a-dd630b574083`), alongside the app
-library check, scoped formatting and independent lifecycle/persistence review.
-Initial multiwindow composition and production supervisor mounting remain under 702.
+The complete selected-window set now attaches, publishes and completes under one driver reservation,
+retaining partial preparation/adoption for abandoned-wait and appearance-refusal continuation.
+All 33 focused native cases passed (run `3adb41b8-1c76-448b-8bd9-7b7794724684`), alongside the app
+library check, scoped formatting and independent lifecycle/persistence review; custody and GUI-update
+lessons are retained in [recovery evidence](failures/recovery-mount-fixture.md).
+Initial multiwindow retirement/preparation and production supervisor mounting remain under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
