@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 905: Dispatch Initial Recovery From The Retained Window Inventory (finished)
+# Phase 906: Derive Initial Recovery Identity From The Retained Graph (finished)
 
-One running-owner entry point selects the accepted selected-window or sole-threadless recovery
-driver from retained shells, preserving admission and the selected configurator prerequisite.
-All 24 focused native recovery cases passed (run `fc8ba5d5-6eda-4e06-a644-a45635964275`), along
-with the app library check, scoped formatting and independent lifecycle review. Unsupported
-inventory refusal was reviewed structurally. Automatic supervisor mounting remains under 702.
+The shared initial recovery entry derives the old generation from the retained service graph
+under exact-request admission; callers no longer supply it. Initial replay after retirement
+refuses without changing recovery custody. All 24 focused native recovery cases passed (run
+`58a481a7-9376-4a3d-ab4a-a3a9471fb1f2`), along with the app library check, scoped formatting
+and independent lifecycle review. Automatic supervisor mounting remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

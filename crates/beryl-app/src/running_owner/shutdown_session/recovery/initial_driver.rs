@@ -1,5 +1,5 @@
 use super::*;
-use beryl_home_store::{CommandCancellation, HomeGeneration};
+use beryl_home_store::CommandCancellation;
 use gpui::AsyncApp;
 use syndic_storage::SyndicTimestamp;
 
@@ -7,13 +7,12 @@ impl RunningProcessOwner {
     pub(crate) async fn recover_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
-        retired: HomeGeneration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let threadless = cx
+        let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let mut owner = owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
@@ -43,7 +42,17 @@ impl RunningProcessOwner {
                         return Err("Interrupted Exit requires selected windows".into());
                     }
                 }
-                Ok(threadless)
+                let retired = owner
+                    .process
+                    .services
+                    .as_ref()
+                    .and_then(|services| services.graph())
+                    .ok_or("Interrupted Exit original service graph is unavailable")?
+                    .home()
+                    .health()
+                    .generation()
+                    .ok_or("Interrupted Exit original service generation is unavailable")?;
+                Ok((threadless, retired))
             })
             .map_err(|error| error.to_string())??;
         if let Some(window) = threadless {

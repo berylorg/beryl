@@ -83,7 +83,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 supplied,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 |_| panic!("refused preparation failure"),
@@ -164,7 +163,6 @@ pub(super) async fn verify_and_dispose(
         Box::pin(RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             cancellation.clone(),
             &failed,
@@ -402,7 +400,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
                 |_| panic!("repeated initial preparation"),
@@ -410,7 +407,7 @@ pub(super) async fn verify_and_dispose(
             )
             .await
             .unwrap_err()
-            .contains("already retained")
+            .contains("original service graph is unavailable")
         );
         assert_eq!(
             original,
@@ -556,7 +553,6 @@ async fn assert_reserved(
         RunningProcessOwner::recover_interrupted_exit(
             owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             beryl_home_store::CommandCancellation::new(),
             |_| panic!("competing initial preparation"),

@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Initial recovery derives the old generation from the retained service graph under exact-request admission and refuses replay after that graph is retired.
 - [x] Initial running-owner recovery dispatches from the retained shell inventory to selected-window or sole-threadless recovery with exact-request admission.
 - [x] The running owner retains startup service configuration outside replaceable graphs for selected-window and threadless recovery, including explicit preparation continuations.
 - [x] Threadless recovery continues from completed graph retirement through preparation retries and coherent completion after an abandoned retirement wait.

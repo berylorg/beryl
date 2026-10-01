@@ -81,7 +81,6 @@ pub(super) async fn verify_and_dispose(
         RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
             |_| panic!("unconfigured recovery"),
@@ -242,7 +241,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 attempt,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 |_| panic!("refused owned recovery"),
@@ -262,7 +260,6 @@ pub(super) async fn verify_and_dispose(
         Box::pin(RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
-            retired,
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
             |_| panic!("unexpected recovery failure"),
@@ -366,7 +363,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
                 |_| panic!("competing recovery"),
@@ -430,7 +426,6 @@ pub(super) async fn verify_and_dispose(
             RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
-                retired,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
                 |_| panic!("repeated initial recovery"),
@@ -438,7 +433,7 @@ pub(super) async fn verify_and_dispose(
             )
             .await
             .unwrap_err(),
-            "Interrupted Exit selected recovery inputs are already retained"
+            "Interrupted Exit original service graph is unavailable"
         );
         assert!(
             RunningProcessOwner::continue_interrupted_exit_selected_windows(
