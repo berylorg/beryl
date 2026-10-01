@@ -422,18 +422,16 @@ pub(super) async fn verify_and_dispose(
             "Interrupted Exit original service graph is unavailable"
         );
         assert!(
-            RunningProcessOwner::continue_interrupted_exit_selected_windows(
+            RunningProcessOwner::recover_resident_interrupted_exit(
                 &owner,
                 &foreign,
-                retired,
-                generation,
                 CommandCancellation::new(),
                 cx,
             )
             .await
             .is_err()
         );
-        publication_continuation::verify(&owner, request, retired, generation, cx).await;
+        publication_continuation::verify(&owner, request, cx).await;
     }
 
     assert_eq!(*configured_counts.borrow(), [2, 2]);

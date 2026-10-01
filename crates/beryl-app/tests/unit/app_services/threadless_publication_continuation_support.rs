@@ -28,22 +28,14 @@ pub(super) async fn assert_refused(
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    home: beryl_model::BerylHomeId,
-    window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
-    retired: beryl_home_store::HomeGeneration,
-    generation: beryl_home_store::HomeGeneration,
     cx: &mut AsyncApp,
 ) {
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let previous = owner.borrow().test_process_appearance();
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::continue_interrupted_exit_threadless(
+    let mut drive = Box::pin(RunningProcessOwner::recover_resident_interrupted_exit(
         owner,
         request,
-        home,
-        retired,
-        generation,
-        window,
         CommandCancellation::new(),
         &mut drive_cx,
     ));

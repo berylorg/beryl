@@ -6,6 +6,62 @@ use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) async fn recover_resident_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let appearance =
+            Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
+        let (threadless, home, retired, generation) = cx
+            .update(|app| -> Result<_, String> {
+                use crate::theme_runtime::AppearancePublicationTarget;
+                let mut owner = owner.borrow_mut();
+                let _driver = owner.reserve_interrupted_exit_driver(request)?;
+                owner.interrupted_exit_graph_retirement_result(request)?;
+                let snapshot = appearance.read(app).target().snapshot();
+                let home = snapshot.current.prepared().home();
+                let retired = owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("The complete service owner is on a worker")?
+                    .retired_service_generation_for_home_return(home.home_id())
+                    .map_err(|error| error.to_string())?;
+                Ok((
+                    owner.interrupted_exit_threadless_window(app)?,
+                    home.home_id(),
+                    retired,
+                    home.home_generation(),
+                ))
+            })
+            .map_err(|error| error.to_string())??;
+        if let Some(window) = threadless {
+            Self::continue_interrupted_exit_threadless(
+                owner,
+                request,
+                home,
+                retired,
+                generation,
+                window,
+                cancellation,
+                cx,
+            )
+            .await
+        } else {
+            Self::continue_interrupted_exit_selected_windows(
+                owner,
+                request,
+                retired,
+                generation,
+                cancellation,
+                cx,
+            )
+            .await
+        }
+    }
+
     pub(crate) async fn recover_prepared_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

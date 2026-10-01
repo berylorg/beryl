@@ -28,23 +28,24 @@ pub(super) async fn assert_refused(
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
-    retired: beryl_home_store::HomeGeneration,
-    generation: beryl_home_store::HomeGeneration,
     cx: &mut AsyncApp,
 ) {
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
     let previous = owner.borrow().test_process_appearance();
-    let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(
-        RunningProcessOwner::continue_interrupted_exit_selected_windows(
-            owner,
-            request,
-            retired,
-            generation,
-            CommandCancellation::new(),
-            &mut drive_cx,
-        ),
+    let cancelled = CommandCancellation::new();
+    cancelled.cancel();
+    assert!(
+        RunningProcessOwner::recover_resident_interrupted_exit(owner, request, cancelled, cx)
+            .await
+            .is_err()
     );
+    let mut drive_cx = cx.clone();
+    let mut drive = Box::pin(RunningProcessOwner::recover_resident_interrupted_exit(
+        owner,
+        request,
+        CommandCancellation::new(),
+        &mut drive_cx,
+    ));
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         assert!(
@@ -54,6 +55,17 @@ pub(super) async fn verify(
                 .is_pending()
         );
         assert_refused(owner, request, cx).await;
+        assert!(
+            RunningProcessOwner::recover_resident_interrupted_exit(
+                owner,
+                request,
+                CommandCancellation::new(),
+                cx
+            )
+            .await
+            .unwrap_err()
+            .contains("already being driven")
+        );
         if owner.borrow().test_services_on_worker() {
             break;
         }

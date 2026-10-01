@@ -305,7 +305,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    pub(crate) async fn continue_interrupted_exit_threadless(
+    pub(super) async fn continue_interrupted_exit_threadless(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,

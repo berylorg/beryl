@@ -120,13 +120,9 @@ pub(super) async fn verify_and_dispose(
         );
         publication_continuation::assert_refused(&owner, supplied, cx).await;
         assert!(
-            RunningProcessOwner::continue_interrupted_exit_threadless(
+            RunningProcessOwner::recover_resident_interrupted_exit(
                 &owner,
                 supplied,
-                home,
-                retired,
-                retired,
-                window,
                 CommandCancellation::new(),
                 cx,
             )
@@ -301,13 +297,9 @@ pub(super) async fn verify_and_dispose(
         );
         assert_reserved(&owner, request, retired, cx).await;
         assert!(
-            RunningProcessOwner::continue_interrupted_exit_threadless(
+            RunningProcessOwner::recover_resident_interrupted_exit(
                 &owner,
                 request,
-                home,
-                retired,
-                retired,
-                window,
                 CommandCancellation::new(),
                 cx,
             )
@@ -439,13 +431,9 @@ pub(super) async fn verify_and_dispose(
             [(&foreign, CommandCancellation::new()), (request, cancelled)]
         {
             assert!(
-                RunningProcessOwner::continue_interrupted_exit_threadless(
+                RunningProcessOwner::recover_resident_interrupted_exit(
                     &owner,
                     supplied,
-                    home,
-                    retired,
-                    generation,
-                    window,
                     cancellation,
                     cx,
                 )
@@ -457,8 +445,29 @@ pub(super) async fn verify_and_dispose(
                 Some(appearance.clone())
             );
         }
-        publication_continuation::verify(&owner, request, home, window, retired, generation, cx)
-            .await;
+        publication_continuation::verify(&owner, request, cx).await;
+        assert_eq!(
+            owner
+                .borrow()
+                .test_services()
+                .graph()
+                .unwrap()
+                .home()
+                .health()
+                .generation()
+                .unwrap(),
+            generation
+        );
+        assert_eq!(
+            owner
+                .borrow()
+                .test_services()
+                .graph()
+                .unwrap()
+                .home()
+                .home_id(),
+            home
+        );
     }
     assert!(owner.borrow().interrupted_exit_session().is_none());
     assert!(
