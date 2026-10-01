@@ -270,14 +270,35 @@ impl RunningProcessOwner {
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit retirement was cancelled".into());
         }
-        Self::construct_and_settle_interrupted_exit(
+        if let Err(error) = Self::construct_and_settle_interrupted_exit(
             owner,
             request,
             generation,
             cancellation.clone(),
             cx,
         )
-        .await?;
+        .await
+        {
+            let failed_candidate = {
+                let owner = owner.borrow();
+                owner.interrupted_exit_graph_retirement_result(request)?;
+                matches!(
+                    owner
+                        .interrupted_exit
+                        .as_ref()
+                        .unwrap()
+                        .settlement
+                        .borrow()
+                        .as_ref(),
+                    Some(super::settlement::CandidateSettlement::Returned { result: Err(_), .. })
+                )
+            };
+            if failed_candidate {
+                Self::dispose_interrupted_exit_candidate_failure(owner, request, generation, cx)
+                    .await?;
+            }
+            return Err(error);
+        }
         Self::prepare_interrupted_exit_service_graph(
             owner,
             request,

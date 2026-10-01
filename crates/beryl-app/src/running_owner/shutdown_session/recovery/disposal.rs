@@ -9,6 +9,18 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
         cx: &mut gpui::AsyncApp,
     ) -> Result<CandidateSettlementError, String> {
+        Self::dispose_interrupted_exit_candidate_failure(owner, request, generation, cx).await?;
+        owner
+            .borrow_mut()
+            .take_interrupted_exit_candidate_failure(request)
+    }
+
+    pub(super) async fn dispose_interrupted_exit_candidate_failure(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<(), String> {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::dispose_failed_interrupted_exit_candidate(
@@ -24,10 +36,7 @@ impl RunningProcessOwner {
         .map_err(|error| error.to_string())??;
         receiver
             .await
-            .map_err(|_| "Interrupted Exit candidate disposal delivery is unavailable")?;
-        owner
-            .borrow_mut()
-            .take_interrupted_exit_candidate_failure(request)
+            .map_err(|_| "Interrupted Exit candidate disposal delivery is unavailable".into())
     }
 
     pub(crate) fn take_interrupted_exit_candidate_failure(

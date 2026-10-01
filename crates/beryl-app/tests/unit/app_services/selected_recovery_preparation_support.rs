@@ -233,17 +233,22 @@ pub(super) async fn verify_resume_failure(
         .generation()
         .unwrap();
     let original = publication_evidence(&owner.borrow().interrupted_exit_session().unwrap());
-    let error = RunningProcessOwner::retire_and_prepare_interrupted_exit(
+    let error = candidate_disposal::prepare_failure(
         &owner,
         request,
         retired,
-        configuration(),
-        SyndicTimestamp::from_unix_millis(2),
-        CommandCancellation::new(),
+        match (driven, fault) {
+            (true, beryl_home_store::test_faults::FaultPoint::BeforeCommit) => {
+                candidate_disposal::DisposalWait::AbandonPending
+            }
+            (true, beryl_home_store::test_faults::FaultPoint::AfterPersist) => {
+                candidate_disposal::DisposalWait::AbandonDelivered
+            }
+            _ => candidate_disposal::DisposalWait::Complete,
+        },
         cx,
     )
-    .await
-    .unwrap_err();
+    .await;
     {
         let retained = owner.borrow();
         retained
@@ -349,111 +354,7 @@ pub(super) async fn verify_resume_failure(
             };
             resume.result_revision().unwrap()
         };
-        assert!(
-            owner
-                .borrow_mut()
-                .take_interrupted_exit_candidate_failure(request)
-                .is_err()
-        );
-        if driven {
-            candidate_disposal::verify(
-                &owner,
-                request,
-                retired,
-                &error,
-                fault == beryl_home_store::test_faults::FaultPoint::AfterPersist,
-                cx,
-            )
-            .await;
-        } else {
-            let (sender, receiver) = futures_channel::oneshot::channel();
-            cx.update(|app| {
-                assert!(
-                    RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
-                        &owner,
-                        &request.test_foreign(),
-                        retired,
-                        app,
-                        |_, _| panic!("stale completion")
-                    )
-                    .is_err()
-                );
-                RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
-                    &owner,
-                    request,
-                    retired,
-                    app,
-                    move |owner, _| {
-                        assert!(!owner.borrow().test_services_on_worker());
-                        sender.send(std::time::Instant::now()).unwrap();
-                    },
-                )
-                .unwrap();
-                assert!(owner.borrow().test_services_on_worker());
-                assert!(
-                    owner
-                        .borrow()
-                        .interrupted_exit_reopen_deadline(request)
-                        .unwrap()
-                        .is_none()
-                );
-                assert!(
-                    owner
-                        .borrow_mut()
-                        .take_interrupted_exit_candidate_failure(request)
-                        .is_err()
-                );
-                assert!(
-                    RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
-                        &owner,
-                        request,
-                        retired,
-                        app,
-                        |_, _| panic!("duplicate completion")
-                    )
-                    .is_err()
-                );
-            })
-            .unwrap();
-            let delivered = receiver.await.unwrap();
-            let deadline = owner
-                .borrow()
-                .interrupted_exit_reopen_deadline(request)
-                .unwrap()
-                .unwrap();
-            assert!(deadline <= delivered + std::time::Duration::from_secs(1));
-            assert_eq!(
-                owner
-                    .borrow()
-                    .interrupted_exit_candidate_result(request)
-                    .unwrap_err(),
-                error
-            );
-            assert!(
-                owner
-                    .borrow_mut()
-                    .take_interrupted_exit_candidate_failure(&request.test_foreign())
-                    .is_err()
-            );
-            let failure = owner
-                .borrow_mut()
-                .take_interrupted_exit_candidate_failure(request)
-                .unwrap();
-            assert_eq!(failure.to_string(), error);
-            assert!(
-                owner
-                    .borrow_mut()
-                    .take_interrupted_exit_candidate_failure(request)
-                    .is_err()
-            );
-            assert_eq!(
-                owner
-                    .borrow()
-                    .interrupted_exit_reopen_deadline(request)
-                    .unwrap(),
-                Some(deadline)
-            );
-        }
+        candidate_disposal::verify_retained_failure(&owner, request, retired, &error, cx).await;
         retry_delay::verify(&owner, request, retired, 0, cx).await;
         if driven {
             resume_attempt::verify(&owner, request, retired, fault, resume_revision, cx).await;
