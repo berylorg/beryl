@@ -276,6 +276,24 @@ async fn prepare_inner(
 
 pub(in super::super) use shell_support::config as configure;
 
+pub(in super::super) fn recovery_configuration(
+    selection: MainWindowComposerSelectionIdentity,
+) -> Result<
+    (
+        MainWindowConversationComposerConfig,
+        gpui_text_input::RangeSurfaceCharge,
+    ),
+    String,
+> {
+    let config = configure(selection)?;
+    let current = config.native_lineage_current();
+    let capacity = gpui_text_input::RangeSurfaceCharge {
+        bytes: current.available_capacity.bytes * 2,
+        items: current.available_capacity.items * 2,
+    };
+    Ok((config, capacity))
+}
+
 pub(in super::super) fn environment(
     seed: gpui_text_input::RangeRestorationSeed,
     selection: MainWindowComposerSelectionIdentity,

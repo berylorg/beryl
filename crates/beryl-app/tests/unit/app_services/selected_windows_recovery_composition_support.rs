@@ -33,6 +33,8 @@ pub(super) async fn verify_and_dispose(
             GpuiAppearanceWindowSet::new(prepared, std::num::NonZeroUsize::new(4).unwrap(), app)
         })
         .unwrap();
+    let configured_counts = Rc::new(RefCell::new([0, 0]));
+    let refuse_configuration = matches!(delivery, SelectedWindowsDelivery::ConfigurationRefused);
     let make_entry = |window| {
         ResidentRecoveryWindow::new(
             window,
@@ -47,7 +49,20 @@ pub(super) async fn verify_and_dispose(
                         .turn_start_admission_requirement(),
                 )
                 .unwrap(),
-            Box::new(resident_fixture::configure),
+            Box::new({
+                let counts = configured_counts.clone();
+                let index = windows
+                    .iter()
+                    .position(|candidate| *candidate == window)
+                    .unwrap();
+                move |selection| {
+                    counts.borrow_mut()[index] += 1;
+                    if refuse_configuration && index == 0 && counts.borrow()[index] == 2 {
+                        return Err("current configuration refused".into());
+                    }
+                    resident_fixture::recovery_configuration(selection)
+                }
+            }),
         )
     };
     let mut entries: Vec<_> = windows.iter().copied().map(make_entry).collect();
@@ -63,8 +78,6 @@ pub(super) async fn verify_and_dispose(
                 generation,
                 &mut entries,
                 &appearance,
-                |_, _| panic!("refused batch admitted resident"),
-                |_, _, _| panic!("refused batch attached resident"),
                 cancellation,
                 cx,
             )
@@ -85,8 +98,6 @@ pub(super) async fn verify_and_dispose(
                 generation,
                 &mut invalid,
                 &appearance,
-                |_, _| panic!("incomplete batch admitted resident"),
-                |_, _, _| panic!("incomplete batch attached resident"),
                 CommandCancellation::new(),
                 cx,
             )
@@ -96,9 +107,9 @@ pub(super) async fn verify_and_dispose(
         );
     }
     let mut residents = Vec::new();
-    let mut retirements = Vec::new();
+    assert_eq!(*configured_counts.borrow(), [0, 0]);
     for window in &windows {
-        let (resident, retirement) = window
+        let resident = window
             .update(cx, |root, _, app| {
                 let mount = root.controller().unwrap().composer_mount().unwrap();
                 let composer = mount.read(app).contribution().unwrap();
@@ -109,61 +120,33 @@ pub(super) async fn verify_and_dispose(
                     .recovery_snapshot()
                     .unwrap()
                     .close_ticket();
-                let retirement = mount
-                    .update(app, |mount, cx| {
-                        mount.take_interrupted_exit_retirement(close, cx)
-                    })
-                    .unwrap();
-                assert!(retirement.is_some());
                 (
-                    (
-                        mount,
-                        composer,
-                        input,
-                        selection,
-                        close,
-                        root.controller().unwrap().window_id(),
-                    ),
-                    retirement,
+                    mount,
+                    composer,
+                    input,
+                    selection,
+                    close,
+                    root.controller().unwrap().window_id(),
                 )
             })
             .unwrap();
         residents.push(resident);
-        retirements.push(retirement);
     }
-    let currents = Rc::new(RefCell::new(vec![None, None]));
-    let admitted = Rc::new(RefCell::new([0, 0]));
-    let mut admit = |index: usize, app: &mut gpui::App| {
-        let mut counts = admitted.borrow_mut();
-        assert_eq!(counts[index], 0, "resident must not be admitted twice");
-        counts[index] += 1;
-        drop(counts);
-        let captured = currents.clone();
-        RunningProcessOwner::prepare_interrupted_exit_resident(
+    assert!(
+        RunningProcessOwner::prepare_and_complete_interrupted_exit_resident_windows(
             &owner,
             request,
-            &residents[index].1,
-            residents[index].4,
-            windows[index].into(),
-            generation,
-            &mut retirements[index],
-            move |seed, selection, window| {
-                let (environment, capacity) =
-                    resident_fixture::environment(seed, selection, window)?;
-                captured.borrow_mut()[index] = Some(gpui_text_input::RangePrepublicationCurrent {
-                    binding: seed.binding,
-                    history: seed.history,
-                    available_capacity: gpui_text_input::RangeSurfaceCharge {
-                        bytes: capacity.bytes / 2,
-                        items: capacity.items / 2,
-                    },
-                });
-                Ok((environment, capacity))
-            },
-            app,
-            |_, _| {},
+            retired,
+            retired,
+            &mut entries,
+            &appearance,
+            CommandCancellation::new(),
+            cx,
         )
-    };
+        .await
+        .is_err()
+    );
+    assert_eq!(*configured_counts.borrow(), [0, 0]);
     let mut drive_cx = cx.clone();
     let refuse = matches!(delivery, SelectedWindowsDelivery::AppearanceRefused);
     let mut drive = Box::pin(
@@ -174,8 +157,6 @@ pub(super) async fn verify_and_dispose(
             generation,
             &mut entries,
             if refuse { &previous } else { &appearance },
-            &mut admit,
-            |index, _, _| Ok(currents.borrow_mut()[index].take().unwrap()),
             CommandCancellation::new(),
             &mut drive_cx,
         ),
@@ -192,6 +173,8 @@ pub(super) async fn verify_and_dispose(
                     result.unwrap_err(),
                     "Recovery appearance candidate identity changed"
                 );
+            } else if refuse_configuration {
+                assert_eq!(result.unwrap_err(), "current configuration refused");
             } else {
                 result.unwrap();
                 finished = true;
@@ -219,8 +202,6 @@ pub(super) async fn verify_and_dispose(
                 generation,
                 &mut competing,
                 &appearance,
-                |_, _| panic!("competing batch admitted resident"),
-                |_, _, _| panic!("competing batch attached resident"),
                 CommandCancellation::new(),
                 cx,
             )
@@ -230,7 +211,9 @@ pub(super) async fn verify_and_dispose(
         );
         assert!(owner.borrow().exit_requested());
         assert!(!RunningProcessOwner::finish_exit(&owner, request));
-        if matches!(delivery, SelectedWindowsDelivery::Dropped) && admitted.borrow()[1] == 1 {
+        if matches!(delivery, SelectedWindowsDelivery::Dropped)
+            && configured_counts.borrow()[1] == 1
+        {
             break;
         }
         cx.background_executor()
@@ -239,8 +222,11 @@ pub(super) async fn verify_and_dispose(
     }
     drop(drive);
     if !finished {
-        assert_eq!(admitted.borrow()[0], 1);
-        assert_eq!(admitted.borrow()[1], usize::from(!refuse));
+        assert_eq!(configured_counts.borrow()[0], 2);
+        assert_eq!(
+            configured_counts.borrow()[1],
+            usize::from(!refuse && !refuse_configuration)
+        );
         assert_eq!(
             original,
             selected_preparation::publication_evidence(
@@ -263,7 +249,10 @@ pub(super) async fn verify_and_dispose(
                     .borrow()
                     .test_captured_recovery_ticket(residents[index].1.entity_id())
                     .unwrap();
-                assert_eq!(ticket == residents[index].4, index == 1);
+                assert_eq!(
+                    ticket == residents[index].4,
+                    index == 1 || refuse_configuration
+                );
             }
         })
         .unwrap();
@@ -274,17 +263,16 @@ pub(super) async fn verify_and_dispose(
             generation,
             &mut entries,
             &appearance,
-            &mut admit,
-            |index, _, _| Ok(currents.borrow_mut()[index].take().unwrap()),
             CommandCancellation::new(),
             cx,
         )
         .await
         .unwrap();
     }
-    drop(admit);
-    assert_eq!(*admitted.borrow(), [1, 1]);
-    assert!(retirements.iter().all(Option::is_none));
+    assert_eq!(
+        *configured_counts.borrow(),
+        [2 + usize::from(refuse_configuration), 2]
+    );
     assert!(!owner.borrow().exit_requested());
     assert!(owner.borrow().interrupted_exit_session().is_none());
     assert!(owner.borrow().shutdown_status().is_none());

@@ -52,10 +52,16 @@ pub(super) async fn verify_and_dispose(
                 .unwrap(),
         );
     }
-    let make_entry =
-        |window| ResidentRecoveryWindow::unprepared(window, Box::new(resident_fixture::configure));
+    let make_entry = |window| {
+        ResidentRecoveryWindow::unprepared(
+            window,
+            Box::new(resident_fixture::recovery_configuration),
+        )
+    };
     let mut appearance = None;
     let foreign = request.test_foreign();
+    let configured_counts = Rc::new(RefCell::new([0, 0]));
+    let generation = Rc::new(std::cell::Cell::new(None));
     let mut entries = cx
         .update(|app| {
             let mut retained = owner.borrow_mut();
@@ -79,7 +85,7 @@ pub(super) async fn verify_and_dispose(
                         dropped = Rc::downgrade(&capture);
                         Ok(Box::new(move |selection| {
                             let _retained = &capture;
-                            resident_fixture::configure(selection)
+                            resident_fixture::recovery_configuration(selection)
                         }))
                     })
                     .is_err()
@@ -91,7 +97,18 @@ pub(super) async fn verify_and_dispose(
             let entries = retained
                 .interrupted_exit_resident_windows(request, app, |window| {
                     configured.push(window);
-                    Ok(Box::new(resident_fixture::configure))
+                    let index = configured.len() - 1;
+                    let counts = configured_counts.clone();
+                    let generation = generation.clone();
+                    Ok(Box::new(move |selection| {
+                        counts.borrow_mut()[index] += 1;
+                        let fresh = selection.binding().home_generation();
+                        assert_ne!(fresh, retired);
+                        if let Some(previous) = generation.replace(Some(fresh)) {
+                            assert_eq!(previous, fresh);
+                        }
+                        resident_fixture::recovery_configuration(selection)
+                    }))
                 })
                 .unwrap();
             assert_eq!(configured, windows);
@@ -110,8 +127,6 @@ pub(super) async fn verify_and_dispose(
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
                 &mut appearance,
-                |_, _, _| panic!("refused admission"),
-                |_, _, _| panic!("refused attachment"),
                 cancellation,
                 |_| panic!("refused recovery"),
                 cx,
@@ -136,8 +151,6 @@ pub(super) async fn verify_and_dispose(
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
                 &mut appearance,
-                |_, _, _| panic!("invalid admission"),
-                |_, _, _| panic!("invalid attachment"),
                 CommandCancellation::new(),
                 |_| panic!("invalid recovery"),
                 cx,
@@ -159,8 +172,6 @@ pub(super) async fn verify_and_dispose(
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
             &mut occupied,
-            |_, _, _| panic!("occupied admission"),
-            |_, _, _| panic!("occupied attachment"),
             CommandCancellation::new(),
             |_| panic!("occupied recovery"),
             cx,
@@ -171,107 +182,7 @@ pub(super) async fn verify_and_dispose(
     );
     assert!(owner.borrow().test_services().graph().is_some());
     drop(occupied);
-    let currents = Rc::new(RefCell::new(vec![None, None]));
-    let admitted = std::cell::Cell::new([0, 0]);
-    let generation = std::cell::Cell::new(None);
-    let mut retirements = vec![None, None];
-    let mut admit = |index: usize, fresh, app: &mut gpui::App| {
-        assert_ne!(fresh, retired);
-        if let Some(previous) = generation.replace(Some(fresh)) {
-            assert_eq!(previous, fresh);
-        }
-        let mut counts = admitted.get();
-        assert_eq!(counts[index], 0);
-        counts[index] += 1;
-        admitted.set(counts);
-        assert_eq!(
-            original,
-            selected_preparation::publication_evidence(
-                &owner.borrow().interrupted_exit_session().unwrap()
-            )
-        );
-        assert!(owner.borrow().exit_requested());
-        assert!(owner.borrow().test_services().graph().is_none());
-        assert!(!residents[index].2.read(app).is_enabled());
-        assert!(retirements[index].is_none());
-        assert!(
-            RunningProcessOwner::prepare_interrupted_exit_window_resident(
-                &owner,
-                &foreign,
-                windows[index],
-                fresh,
-                &mut retirements[index],
-                |_, _, _| panic!("foreign resident environment"),
-                app,
-                |_, _| panic!("foreign resident completion"),
-            )
-            .is_err()
-        );
-        assert!(retirements[index].is_none());
-        assert!(
-            RunningProcessOwner::prepare_interrupted_exit_window_resident(
-                &owner,
-                request,
-                windows[index],
-                retired,
-                &mut retirements[index],
-                |_, _, _| panic!("retired generation environment"),
-                app,
-                |_, _| panic!("retired generation completion"),
-            )
-            .is_err()
-        );
-        assert_eq!(
-            retirements[index].as_ref().unwrap().close_ticket(),
-            residents[index].4
-        );
-        if index == 0 {
-            assert!(
-                RunningProcessOwner::prepare_interrupted_exit_window_resident(
-                    &owner,
-                    request,
-                    windows[1],
-                    fresh,
-                    &mut retirements[index],
-                    |_, _, _| panic!("foreign retirement environment"),
-                    app,
-                    |_, _| panic!("foreign retirement completion"),
-                )
-                .is_err()
-            );
-            assert_eq!(
-                retirements[index].as_ref().unwrap().close_ticket(),
-                residents[index].4
-            );
-        }
-        let captured = currents.clone();
-        RunningProcessOwner::prepare_interrupted_exit_window_resident(
-            &owner,
-            request,
-            windows[index],
-            fresh,
-            &mut retirements[index],
-            move |seed, selection, window| {
-                let config = resident_fixture::configure(selection)?;
-                let mut invalid = seed;
-                invalid.history = None;
-                assert!(
-                    config
-                        .resident_recovery_environment(invalid, window)
-                        .is_err()
-                );
-                let current = config.native_lineage_current();
-                let capacity = gpui_text_input::RangeSurfaceCharge {
-                    bytes: current.available_capacity.bytes * 2,
-                    items: current.available_capacity.items * 2,
-                };
-                captured.borrow_mut()[index] = Some(current);
-                Ok((config, capacity))
-            },
-            app,
-            |_, _| {},
-        )
-    };
+    assert_eq!(*configured_counts.borrow(), [0, 0]);
     let mut drive_cx = cx.clone();
     let mut drive = Box::pin(
         RunningProcessOwner::recover_interrupted_exit_resident_windows(
@@ -282,8 +193,6 @@ pub(super) async fn verify_and_dispose(
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
             &mut appearance,
-            &mut admit,
-            |index, _, _| Ok(currents.borrow_mut()[index].take().unwrap()),
             CommandCancellation::new(),
             |_| panic!("unexpected recovery failure"),
             &mut drive_cx,
@@ -334,8 +243,6 @@ pub(super) async fn verify_and_dispose(
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
                 &mut competing_appearance,
-                |_, _, _| panic!("competing admission"),
-                |_, _, _| panic!("competing attachment"),
                 CommandCancellation::new(),
                 |_| panic!("competing recovery"),
                 cx,
@@ -346,7 +253,7 @@ pub(super) async fn verify_and_dispose(
         );
         assert!(owner.borrow().exit_requested());
         assert!(!RunningProcessOwner::finish_exit(&owner, request));
-        if abandon && admitted.get()[1] == 1 {
+        if abandon && configured_counts.borrow()[1] == 1 {
             break;
         }
         cx.background_executor()
@@ -357,7 +264,7 @@ pub(super) async fn verify_and_dispose(
     let appearance = appearance.unwrap();
     let generation = generation.get().unwrap();
     if abandon {
-        assert_eq!(admitted.get(), [1, 1]);
+        assert_eq!(*configured_counts.borrow(), [2, 1]);
         assert_eq!(
             original,
             selected_preparation::publication_evidence(
@@ -396,8 +303,6 @@ pub(super) async fn verify_and_dispose(
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
                 &mut absent_appearance,
-                |_, _, _| panic!("repeated initial admission"),
-                |_, _, _| panic!("repeated initial attachment"),
                 CommandCancellation::new(),
                 |_| panic!("repeated initial recovery"),
                 cx,
@@ -413,17 +318,14 @@ pub(super) async fn verify_and_dispose(
             generation,
             &mut entries,
             &appearance,
-            |_, _| panic!("retained preparation must not be admitted again"),
-            |index, _, _| Ok(currents.borrow_mut()[index].take().unwrap()),
             CommandCancellation::new(),
             cx,
         )
         .await
         .unwrap();
     }
-    drop(admit);
-    assert_eq!(admitted.get(), [1, 1]);
-    assert!(retirements.iter().all(Option::is_none));
+
+    assert_eq!(*configured_counts.borrow(), [2, 2]);
     assert!(!owner.borrow().exit_requested());
     assert!(owner.borrow().interrupted_exit_session().is_none());
     assert!(owner.borrow().shutdown_status().is_none());

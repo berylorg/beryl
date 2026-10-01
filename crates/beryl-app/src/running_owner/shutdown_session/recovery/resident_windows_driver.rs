@@ -9,12 +9,17 @@ use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet}
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::{AsyncApp, Entity, WindowHandle};
 use syndic_storage::SyndicTimestamp;
+mod configuration;
+pub(crate) use configuration::ResidentRecoveryConfigurator;
+use configuration::ResidentWindowConfiguration;
 
 pub(crate) struct ResidentRecoveryWindow {
     window: WindowHandle<MainWindowShellRoot>,
     preparation: Option<resident::ResidentPreparationKey>,
     adapters: Option<PreparedComposerRecoveryAdapters>,
     configurator: Option<MainWindowConversationComposerConfigurator>,
+    configuration: Rc<RefCell<ResidentWindowConfiguration>>,
+    retirement: Option<crate::main_window::MainWindowComposerRetiredClose>,
     attached: Option<(
         MainWindowConversationComposerCloseTicket,
         beryl_state::SessionWindowRecord,
@@ -25,13 +30,16 @@ pub(crate) struct ResidentRecoveryWindow {
 impl ResidentRecoveryWindow {
     pub(crate) fn unprepared(
         window: WindowHandle<MainWindowShellRoot>,
-        configurator: MainWindowConversationComposerConfigurator,
+        configure: ResidentRecoveryConfigurator,
     ) -> Self {
+        let (configuration, configurator) = ResidentWindowConfiguration::new(configure);
         Self {
             window,
             preparation: None,
             adapters: None,
             configurator: Some(configurator),
+            configuration,
+            retirement: None,
             attached: None,
             bound: false,
         }
@@ -40,16 +48,11 @@ impl ResidentRecoveryWindow {
     pub(crate) fn new(
         window: WindowHandle<MainWindowShellRoot>,
         adapters: PreparedComposerRecoveryAdapters,
-        configurator: MainWindowConversationComposerConfigurator,
+        configure: ResidentRecoveryConfigurator,
     ) -> Self {
-        Self {
-            window,
-            preparation: None,
-            adapters: Some(adapters),
-            configurator: Some(configurator),
-            attached: None,
-            bound: false,
-        }
+        let mut entry = Self::unprepared(window, configure);
+        entry.adapters = Some(adapters);
+        entry
     }
 }
 
@@ -60,7 +63,7 @@ impl RunningProcessOwner {
         app: &App,
         mut configure: impl FnMut(
             WindowHandle<MainWindowShellRoot>,
-        ) -> Result<MainWindowConversationComposerConfigurator, String>,
+        ) -> Result<ResidentRecoveryConfigurator, String>,
     ) -> Result<Vec<ResidentRecoveryWindow>, String> {
         let _driver = self.reserve_interrupted_exit_driver(request)?;
         let shells = self.process.windows.shells();
@@ -92,16 +95,6 @@ impl RunningProcessOwner {
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         appearance: &mut Option<Entity<GpuiAppearanceWindowSet>>,
-        mut admit: impl FnMut(
-            usize,
-            HomeGeneration,
-            &mut App,
-        ) -> Result<resident::ResidentPreparationKey, String>,
-        current: impl FnMut(
-            usize,
-            &gpui::Window,
-            &mut App,
-        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
         cancellation: CommandCancellation,
         failed: impl FnMut(preparation_retry::RecoveryPreparationFailure),
         cx: &mut AsyncApp,
@@ -200,8 +193,6 @@ impl RunningProcessOwner {
             appearance
                 .as_ref()
                 .expect("fresh recovery appearance retained"),
-            |index, app| admit(index, generation, app),
-            current,
             cancellation,
             cx,
         )
@@ -215,12 +206,6 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
         appearance: &Entity<GpuiAppearanceWindowSet>,
-        admit: impl FnMut(usize, &mut App) -> Result<resident::ResidentPreparationKey, String>,
-        current: impl FnMut(
-            usize,
-            &gpui::Window,
-            &mut App,
-        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -234,8 +219,6 @@ impl RunningProcessOwner {
             generation,
             windows,
             appearance,
-            admit,
-            current,
             cancellation,
             cx,
         )
@@ -288,12 +271,6 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
         appearance: &Entity<GpuiAppearanceWindowSet>,
-        mut admit: impl FnMut(usize, &mut App) -> Result<resident::ResidentPreparationKey, String>,
-        mut current: impl FnMut(
-            usize,
-            &gpui::Window,
-            &mut App,
-        ) -> Result<gpui_text_input::RangePrepublicationCurrent, String>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -306,19 +283,33 @@ impl RunningProcessOwner {
                 .validate_interrupted_exit_resident_windows(windows, app)
         })
         .map_err(|error| error.to_string())??;
-        for (index, entry) in windows.iter_mut().enumerate() {
+        for entry in windows.iter_mut() {
             if entry.attached.is_none() {
+                let configuration = entry.configuration.clone();
+                let current_configuration = configuration.clone();
+                let retirement = &mut entry.retirement;
+                let window = entry.window;
                 Self::attach_and_retain_interrupted_exit_resident_pass(
                     owner,
                     request,
                     &mut entry.preparation,
-                    |app| admit(index, app),
+                    |app| {
+                        ResidentWindowConfiguration::prepare(
+                            configuration,
+                            owner,
+                            request,
+                            window,
+                            generation,
+                            retirement,
+                            app,
+                        )
+                    },
                     entry.window,
                     appearance,
                     &mut entry.attached,
                     &mut entry.adapters,
                     &mut entry.configurator,
-                    |window, app| current(index, window, app),
+                    |_, _| current_configuration.borrow_mut().current(),
                     cancellation.clone(),
                     cx,
                 )

@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Selected multiwindow drivers own resident admission and fresh adoption configuration through retained per-window inputs, preserving retirement custody and partial progress across refused or abandoned waits.
 - [x] The running owner derives complete ordered selected-window recovery inputs under exact-request admission, validating shells before configurator factories and releasing partial inputs on refusal.
 - [x] Retained-shell admission derives the resident environment and bounded cleanup ledger from composer configuration with exact source/history validation and configuration-derived adoption facts.
 - [x] Resident preparation derives exact captured resident and close-ticket identity through retained native shells, preserving transferred retirement custody on refusal.

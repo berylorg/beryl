@@ -111,6 +111,19 @@ enum SelectedWindowsDelivery {
     Ready,
     Dropped,
     AppearanceRefused,
+    ConfigurationRefused,
+}
+
+#[test]
+fn native_exit_selected_windows_continue_refused_configuration() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::SelectedWindows(SelectedWindowsDelivery::ConfigurationRefused),
+        None,
+        2,
+    );
 }
 
 #[test]
