@@ -116,26 +116,24 @@ impl RunningProcessOwner {
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit preparation was cancelled".into());
         }
-        let (previous, capacity) = cx
-            .update(|app| -> Result<_, String> {
-                let owner = owner.borrow();
-                owner.validate_interrupted_exit_resident_windows(windows, app)?;
-                if owner
-                    .process
-                    .services
-                    .as_ref()
-                    .and_then(|services| services.graph())
-                    .is_none()
-                {
-                    return Err("Interrupted Exit original service graph is unavailable".into());
-                }
-                let previous = owner.process.appearance.clone();
-                let capacity =
-                    std::num::NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
-                        .ok_or("Interrupted Exit appearance capacity is unavailable")?;
-                Ok((previous, capacity))
-            })
-            .map_err(|error| error.to_string())??;
+        cx.update(|app| -> Result<_, String> {
+            let owner = owner.borrow();
+            owner.validate_interrupted_exit_resident_windows(windows, app)?;
+            if owner
+                .process
+                .services
+                .as_ref()
+                .and_then(|services| services.graph())
+                .is_none()
+            {
+                return Err("Interrupted Exit original service graph is unavailable".into());
+            }
+            let previous = owner.process.appearance.clone();
+            std::num::NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
+                .ok_or("Interrupted Exit appearance capacity is unavailable")?;
+            Ok(())
+        })
+        .map_err(|error| error.to_string())??;
         Self::retire_interrupted_exit_for_preparation(
             owner,
             request,
@@ -160,15 +158,65 @@ impl RunningProcessOwner {
                 .await?;
             return Err("Interrupted Exit preparation was cancelled".into());
         }
+        Self::complete_prepared_interrupted_exit_resident_windows_pass(
+            owner,
+            request,
+            retired,
+            windows,
+            configuration,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    pub(super) async fn complete_prepared_interrupted_exit_resident_windows_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        windows: &mut [ResidentRecoveryWindow],
+        configuration: AppServiceConfiguration,
+        appearance: &mut Option<Entity<GpuiAppearanceWindowSet>>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit preparation was cancelled".into());
+        }
+        if appearance.is_some()
+            || windows.iter().any(|entry| {
+                entry.preparation.is_some()
+                    || entry.adapters.is_some()
+                    || entry.attached.is_some()
+                    || entry.bound
+                    || entry.configurator.is_none()
+            })
+        {
+            return Err("Interrupted Exit selected recovery inputs are already retained".into());
+        }
         let generation = cx
             .update(|app| -> Result<_, String> {
-                let prepared = owner.borrow().interrupted_exit_appearance(request)?;
+                let owner = owner.borrow();
+                owner.validate_interrupted_exit_resident_windows(windows, app)?;
+                let prepared = owner.interrupted_exit_appearance(request)?;
                 let home = prepared.prepared().home();
+                owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("Interrupted Exit service owner is unavailable")?
+                    .validate_retired_service_home_return(retired, Some(home.home_id()))
+                    .map_err(|error| format!("{error:?}"))?;
                 let generation = home.home_generation();
+                let previous = owner.process.appearance.clone();
+                let capacity =
+                    std::num::NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
+                        .ok_or("Interrupted Exit appearance capacity is unavailable")?;
                 let adapters = windows
                     .iter()
                     .map(|_| {
-                        owner.borrow().interrupted_exit_composer_adapters(
+                        owner.interrupted_exit_composer_adapters(
                             request,
                             home.home_id(),
                             generation,

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 900: Complete Prepared Threadless Recovery (finished)
+# Phase 901: Complete Prepared Selected-Window Recovery (finished)
 
-An exact-request continuation completes retained prepared threadless services through fresh
-appearance, attachment, publication and coherent reopening without replaying retirement or preparation.
-All 14 focused native cases passed (run `1f8af128-ccdc-45be-b3af-b4a531559503`), including abandoned
-preparation, refused continuations and preserved evidence. The app library check, scoped formatting
-and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
+An exact-request continuation completes owner-retained selected-window recovery from prepared
+services through fresh appearance, attachment, publication and reopening without replaying preparation.
+All 28 focused native cases passed (run `78b66230-d5f1-45d7-92cc-f019c1bd8928`), including abandoned
+preparation across three Exit outcomes and refused continuations. The app library check, scoped
+formatting and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

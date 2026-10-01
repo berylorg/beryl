@@ -90,6 +90,40 @@ impl RunningProcessOwner {
         .await
     }
 
+    pub(crate) async fn complete_prepared_interrupted_exit_selected_windows(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let retained = owner
+            .borrow_mut()
+            .interrupted_exit_selected_windows(request)?;
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        let mut retained = retained
+            .try_borrow_mut()
+            .map_err(|_| "Interrupted Exit selected recovery is busy")?;
+        let SelectedWindowRecovery {
+            windows,
+            appearance,
+        } = &mut *retained;
+        Self::complete_prepared_interrupted_exit_resident_windows_pass(
+            owner,
+            request,
+            retired,
+            windows,
+            configuration,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
     pub(crate) async fn continue_interrupted_exit_selected_windows(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

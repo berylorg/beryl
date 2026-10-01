@@ -7,6 +7,11 @@ mod publication_continuation {
     include!("selected_publication_continuation_support.rs");
 }
 
+mod prepared_continuation {
+    use super::*;
+    include!("selected_prepared_continuation_support.rs");
+}
+
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -231,8 +236,9 @@ pub(super) async fn verify_and_dispose(
         assert!(owner.borrow().test_services().graph().is_some());
     }
     assert_eq!(*configured_counts.borrow(), [0, 0]);
+    prepared_continuation::assert_refused(&owner, request, retired, cx).await;
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(
+    let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> = Box::pin(
         RunningProcessOwner::recover_interrupted_exit_selected_windows(
             &owner,
             request,
@@ -245,7 +251,36 @@ pub(super) async fn verify_and_dispose(
         ),
     );
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut prepared_continued = false;
     loop {
+        if !abandon
+            && !prepared_continued
+            && owner
+                .borrow()
+                .interrupted_exit_services_result(request)
+                .is_ok()
+        {
+            drop(drive);
+            prepared_continuation::verify_refusals(&owner, request, retired, cx).await;
+            assert_eq!(*configured_counts.borrow(), [0, 0]);
+            assert_eq!(
+                original,
+                selected_preparation::publication_evidence(
+                    &owner.borrow().interrupted_exit_session().unwrap()
+                )
+            );
+            drive = Box::pin(
+                RunningProcessOwner::complete_prepared_interrupted_exit_selected_windows(
+                    &owner,
+                    request,
+                    retired,
+                    configuration(),
+                    CommandCancellation::new(),
+                    &mut drive_cx,
+                ),
+            );
+            prepared_continued = true;
+        }
         if let Poll::Ready(result) = drive
             .as_mut()
             .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
@@ -255,6 +290,7 @@ pub(super) async fn verify_and_dispose(
             break;
         }
         assert!(std::time::Instant::now() < deadline);
+        prepared_continuation::assert_refused(&owner, request, retired, cx).await;
         cx.update(|app| {
             let result = owner
                 .borrow_mut()
@@ -303,6 +339,7 @@ pub(super) async fn verify_and_dispose(
             .await;
     }
     drop(drive);
+    assert_eq!(prepared_continued, !abandon);
     let appearance = if abandon {
         owner.borrow().test_selected_recovery_appearance().unwrap()
     } else {
@@ -310,6 +347,7 @@ pub(super) async fn verify_and_dispose(
     };
     let generation = generation.get().unwrap();
     if abandon {
+        prepared_continuation::assert_refused(&owner, request, retired, cx).await;
         assert_eq!(*configured_counts.borrow(), [2, 1]);
         assert_eq!(
             original,
