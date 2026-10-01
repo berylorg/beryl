@@ -1,3 +1,62 @@
+pub(super) async fn verify_disposed_validation_failure(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    generation: beryl_home_store::HomeGeneration,
+    cx: &mut AsyncApp,
+) {
+    let deadline = owner
+        .borrow()
+        .interrupted_exit_reopen_deadline(request)
+        .unwrap()
+        .unwrap();
+    let evidence = owner
+        .borrow()
+        .interrupted_exit_candidate_result(request)
+        .unwrap_err();
+    assert!(evidence.contains("read"), "{evidence}");
+    assert!(!owner.borrow().test_services_on_worker());
+    assert!(
+        owner
+            .borrow_mut()
+            .take_interrupted_exit_preparation_failure(request, generation)
+            .is_err()
+    );
+    for attempted in [&request.test_foreign(), request] {
+        assert!(
+            RunningProcessOwner::dispose_and_take_interrupted_exit_candidate_failure(
+                owner, attempted, generation, cx,
+            )
+            .await
+            .is_err()
+        );
+    }
+    assert!(
+        owner
+            .borrow_mut()
+            .take_interrupted_exit_candidate_failure(&request.test_foreign())
+            .is_err()
+    );
+    let failure = owner
+        .borrow_mut()
+        .take_interrupted_exit_candidate_failure(request)
+        .unwrap();
+    assert_eq!(failure.to_string(), evidence);
+    assert!(
+        owner
+            .borrow_mut()
+            .take_interrupted_exit_candidate_failure(request)
+            .is_err()
+    );
+    assert_eq!(
+        owner
+            .borrow()
+            .interrupted_exit_reopen_deadline(request)
+            .unwrap(),
+        Some(deadline)
+    );
+    assert!(!RunningProcessOwner::finish_exit(owner, request));
+}
+
 pub(super) async fn verify(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,

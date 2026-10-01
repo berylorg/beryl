@@ -187,7 +187,11 @@ impl RunningProcessOwner {
         receiver
             .await
             .map_err(|_| "Interrupted Exit service preparation delivery is unavailable")?;
-        owner.borrow().interrupted_exit_services_result(request)?;
+        let result = owner.borrow().interrupted_exit_services_result(request);
+        if let Err(error) = result {
+            Self::dispose_returned_interrupted_exit_failure(owner, request, retired, cx).await?;
+            return Err(error);
+        }
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit service preparation was cancelled".into());
         }
@@ -279,24 +283,7 @@ impl RunningProcessOwner {
         )
         .await
         {
-            let failed_candidate = {
-                let owner = owner.borrow();
-                owner.interrupted_exit_graph_retirement_result(request)?;
-                matches!(
-                    owner
-                        .interrupted_exit
-                        .as_ref()
-                        .unwrap()
-                        .settlement
-                        .borrow()
-                        .as_ref(),
-                    Some(super::settlement::CandidateSettlement::Returned { result: Err(_), .. })
-                )
-            };
-            if failed_candidate {
-                Self::dispose_interrupted_exit_candidate_failure(owner, request, generation, cx)
-                    .await?;
-            }
+            Self::dispose_returned_interrupted_exit_failure(owner, request, generation, cx).await?;
             return Err(error);
         }
         Self::prepare_interrupted_exit_service_graph(
@@ -309,6 +296,33 @@ impl RunningProcessOwner {
             cx,
         )
         .await
+    }
+
+    async fn dispose_returned_interrupted_exit_failure(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let failed_candidate = {
+            let owner = owner.borrow();
+            owner.interrupted_exit_graph_retirement_result(request)?;
+            matches!(
+                owner
+                    .interrupted_exit
+                    .as_ref()
+                    .unwrap()
+                    .settlement
+                    .borrow()
+                    .as_ref(),
+                Some(super::settlement::CandidateSettlement::Returned { result: Err(_), .. })
+            )
+        };
+        if failed_candidate {
+            Self::dispose_interrupted_exit_candidate_failure(owner, request, generation, cx)
+                .await?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn construct_and_settle_interrupted_exit(

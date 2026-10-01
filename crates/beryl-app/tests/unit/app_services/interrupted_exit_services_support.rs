@@ -52,7 +52,14 @@ pub(super) async fn verify(
     let mut stale_source = None;
     let mut attached_appearance = None;
     let mut previous_delay = None;
-    for mode in ["theme_failure", "success", "dropped", "cancel", "publish"] {
+    for mode in [
+        "validation_failure",
+        "theme_failure",
+        "success",
+        "dropped",
+        "cancel",
+        "publish",
+    ] {
         if stale_source.is_none() {
             let fresh = candidate.take().unwrap();
             let (fresh, source) = cx
@@ -150,6 +157,9 @@ pub(super) async fn verify(
             .interrupted_exit_candidate_result(request)
             .unwrap();
         let cancellation = CommandCancellation::new();
+        if mode == "validation_failure" {
+            faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        }
         if mode == "theme_failure" {
             faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
         }
@@ -180,6 +190,34 @@ pub(super) async fn verify(
         owner
             .borrow_mut()
             .test_replace_interrupted_exit_request(request);
+        if mode == "validation_failure" {
+            service_driver::verify_disposed_validation_failure(owner, request, generation, cx)
+                .await;
+            let deadline = owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap()
+                .unwrap();
+            previous_delay = Some(
+                retry_delay::verify(owner, request, generation, deadline, previous_delay, cx).await,
+            );
+            RunningProcessOwner::construct_and_settle_interrupted_exit(
+                owner,
+                request,
+                generation,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                original,
+                format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(!RunningProcessOwner::finish_exit(owner, request));
+            candidate = Some(owner.borrow().test_take_interrupted_exit_candidate());
+            continue;
+        }
         assert_eq!(
             owner
                 .borrow()
