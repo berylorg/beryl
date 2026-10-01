@@ -7,6 +7,7 @@ mod completion;
 mod construction;
 mod disposal;
 mod driver;
+mod initial_driver;
 mod preparation_driver;
 mod preparation_retry;
 mod publication_driver;

@@ -80,11 +80,10 @@ pub(super) async fn verify_and_dispose(
     cancelled.cancel();
     for (supplied, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
-            RunningProcessOwner::recover_interrupted_exit_threadless(
+            RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 supplied,
                 retired,
-                window,
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 |_| panic!("refused preparation failure"),
@@ -162,11 +161,10 @@ pub(super) async fn verify_and_dispose(
     };
     let mut drive_cx = cx.clone();
     let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> =
-        Box::pin(RunningProcessOwner::recover_interrupted_exit_threadless(
+        Box::pin(RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
             retired,
-            window,
             SyndicTimestamp::from_unix_millis(2),
             cancellation.clone(),
             &failed,
@@ -401,11 +399,10 @@ pub(super) async fn verify_and_dispose(
             .contains("already retained")
         );
         assert!(
-            RunningProcessOwner::recover_interrupted_exit_threadless(
+            RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
                 retired,
-                window,
                 SyndicTimestamp::from_unix_millis(2),
                 CommandCancellation::new(),
                 |_| panic!("repeated initial preparation"),
@@ -556,11 +553,10 @@ async fn assert_reserved(
         .contains("already being driven")
     );
     assert!(
-        RunningProcessOwner::recover_interrupted_exit_threadless(
+        RunningProcessOwner::recover_interrupted_exit(
             owner,
             request,
             retired,
-            window,
             SyndicTimestamp::from_unix_millis(2),
             beryl_home_store::CommandCancellation::new(),
             |_| panic!("competing initial preparation"),

@@ -77,6 +77,21 @@ pub(super) async fn verify_and_dispose(
     let foreign = request.test_foreign();
     let configured_counts = Rc::new(RefCell::new([0, 0]));
     let generation = Rc::new(std::cell::Cell::new(None));
+    assert_eq!(
+        RunningProcessOwner::recover_interrupted_exit(
+            &owner,
+            request,
+            retired,
+            SyndicTimestamp::from_unix_millis(2),
+            CommandCancellation::new(),
+            |_| panic!("unconfigured recovery"),
+            cx,
+        )
+        .await
+        .unwrap_err(),
+        "Interrupted Exit selected recovery is not retained"
+    );
+    assert!(owner.borrow().test_services().graph().is_some());
     let mut entries = cx
         .update(|app| {
             let mut retained = owner.borrow_mut();
@@ -224,7 +239,7 @@ pub(super) async fn verify_and_dispose(
     cancelled.cancel();
     for (attempt, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
-            RunningProcessOwner::recover_interrupted_exit_selected_windows(
+            RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 attempt,
                 retired,
@@ -243,8 +258,8 @@ pub(super) async fn verify_and_dispose(
     prepared_continuation::assert_refused(&owner, request, retired, cx).await;
     retired_continuation::assert_refused(&owner, request, retired, cx).await;
     let mut drive_cx = cx.clone();
-    let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> = Box::pin(
-        RunningProcessOwner::recover_interrupted_exit_selected_windows(
+    let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> =
+        Box::pin(RunningProcessOwner::recover_interrupted_exit(
             &owner,
             request,
             retired,
@@ -252,8 +267,7 @@ pub(super) async fn verify_and_dispose(
             CommandCancellation::new(),
             |_| panic!("unexpected recovery failure"),
             &mut drive_cx,
-        ),
-    );
+        ));
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     let mut prepared_continued = false;
     let mut retired_continued = false;
@@ -349,7 +363,7 @@ pub(super) async fn verify_and_dispose(
             "Interrupted Exit recovery is already being driven"
         );
         assert_eq!(
-            RunningProcessOwner::recover_interrupted_exit_selected_windows(
+            RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
                 retired,
@@ -413,7 +427,7 @@ pub(super) async fn verify_and_dispose(
         })
         .unwrap();
         assert_eq!(
-            RunningProcessOwner::recover_interrupted_exit_selected_windows(
+            RunningProcessOwner::recover_interrupted_exit(
                 &owner,
                 request,
                 retired,
