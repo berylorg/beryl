@@ -345,7 +345,7 @@ impl MainWindowConversationComposerConfig {
         self.native_lineage_environment(1, window.text_system(), cleanup)
     }
 
-    pub(super) const fn native_lineage_current(
+    pub(crate) const fn native_lineage_current(
         &self,
     ) -> gpui_text_input::RangePrepublicationCurrent {
         gpui_text_input::RangePrepublicationCurrent {

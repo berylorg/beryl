@@ -219,20 +219,13 @@ pub(super) async fn verify_and_dispose(
                         .resident_recovery_environment(invalid, window)
                         .is_err()
                 );
-                let environment = config.resident_recovery_environment(seed, window)?;
+                let current = config.native_lineage_current();
                 let capacity = gpui_text_input::RangeSurfaceCharge {
-                    bytes: environment.config().limits.max_surface_bytes * 2,
-                    items: environment.config().limits.max_surface_items * 2,
+                    bytes: current.available_capacity.bytes * 2,
+                    items: current.available_capacity.items * 2,
                 };
-                captured.borrow_mut()[index] = Some(gpui_text_input::RangePrepublicationCurrent {
-                    binding: seed.binding,
-                    history: seed.history,
-                    available_capacity: gpui_text_input::RangeSurfaceCharge {
-                        bytes: capacity.bytes / 2,
-                        items: capacity.items / 2,
-                    },
-                });
-                Ok((environment, capacity))
+                captured.borrow_mut()[index] = Some(current);
+                Ok((config, capacity))
             },
             app,
             |_, _| {},

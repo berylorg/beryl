@@ -89,12 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 890: Derive Resident Recovery Environments From Composer Configuration (finished)
+# Phase 891: Configure Resident Preparation Through Retained Shell Admission (finished)
 
-Resident recovery derives its environment and bounded cleanup ledger from ordinary composer
-configuration, rejecting mismatched source/history before allocation. All 32 focused native cases
-passed (run `365d6d43-2dae-4652-8ed9-69cdd650a420`), alongside the app library check, scoped
-formatting and independent lifecycle/source-correspondence review. Automatic supervisor mounting
+Retained-shell admission constructs the checked environment from composer configuration within
+the resident preparation flight, preserving explicit combined-capacity admission and existing
+failure cleanup. Adoption-current facts now come from configuration. All 32 focused native cases
+passed (run `8a02d617-7c22-4ffb-ac87-8eaa6d3110ef`), alongside the app library check, scoped
+formatting and independent source-correspondence/lifecycle review. Production supervisor mounting
 remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)

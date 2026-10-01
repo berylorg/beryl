@@ -1,5 +1,5 @@
 use super::*;
-use crate::main_window::MainWindowShellRoot;
+use crate::main_window::{MainWindowConversationComposerConfig, MainWindowShellRoot};
 use gpui::WindowHandle;
 
 impl RunningProcessOwner {
@@ -9,13 +9,14 @@ impl RunningProcessOwner {
         window: WindowHandle<MainWindowShellRoot>,
         generation: beryl_home_store::HomeGeneration,
         retired: &mut Option<MainWindowComposerRetiredClose>,
-        environment: impl FnOnce(
+        configure: impl FnOnce(
             RangeRestorationSeed,
             MainWindowComposerSelectionIdentity,
             &Window,
-        )
-            -> Result<(RangePrepublicationEnvironment, RangeSurfaceCharge), String>
-        + 'static,
+        ) -> Result<
+            (MainWindowConversationComposerConfig, RangeSurfaceCharge),
+            String,
+        > + 'static,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<ResidentPreparationKey, String> {
@@ -66,7 +67,11 @@ impl RunningProcessOwner {
             window.into(),
             generation,
             retired,
-            environment,
+            move |seed, selection, window| {
+                let (config, capacity) = configure(seed, selection, window)?;
+                let environment = config.resident_recovery_environment(seed, window)?;
+                Ok((environment, capacity))
+            },
             app,
             completed,
         )
