@@ -4,6 +4,7 @@ pub(super) async fn verify(
     generation: beryl_home_store::HomeGeneration,
     stale_generation: beryl_home_store::HomeGeneration,
     delivery: RetirementDelivery,
+    faults: &FaultController,
     cx: &mut AsyncApp,
 ) -> beryl_home_store::HomeRecoveryCandidate {
     use beryl_home_store::CommandCancellation;
@@ -20,13 +21,14 @@ pub(super) async fn verify(
         (request, generation, cancelled),
     ] {
         assert!(
-            RunningProcessOwner::retire_and_prepare_interrupted_exit(
+            RunningProcessOwner::retire_and_retry_interrupted_exit_preparation(
                 owner,
                 request,
                 generation,
                 configuration(),
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
+                |_| panic!("unexpected preparation failure"),
                 cx,
             )
             .await
@@ -41,16 +43,51 @@ pub(super) async fn verify(
     }
 
     let cancellation = CommandCancellation::new();
+    let failures = std::cell::Cell::new(0);
+    if matches!(delivery, RetirementDelivery::Ready) {
+        faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
+    }
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::retire_and_prepare_interrupted_exit(
-        owner,
-        request,
-        generation,
-        configuration(),
-        SyndicTimestamp::from_unix_millis(2),
-        cancellation.clone(),
-        &mut drive_cx,
-    ));
+    let mut drive = Box::pin(
+        RunningProcessOwner::retire_and_retry_interrupted_exit_preparation(
+            owner,
+            request,
+            generation,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            cancellation.clone(),
+            |failure| {
+                let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(
+                    failure,
+                ) = failure
+                else {
+                    panic!("unexpected preparation failure");
+                };
+                assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
+                assert!(failure.into_retry_parts().is_err());
+                failures.set(failures.get() + 1);
+                assert_eq!(failures.get(), 1);
+                assert!(!owner.borrow().test_services_on_worker());
+                assert!(owner.borrow().test_services().graph().is_none());
+                owner
+                    .borrow()
+                    .interrupted_exit_graph_retirement_result(request)
+                    .unwrap();
+                assert!(!RunningProcessOwner::finish_exit(owner, request));
+                assert_eq!(
+                    original,
+                    format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+                );
+                assert!(
+                    owner
+                        .borrow_mut()
+                        .take_interrupted_exit_preparation_failure(request, generation)
+                        .is_err()
+                );
+            },
+            &mut drive_cx,
+        ),
+    );
     std::future::poll_fn(|task| {
         assert!(drive.as_mut().poll(task).is_pending());
         Poll::Ready(())
@@ -58,13 +95,14 @@ pub(super) async fn verify(
     .await;
     assert!(owner.borrow().test_services_on_worker());
     assert!(
-        RunningProcessOwner::retire_and_prepare_interrupted_exit(
+        RunningProcessOwner::retire_and_retry_interrupted_exit_preparation(
             owner,
             request,
             generation,
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
+            |_| panic!("concurrent preparation failure"),
             cx,
         )
         .await
@@ -114,7 +152,54 @@ pub(super) async fn verify(
             .test_replace_interrupted_exit_request(&foreign),
         _ => {}
     }
-    if let Some(drive) = drive {
+    if let Some(mut drive) = drive {
+        if matches!(delivery, RetirementDelivery::Ready) {
+            let timeout = std::time::Instant::now() + Duration::from_secs(5);
+            while failures.get() == 0 {
+                assert!(
+                    std::future::poll_fn(|task| Poll::Ready(drive.as_mut().poll(task)))
+                        .await
+                        .is_pending()
+                );
+                assert!(std::time::Instant::now() < timeout);
+                if failures.get() == 0 {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(10))
+                        .await;
+                }
+            }
+            let deadline = owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap()
+                .unwrap();
+            assert!(deadline > std::time::Instant::now());
+            assert!(
+                deadline.saturating_duration_since(std::time::Instant::now())
+                    <= Duration::from_secs(1)
+            );
+            let error = RunningProcessOwner::retry_interrupted_exit_service_preparation(
+                owner,
+                request,
+                generation,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                |_| panic!("concurrent retry failure"),
+                cx,
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains("already being driven"));
+            assert_eq!(
+                owner
+                    .borrow()
+                    .interrupted_exit_reopen_deadline(request)
+                    .unwrap(),
+                Some(deadline)
+            );
+            assert!(!owner.borrow().test_services_on_worker());
+        }
         let result = drive.await;
         match delivery {
             RetirementDelivery::Ready => result.unwrap(),
@@ -129,17 +214,22 @@ pub(super) async fn verify(
         }
     }
     assert!(
-        RunningProcessOwner::retire_and_prepare_interrupted_exit(
+        RunningProcessOwner::retire_and_retry_interrupted_exit_preparation(
             owner,
             request,
             generation,
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
             CommandCancellation::new(),
+            |_| panic!("duplicate retirement preparation failure"),
             cx,
         )
         .await
         .is_err()
+    );
+    assert_eq!(
+        failures.get(),
+        usize::from(matches!(delivery, RetirementDelivery::Ready))
     );
     if !matches!(delivery, RetirementDelivery::Ready) {
         assert!(!owner.borrow().test_services_on_worker());

@@ -15,12 +15,69 @@ impl RunningProcessOwner {
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
-        mut failed: impl FnMut(RecoveryServicePreparationError),
+        failed: impl FnMut(RecoveryServicePreparationError),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_preparation(request)?;
+        Self::retry_interrupted_exit_service_attempts(
+            owner,
+            request,
+            generation,
+            configuration,
+            at,
+            cancellation,
+            failed,
+            cx,
+        )
+        .await
+    }
+
+    pub(crate) async fn retire_and_retry_interrupted_exit_preparation(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        failed: impl FnMut(RecoveryServicePreparationError),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_preparation(request)?;
+        Self::retire_interrupted_exit_for_preparation(
+            owner,
+            request,
+            generation,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
+        Self::retry_interrupted_exit_service_attempts(
+            owner,
+            request,
+            generation,
+            configuration,
+            at,
+            cancellation,
+            failed,
+            cx,
+        )
+        .await
+    }
+
+    async fn retry_interrupted_exit_service_attempts(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        mut failed: impl FnMut(RecoveryServicePreparationError),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         loop {
             owner
                 .borrow()

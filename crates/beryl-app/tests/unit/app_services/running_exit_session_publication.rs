@@ -853,7 +853,7 @@ fn run_with_windows(
                             let mut candidate = Some(candidate);
                             let retired_generation = owner.borrow().test_services().graph().unwrap().home().health().generation().unwrap();
                             let settled_candidate = if let Some(delivery) = retirement_delivery {
-                                Some(retirement_driver::verify(&owner, &request, retired_generation, candidate.as_ref().unwrap().candidate.generation(), delivery, cx).await)
+                                Some(retirement_driver::verify(&owner, &request, retired_generation, candidate.as_ref().unwrap().candidate.generation(), delivery, &faults, cx).await)
                             } else {
                                 graph_retirement_support::verify(&owner, &request, fault.unwrap(), &mut candidate, cx).await;
                                 None

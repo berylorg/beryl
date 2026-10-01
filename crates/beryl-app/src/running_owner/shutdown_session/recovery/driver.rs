@@ -214,18 +214,13 @@ impl RunningProcessOwner {
         Ok(())
     }
 
-    pub(crate) async fn retire_and_prepare_interrupted_exit(
+    pub(super) async fn retire_interrupted_exit_for_preparation(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,
-        configuration: AppServiceConfiguration,
-        at: SyndicTimestamp,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let _driver = owner
-            .borrow_mut()
-            .reserve_interrupted_exit_preparation(request)?;
         let receiver = loop {
             let (sender, receiver) = futures_channel::oneshot::channel();
             let admitted = cx
@@ -274,6 +269,29 @@ impl RunningProcessOwner {
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit retirement was cancelled".into());
         }
+        Ok(())
+    }
+
+    pub(crate) async fn retire_and_prepare_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        generation: HomeGeneration,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_preparation(request)?;
+        Self::retire_interrupted_exit_for_preparation(
+            owner,
+            request,
+            generation,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
         Self::prepare_interrupted_exit_attempt(
             owner,
             request,
