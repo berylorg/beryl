@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 864: Consume Disposed Candidate Failure Before Another Attempt (finished)
+# Phase 865: Qualify Fresh Candidate Convergence After Resume Failure (finished)
 
-Exact-request consumption now transfers the disposed typed failure and frees the candidate slot
-after home custody returns. All ten selected native cases passed
-(`054741a2-bc3c-4d5a-aaa0-be164cc0c001`), including premature/stale/duplicate refusal and another
-candidate construction/disposal with original Exit evidence and window/draft fences preserved.
-Production Cargo checking, scoped formatting and independent lifecycle review passed. Resume
-retry policy, unresolved reconciliation disposal and automatic supervisor composition remain pending.
+The next constructed candidate now reaches actual settlement in the two-window native fixture:
+committed resume validates exact Running without repetition, while noncommit remains fenced.
+All ten selected native cases passed (`40899f71-75dd-4449-b5b4-7cb84d53674b`), preserving original
+Exit/resume evidence, window/draft fences and stale/duplicate refusal through clean home reopen.
+Scoped formatting and independent lifecycle review passed. Explicit noncommit retry, unresolved
+reconciliation disposal and automatic supervisor composition remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -256,6 +256,8 @@ later failure; exact-handle reconciliation during fixture teardown does not acce
 Phase 863 returns failed settled candidate home custody on the retained worker while preserving
 the typed failure and original session evidence. Phase 864 transfers that disposed failure to the
 exact caller, freeing the slot for another candidate construction without releasing Exit fences.
+Phase 865 qualifies actual settlement of that next candidate: committed resume validates its exact
+Running result without repeating the command; proven noncommit remains fenced pending explicit retry.
 Unresolved reconciliation disposal qualification and resume retry composition remain pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).

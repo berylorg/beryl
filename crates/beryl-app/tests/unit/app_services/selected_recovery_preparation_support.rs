@@ -311,6 +311,14 @@ pub(super) async fn verify_resume_failure(
             .unwrap();
     }
     if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
+        let resume_revision = {
+            let retained = owner.borrow();
+            let session = retained.interrupted_exit_session().unwrap();
+            let RunningShutdownSession::Resuming(resume) = &*session else {
+                panic!("resume outcome lost before next candidate")
+            };
+            resume.result_revision().unwrap()
+        };
         assert!(
             owner
                 .borrow_mut()
@@ -406,19 +414,67 @@ pub(super) async fn verify_resume_failure(
             .unwrap();
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
-            RunningProcessOwner::abort_constructed_exit_candidate(
+            assert!(
+                RunningProcessOwner::settle_constructed_exit_candidate(
+                    &owner,
+                    &request.test_foreign(),
+                    app,
+                    |_, _| panic!("stale settlement completion")
+                )
+                .is_err()
+            );
+            RunningProcessOwner::settle_constructed_exit_candidate(
                 &owner,
                 request,
-                retired,
                 app,
                 move |_, _| {
                     sender.send(()).unwrap();
                 },
             )
             .unwrap();
+            assert!(
+                RunningProcessOwner::settle_constructed_exit_candidate(
+                    &owner,
+                    request,
+                    app,
+                    |_, _| panic!("duplicate settlement completion")
+                )
+                .is_err()
+            );
         })
         .unwrap();
         receiver.await.unwrap();
+        {
+            use crate::exit_session::ResumeSessionOutcome;
+            use beryl_home_store::test_faults::FaultPoint;
+            let retained = owner.borrow();
+            let result = retained.interrupted_exit_candidate_result(request);
+            let session = retained.interrupted_exit_session().unwrap();
+            let RunningShutdownSession::Resuming(resume) = &*session else {
+                panic!("resume outcome lost after next candidate")
+            };
+            assert_eq!(resume.result_revision(), Some(resume_revision));
+            match fault {
+                FaultPoint::BeforeCommit => {
+                    assert_eq!(result.unwrap_err(), "Session resume did not commit");
+                    assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::NotCommitted { .. })
+                    ));
+                }
+                FaultPoint::AfterPersist => {
+                    result.unwrap();
+                    assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::Committed {
+                            later_failure: Some(_),
+                            ..
+                        })
+                    ));
+                }
+                _ => unreachable!(),
+            }
+        }
         assert_eq!(
             original,
             publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
@@ -445,7 +501,13 @@ pub(super) async fn verify_resume_failure(
                 })
                 .unwrap();
         }
-        dispose_retired(owner, windows, None, cx).await;
+        let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+        drop(candidate.session);
+        let home = cx
+            .background_executor()
+            .spawn(async move { candidate.candidate.abort() })
+            .await;
+        dispose_retired(owner, windows, Some(home), cx).await;
         return;
     }
     let reconciliation = {
