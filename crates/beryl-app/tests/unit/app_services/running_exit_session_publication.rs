@@ -43,6 +43,59 @@ mod selected_publication {
     include!("selected_recovery_publication_support.rs");
 }
 
+mod selected_driver {
+    use super::*;
+    include!("selected_recovery_composition_support.rs");
+}
+
+#[test]
+fn native_exit_selected_recovery_drives_noncommitted_exit_to_running() {
+    run_with_window(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelected(false),
+        None,
+        true,
+    );
+}
+
+#[test]
+fn native_exit_selected_recovery_drives_committed_exit_to_running() {
+    run_with_window(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelected(false),
+        None,
+        true,
+    );
+}
+
+#[test]
+fn native_exit_selected_recovery_drives_indeterminate_exit_to_running() {
+    run_with_window(
+        Some(FaultPoint::AfterCommitBeforePersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelected(false),
+        None,
+        true,
+    );
+}
+
+#[test]
+fn native_exit_selected_recovery_continues_abandoned_preparation() {
+    run_with_window(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelected(true),
+        None,
+        true,
+    );
+}
+
 #[test]
 fn native_exit_selected_session_publication_completes_same_home_recovery() {
     run_with_window(
@@ -176,6 +229,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    WholeSelected(bool),
     Whole(RetirementDelivery),
     DrivenResumeFailure(FaultPoint),
     ResumeFailure(FaultPoint),
@@ -794,6 +848,12 @@ fn run_with_windows(
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            if let RecoveryPublicationDelivery::WholeSelected(abandon) = publication_delivery {
+                                selected_driver::verify_and_dispose(owner, &request, abandon, cx).await;
+                                observed.set(true);
+                                cx.update(|app| app.quit()).unwrap();
+                                return;
+                            }
                             if let RecoveryPublicationDelivery::Whole(delivery) = publication_delivery {
                                 threadless_driver::verify_and_dispose(owner, &request, delivery, &faults, cx).await;
                                 observed.set(true);

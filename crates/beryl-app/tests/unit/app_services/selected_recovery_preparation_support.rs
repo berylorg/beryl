@@ -838,7 +838,7 @@ async fn verify_exclusive_preparation(
     drop(service);
 }
 
-fn publication_evidence(session: &RunningShutdownSession) -> String {
+pub(super) fn publication_evidence(session: &RunningShutdownSession) -> String {
     let publication = match session {
         RunningShutdownSession::Settled(Ok(outcome)) => outcome.publication(),
         RunningShutdownSession::Reconciled(outcome) => outcome.publication(),

@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 885: Compose Selected Resident Attachment Through Completion (finished)
+# Phase 886: Compose Initial Selected Recovery Through Completion (finished)
 
-Selected resident preparation, attachment and publication now share one driver reservation through
-completion, preserving retained preparation after an abandoned waiter and complete-binding gates.
-All 24 focused native recovery cases passed (run `5c51cb33-2b57-4458-a5f3-4ebb4daf41f3`), alongside
-the app library check, scoped formatting and independent lifecycle/persistence review.
-Initial selected recovery and production supervisor mounting remain under 702.
+Sole selected-window recovery now holds one driver reservation from initial retirement through
+completion, retaining fresh appearance, adapters and preparation for abandoned-wait continuation.
+All 28 focused native cases passed (run `5db1b050-1a34-49be-815a-dd630b574083`), alongside the app
+library check, scoped formatting and independent lifecycle/persistence review.
+Initial multiwindow composition and production supervisor mounting remain under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

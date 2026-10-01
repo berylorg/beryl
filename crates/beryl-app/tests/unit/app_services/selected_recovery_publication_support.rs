@@ -413,6 +413,16 @@ pub(super) async fn verify_and_dispose(
         windows
     );
 
+    drop(residents);
+    dispose_recovered(owner, windows, appearance, cx).await;
+}
+
+pub(super) async fn dispose_recovered(
+    owner: Rc<RefCell<RunningProcessOwner>>,
+    windows: Vec<gpui::WindowHandle<MainWindowShellRoot>>,
+    appearance: gpui::Entity<GpuiAppearanceWindowSet>,
+    cx: &mut AsyncApp,
+) {
     for window in &windows {
         let mut draft = window
             .update(cx, |root, window, app| {
@@ -467,7 +477,6 @@ pub(super) async fn verify_and_dispose(
         assert!(app.windows().is_empty());
     })
     .unwrap();
-    drop(residents);
     cx.background_executor()
         .spawn(async move {
             super::close(&mut running.services);
