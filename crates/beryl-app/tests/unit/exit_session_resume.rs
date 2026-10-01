@@ -149,7 +149,21 @@ fn interrupted_exit_resume_retains_each_failure_and_exact_reconciliation() {
                 })
             ));
             foreign.abort().close().unwrap();
-            resume.reconcile(&mut candidate).unwrap();
+            faults.fail_next(FaultPoint::BeforeReconciliationSnapshot);
+            resume.retry_reconciliation(&mut candidate).unwrap();
+            assert!(matches!(
+                resume.outcome(),
+                Some(ResumeSessionOutcome::Indeterminate {
+                    reconciliation: Some(Err(_)),
+                    ..
+                })
+            ));
+            assert!(!resume.can_retry_reconciliation());
+            assert!(resume.retry_reconciliation(&mut candidate).is_err());
+            assert!(resume.take_previous_reconciliation().is_some());
+            assert!(resume.take_previous_reconciliation().is_none());
+            assert!(resume.can_retry_reconciliation());
+            resume.retry_reconciliation(&mut candidate).unwrap();
             assert!(matches!(
                 resume.outcome(),
                 Some(ResumeSessionOutcome::Indeterminate {
@@ -158,6 +172,9 @@ fn interrupted_exit_resume_retains_each_failure_and_exact_reconciliation() {
                 })
             ));
             assert!(resume.reconcile(&mut candidate).is_err());
+            assert!(resume.take_previous_reconciliation().is_some());
+            assert!(!resume.can_retry_reconciliation());
+            assert!(resume.retry_reconciliation(&mut candidate).is_err());
         }
         let snapshot = fresh
             .minimal_bootstrap_candidate(&candidate.recovery_access().unwrap())

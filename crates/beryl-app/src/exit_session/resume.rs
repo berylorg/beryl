@@ -70,6 +70,7 @@ pub(crate) struct InterruptedExitResume {
     exit: InterruptedExit,
     result_revision: Option<SessionRevision>,
     outcome: Option<ResumeSessionOutcome>,
+    previous_reconciliation: Option<ReconciliationFailure>,
 }
 
 impl InterruptedExitResume {
@@ -78,6 +79,7 @@ impl InterruptedExitResume {
             exit,
             result_revision: None,
             outcome: None,
+            previous_reconciliation: None,
         }
     }
 
@@ -248,5 +250,44 @@ impl InterruptedExitResume {
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
         *reconciliation = Some(access.reconcile(handle));
         Ok(())
+    }
+
+    pub(crate) fn can_retry_reconciliation(&self) -> bool {
+        self.previous_reconciliation.is_none()
+            && matches!(
+                self.outcome,
+                Some(ResumeSessionOutcome::Indeterminate {
+                    reconciliation: Some(Err(_)),
+                    ..
+                })
+            )
+    }
+
+    pub(crate) fn retry_reconciliation(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+    ) -> Result<(), String> {
+        if !self.can_retry_reconciliation() {
+            return Err("Session resume reconciliation retry is unavailable".into());
+        }
+        let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+        let Some(ResumeSessionOutcome::Indeterminate {
+            handle,
+            reconciliation,
+            ..
+        }) = &mut self.outcome
+        else {
+            unreachable!()
+        };
+        let Some(Err(previous)) = reconciliation.as_ref() else {
+            unreachable!()
+        };
+        self.previous_reconciliation = Some(previous.clone());
+        *reconciliation = Some(access.retry_reconciliation(handle));
+        Ok(())
+    }
+
+    pub(crate) fn take_previous_reconciliation(&mut self) -> Option<ReconciliationFailure> {
+        self.previous_reconciliation.take()
     }
 }

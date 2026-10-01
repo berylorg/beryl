@@ -527,37 +527,121 @@ pub(super) async fn verify_resume_failure(
         dispose_retired(owner, windows, Some(home), cx).await;
         return;
     }
-    let reconciliation = {
-        let borrowed = owner.borrow();
-        let retained = borrowed.interrupted_exit_session().unwrap();
-        match &*retained {
-            RunningShutdownSession::Resuming(resume) => match resume.outcome() {
-                Some(crate::exit_session::ResumeSessionOutcome::Indeterminate {
-                    handle, ..
-                }) => Some(handle.clone()),
-                _ => None,
+    use crate::exit_session::ResumeSessionOutcome;
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume_reconciliation(request)
+            .is_err()
+    );
+    let (sender, receiver) = futures_channel::oneshot::channel();
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume_reconciliation(
+                &owner,
+                &request.test_foreign(),
+                app,
+                |_, _| panic!("stale reconciliation retry")
+            )
+            .is_err()
+        );
+        RunningProcessOwner::retry_interrupted_exit_resume_reconciliation(
+            &owner,
+            request,
+            app,
+            move |owner, _| {
+                assert!(owner.borrow().interrupted_exit_session().is_some());
+                sender.send(()).unwrap();
             },
-            _ => panic!("resume outcome lost before disposal"),
-        }
-    };
-    let mut candidate = owner.borrow().test_take_interrupted_exit_candidate();
+        )
+        .unwrap();
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume_reconciliation(
+                &owner,
+                request,
+                app,
+                |_, _| panic!("duplicate reconciliation retry")
+            )
+            .is_err()
+        );
+        assert!(
+            owner
+                .borrow_mut()
+                .take_previous_interrupted_exit_resume_reconciliation(request)
+                .is_err()
+        );
+    })
+    .unwrap();
+    receiver.await.unwrap();
+    owner
+        .borrow()
+        .interrupted_exit_candidate_result(request)
+        .unwrap();
+    {
+        let retained = owner.borrow();
+        let session = retained.interrupted_exit_session().unwrap();
+        assert_eq!(publication_evidence(&session), original);
+        let RunningShutdownSession::Resuming(resume) = &*session else {
+            panic!("resume lost")
+        };
+        assert!(matches!(
+            resume.outcome(),
+            Some(ResumeSessionOutcome::Indeterminate {
+                reconciliation: Some(Ok(
+                    beryl_home_store::ReconciliationResolution::ExactNew { .. }
+                )),
+                ..
+            })
+        ));
+    }
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume_reconciliation(&request.test_foreign())
+            .is_err()
+    );
+    owner
+        .borrow_mut()
+        .take_previous_interrupted_exit_resume_reconciliation(request)
+        .unwrap();
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume_reconciliation(request)
+            .is_err()
+    );
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume_reconciliation(
+                &owner,
+                request,
+                app,
+                |_, _| panic!("settled reconciliation retry")
+            )
+            .is_err()
+        );
+    })
+    .unwrap();
+    assert!(!RunningProcessOwner::finish_exit(&owner, request));
+    assert_eq!(
+        owner.borrow().test_process().windows.shells().len(),
+        windows.len()
+    );
+    for window in &windows {
+        window
+            .update(cx, |root, _, app| {
+                assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                let mount = root.controller().unwrap().composer_mount().unwrap();
+                let composer = mount.read(app).contribution().unwrap();
+                assert!(!composer.read(app).gpui_input().read(app).is_enabled());
+            })
+            .unwrap();
+    }
+    let candidate = owner.borrow().test_take_interrupted_exit_candidate();
     drop(candidate.session);
     let home = cx
         .background_executor()
-        .spawn(async move {
-            if let Some(handle) = reconciliation {
-                assert!(matches!(
-                    candidate
-                        .candidate
-                        .recovery_access()
-                        .unwrap()
-                        .retry_reconciliation(&handle)
-                        .unwrap(),
-                    beryl_home_store::ReconciliationResolution::ExactNew { .. }
-                ));
-            }
-            candidate.candidate.abort()
-        })
+        .spawn(async move { candidate.candidate.abort() })
         .await;
     dispose_retired(owner, windows, Some(home), cx).await;
 }

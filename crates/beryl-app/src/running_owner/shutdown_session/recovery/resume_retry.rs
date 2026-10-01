@@ -2,10 +2,46 @@ use super::*;
 use crate::exit_session::ResumeSessionOutcome;
 use settlement::{CandidateSettlement, CandidateSettlementError};
 
+enum ResumeRetry {
+    Command,
+    Reconciliation,
+}
+
 impl RunningProcessOwner {
     pub(crate) fn retry_interrupted_exit_resume(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<(), String> {
+        Self::retry_interrupted_exit_resume_pass(
+            owner,
+            request,
+            ResumeRetry::Command,
+            app,
+            completed,
+        )
+    }
+
+    pub(crate) fn retry_interrupted_exit_resume_reconciliation(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
+    ) -> Result<(), String> {
+        Self::retry_interrupted_exit_resume_pass(
+            owner,
+            request,
+            ResumeRetry::Reconciliation,
+            app,
+            completed,
+        )
+    }
+
+    fn retry_interrupted_exit_resume_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        action: ResumeRetry,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -26,12 +62,21 @@ impl RunningProcessOwner {
             let Some(RunningShutdownSession::Resuming(resume)) = session.as_ref() else {
                 return Err("Interrupted Exit resume is unavailable".into());
             };
-            if resume
-                .outcome()
-                .and_then(ResumeSessionOutcome::known_commit)
-                != Some(false)
-            {
-                return Err("Interrupted Exit resume noncommit is unproven".into());
+            match action {
+                ResumeRetry::Command
+                    if resume
+                        .outcome()
+                        .and_then(ResumeSessionOutcome::known_commit)
+                        != Some(false) =>
+                {
+                    return Err("Interrupted Exit resume noncommit is unproven".into());
+                }
+                ResumeRetry::Reconciliation if !resume.can_retry_reconciliation() => {
+                    return Err(
+                        "Interrupted Exit resume reconciliation retry is unavailable".into(),
+                    );
+                }
+                _ => {}
             }
             let mut settlement = recovery.settlement.borrow_mut();
             if !matches!(
@@ -60,7 +105,14 @@ impl RunningProcessOwner {
                 let RunningShutdownSession::Resuming(resume) = &mut original else {
                     unreachable!()
                 };
-                resume.retry(&mut candidate.candidate, &candidate.session, &mut previous)?;
+                match action {
+                    ResumeRetry::Command => {
+                        resume.retry(&mut candidate.candidate, &candidate.session, &mut previous)?
+                    }
+                    ResumeRetry::Reconciliation => {
+                        resume.retry_reconciliation(&mut candidate.candidate)?
+                    }
+                }
                 original.converge_candidate(&mut candidate.candidate, &candidate.session)
             }))
             .unwrap_or_else(|_| Err("Interrupted Exit resume retry unwound".into()))
@@ -93,5 +145,20 @@ impl RunningProcessOwner {
             .borrow_mut()
             .take()
             .ok_or_else(|| "No previous resume outcome is retained".into())
+    }
+
+    pub(crate) fn take_previous_interrupted_exit_resume_reconciliation(
+        &mut self,
+        request: &RunningExitRequest,
+    ) -> Result<beryl_home_store::ReconciliationFailure, String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        let mut session = recovery.session.borrow_mut();
+        let Some(RunningShutdownSession::Resuming(resume)) = session.as_mut() else {
+            return Err("Interrupted Exit resume is unavailable".into());
+        };
+        resume
+            .take_previous_reconciliation()
+            .ok_or_else(|| "No previous resume reconciliation failure is retained".into())
     }
 }
