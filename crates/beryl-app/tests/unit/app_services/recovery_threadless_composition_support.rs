@@ -1,3 +1,8 @@
+mod publication_continuation {
+    use super::*;
+    include!("threadless_publication_continuation_support.rs");
+}
+
 #[test]
 fn native_exit_threadless_recovery_drives_failed_graph_to_running() {
     run_composed(FaultPoint::BeforeCommit, RetirementDelivery::Ready);
@@ -104,6 +109,7 @@ pub(super) async fn verify_and_dispose(
         .unwrap();
     }
     for supplied in [&foreign, request] {
+        publication_continuation::assert_refused(&owner, supplied, cx).await;
         assert!(
             RunningProcessOwner::continue_interrupted_exit_threadless(
                 &owner,
@@ -302,18 +308,8 @@ pub(super) async fn verify_and_dispose(
                 Some(appearance.clone())
             );
         }
-        RunningProcessOwner::continue_interrupted_exit_threadless(
-            &owner,
-            request,
-            home,
-            retired,
-            generation,
-            window,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .unwrap();
+        publication_continuation::verify(&owner, request, home, window, retired, generation, cx)
+            .await;
     }
     assert!(owner.borrow().interrupted_exit_session().is_none());
     assert!(
