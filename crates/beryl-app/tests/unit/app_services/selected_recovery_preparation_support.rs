@@ -212,6 +212,7 @@ pub(super) async fn verify_resume_failure(
     request: &crate::startup_owner::RunningExitRequest,
     fault: beryl_home_store::test_faults::FaultPoint,
     driven: bool,
+    faults: &beryl_home_store::test_faults::FaultController,
     cx: &mut AsyncApp,
 ) {
     let windows: Vec<_> = owner
@@ -357,7 +358,8 @@ pub(super) async fn verify_resume_failure(
         candidate_disposal::verify_retained_failure(&owner, request, retired, &error, cx).await;
         retry_delay::verify(&owner, request, retired, 0, cx).await;
         if driven {
-            resume_attempt::verify(&owner, request, retired, fault, resume_revision, cx).await;
+            resume_attempt::verify(&owner, request, retired, fault, resume_revision, faults, cx)
+                .await;
             assert_eq!(
                 original,
                 publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())

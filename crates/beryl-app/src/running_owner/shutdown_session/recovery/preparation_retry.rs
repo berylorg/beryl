@@ -10,6 +10,8 @@ use syndic_storage::SyndicTimestamp;
 pub(crate) enum RecoveryPreparationFailure {
     Candidate(CandidateSettlementError),
     Services(RecoveryServicePreparationError),
+    Resume(crate::exit_session::ResumeSessionOutcome),
+    ResumeReconciliation(beryl_home_store::ReconciliationFailure),
 }
 
 impl RunningProcessOwner {
@@ -100,7 +102,23 @@ impl RunningProcessOwner {
                 cx,
             )
             .await;
-            if result.is_ok() || cancellation.is_cancelled() {
+            if cancellation.is_cancelled() {
+                return result;
+            }
+            Self::hand_off_interrupted_exit_resume_failures(
+                owner,
+                request,
+                &cancellation,
+                &mut failed,
+            )?;
+            if cancellation.is_cancelled() {
+                Self::dispose_cancelled_interrupted_exit_preparation(
+                    owner, request, generation, cx,
+                )
+                .await?;
+                return Err("Interrupted Exit preparation was cancelled".into());
+            }
+            if result.is_ok() {
                 return result;
             }
             let failure = {
@@ -134,6 +152,42 @@ impl RunningProcessOwner {
                         owner.take_interrupted_exit_preparation_failure(request, generation)?,
                     )
                 }
+            };
+            failed(failure);
+        }
+    }
+
+    fn hand_off_interrupted_exit_resume_failures(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: &CommandCancellation,
+        failed: &mut impl FnMut(RecoveryPreparationFailure),
+    ) -> Result<(), String> {
+        loop {
+            let failure = {
+                let owner = owner.borrow();
+                owner.interrupted_exit_graph_retirement_result(request)?;
+                if cancellation.is_cancelled() {
+                    return Ok(());
+                }
+                let recovery = owner.interrupted_exit.as_ref().unwrap();
+                let mut session = recovery.session.borrow_mut();
+                let session = session
+                    .as_mut()
+                    .ok_or("Interrupted Exit resume is on a worker")?;
+                let previous = recovery.previous_resume.borrow_mut().take();
+                if let Some(previous) = previous {
+                    Some(RecoveryPreparationFailure::Resume(previous))
+                } else if let RunningShutdownSession::Resuming(resume) = session {
+                    resume
+                        .take_previous_reconciliation()
+                        .map(RecoveryPreparationFailure::ResumeReconciliation)
+                } else {
+                    None
+                }
+            };
+            let Some(failure) = failure else {
+                return Ok(());
             };
             failed(failure);
         }

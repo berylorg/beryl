@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 880: Retry Disposed Candidate Preparation Failures (finished)
+# Phase 881: Hand Off Prior Resume Outcomes During Preparation Retry (finished)
 
-Initial and already-retired preparation drivers now transfer typed disposed candidate or service
-failures before retrying under the same reservation and shared delay. Exact home-return validation,
-original/resume evidence and existing command-proof gates remain intact. Candidate-to-service retry,
-cancellation, dropped-waiter and stale-callback coverage passed with all twenty-one native recovery
-cases, Cargo check, formatting and independent lifecycle/persistence review. Resume-outcome handoff
-orchestration and production supervisor mounting remain under 702.
+Composed preparation now hands off each retained prior resume-command or reconciliation outcome
+through the typed callback, revalidating request and cancellation between deliveries. Repeated
+noncommit/reconciliation failure retries, callback cancellation and stale-request refusal preserve
+current/original evidence and closed gates. Twenty-one native recovery cases and six strengthened
+resume cases passed, with Cargo check, formatting and independent persistence/lifecycle review.
+Production supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -485,6 +485,15 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Connected preparation retry to typed once-only handoff of prior resume-command and
+  reconciliation outcomes after settled attempts, including successful preparation. Request and
+  cancellation are revalidated between callbacks; cancellation disposes prepared custody and stale
+  callbacks preserve it. Repeated failed command/reconciliation attempts transfer historical evidence
+  before the next retry without changing current/original outcomes, proof gates, reservation or
+  shared backoff. Twenty-one native recovery cases passed (run
+  `9e60df1d-8e63-404d-a789-f327e22b5bb2`, 145.280s); six strengthened resume cases then passed (run
+  `3125e086-62a9-4e50-b010-7fd97b0d44fc`, 21.999s), with Cargo check, formatting and independent
+  persistence/lifecycle review. Production supervisor mounting remains separate.
 - [x] Extended the initial and already-retired preparation retry drivers to transfer confirmed
   disposed candidate failures alongside service failures through one typed callback, after exact
   failed-home return validation. Shared reservation, backoff and original/resume/prior-outcome

@@ -64,6 +64,7 @@ pub(super) async fn verify(
                         assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
                         assert!(failure.into_retry_parts().is_err());
                     }
+                    _ => panic!("unexpected resume failure"),
                 }
                 assert!(
                     owner

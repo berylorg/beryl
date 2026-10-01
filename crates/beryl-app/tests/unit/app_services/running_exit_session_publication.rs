@@ -794,7 +794,7 @@ fn run_with_windows(
                                     if resume_fault == FaultPoint::AfterCommitBeforePersist {
                                         faults.fail_next(FaultPoint::BeforeReconciliationSnapshot);
                                     }
-                                    selected_preparation::verify_resume_failure(owner, &request, resume_fault, matches!(publication_delivery, RecoveryPublicationDelivery::DrivenResumeFailure(_)), cx).await;
+                                    selected_preparation::verify_resume_failure(owner, &request, resume_fault, matches!(publication_delivery, RecoveryPublicationDelivery::DrivenResumeFailure(_)), &faults, cx).await;
                                     observed.set(true);
                                     cx.update(|app| app.quit()).unwrap();
                                     return;
