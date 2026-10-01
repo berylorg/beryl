@@ -274,7 +274,8 @@ pub(super) async fn verify(
             match delivery {
                 RecoveryPublicationDelivery::Whole(_)
                 | RecoveryPublicationDelivery::SelectedWindows(_)
-                | RecoveryPublicationDelivery::WholeSelected(_) => {
+                | RecoveryPublicationDelivery::WholeSelected(_)
+                | RecoveryPublicationDelivery::WholeSelectedWindows(_) => {
                     panic!("whole recovery uses its composed driver")
                 }
                 RecoveryPublicationDelivery::ResumeFailure(_)

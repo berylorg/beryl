@@ -53,6 +53,59 @@ mod selected_windows_driver {
     include!("selected_windows_recovery_composition_support.rs");
 }
 
+mod initial_selected_windows_driver {
+    use super::*;
+    include!("initial_selected_windows_recovery_support.rs");
+}
+
+#[test]
+fn native_exit_selected_windows_recover_noncommitted_exit_to_running() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelectedWindows(false),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_committed_exit_to_running() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelectedWindows(false),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_indeterminate_exit_to_running() {
+    run_with_windows(
+        Some(FaultPoint::AfterCommitBeforePersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelectedWindows(false),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_recover_after_abandoned_partial_attachment() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::WholeSelectedWindows(true),
+        None,
+        2,
+    );
+}
+
 #[derive(Clone, Copy)]
 enum SelectedWindowsDelivery {
     Ready,
@@ -303,6 +356,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 enum RecoveryPublicationDelivery {
     SelectedWindows(SelectedWindowsDelivery),
     WholeSelected(bool),
+    WholeSelectedWindows(bool),
     Whole(RetirementDelivery),
     DrivenResumeFailure(FaultPoint),
     ResumeFailure(FaultPoint),
@@ -921,6 +975,12 @@ fn run_with_windows(
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            if let RecoveryPublicationDelivery::WholeSelectedWindows(abandon) = publication_delivery {
+                                initial_selected_windows_driver::verify_and_dispose(owner, &request, abandon, cx).await;
+                                observed.set(true);
+                                cx.update(|app| app.quit()).unwrap();
+                                return;
+                            }
                             if let RecoveryPublicationDelivery::WholeSelected(abandon) = publication_delivery {
                                 selected_driver::verify_and_dispose(owner, &request, abandon, cx).await;
                                 observed.set(true);
