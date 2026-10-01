@@ -10,6 +10,8 @@ pub(super) async fn verify(
     use beryl_home_store::CommandCancellation;
 
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
+    previous_delay =
+        preparation_cancellation::verify(owner, request, retired, previous_delay, cx).await;
     let deadline = owner
         .borrow()
         .interrupted_exit_reopen_deadline(request)

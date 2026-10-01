@@ -13,6 +13,11 @@ mod preparation_attempt {
     include!("recovery_preparation_attempt_support.rs");
 }
 
+mod preparation_cancellation {
+    use super::*;
+    include!("recovery_preparation_cancellation_support.rs");
+}
+
 mod attachment_driver {
     use super::*;
     include!("recovery_threadless_driver_support.rs");

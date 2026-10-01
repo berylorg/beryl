@@ -30,6 +30,8 @@ pub(super) enum CandidateSettlement {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CandidateSettlementError {
+    #[error("Interrupted Exit candidate preparation was cancelled")]
+    Cancelled,
     #[error("{0}")]
     Candidate(String),
     #[error(transparent)]

@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 876: Drive Preparation Again After Completed Graph Retirement (finished)
+# Phase 877: Dispose Cancelled Preparation Between Worker Stages (finished)
 
-An already-retired graph can now drive another complete preparation attempt after failure transfer,
-sharing the initial driver's sequence and reservation across delays and workers. Twenty-one native
-recovery cases, focused Cargo check, formatting and independent persistence/lifecycle review passed.
-Repeated failure/success, stale and retained-custody refusal, shared backoff, concurrent driver
-rejection, cancelled/dropped waits and unchanged Exit evidence/gates passed. Full automatic failure
-consumption and supervisor retry looping remain under phase 702.
+Composed preparation now awaits cancellation disposal after construction, settlement or service
+preparation delivery, preserving original/resume evidence, existing failures and closed gates.
+Twenty-one native recovery cases, Cargo check, formatting and independent persistence/lifecycle
+review passed, including stale refusal, abandoned disposal, typed transfer and reconstruction.
+Lower construction-driver retention is unchanged; automatic supervisor retries remain under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

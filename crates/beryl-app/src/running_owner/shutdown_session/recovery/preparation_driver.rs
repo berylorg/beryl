@@ -97,18 +97,31 @@ impl RunningProcessOwner {
         )
         .await
         {
-            Self::dispose_returned_interrupted_exit_failure(owner, request, generation, cx).await?;
+            if cancellation.is_cancelled() {
+                Self::dispose_cancelled_interrupted_exit_preparation(
+                    owner, request, generation, cx,
+                )
+                .await?;
+            } else {
+                Self::dispose_returned_interrupted_exit_failure(owner, request, generation, cx)
+                    .await?;
+            }
             return Err(error);
         }
-        Self::prepare_interrupted_exit_service_graph(
+        let result = Self::prepare_interrupted_exit_service_graph(
             owner,
             request,
             generation,
             configuration,
             at,
-            cancellation,
+            cancellation.clone(),
             cx,
         )
-        .await
+        .await;
+        if result.is_err() && cancellation.is_cancelled() {
+            Self::dispose_cancelled_interrupted_exit_preparation(owner, request, generation, cx)
+                .await?;
+        }
+        result
     }
 }
