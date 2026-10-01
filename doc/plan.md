@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 863: Return Failed Settled Candidate Home Custody (finished)
+# Phase 864: Consume Disposed Candidate Failure Before Another Attempt (finished)
 
-Failed settled candidates now dispose on the retained worker and return home custody before
-completion, preserving typed failure and original Exit/resume evidence. All ten selected native
-cases passed (`4f4221f3-ec88-4d3b-b4e5-80f61e3fe094`), including two-window noncommit and
-committed-failure disposal, stale/duplicate refusal and home reopen. Production Cargo checking,
-scoped formatting and independent lifecycle review passed. Unresolved reconciliation disposal,
-failure consumption for another attempt and automatic supervisor composition remain separate.
+Exact-request consumption now transfers the disposed typed failure and frees the candidate slot
+after home custody returns. All ten selected native cases passed
+(`054741a2-bc3c-4d5a-aaa0-be164cc0c001`), including premature/stale/duplicate refusal and another
+candidate construction/disposal with original Exit evidence and window/draft fences preserved.
+Production Cargo checking, scoped formatting and independent lifecycle review passed. Resume
+retry policy, unresolved reconciliation disposal and automatic supervisor composition remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -254,8 +254,9 @@ retained original evidence and closed recovery gates; retry on a later attempt r
 Phase 862 extends that qualification to unresolved resume reconciliation and committed resume
 later failure; exact-handle reconciliation during fixture teardown does not accept production retry.
 Phase 863 returns failed settled candidate home custody on the retained worker while preserving
-the typed failure and original session evidence; consuming that failure for another attempt remains
-pending, as do unresolved reconciliation disposal qualification and retry composition.
+the typed failure and original session evidence. Phase 864 transfers that disposed failure to the
+exact caller, freeing the slot for another candidate construction without releasing Exit fences.
+Unresolved reconciliation disposal qualification and resume retry composition remain pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

@@ -25,7 +25,7 @@ pub(super) enum CandidateSettlement {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(super) enum CandidateSettlementError {
+pub(crate) enum CandidateSettlementError {
     #[error("{0}")]
     Candidate(String),
     #[error(transparent)]

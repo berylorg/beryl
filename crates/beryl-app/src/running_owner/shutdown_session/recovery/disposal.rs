@@ -1,8 +1,30 @@
 use super::*;
 use beryl_home_store::HomeGeneration;
-use settlement::CandidateSettlement;
+use settlement::{CandidateSettlement, CandidateSettlementError};
 
 impl RunningProcessOwner {
+    pub(crate) fn take_interrupted_exit_candidate_failure(
+        &mut self,
+        request: &RunningExitRequest,
+    ) -> Result<CandidateSettlementError, String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if recovery.session.borrow().is_none() || self.process.services.is_none() {
+            return Err("Interrupted Exit recovery custody is unavailable".into());
+        }
+        let mut settlement = recovery.settlement.borrow_mut();
+        if !matches!(
+            settlement.as_ref(),
+            Some(CandidateSettlement::DisposedFailure(_))
+        ) {
+            return Err("Interrupted Exit has no disposed candidate failure".into());
+        }
+        let Some(CandidateSettlement::DisposedFailure(failure)) = settlement.take() else {
+            unreachable!("validated disposed failure retains exclusive custody")
+        };
+        Ok(failure)
+    }
+
     pub(crate) fn dispose_failed_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

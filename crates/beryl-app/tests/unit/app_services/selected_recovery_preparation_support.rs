@@ -311,6 +311,12 @@ pub(super) async fn verify_resume_failure(
             .unwrap();
     }
     if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
+        assert!(
+            owner
+                .borrow_mut()
+                .take_interrupted_exit_candidate_failure(request)
+                .is_err()
+        );
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             assert!(
@@ -336,6 +342,12 @@ pub(super) async fn verify_resume_failure(
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
             assert!(
+                owner
+                    .borrow_mut()
+                    .take_interrupted_exit_candidate_failure(request)
+                    .is_err()
+            );
+            assert!(
                 RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
                     &owner,
                     request,
@@ -355,6 +367,58 @@ pub(super) async fn verify_resume_failure(
                 .unwrap_err(),
             error
         );
+        assert!(
+            owner
+                .borrow_mut()
+                .take_interrupted_exit_candidate_failure(&request.test_foreign())
+                .is_err()
+        );
+        let failure = owner
+            .borrow_mut()
+            .take_interrupted_exit_candidate_failure(request)
+            .unwrap();
+        assert_eq!(failure.to_string(), error);
+        assert!(
+            owner
+                .borrow_mut()
+                .take_interrupted_exit_candidate_failure(request)
+                .is_err()
+        );
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::construct_interrupted_exit_candidate(
+                &owner,
+                request,
+                retired,
+                CommandCancellation::new(),
+                app,
+                move |_, _| {
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        owner
+            .borrow()
+            .interrupted_exit_construction_result(request)
+            .unwrap();
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            RunningProcessOwner::abort_constructed_exit_candidate(
+                &owner,
+                request,
+                retired,
+                app,
+                move |_, _| {
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+        })
+        .unwrap();
+        receiver.await.unwrap();
         assert_eq!(
             original,
             publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
@@ -364,6 +428,23 @@ pub(super) async fn verify_resume_failure(
             owner.borrow().test_process().windows.shells().len(),
             windows.len()
         );
+        for window in &windows {
+            window
+                .update(cx, |root, _, app| {
+                    assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                    let mount = root.controller().unwrap().composer_mount().unwrap();
+                    let composer = mount.read(app).contribution().unwrap();
+                    let resident = composer.read(app);
+                    assert!(!resident.gpui_input().read(app).is_enabled());
+                    assert_eq!(
+                        Some(resident.recovery_snapshot().unwrap().close_ticket()),
+                        owner
+                            .borrow()
+                            .test_captured_recovery_ticket(composer.entity_id())
+                    );
+                })
+                .unwrap();
+        }
         dispose_retired(owner, windows, None, cx).await;
         return;
     }
