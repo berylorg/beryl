@@ -111,6 +111,99 @@ impl RunningProcessOwner {
             cx,
         )
         .await?;
+        Self::prepare_retired_interrupted_exit_threadless_pass(
+            owner,
+            request,
+            retired,
+            window,
+            configuration,
+            at,
+            cancellation,
+            failed,
+            cx,
+        )
+        .await
+    }
+
+    pub(crate) async fn prepare_retired_interrupted_exit_threadless(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        window: WindowHandle<MainWindowShellRoot>,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        failed: impl FnMut(RecoveryPreparationFailure),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        Self::prepare_retired_interrupted_exit_threadless_pass(
+            owner,
+            request,
+            retired,
+            window,
+            configuration,
+            at,
+            cancellation,
+            failed,
+            cx,
+        )
+        .await
+    }
+
+    async fn prepare_retired_interrupted_exit_threadless_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        window: WindowHandle<MainWindowShellRoot>,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        failed: impl FnMut(RecoveryPreparationFailure),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit preparation was cancelled".into());
+        }
+        cx.update(|app| -> Result<(), String> {
+            let owner = owner.borrow();
+            owner.validate_interrupted_exit_preparation(request, retired)?;
+            if owner
+                .interrupted_exit
+                .as_ref()
+                .unwrap()
+                .threadless_appearance
+                .is_some()
+            {
+                return Err("Interrupted Exit fresh appearance is already retained".into());
+            }
+            let shells = owner.process.windows.shells();
+            if shells.len() != 1 || shells[0].window() != window {
+                return Err("Interrupted Exit requires the sole retained threadless window".into());
+            }
+            if !window
+                .read(app)
+                .map_err(|error| error.to_string())?
+                .controller()
+                .is_some_and(|controller| controller.is_threadless())
+            {
+                return Err("Interrupted Exit requires a threadless window".into());
+            }
+            NonZeroUsize::new(
+                owner
+                    .process
+                    .appearance
+                    .read(app)
+                    .target()
+                    .snapshot()
+                    .capacity,
+            )
+            .ok_or("Interrupted Exit appearance capacity is unavailable")?;
+            Ok(())
+        })
+        .map_err(|error| error.to_string())??;
         Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,

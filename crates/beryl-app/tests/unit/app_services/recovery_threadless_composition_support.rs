@@ -109,6 +109,7 @@ pub(super) async fn verify_and_dispose(
         .unwrap();
     }
     for supplied in [&foreign, request] {
+        assert_retired_refused(&owner, supplied, retired, CommandCancellation::new(), cx).await;
         assert!(
             RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
                 &owner,
@@ -141,6 +142,25 @@ pub(super) async fn verify_and_dispose(
     faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
     let failures = std::cell::Cell::new(0);
     let cancellation = CommandCancellation::new();
+    let failed = |failure| {
+        let crate::running_owner::RecoveryPreparationFailure::Services(failure) = failure else {
+            panic!("unexpected recovery outcome");
+        };
+        let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(failure) =
+            failure
+        else {
+            panic!("unexpected service failure");
+        };
+        assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
+        assert!(failure.into_retry_parts().is_err());
+        failures.set(failures.get() + 1);
+        assert_eq!(failures.get(), 1);
+        assert_eq!(
+            original,
+            publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(!RunningProcessOwner::finish_exit(&owner, request));
+    };
     let mut drive_cx = cx.clone();
     let mut drive: std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + '_>> =
         Box::pin(RunningProcessOwner::recover_interrupted_exit_threadless(
@@ -151,32 +171,59 @@ pub(super) async fn verify_and_dispose(
             configuration(),
             SyndicTimestamp::from_unix_millis(2),
             cancellation.clone(),
-            |failure| {
-                let crate::running_owner::RecoveryPreparationFailure::Services(failure) = failure
-                else {
-                    panic!("unexpected recovery outcome");
-                };
-                let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(
-                    failure,
-                ) = failure
-                else {
-                    panic!("unexpected service failure");
-                };
-                assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
-                assert!(failure.into_retry_parts().is_err());
-                failures.set(failures.get() + 1);
-                assert_eq!(failures.get(), 1);
-                assert_eq!(
-                    original,
-                    publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
-                );
-                assert!(!RunningProcessOwner::finish_exit(&owner, request));
-            },
+            &failed,
             &mut drive_cx,
         ));
     let timeout = Instant::now() + Duration::from_secs(10);
     let mut prepared_continued = false;
+    let mut retired_continued = false;
     loop {
+        if matches!(delivery, RetirementDelivery::Ready)
+            && !retired_continued
+            && owner
+                .borrow()
+                .interrupted_exit_graph_retirement_result(request)
+                .is_ok()
+        {
+            drop(drive);
+            assert_retired_refused(&owner, &foreign, retired, CommandCancellation::new(), cx).await;
+            let cancelled = CommandCancellation::new();
+            cancelled.cancel();
+            assert_retired_refused(&owner, request, retired, cancelled, cx).await;
+            assert!(
+                owner
+                    .borrow()
+                    .test_threadless_recovery_appearance()
+                    .is_none()
+            );
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_services_result(request)
+                    .is_err()
+            );
+            assert_eq!(
+                original,
+                publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(!RunningProcessOwner::finish_exit(&owner, request));
+            cx.update(|app| assert!(previous.read(app).target().snapshot().active))
+                .unwrap();
+            drive = Box::pin(
+                RunningProcessOwner::prepare_retired_interrupted_exit_threadless(
+                    &owner,
+                    request,
+                    retired,
+                    window,
+                    configuration(),
+                    SyndicTimestamp::from_unix_millis(2),
+                    cancellation.clone(),
+                    &failed,
+                    &mut drive_cx,
+                ),
+            );
+            retired_continued = true;
+        }
         if matches!(delivery, RetirementDelivery::Ready)
             && !prepared_continued
             && owner
@@ -185,6 +232,7 @@ pub(super) async fn verify_and_dispose(
                 .is_ok()
         {
             drop(drive);
+            assert_retired_refused(&owner, request, retired, CommandCancellation::new(), cx).await;
             assert!(
                 owner
                     .borrow()
@@ -290,6 +338,10 @@ pub(super) async fn verify_and_dispose(
         matches!(delivery, RetirementDelivery::Ready)
     );
     assert_eq!(failures.get(), 1);
+    assert_eq!(
+        retired_continued,
+        matches!(delivery, RetirementDelivery::Ready)
+    );
     let mut drive = Some(drive);
     if matches!(delivery, RetirementDelivery::Dropped) {
         drop(drive.take());
@@ -455,6 +507,31 @@ fn publication_evidence(session: &RunningShutdownSession) -> String {
     format!("{publication:?}")
 }
 
+async fn assert_retired_refused(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    retired: beryl_home_store::HomeGeneration,
+    cancellation: beryl_home_store::CommandCancellation,
+    cx: &mut AsyncApp,
+) {
+    let window = owner.borrow().test_process().windows.shells()[0].window();
+    assert!(
+        RunningProcessOwner::prepare_retired_interrupted_exit_threadless(
+            owner,
+            request,
+            retired,
+            window,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            cancellation,
+            |_| panic!("refused retired threadless preparation"),
+            cx,
+        )
+        .await
+        .is_err()
+    );
+}
+
 async fn assert_reserved(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -462,6 +539,14 @@ async fn assert_reserved(
     cx: &mut AsyncApp,
 ) {
     let window = owner.borrow().test_process().windows.shells()[0].window();
+    assert_retired_refused(
+        owner,
+        request,
+        retired,
+        beryl_home_store::CommandCancellation::new(),
+        cx,
+    )
+    .await;
     assert!(
         RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
             owner,
