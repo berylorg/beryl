@@ -2,6 +2,11 @@ use crate::running_owner::ResidentRecoveryWindow;
 use resident_recovery::resident_fixture;
 use std::{future::Future, task::Poll};
 
+mod publication_continuation {
+    use super::*;
+    include!("selected_publication_continuation_support.rs");
+}
+
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -125,6 +130,7 @@ pub(super) async fn verify_and_dispose(
         .unwrap();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
+    publication_continuation::assert_refused(&owner, request, cx).await;
     for (attempt, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
             RunningProcessOwner::recover_interrupted_exit_resident_windows(
@@ -360,16 +366,7 @@ pub(super) async fn verify_and_dispose(
             .await
             .is_err()
         );
-        RunningProcessOwner::continue_interrupted_exit_selected_windows(
-            &owner,
-            request,
-            retired,
-            generation,
-            CommandCancellation::new(),
-            cx,
-        )
-        .await
-        .unwrap();
+        publication_continuation::verify(&owner, request, retired, generation, cx).await;
     }
 
     assert_eq!(*configured_counts.borrow(), [2, 2]);
