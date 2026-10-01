@@ -126,7 +126,7 @@ Official Codex MCP documentation: <https://developers.openai.com/codex/mcp>
 
 ## Recovery
 
-For a stale but otherwise configured index, run the blocking post-write barrier from `SKILL.md`.
+For a stale but otherwise configured index, follow batched index reconciliation in `SKILL.md`.
 For `needs_reindex`, a created or deleted file, target changes, or uncertain discovery state, always
 use `index --discover`; MCP `heal_index` is not sufficient.
 

@@ -81,10 +81,10 @@ but neither the checkpoint nor the plan may resolve that gap on behalf of the ow
 
 On any architectural rework task, read the active durable plan before source edits.
 
-If the durable plan points to an active rework, read that `REWORK.md` and its target docs before relying on existing source, feature docs, system docs, or package docs.
+If the durable plan points to an active rework, read its relevant tracker slice, applicable cutover constraints and controlling target-doc sections before relying on source. Reuse established readings while unchanged; continuation does not require rereading every linked target doc. Reread exact authority when retained context is insufficient for a consequential decision.
 
 If the user describes an active rework but the durable plan does not point to `doc/rework/<name>/REWORK.md`, reconcile the awareness docs first. Do not start implementation while the active rework authority is implicit or discoverable only from conversation history.
 
 ## Required Workflow Reference
 
-Before creating or revising `REWORK.md`, archiving or cutting over obsolete material, selecting a tracker slice for the durable plan, executing or resuming rework work, reviewing or verifying any rework tracker, rework batch, or architectural rework, compacting completed tracker work, or closing a rework, read [Rework Tracker Workflow](references/rework-tracker-workflow.md) in full and follow it as normative. It owns the exact tracker schema and prose limits, checkpoint and compaction mechanics, creation and active-work sequences, and verification checklist. Do not improvise alternate tracker structures or execution flows.
+Follow [Rework Tracker Workflow](references/rework-tracker-workflow.md) as normative for tracker structure, checkpoint selection, compaction, cutover and closure. Read the sections applicable to the current operation on first use or when relevant rules change; reuse established readings while available and unchanged. Read the complete closure procedure before undertaking closure. Do not improvise alternate tracker structures or execution flows.

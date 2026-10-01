@@ -16,7 +16,8 @@ modifier declarations.>
 # Phase 1: <one acceptance boundary> (wip)
 
 <Tasks needed for this boundary, contract-required edge cases and defensive behavior, verification
-evidence, and the latest resumable milestone or blocker.>
+evidence, and the latest resumable milestone or blocker. Identify the active milestone's production
+entry point or intended consumer, observable completion condition and remaining blockers.>
 
 # Phase 2: <one acceptance boundary> (pending)
 

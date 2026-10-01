@@ -39,10 +39,10 @@ Reflect planning scope, input, sequencing, or continuation constraints from anot
 
 ## Planning Workflow
 
-1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus project-declared root or parent authorities.
+1. Read the applicable controlling authority. Reuse established readings while unchanged; on continuation, inspect the active plan, relevant tracker slice, changed requirements and unresolved questions. Reread exact source when retained context is insufficient for a consequential decision.
 2. Stop if the request contradicts design authority; otherwise apply the architecture-readiness gate
    to the actionable slice.
-3. Split only architecture-ready implementation work into small coherent phases.
+3. Split architecture-ready work into bounded phases with meaningful outcomes, using the phase-sizing rules below.
 4. Mark the active phase `wip` and future phases `pending`.
 5. Include phase tasks, edge cases, verification, and resumable milestone details.
 6. Record any blocker in its phase before stopping.
@@ -78,7 +78,7 @@ Translate the contract's supported operating envelope, defensive behavior, failu
 verification evidence, and review requirements into concrete phase work. Do not copy profile,
 modifier, or catalog declarations into `doc/plan.md`.
 
-Before creating a plan, authoring or revising scope or phase content, or reviewing authoring completeness, read [Plan Authoring Template and Edge-Case Prompts](references/plan-authoring.md) in full as normative. Status-only updates, blocker recording, phase compaction, and clearing use this file alone.
+For plan creation, scope or phase authoring, and authoring review, read the applicable sections of [Plan Authoring Template and Edge-Case Prompts](references/plan-authoring.md) on first use or when relevant rules change. Reuse established readings while available and unchanged. Status-only updates, blocker recording, phase compaction, and clearing use this file alone.
 
 Hacks, migration adapters, and untracked workarounds require explicit operator approval before they appear in the plan or code.
 
@@ -86,33 +86,35 @@ If another active skill or project authority explicitly allows a constrained exc
 
 ## Phase Sizing
 
-Each phase must have exactly one primary acceptance boundary.
+Each phase delivers one observable behavior or necessary architectural capability with one primary
+acceptance boundary. Internal helpers, refactorings, intermediate commits and verification steps
+may share that phase when they support its outcome. Being independently implementable, testable,
+reviewable or resumable is not by itself a reason to create another phase.
 
-A phase may contain a tightly coupled task cluster only when no constituent task can be
-independently implemented, verified, reviewed, or resumed. If any constituent task can cross one
-of those boundaries independently, make it a separate phase.
+Separate work with a distinct outcome, an unresolved material architectural decision, or materially
+different risk requiring separate acceptance. Do not combine unrelated work merely because it
+shares a feature or package. Multiple code paths or test strategies may support one behavior.
 
-Do not pack multiple hard tasks into one phase because they share a feature, package, or milestone. Split phases requiring broad investigation, independent code paths, or several verification strategies.
-
-Do not create numbered implementation sequences, subphases, tranche items, or checkpoint items
-inside a phase as substitutes for real phases. Any item substantial enough to carry its own status,
-completion result, resumable milestone, or review is a phase.
-
-An integration phase may connect and jointly verify already accepted components. It must not also
-implement those components or absorb unfinished component work.
+Task lists and resumable progress within a phase are allowed; do not use them to conceal distinct
+acceptance boundaries. An integration phase may implement bounded supporting changes necessary
+to complete its behavior, subject to architecture readiness and scope-growth rules.
 
 When another active skill or project authority limits the current planning window, keep phases inside that window.
 
+For the active milestone, state the production entry point or intended consumer, observable
+completion condition, and remaining blockers. Before adding a prerequisite phase, explain why it
+is necessary to reach that condition. Repeated component-only phases require reassessing the
+decomposition before adding more; callable helpers alone do not establish production integration.
+
 ## Scope Growth
 
-Pause implementation immediately when material scope growth reveals another hard task or acceptance
-boundary.
+Pause and replan when scope growth reveals a distinct outcome, unresolved material architectural
+decision, or materially different risk requiring another acceptance boundary.
 
 Add the newly discovered work as a separate phase and re-establish the execution order before
 continuing. Do not append it to the active phase or broaden that phase's acceptance boundary. Keep
-minor implementation details within the active phase only when they remain necessary to its existing
-acceptance boundary and do not create an independently implementable, verifiable, reviewable, or
-resumable unit.
+bounded supporting work within the active phase when it remains necessary to the same accepted
+behavior. Additional helpers, tests or intermediate commits alone do not constitute scope growth.
 
 If scope growth reveals an unresolved architectural choice rather than merely another accepted-design
 task, apply the architecture-readiness gate before adding implementation phases. Correct the owning
@@ -140,6 +142,10 @@ integration, and no-change outcomes, before marking it `finished` or beginning t
 Review the completed work and evidence against the phase acceptance boundary and effective
 engineering-rigor contract.
 
+Apply review and verification to that behavioral boundary, not separately to every intermediate
+helper or commit. Use focused checks during development and the required combined verification
+before acceptance. Follow `engineering-rigor` for evidence reuse and review after corrections.
+
 Use an independent reviewer when the effective rigor contract, another applicable authority, or
 the phase acceptance plan requires it, or when material consequences and gaps in objective evidence
 justify it under `engineering-rigor`. Weak verification alone does not require independent review
@@ -162,3 +168,7 @@ tasks, edge cases, verification logs, investigation history, and resumable diary
 this compaction before starting or expanding another phase.
 
 When all phases are complete and no active skill or project authority requires continuation, leave `doc/plan.md` empty unless the project declares another archival convention.
+
+Continuation and compaction handoffs retain the current objective, applicable authority, unresolved
+decisions, relevant implementation state and latest verification. Keep completed phase history in
+version control or required evidence records; do not carry an expanding phase-by-phase ledger.

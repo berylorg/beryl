@@ -1,6 +1,6 @@
 # Rework Tracker Workflow
 
-This reference is normative for creating, revising, executing, resuming, reviewing, verifying, or closing an architectural rework. Read it in full whenever `architectural-rework/SKILL.md` requires it.
+This reference is normative for creating, revising, executing, resuming, reviewing, verifying, or closing an architectural rework. Use the selective-reading rules in `architectural-rework/SKILL.md`.
 
 ## Contents
 
@@ -84,15 +84,19 @@ they are part of the same rework.
 
 Never feed an entire checkpoint into the durable plan merely because the checkpoint is next. Use
 the active planning authority's phase-sizing rules to select only the next bounded checklist slice.
-Checklist work that can be independently implemented, verified, reviewed, or resumed must feed
-separate planning phases. Leave later checkpoint work in `REWORK.md` until its own bounded slice is
-ready to become active.
+Select a meaningful behavior or necessary architectural capability, including its bounded supporting
+work. Do not split helpers into phases merely because they can be tested or reviewed independently.
+Leave later checkpoint outcomes in `REWORK.md` until their bounded slices are ready to become active.
 
 Immediately after a durable-plan slice passes its completion gate, and before any later work begins,
 replace all tracker tasks, findings, verification detail, and progress history for that slice with
 one short `[x]` outcome bullet plus optional links. When a checkpoint closes, retain its heading and
 replace all child items with one short `[x] Closed:` outcome. Completed phase-by-phase and
 test-by-test detail must not remain in the tracker.
+
+Consolidate overlapping completed outcomes within an open checkpoint when they no longer help
+resume remaining work. Handoffs carry unfinished work and relevant evidence, not the completed
+phase ledger; version control retains that history.
 
 When the durable plan has no active work, or has just completed all active work while its latest
 rework reference points to an ongoing rework, reread `REWORK.md` before finalizing. If more
@@ -118,10 +122,10 @@ close the rework as specified below.
 
 Before touching code or docs:
 
-1. Read the active durable plan.
-2. If it identifies a rework, read its `REWORK.md`.
-3. Read the `# Target Docs` listed by the tracker.
-4. Read the currently active durable-plan work.
+1. Read the active durable-plan work and its completion condition.
+2. Read the relevant tracker slice and applicable cutover constraints.
+3. Follow `# Target Docs` to the authority sections controlling that slice, including applicable parent guarantees.
+4. Reuse established readings while unchanged; refresh changed requirements, unresolved questions and any exact wording needed for decisions.
 5. Inspect only the archived old docs/source needed for reference.
 
 While implementing:
@@ -135,7 +139,7 @@ While implementing:
 - Use cutover shims only at surviving jagged edges and only to connect those edges to the target-state replacement boundary.
 - Do not stage work through temporary compatibility paths that preserve old implementation shapes or gradually migrate old internals into new ones.
 
-After each coherent step:
+At an acceptance boundary, material blocker or handoff:
 
 - Update only the affected `REWORK.md` checkbox state, current blocker, or evidence link, then apply
   the completed-item compaction rule before continuing.

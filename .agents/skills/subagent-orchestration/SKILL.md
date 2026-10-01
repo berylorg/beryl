@@ -29,25 +29,34 @@ Keep authority and final integration of shared artifacts with the root. A worker
 
 ## Model and Reasoning Routing
 
-Before the first spawn, read [model routing](references/model-routing.md). It contains current names, supported efforts, and spawn mechanics. Select model capability for the judgment required and reasoning depth for complexity and consequence; set both explicitly when supported. Use a fresh context and complete task packet by default.
+Before the first spawn, read [model routing](references/model-routing.md). It contains task-based starting routes, supported efforts, and spawn mechanics. Identify the deliverable and what makes it difficult, then choose model capability for the judgment required and reasoning depth for the analysis required; set both explicitly when supported. Use a fresh context and complete task packet by default.
 
-Use balanced/normal for ordinary bounded work and balanced/shallow for mechanical, strongly verifiable work. Use frontier/deep for difficult analysis, authority reconciliation, architectural decisions, or consequential weakly verifiable review. Keep work on the configured main profile if a mapped route is unavailable and direct execution is safe; otherwise report the route as blocked.
+Use the task routes as starting points, adjusting for ambiguity, complexity, consequence, and objective verifiability. Choose the appropriate route directly; do not require every task to start on Luna. Keep work on the configured main profile if a mapped route is unavailable and direct execution is safe and satisfies required independence; otherwise report the route as blocked.
 
-Escalate reasoning one level only when explicit rules are known but analysis depth is insufficient. Move from balanced to frontier when ambiguity, synthesis, or judgment quality is insufficient without automatically increasing effort. Repair missing context or unclear task packets before escalating. Partition broad extractive work before increasing model or effort. The Quality-First exception requires explicit current-task Operator authorization; never select an unsupported or prohibited effort.
+For worthwhile implementation delegation under settled requirements, the default worker is
+GPT-6.1 Sol at medium effort; see the routing reference for exceptions and availability checks.
+Required independent review does not imply Astra or an extra Astra pass over every Sol result.
+Escalation must address a concrete reasoning or judgment gap while preserving acceptance gates.
+
+Escalate reasoning one level only when explicit rules are known but analysis depth is insufficient. Move to a more capable model when ambiguity, synthesis, or judgment quality is insufficient without automatically increasing effort. Repair missing context or unclear task packets before escalating. Partition broad extractive work before increasing model or effort. Use `xhigh` only where deeper reasoning has demonstrated value; consequence alone does not require maximum effort. The Quality-First exception requires explicit current-task Operator authorization; never select an unsupported or prohibited effort.
 
 ## Task Packets and Handoffs
 
-Before preparing, spawning, managing, or consuming a subagent task, read [delegation workflow](references/delegation-workflow.md) fully. It is normative for packet fields, active-agent handling, editing-worker warnings, and handoffs.
+Read the applicable sections of [delegation workflow](references/delegation-workflow.md) on first use or when relevant rules change. Reuse established readings while available and unchanged. It is normative for packet fields, active-agent handling, editing-worker warnings, and handoffs.
 
 For independent review, supply the raw artifact and controlling requirements without leaking an expected verdict or diagnosis.
 
 ## Review and Parallelism
 
-Spawn an independent reviewer when the effective rigor contract, applicable instructions, or acceptance plan requires it, or when material consequences and objective-evidence gaps justify it under `engineering-rigor`. Otherwise, the worker's objective verification plus targeted main-thread validation is sufficient. Choose reviewer strength by consequence and verifiability: frontier/normal for ordinary semantic review, frontier/deep for authoritative or architectural review, and frontier/critical only when the applicable contract or concrete consequence demands it.
+Spawn an independent reviewer when the effective rigor contract, applicable instructions, or acceptance plan requires it, or when material consequences and objective-evidence gaps justify it under `engineering-rigor`. Otherwise, the worker's objective verification plus targeted main-thread validation is sufficient. Select the reviewer using the task routes, considering consequence and verifiability. Independence requires a separate reviewer with uncontaminated evidence, not a particular model.
 
 A review finding blocks only for an unmet applicable guarantee or demonstrated material harm beyond failures the effective contract permits. An allowed failed invocation, retry, or rebuild is not blocking. Escalate material undeclared exposure to design authority; keep speculative hardening non-blocking. The main thread must assess the evidence rather than rubber-stamp a stronger worker.
 
 Start with the smallest useful fan-out. Parallelize only independent workstreams when it reduces critical-path time or independence is required. A subagent returns proposed follow-up partitions to the root.
+
+Scope review to the complete affected acceptance boundary rather than each intermediate helper or
+commit. Follow `engineering-rigor` for evidence reuse and review of corrections. Handoffs include
+only context needed for remaining work, with links to prior evidence instead of a completed-phase ledger.
 
 ## Efficient Operations and Cleanup
 

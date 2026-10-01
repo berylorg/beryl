@@ -1,6 +1,6 @@
 ---
 name: rag-rat-project-docs
-description: Use optional rag-rat semantic retrieval for project Markdown, especially AIPM-prescribed design, plan, rework, GUI, memory, failure, world, and package documents. Use when this skill is installed and work may discover, read, create, edit, move, or delete those documents; set up the pinned Node-free MCP integration when needed, search semantically before broad manual navigation, and block on a fully current index after AI-authored Markdown changes.
+description: Use optional rag-rat semantic retrieval for project Markdown. Use when discovering, reading or editing project documentation; set up the pinned Node-free integration when needed, search before broad manual navigation, and reconcile documentation edit batches before relying on semantic retrieval or handing off indexed documentation.
 ---
 
 # rag-rat Project Docs
@@ -42,14 +42,16 @@ Node, npm, npx, or a package that transitively requires them for this integratio
   retrieval quality; directly read the returned source to confirm provenance. Use structural links,
   routing, exact inspection, and direct authoritative reads to validate decomposed authority.
 - If MCP search is unavailable, unhealthy, or returns `needs_reindex`, attempt the documented
-  recovery. Fall back to manual navigation only after making the degraded mode explicit; never
+  recovery once. Fall back to manual navigation after making the degraded mode explicit; never
   represent manual fallback as a successful semantic search.
 
-## Blocking Post-Write Barrier
+## Batched Index Reconciliation
 
-Immediately after an AI filesystem operation creates, changes, renames, moves, or deletes any
-indexed Markdown file, block before subsequent project work, retrieval, handoff, commit, or success
-claim. From the repository root, run these foreground commands in order:
+After a coherent batch of edits creates, changes, renames, moves or deletes indexed Markdown,
+reconcile once before relying on semantic retrieval or handing off the changed indexed
+documentation. A batch may span multiple filesystem operations. Direct reads remain authoritative
+while reconciliation is pending; source work and commits do not require an intervening index run.
+From the repository root, run these foreground commands in order:
 
 ```text
 rag-rat --json index --discover
@@ -60,9 +62,9 @@ Do not add `--max-seconds`. Require both commands to finish. Parse the reconcile
 only `status: "Current"` with zero failed or blocked chunks. A zero process exit code is not enough:
 `Blocked`, `Failed`, and `Partial` responses are freshness failures.
 
-The barrier applies once to all Markdown paths changed by one atomic filesystem operation. If a
-later operation changes another indexed Markdown file, run it again. It covers additions and
-deletions through discovery as well as embedding convergence.
+Reconcile all accumulated indexed Markdown changes together, including additions and deletions
+through discovery. Later edits require reconciliation before the next semantic use or documentation
+handoff, not after every write. Do not index excluded installed skills to satisfy this workflow.
 
 Do not substitute any of these weaker mechanisms:
 
@@ -72,10 +74,12 @@ Do not substitute any of these weaker mechanisms:
 - search-time auto-healing, because it is bounded and query-driven;
 - process exit status without inspecting structured reconciliation status.
 
-If the barrier fails, preserve the authoritative Markdown change, stop dependent work, report that
-the derived index is stale and include the failing status or diagnostic. Do not silently continue
-with manual navigation, repeatedly retry, alter the embedding model, rebuild unrelated state, or
-upgrade rag-rat without Operator direction.
+If reconciliation fails, preserve the authoritative Markdown changes and report the stale index
+with its failing status or diagnostic. Block semantic retrieval that depends on it; direct
+filesystem reads and unrelated implementation may continue in explicit degraded mode. A handoff
+must disclose the stale index and link directly to changed documents rather than claim freshness.
+Do not repeatedly retry, alter the embedding model, rebuild unrelated state or upgrade rag-rat
+without Operator direction.
 
 ## Concurrency And Scope
 

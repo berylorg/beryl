@@ -141,6 +141,11 @@ needed for that update, but it does not authorize implementation against an unre
 
 Before implementing in a workspace project or changing child docs, consult relevant feature, system, package, and project-declared parent or root authority docs. This is a workflow rule; do not add reminders such as "consult parent design" or "inherits parent contract" to design docs unless the operator explicitly asks for that wording.
 
+Reuse established authority readings while unchanged. On continuation, inspect changed requirements
+and unresolved questions rather than rereading the entire authority chain. Consult exact source
+when retained context is insufficient for a consequential decision; selective reading must still
+include applicable parent guarantees.
+
 ## Conflict Handling
 
 If an operator request, plan, implementation, test, or note contradicts design or plan authority, stop and ask the operator to resolve it unless the task explicitly updates the authoritative docs first.

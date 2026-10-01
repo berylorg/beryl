@@ -99,6 +99,14 @@ path under `production-application/v2` when objective evidence establishes the a
 These options do not override explicit independent-review requirements in a selected version,
 modifier, or other authority.
 
+Required independent review covers the complete affected acceptance boundary; it need not repeat
+for every intermediate helper or commit unless authority explicitly requires that frequency.
+After corrections, review affected guarantees and their interactions. Run focused checks during
+development and the required combined verification before acceptance. Reuse prior evidence only
+where relevant code, dependencies, configuration and assumptions remain unchanged; changed inputs,
+failures or unresolved concerns require affected checks again. Reuse never replaces missing
+integration evidence or an explicitly required acceptance check.
+
 Classify a review finding as blocking only when it identifies one of:
 
 - An unmet applicable profile criterion, modifier, or scope-specific guarantee.
