@@ -2,12 +2,42 @@ use super::*;
 use crate::exit_session::ResumeSessionOutcome;
 use settlement::{CandidateSettlement, CandidateSettlementError};
 
-enum ResumeRetry {
+pub(super) enum ResumeRetry {
     Command,
     Reconciliation,
 }
 
 impl RunningProcessOwner {
+    pub(super) fn carried_interrupted_exit_resume_retry(
+        &self,
+        request: &RunningExitRequest,
+    ) -> Result<Option<ResumeRetry>, String> {
+        self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        let session = recovery.session.borrow();
+        let Some(session) = session.as_ref() else {
+            return Err("Interrupted Exit resume is on a worker".into());
+        };
+        let RunningShutdownSession::Resuming(resume) = session else {
+            return Ok(None);
+        };
+        let retry = if resume
+            .outcome()
+            .and_then(ResumeSessionOutcome::known_commit)
+            == Some(false)
+        {
+            Some(ResumeRetry::Command)
+        } else if resume.can_retry_reconciliation() {
+            Some(ResumeRetry::Reconciliation)
+        } else {
+            None
+        };
+        if retry.is_some() && recovery.previous_resume.borrow().is_some() {
+            return Err("Interrupted Exit resume retry custody is unavailable".into());
+        }
+        Ok(retry)
+    }
+
     pub(crate) fn retry_interrupted_exit_resume(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
@@ -38,7 +68,7 @@ impl RunningProcessOwner {
         )
     }
 
-    fn retry_interrupted_exit_resume_pass(
+    pub(super) fn retry_interrupted_exit_resume_pass(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         action: ResumeRetry,

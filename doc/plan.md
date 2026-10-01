@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 869: Delay Reconstruction After Failed Candidate Disposal (finished)
+# Phase 870: Drive Carried Resume Outcomes During Candidate Reconstruction (finished)
 
-Failed candidate disposal now advances the retained reopening schedule after home return and
-before completion delivery. Failure transfer and cancelled, stale or dropped waits preserve the
-deadline and retained outcomes. Ten native cases passed (`14cd4774-8e85-4de9-a7f3-510b4ee72967`),
-alongside focused Cargo check, formatting and independent lifecycle review. Mixed repeated
-disposal/reopen progression was reviewed structurally; automatic attempt driving remains pending.
+Reconstruction now selects and drives one eligible carried resume retry while preserving known
+commit, exact reconciliation and previous-outcome custody. Thirteen native cases passed
+(`0e019b5c-ce36-4b31-8600-82375b6d74cb`), alongside focused Cargo check, formatting and independent
+persistence/lifecycle review. Failed retry and abandonment during the composed retry have structural
+and inherited primitive coverage. Overall supervisor disposal and attempt orchestration remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -263,8 +263,9 @@ explicit exact-handle reconciliation retry, retaining the previous failure until
 validating resolved Running state without another resume command. Phase 868 qualifies unresolved
 resume registry custody through candidate disposal and reconstruction before that exact-handle retry.
 Phase 869 applies the same retained retry schedule after failed candidate disposal and verifies
-delayed reconstruction with preserved outcome custody. Automatic attempt selection and driving
-remain pending.
+delayed reconstruction with preserved outcome custody. Phase 870 selects and drives one eligible
+carried resume retry during reconstruction, retaining known commit and previous evidence. Overall
+supervisor disposal and attempt orchestration remain pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

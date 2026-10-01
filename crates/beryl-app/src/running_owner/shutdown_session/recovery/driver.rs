@@ -297,6 +297,9 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let retry = owner
+            .borrow()
+            .carried_interrupted_exit_resume_retry(request)?;
         loop {
             loop {
                 let deadline = owner.borrow().interrupted_exit_reopen_deadline(request)?;
@@ -358,6 +361,39 @@ impl RunningProcessOwner {
         receiver
             .await
             .map_err(|_| "Interrupted Exit candidate settlement delivery is unavailable")?;
+
+        if let Some(retry) = retry {
+            let receiver = cx
+                .update(|app| {
+                    if cancellation.is_cancelled() {
+                        return Err("Interrupted Exit candidate settlement was cancelled".into());
+                    }
+                    if owner
+                        .borrow()
+                        .interrupted_exit_candidate_result(request)
+                        .is_ok()
+                    {
+                        return Ok(None);
+                    }
+                    let (sender, receiver) = futures_channel::oneshot::channel();
+                    Self::retry_interrupted_exit_resume_pass(
+                        owner,
+                        request,
+                        retry,
+                        app,
+                        move |_, _| {
+                            let _ = sender.send(());
+                        },
+                    )?;
+                    Ok::<_, String>(Some(receiver))
+                })
+                .map_err(|error| error.to_string())??;
+            if let Some(receiver) = receiver {
+                receiver
+                    .await
+                    .map_err(|_| "Interrupted Exit resume retry delivery is unavailable")?;
+            }
+        }
 
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {

@@ -3,6 +3,11 @@ mod retry_delay {
     include!("recovery_reopen_delay_support.rs");
 }
 
+mod resume_attempt {
+    use super::*;
+    include!("recovery_resume_attempt_support.rs");
+}
+
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -201,6 +206,7 @@ pub(super) async fn verify_resume_failure(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
     fault: beryl_home_store::test_faults::FaultPoint,
+    driven: bool,
     cx: &mut AsyncApp,
 ) {
     let windows: Vec<_> = owner
@@ -432,6 +438,32 @@ pub(super) async fn verify_resume_failure(
             Some(deadline)
         );
         retry_delay::verify(&owner, request, retired, 0, cx).await;
+        if driven {
+            resume_attempt::verify(&owner, request, retired, fault, resume_revision, cx).await;
+            assert_eq!(
+                original,
+                publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+            );
+            assert!(!RunningProcessOwner::finish_exit(&owner, request));
+            for window in &windows {
+                window
+                    .update(cx, |root, _, app| {
+                        assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                        let mount = root.controller().unwrap().composer_mount().unwrap();
+                        let composer = mount.read(app).contribution().unwrap();
+                        assert!(!composer.read(app).gpui_input().read(app).is_enabled());
+                    })
+                    .unwrap();
+            }
+            let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+            drop(candidate.session);
+            let home = cx
+                .background_executor()
+                .spawn(async move { candidate.candidate.abort() })
+                .await;
+            dispose_retired(owner, windows, Some(home), cx).await;
+            return;
+        }
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             RunningProcessOwner::construct_interrupted_exit_candidate(

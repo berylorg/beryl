@@ -171,6 +171,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    DrivenResumeFailure(FaultPoint),
     ResumeFailure(FaultPoint),
     Ready,
     Complete,
@@ -433,6 +434,42 @@ fn native_exit_selected_windows_retain_committed_resume_failure() {
         true,
         false,
         RecoveryPublicationDelivery::ResumeFailure(FaultPoint::AfterPersist),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_drive_resume_noncommit() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::DrivenResumeFailure(FaultPoint::BeforeCommit),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_drive_resume_reconciliation() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::DrivenResumeFailure(FaultPoint::AfterCommitBeforePersist),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_validate_committed_resume() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::DrivenResumeFailure(FaultPoint::AfterPersist),
         None,
         2,
     );
@@ -752,12 +789,12 @@ fn run_with_windows(
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
                             if selected {
-                                if let RecoveryPublicationDelivery::ResumeFailure(resume_fault) = publication_delivery {
+                                if let RecoveryPublicationDelivery::ResumeFailure(resume_fault) | RecoveryPublicationDelivery::DrivenResumeFailure(resume_fault) = publication_delivery {
                                     faults.fail_next(resume_fault);
                                     if resume_fault == FaultPoint::AfterCommitBeforePersist {
                                         faults.fail_next(FaultPoint::BeforeReconciliationSnapshot);
                                     }
-                                    selected_preparation::verify_resume_failure(owner, &request, resume_fault, cx).await;
+                                    selected_preparation::verify_resume_failure(owner, &request, resume_fault, matches!(publication_delivery, RecoveryPublicationDelivery::DrivenResumeFailure(_)), cx).await;
                                     observed.set(true);
                                     cx.update(|app| app.quit()).unwrap();
                                     return;
