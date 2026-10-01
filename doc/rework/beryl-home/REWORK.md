@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Retired recovery dispatches from retained window inventory through one exact-request entry to selected-window or sole-threadless continuation while preserving stage refusal and configuration custody.
 - [x] Initial recovery initializes absent selected-window configuration through atomic retained admission and reuses it across cancellation without invoking a factory for threadless recovery.
 - [x] Initial recovery derives the old generation from the retained service graph under exact-request admission and refuses replay after that graph is retired.
 - [x] Initial running-owner recovery dispatches from the retained shell inventory to selected-window or sole-threadless recovery with exact-request admission.

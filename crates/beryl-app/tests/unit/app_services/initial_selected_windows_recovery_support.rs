@@ -274,17 +274,15 @@ pub(super) async fn verify_and_dispose(
                     &owner.borrow().interrupted_exit_session().unwrap()
                 )
             );
-            drive = Box::pin(
-                RunningProcessOwner::prepare_retired_interrupted_exit_selected_windows(
-                    &owner,
-                    request,
-                    retired,
-                    SyndicTimestamp::from_unix_millis(2),
-                    CommandCancellation::new(),
-                    |_| panic!("unexpected continued recovery failure"),
-                    &mut drive_cx,
-                ),
-            );
+            drive = Box::pin(RunningProcessOwner::recover_retired_interrupted_exit(
+                &owner,
+                request,
+                retired,
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                |_| panic!("unexpected continued recovery failure"),
+                &mut drive_cx,
+            ));
             retired_continued = true;
         }
         if !abandon

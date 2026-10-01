@@ -7,7 +7,7 @@ pub(super) async fn assert_refused(
     cx: &mut AsyncApp,
 ) {
     assert!(
-        RunningProcessOwner::prepare_retired_interrupted_exit_selected_windows(
+        RunningProcessOwner::recover_retired_interrupted_exit(
             owner,
             request,
             retired,
@@ -33,7 +33,7 @@ pub(super) async fn verify_refusals(
     cancelled.cancel();
     for (supplied, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
-            RunningProcessOwner::prepare_retired_interrupted_exit_selected_windows(
+            RunningProcessOwner::recover_retired_interrupted_exit(
                 owner,
                 supplied,
                 retired,

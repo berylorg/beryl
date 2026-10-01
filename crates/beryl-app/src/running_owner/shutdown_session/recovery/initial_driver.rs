@@ -1,7 +1,7 @@
 use super::*;
 use crate::main_window::MainWindowShellRoot;
-use beryl_home_store::CommandCancellation;
-use gpui::{AsyncApp, WindowHandle};
+use beryl_home_store::{CommandCancellation, HomeGeneration};
+use gpui::{App, AsyncApp, WindowHandle};
 use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
 
@@ -24,29 +24,7 @@ impl RunningProcessOwner {
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
-                let shells = owner.process.windows.shells();
-                if shells.is_empty() {
-                    return Err("Interrupted Exit requires retained windows".into());
-                }
-                let mut threadless = None;
-                for shell in shells {
-                    let window = shell.window();
-                    let root = window.read(app).map_err(|error| error.to_string())?;
-                    let controller = root
-                        .controller()
-                        .ok_or("Interrupted Exit window controller is unavailable")?;
-                    if controller.is_threadless() {
-                        if shells.len() != 1 {
-                            return Err(
-                                "Interrupted Exit requires the sole retained threadless window"
-                                    .into(),
-                            );
-                        }
-                        threadless = Some(window);
-                    } else if controller.composer_mount().is_none() {
-                        return Err("Interrupted Exit requires selected windows".into());
-                    }
-                }
+                let threadless = owner.interrupted_exit_threadless_window(app)?;
                 let retired = owner
                     .process
                     .services
@@ -102,5 +80,80 @@ impl RunningProcessOwner {
             )
             .await
         }
+    }
+
+    pub(crate) async fn recover_retired_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        failed: impl FnMut(RecoveryPreparationFailure),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let threadless = cx
+            .update(|app| -> Result<_, String> {
+                let mut owner = owner.borrow_mut();
+                let _driver = owner.reserve_interrupted_exit_driver(request)?;
+                if cancellation.is_cancelled() {
+                    return Err("Interrupted Exit preparation was cancelled".into());
+                }
+                owner.validate_interrupted_exit_preparation(request, retired)?;
+                owner.interrupted_exit_threadless_window(app)
+            })
+            .map_err(|error| error.to_string())??;
+        if let Some(window) = threadless {
+            Self::prepare_retired_interrupted_exit_threadless(
+                owner,
+                request,
+                retired,
+                window,
+                at,
+                cancellation,
+                failed,
+                cx,
+            )
+            .await
+        } else {
+            Self::prepare_retired_interrupted_exit_selected_windows(
+                owner,
+                request,
+                retired,
+                at,
+                cancellation,
+                failed,
+                cx,
+            )
+            .await
+        }
+    }
+
+    fn interrupted_exit_threadless_window(
+        &self,
+        app: &App,
+    ) -> Result<Option<WindowHandle<MainWindowShellRoot>>, String> {
+        let shells = self.process.windows.shells();
+        if shells.is_empty() {
+            return Err("Interrupted Exit requires retained windows".into());
+        }
+        let mut threadless = None;
+        for shell in shells {
+            let window = shell.window();
+            let root = window.read(app).map_err(|error| error.to_string())?;
+            let controller = root
+                .controller()
+                .ok_or("Interrupted Exit window controller is unavailable")?;
+            if controller.is_threadless() {
+                if shells.len() != 1 {
+                    return Err(
+                        "Interrupted Exit requires the sole retained threadless window".into(),
+                    );
+                }
+                threadless = Some(window);
+            } else if controller.composer_mount().is_none() {
+                return Err("Interrupted Exit requires selected windows".into());
+            }
+        }
+        Ok(threadless)
     }
 }

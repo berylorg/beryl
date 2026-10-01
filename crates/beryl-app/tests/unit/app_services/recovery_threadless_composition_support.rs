@@ -205,18 +205,15 @@ pub(super) async fn verify_and_dispose(
             assert!(!RunningProcessOwner::finish_exit(&owner, request));
             cx.update(|app| assert!(previous.read(app).target().snapshot().active))
                 .unwrap();
-            drive = Box::pin(
-                RunningProcessOwner::prepare_retired_interrupted_exit_threadless(
-                    &owner,
-                    request,
-                    retired,
-                    window,
-                    SyndicTimestamp::from_unix_millis(2),
-                    cancellation.clone(),
-                    &failed,
-                    &mut drive_cx,
-                ),
-            );
+            drive = Box::pin(RunningProcessOwner::recover_retired_interrupted_exit(
+                &owner,
+                request,
+                retired,
+                SyndicTimestamp::from_unix_millis(2),
+                cancellation.clone(),
+                &failed,
+                &mut drive_cx,
+            ));
             retired_continued = true;
         }
         if matches!(delivery, RetirementDelivery::Ready)
@@ -507,13 +504,11 @@ async fn assert_retired_refused(
     cancellation: beryl_home_store::CommandCancellation,
     cx: &mut AsyncApp,
 ) {
-    let window = owner.borrow().test_process().windows.shells()[0].window();
     assert!(
-        RunningProcessOwner::prepare_retired_interrupted_exit_threadless(
+        RunningProcessOwner::recover_retired_interrupted_exit(
             owner,
             request,
             retired,
-            window,
             SyndicTimestamp::from_unix_millis(2),
             cancellation,
             |_| panic!("refused retired threadless preparation"),
