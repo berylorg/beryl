@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Retained prepared threadless services support exact-request continuation through fresh appearance, attachment, publication and completion after an abandoned preparation wait, without repeating retirement or preparation.
 - [x] Threadless recovery uses owner-retained appearance for explicit post-publication activation and post-activation binding/completion, preserving exact-request admission and abandoned-wait custody.
 - [x] The interrupted-Exit owner retains fresh threadless appearance across interrupted attachment waits and supplies exact-request attachment continuation until coherent completion releases recovery custody.
 - [x] Selected-window recovery uses owner-retained appearance for explicit post-publication and post-activation continuation, preserving exact-request admission and abandoned-wait custody.

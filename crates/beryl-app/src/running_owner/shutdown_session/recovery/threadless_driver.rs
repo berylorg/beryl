@@ -71,34 +71,38 @@ impl RunningProcessOwner {
         {
             return Err("Interrupted Exit fresh appearance is already retained".into());
         }
-        let (retired_home, previous, capacity) = cx
-            .update(|app| -> Result<_, String> {
-                let owner = owner.borrow();
-                let shells = owner.process.windows.shells();
-                if shells.len() != 1 || shells[0].window() != window {
-                    return Err(
-                        "Interrupted Exit requires the sole retained threadless window".into(),
-                    );
-                }
-                let root = window.read(app).map_err(|error| error.to_string())?;
-                if !root
-                    .controller()
-                    .is_some_and(|controller| controller.is_threadless())
-                {
-                    return Err("Interrupted Exit requires a threadless window".into());
-                }
-                let graph = owner
+        cx.update(|app| -> Result<_, String> {
+            let owner = owner.borrow();
+            let shells = owner.process.windows.shells();
+            if shells.len() != 1 || shells[0].window() != window {
+                return Err("Interrupted Exit requires the sole retained threadless window".into());
+            }
+            let root = window.read(app).map_err(|error| error.to_string())?;
+            if !root
+                .controller()
+                .is_some_and(|controller| controller.is_threadless())
+            {
+                return Err("Interrupted Exit requires a threadless window".into());
+            }
+            owner
+                .process
+                .services
+                .as_ref()
+                .and_then(|services| services.graph())
+                .ok_or("Interrupted Exit original service graph is unavailable")?;
+            NonZeroUsize::new(
+                owner
                     .process
-                    .services
-                    .as_ref()
-                    .and_then(|services| services.graph())
-                    .ok_or("Interrupted Exit original service graph is unavailable")?;
-                let previous = owner.process.appearance.clone();
-                let capacity = NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
-                    .ok_or("Interrupted Exit appearance capacity is unavailable")?;
-                Ok((graph.home().home_id(), previous, capacity))
-            })
-            .map_err(|error| error.to_string())??;
+                    .appearance
+                    .read(app)
+                    .target()
+                    .snapshot()
+                    .capacity,
+            )
+            .ok_or("Interrupted Exit appearance capacity is unavailable")?;
+            Ok(())
+        })
+        .map_err(|error| error.to_string())??;
         Self::retire_interrupted_exit_for_preparation(
             owner,
             request,
@@ -123,19 +127,97 @@ impl RunningProcessOwner {
                 .await?;
             return Err("Interrupted Exit preparation was cancelled".into());
         }
-        let (generation, appearance) = cx
+        Self::complete_prepared_interrupted_exit_threadless_pass(
+            owner,
+            request,
+            retired,
+            window,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    pub(crate) async fn complete_prepared_interrupted_exit_threadless(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        window: WindowHandle<MainWindowShellRoot>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        Self::complete_prepared_interrupted_exit_threadless_pass(
+            owner,
+            request,
+            retired,
+            window,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    async fn complete_prepared_interrupted_exit_threadless_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        window: WindowHandle<MainWindowShellRoot>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let (retired_home, generation, appearance) = cx
             .update(|app| -> Result<_, String> {
-                let prepared = owner.borrow().interrupted_exit_appearance(request)?;
+                if cancellation.is_cancelled() {
+                    return Err("Interrupted Exit preparation was cancelled".into());
+                }
+                let mut owner = owner.borrow_mut();
+                let prepared = owner.interrupted_exit_appearance(request)?;
+                if owner
+                    .interrupted_exit
+                    .as_ref()
+                    .unwrap()
+                    .threadless_appearance
+                    .is_some()
+                {
+                    return Err("Interrupted Exit fresh appearance is already retained".into());
+                }
+                let shells = owner.process.windows.shells();
+                if shells.len() != 1 || shells[0].window() != window {
+                    return Err(
+                        "Interrupted Exit requires the sole retained threadless window".into(),
+                    );
+                }
+                if !window
+                    .read(app)
+                    .map_err(|error| error.to_string())?
+                    .controller()
+                    .is_some_and(|controller| controller.is_threadless())
+                {
+                    return Err("Interrupted Exit requires a threadless window".into());
+                }
+                let retired_home = prepared.prepared().home().home_id();
+                owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("The complete service owner is on a worker")?
+                    .validate_retired_service_home_return(retired, Some(retired_home))
+                    .map_err(|error| error.to_string())?;
                 let generation = prepared.prepared().home().home_generation();
+                let previous = owner.process.appearance.clone();
+                let capacity = NonZeroUsize::new(previous.read(app).target().snapshot().capacity)
+                    .ok_or("Interrupted Exit appearance capacity is unavailable")?;
                 previous.update(app, |set, _| set.retire());
                 let appearance = GpuiAppearanceWindowSet::new(prepared, capacity, app);
                 owner
-                    .borrow_mut()
                     .interrupted_exit
                     .as_mut()
                     .unwrap()
                     .threadless_appearance = Some(appearance.clone());
-                Ok((generation, appearance))
+                Ok((retired_home, generation, appearance))
             })
             .map_err(|error| error.to_string())??;
         Self::attach_interrupted_exit_threadless_pass(
