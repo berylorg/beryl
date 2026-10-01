@@ -90,7 +90,13 @@ impl RunningProcessOwner {
         });
         app.spawn(async move |cx| {
             let (services, failure) = work.await;
-            retained.borrow_mut().process.services = Some(services);
+            {
+                let mut owner = retained.borrow_mut();
+                owner.process.services = Some(services);
+                let recovery = owner.interrupted_exit.as_mut().unwrap();
+                recovery.reopen_deadline =
+                    Some(std::time::Instant::now() + recovery.reopen_schedule.next_delay());
+            }
             *slot.borrow_mut() = Some(CandidateSettlement::DisposedFailure(failure));
             let _ = cx.update(|app| completed(&retained, app));
         })

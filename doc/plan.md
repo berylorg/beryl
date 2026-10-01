@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 868: Verify Unresolved Resume Custody Through Candidate Disposal (finished)
+# Phase 869: Delay Reconstruction After Failed Candidate Disposal (finished)
 
-The native uncertainty case now traverses production candidate disposal, failure transfer and
-same-home reconstruction before exact-handle retry. Retained indeterminate evidence, result
-revision, original Exit evidence and window fences survive; reconciliation then validates Running.
-Ten native cases passed (`1f845700-b85d-43f1-ac23-bcb3d2db7eaf`), with scoped formatting and
-independent lifecycle review. Automatic scheduling remains pending.
+Failed candidate disposal now advances the retained reopening schedule after home return and
+before completion delivery. Failure transfer and cancelled, stale or dropped waits preserve the
+deadline and retained outcomes. Ten native cases passed (`14cd4774-8e85-4de9-a7f3-510b4ee72967`),
+alongside focused Cargo check, formatting and independent lifecycle review. Mixed repeated
+disposal/reopen progression was reviewed structurally; automatic attempt driving remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -262,7 +262,9 @@ previous outcome, including exact transfer before subsequent retry admission. Ph
 explicit exact-handle reconciliation retry, retaining the previous failure until transfer and freshly
 validating resolved Running state without another resume command. Phase 868 qualifies unresolved
 resume registry custody through candidate disposal and reconstruction before that exact-handle retry.
-Automatic scheduling remains pending.
+Phase 869 applies the same retained retry schedule after failed candidate disposal and verifies
+delayed reconstruction with preserved outcome custody. Automatic attempt selection and driving
+remain pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

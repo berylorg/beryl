@@ -1,3 +1,8 @@
+mod retry_delay {
+    use super::*;
+    include!("recovery_reopen_delay_support.rs");
+}
+
 pub(super) async fn verify_and_dispose(
     owner: Rc<RefCell<RunningProcessOwner>>,
     request: &crate::startup_owner::RunningExitRequest,
@@ -358,11 +363,18 @@ pub(super) async fn verify_resume_failure(
                 app,
                 move |owner, _| {
                     assert!(!owner.borrow().test_services_on_worker());
-                    sender.send(()).unwrap();
+                    sender.send(std::time::Instant::now()).unwrap();
                 },
             )
             .unwrap();
             assert!(owner.borrow().test_services_on_worker());
+            assert!(
+                owner
+                    .borrow()
+                    .interrupted_exit_reopen_deadline(request)
+                    .unwrap()
+                    .is_none()
+            );
             assert!(
                 owner
                     .borrow_mut()
@@ -381,7 +393,13 @@ pub(super) async fn verify_resume_failure(
             );
         })
         .unwrap();
-        receiver.await.unwrap();
+        let delivered = receiver.await.unwrap();
+        let deadline = owner
+            .borrow()
+            .interrupted_exit_reopen_deadline(request)
+            .unwrap()
+            .unwrap();
+        assert!(deadline <= delivered + std::time::Duration::from_secs(1));
         assert_eq!(
             owner
                 .borrow()
@@ -406,6 +424,14 @@ pub(super) async fn verify_resume_failure(
                 .take_interrupted_exit_candidate_failure(request)
                 .is_err()
         );
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_reopen_deadline(request)
+                .unwrap(),
+            Some(deadline)
+        );
+        retry_delay::verify(&owner, request, retired, 0, cx).await;
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             RunningProcessOwner::construct_interrupted_exit_candidate(
