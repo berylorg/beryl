@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 916: Derive Prepared Recovery Continuation From Retained Appearance (finished)
+# Phase 917: Resume Published Recovery Through The Prepared Entry (finished)
 
-Prepared recovery now selects initial appearance preparation or retained resident continuation
-through one entry, preserving partial attachment and in-flight graph custody without rebuilding
-retained appearance or configuration. All 24 focused native cases passed (run
-`0bed55cb-42d4-4454-8aa1-068f2bae55a2`); app library compilation, scoped formatting and independent
-lifecycle review passed. Invalid inventory and unavailable custody were reviewed structurally.
-Automatic supervisor mounting remains pending under 702.
+Prepared recovery now derives post-publication continuation from retained results, resuming
+activation or binding without replaying attachment or publication. All 24 focused native cases
+passed (run `d745e292-f5ee-46ca-a7b4-1f8a2b775278`); app library compilation, scoped formatting
+and independent lifecycle review passed. Failed publication/activation and pending-publication
+refusal were reviewed structurally. Automatic supervisor mounting remains pending under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

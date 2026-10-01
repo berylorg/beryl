@@ -68,6 +68,24 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let publication_returned = {
+            let mut owner = owner.borrow_mut();
+            let _driver = owner.reserve_interrupted_exit_driver(request)?;
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit preparation was cancelled".into());
+            }
+            owner
+                .interrupted_exit
+                .as_ref()
+                .unwrap()
+                .publication
+                .borrow()
+                .is_some()
+        };
+        if publication_returned {
+            return Self::recover_published_interrupted_exit(owner, request, cancellation, cx)
+                .await;
+        }
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let mut owner = owner.borrow_mut();
@@ -129,7 +147,7 @@ impl RunningProcessOwner {
         }
     }
 
-    pub(crate) async fn recover_published_interrupted_exit(
+    async fn recover_published_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,

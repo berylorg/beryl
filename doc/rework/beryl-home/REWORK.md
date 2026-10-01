@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Prepared recovery resumes retained publication through existing activation and binding without replaying attachment or publication.
 - [x] Prepared recovery derives initial appearance preparation or retained resident continuation through one entry while preserving partial attachment and in-flight graph custody.
 - [x] Published recovery derives activation or binding from its retained activation result through one continuation while refusing busy or failed activation.
 - [x] Retained resident recovery uses one inventory-checked continuation deriving home and generation identity before selected or sole-threadless attachment.
