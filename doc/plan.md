@@ -89,13 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 882: Reserve Recovery Publication And Completion Drivers (finished)
+# Phase 883: Reserve Recovery Window Attachment Drivers (finished)
 
-Composed threadless attachment, publication and completion-only continuation now retain the shared
-exact-request driver reservation. Internal passes avoid nested admission; competing calls refuse
-before side effects. Twenty-one native recovery cases passed, including active/returned workers,
-pending/partial mounts, cancellation, drop and later continuation, with Cargo check, formatting
-and independent lifecycle/persistence review. Automatic supervisor mounting remains under 702.
+Standalone resident and threadless attachment now hold the shared exact-request driver reservation;
+composed publication uses an internal attachment pass under its existing reservation. Competing
+calls refuse before attachment effects, while cancellation, stale delivery and dropped waits retain
+custody for continuation. All 27 native cases passed (run `bfc88b5e-a9d9-447c-8bce-688ecea66c3d`),
+with Cargo check, formatting and independent lifecycle/persistence review. Full supervisor mounting
+remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

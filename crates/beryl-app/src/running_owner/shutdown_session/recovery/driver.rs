@@ -34,6 +34,9 @@ impl RunningProcessOwner {
         ),
         String,
     > {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
         if preparation.is_none() {
             cx.update(|app| {
                 if !owner.borrow().process.commands.is_active(request) {
@@ -100,6 +103,32 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn attach_interrupted_exit_threadless_window(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired_home: beryl_model::BerylHomeId,
+        retired_generation: HomeGeneration,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        Self::attach_interrupted_exit_threadless_pass(
+            owner,
+            request,
+            retired_home,
+            retired_generation,
+            window,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    pub(super) async fn attach_interrupted_exit_threadless_pass(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,

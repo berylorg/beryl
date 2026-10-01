@@ -70,6 +70,7 @@ pub(super) async fn verify(
             Poll::Ready(())
         })
         .await;
+        assert_reserved(owner, request, home, generation, window, appearance, cx).await;
         assert!(
             owner
                 .borrow()
@@ -88,6 +89,9 @@ pub(super) async fn verify(
             cx.background_executor()
                 .timer(Duration::from_millis(10))
                 .await;
+        }
+        if drive.is_some() {
+            assert_reserved(owner, request, home, generation, window, appearance, cx).await;
         }
         if mode == "cancelled" {
             cancellation.cancel();
@@ -133,4 +137,46 @@ pub(super) async fn verify(
         })
         .unwrap();
     }
+}
+
+async fn assert_reserved(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    home: beryl_model::BerylHomeId,
+    generation: beryl_home_store::HomeGeneration,
+    window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+    appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+    cx: &mut AsyncApp,
+) {
+    let on_worker = owner.borrow().test_services_on_worker();
+    assert!(
+        RunningProcessOwner::attach_interrupted_exit_threadless_window(
+            owner,
+            request,
+            home,
+            generation,
+            window,
+            appearance,
+            beryl_home_store::CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert!(
+        RunningProcessOwner::publish_and_complete_interrupted_exit(
+            owner,
+            request,
+            generation,
+            generation,
+            appearance,
+            beryl_home_store::CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert_eq!(owner.borrow().test_services_on_worker(), on_worker);
 }

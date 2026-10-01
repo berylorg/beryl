@@ -485,6 +485,8 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Standalone resident and threadless attachment share recovery driver admission with preparation
+  and publication, preserving cancellation, stale-delivery and abandoned-wait custody for continuation.
 - [x] Extended the shared exact-request recovery driver reservation through composed threadless
   attachment, publication and completion, including completion-only continuation. Internal passes
   avoid nested admission; cancellation, stale delivery and dropped waits preserve retained custody

@@ -222,8 +222,39 @@ async fn assert_reserved(
     appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
     cx: &mut AsyncApp,
 ) {
+    use crate::theme_runtime::AppearancePublicationTarget;
     use beryl_home_store::CommandCancellation;
     let on_worker = owner.borrow().test_services_on_worker();
+    let (home, window) = cx
+        .update(|app| {
+            (
+                appearance
+                    .read(app)
+                    .target()
+                    .snapshot()
+                    .current
+                    .prepared()
+                    .home()
+                    .home_id(),
+                owner.borrow().test_process().windows.shells()[0].window(),
+            )
+        })
+        .unwrap();
+    assert!(
+        RunningProcessOwner::attach_interrupted_exit_threadless_window(
+            owner,
+            request,
+            home,
+            retired,
+            window,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
     assert!(
         RunningProcessOwner::publish_and_complete_interrupted_exit(
             owner,

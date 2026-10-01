@@ -101,6 +101,7 @@ pub(super) async fn interrupt_pending(
         .borrow()
         .interrupted_exit_services_result(request)
         .unwrap();
+    let mut competing_cx = cx.clone();
     let mut driver = Box::pin(
         RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
             owner,
@@ -121,6 +122,42 @@ pub(super) async fn interrupt_pending(
         std::task::Poll::Ready(())
     })
     .await;
+    let mut competing_preparation = None;
+    let mut competing_adapters = None;
+    let mut competing_configurator: Option<MainWindowConversationComposerConfigurator> =
+        Some(Box::new(resident_fixture::configure));
+    assert!(
+        RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
+            owner,
+            request,
+            &mut competing_preparation,
+            |_| panic!("competing attachment admitted preparation"),
+            window,
+            appearance,
+            &mut competing_adapters,
+            &mut competing_configurator,
+            |_, _| panic!("competing attachment consumed current source"),
+            CommandCancellation::new(),
+            &mut competing_cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
+    assert!(competing_preparation.is_none());
+    assert!(competing_adapters.is_none());
+    assert!(competing_configurator.is_some());
+    assert!(
+        RunningProcessOwner::await_interrupted_exit_completion(
+            owner,
+            request,
+            CommandCancellation::new(),
+            &mut competing_cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
     if cancel {
         cancellation.cancel();
         assert!(driver.await.unwrap_err().contains("cancelled"));

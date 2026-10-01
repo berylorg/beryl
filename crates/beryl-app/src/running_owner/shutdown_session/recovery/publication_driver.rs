@@ -19,7 +19,7 @@ impl RunningProcessOwner {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
-        Self::attach_interrupted_exit_threadless_window(
+        Self::attach_interrupted_exit_threadless_pass(
             owner,
             request,
             retired_home,
