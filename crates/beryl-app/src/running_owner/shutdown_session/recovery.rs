@@ -46,6 +46,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     pending_resident_frame: Option<std::rc::Weak<()>>,
     driver: std::rc::Weak<()>,
     selected_windows: Option<Rc<RefCell<selected_windows::SelectedWindowRecovery>>>,
+    threadless_appearance: Option<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>>,
     reopen_schedule: beryl_home_store::RecoveryRetrySchedule,
     reopen_deadline: Option<std::time::Instant>,
     residents: Vec<(
@@ -79,6 +80,7 @@ impl RunningProcessOwner {
             pending_resident_frame: None,
             driver: std::rc::Weak::new(),
             selected_windows: None,
+            threadless_appearance: None,
             reopen_schedule: Default::default(),
             reopen_deadline: None,
             residents: self

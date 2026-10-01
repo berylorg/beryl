@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 897: Continue Selected Recovery From Owner-Retained Publication State (finished)
+# Phase 898: Retain Threadless Recovery Appearance In The Running Owner (finished)
 
-Selected-window recovery now uses owner-retained appearance for explicit post-publication and
-post-activation continuations without replaying earlier stages. All 47 focused native cases passed
-(run `6fd49e0d-b9b0-4a8d-976d-17875ce69d06`), including two-window abandoned publication and activation
-waits, invalid and competing continuations, and coherent release. The app library check, scoped
-formatting and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
+The running owner now retains fresh threadless appearance across interrupted attachment waits and
+supplies explicit attachment continuation without repeating retirement or preparation. All 14 focused
+native cases passed (run `5b7c5ced-b010-4d42-90a1-16093f2ce2f2`), including abandoned, cancelled and stale
+waits, invalid and competing calls, and coherent completion. The app library check, scoped formatting
+and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -109,6 +109,7 @@ impl RunningProcessOwner {
             pending_resident_frame: None,
             driver: std::rc::Weak::new(),
             selected_windows: None,
+            threadless_appearance: None,
             reopen_schedule: Default::default(),
             reopen_deadline: None,
             residents: vec![captured],

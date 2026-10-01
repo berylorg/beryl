@@ -17,13 +17,19 @@ impl RunningProcessOwner {
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
-        appearance: &mut Option<Entity<GpuiAppearanceWindowSet>>,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
-        if appearance.is_some() {
+        if owner
+            .borrow()
+            .interrupted_exit
+            .as_ref()
+            .unwrap()
+            .threadless_appearance
+            .is_some()
+        {
             return Err("Interrupted Exit fresh appearance is already retained".into());
         }
         let (retired_home, previous, capacity) = cx
@@ -78,25 +84,28 @@ impl RunningProcessOwner {
                 .await?;
             return Err("Interrupted Exit preparation was cancelled".into());
         }
-        let generation = cx
+        let (generation, appearance) = cx
             .update(|app| -> Result<_, String> {
                 let prepared = owner.borrow().interrupted_exit_appearance(request)?;
                 let generation = prepared.prepared().home().home_generation();
                 previous.update(app, |set, _| set.retire());
-                *appearance = Some(GpuiAppearanceWindowSet::new(prepared, capacity, app));
-                Ok(generation)
+                let appearance = GpuiAppearanceWindowSet::new(prepared, capacity, app);
+                owner
+                    .borrow_mut()
+                    .interrupted_exit
+                    .as_mut()
+                    .unwrap()
+                    .threadless_appearance = Some(appearance.clone());
+                Ok((generation, appearance))
             })
             .map_err(|error| error.to_string())??;
-        let appearance = appearance
-            .as_ref()
-            .expect("fresh recovery appearance retained");
         Self::attach_interrupted_exit_threadless_pass(
             owner,
             request,
             retired_home,
             retired,
             window,
-            appearance,
+            &appearance,
             cancellation.clone(),
             cx,
         )
@@ -106,10 +115,55 @@ impl RunningProcessOwner {
             request,
             retired,
             generation,
-            appearance,
+            &appearance,
             cancellation,
             cx,
         )
         .await
+    }
+
+    pub(crate) async fn continue_interrupted_exit_threadless(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired_home: beryl_model::BerylHomeId,
+        retired: HomeGeneration,
+        generation: HomeGeneration,
+        window: WindowHandle<MainWindowShellRoot>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let appearance = {
+            let mut owner = owner.borrow_mut();
+            let _driver = owner.reserve_interrupted_exit_driver(request)?;
+            owner
+                .interrupted_exit
+                .as_ref()
+                .unwrap()
+                .threadless_appearance
+                .clone()
+                .ok_or("Interrupted Exit threadless appearance is not prepared")?
+        };
+        Self::attach_and_complete_interrupted_exit_threadless(
+            owner,
+            request,
+            retired_home,
+            retired,
+            generation,
+            window,
+            &appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_threadless_recovery_appearance(
+        &self,
+    ) -> Option<Entity<GpuiAppearanceWindowSet>> {
+        self.interrupted_exit
+            .as_ref()?
+            .threadless_appearance
+            .clone()
     }
 }

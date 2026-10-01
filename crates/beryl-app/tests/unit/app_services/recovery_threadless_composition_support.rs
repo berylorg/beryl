@@ -73,12 +73,7 @@ pub(super) async fn verify_and_dispose(
     .unwrap();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
-    for (supplied, cancellation, occupied) in [
-        (&foreign, CommandCancellation::new(), false),
-        (request, cancelled, false),
-        (request, CommandCancellation::new(), true),
-    ] {
-        let mut appearance = occupied.then(|| previous.clone());
+    for (supplied, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
         assert!(
             RunningProcessOwner::recover_interrupted_exit_threadless(
                 &owner,
@@ -89,13 +84,17 @@ pub(super) async fn verify_and_dispose(
                 SyndicTimestamp::from_unix_millis(2),
                 cancellation,
                 |_| panic!("refused preparation failure"),
-                &mut appearance,
                 cx,
             )
             .await
             .is_err()
         );
-        assert_eq!(appearance, occupied.then(|| previous.clone()));
+        assert!(
+            owner
+                .borrow()
+                .test_threadless_recovery_appearance()
+                .is_none()
+        );
         assert!(owner.borrow().test_services().graph().is_some());
         assert!(!owner.borrow().test_services_on_worker());
         cx.update(|app| {
@@ -104,11 +103,26 @@ pub(super) async fn verify_and_dispose(
         })
         .unwrap();
     }
+    for supplied in [&foreign, request] {
+        assert!(
+            RunningProcessOwner::continue_interrupted_exit_threadless(
+                &owner,
+                supplied,
+                home,
+                retired,
+                retired,
+                window,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .is_err()
+        );
+    }
 
     faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
     let failures = std::cell::Cell::new(0);
     let cancellation = CommandCancellation::new();
-    let mut appearance = None;
     let mut drive_cx = cx.clone();
     let mut drive = Box::pin(RunningProcessOwner::recover_interrupted_exit_threadless(
         &owner,
@@ -138,7 +152,6 @@ pub(super) async fn verify_and_dispose(
             );
             assert!(!RunningProcessOwner::finish_exit(&owner, request));
         },
-        &mut appearance,
         &mut drive_cx,
     ));
     let timeout = Instant::now() + Duration::from_secs(10);
@@ -149,6 +162,21 @@ pub(super) async fn verify_and_dispose(
                 .is_pending()
         );
         assert_reserved(&owner, request, retired, cx).await;
+        assert!(
+            RunningProcessOwner::continue_interrupted_exit_threadless(
+                &owner,
+                request,
+                home,
+                retired,
+                retired,
+                window,
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+            .contains("already being driven")
+        );
         if !cx
             .update(|app| previous.read(app).target().snapshot().active)
             .unwrap()
@@ -203,8 +231,31 @@ pub(super) async fn verify_and_dispose(
         }
     }
     drop(drive);
-    let appearance = appearance.unwrap();
+    let appearance = if matches!(delivery, RetirementDelivery::Ready) {
+        owner.borrow().test_process_appearance()
+    } else {
+        owner
+            .borrow()
+            .test_threadless_recovery_appearance()
+            .unwrap()
+    };
     if !matches!(delivery, RetirementDelivery::Ready) {
+        assert!(
+            RunningProcessOwner::recover_interrupted_exit_threadless(
+                &owner,
+                request,
+                retired,
+                window,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                |_| panic!("repeated initial preparation"),
+                cx,
+            )
+            .await
+            .unwrap_err()
+            .contains("already retained")
+        );
         assert_eq!(
             original,
             publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
@@ -227,14 +278,37 @@ pub(super) async fn verify_and_dispose(
             .prepared()
             .home()
             .home_generation();
-        RunningProcessOwner::attach_and_complete_interrupted_exit_threadless(
+        let cancelled = CommandCancellation::new();
+        cancelled.cancel();
+        for (supplied, cancellation) in
+            [(&foreign, CommandCancellation::new()), (request, cancelled)]
+        {
+            assert!(
+                RunningProcessOwner::continue_interrupted_exit_threadless(
+                    &owner,
+                    supplied,
+                    home,
+                    retired,
+                    generation,
+                    window,
+                    cancellation,
+                    cx,
+                )
+                .await
+                .is_err()
+            );
+            assert_eq!(
+                owner.borrow().test_threadless_recovery_appearance(),
+                Some(appearance.clone())
+            );
+        }
+        RunningProcessOwner::continue_interrupted_exit_threadless(
             &owner,
             request,
             home,
             retired,
             generation,
             window,
-            &appearance,
             CommandCancellation::new(),
             cx,
         )
@@ -242,6 +316,12 @@ pub(super) async fn verify_and_dispose(
         .unwrap();
     }
     assert!(owner.borrow().interrupted_exit_session().is_none());
+    assert!(
+        owner
+            .borrow()
+            .test_threadless_recovery_appearance()
+            .is_none()
+    );
     assert!(owner.borrow().shutdown_status().is_none());
     assert!(!owner.borrow().exit_requested());
     assert!(!RunningProcessOwner::finish_exit(&owner, request));
@@ -280,6 +360,23 @@ async fn assert_reserved(
     retired: beryl_home_store::HomeGeneration,
     cx: &mut AsyncApp,
 ) {
+    let window = owner.borrow().test_process().windows.shells()[0].window();
+    assert!(
+        RunningProcessOwner::recover_interrupted_exit_threadless(
+            owner,
+            request,
+            retired,
+            window,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            beryl_home_store::CommandCancellation::new(),
+            |_| panic!("competing initial preparation"),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
     assert!(
         RunningProcessOwner::retry_interrupted_exit_preparation(
             owner,
