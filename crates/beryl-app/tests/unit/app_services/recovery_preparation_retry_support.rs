@@ -6,6 +6,7 @@ pub(super) async fn verify(
     mut previous_delay: u64,
     cx: &mut AsyncApp,
 ) -> u64 {
+    use crate::running_owner::RecoveryPreparationFailure;
     use beryl_home_store::CommandCancellation;
     use std::{
         cell::Cell,
@@ -15,50 +16,73 @@ pub(super) async fn verify(
     };
 
     let original = format!("{:?}", owner.borrow().interrupted_exit_session().unwrap());
-    for mode in ["success", "cancel", "drop", "stale"] {
-        faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
+    for (mode, candidate) in [
+        ("success", false),
+        ("cancel", false),
+        ("drop", false),
+        ("stale", false),
+        ("success", true),
+        ("cancel", true),
+        ("drop", true),
+        ("stale", true),
+    ] {
+        faults.fail_next(if candidate {
+            FaultPoint::BeforeReadConfirmation
+        } else {
+            FaultPoint::BeforeThemeWatchSpawn
+        });
         let delivered = Cell::new(0);
         let cancellation = CommandCancellation::new();
         let mut drive_cx = cx.clone();
-        let mut drive = Box::pin(
-            RunningProcessOwner::retry_interrupted_exit_service_preparation(
-                owner,
-                request,
-                retired,
-                configuration(),
-                SyndicTimestamp::from_unix_millis(2),
-                cancellation.clone(),
-                |failure| {
-                    assert!(!owner.borrow().test_services_on_worker());
-                    assert!(owner.borrow().test_services().graph().is_none());
-                    assert!(!RunningProcessOwner::finish_exit(owner, request));
-                    let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(
-                        failure,
-                    ) = failure
-                    else {
-                        panic!("unexpected preparation failure");
-                    };
-                    assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
-                    assert!(failure.into_retry_parts().is_err());
-                    assert!(
-                        owner
-                            .borrow_mut()
-                            .take_interrupted_exit_preparation_failure(request, retired)
-                            .is_err()
-                    );
-                    delivered.set(delivered.get() + 1);
-                    if mode == "success" && delivered.get() == 1 {
-                        faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
+        let mut drive = Box::pin(RunningProcessOwner::retry_interrupted_exit_preparation(
+            owner,
+            request,
+            retired,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            cancellation.clone(),
+            |failure| {
+                assert!(!owner.borrow().test_services_on_worker());
+                assert!(owner.borrow().test_services().graph().is_none());
+                assert!(!RunningProcessOwner::finish_exit(owner, request));
+                match failure {
+                    RecoveryPreparationFailure::Candidate(failure) => {
+                        assert!(candidate && delivered.get() == 0);
+                        assert!(!failure.to_string().is_empty());
+                        assert!(
+                            owner
+                                .borrow_mut()
+                                .take_interrupted_exit_candidate_failure(request)
+                                .is_err()
+                        );
                     }
-                    if mode == "stale" {
-                        owner
-                            .borrow_mut()
-                            .test_replace_interrupted_exit_request(&request.test_foreign());
+                    RecoveryPreparationFailure::Services(failure) => {
+                        assert!(!candidate || delivered.get() == 1);
+                        let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(failure) = failure else {
+                                panic!("unexpected preparation failure");
+                            };
+                        assert!(matches!(failure.error(), AppServiceOpenError::Theme(_)));
+                        assert!(failure.into_retry_parts().is_err());
                     }
-                },
-                &mut drive_cx,
-            ),
-        );
+                }
+                assert!(
+                    owner
+                        .borrow_mut()
+                        .take_interrupted_exit_preparation_failure(request, retired)
+                        .is_err()
+                );
+                delivered.set(delivered.get() + 1);
+                if mode == "success" && delivered.get() == 1 {
+                    faults.fail_next(FaultPoint::BeforeThemeWatchSpawn);
+                }
+                if mode == "stale" {
+                    owner
+                        .borrow_mut()
+                        .test_replace_interrupted_exit_request(&request.test_foreign());
+                }
+            },
+            &mut drive_cx,
+        ));
         let timeout = Instant::now() + Duration::from_secs(5);
         let expected = if mode == "success" { 2 } else { 1 };
         for count in 1..=expected {
@@ -106,7 +130,7 @@ pub(super) async fn verify(
             assert!(remaining <= Duration::from_secs(expected_delay));
             previous_delay = expected_delay;
             if mode != "stale" {
-                let competing = RunningProcessOwner::retry_interrupted_exit_service_preparation(
+                let competing = RunningProcessOwner::retry_interrupted_exit_preparation(
                     owner,
                     request,
                     retired,

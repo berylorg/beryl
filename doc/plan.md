@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 879: Compose Graph Retirement With Service Preparation Retries (finished)
+# Phase 880: Retry Disposed Candidate Preparation Failures (finished)
 
-Initial resident/graph retirement now connects to disposed-service preparation retries under one
-uninterrupted driver reservation. Existing single-attempt and already-retired routes share the
-same internals. Actual failure/reconstruction, shared delay, concurrent refusal and cancelled,
-dropped or stale retirement preserve original evidence and closed gates. All twenty-one native
-recovery cases, Cargo check, formatting and independent lifecycle review passed. Candidate/resume
-failure orchestration and production supervisor mounting remain under 702.
+Initial and already-retired preparation drivers now transfer typed disposed candidate or service
+failures before retrying under the same reservation and shared delay. Exact home-return validation,
+original/resume evidence and existing command-proof gates remain intact. Candidate-to-service retry,
+cancellation, dropped-waiter and stale-callback coverage passed with all twenty-one native recovery
+cases, Cargo check, formatting and independent lifecycle/persistence review. Resume-outcome handoff
+orchestration and production supervisor mounting remain under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -49,7 +49,9 @@ pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute}
 pub(crate) use observation::ConfirmedShutdownAdmission;
 pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
 pub(crate) use shutdown_session::RunningShutdownSession;
-pub(crate) use shutdown_session::{InterruptedExitCandidate, ResidentPreparationKey};
+pub(crate) use shutdown_session::{
+    InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartupCleanup {

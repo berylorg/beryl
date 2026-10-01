@@ -8,7 +8,9 @@ mod readiness;
 mod reconciliation;
 mod recovery;
 pub(super) use recovery::InterruptedExitRecovery;
-pub(crate) use recovery::{InterruptedExitCandidate, ResidentPreparationKey};
+pub(crate) use recovery::{
+    InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
+};
 
 #[derive(Debug)]
 pub(crate) enum RunningShutdownSession {

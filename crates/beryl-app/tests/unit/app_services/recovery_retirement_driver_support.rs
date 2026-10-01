@@ -57,6 +57,10 @@ pub(super) async fn verify(
             SyndicTimestamp::from_unix_millis(2),
             cancellation.clone(),
             |failure| {
+                let crate::running_owner::RecoveryPreparationFailure::Services(failure) = failure
+                else {
+                    panic!("unexpected candidate failure");
+                };
                 let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(
                     failure,
                 ) = failure
@@ -178,7 +182,7 @@ pub(super) async fn verify(
                 deadline.saturating_duration_since(std::time::Instant::now())
                     <= Duration::from_secs(1)
             );
-            let error = RunningProcessOwner::retry_interrupted_exit_service_preparation(
+            let error = RunningProcessOwner::retry_interrupted_exit_preparation(
                 owner,
                 request,
                 generation,

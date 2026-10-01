@@ -484,6 +484,15 @@
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
+
+- [x] Extended the initial and already-retired preparation retry drivers to transfer confirmed
+  disposed candidate failures alongside service failures through one typed callback, after exact
+  failed-home return validation. Shared reservation, backoff and original/resume/prior-outcome
+  custody remain intact. Candidate-to-service failure/reconstruction, exact-once transfer,
+  cancellation, dropped waiters and stale callbacks passed with all twenty-one native recovery
+  cases (run `407c1f71-aee5-44d7-b1f9-37540ac762a3`, 148.971s), Cargo check, formatting and independent
+  lifecycle/persistence review. Resume-outcome handoff orchestration and supervisor mounting remain
+  separate.
 - [x] Connected initial resident/graph retirement to the disposed-service preparation retry loop under one uninterrupted driver reservation, sharing internals with existing entry points. Twenty-one native recovery cases passed (run `5f4d0269-3682-45d5-abb4-c395c481c67c`), with Cargo check, formatting and independent lifecycle/persistence review. Actual failure/reconstruction, real first retry delay, concurrent refusal and cancelled/dropped/stale retirement preserve typed failure transfer, original/resume evidence and closed gates. Candidate/resume-failure orchestration and full supervisor mounting remain separate.
 
 - [x] Connected automatic retries of disposed service-preparation failures under one preparation-driver reservation, delivering each typed failure before the next shared delay. Twenty-one native recovery cases passed (run `0d160988-ac08-401d-8183-422ea887fa9f`), alongside Cargo check, formatting and independent persistence/lifecycle review. Repeated failure/success, once-only transfer, cancelled/dropped waits and stale callback reentry preserve home custody, original/resume evidence and closed gates. Candidate-failure orchestration and full supervisor mounting remain separate.

@@ -9,6 +9,7 @@ mod disposal;
 mod driver;
 mod preparation_driver;
 mod preparation_retry;
+pub(crate) use preparation_retry::RecoveryPreparationFailure;
 mod process_work;
 mod resident;
 pub(crate) use resident::ResidentPreparationKey;

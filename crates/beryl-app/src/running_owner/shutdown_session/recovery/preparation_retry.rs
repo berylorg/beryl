@@ -4,24 +4,29 @@ use crate::app_services::{
 };
 use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::AsyncApp;
-use settlement::CandidateSettlement;
+use settlement::{CandidateSettlement, CandidateSettlementError};
 use syndic_storage::SyndicTimestamp;
 
+pub(crate) enum RecoveryPreparationFailure {
+    Candidate(CandidateSettlementError),
+    Services(RecoveryServicePreparationError),
+}
+
 impl RunningProcessOwner {
-    pub(crate) async fn retry_interrupted_exit_service_preparation(
+    pub(crate) async fn retry_interrupted_exit_preparation(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
-        failed: impl FnMut(RecoveryServicePreparationError),
+        failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
             .borrow_mut()
             .reserve_interrupted_exit_preparation(request)?;
-        Self::retry_interrupted_exit_service_attempts(
+        Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
             generation,
@@ -41,7 +46,7 @@ impl RunningProcessOwner {
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
-        failed: impl FnMut(RecoveryServicePreparationError),
+        failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
@@ -55,7 +60,7 @@ impl RunningProcessOwner {
             cx,
         )
         .await?;
-        Self::retry_interrupted_exit_service_attempts(
+        Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
             generation,
@@ -68,14 +73,14 @@ impl RunningProcessOwner {
         .await
     }
 
-    async fn retry_interrupted_exit_service_attempts(
+    async fn retry_interrupted_exit_preparation_attempts(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
-        mut failed: impl FnMut(RecoveryServicePreparationError),
+        mut failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         loop {
@@ -101,19 +106,18 @@ impl RunningProcessOwner {
             let failure = {
                 let mut owner = owner.borrow_mut();
                 owner.interrupted_exit_graph_retirement_result(request)?;
-                let disposed = matches!(
-                    owner
-                        .interrupted_exit
-                        .as_ref()
-                        .unwrap()
-                        .settlement
-                        .borrow()
-                        .as_ref(),
-                    Some(CandidateSettlement::DisposedPreparationFailure { .. })
-                );
-                if !disposed {
-                    return result;
-                }
+                let candidate = match owner
+                    .interrupted_exit
+                    .as_ref()
+                    .unwrap()
+                    .settlement
+                    .borrow()
+                    .as_ref()
+                {
+                    Some(CandidateSettlement::DisposedFailure(_)) => true,
+                    Some(CandidateSettlement::DisposedPreparationFailure { .. }) => false,
+                    _ => return result,
+                };
                 owner
                     .process
                     .services
@@ -121,7 +125,15 @@ impl RunningProcessOwner {
                     .ok_or("The complete service owner is on a worker")?
                     .validate_retired_service_home(generation)
                     .map_err(|error| error.to_string())?;
-                owner.take_interrupted_exit_preparation_failure(request, generation)?
+                if candidate {
+                    RecoveryPreparationFailure::Candidate(
+                        owner.take_interrupted_exit_candidate_failure(request)?,
+                    )
+                } else {
+                    RecoveryPreparationFailure::Services(
+                        owner.take_interrupted_exit_preparation_failure(request, generation)?,
+                    )
+                }
             };
             failed(failure);
         }
