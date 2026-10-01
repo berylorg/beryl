@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Retained successful graph publication supports exact-request activation and completion continuation under one driver reservation without republishing or repeating attempted activation.
 - [x] The interrupted-Exit owner retains complete selected-window inputs and fresh appearance across abandoned initial waits and explicit prepared continuation, releasing them with successful request completion.
 - [x] Selected multiwindow drivers own resident admission and fresh adoption configuration through retained per-window inputs, preserving retirement custody and partial progress across refused or abandoned waits.
 - [x] The running owner derives complete ordered selected-window recovery inputs under exact-request admission, validating shells before configurator factories and releasing partial inputs on refusal.

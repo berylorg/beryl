@@ -95,6 +95,43 @@ impl RunningProcessOwner {
             .await
             .map_err(|_| "Interrupted Exit publication delivery is unavailable")??;
 
+        Self::activate_and_complete_interrupted_exit_pass(
+            owner,
+            request,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    pub(crate) async fn activate_and_complete_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_driver(request)?;
+        Self::activate_and_complete_interrupted_exit_pass(
+            owner,
+            request,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
+    }
+
+    async fn activate_and_complete_interrupted_exit_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::activate_interrupted_exit_theme(

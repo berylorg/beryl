@@ -206,5 +206,18 @@ pub(super) async fn verify(
         assert!(!RunningProcessOwner::finish_exit(owner, request));
     })
     .unwrap();
+    assert!(
+        RunningProcessOwner::activate_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already attempted")
+    );
+    assert!(!owner.borrow().test_services_on_worker());
     failure.is_none()
 }

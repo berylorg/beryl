@@ -42,6 +42,18 @@ pub(super) async fn verify(
     }
 
     let cancellation = CommandCancellation::new();
+    assert!(
+        RunningProcessOwner::activate_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            cancellation.clone(),
+            cx,
+        )
+        .await
+        .is_err()
+    );
+    assert!(!owner.borrow().test_services_on_worker());
     let mut drive_cx = cx.clone();
     let mut drive = Box::pin(
         RunningProcessOwner::attach_and_complete_interrupted_exit_threadless(
@@ -122,7 +134,59 @@ pub(super) async fn verify(
             .test_replace_interrupted_exit_request(&foreign),
         _ => {}
     }
-    let result = drive.await;
+    let result = if matches!(delivery, RecoveryPublicationDelivery::Driven) {
+        drop(drive);
+        let cancelled = CommandCancellation::new();
+        cancelled.cancel();
+        for (request, appearance, cancellation) in [
+            (&foreign, appearance, CommandCancellation::new()),
+            (request, appearance, cancelled),
+            (request, &previous, CommandCancellation::new()),
+        ] {
+            assert!(
+                RunningProcessOwner::activate_and_complete_interrupted_exit(
+                    owner,
+                    request,
+                    appearance,
+                    cancellation,
+                    cx,
+                )
+                .await
+                .is_err()
+            );
+            assert!(!owner.borrow().test_services_on_worker());
+        }
+        assert_eq!(
+            original,
+            format!("{:?}", owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(owner.borrow().exit_requested());
+        assert_eq!(owner.borrow().test_process_appearance(), previous);
+        let mut continuation_cx = cx.clone();
+        let mut continuation =
+            Box::pin(RunningProcessOwner::activate_and_complete_interrupted_exit(
+                owner,
+                request,
+                appearance,
+                CommandCancellation::new(),
+                &mut continuation_cx,
+            ));
+        std::future::poll_fn(|task| {
+            assert!(continuation.as_mut().poll(task).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        assert_reserved(owner, request, retired, generation, appearance, cx).await;
+        while owner.borrow().test_services_on_worker() {
+            cx.background_executor()
+                .timer(Duration::from_millis(10))
+                .await;
+        }
+        assert_reserved(owner, request, retired, generation, appearance, cx).await;
+        continuation.await
+    } else {
+        drive.await
+    };
     if matches!(delivery, RecoveryPublicationDelivery::Driven) {
         result.unwrap();
         assert!(gate.wait());
@@ -225,6 +289,18 @@ async fn assert_reserved(
     use crate::theme_runtime::AppearancePublicationTarget;
     use beryl_home_store::CommandCancellation;
     let on_worker = owner.borrow().test_services_on_worker();
+    assert!(
+        RunningProcessOwner::activate_and_complete_interrupted_exit(
+            owner,
+            request,
+            appearance,
+            CommandCancellation::new(),
+            cx,
+        )
+        .await
+        .unwrap_err()
+        .contains("already being driven")
+    );
     let (home, window) = cx
         .update(|app| {
             (
