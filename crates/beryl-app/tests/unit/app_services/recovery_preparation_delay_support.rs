@@ -45,10 +45,12 @@ pub(super) async fn verify(
     .unwrap();
     let cancellation = CommandCancellation::new();
     let mut drive_cx = cx.clone();
-    let mut drive = Box::pin(RunningProcessOwner::construct_and_settle_interrupted_exit(
+    let mut drive = Box::pin(RunningProcessOwner::prepare_retired_interrupted_exit(
         owner,
         request,
         generation,
+        configuration(),
+        SyndicTimestamp::from_unix_millis(2),
         cancellation.clone(),
         &mut drive_cx,
     ));
@@ -58,6 +60,34 @@ pub(super) async fn verify(
     })
     .await;
     assert!(!owner.borrow().test_services_on_worker());
+    for retire in [false, true] {
+        let error = if retire {
+            RunningProcessOwner::retire_and_prepare_interrupted_exit(
+                owner,
+                request,
+                generation,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+        } else {
+            RunningProcessOwner::prepare_retired_interrupted_exit(
+                owner,
+                request,
+                generation,
+                configuration(),
+                SyndicTimestamp::from_unix_millis(2),
+                CommandCancellation::new(),
+                cx,
+            )
+            .await
+            .unwrap_err()
+        };
+        assert!(error.contains("already being driven"), "{error}");
+    }
     if previous_delay.is_none() {
         drop(drive);
     } else {

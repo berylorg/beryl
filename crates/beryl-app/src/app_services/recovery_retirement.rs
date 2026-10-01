@@ -247,9 +247,23 @@ impl ProcessServiceOwner {
         &mut self,
         expected: HomeGeneration,
     ) -> Result<HomeStore, ServiceGraphRetirementError> {
-        let retirement = self
+        self.validate_retired_service_home(expected)?;
+        Ok(self
             .recovery_retirement
             .as_mut()
+            .unwrap()
+            .home
+            .take()
+            .unwrap())
+    }
+
+    pub(crate) fn validate_retired_service_home(
+        &self,
+        expected: HomeGeneration,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        let retirement = self
+            .recovery_retirement
+            .as_ref()
             .filter(|retirement| retirement.generation == expected)
             .ok_or(ServiceGraphRetirementError::Stale)?;
         if !retirement.complete {
@@ -257,7 +271,8 @@ impl ProcessServiceOwner {
         }
         retirement
             .home
-            .take()
+            .as_ref()
+            .map(|_| ())
             .ok_or(ServiceGraphRetirementError::HomeTransferred)
     }
 

@@ -6,6 +6,7 @@ mod completion;
 mod construction;
 mod disposal;
 mod driver;
+mod preparation_driver;
 mod process_work;
 mod resident;
 pub(crate) use resident::ResidentPreparationKey;

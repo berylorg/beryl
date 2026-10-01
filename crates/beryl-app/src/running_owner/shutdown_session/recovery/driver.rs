@@ -223,25 +223,9 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
-        let _driver = {
-            let mut owner = owner.borrow_mut();
-            if !owner.process.commands.is_active(request) {
-                return Err("Interrupted Exit request changed".into());
-            }
-            let recovery = owner
-                .interrupted_exit
-                .as_mut()
-                .ok_or("No reported failed Exit")?;
-            if !Rc::ptr_eq(&recovery.request, &request.identity()) {
-                return Err("Interrupted Exit request changed".into());
-            }
-            if recovery.preparation_driver.upgrade().is_some() {
-                return Err("Interrupted Exit preparation is already being driven".into());
-            }
-            let driver = Rc::new(());
-            recovery.preparation_driver = Rc::downgrade(&driver);
-            driver
-        };
+        let _driver = owner
+            .borrow_mut()
+            .reserve_interrupted_exit_preparation(request)?;
         let receiver = loop {
             let (sender, receiver) = futures_channel::oneshot::channel();
             let admitted = cx
@@ -290,19 +274,7 @@ impl RunningProcessOwner {
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit retirement was cancelled".into());
         }
-        if let Err(error) = Self::construct_and_settle_interrupted_exit(
-            owner,
-            request,
-            generation,
-            cancellation.clone(),
-            cx,
-        )
-        .await
-        {
-            Self::dispose_returned_interrupted_exit_failure(owner, request, generation, cx).await?;
-            return Err(error);
-        }
-        Self::prepare_interrupted_exit_service_graph(
+        Self::prepare_interrupted_exit_attempt(
             owner,
             request,
             generation,
@@ -313,8 +285,7 @@ impl RunningProcessOwner {
         )
         .await
     }
-
-    async fn dispose_returned_interrupted_exit_failure(
+    pub(super) async fn dispose_returned_interrupted_exit_failure(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,

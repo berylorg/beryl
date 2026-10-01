@@ -8,6 +8,11 @@ mod retry_delay {
     include!("recovery_preparation_delay_support.rs");
 }
 
+mod preparation_attempt {
+    use super::*;
+    include!("recovery_preparation_attempt_support.rs");
+}
+
 mod attachment_driver {
     use super::*;
     include!("recovery_threadless_driver_support.rs");
@@ -608,6 +613,20 @@ pub(super) async fn verify(
         previous_delay = Some(
             retry_delay::verify(owner, request, generation, deadline, previous_delay, cx).await,
         );
+        if mode == "theme_failure" {
+            previous_delay = Some(
+                preparation_attempt::verify(
+                    owner,
+                    request,
+                    generation,
+                    fresh_generation,
+                    faults,
+                    previous_delay.unwrap(),
+                    cx,
+                )
+                .await,
+            );
+        }
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             RunningProcessOwner::construct_interrupted_exit_candidate(
