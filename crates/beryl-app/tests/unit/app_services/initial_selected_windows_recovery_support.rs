@@ -300,15 +300,13 @@ pub(super) async fn verify_and_dispose(
                     &owner.borrow().interrupted_exit_session().unwrap()
                 )
             );
-            drive = Box::pin(
-                RunningProcessOwner::complete_prepared_interrupted_exit_selected_windows(
-                    &owner,
-                    request,
-                    retired,
-                    CommandCancellation::new(),
-                    &mut drive_cx,
-                ),
-            );
+            drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
+                &owner,
+                request,
+                retired,
+                CommandCancellation::new(),
+                &mut drive_cx,
+            ));
             prepared_continued = true;
         }
         if let Poll::Ready(result) = drive

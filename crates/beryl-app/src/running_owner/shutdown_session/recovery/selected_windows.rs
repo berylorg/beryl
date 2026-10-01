@@ -127,7 +127,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    pub(crate) async fn complete_prepared_interrupted_exit_selected_windows(
+    pub(super) async fn complete_prepared_interrupted_exit_selected_windows(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,

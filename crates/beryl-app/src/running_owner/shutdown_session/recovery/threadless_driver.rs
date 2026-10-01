@@ -200,7 +200,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    pub(crate) async fn complete_prepared_interrupted_exit_threadless(
+    pub(super) async fn complete_prepared_interrupted_exit_threadless(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,

@@ -109,11 +109,10 @@ pub(super) async fn verify_and_dispose(
     for supplied in [&foreign, request] {
         assert_retired_refused(&owner, supplied, CommandCancellation::new(), cx).await;
         assert!(
-            RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
+            RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 supplied,
                 retired,
-                window,
                 CommandCancellation::new(),
                 cx,
             )
@@ -245,11 +244,10 @@ pub(super) async fn verify_and_dispose(
                 (request, retired, cancelled),
             ] {
                 assert!(
-                    RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
+                    RunningProcessOwner::recover_prepared_interrupted_exit(
                         &owner,
                         supplied,
                         supplied_retired,
-                        window,
                         cancel,
                         cx,
                     )
@@ -277,16 +275,13 @@ pub(super) async fn verify_and_dispose(
                 cx.update(|app| assert!(previous.read(app).target().snapshot().active))
                     .unwrap();
             }
-            drive = Box::pin(
-                RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
-                    &owner,
-                    request,
-                    retired,
-                    window,
-                    cancellation.clone(),
-                    &mut drive_cx,
-                ),
-            );
+            drive = Box::pin(RunningProcessOwner::recover_prepared_interrupted_exit(
+                &owner,
+                request,
+                retired,
+                cancellation.clone(),
+                &mut drive_cx,
+            ));
             prepared_continued = true;
         }
         assert!(
@@ -382,11 +377,10 @@ pub(super) async fn verify_and_dispose(
     };
     if !matches!(delivery, RetirementDelivery::Ready) {
         assert!(
-            RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
+            RunningProcessOwner::recover_prepared_interrupted_exit(
                 &owner,
                 request,
                 retired,
-                window,
                 CommandCancellation::new(),
                 cx,
             )
@@ -531,11 +525,10 @@ async fn assert_reserved(
     )
     .await;
     assert!(
-        RunningProcessOwner::complete_prepared_interrupted_exit_threadless(
+        RunningProcessOwner::recover_prepared_interrupted_exit(
             owner,
             request,
             retired,
-            window,
             beryl_home_store::CommandCancellation::new(),
             cx,
         )
