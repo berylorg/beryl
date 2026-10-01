@@ -324,7 +324,7 @@ pub(super) async fn verify_resume_failure(
         })
         .unwrap();
     }
-    if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
+    {
         let resume_revision = {
             let retained = owner.borrow();
             let session = retained.interrupted_exit_session().unwrap();
@@ -486,6 +486,16 @@ pub(super) async fn verify_resume_failure(
                         })
                     ));
                 }
+                FaultPoint::AfterCommitBeforePersist => {
+                    assert!(result.is_err());
+                    assert!(matches!(
+                        resume.outcome(),
+                        Some(ResumeSessionOutcome::Indeterminate {
+                            reconciliation: Some(Err(_)),
+                            ..
+                        })
+                    ));
+                }
                 _ => unreachable!(),
             }
         }
@@ -518,14 +528,16 @@ pub(super) async fn verify_resume_failure(
                 })
                 .unwrap();
         }
-        let candidate = owner.borrow().test_take_interrupted_exit_candidate();
-        drop(candidate.session);
-        let home = cx
-            .background_executor()
-            .spawn(async move { candidate.candidate.abort() })
-            .await;
-        dispose_retired(owner, windows, Some(home), cx).await;
-        return;
+        if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
+            let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+            drop(candidate.session);
+            let home = cx
+                .background_executor()
+                .spawn(async move { candidate.candidate.abort() })
+                .await;
+            dispose_retired(owner, windows, Some(home), cx).await;
+            return;
+        }
     }
     use crate::exit_session::ResumeSessionOutcome;
     assert!(

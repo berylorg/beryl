@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 867: Retain Explicit Resume Reconciliation Retry (finished)
+# Phase 868: Verify Unresolved Resume Custody Through Candidate Disposal (finished)
 
-The running owner now retries failed resume reconciliation through the exact registry handle,
-retaining one previous failure and freshly validating the result without repeating the resume write.
-Ten native cases passed (`db7c0700-8701-4e26-a29f-95d2766a429e`); focused repeated-failure and
-custody verification passed (`3c95a4a0-6961-4070-92a9-7c65119dad7e`). Production Cargo check,
-formatting and independent lifecycle review passed. Unwind restoration was reviewed structurally.
-Automatic scheduling and unresolved-candidate disposal remain pending.
+The native uncertainty case now traverses production candidate disposal, failure transfer and
+same-home reconstruction before exact-handle retry. Retained indeterminate evidence, result
+revision, original Exit evidence and window fences survive; reconciliation then validates Running.
+Ten native cases passed (`1f845700-b85d-43f1-ac23-bcb3d2db7eaf`), with scoped formatting and
+independent lifecycle review. Automatic scheduling remains pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -261,8 +260,9 @@ Running result without repeating the command; proven noncommit remains fenced pe
 Phase 866 supplies explicit exact-request noncommit retry with fresh validation and one retained
 previous outcome, including exact transfer before subsequent retry admission. Phase 867 supplies
 explicit exact-handle reconciliation retry, retaining the previous failure until transfer and freshly
-validating resolved Running state without another resume command. Automatic scheduling and unresolved
-reconciliation disposal qualification remain pending.
+validating resolved Running state without another resume command. Phase 868 qualifies unresolved
+resume registry custody through candidate disposal and reconstruction before that exact-handle retry.
+Automatic scheduling remains pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.
