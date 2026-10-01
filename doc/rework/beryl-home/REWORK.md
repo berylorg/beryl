@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Qualified separate Running-resume noncommit after committed Exit with two selected windows: original evidence, resume outcome and window/draft fences remain retained without replacement services or automatic Exit. Eight native cases, explicit cleanup/home reopen and independent lifecycle review passed; later-attempt retry and automatic supervisor mounting remain separate.
 - [x] Qualified pending completion after partial resident preparation: enabled prepared editors remain read-only, exact evidence and gates survive cancellation/drop, and fresh continuation completes all three original Exit outcomes. Seven native cases and independent lifecycle review passed; automatic supervisor mounting remains separate.
 - [x] Established exact pinned evidence requiring unavailable repair for the current supported thread population, with the [source limitation](../../failures/cas-terminal-repair-full-view-is-not-completeness.md) retained.
 - [x] Accepted ordinary and candidate startup recovery through explicit incomplete history, with retained repair provenance, bounded finalization, reconciliation custody and gate release. Product mounting and fresh-service replacement remain separate.

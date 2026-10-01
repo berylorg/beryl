@@ -272,6 +272,9 @@ pub(super) async fn verify(
         let delivered = receiver.await.unwrap();
         if mode == "publish" {
             match delivery {
+                RecoveryPublicationDelivery::ResumeNoncommit => {
+                    panic!("failed resume cannot reach service publication")
+                }
                 RecoveryPublicationDelivery::Ready
                 | RecoveryPublicationDelivery::Complete
                 | RecoveryPublicationDelivery::Driven

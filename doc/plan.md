@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 860: Qualify Partially Prepared Recovery Completion Cancellation (finished)
+# Phase 861: Qualify Selected Recovery Resume Noncommit (finished)
 
-Two-window completion preserves prepared-editor read-only state, closed process/shell gates and
-session/publication custody across cancellation and drop, then completes through fresh continuation
-for all three original outcomes. Seven native cases passed (`34634fc2-2f45-4a5c-b18b-c7b6a4b5cca4`),
-with scoped formatting and independent lifecycle review. The [mutation-probe correction](failures/recovery-mount-fixture.md#partially-prepared-completion-mutation-probe)
-is retained. Automatic supervisor integration remains pending.
+Two selected windows retain original committed Exit evidence and distinct resume noncommit while
+replacement services and interaction remain unavailable. Native/candidate cleanup and home reopen
+passed with all eight selected cases (`8d7a596b-1f04-41cd-a9e9-5edb42208e79`), scoped formatting
+and independent lifecycle review. The [fault-routing correction](failures/recovery-mount-fixture.md#resume-home-command-fault-routing)
+is retained. Automatic supervisor mounting and later-attempt retry remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -248,6 +248,8 @@ Phase 859 qualifies cancellation and drop after pending mount readiness, followe
 through a fresh continuation across all three original outcomes, with retained gates and evidence.
 Phase 860 extends that qualification to partially prepared mounts, proving the enabled prepared
 editor remains read-only through cancellation/drop before fresh continuation and coherent release.
+Phase 861 qualifies a separate resume noncommit after committed Exit with two selected windows,
+retained original evidence and closed recovery gates; retry on a later attempt remains separate.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

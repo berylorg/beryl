@@ -1,5 +1,18 @@
 # Recovery Mount Fixture GUI Lifetime
 
+## Resume Home-Command Fault Routing
+
+The selected two-window resume-noncommit fixture initially armed a typed scoped `BeforeCommit`
+fault for `ResumeSessionAfterExit`. Native run `a3155b2a-accc-4274-81a5-a4fdf8fd9114` passed the
+seven existing cases, but the new case reached successful preparation instead of the expected
+error. Scoped writer fault routing applies to `CurrentDomainCommand`; resume executes a
+`HomeCommand`, whose writer fault context is unscoped. Use the unscoped fault after the original
+Exit outcome is retained, and assert the distinct retained resume `NotCommitted` outcome to
+prove the intended command failed. This was a fixture error, not evidence of recovery failure.
+The exact printed failed fixture directory `.tmpoKeCbe` was removed after the test process exited.
+Corrected run `8d7a596b-1f04-41cd-a9e9-5edb42208e79` passed all eight selected native cases;
+independent review confirmed unscoped writer routing and the resume's position before service convergence.
+
 ## Selected Original Exit Outcomes
 
 Phase 854 extends the real selected path beyond proven noncommit. The retained session envelope

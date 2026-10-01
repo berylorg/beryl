@@ -171,6 +171,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    ResumeNoncommit,
     Ready,
     Complete,
     Driven,
@@ -396,6 +397,18 @@ fn native_exit_selected_windows_recover_indeterminate_exit() {
         true,
         false,
         RecoveryPublicationDelivery::Driven,
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_exit_selected_windows_retain_resume_noncommit() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::ResumeNoncommit,
         None,
         2,
     );
@@ -715,6 +728,13 @@ fn run_with_windows(
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
                             if selected {
+                                if matches!(publication_delivery, RecoveryPublicationDelivery::ResumeNoncommit) {
+                                    faults.fail_next(FaultPoint::BeforeCommit);
+                                    selected_preparation::verify_resume_noncommit(owner, &request, cx).await;
+                                    observed.set(true);
+                                    cx.update(|app| app.quit()).unwrap();
+                                    return;
+                                }
                                 selected_preparation::verify_and_dispose(owner, &request, matches!(publication_delivery, RecoveryPublicationDelivery::Driven), cx).await;
                                 observed.set(true);
                                 cx.update(|app| app.quit()).unwrap();

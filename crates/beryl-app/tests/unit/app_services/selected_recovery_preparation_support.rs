@@ -188,6 +188,123 @@ pub(super) async fn verify_and_dispose(
     ));
     assert!(!owner.borrow().test_services_on_worker());
     assert!(!RunningProcessOwner::finish_exit(&owner, request));
+    drop(residents);
+    dispose_retired(owner, windows, None, cx).await;
+}
+
+pub(super) async fn verify_resume_noncommit(
+    owner: Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    cx: &mut AsyncApp,
+) {
+    let windows: Vec<_> = owner
+        .borrow()
+        .test_process()
+        .windows
+        .shells()
+        .iter()
+        .map(|shell| shell.window())
+        .collect();
+    assert_eq!(windows.len(), 2);
+    let retired = owner
+        .borrow()
+        .test_services()
+        .graph()
+        .unwrap()
+        .home()
+        .health()
+        .generation()
+        .unwrap();
+    let original = publication_evidence(&owner.borrow().interrupted_exit_session().unwrap());
+    let error = RunningProcessOwner::retire_and_prepare_interrupted_exit(
+        &owner,
+        request,
+        retired,
+        configuration(),
+        SyndicTimestamp::from_unix_millis(2),
+        CommandCancellation::new(),
+        cx,
+    )
+    .await
+    .unwrap_err();
+    {
+        let retained = owner.borrow();
+        retained
+            .interrupted_exit_graph_retirement_result(request)
+            .unwrap();
+        assert_eq!(
+            retained
+                .interrupted_exit_candidate_result(request)
+                .unwrap_err(),
+            error
+        );
+        assert!(retained.interrupted_exit_services_result(request).is_err());
+        assert!(retained.interrupted_exit_appearance(request).is_err());
+        assert!(!retained.test_services_on_worker());
+        assert!(retained.test_services().graph().is_none());
+        assert!(retained.exit_requested());
+        let session = retained.interrupted_exit_session().unwrap();
+        assert_eq!(publication_evidence(&session), original);
+        let RunningShutdownSession::Resuming(resume) = &*session else {
+            panic!("resume outcome lost")
+        };
+        assert!(matches!(
+            resume.exit(),
+            crate::exit_session::InterruptedExit::Executed(ExitSessionExecution::Committed {
+                later_failure: Some(_),
+                ..
+            })
+        ));
+        assert!(matches!(
+            resume.outcome(),
+            Some(crate::exit_session::ResumeSessionOutcome::NotCommitted { .. })
+        ));
+        assert!(resume.result_revision().is_some());
+        assert_eq!(
+            retained.test_process().windows.shells().len(),
+            windows.len()
+        );
+        for (index, window) in windows.iter().enumerate() {
+            assert_eq!(
+                retained.test_process().windows.shells()[index].window(),
+                *window
+            );
+        }
+    }
+    assert!(!RunningProcessOwner::finish_exit(&owner, request));
+    for window in &windows {
+        window
+            .update(cx, |root, _, app| {
+                assert!(root.test_shell_construction_retired());
+                assert_eq!(root.test_exit_presentation().0, "Exiting…");
+                let mount = root.controller().unwrap().composer_mount().unwrap();
+                let composer = mount.read(app).contribution().unwrap();
+                let resident = composer.read(app);
+                assert!(!resident.gpui_input().read(app).is_enabled());
+                assert_eq!(
+                    Some(resident.recovery_snapshot().unwrap().close_ticket()),
+                    owner
+                        .borrow()
+                        .test_captured_recovery_ticket(composer.entity_id())
+                );
+            })
+            .unwrap();
+    }
+    let candidate = owner.borrow().test_take_interrupted_exit_candidate();
+    drop(candidate.session);
+    let home = cx
+        .background_executor()
+        .spawn(async move { candidate.candidate.abort() })
+        .await;
+    dispose_retired(owner, windows, Some(home), cx).await;
+}
+
+async fn dispose_retired(
+    owner: Rc<RefCell<RunningProcessOwner>>,
+    windows: Vec<gpui::WindowHandle<crate::main_window::MainWindowShellRoot>>,
+    home: Option<beryl_home_store::HomeStore>,
+    cx: &mut AsyncApp,
+) {
     let mut running = Rc::try_unwrap(owner)
         .ok()
         .unwrap()
@@ -206,13 +323,10 @@ pub(super) async fn verify_and_dispose(
         assert!(app.windows().is_empty());
     })
     .unwrap();
-    drop(residents);
     cx.background_executor()
         .spawn(async move {
             assert!(running.services.graph().is_none());
-            running
-                .services
-                .test_retired_service_home()
+            home.or_else(|| running.services.test_retired_service_home())
                 .unwrap()
                 .close()
                 .unwrap();
