@@ -117,6 +117,7 @@ impl StartupCommands {
 }
 
 pub(crate) struct StartedProcess {
+    pub(crate) configuration: AppServiceConfiguration,
     pub(crate) services: ProcessServiceOwner,
     pub(crate) windows: PublishedMainWindowRestoreSet,
     pub(crate) appearance: Entity<GpuiAppearanceWindowSet>,
@@ -206,6 +207,7 @@ impl Controller {
                     let (sender, receiver) = futures_channel::oneshot::channel();
                     let commands = self.commands.clone();
                     let completion = self.completion.clone();
+                    let configuration = self.configuration.services.clone();
                     let mut worker = self.custody.worker;
                     let surface = self.custody.surface.take();
                     let cancellation = cx
@@ -221,6 +223,7 @@ impl Controller {
                                     MainWindowNativeRestoreSetCompletion::Published(windows) => {
                                         commands.0.borrow_mut().stage = Stage::Running;
                                         let result = StartedProcess {
+                                            configuration,
                                             services: worker.services.take().expect(
                                                 "native success retains its complete graph",
                                             ),

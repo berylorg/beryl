@@ -11,7 +11,6 @@ pub(super) async fn assert_refused(
             owner,
             request,
             retired,
-            configuration(),
             CommandCancellation::new(),
             cx,
         )
@@ -48,7 +47,6 @@ pub(super) async fn verify_refusals(
                 owner,
                 supplied,
                 supplied_retired,
-                configuration(),
                 cancellation,
                 cx,
             )

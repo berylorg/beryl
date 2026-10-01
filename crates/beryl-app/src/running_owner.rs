@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use gpui::{App, Entity};
 
 use crate::{
-    app_services::ProcessServiceOwner,
+    app_services::{AppServiceConfiguration, ProcessServiceOwner},
     main_window::PublishedMainWindowRestoreSet,
     startup_owner::{OwnedStartupSurface, RunningExitCommands, StartedProcess},
     theme_runtime::GpuiAppearanceWindowSet,
@@ -78,6 +78,7 @@ pub(crate) struct RunningProcessOwner {
 }
 
 pub(crate) struct RunningProcess {
+    configuration: AppServiceConfiguration,
     services: Option<ProcessServiceOwner>,
     pub(crate) windows: PublishedMainWindowRestoreSet,
     appearance: Entity<GpuiAppearanceWindowSet>,
@@ -98,6 +99,7 @@ impl RunningProcessOwner {
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
             process: RunningProcess {
+                configuration: process.configuration,
                 services: Some(process.services),
                 windows: process.windows,
                 appearance: process.appearance,
@@ -181,6 +183,7 @@ impl RunningProcessOwner {
         assert!(!self.observing_initial_work);
         assert!(!self.waiting_for_exit);
         StartedProcess {
+            configuration: self.process.configuration,
             services: self.process.services.expect("services retained on GUI"),
             windows: self.process.windows,
             appearance: self.process.appearance,

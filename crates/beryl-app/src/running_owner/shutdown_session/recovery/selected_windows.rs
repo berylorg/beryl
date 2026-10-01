@@ -1,5 +1,4 @@
 use super::*;
-use crate::app_services::AppServiceConfiguration;
 use crate::main_window::MainWindowShellRoot;
 use crate::theme_runtime::GpuiAppearanceWindowSet;
 use beryl_home_store::{CommandCancellation, HomeGeneration};
@@ -59,7 +58,6 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,
-        configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(preparation_retry::RecoveryPreparationFailure),
@@ -75,6 +73,7 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
+        let configuration = owner.borrow().process.configuration.clone();
         Self::recover_interrupted_exit_resident_windows(
             owner,
             request,
@@ -94,7 +93,6 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,
-        configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(preparation_retry::RecoveryPreparationFailure),
@@ -113,6 +111,7 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
+        let configuration = owner.borrow().process.configuration.clone();
         Self::prepare_retired_interrupted_exit_resident_windows_pass(
             owner,
             request,
@@ -132,7 +131,6 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,
-        configuration: AppServiceConfiguration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -149,6 +147,7 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
+        let configuration = owner.borrow().process.configuration.clone();
         Self::complete_prepared_interrupted_exit_resident_windows_pass(
             owner,
             request,

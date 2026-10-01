@@ -36,6 +36,7 @@ fn run(with_surface: bool, lose_surface: bool) {
             support::open(path)
         }
     });
+    let expected_theme = input.services.theme;
     let finished = Rc::new(Cell::new(false));
     let observed = finished.clone();
     Application::new()
@@ -47,6 +48,7 @@ fn run(with_surface: bool, lose_surface: bool) {
                     let StartupCompletion::Running(running) = result else {
                         panic!("expected native startup success")
                     };
+                    assert_eq!(running.configuration.theme, expected_theme);
                     let ids = running.windows.window_ids().to_vec();
                     let main = running.windows.shells()[0].window();
                     let auxiliary = running
@@ -132,6 +134,7 @@ fn run(with_surface: bool, lose_surface: bool) {
                             .expect("cleanup task released owner")
                             .into_inner()
                             .test_into_process();
+                        assert_eq!(running.configuration.theme, expected_theme);
                         if with_surface {
                             let request = running.commands.next_exit().await;
                             assert!(running.commands.finish_exit(&request));

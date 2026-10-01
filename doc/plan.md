@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 903: Continue Retired Threadless Recovery (finished)
+# Phase 904: Retain Recovery Service Configuration In The Running Owner (finished)
 
-Threadless recovery supports exact-request continuation from completed retirement through
-preparation retries and coherent completion without retiring again. All 14 focused native cases
-passed (run `8ab8c3dc-69b1-49e0-88a2-5801fcaad5d2`), including abandoned retirement for failed and
-committed Exit outcomes and refused continuations. The app library check, scoped formatting and
-independent lifecycle review passed. Automatic supervisor mounting remains under 702.
+Startup transfers service configuration into the running owner, outside replaceable graphs;
+selected-window and threadless recovery use it across initial and continued preparation. All 27
+focused native recovery and startup ownership cases passed (run
+`44d7ddcf-1498-4c29-9314-80a74af530aa`). The app library check, scoped formatting and independent
+lifecycle review passed. Automatic supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

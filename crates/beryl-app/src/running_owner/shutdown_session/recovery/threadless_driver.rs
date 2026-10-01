@@ -1,5 +1,4 @@
 use super::*;
-use crate::app_services::AppServiceConfiguration;
 use crate::main_window::MainWindowShellRoot;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 use beryl_home_store::{CommandCancellation, HomeGeneration};
@@ -52,7 +51,6 @@ impl RunningProcessOwner {
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
-        configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
@@ -116,7 +114,6 @@ impl RunningProcessOwner {
             request,
             retired,
             window,
-            configuration,
             at,
             cancellation,
             failed,
@@ -130,7 +127,6 @@ impl RunningProcessOwner {
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
-        configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
@@ -144,7 +140,6 @@ impl RunningProcessOwner {
             request,
             retired,
             window,
-            configuration,
             at,
             cancellation,
             failed,
@@ -158,7 +153,6 @@ impl RunningProcessOwner {
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
-        configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),
@@ -204,6 +198,7 @@ impl RunningProcessOwner {
             Ok(())
         })
         .map_err(|error| error.to_string())??;
+        let configuration = owner.borrow().process.configuration.clone();
         Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
