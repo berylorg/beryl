@@ -98,6 +98,7 @@ impl RunningProcessOwner {
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
             session: Rc::new(RefCell::new(Some(RunningShutdownSession::Unwound))),
+            previous_resume: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(Some(CandidateSettlement::Services(Ok(graph))))),
             service_validation: Rc::new(RefCell::new(None)),
             theme_activation: Rc::new(RefCell::new(None)),

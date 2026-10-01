@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 865: Qualify Fresh Candidate Convergence After Resume Failure (finished)
+# Phase 866: Retain Explicit Noncommitted Resume Retry (finished)
 
-The next constructed candidate now reaches actual settlement in the two-window native fixture:
-committed resume validates exact Running without repetition, while noncommit remains fenced.
-All ten selected native cases passed (`40899f71-75dd-4449-b5b4-7cb84d53674b`), preserving original
-Exit/resume evidence, window/draft fences and stale/duplicate refusal through clean home reopen.
-Scoped formatting and independent lifecycle review passed. Explicit noncommit retry, unresolved
-reconciliation disposal and automatic supervisor composition remain pending.
+The exact running request now retries proven resume noncommit on its retained candidate after
+fresh validation, preserving one previous outcome until explicit transfer. Ten native cases passed
+(`533c3fd5-b526-48cd-afda-4d782eb10840`), including successful retry, stale/duplicate and occupied
+custody refusal, committed/uncertain refusal and preserved window/draft fences. Production Cargo
+check, scoped formatting and independent lifecycle review passed; unwind restoration was reviewed
+structurally. Automatic supervisor scheduling and unresolved reconciliation disposal remain pending.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 
@@ -258,7 +258,9 @@ the typed failure and original session evidence. Phase 864 transfers that dispos
 exact caller, freeing the slot for another candidate construction without releasing Exit fences.
 Phase 865 qualifies actual settlement of that next candidate: committed resume validates its exact
 Running result without repeating the command; proven noncommit remains fenced pending explicit retry.
-Unresolved reconciliation disposal qualification and resume retry composition remain pending.
+Phase 866 supplies explicit exact-request noncommit retry with fresh validation and one retained
+previous outcome, including exact transfer before subsequent retry admission. Automatic scheduling
+and unresolved reconciliation disposal qualification remain pending.
 Phases 762–763 corrected and canonically qualified the empty-resident index ownership defect
 recorded in the [custody evidence](failures/initial-composer-custody.md).
 No full running-shell recovery claim is made.

@@ -310,6 +310,20 @@ pub(super) async fn verify_resume_failure(
             })
             .unwrap();
     }
+    if fault != beryl_home_store::test_faults::FaultPoint::BeforeCommit {
+        cx.update(|app| {
+            assert!(
+                RunningProcessOwner::retry_interrupted_exit_resume(
+                    &owner,
+                    request,
+                    app,
+                    |_, _| panic!("unproven noncommit retry")
+                )
+                .is_err()
+            );
+        })
+        .unwrap();
+    }
     if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
         let resume_revision = {
             let retained = owner.borrow();
@@ -475,6 +489,9 @@ pub(super) async fn verify_resume_failure(
                 _ => unreachable!(),
             }
         }
+        if fault == beryl_home_store::test_faults::FaultPoint::BeforeCommit {
+            verify_resume_retry(&owner, request, cx).await;
+        }
         assert_eq!(
             original,
             publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
@@ -543,6 +560,107 @@ pub(super) async fn verify_resume_failure(
         })
         .await;
     dispose_retired(owner, windows, Some(home), cx).await;
+}
+
+async fn verify_resume_retry(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    request: &crate::startup_owner::RunningExitRequest,
+    cx: &mut AsyncApp,
+) {
+    use crate::exit_session::ResumeSessionOutcome;
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume(request)
+            .is_err()
+    );
+    let (sender, receiver) = futures_channel::oneshot::channel();
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume(
+                owner,
+                &request.test_foreign(),
+                app,
+                |_, _| panic!("stale retry")
+            )
+            .is_err()
+        );
+        RunningProcessOwner::retry_interrupted_exit_resume(owner, request, app, move |owner, _| {
+            assert!(owner.borrow().interrupted_exit_session().is_some());
+            sender.send(()).unwrap();
+        })
+        .unwrap();
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume(owner, request, app, |_, _| panic!(
+                "duplicate retry"
+            ))
+            .is_err()
+        );
+        assert!(
+            owner
+                .borrow_mut()
+                .take_previous_interrupted_exit_resume(request)
+                .is_err()
+        );
+    })
+    .unwrap();
+    receiver.await.unwrap();
+    owner
+        .borrow()
+        .interrupted_exit_candidate_result(request)
+        .unwrap();
+    {
+        let retained = owner.borrow();
+        let session = retained.interrupted_exit_session().unwrap();
+        let RunningShutdownSession::Resuming(resume) = &*session else {
+            panic!("resume lost")
+        };
+        assert!(matches!(
+            resume.outcome(),
+            Some(ResumeSessionOutcome::Committed {
+                later_failure: None,
+                ..
+            })
+        ));
+    }
+    cx.update(|app| {
+        assert_eq!(
+            RunningProcessOwner::retry_interrupted_exit_resume(owner, request, app, |_, _| {
+                panic!("occupied previous outcome")
+            })
+            .unwrap_err(),
+            "Interrupted Exit resume retry custody is unavailable"
+        );
+    })
+    .unwrap();
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume(&request.test_foreign())
+            .is_err()
+    );
+    assert!(matches!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume(request)
+            .unwrap(),
+        ResumeSessionOutcome::NotCommitted { .. }
+    ));
+    assert!(
+        owner
+            .borrow_mut()
+            .take_previous_interrupted_exit_resume(request)
+            .is_err()
+    );
+    cx.update(|app| {
+        assert!(
+            RunningProcessOwner::retry_interrupted_exit_resume(owner, request, app, |_, _| panic!(
+                "committed retry"
+            ))
+            .is_err()
+        );
+    })
+    .unwrap();
 }
 
 async fn dispose_retired(

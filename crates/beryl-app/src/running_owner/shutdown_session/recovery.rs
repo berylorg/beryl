@@ -11,6 +11,7 @@ mod resident;
 pub(crate) use resident::ResidentPreparationKey;
 mod resident_retirement;
 mod resume;
+mod resume_retry;
 mod retirement;
 mod service_preparation;
 mod service_publication;
@@ -23,6 +24,7 @@ pub(crate) use settlement::InterruptedExitCandidate;
 pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
+    previous_resume: Rc<RefCell<Option<crate::exit_session::ResumeSessionOutcome>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
     service_validation: Rc<RefCell<Option<Result<(), String>>>>,
     theme_activation: Rc<RefCell<Option<Result<(), String>>>>,
@@ -56,6 +58,7 @@ impl RunningProcessOwner {
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
             session: Rc::new(RefCell::new(None)),
+            previous_resume: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),
             service_validation: Rc::new(RefCell::new(None)),
             theme_activation: Rc::new(RefCell::new(None)),

@@ -47,7 +47,7 @@ pub(crate) enum ResumeSessionOutcome {
 }
 
 impl ResumeSessionOutcome {
-    pub(super) fn known_commit(&self) -> Option<bool> {
+    pub(crate) fn known_commit(&self) -> Option<bool> {
         match self {
             Self::NotCommitted { .. } => Some(false),
             Self::Committed { .. } => Some(true),
