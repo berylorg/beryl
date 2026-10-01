@@ -54,6 +54,36 @@ impl ResidentRecoveryWindow {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn interrupted_exit_resident_windows(
+        &mut self,
+        request: &RunningExitRequest,
+        app: &App,
+        mut configure: impl FnMut(
+            WindowHandle<MainWindowShellRoot>,
+        ) -> Result<MainWindowConversationComposerConfigurator, String>,
+    ) -> Result<Vec<ResidentRecoveryWindow>, String> {
+        let _driver = self.reserve_interrupted_exit_driver(request)?;
+        let shells = self.process.windows.shells();
+        if shells.is_empty() {
+            return Err(
+                "Interrupted Exit requires the complete retained selected window set".into(),
+            );
+        }
+        for shell in shells {
+            Self::validate_interrupted_exit_selected_window(shell.window(), app)?;
+        }
+        shells
+            .iter()
+            .map(|shell| {
+                let window = shell.window();
+                Ok(ResidentRecoveryWindow::unprepared(
+                    window,
+                    configure(window)?,
+                ))
+            })
+            .collect()
+    }
+
     pub(crate) async fn recover_interrupted_exit_resident_windows(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
@@ -232,13 +262,21 @@ impl RunningProcessOwner {
             );
         }
         for entry in windows {
-            let root = entry.window.read(app).map_err(|error| error.to_string())?;
-            if !root
-                .controller()
-                .is_some_and(|controller| controller.composer_mount().is_some())
-            {
-                return Err("Interrupted Exit requires selected windows".into());
-            }
+            Self::validate_interrupted_exit_selected_window(entry.window, app)?;
+        }
+        Ok(())
+    }
+
+    fn validate_interrupted_exit_selected_window(
+        window: WindowHandle<MainWindowShellRoot>,
+        app: &App,
+    ) -> Result<(), String> {
+        let root = window.read(app).map_err(|error| error.to_string())?;
+        if !root
+            .controller()
+            .is_some_and(|controller| controller.composer_mount().is_some())
+        {
+            return Err("Interrupted Exit requires selected windows".into());
         }
         Ok(())
     }

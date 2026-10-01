@@ -59,6 +59,18 @@ pub(super) async fn verify_and_dispose(
     let previous = owner.borrow().test_process_appearance();
     let window = owner.borrow().test_process().windows.shells()[0].window();
     let foreign = request.test_foreign();
+    cx.update(|app| {
+        let result = owner
+            .borrow_mut()
+            .interrupted_exit_resident_windows(request, app, |_| {
+                panic!("threadless window configuration")
+            });
+        assert_eq!(
+            result.err().unwrap(),
+            "Interrupted Exit requires selected windows"
+        );
+    })
+    .unwrap();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     for (supplied, cancellation, occupied) in [

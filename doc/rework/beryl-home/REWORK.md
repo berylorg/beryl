@@ -485,6 +485,7 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] The running owner derives complete ordered selected-window recovery inputs under exact-request admission, validating shells before configurator factories and releasing partial inputs on refusal.
 - [x] Retained-shell admission derives the resident environment and bounded cleanup ledger from composer configuration with exact source/history validation and configuration-derived adoption facts.
 - [x] Resident preparation derives exact captured resident and close-ticket identity through retained native shells, preserving transferred retirement custody on refusal.
 - [x] Complete selected-window recovery holds one driver reservation from initial retirement through completion, retaining fresh appearance and partial attachment for prepared continuation.

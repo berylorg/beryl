@@ -54,9 +54,50 @@ pub(super) async fn verify_and_dispose(
     }
     let make_entry =
         |window| ResidentRecoveryWindow::unprepared(window, Box::new(resident_fixture::configure));
-    let mut entries: Vec<_> = windows.iter().copied().map(make_entry).collect();
     let mut appearance = None;
     let foreign = request.test_foreign();
+    let mut entries = cx
+        .update(|app| {
+            let mut retained = owner.borrow_mut();
+            assert!(
+                retained
+                    .interrupted_exit_resident_windows(&foreign, app, |_| {
+                        panic!("foreign window configuration")
+                    })
+                    .is_err()
+            );
+            let mut configured = Vec::new();
+            let mut dropped = std::rc::Weak::new();
+            assert!(
+                retained
+                    .interrupted_exit_resident_windows(request, app, |window| {
+                        configured.push(window);
+                        if configured.len() == 2 {
+                            return Err("configuration refused".into());
+                        }
+                        let capture = Rc::new(());
+                        dropped = Rc::downgrade(&capture);
+                        Ok(Box::new(move |selection| {
+                            let _retained = &capture;
+                            resident_fixture::configure(selection)
+                        }))
+                    })
+                    .is_err()
+            );
+            assert_eq!(configured, windows);
+            assert!(dropped.upgrade().is_none());
+            assert!(retained.test_services().graph().is_some());
+            configured.clear();
+            let entries = retained
+                .interrupted_exit_resident_windows(request, app, |window| {
+                    configured.push(window);
+                    Ok(Box::new(resident_fixture::configure))
+                })
+                .unwrap();
+            assert_eq!(configured, windows);
+            entries
+        })
+        .unwrap();
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     for (attempt, cancellation) in [(&foreign, CommandCancellation::new()), (request, cancelled)] {
@@ -259,6 +300,18 @@ pub(super) async fn verify_and_dispose(
             break;
         }
         assert!(std::time::Instant::now() < deadline);
+        cx.update(|app| {
+            let result = owner
+                .borrow_mut()
+                .interrupted_exit_resident_windows(request, app, |_| {
+                    panic!("competing window configuration")
+                });
+            assert_eq!(
+                result.err().unwrap(),
+                "Interrupted Exit recovery is already being driven"
+            );
+        })
+        .unwrap();
         assert_eq!(
             RunningProcessOwner::await_interrupted_exit_completion(
                 &owner,
