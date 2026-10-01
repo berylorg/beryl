@@ -310,6 +310,63 @@ pub(super) async fn verify_resume_failure(
             })
             .unwrap();
     }
+    if fault != beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        cx.update(|app| {
+            assert!(
+                RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
+                    &owner,
+                    &request.test_foreign(),
+                    retired,
+                    app,
+                    |_, _| panic!("stale completion")
+                )
+                .is_err()
+            );
+            RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
+                &owner,
+                request,
+                retired,
+                app,
+                move |owner, _| {
+                    assert!(!owner.borrow().test_services_on_worker());
+                    sender.send(()).unwrap();
+                },
+            )
+            .unwrap();
+            assert!(owner.borrow().test_services_on_worker());
+            assert!(
+                RunningProcessOwner::dispose_failed_interrupted_exit_candidate(
+                    &owner,
+                    request,
+                    retired,
+                    app,
+                    |_, _| panic!("duplicate completion")
+                )
+                .is_err()
+            );
+        })
+        .unwrap();
+        receiver.await.unwrap();
+        assert_eq!(
+            owner
+                .borrow()
+                .interrupted_exit_candidate_result(request)
+                .unwrap_err(),
+            error
+        );
+        assert_eq!(
+            original,
+            publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+        );
+        assert!(!RunningProcessOwner::finish_exit(&owner, request));
+        assert_eq!(
+            owner.borrow().test_process().windows.shells().len(),
+            windows.len()
+        );
+        dispose_retired(owner, windows, None, cx).await;
+        return;
+    }
     let reconciliation = {
         let borrowed = owner.borrow();
         let retained = borrowed.interrupted_exit_session().unwrap();

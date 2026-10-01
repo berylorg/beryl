@@ -10,6 +10,7 @@ pub(crate) struct InterruptedExitCandidate {
 pub(super) enum CandidateSettlement {
     Pending,
     Published,
+    DisposedFailure(CandidateSettlementError),
     Constructed(Result<HomeRecoveryCandidate, crate::app_services::RetiredHomeRecoveryError>),
     Services(
         Result<
@@ -244,6 +245,7 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit request changed".into());
         }
         match recovery.settlement.borrow().as_ref() {
+            Some(CandidateSettlement::DisposedFailure(error)) => Err(error.to_string()),
             Some(CandidateSettlement::Returned { result, .. }) => {
                 result.as_ref().map(|_| ()).map_err(ToString::to_string)
             }
