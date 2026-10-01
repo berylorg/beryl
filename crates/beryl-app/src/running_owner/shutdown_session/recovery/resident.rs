@@ -1,6 +1,7 @@
 use super::*;
 mod attachment;
 mod drain;
+mod window;
 use crate::app_services::recovery_graph::PreparedRecoveryServiceGraph;
 use crate::main_window::{
     MainWindowComposerCandidateSource, MainWindowComposerRecoveryPreparation,

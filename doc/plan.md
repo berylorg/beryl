@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 888: Compose Initial Multiwindow Recovery Through Completion (finished)
+# Phase 889: Admit Recovery Residents Through Retained Shells (finished)
 
-The complete selected-window set now recovers from initial retirement through completion under one
-driver reservation, retaining fresh appearance and partial attachment for prepared continuation.
-All 37 focused native cases passed (run `3b1cde58-fded-47c0-b95f-7314671bb6f9`), alongside the app
-library check, scoped formatting and independent lifecycle/persistence review. Production supervisor
-mounting remains under 702; continuation uses the retained stage rather than replaying initial work.
+Resident preparation now derives the captured resident and close ticket from the exact retained
+native shell, preserving caller retirement custody on refusal. All 32 focused native recovery
+cases passed (run `deb5c8e9-cca6-4b06-881a-e0873b3a2271`), alongside the app library check,
+scoped formatting and independent lifecycle/persistence review. Automatic supervisor mounting
+remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

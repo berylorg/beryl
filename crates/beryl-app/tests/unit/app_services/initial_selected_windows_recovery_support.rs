@@ -152,20 +152,62 @@ pub(super) async fn verify_and_dispose(
         assert!(owner.borrow().exit_requested());
         assert!(owner.borrow().test_services().graph().is_none());
         assert!(!residents[index].2.read(app).is_enabled());
-        retirements[index] = residents[index]
-            .0
-            .update(app, |mount, cx| {
-                mount.take_interrupted_exit_retirement(residents[index].4, cx)
-            })
-            .unwrap();
-        assert!(retirements[index].is_some());
+        assert!(retirements[index].is_none());
+        assert!(
+            RunningProcessOwner::prepare_interrupted_exit_window_resident(
+                &owner,
+                &foreign,
+                windows[index],
+                fresh,
+                &mut retirements[index],
+                |_, _, _| panic!("foreign resident environment"),
+                app,
+                |_, _| panic!("foreign resident completion"),
+            )
+            .is_err()
+        );
+        assert!(retirements[index].is_none());
+        assert!(
+            RunningProcessOwner::prepare_interrupted_exit_window_resident(
+                &owner,
+                request,
+                windows[index],
+                retired,
+                &mut retirements[index],
+                |_, _, _| panic!("retired generation environment"),
+                app,
+                |_, _| panic!("retired generation completion"),
+            )
+            .is_err()
+        );
+        assert_eq!(
+            retirements[index].as_ref().unwrap().close_ticket(),
+            residents[index].4
+        );
+        if index == 0 {
+            assert!(
+                RunningProcessOwner::prepare_interrupted_exit_window_resident(
+                    &owner,
+                    request,
+                    windows[1],
+                    fresh,
+                    &mut retirements[index],
+                    |_, _, _| panic!("foreign retirement environment"),
+                    app,
+                    |_, _| panic!("foreign retirement completion"),
+                )
+                .is_err()
+            );
+            assert_eq!(
+                retirements[index].as_ref().unwrap().close_ticket(),
+                residents[index].4
+            );
+        }
         let captured = currents.clone();
-        RunningProcessOwner::prepare_interrupted_exit_resident(
+        RunningProcessOwner::prepare_interrupted_exit_window_resident(
             &owner,
             request,
-            &residents[index].1,
-            residents[index].4,
-            windows[index].into(),
+            windows[index],
             fresh,
             &mut retirements[index],
             move |seed, selection, window| {
