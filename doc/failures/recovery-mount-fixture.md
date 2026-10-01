@@ -57,6 +57,15 @@ formatting and independent lifecycle/persistence review passed. No production so
 This qualifies one selected window with committed-original and candidate-reconciled exact-new
 outcomes, not every reconciliation result or the automatic recovery supervisor.
 
+The same envelope-comparison mistake recurred in the composed threadless fixture in phase 884.
+Independent review identified it while run `b6f454ad-f373-478c-ba23-c05edcaee8f0` was executing;
+that run passed all 27 existing regressions and three new interruption cases before the committed
+case aborted. The correction compares original publication evidence across all three session
+forms. The exact printed failed home `.tmpltq1GA` was verified, removed with `cleanup-dir.exe`
+after process exit, and confirmed absent.
+Corrected run `58796fa3-cccf-4a34-ab2d-f93af1e8daf4` passed all five composed threadless cases;
+independent review accepted the immutable-evidence comparison.
+
 ## Resident Disposal Timing
 
 The selected recovery fixture holds candidate-backed editor resources without publishing its

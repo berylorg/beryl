@@ -485,6 +485,8 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [x] Threadless recovery holds one driver reservation from initial retirement through completion,
+  retaining fresh appearance for continuation after interrupted attachment.
 - [x] Standalone resident and threadless attachment share recovery driver admission with preparation
   and publication, preserving cancellation, stale-delivery and abandoned-wait custody for continuation.
 - [x] Extended the shared exact-request recovery driver reservation through composed threadless

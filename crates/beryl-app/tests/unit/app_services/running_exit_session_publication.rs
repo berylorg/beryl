@@ -28,6 +28,11 @@ mod retirement_driver {
     include!("recovery_retirement_driver_support.rs");
 }
 
+mod threadless_driver {
+    use super::*;
+    include!("recovery_threadless_composition_support.rs");
+}
+
 mod selected_preparation {
     use super::*;
     include!("selected_recovery_preparation_support.rs");
@@ -171,6 +176,7 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    Whole(RetirementDelivery),
     DrivenResumeFailure(FaultPoint),
     ResumeFailure(FaultPoint),
     Ready,
@@ -788,6 +794,12 @@ fn run_with_windows(
                                 assert!(owner.borrow_mut().retire_interrupted_exit_residents(&request, app).is_err());
                             }).unwrap();
                             owner.borrow_mut().retain_interrupted_exit_session(&request).unwrap();
+                            if let RecoveryPublicationDelivery::Whole(delivery) = publication_delivery {
+                                threadless_driver::verify_and_dispose(owner, &request, delivery, &faults, cx).await;
+                                observed.set(true);
+                                cx.update(|app| app.quit()).unwrap();
+                                return;
+                            }
                             if selected {
                                 if let RecoveryPublicationDelivery::ResumeFailure(resume_fault) | RecoveryPublicationDelivery::DrivenResumeFailure(resume_fault) = publication_delivery {
                                     faults.fail_next(resume_fault);

@@ -75,7 +75,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    async fn retry_interrupted_exit_preparation_attempts(
+    pub(super) async fn retry_interrupted_exit_preparation_attempts(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         generation: HomeGeneration,

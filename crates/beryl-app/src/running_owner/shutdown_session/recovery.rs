@@ -24,6 +24,7 @@ mod service_validation;
 mod settlement;
 mod theme_activation;
 mod threadless;
+mod threadless_driver;
 pub(crate) use settlement::InterruptedExitCandidate;
 
 pub(in crate::running_owner) struct InterruptedExitRecovery {

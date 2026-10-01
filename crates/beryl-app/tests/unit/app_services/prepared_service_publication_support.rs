@@ -272,6 +272,9 @@ pub(super) async fn verify(
         let delivered = receiver.await.unwrap();
         if mode == "publish" {
             match delivery {
+                RecoveryPublicationDelivery::Whole(_) => {
+                    panic!("whole recovery uses its composed driver")
+                }
                 RecoveryPublicationDelivery::ResumeFailure(_)
                 | RecoveryPublicationDelivery::DrivenResumeFailure(_) => {
                     panic!("failed resume cannot reach service publication")

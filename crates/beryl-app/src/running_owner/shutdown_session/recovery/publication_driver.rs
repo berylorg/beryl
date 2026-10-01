@@ -66,7 +66,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    async fn publish_and_complete_interrupted_exit_pass(
+    pub(super) async fn publish_and_complete_interrupted_exit_pass(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
         retired: HomeGeneration,
