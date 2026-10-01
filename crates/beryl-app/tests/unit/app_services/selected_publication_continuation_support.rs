@@ -4,7 +4,7 @@ pub(super) async fn assert_refused(
     cx: &mut AsyncApp,
 ) {
     assert!(
-        RunningProcessOwner::activate_and_complete_interrupted_exit_selected_windows(
+        RunningProcessOwner::recover_published_interrupted_exit(
             owner,
             request,
             CommandCancellation::new(),
@@ -78,21 +78,17 @@ pub(super) async fn verify(
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     assert!(
-        RunningProcessOwner::activate_and_complete_interrupted_exit_selected_windows(
-            owner, request, cancelled, cx,
-        )
-        .await
-        .is_err()
+        RunningProcessOwner::recover_published_interrupted_exit(owner, request, cancelled, cx,)
+            .await
+            .is_err()
     );
     let mut activation_cx = cx.clone();
-    let mut activation = Box::pin(
-        RunningProcessOwner::activate_and_complete_interrupted_exit_selected_windows(
-            owner,
-            request,
-            CommandCancellation::new(),
-            &mut activation_cx,
-        ),
-    );
+    let mut activation = Box::pin(RunningProcessOwner::recover_published_interrupted_exit(
+        owner,
+        request,
+        CommandCancellation::new(),
+        &mut activation_cx,
+    ));
     assert!(
         activation
             .as_mut()

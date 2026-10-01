@@ -6,6 +6,35 @@ use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
+    pub(crate) async fn recover_published_interrupted_exit(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        cancellation: CommandCancellation,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        let threadless = cx
+            .update(|app| -> Result<_, String> {
+                let mut owner = owner.borrow_mut();
+                let _driver = owner.reserve_interrupted_exit_driver(request)?;
+                if cancellation.is_cancelled() {
+                    return Err("Interrupted Exit preparation was cancelled".into());
+                }
+                Ok(owner.interrupted_exit_threadless_window(app)?.is_some())
+            })
+            .map_err(|error| error.to_string())??;
+        let appearance = if threadless {
+            owner
+                .borrow_mut()
+                .interrupted_exit_threadless_appearance(request)?
+        } else {
+            owner
+                .borrow_mut()
+                .interrupted_exit_selected_appearance(request)?
+        };
+        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
+            .await
+    }
+
     pub(crate) async fn recover_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,

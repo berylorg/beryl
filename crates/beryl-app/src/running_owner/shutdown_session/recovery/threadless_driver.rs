@@ -7,7 +7,7 @@ use std::num::NonZeroUsize;
 use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
-    fn interrupted_exit_threadless_appearance(
+    pub(super) fn interrupted_exit_threadless_appearance(
         &mut self,
         request: &RunningExitRequest,
     ) -> Result<Entity<GpuiAppearanceWindowSet>, String> {
@@ -18,19 +18,6 @@ impl RunningProcessOwner {
             .threadless_appearance
             .clone()
             .ok_or_else(|| "Interrupted Exit threadless appearance is not prepared".into())
-    }
-
-    pub(crate) async fn activate_and_complete_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
-        cancellation: CommandCancellation,
-        cx: &mut AsyncApp,
-    ) -> Result<(), String> {
-        let appearance = owner
-            .borrow_mut()
-            .interrupted_exit_threadless_appearance(request)?;
-        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
     }
 
     pub(crate) async fn bind_and_complete_interrupted_exit_threadless(

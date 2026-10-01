@@ -195,7 +195,7 @@ impl RunningProcessOwner {
         .await
     }
 
-    fn interrupted_exit_selected_appearance(
+    pub(super) fn interrupted_exit_selected_appearance(
         &mut self,
         request: &RunningExitRequest,
     ) -> Result<Entity<GpuiAppearanceWindowSet>, String> {
@@ -205,19 +205,6 @@ impl RunningProcessOwner {
             .appearance
             .clone()
             .ok_or_else(|| "Interrupted Exit selected recovery appearance is not prepared".into())
-    }
-
-    pub(crate) async fn activate_and_complete_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
-        cancellation: CommandCancellation,
-        cx: &mut AsyncApp,
-    ) -> Result<(), String> {
-        let appearance = owner
-            .borrow_mut()
-            .interrupted_exit_selected_appearance(request)?;
-        Self::activate_and_complete_interrupted_exit(owner, request, &appearance, cancellation, cx)
-            .await
     }
 
     pub(crate) async fn bind_and_complete_interrupted_exit_selected_windows(
