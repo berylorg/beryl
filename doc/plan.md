@@ -89,13 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 901: Complete Prepared Selected-Window Recovery (finished)
+# Phase 902: Continue Retired Selected-Window Recovery (finished)
 
-An exact-request continuation completes owner-retained selected-window recovery from prepared
-services through fresh appearance, attachment, publication and reopening without replaying preparation.
-All 28 focused native cases passed (run `78b66230-d5f1-45d7-92cc-f019c1bd8928`), including abandoned
-preparation across three Exit outcomes and refused continuations. The app library check, scoped
-formatting and independent lifecycle review passed. Automatic supervisor mounting remains under 702.
+Owner-retained selected windows support exact-request continuation from completed retirement through
+preparation retries and coherent completion without retiring again. All 28 focused native cases
+passed (run `fc402e46-8359-411f-8486-5c1331b2f070`), including abandoned retirement across three Exit
+outcomes and refused continuations. The app library check, scoped formatting and independent
+lifecycle review passed. Automatic supervisor mounting remains under 702.
 
 # Phase 702: Compose Interrupted Exit Recovery With Graph Retirement (pending)
 

@@ -142,6 +142,64 @@ impl RunningProcessOwner {
             cx,
         )
         .await?;
+        Self::prepare_retired_interrupted_exit_resident_windows_pass(
+            owner,
+            request,
+            retired,
+            windows,
+            configuration,
+            at,
+            appearance,
+            cancellation,
+            failed,
+            cx,
+        )
+        .await
+    }
+
+    pub(super) async fn prepare_retired_interrupted_exit_resident_windows_pass(
+        owner: &Rc<RefCell<Self>>,
+        request: &RunningExitRequest,
+        retired: HomeGeneration,
+        windows: &mut [ResidentRecoveryWindow],
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        appearance: &mut Option<Entity<GpuiAppearanceWindowSet>>,
+        cancellation: CommandCancellation,
+        failed: impl FnMut(preparation_retry::RecoveryPreparationFailure),
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        if cancellation.is_cancelled() {
+            return Err("Interrupted Exit preparation was cancelled".into());
+        }
+        if appearance.is_some()
+            || windows.iter().any(|entry| {
+                entry.preparation.is_some()
+                    || entry.adapters.is_some()
+                    || entry.attached.is_some()
+                    || entry.bound
+                    || entry.configurator.is_none()
+            })
+        {
+            return Err("Interrupted Exit selected recovery inputs are already retained".into());
+        }
+        cx.update(|app| -> Result<(), String> {
+            let owner = owner.borrow();
+            owner.validate_interrupted_exit_resident_windows(windows, app)?;
+            owner.validate_interrupted_exit_preparation(request, retired)?;
+            std::num::NonZeroUsize::new(
+                owner
+                    .process
+                    .appearance
+                    .read(app)
+                    .target()
+                    .snapshot()
+                    .capacity,
+            )
+            .ok_or("Interrupted Exit appearance capacity is unavailable")?;
+            Ok(())
+        })
+        .map_err(|error| error.to_string())??;
         Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
