@@ -435,6 +435,9 @@
   protected same-editor reconstruction; [evidence](../../failures/ordinary-close-recovery.md#failed-resident-capability-acceptance).
   Ordinary-command recovery mounting remains separate.
 - [x] Accepted bounded candidate marker preparation with retained original flight/outcome custody and exact host handoff; [evidence](../../failures/ordinary-close-recovery.md#candidate-marker-preparation-acceptance).
+- [x] Accepted GPUI recoverable native destruction with exact surviving-window identity, bounded
+  unresolved custody and a single aligned canonical dependency graph; [evidence](../../failures/ordinary-close-recovery.md#recoverable-native-destruction-acceptance).
+  Healthy durable restoration and protected editor/claim integration remain ordinary-command work.
 - [x] Accepted composed final teardown with bounded detached read-only sources, exact native cleanup and explicit blocked Quit Anyway; [evidence](../../failures/running-shutdown-retirement.md#final-teardown-acceptance).
 - [x] Clarified complete restore-set validation and the approved native-publication failure exception; [decision evidence](../../failures/target-bootstrap-composition.md#restore-set-native-publication-boundary).
 - [x] Accepted exact empty-session threadless initialization with revision and identity fencing,

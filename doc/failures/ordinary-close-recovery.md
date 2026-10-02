@@ -381,3 +381,34 @@ The last review and claim-adoption corrections remain uncompiled; formatting is 
 worker's 33-path inventory and hashes are retained in `.tmp/ordinary-recovery-integration`.
 All eight exactly identified fixture homes were removed after path/reparse checks; no owned test,
 Cargo or debugger process remains at the checkpoint.
+
+## Recoverable Native Destruction Acceptance
+
+On 2026-10-02, phase 707 accepted GPUI revision
+`1664626feb9e4904b7d8bf4016cbed42da558536`. The owned attempt retains the exact logical window,
+root and platform wrapper through native settlement, distinguishes settled surviving failure from
+uncertainty, and permits a fresh attempt only after settled failure. Partial destruction fences
+native methods and removes physical handles from global dispatch without discarding unresolved
+logical custody. Foreground dispatch avoids native calls under the cross-thread registry lock;
+default quit also waits for unresolved logical cleanup. The [fork evidence](../../../zed-fork/doc/failures/recoverable-native-destruction.md)
+records these invalidated assumptions and their corrections.
+
+Independent lifecycle review accepted the complete source and native boundary. Corrected native
+run `310f7f49-01dd-4c56-847c-69e1151b2e5a` passed 12 cases in 6.457 seconds, including exact
+failure/fresh success, abandoned controls/receivers, stale completions, confirmation cleanup,
+uncertain native settlement with another closing window, and default final-window exit. Local
+and canonical shipped-feature checks passed without test support; all 11 reviewed input hashes
+matched. Native worker stacks were unchanged. Logs remain in `.tmp/ordinary-native-evidence`.
+
+Aligned and pushed widget revisions are scrollbar `756efe9af67c95eef1eb23bfe71e3c6573e21302`,
+text input `5eb31033c95ae2ce3187363ab127d218d7a5413b`, and Settings
+`2f8f526dc910b3132b9190014a1aee5764b7d3ab`. Independent pin/lock review, locked metadata and
+isolated canonical all-target checks passed for all three and Beryl app. Each graph resolves one
+GPUI package. Beryl qualification used committed source baseline `1e1e099b`; pending phase 595
+source was excluded. This accepts the native prerequisite and dependency alignment, not the
+unfinished healthy restoration, editor/claim binding or existing dirty-edit stack correction.
+
+After validation, the mandatory Serena restart returned a 120-second tools-call timeout.
+Implementation stopped under the repository's explicit restart-failure rule; no stale semantic
+results were used. Restore the language server before resuming phase 595. The four exact owned
+canonical checkouts are removed after absolute-path and reparse checks; retained logs remain bounded.

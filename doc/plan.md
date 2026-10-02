@@ -89,21 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 706: Prepare Marker Evidence Through Recovery Candidate Access (finished)
+# Phase 707: Retain Native Windows Through Destruction Failure (finished)
 
-Candidate marker preparation, original flight/outcome custody and exact host handoff passed
-independent persistence/lifecycle review, 133 combined canonical cases and final all-target checks.
-See [acceptance evidence](failures/ordinary-close-recovery.md#candidate-marker-preparation-acceptance),
-including the qualified test-thread-stack limit. Ordinary-command integration remains phase 595.
-
-# Phase 707: Retain Native Windows Through Destruction Failure (wip)
-
-Implement and independently accept the owned GPUI
-[recoverable destruction boundary](../../zed-fork/doc/design.md#recoverable-native-window-destruction-on-windows)
-before integrating healthy nonfinal restoration. Existing irreversible removal drops the GPUI slot
-before native destruction and cannot establish surviving-window recovery. The fork plan owns its
-bounded implementation and real Windows evidence. Pin the accepted revision and verify canonical
-dependency resolution; phase 595 retains durable restoration and editor/claim integration.
+Accepted exact retained native destruction, settled surviving failure and unresolved custody
+through independent lifecycle review, 12 native cases and local/canonical production checks.
+Aligned all widget pins and Beryl's single canonical GPUI graph; all-target checks passed.
+See [acceptance evidence](failures/ordinary-close-recovery.md#recoverable-native-destruction-acceptance).
+Durable restoration and editor/claim integration remain phase 595.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -181,6 +173,12 @@ See [checkpoint and decision evidence](failures/ordinary-close-recovery.md#nonfi
 Pending source is preserved, not accepted. Latest seven native recovery cases passed none; dirty
 editing still overflows the WinRT worker stack. Review corrections for per-window evidence,
 single-slot marker release and toolbar Exit recovery await focused and combined verification.
+
+Tooling stop on 2026-10-02: after locked metadata and focused canonical checks passed for the
+changed manifests, the mandatory Serena language-server restart timed out after 120 seconds.
+Repository instructions require stopping after restart failure. Do not rely on the old analyzer
+model or resume implementation until the Operator restores the language server. Phase 707 remains
+accepted; phase 595 source and its outstanding stack/identity failures are preserved unaccepted.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
