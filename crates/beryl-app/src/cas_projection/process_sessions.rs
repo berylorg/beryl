@@ -32,7 +32,7 @@ pub use work_facts::{
 };
 pub(in crate::cas_projection) mod preparation;
 pub use preparation::{
-    RuntimeSessionPreparationConfig, RuntimeSessionPreparationError, RuntimeTokenDirectories,
+    RuntimeSessionPreparationConfig, RuntimeSessionPreparationError, RuntimeTokenDirectory,
 };
 
 #[derive(Clone)]

@@ -75,7 +75,7 @@ pub(in super::super) fn selected_inputs_with_extent(
     extent: u64,
 ) -> crate::app_services::MainWindowServiceInputs {
     crate::app_services::MainWindowServiceInputs {
-        request_source: Arc::new(|_, _| panic!("selected fixture must restore")),
+        request_source: Arc::new(|_, _, _| panic!("selected fixture must restore")),
         activation_source: Arc::new(|_| panic!("selected fixture must restore")),
         restored_activation_source: Arc::new(move |record| {
             Ok((

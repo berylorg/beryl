@@ -11,7 +11,16 @@ impl MainWindowCreation {
             self.error = Some("New Window creation was cancelled.".to_owned());
             return CreationStep::Continue;
         }
-        match (self.services.request_source)(self.window_id, target) {
+        let request = self.services.validate_source().and_then(|()| {
+            let request = (self.services.request_source)(
+                self.window_id,
+                target,
+                MainWindowCreationRequestContext::new(&self.services.store, &self.services.state),
+            )?;
+            self.services.validate_source()?;
+            Ok(request)
+        });
+        match request {
             Ok(request) if request.window_id() == self.window_id && request.target() == target => {
                 self.state = CreationState::Acquire {
                     request,

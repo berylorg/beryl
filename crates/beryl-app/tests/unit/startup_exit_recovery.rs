@@ -94,6 +94,13 @@ fn recovered_home_binding_preserves_request_and_fences_without_replaying_exit() 
         retained
             .disabled_reason()
             .unwrap()
+            .contains("retired home generation")
+    );
+    let retained = running.window_command(window);
+    assert!(
+        retained
+            .disabled_reason()
+            .unwrap()
             .contains("Beryl-home failure notice")
     );
     producer.request_exit();

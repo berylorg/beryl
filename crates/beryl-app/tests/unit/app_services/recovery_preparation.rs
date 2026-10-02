@@ -50,7 +50,7 @@ fn recovery_app_services_remain_private_and_dispose_before_retry() {
                         runtime_roots: state.runtime_roots(),
                         assets: state.assets(),
                         policy: config.session_policy.clone(),
-                        token_directories: Vec::new(),
+                        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
                     },
                     &attention,
                     &ProjectionCancellationToken::new(),

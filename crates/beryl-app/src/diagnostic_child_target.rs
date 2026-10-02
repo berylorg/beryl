@@ -1,10 +1,11 @@
 use std::{
     io::{self, BufReader, Read, Write},
     sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU8, Ordering},
         mpsc::{self, Receiver, SyncSender, TrySendError},
     },
+    task::{Poll, Waker},
     thread,
     time::{Duration, Instant},
 };
@@ -28,6 +29,71 @@ const DIAGNOSTIC_TARGET_REQUEST_CLAIMED: u8 = 2;
 struct DiagnosticTargetShellRequestSender {
     sender: SyncSender<DiagnosticTargetShellRequest>,
     response_timeout: Duration,
+    terminal: Arc<AtomicBool>,
+    wake: Arc<Mutex<Option<Waker>>>,
+}
+
+pub(crate) struct DiagnosticTargetServer {
+    pub(crate) receiver: Receiver<DiagnosticTargetShellRequest>,
+    pub(crate) terminal: Arc<AtomicBool>,
+    wake: Arc<Mutex<Option<Waker>>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct DiagnosticTargetShutdown {
+    terminal: Arc<AtomicBool>,
+    wake: Arc<Mutex<Option<Waker>>>,
+}
+
+impl DiagnosticTargetShutdown {
+    pub(crate) fn request(&self) {
+        self.terminal.store(true, Ordering::Release);
+        let wake = self.wake.lock().expect("diagnostic wake").take();
+        if let Some(wake) = wake {
+            wake.wake();
+        }
+    }
+}
+
+impl DiagnosticTargetServer {
+    pub(crate) async fn next(&self) -> Option<DiagnosticTargetShellRequest> {
+        std::future::poll_fn(|cx| {
+            let mut wake = self.wake.lock().expect("diagnostic wake");
+            if self.terminal.load(Ordering::Acquire) {
+                return Poll::Ready(None);
+            }
+            match self.receiver.try_recv() {
+                Ok(request) => Poll::Ready(Some(request)),
+                Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(None),
+                Err(mpsc::TryRecvError::Empty) => {
+                    *wake = Some(cx.waker().clone());
+                    Poll::Pending
+                }
+            }
+        })
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_endpoint() -> (
+        Self,
+        DiagnosticTargetShutdown,
+        SyncSender<DiagnosticTargetShellRequest>,
+    ) {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let terminal = Arc::new(AtomicBool::new(false));
+        let wake = Arc::new(Mutex::new(None));
+        let signal = DiagnosticTargetShutdown {
+            terminal: terminal.clone(),
+            wake: wake.clone(),
+        };
+        let server = Self {
+            receiver,
+            terminal,
+            wake,
+        };
+        (server, signal, sender)
+    }
 }
 
 pub(crate) enum DiagnosticTargetShellRequest {
@@ -46,16 +112,26 @@ struct DiagnosticTargetRequestControl {
     expires_at: Instant,
 }
 
-pub(crate) fn spawn_diagnostic_target_stdio_server() -> Receiver<DiagnosticTargetShellRequest> {
+pub(crate) fn spawn_diagnostic_target_stdio_server() -> io::Result<DiagnosticTargetServer> {
     let (sender, receiver) = mpsc::sync_channel(DIAGNOSTIC_TARGET_REQUEST_QUEUE_CAPACITY);
+    let terminal = Arc::new(AtomicBool::new(false));
+    let wake = Arc::new(Mutex::new(None));
     let shell_sender = DiagnosticTargetShellRequestSender {
         sender,
         response_timeout: DIAGNOSTIC_TARGET_RESPONSE_TIMEOUT,
+        terminal: terminal.clone(),
+        wake: wake.clone(),
     };
-    thread::spawn(move || {
-        run_diagnostic_target_stdio_loop(shell_sender, io::stdin(), io::stdout());
-    });
-    receiver
+    thread::Builder::new()
+        .name("beryl-diagnostic-stdio".into())
+        .spawn(move || {
+            run_diagnostic_target_stdio_loop(shell_sender, io::stdin(), io::stdout());
+        })?;
+    Ok(DiagnosticTargetServer {
+        receiver,
+        terminal,
+        wake,
+    })
 }
 
 impl DiagnosticTargetCommandRequest {
@@ -68,7 +144,7 @@ impl DiagnosticTargetCommandRequest {
     }
 
     pub(crate) fn respond(self, response: DiagnosticProtocolResponse) {
-        let _ = self.response_sender.send(response);
+        let _ = self.response_sender.try_send(response);
     }
 }
 
@@ -84,7 +160,12 @@ impl DiagnosticTargetShellRequestSender {
         });
 
         match self.sender.try_send(shell_request) {
-            Ok(()) => {}
+            Ok(()) => {
+                let wake = self.wake.lock().expect("diagnostic wake").take();
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            }
             Err(TrySendError::Full(_)) => {
                 return DiagnosticProtocolResponse::error(
                     Some(request_id),
@@ -115,6 +196,11 @@ impl DiagnosticTargetShellRequestSender {
     }
 
     fn shutdown(&self) {
+        DiagnosticTargetShutdown {
+            terminal: self.terminal.clone(),
+            wake: self.wake.clone(),
+        }
+        .request();
         let _ = self.sender.try_send(DiagnosticTargetShellRequest::Shutdown);
     }
 }
@@ -158,6 +244,7 @@ fn run_diagnostic_target_stdio_loop(
     mut output: impl Write,
 ) {
     let mut reader = BufReader::new(input);
+    let mut handshaken = false;
     loop {
         let read = read_bounded_line_bytes(&mut reader, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES);
         let response = match read {
@@ -167,9 +254,15 @@ fn run_diagnostic_target_stdio_loop(
             }
             Ok(BoundedLineRead::Line(line)) => match parse_request_frame(&line) {
                 Ok(Some(request)) if request.command() == DiagnosticChildCommand::Handshake => {
+                    handshaken = true;
                     Some(handshake_response(request.id()))
                 }
-                Ok(Some(request)) => Some(shell_sender.request(request)),
+                Ok(Some(request)) if handshaken => Some(shell_sender.request(request)),
+                Ok(Some(request)) => Some(DiagnosticProtocolResponse::error(
+                    Some(request.id().to_owned()),
+                    "handshake_required",
+                    "The diagnostic protocol handshake is required.",
+                )),
                 Ok(None) => None,
                 Err(error) => Some(protocol_error_response(error)),
             },
@@ -178,11 +271,10 @@ fn run_diagnostic_target_stdio_loop(
                     limit: MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES,
                 },
             )),
-            Err(source) => Some(DiagnosticProtocolResponse::error(
-                None,
-                "read_error",
-                source.to_string(),
-            )),
+            Err(_) => {
+                shell_sender.shutdown();
+                break;
+            }
         };
 
         let Some(response) = response else {
@@ -208,3 +300,7 @@ fn handshake_response(request_id: &str) -> DiagnosticProtocolResponse {
         }),
     )
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/diagnostic_target.rs"]
+mod tests;

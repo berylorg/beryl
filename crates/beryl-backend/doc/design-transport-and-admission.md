@@ -8,6 +8,11 @@ This supplement is normative only for its bounded backend transport-and-admissio
 - Host Windows executes the caller-validated absolute Codex CLI path directly with `app-server`; it never substitutes `PATH`. WSL uses `wsl.exe`, the caller-validated distribution and working directory, and the caller-validated runtime-native CLI path directly inside WSL.
 - Production uses only a Beryl-selected authenticated loopback WebSocket listener: host launch binds `ws://127.0.0.1:<port>` in the execution root; WSL binds in the selected distribution and uses the corresponding host-local loopback port. Production has no stdio, unauthenticated, or operator-managed transport.
 - One high-entropy bearer token per managed launch exists only in memory and a per-run local token file. The crate creates and removes that file and clears retained token material on every spawn, admission, cancellation, exit, and disposal path; cleanup is idempotent and completes before managed-process disposal. Tokens never appear in arguments, logs, diagnostics, or public values.
+- Token files are created with private access before any secret bytes are written: Windows uses
+  a protected owner-only DACL instead of inheriting temporary-directory read access; Unix creates
+  the file with mode `0600`. Windows verifies persistent ACL support on the exact opened file
+  before writing secrets, refusing and cleaning up the empty file when enforcement is unavailable.
+  Failed writes close the file before ordinary token cleanup.
 - The managed server is the sole production connector constructor. It retains opaque per-launch provenance for exact runtime identity, process generation, executable paths, runtime mode, and working directory, and binds every session to that launch. Feature-gated test construction is not admission authority.
 - Process lifetime is separate from client-session lifetime: closing a client never ends its managed server. Windows supervision covers the process tree; WSL has a Beryl-owned Linux cleanup boundary independent of the host `wsl.exe` wrapper. Shutdown is explicit, bounded, idempotent, and releases launch material only after its supervision boundary is released; it is never turn control or terminal evidence.
 

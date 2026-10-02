@@ -231,11 +231,7 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
                         Duration::from_secs(10),
                     ),
                 ),
-                token_directories: vec![RuntimeTokenDirectories {
-                    runtime_id: binding.runtime_id(),
-                    host: host(&tokens),
-                    runtime: native(&tokens),
-                }],
+                token_directory: RuntimeTokenDirectory::from_admitted(host(&tokens)),
             },
             &Arc::new(ProcessLifecycleAttentionPool::new()),
         )

@@ -1,12 +1,11 @@
 use super::*;
 use crate::cas_projection::{
     OrdinaryTurnExecutionRequest, ProcessScheduledExecutionProvider, RuntimeInterestConfig,
-    RuntimeSessionPreparationConfig, RuntimeSessionPreparationError, RuntimeTokenDirectories,
+    RuntimeSessionPreparationConfig, RuntimeSessionPreparationError,
     ScheduledOrdinaryRequestPolicy,
 };
 use crate::lifecycle_attention::ProcessLifecycleAttentionPool;
 use beryl_backend::{ThreadStartOptions, TurnStartOptions};
-use beryl_model::{AdmittedHostPath, PathFlavor, RuntimeId, RuntimeNativePath};
 use std::num::NonZeroUsize;
 
 fn session_config(state: &BerylState) -> RuntimeSessionPreparationConfig {
@@ -19,7 +18,7 @@ fn session_config(state: &BerylState) -> RuntimeSessionPreparationConfig {
             Duration::from_secs(1),
             OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), Duration::from_secs(1)),
         ),
-        token_directories: Vec::new(),
+        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
     }
 }
 
@@ -143,8 +142,7 @@ fn configuration_rejection_retires_private_custody() {
         "foreign_owner",
         "foreign_candidate",
         "foreign_assets",
-        "missing_runtime",
-        "capacity",
+        "foreign_runtime_domain",
         "confirmation",
     ] {
         let (directory, mut candidate, storage, faults, state) = candidate_with_state();
@@ -165,21 +163,8 @@ fn configuration_rejection_retires_private_custody() {
         if failure == "foreign_assets" {
             configuration.assets = foreign_state.assets();
         }
-        if matches!(failure, "missing_runtime" | "capacity") {
-            let tokens = RuntimeTokenDirectories {
-                runtime_id: RuntimeId::from_bytes([1; 16]),
-                host: AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),
-                runtime: RuntimeNativePath::from_admitted(
-                    beryl_model::RuntimeMode::Host,
-                    PathFlavor::Windows,
-                    r"C:\tokens",
-                )
-                .unwrap(),
-            };
-            configuration.token_directories.push(tokens.clone());
-            if failure == "capacity" {
-                configuration.token_directories.push(tokens);
-            }
+        if failure == "foreign_runtime_domain" {
+            configuration.runtime_roots = foreign_state.runtime_roots();
         }
         if failure == "confirmation" {
             faults.fail_next(FaultPoint::BeforeReadConfirmation);

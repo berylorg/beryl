@@ -18,10 +18,12 @@ mod worker;
 pub(crate) use controller::{
     RunningExitCommands, RunningExitGate, RunningExitRequest, RunningWindowExit,
 };
-pub(crate) use controller::{StartedProcess, StartupCommands, StartupCompletion, start};
+pub(crate) use controller::{
+    StartedProcess, StartupCommands, StartupCompletion, UnavailableStartup, start,
+};
 pub(crate) use surface::OwnedStartupSurface;
 
-pub(crate) enum StartupHomeOpen {
+pub enum StartupHomeOpen {
     Ready {
         candidate: HomeOpenPublication,
         state: BerylState,

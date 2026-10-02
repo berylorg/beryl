@@ -125,7 +125,7 @@ pub(super) fn configuration() -> AppServiceConfiguration {
             Duration::from_secs(1),
             OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), Duration::from_secs(1)),
         ),
-        token_directories: Vec::new(),
+        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
         handoff: HandoffScanLimits::try_from(HandoffScanConfiguration {
             handoff_recovery_page_items: 1,
             handoff_recovery_page_encoded_bytes: beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,

@@ -5,7 +5,7 @@ use beryl_state::RememberedTarget;
 
 pub(super) fn inputs() -> MainWindowServiceInputs {
     MainWindowServiceInputs {
-        request_source: Arc::new(|_, _| panic!("request source must remain uncalled")),
+        request_source: Arc::new(|_, _, _| panic!("request source must remain uncalled")),
         activation_source: Arc::new(|_| Err("no acquired editor in this fixture".to_owned())),
         restored_activation_source: Arc::new(|_| {
             Err("no restored editor in this fixture".to_owned())

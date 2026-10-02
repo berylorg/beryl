@@ -63,6 +63,15 @@ pub struct StartupSurface {
 }
 
 impl StartupSurface {
+    pub(crate) fn diagnostic_home_state(&self) -> &'static str {
+        if self.blocked {
+            "cleanup_blocked"
+        } else if self.detail.is_some() {
+            "open_failed"
+        } else {
+            "busy"
+        }
+    }
     pub fn attempt(&self, cx: &Context<Self>) -> StartupAttempt {
         StartupAttempt {
             surface: cx.entity_id(),

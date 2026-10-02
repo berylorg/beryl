@@ -3,7 +3,7 @@ use std::{path::Path, thread, time::Duration};
 
 use beryl_backend::ManagedBackendLaunchSpec;
 
-use beryl_model::{AdmittedHostPath, RuntimeId, RuntimeNativePath};
+use beryl_model::RuntimeId;
 use beryl_state::RuntimeRootState;
 use syndic_storage::SyndicStorage;
 
@@ -14,6 +14,8 @@ mod run;
 #[path = "../../../tests/unit/shutdown_preparation_capture.rs"]
 mod shutdown_capture_tests;
 mod target;
+mod token_directory;
+pub use token_directory::RuntimeTokenDirectory;
 use crate::cas_projection::{
     ProcessOrdinaryDynamicToolAuthority, RuntimeInterestError, RuntimeInterestStatus,
     ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionResult,
@@ -21,18 +23,11 @@ use crate::cas_projection::{
     service::ProjectionAdmissionContext, service_config::ProjectionWorkerPool,
 };
 
-#[derive(Clone)]
-pub struct RuntimeTokenDirectories {
-    pub runtime_id: RuntimeId,
-    pub host: AdmittedHostPath,
-    pub runtime: RuntimeNativePath,
-}
-
 pub struct RuntimeSessionPreparationConfig {
     pub runtime_roots: RuntimeRootState,
     pub assets: AssetState,
     pub policy: ScheduledOrdinaryRequestPolicy,
-    pub token_directories: Vec<RuntimeTokenDirectories>,
+    pub token_directory: RuntimeTokenDirectory,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]

@@ -79,11 +79,10 @@ impl PreparationContext {
         {
             return Err(TargetError::Changed);
         }
-        let tokens = self
+        let runtime_token_directory = self
             .config
-            .token_directories
-            .iter()
-            .find(|entry| entry.runtime_id == binding.runtime_id())
+            .token_directory
+            .runtime_path(runtime.mode())
             .ok_or(TargetError::Configuration)?;
         ManagedBackendLaunchSpec::new(
             runtime.runtime_id(),
@@ -91,8 +90,8 @@ impl PreparationContext {
             runtime.mode().clone(),
             runtime.runtime_native_executable().clone(),
             root.canonical_path().clone(),
-            tokens.host.clone(),
-            tokens.runtime.clone(),
+            self.config.token_directory.host().clone(),
+            runtime_token_directory,
         )
         .map_err(|_| TargetError::Configuration)
     }

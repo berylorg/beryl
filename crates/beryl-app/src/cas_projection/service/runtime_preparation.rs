@@ -34,30 +34,14 @@ impl ProjectionConnectionService {
             .home
             .as_ref()
             .ok_or(RuntimeSessionPreparationError::ServiceUnavailable)?;
-        if config.policy.thread_options().is_ephemeral()
-            || config.token_directories.len() > owner.configuration().runtime_capacity()
-        {
+        if config.policy.thread_options().is_ephemeral() {
             return Err(RuntimeSessionPreparationError::InvalidConfiguration);
         }
-        for (index, tokens) in config.token_directories.iter().enumerate() {
-            let runtime = match candidate {
-                Some(access) => config
-                    .runtime_roots
-                    .runtime_candidate(access, tokens.runtime_id),
-                None => config.runtime_roots.runtime(home, tokens.runtime_id),
-            }
-            .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?
-            .ok_or(RuntimeSessionPreparationError::InvalidConfiguration)?;
-            if tokens.runtime.mode() != runtime.mode()
-                || (matches!(runtime.mode(), beryl_model::RuntimeMode::Host)
-                    && tokens.host.as_str() != tokens.runtime.as_str())
-                || config.token_directories[..index]
-                    .iter()
-                    .any(|previous| previous.runtime_id == tokens.runtime_id)
-            {
-                return Err(RuntimeSessionPreparationError::InvalidConfiguration);
-            }
+        match candidate {
+            Some(access) => config.runtime_roots.has_runtimes_candidate(access).map(|_| ()),
+            None => config.runtime_roots.revision(home).map(|_| ()),
         }
+        .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?;
         match candidate {
             Some(access) => config.assets.revision_candidate(access),
             None => config.assets.revision(home),

@@ -99,7 +99,7 @@ impl PreparedAppServices {
                         runtime_roots: prepared.state.runtime_roots(),
                         assets: prepared.state.assets(),
                         policy: configuration.session_policy,
-                        token_directories: configuration.token_directories,
+                        token_directory: configuration.token_directory,
                     },
                     &prepared.attention,
                 )?

@@ -91,11 +91,14 @@ by the executable composition root.
   rejected before service-attempt admission is returned unchanged to its caller; it cannot replace
   existing graph or failed-close custody.
 - Private CAS preparation configures runtime interest and the exact attached execution-session
-  owner through candidate runtime-record and Asset-revision validation. It preserves ordinary
+  owner through candidate runtime-domain and Asset-revision validation. It preserves ordinary
   policy, capacity, token-directory and owner checks while leaving ordinary admission closed.
   Configuration only retains immutable preparation context and notifies the fenced scheduler;
   it starts no runtime or session discovery. Failure consumes private service custody and joins
   workers before candidate disposal.
+- Managed-session configuration retains one immutable admitted token-directory root. It resolves
+  the runtime-native token path from the exact current runtime at launch, without a startup-only
+  list of runtime identities or retained references to an earlier home generation.
 - Candidate terminal-history convergence uses the ordinary item-freeze/finalize, item-projection,
   selected-transcript and gate-release algorithm through borrowed candidate access. Exact bounded
   metadata/page reads retain their surrounding confirmation checks, and current-domain commands
@@ -138,6 +141,10 @@ by the executable composition root.
   references, marker sealing, turn-start requirements and submission authority from the complete
   published graph; callers cannot substitute those services. Acquisition and creation share the
   same exact home-reference object.
+- Immutable creation request sources resolve remembered runtime/root identities on the worker
+  using borrowed typed references from the exact current window-service graph. They do not capture
+  an earlier graph's home or State handles. Reusing a source after same-home recovery therefore
+  resolves against the replacement graph and retains the ordinary generation and admission fences.
 - The GUI-facing factory performs no storage reads and returns a worker-transferable bundle.
   Worker consumption creates the generation-bound restoration attempt and restore set, validating
   the graph lifetime before reads and before returning work. Creation admission validates exact

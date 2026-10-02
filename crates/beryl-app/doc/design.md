@@ -17,6 +17,20 @@ generation, custody, and replacement boundaries.
 
 # Decisions
 
+## Executable Bootstrap Facade
+
+`bootstrap::Configuration` accepts an absolute configured home, the composition root's typed
+home opener and diagnostic-target selection. It fixes bounded service/window inputs before
+ordinary work. `bootstrap::run` owns the GPUI process lifetime through zero-window startup,
+Retry, complete running-owner handoff and orderly shutdown. The opener returns one complete
+private publication candidate with its typed domains, Busy, or failure retaining unsuccessful
+close custody; it never publishes a partial graph. The private owners and their guarantees remain
+those in [Shell And Lifecycle](design-shell-lifecycle.md).
+
+The diagnostic endpoint keeps its bounded protocol and terminal channel-loss shutdown intent
+across that handoff. It reports supported lifecycle facts and explicit unavailable feature
+bindings; diagnostic commands do not gain authority to bypass ordinary lifecycle gates.
+
 ## Documentation Set
 
 - [Shell and lifecycle](design-shell-lifecycle.md) is normative for the process service graph,

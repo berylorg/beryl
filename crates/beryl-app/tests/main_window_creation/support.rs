@@ -24,21 +24,23 @@ pub fn services(fixture: &Fixture) -> (Arc<MainWindowCreationServices>, Arc<Appe
         ),
     );
     let execution = fixture.execution();
-    let request_source = Arc::new(move |window: WindowId, target| {
-        let mut draft = *window.as_bytes();
-        draft[0] ^= 0x80;
-        RuntimeBackedWindowAcquisitionRequest::new(
-            window,
-            target,
-            placement(),
-            SyndicThreadId::from_bytes(*window.as_bytes()),
-            SyndicDraftId::from_bytes(draft),
-            execution.clone(),
-            SyndicTimestamp::from_unix_millis(1000),
-            DraftEditHistoryPolicyV1::new(65536, 1).unwrap(),
-        )
-        .map_err(|error| format!("{error:?}"))
-    });
+    let request_source = Arc::new(
+        move |window: WindowId, target, _context: MainWindowCreationRequestContext<'_>| {
+            let mut draft = *window.as_bytes();
+            draft[0] ^= 0x80;
+            RuntimeBackedWindowAcquisitionRequest::new(
+                window,
+                target,
+                placement(),
+                SyndicThreadId::from_bytes(*window.as_bytes()),
+                SyndicDraftId::from_bytes(draft),
+                execution.clone(),
+                SyndicTimestamp::from_unix_millis(1000),
+                DraftEditHistoryPolicyV1::new(65536, 1).unwrap(),
+            )
+            .map_err(|error| format!("{error:?}"))
+        },
+    );
     let seals = DraftMarkerSealService::test_new(
         &fixture.store,
         fixture.store.health().generation().unwrap(),

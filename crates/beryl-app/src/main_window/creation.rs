@@ -13,10 +13,67 @@ use std::sync::Arc;
 use syndic_storage::{DraftPieceOperationIdV1, SyndicStorage};
 
 pub type MainWindowCreationRequestSource = Arc<
-    dyn Fn(WindowId, RememberedTarget) -> Result<RuntimeBackedWindowAcquisitionRequest, String>
+    dyn Fn(
+            WindowId,
+            RememberedTarget,
+            MainWindowCreationRequestContext<'_>,
+        ) -> Result<RuntimeBackedWindowAcquisitionRequest, String>
         + Send
         + Sync,
 >;
+
+pub struct MainWindowCreationRequestContext<'a> {
+    pub(in crate::main_window) store: &'a HomeServiceReference,
+    pub(in crate::main_window) state: &'a BerylState,
+}
+
+impl MainWindowCreationRequestContext<'_> {
+    pub(crate) fn new<'a>(
+        store: &'a HomeServiceReference,
+        state: &'a BerylState,
+    ) -> MainWindowCreationRequestContext<'a> {
+        MainWindowCreationRequestContext { store, state }
+    }
+    pub fn execution_binding(
+        &self,
+        target: RememberedTarget,
+    ) -> Result<beryl_model::ExecutionBinding, String> {
+        let before = self.store.home_revision().map_err(|e| e.to_string())?;
+        let generation = self
+            .store
+            .health()
+            .generation()
+            .ok_or("window creation home is unavailable")?;
+        let runtime = self
+            .state
+            .runtime_roots()
+            .runtime(self.store, target.runtime_id())
+            .map_err(|e| e.to_string())?
+            .ok_or("remembered runtime is unavailable")?;
+        let root = self
+            .state
+            .runtime_roots()
+            .root(self.store, target.root_id())
+            .map_err(|e| e.to_string())?
+            .ok_or("remembered root is unavailable")?;
+        if root.runtime_id() != runtime.runtime_id()
+            || root.canonical_path().mode() != runtime.mode()
+        {
+            return Err("remembered runtime and root no longer match".into());
+        }
+        if self.store.health().state() != beryl_home_store::HomeHealthState::Healthy
+            || self.store.health().generation() != Some(generation)
+            || self.store.home_revision().map_err(|e| e.to_string())? != before
+        {
+            return Err("window creation target changed during resolution".into());
+        }
+        Ok(beryl_model::ExecutionBinding::new(
+            target.runtime_id(),
+            target.root_id(),
+            root.canonical_path().clone(),
+        ))
+    }
+}
 pub type MainWindowCreationActivationSource = Arc<
     dyn Fn(
             &RuntimeBackedWindowAcquisition,

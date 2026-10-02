@@ -46,6 +46,14 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   token material on every failed spawn, launch or admission failure, cancellation, normal or
   abnormal process exit, and disposal path; cleanup is idempotent and joined before managed-process
   disposal completes.
+- Executable composition supplies one immutable canonical host temporary-directory root for
+  launch token files, outside the Beryl home. Host runtimes use that exact host path. WSL runtimes
+  use the drive-backed `/mnt/<drive>/...` projection into the exact selected distribution;
+  UNC, device and otherwise unmappable paths make that launch unavailable without another
+  directory, transport or mapping fallback. The backend's token-hash and authenticated admission
+  checks still apply. The directory configuration retains no runtime catalog or home generation;
+  each launch derives its runtime-native path from the current validated runtime record. Backend
+  ownership of individual random token files and their cleanup remains unchanged.
 - The managed-process owner mints production connectors tied to the exact process, runtime, executable, mode, and working directory. Caller-supplied endpoints, bearer values, labels, or detached reports cannot manufacture admission authority.
 - CAS alone applies working-directory-dependent instructions, skills, sandbox, configuration, and policy. Beryl neither reads nor emulates them.
 

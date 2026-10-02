@@ -173,8 +173,9 @@ fn wrong_request_identity_has_no_durable_effect() {
     let fixture = Fixture::new(31);
     let (mut services, appearance) = services(&fixture);
     let original = services.request_source.clone();
-    Arc::get_mut(&mut services).unwrap().request_source =
-        Arc::new(move |_, target| original(WindowId::from_bytes([99; 16]), target));
+    Arc::get_mut(&mut services).unwrap().request_source = Arc::new(move |_, target, context| {
+        original(WindowId::from_bytes([99; 16]), target, context)
+    });
     let revision = fixture.store.home_revision().unwrap();
     let creation = MainWindowCreation::admit(
         services.clone(),
@@ -200,7 +201,7 @@ fn cancelled_admission_never_invokes_request_source() {
     let fixture = Fixture::new(41);
     let (mut services, appearance) = services(&fixture);
     Arc::get_mut(&mut services).unwrap().request_source =
-        Arc::new(|_, _| panic!("cancelled request source"));
+        Arc::new(|_, _, _| panic!("cancelled request source"));
     let revision = fixture.store.home_revision().unwrap();
     let creation = MainWindowCreation::admit(
         services.clone(),

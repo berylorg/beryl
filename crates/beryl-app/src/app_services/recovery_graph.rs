@@ -122,7 +122,7 @@ impl ProcessServiceOwner {
                     runtime_roots: prepared.state.runtime_roots(),
                     assets: prepared.state.assets(),
                     policy: configuration.session_policy.clone(),
-                    token_directories: configuration.token_directories.clone(),
+                    token_directory: configuration.token_directory.clone(),
                 },
                 prepared
                     .attention

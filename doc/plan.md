@@ -89,21 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 595: Compose Ordinary Window Close And Application Exit (finished)
+# Phase 596: Reconstruct The Executable Bootstrap (finished)
 
-Accepted process-owned ordinary close/Exit, exact created-window placement, healthy and failed-home
-resident recovery, and fresh-activation fences after independent lifecycle/persistence review.
-Canonical verification passed 58 app/native and 76 storage cases plus applicable all-target checks;
-production worker stacks remain unchanged. See [acceptance evidence](failures/ordinary-close-recovery.md#ordinary-command-integration-acceptance).
-Executable bootstrap and crash-reporter mounting remain below.
-
-# Phase 596: Reconstruct The Executable Bootstrap (pending)
-
-Connect normalized fixed-home configuration, complete private domain registration, immutable
-service/window inputs and required startup/running ownership at the sole executable entry.
-Preserve the explicit zero-window GPUI lifetime, diagnostic-target protocol, required unavailable
-feature states and fatal-hook ordering; remove the intentional placeholder only at this boundary.
-Phase 382 owns production crash-reporter mounting and its isolated process evidence.
+Accepted fixed-home executable composition, private domain registration, immutable production
+inputs, native startup/restoration and diagnostic channel-loss Exit. Canonical all-target checks,
+84 focused cases and independent lifecycle/persistence/security review passed. See
+[acceptance evidence](failures/executable-bootstrap.md#bootstrap-acceptance).
+Real production panic/report-window evidence remains the next boundary.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 
@@ -114,7 +106,6 @@ isolated application panic terminates its process while the report remains usabl
 or library-only evidence accepts this production mount; the current bootstrap removal gap remains
 explicit until its owning rework checkpoint closes.
 
-Blocked on 2026-09-15: `crates/beryl/src/main.rs` remains an intentional compile-error placeholder
-for the later target bootstrap checkpoint. There is no ordinary executable composition root at
-which to mount the accepted reporter and GUI services. Resume after that bootstrap boundary is
-specified and reconstructed; do not substitute helper-only evidence or invent an alternate entry.
+The executable bootstrap prerequisite is accepted. Reserved reporter dispatch and fatal-hook
+installation are mounted; qualify the actual binary's normal exit and isolated panic/report
+surface without substituting helper-only evidence or inventing an alternate entry.

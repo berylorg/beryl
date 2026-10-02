@@ -445,7 +445,7 @@ fn recovered_managed_session_configuration_keeps_work_fenced_and_rejects_foreign
             RuntimeSessionPreparationConfig {
                 runtime_roots: state.runtime_roots(),
                 assets: state.assets(),
-                token_directories: Vec::new(),
+                token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
                 policy: ScheduledOrdinaryRequestPolicy::new(
                     beryl_backend::ThreadStartOptions::persistent(),
                     None,

@@ -17,6 +17,7 @@ fn producer() -> StartupCommands {
     StartupCommands(Rc::new(RefCell::new(Commands {
         stage: Stage::Waiting,
         exit: false,
+        process_exit: false,
         exit_window: None,
         ordinary_close: false,
         retry: None,
@@ -29,6 +30,48 @@ fn producer() -> StartupCommands {
 fn handoff(commands: &StartupCommands) -> RunningExitCommands {
     commands.0.borrow_mut().stage = Stage::Running;
     RunningExitCommands::new(commands.clone())
+}
+
+#[test]
+fn process_exit_waits_for_gate_then_delivers_once() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    assert!(!producer.diagnostic_exit_pending());
+    running.set_gate(RunningExitGate::SettingsReconciliation, true);
+    producer.request_process_exit();
+    producer.request_process_exit();
+    assert!(producer.0.borrow().process_exit);
+    assert!(!running.exit_requested());
+    assert!(producer.diagnostic_exit_pending());
+    running.set_gate(RunningExitGate::SettingsReconciliation, false);
+    let request = take(&mut running);
+    assert!(!request.is_ordinary_close());
+    assert!(!producer.0.borrow().process_exit);
+    assert!(!producer.exit_requested());
+    assert!(producer.diagnostic_exit_pending());
+    assert!(running.finish_exit(&request));
+    assert!(!running.exit_requested());
+    assert!(!producer.diagnostic_exit_pending());
+}
+
+#[test]
+fn process_exit_defers_to_exact_active_close_without_replacing_it() {
+    let producer = producer();
+    let mut running = handoff(&producer);
+    running
+        .window_command(WindowId::from_bytes([31; 16]))
+        .request_close();
+    let original = take(&mut running);
+    producer.request_process_exit();
+    assert!(running.is_active(&original));
+    assert!(original.is_ordinary_close());
+    assert!(running.finish_exit(&original));
+    let exit = take(&mut running);
+    assert!(!exit.is_ordinary_close());
+    assert!(!Rc::ptr_eq(&exit.identity(), &original.identity()));
+    producer.request_process_exit();
+    assert!(running.finish_exit(&exit));
+    assert!(!running.exit_requested());
 }
 
 fn take(commands: &mut RunningExitCommands) -> RunningExitRequest {
@@ -340,9 +383,9 @@ fn bound_home_failure_and_recovery_cannot_revive_retained_exit_producers() {
         .unwrap();
     let producer = producer();
     let mut running = handoff(&producer);
+    running.bind_home(home.service_reference());
     let command = running.window_command(WindowId::from_bytes([40; 16]));
     let retained = command.clone();
-    running.bind_home(home.service_reference());
     assert_eq!(retained.disabled_reason(), None);
     command.request_exit();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);

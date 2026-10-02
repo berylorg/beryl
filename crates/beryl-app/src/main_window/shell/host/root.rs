@@ -39,6 +39,14 @@ impl MainWindowShellRoot {
         self.controller.as_ref()
     }
 
+    pub(crate) fn diagnostic_selected_thread(
+        &self,
+        app: &App,
+    ) -> Option<beryl_model::SyndicThreadId> {
+        self.creation_target(app)
+            .map(|(selection, _)| selection.claim().thread_id())
+    }
+
     pub(in crate::main_window) fn creation_target(
         &self,
         app: &App,

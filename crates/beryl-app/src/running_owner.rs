@@ -116,6 +116,40 @@ pub(crate) struct RunningProcess {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn diagnostic_window_facts(&self, app: &App) -> serde_json::Value {
+        let active = app.active_window();
+        let mut ids = Vec::new();
+        let mut selected = None;
+        let mut threadless = !self.process.windows.shells().is_empty();
+        for shell in self.process.windows.shells() {
+            let Ok(root) = shell.window().read(app) else {
+                threadless = false;
+                continue;
+            };
+            let Some(controller) = root.controller() else {
+                threadless = false;
+                continue;
+            };
+            ids.push(controller.window_id());
+            threadless &= controller.is_threadless();
+            if active.is_some_and(|active| active.window_id() == shell.window().window_id()) {
+                selected = root.diagnostic_selected_thread(app);
+            }
+        }
+        let home_state = self
+            .process
+            .services
+            .as_ref()
+            .and_then(|owner| owner.graph())
+            .map(|graph| match graph.home().health().state() {
+                beryl_home_store::HomeHealthState::Healthy => "healthy",
+                beryl_home_store::HomeHealthState::Failed => "failed",
+                beryl_home_store::HomeHealthState::Reopening => "reopening",
+                beryl_home_store::HomeHealthState::Opening => "opening",
+            })
+            .unwrap_or("retained_unavailable");
+        serde_json::json!({"mainWindowIds": ids, "selectedThreadId": selected, "threadless": threadless, "homeState": home_state})
+    }
     #[cfg(test)]
     pub(crate) fn test_detached_read_usage(&self) -> beryl_home_store::TemporaryReadPoolUsage {
         self.detached_read_pool.usage().unwrap()

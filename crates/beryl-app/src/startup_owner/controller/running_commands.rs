@@ -168,7 +168,14 @@ impl RunningExitCommands {
     }
 
     pub(crate) fn set_gate(&self, gate: RunningExitGate, blocked: bool) {
-        self.0.0.borrow_mut().exit_gates.set(gate, blocked);
+        let mut state = self.0.0.borrow_mut();
+        state.exit_gates.set(gate, blocked);
+        let admitted = state.admit_process_exit();
+        let wake = if admitted { state.wake.take() } else { None };
+        drop(state);
+        if let Some(wake) = wake {
+            wake.wake();
+        }
     }
 
     pub(crate) fn bind_recovered_home(
@@ -264,6 +271,7 @@ impl RunningExitCommands {
         cx: &mut std::task::Context<'_>,
     ) -> Poll<RunningExitRequest> {
         let mut state = self.0.0.borrow_mut();
+        state.admit_process_exit();
         if state.exit && state.active_exit.is_none() {
             state.exit = false;
             let request = Rc::new(());
@@ -302,6 +310,7 @@ impl RunningExitCommands {
             return Err(());
         }
         state.active_exit = None;
+        state.admit_process_exit();
         Ok(state.wake.take())
     }
 }

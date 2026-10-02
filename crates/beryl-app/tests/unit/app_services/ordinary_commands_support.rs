@@ -114,21 +114,25 @@ fn run_mounted_case(
             )
             .unwrap(),
         );
-        input.windows.request_source = Arc::new(move |window: WindowId, target| {
-            let mut draft = *window.as_bytes();
-            draft[0] ^= 0x80;
-            crate::window_acquisition::RuntimeBackedWindowAcquisitionRequest::new(
-                window,
-                target,
-                window_services::placement(),
-                beryl_model::SyndicThreadId::from_bytes(*window.as_bytes()),
-                beryl_model::SyndicDraftId::from_bytes(draft),
-                execution.clone(),
-                syndic_storage::SyndicTimestamp::from_unix_millis(1000),
-                syndic_storage::DraftEditHistoryPolicyV1::new(65536, 1).unwrap(),
-            )
-            .map_err(|error| format!("{error:?}"))
-        });
+        input.windows.request_source = Arc::new(
+            move |window: WindowId,
+                  target,
+                  _context: crate::main_window::MainWindowCreationRequestContext<'_>| {
+                let mut draft = *window.as_bytes();
+                draft[0] ^= 0x80;
+                crate::window_acquisition::RuntimeBackedWindowAcquisitionRequest::new(
+                    window,
+                    target,
+                    window_services::placement(),
+                    beryl_model::SyndicThreadId::from_bytes(*window.as_bytes()),
+                    beryl_model::SyndicDraftId::from_bytes(draft),
+                    execution.clone(),
+                    syndic_storage::SyndicTimestamp::from_unix_millis(1000),
+                    syndic_storage::DraftEditHistoryPolicyV1::new(65536, 1).unwrap(),
+                )
+                .map_err(|error| format!("{error:?}"))
+            },
+        );
         input.windows.activation_source = Arc::new(|acquisition| {
             Ok((
                 resident_fixture::composer_support::activation(

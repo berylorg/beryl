@@ -183,6 +183,12 @@ extern crate self as beryl_app;
 pub mod cas_projection;
 mod activity_service;
 mod app_services;
+#[cfg(target_os = "windows")]
+pub mod bootstrap;
+#[cfg(target_os = "windows")]
+mod diagnostic_child_protocol;
+#[cfg(target_os = "windows")]
+mod diagnostic_child_target;
 
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../syndic-storage/tests/support/mod.rs"]

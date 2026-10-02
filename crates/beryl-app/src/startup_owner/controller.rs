@@ -36,6 +36,7 @@ enum Stage {
 struct Commands {
     stage: Stage,
     exit: bool,
+    process_exit: bool,
     exit_window: Option<WindowId>,
     ordinary_close: bool,
     retry: Option<StartupAttempt>,
@@ -44,10 +45,58 @@ struct Commands {
     exit_gates: running_commands::RunningExitGates,
 }
 
+impl Commands {
+    fn admit_process_exit(&mut self) -> bool {
+        if self.process_exit
+            && matches!(self.stage, Stage::Running)
+            && !self.exit
+            && self.active_exit.is_none()
+            && self.exit_gates.disabled_reason().is_none()
+        {
+            self.process_exit = false;
+            self.exit = true;
+            self.exit_window = None;
+            self.ordinary_close = false;
+            return true;
+        }
+        false
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct StartupCommands(Rc<RefCell<Commands>>);
 
 impl StartupCommands {
+    #[cfg(test)]
+    pub(crate) fn test_set_exit_gate(&self, gate: RunningExitGate, blocked: bool) {
+        RunningExitCommands::new(self.clone()).set_gate(gate, blocked);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_process_exit_pending(&self) -> bool {
+        self.0.borrow().process_exit
+    }
+    pub(crate) fn request_process_exit(&self) {
+        let mut state = self.0.borrow_mut();
+        if matches!(state.stage, Stage::Finished) {
+            return;
+        }
+        if matches!(state.stage, Stage::Running) {
+            let mut admitted = false;
+            if !(state.exit || state.active_exit.is_some()) || state.ordinary_close {
+                state.process_exit = true;
+                admitted = state.admit_process_exit();
+            }
+            let wake = if admitted { state.wake.take() } else { None };
+            drop(state);
+            if let Some(wake) = wake {
+                wake.wake();
+            }
+        } else {
+            drop(state);
+            self.request_exit();
+        }
+    }
     pub(crate) fn request_exit(&self) {
         self.request_exit_from(None);
     }
@@ -82,6 +131,11 @@ impl StartupCommands {
 
     pub(crate) fn exit_requested(&self) -> bool {
         self.0.borrow().exit
+    }
+
+    pub(crate) fn diagnostic_exit_pending(&self) -> bool {
+        let state = self.0.borrow();
+        state.exit || state.active_exit.is_some() || state.process_exit
     }
 
     fn event(&self, event: StartupSurfaceEvent) {
@@ -156,6 +210,7 @@ pub(crate) fn start(
     let commands = StartupCommands(Rc::new(RefCell::new(Commands {
         stage: Stage::Preparing(cancellation),
         exit: false,
+        process_exit: false,
         exit_window: None,
         ordinary_close: false,
         retry: None,

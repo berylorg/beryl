@@ -9,7 +9,7 @@ use crate::{
     activity_service::{ActivityPreparationError, ActivityService, ActivityServiceLimits},
     cas_projection::{
         CasPreparationError, ProjectionConnectionService, ProjectionServiceConfig,
-        RuntimeInterestConfig, RuntimeSessionPreparationConfig, RuntimeTokenDirectories,
+        RuntimeInterestConfig, RuntimeSessionPreparationConfig, RuntimeTokenDirectory,
         ScheduledExecutionSessions, ScheduledOrdinaryRequestPolicy,
     },
     composer_marker_seal::{
@@ -57,7 +57,7 @@ pub(crate) struct AppServiceConfiguration {
     pub(crate) projection: ProjectionServiceConfig,
     pub(crate) runtime_interest: RuntimeInterestConfig,
     pub(crate) session_policy: ScheduledOrdinaryRequestPolicy,
-    pub(crate) token_directories: Vec<RuntimeTokenDirectories>,
+    pub(crate) token_directory: RuntimeTokenDirectory,
     pub(crate) handoff: HandoffScanLimits,
     pub(crate) marker: DraftMarkerSealServiceLimits,
     pub(crate) activity: ActivityServiceLimits,

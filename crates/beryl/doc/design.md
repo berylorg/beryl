@@ -25,6 +25,9 @@ Provide the Beryl executable entry point and composition root.
   concurrency before content-dependent services start. It does not construct a universal process
   resource runtime or require unrelated services to share one accounting currency.
 - This crate owns clap-based command-line parsing for executable startup options.
+- Ordinary startup selects `--beryl-home-dir` when supplied; otherwise it selects `.beryl` in
+  the current user's home directory (`~/.beryl`). No environment variable overrides that selection.
+  Diagnostic-target startup always requires the explicit command-line home path.
 - This crate resolves normalized bootstrap configuration, including the selected Beryl home directory,
   and opens an unpublished private typed Beryl-home candidate.
 - Within that one candidate, this crate registers or reacquires the complete required typed Beryl and

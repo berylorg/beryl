@@ -25,7 +25,7 @@ use beryl_app::{
     cas_projection::{
         OrdinaryTurnExecutionRequest, ProcessScheduledExecutionProvider,
         ProjectionConnectionServiceCloseOutcome, RuntimeSessionPreparationConfig,
-        RuntimeTokenDirectories, ScheduledExecutionSessions, ScheduledOrdinaryAdmissionResult,
+        RuntimeTokenDirectory, ScheduledExecutionSessions, ScheduledOrdinaryAdmissionResult,
         ScheduledOrdinaryRequestPolicy,
     },
     lifecycle_attention::ProcessLifecycleAttentionPool,
@@ -158,11 +158,7 @@ fn configure(
                     TIMEOUT,
                     OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
                 ),
-                token_directories: vec![RuntimeTokenDirectories {
-                    runtime_id: RuntimeId::from_bytes([99; 16]),
-                    host: host(&tokens),
-                    runtime: native(&tokens),
-                }],
+                token_directory: RuntimeTokenDirectory::from_admitted(host(&tokens)),
             },
             &attention,
         )

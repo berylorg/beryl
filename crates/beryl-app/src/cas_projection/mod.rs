@@ -148,7 +148,7 @@ pub use persistent_failure::{
 pub use process_sessions::IdleSessionElectionPause;
 pub use process_sessions::{
     ProcessScheduledExecutionProvider, RuntimeSessionPreparationConfig,
-    RuntimeSessionPreparationError, RuntimeTokenDirectories, ScheduledExecutionProviderContext,
+    RuntimeSessionPreparationError, RuntimeTokenDirectory, ScheduledExecutionProviderContext,
     ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionFact,
     ScheduledSessionPreparationFact, ScheduledSessionRegistration,
     ScheduledSessionRegistrationError, ScheduledSessionWorkCursor, ScheduledSessionWorkError,

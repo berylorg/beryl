@@ -1,9 +1,4 @@
-use std::{
-    fmt,
-    fs::{self, OpenOptions},
-    io::Write,
-    path::PathBuf,
-};
+use std::{fmt, fs, io::Write, path::PathBuf};
 
 use beryl_model::{AdmittedHostPath, RuntimeMode, RuntimeNativePath};
 use sha2::{Digest, Sha256};
@@ -13,6 +8,8 @@ use crate::ManagedBackendError;
 
 const TOKEN_BYTES: usize = 32;
 const NONCE_BYTES: usize = 16;
+#[cfg(target_os = "windows")]
+mod private_file;
 pub(crate) struct ManagedBackendAuthMaterial {
     token: String,
     token_sha256: String,
@@ -46,39 +43,46 @@ impl ManagedBackendAuthMaterial {
             })?;
         }
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&host_token_file_path)
-            .map_err(|source| ManagedBackendError::CreateWebSocketTokenFile {
-                path: host_token_file_path.clone(),
-                source,
-            })?;
-        file.write_all(token.as_bytes()).map_err(|source| {
-            ManagedBackendError::WriteWebSocketTokenFile {
-                path: host_token_file_path.clone(),
-                source,
+        #[cfg(target_os = "windows")]
+        let file = private_file::create(&host_token_file_path);
+        #[cfg(not(target_os = "windows"))]
+        let file = {
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
             }
+            options.open(&host_token_file_path)
+        };
+        let mut file = file.map_err(|source| ManagedBackendError::CreateWebSocketTokenFile {
+            path: host_token_file_path.clone(),
+            source,
         })?;
-        file.flush()
-            .map_err(|source| ManagedBackendError::WriteWebSocketTokenFile {
-                path: host_token_file_path.clone(),
-                source,
-            })?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&host_token_file_path, fs::Permissions::from_mode(0o600));
-        }
-
-        Ok(Self {
+        let material = Self {
             token_sha256: hex::encode(Sha256::digest(token.as_bytes())),
             token,
             host_token_file_path,
             backend_token_file_path,
             cleaned_up: false,
-        })
+        };
+        let written = file
+            .write_all(material.token.as_bytes())
+            .map_err(|source| ManagedBackendError::WriteWebSocketTokenFile {
+                path: material.host_token_file_path.clone(),
+                source,
+            })
+            .and_then(|()| {
+                file.flush()
+                    .map_err(|source| ManagedBackendError::WriteWebSocketTokenFile {
+                        path: material.host_token_file_path.clone(),
+                        source,
+                    })
+            });
+        drop(file);
+        written?;
+        Ok(material)
     }
 
     pub(crate) fn backend_token_file_path(&self) -> &str {
