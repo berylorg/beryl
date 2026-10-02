@@ -8,6 +8,21 @@ use beryl_state::BerylState;
 use syndic_storage::SyndicStorage;
 
 pub(crate) fn open(path: &Path, cancellation: CommandCancellation) -> HomeOpenOutcome {
+    #[cfg(feature = "test-faults")]
+    if std::env::var_os("BERYL_TEST_PANIC_HOME_OPEN").as_deref() == Some(std::ffi::OsStr::new("1"))
+    {
+        use std::io::{Read, Write};
+        let (released, gate) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let mut byte = [0];
+            let result = std::io::stdin().read_exact(&mut byte);
+            let _ = released.send(result);
+        });
+        println!("beryl-home-fault-ready");
+        std::io::stdout().flush().unwrap();
+        let _ = gate.recv_timeout(std::time::Duration::from_secs(20));
+        panic!("isolated application home opener fault");
+    }
     if cancellation.is_cancelled() {
         return failed("Home opening was cancelled".into(), None);
     }

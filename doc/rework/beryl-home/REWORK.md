@@ -380,7 +380,7 @@
 - [x] Implemented the independent fatal report handoff and direct process termination.
 - [x] Established the independently reviewed bounded fatal-reporting authority.
 - [x] Implemented the isolated report window and its two terminal commands; 23 combined checks and independent review passed.
-- [ ] Mount fatal handling and reporter mode when executable bootstrap is reconstructed.
+- [x] Mounted fatal handling and reporter mode with [actual executable panic/window and normal-exit evidence](../../failures/crash-report-test-containment.md#executable-mount-acceptance).
 - [x] Removed session-only bootstrap composition while preserving complete state registration and [its bounded acceptance](../../failures/target-bootstrap-composition.md#session-only-facade-removal).
 - [x] Established private initial-home candidates and production typed registration adapters with [bounded acceptance](../../failures/target-bootstrap-composition.md#initial-candidate-boundary).
 - [x] Qualified Beryl-state candidate fixtures with [complete registration, failure and identity evidence](../../failures/target-bootstrap-composition.md#beryl-state-candidate-qualification).
@@ -482,7 +482,7 @@
 - [x] Accepted the native startup owner with fixed-home Retry/Exit, exact retained cleanup and immediate complete-set handoff; [evidence](../../failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation). Executable mounting and ordinary running-window shutdown remain separate.
 - [x] Reconstructed the executable bootstrap with fixed-home selection, complete private registration,
   production inputs, ordinary process ownership and diagnostic channel-loss Exit;
-  [84-case canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
+  [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

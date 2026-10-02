@@ -89,23 +89,26 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 596: Reconstruct The Executable Bootstrap (finished)
+# Phase 382: Mount Crash Reporting At Process Entry (finished)
 
-Accepted fixed-home executable composition, private domain registration, immutable production
-inputs, native startup/restoration and diagnostic channel-loss Exit. Canonical all-target checks,
-84 focused cases and independent lifecycle/persistence/security review passed. See
-[acceptance evidence](failures/executable-bootstrap.md#bootstrap-acceptance).
-Real production panic/report-window evidence remains the next boundary.
+Accepted actual executable fatal-hook ordering and reserved reporter isolation, real application
+panic followed by an independent report window, and silent reporter release after Running exit.
+Canonical checks, 13 executable cases and independent review passed; see
+[acceptance evidence](failures/crash-report-test-containment.md#executable-mount-acceptance).
 
-# Phase 382: Mount Crash Reporting At Process Entry (pending)
+# Phase 708: Mount The Best-Effort Home Warning (pending)
 
-After target executable bootstrap exists, connect the accepted reporter and GUI boundaries before
-ordinary storage/work startup. Verify reserved reporter mode cannot enter normal bootstrap,
-ordinary startup installs fatal handling first, normal exit leaves no reporter, and a real
-isolated application panic terminates its process while the report remains usable. No helper-only
-or library-only evidence accepts this production mount; the current bootstrap removal gap remains
-explicit until its owning rework checkpoint closes.
+Complete the bounded startup-warning slice of the active shell checkpoint, now that actual
+executable startup and the sole Notifications notice projection are accepted. Follow
+[Beryl-home opening](features/beryl-home/design.md#home-opening),
+[warning lifecycle](features/notifications/design.md#best-effort-home-warning), and
+[notice mounting](features/notifications/gui.md#main-conversation-notices).
 
-The executable bootstrap prerequisite is accepted. Reserved reporter dispatch and fatal-hook
-installation are mounted; qualify the actual binary's normal exit and isolated panic/report
-surface without substituting helper-only evidence or inventing an alternate entry.
+Carry only the successful-open classification into restored and later-created main windows.
+Admit one warning per startup generation/window identity through the existing Notifications
+arbiter, preserving its priority, bounds and single visible notice. Verify no warning for native
+local NTFS or unsuccessful opening, no duplicate after rerender/replacement/dismissal, one warning
+for a later-created window, manual dismissal, visible-only five-second timing, fresh timing after
+preemption, and stale timer refusal without changing home/thread/focus state. Reuse accepted
+notice widget/arbiter behavior and qualify the real startup/window publication mount with focused
+lifecycle tests and proportionate independent review. Keep other notice contributors separate.
