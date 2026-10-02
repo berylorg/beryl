@@ -44,8 +44,24 @@ impl SyndicComposerHost {
     }
 
     pub fn retire_failed_resident(
+        self: Box<Self>,
+        store: &HomeStore,
+    ) -> Result<ComposerHostFailedResident, Box<Self>> {
+        self.retire_failed_resident_inner(store, None)
+    }
+
+    pub fn retire_failed_resident_with_marker_custody(
+        self: Box<Self>,
+        store: &HomeStore,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> Result<ComposerHostFailedResident, Box<Self>> {
+        self.retire_failed_resident_inner(store, Some(custody))
+    }
+
+    fn retire_failed_resident_inner(
         mut self: Box<Self>,
         store: &HomeStore,
+        custody: Option<&crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     ) -> Result<ComposerHostFailedResident, Box<Self>> {
         let health = store.health();
         let Some(active) = self.active.as_ref() else {
@@ -62,17 +78,25 @@ impl SyndicComposerHost {
             || !self.detached_history.is_empty()
             || self.settlement_custody_in_use() != 0
             || self.submission_pending()
-            || self.publication.lane.as_ref().is_some_and(|lane| {
-                matches!(
-                    &**lane,
-                    ComposerHostPublicationLane::Disposal(_)
-                        | ComposerHostPublicationLane::Publication(PendingPublication {
-                            stage: PublicationStage::Sealing { .. }
-                                | PublicationStage::Releasing { .. },
-                            ..
-                        })
-                ) || matches!(&**lane, ComposerHostPublicationLane::Publication(pending) if pending.retains_unfinished_marker_authority())
-            })
+            || self
+                .publication
+                .lane
+                .as_deref()
+                .is_some_and(|lane| match lane {
+                    ComposerHostPublicationLane::Disposal(_) => true,
+                    ComposerHostPublicationLane::Publication(pending) => {
+                        if let Some(custody) = custody {
+                            !pending.marker_custody_is_captured(custody)
+                        } else {
+                            pending.retains_unfinished_marker_authority()
+                                || matches!(
+                                    pending.stage,
+                                    PublicationStage::Sealing { .. }
+                                        | PublicationStage::Releasing { .. }
+                                )
+                        }
+                    }
+                })
         {
             return Err(self);
         }

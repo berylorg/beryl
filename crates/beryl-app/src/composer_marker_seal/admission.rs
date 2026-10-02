@@ -1,4 +1,5 @@
 use beryl_home_store::{CommandCancellation, HomeStore};
+use std::sync::{Arc, Mutex};
 use syndic_storage::{
     DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionReadOutcomeV1,
     SyndicStorage,
@@ -7,7 +8,7 @@ use syndic_storage::{
 use super::{
     DraftMarkerSealAdmission, DraftMarkerSealFlight, DraftMarkerSealFlightRequest,
     DraftMarkerSealReleaseIntent, DraftMarkerSealService, DraftMarkerSealServiceError, FlightPhase,
-    FlightState, ServiceLifecycle, durability::validate_store, lock_state,
+    FlightState, ServiceLifecycle, lock_state,
 };
 
 impl DraftMarkerSealService {
@@ -17,6 +18,19 @@ impl DraftMarkerSealService {
         request: DraftMarkerSealFlightRequest,
         cancellation: &CommandCancellation,
     ) -> Result<DraftMarkerSealAdmission, DraftMarkerSealServiceError> {
+        self.admit_with_access(
+            super::access::MarkerAccess::Ordinary(store),
+            request,
+            cancellation,
+        )
+    }
+    pub(super) fn admit_with_access(
+        &self,
+        access: super::access::MarkerAccess<'_>,
+        request: DraftMarkerSealFlightRequest,
+        cancellation: &CommandCancellation,
+    ) -> Result<DraftMarkerSealAdmission, DraftMarkerSealServiceError> {
+        let _borrow = self.borrow_for_access(access.is_candidate())?;
         if cancellation.is_cancelled() {
             return Ok(DraftMarkerSealAdmission::CancelledBeforeAdmission);
         }
@@ -25,24 +39,29 @@ impl DraftMarkerSealService {
         }
         let storage = {
             let mut state = lock_state(&self.inner);
-            validate_store(&mut state, store)?;
-            require_active(state.lifecycle)?;
-            state.storage.clone()
+            access.validate(&mut state)?;
+            if !access.is_candidate() {
+                require_active(state.lifecycle)?;
+            }
+            state.storage()
         };
-        authenticate_candidate(&storage, store, request.candidate)?;
+        access.authenticate(&storage, request.candidate)?;
 
         let mut state = lock_state(&self.inner);
-        validate_store(&mut state, store)?;
-        require_active(state.lifecycle)?;
+        access.validate(&mut state)?;
+        if !access.is_candidate() {
+            require_active(state.lifecycle)?;
+        }
         if let Some(existing) = state
             .flights
             .iter()
+            .chain(state.orphans.iter())
             .find(|flight| flight.handle.request.operation_id == request.operation_id)
-            .copied()
+            .map(|flight| flight.handle)
         {
-            if existing.handle.request == request {
+            if existing.request == request {
                 state.coalesces = state.coalesces.saturating_add(1);
-                return Ok(DraftMarkerSealAdmission::Coalesced(existing.handle));
+                return Ok(DraftMarkerSealAdmission::Coalesced(existing));
             }
             state.conflicts = state.conflicts.saturating_add(1);
             state.denials = state.denials.saturating_add(1);
@@ -51,13 +70,16 @@ impl DraftMarkerSealService {
         if state
             .flights
             .iter()
+            .chain(state.orphans.iter())
             .any(|flight| flight.handle.request.staging == request.staging)
         {
             state.conflicts = state.conflicts.saturating_add(1);
             state.denials = state.denials.saturating_add(1);
             return Ok(DraftMarkerSealAdmission::Conflict);
         }
-        if state.flights.len() >= state.limits.max_concurrent_flights.get() {
+        if state.flights.len() + state.orphans.len() + state.reserved
+            >= state.limits.max_concurrent_flights.get()
+        {
             state.denials = state.denials.saturating_add(1);
             return Ok(DraftMarkerSealAdmission::Saturated);
         }
@@ -72,8 +94,12 @@ impl DraftMarkerSealService {
             phase: FlightPhase::PendingBegin,
             driving: false,
             terminal: None,
+            custody: Arc::new(Mutex::new(super::custody::SealCommandCustody::default())),
+            collision: false,
         });
-        state.high_water = state.high_water.max(state.flights.len());
+        state.high_water = state
+            .high_water
+            .max(state.flights.len() + state.orphans.len() + state.reserved);
         Ok(DraftMarkerSealAdmission::Admitted(handle))
     }
 }
@@ -136,6 +162,9 @@ pub(super) fn authenticate_supersession(
 fn require_active(lifecycle: ServiceLifecycle) -> Result<(), DraftMarkerSealServiceError> {
     match lifecycle {
         ServiceLifecycle::Active => Ok(()),
+        ServiceLifecycle::Recovering => Err(DraftMarkerSealServiceError::HomeUnavailable(
+            beryl_home_store::HomeHealthState::Reopening,
+        )),
         ServiceLifecycle::Disposing => Err(DraftMarkerSealServiceError::ServiceDisposing),
         ServiceLifecycle::Retired(super::HomeLoss::Unavailable(state)) => {
             Err(DraftMarkerSealServiceError::HomeUnavailable(state))

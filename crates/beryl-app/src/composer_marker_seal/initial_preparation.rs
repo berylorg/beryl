@@ -68,6 +68,7 @@ impl PreparedMarkerServices {
         let service = DraftMarkerSealService {
             inner: new_shared_home_state(home_id, access.generation(), storage, assets, limits),
             home_id,
+            generation: access.generation(),
         };
         Ok(Self {
             service: Some(service),

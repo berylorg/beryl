@@ -20,37 +20,68 @@ impl AssetState {
         expected_sequential: SequentialMarkerSummaryV1,
         expected_ordered_assets: OrderedMarkerAssetSummaryV1,
     ) -> Result<AssetReferenceSetCompletion, AssetReadError> {
-        let manifest = read_manifest(self, store, authority.set_id)?
-            .ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
-        let evidence = read_completion_evidence(self, store, authority.set_id)?
-            .ok_or(AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
-        if !completion::matches_authority(&evidence, authority) {
-            return Err(AssetReadError::CompletionMismatch(authority.set_id));
-        }
-        if manifest.lifecycle() == AssetReferenceSetLifecycle::Building {
-            if !completion::building_matches(&manifest, &evidence) {
-                return Err(AssetReadError::CompletionEvidenceMismatch(authority.set_id));
-            }
-            return Ok(AssetReferenceSetCompletion::Building(manifest));
-        }
-        let proof = SealedAssetReferenceSetProof::new(
-            manifest.set_id(),
-            manifest.sequential(),
-            manifest.ordered_assets(),
-            manifest.entry_frontier(),
-            manifest.asset_chain_digest(),
+        complete_reference_set_using(
+            authority,
+            expected_sequential,
+            expected_ordered_assets,
+            || read_manifest(self, store, authority.set_id),
+            || read_completion_evidence(self, store, authority.set_id),
         )
-        .map_err(|_| AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
-        verify_sealed_manifest(&manifest, &evidence, proof)?;
-        if manifest.set_id() != authority.set_id
-            || manifest.sequential() != expected_sequential
-            || manifest.ordered_assets() != expected_ordered_assets
-            || manifest.entry_frontier() != expected_sequential.marker_count()
-        {
-            return Err(AssetReadError::CompletionMismatch(authority.set_id));
-        }
-        Ok(AssetReferenceSetCompletion::Sealed(proof))
     }
+
+    pub fn complete_reference_set_candidate(
+        &self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        authority: AssetReferenceSetStagingAuthority,
+        expected_sequential: SequentialMarkerSummaryV1,
+        expected_ordered_assets: OrderedMarkerAssetSummaryV1,
+    ) -> Result<AssetReferenceSetCompletion, AssetReadError> {
+        complete_reference_set_using(
+            authority,
+            expected_sequential,
+            expected_ordered_assets,
+            || read_manifest_candidate(self, access, authority.set_id),
+            || read_completion_evidence_candidate(self, access, authority.set_id),
+        )
+    }
+}
+
+fn complete_reference_set_using(
+    authority: AssetReferenceSetStagingAuthority,
+    expected_sequential: SequentialMarkerSummaryV1,
+    expected_ordered_assets: OrderedMarkerAssetSummaryV1,
+    read_manifest: impl FnOnce() -> Result<Option<AssetReferenceSetManifest>, ReadError>,
+    read_evidence: impl FnOnce() -> Result<Option<AssetReferenceSetCompletionEvidence>, ReadError>,
+) -> Result<AssetReferenceSetCompletion, AssetReadError> {
+    let manifest = read_manifest()?.ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
+    let evidence =
+        read_evidence()?.ok_or(AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
+    if !completion::matches_authority(&evidence, authority) {
+        return Err(AssetReadError::CompletionMismatch(authority.set_id));
+    }
+    if manifest.lifecycle() == AssetReferenceSetLifecycle::Building {
+        if !completion::building_matches(&manifest, &evidence) {
+            return Err(AssetReadError::CompletionEvidenceMismatch(authority.set_id));
+        }
+        return Ok(AssetReferenceSetCompletion::Building(manifest));
+    }
+    let proof = SealedAssetReferenceSetProof::new(
+        manifest.set_id(),
+        manifest.sequential(),
+        manifest.ordered_assets(),
+        manifest.entry_frontier(),
+        manifest.asset_chain_digest(),
+    )
+    .map_err(|_| AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
+    verify_sealed_manifest(&manifest, &evidence, proof)?;
+    if manifest.set_id() != authority.set_id
+        || manifest.sequential() != expected_sequential
+        || manifest.ordered_assets() != expected_ordered_assets
+        || manifest.entry_frontier() != expected_sequential.marker_count()
+    {
+        return Err(AssetReadError::CompletionMismatch(authority.set_id));
+    }
+    Ok(AssetReferenceSetCompletion::Sealed(proof))
 }
 
 pub(super) fn require_sealed_manifest(
@@ -72,20 +103,8 @@ pub(super) fn require_sealed_manifest_candidate(
 ) -> Result<AssetReferenceSetManifest, AssetReadError> {
     require_sealed_manifest_using(
         proof,
-        || {
-            access.read_point::<AssetDomain, AssetReferenceManifestCodec>(
-                &state.handle,
-                &proof.set_id(),
-                manifest_point_limit(),
-            )
-        },
-        || {
-            access.read_point::<AssetDomain, AssetReferenceCompletionEvidenceCodec>(
-                &state.handle,
-                &proof.set_id(),
-                completion_evidence_point_limit(),
-            )
-        },
+        || read_manifest_candidate(state, access, proof.set_id()),
+        || read_completion_evidence_candidate(state, access, proof.set_id()),
     )
 }
 
@@ -106,10 +125,33 @@ pub(super) fn require_building_manifest(
     store: &HomeStore,
     authority: AssetReferenceSetStagingAuthority,
 ) -> Result<AssetReferenceSetManifest, AssetReadError> {
-    let manifest = read_manifest(state, store, authority.set_id)?
-        .ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
-    let evidence = read_completion_evidence(state, store, authority.set_id)?
-        .ok_or(AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
+    require_building_manifest_using(
+        authority,
+        || read_manifest(state, store, authority.set_id),
+        || read_completion_evidence(state, store, authority.set_id),
+    )
+}
+
+pub(super) fn require_building_manifest_candidate(
+    state: &AssetState,
+    access: &HomeCandidateRecoveryAccess<'_>,
+    authority: AssetReferenceSetStagingAuthority,
+) -> Result<AssetReferenceSetManifest, AssetReadError> {
+    require_building_manifest_using(
+        authority,
+        || read_manifest_candidate(state, access, authority.set_id),
+        || read_completion_evidence_candidate(state, access, authority.set_id),
+    )
+}
+
+fn require_building_manifest_using(
+    authority: AssetReferenceSetStagingAuthority,
+    read_manifest: impl FnOnce() -> Result<Option<AssetReferenceSetManifest>, ReadError>,
+    read_evidence: impl FnOnce() -> Result<Option<AssetReferenceSetCompletionEvidence>, ReadError>,
+) -> Result<AssetReferenceSetManifest, AssetReadError> {
+    let manifest = read_manifest()?.ok_or(AssetReadError::ReferenceSetMissing(authority.set_id))?;
+    let evidence =
+        read_evidence()?.ok_or(AssetReadError::CompletionEvidenceMismatch(authority.set_id))?;
     if manifest.lifecycle() != AssetReferenceSetLifecycle::Building {
         return Err(AssetReadError::ReferenceSetNotBuilding(authority.set_id));
     }
@@ -157,6 +199,30 @@ fn read_completion_evidence(
         &state.handle,
         &set_id,
         completion_evidence_point_limit(),
+    )
+}
+
+fn read_completion_evidence_candidate(
+    state: &AssetState,
+    access: &HomeCandidateRecoveryAccess<'_>,
+    set_id: AssetReferenceSetId,
+) -> Result<Option<AssetReferenceSetCompletionEvidence>, ReadError> {
+    access.read_point::<AssetDomain, AssetReferenceCompletionEvidenceCodec>(
+        &state.handle,
+        &set_id,
+        completion_evidence_point_limit(),
+    )
+}
+
+fn read_manifest_candidate(
+    state: &AssetState,
+    access: &HomeCandidateRecoveryAccess<'_>,
+    set_id: AssetReferenceSetId,
+) -> Result<Option<AssetReferenceSetManifest>, ReadError> {
+    access.read_point::<AssetDomain, AssetReferenceManifestCodec>(
+        &state.handle,
+        &set_id,
+        manifest_point_limit(),
     )
 }
 

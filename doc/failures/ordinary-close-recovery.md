@@ -303,3 +303,41 @@ and preparing fresh candidate marker evidence; phase 595 owns production ordinar
 integration. Genuine enabled dirty editing still has the separately recorded WinRT stack failure.
 Bounded logs and frozen inventories remain under the ignored `.tmp/failed-resident-evidence` and
 `.tmp/failed-resident-app-*` paths. The isolated checkout is removed after exact-path/reparse checks.
+
+## Candidate Marker Preparation Acceptance
+
+Phase 706's candidate marker preparation passed independent persistence/lifecycle review and
+combined canonical verification on 2026-10-02. State and Syndic share ordinary authenticated
+Building/completion and seal preparation algorithms. The app retains original staging capability,
+source/frontier, command outcomes and reconciliation under the existing process flight capacity,
+then admits, drives or releases through fresh candidate access. Exact captured custody permits
+host retirement; missing or foreign capture and terminal collisions preserve refusal. Fresh and
+resumed preparation compose with exact save and same-session reconstruction. Ordinary-command
+routing and complete process graph mounting remain phase 595 work.
+
+Review found that ordinary disposal could validate the failed home before checking the caller's
+generation, retiring the newly rebound shared recovery ledger. The corrected entry acquires the
+same generation/recovery-ownership guard as other ordinary operations. Its regression proves
+stale disposal cannot consume the retained flight. Candidate-origin begin/page/Asset-seal
+noncommit and uncertainty, retry/rebinding, and Cancelled/Failed/Superseded terminal cuts passed
+focused tests and the final review. The State/Syndic scoped-review inputs remained unchanged.
+
+All 133 selected tests passed in isolated canonical run
+`9e998656-8285-4725-bd4e-3afb96659753` (278.529 seconds), covering State Asset reads/completion,
+ordinary and candidate Syndic seals, app marker service/lifecycle, resident recovery, composer
+lifecycle and publication. Both real composed candidate-marker cases also passed in local run
+`23186433-4713-49a2-a645-e80cdd2f99e9`, alongside all 32 marker service/lifecycle cases.
+The canonical run used one build job, LLVM, disabled debug/incremental compilation, a 60-second
+per-case deadline and process-local `RUST_MIN_STACK=33554432`; native WinRT worker stacks were
+unchanged. Five existing resident fixtures overflowed the default Rust test-thread stack both
+locally and on untouched accepted app baseline `b700caa1` in run
+`f89817b0-1455-41fa-a4a4-4fb887666f04`. This evidence does not claim default-stack acceptance
+for those fixtures or resolve phase 595's separate enabled dirty-edit worker-stack failure.
+
+Canonical locked metadata and final app all-target checks passed with
+`test-faults,gpui/windows-manifest`. All 28 phase source/test copies matched SHA-256 inventories;
+the tracked lockfile remained unchanged. Copying source with preserved timestamps after baseline
+compilation initially reused a stale test library. Refreshing the isolated source timestamps
+forced recompilation before the successful combined run and final all-target check; failed-build
+output is retained, not acceptance evidence. Bounded logs and inventories remain under
+`.tmp/candidate-marker-evidence`. The isolated checkout is removed after exact-path/reparse checks.

@@ -6,8 +6,10 @@ use super::{
     DraftMarkerSealFlightRequest, DraftMarkerSealObservedTerminal, DraftMarkerSealReleaseIntent,
     DraftMarkerSealReleaseOutcome, DraftMarkerSealRetireOutcome, DraftMarkerSealService,
     DraftMarkerSealServiceError, DurableCommandResult, HomeLoss, ReconcileFault, ServiceLifecycle,
+    access::MarkerAccess,
     admission::authenticate_supersession,
-    durability::{execute_command, retire, settle_command, validate_store},
+    custody::{SealCommandCustody, SealCommandSource, execute_retained_command},
+    durability::{retire, validate_store},
     lock_state,
 };
 
@@ -23,14 +25,27 @@ impl DraftMarkerSealService {
         flight: DraftMarkerSealFlight,
         intent: DraftMarkerSealReleaseIntent,
     ) -> Result<DraftMarkerSealReleaseOutcome, DraftMarkerSealServiceError> {
+        self.release_with_access(MarkerAccess::Ordinary(store), flight, intent)
+    }
+    pub(super) fn release_with_access(
+        &self,
+        access: MarkerAccess<'_>,
+        flight: DraftMarkerSealFlight,
+        intent: DraftMarkerSealReleaseIntent,
+    ) -> Result<DraftMarkerSealReleaseOutcome, DraftMarkerSealServiceError> {
+        let _borrow = self.borrow_for_access(access.is_candidate())?;
         let mut supersession_authenticated =
             !matches!(intent, DraftMarkerSealReleaseIntent::Superseded { .. });
-        let (storage, command_fault, reconcile_fault) = loop {
+        let (storage, command_fault, reconcile_fault, custody) = loop {
             let mut state = lock_state(&self.inner);
-            if store.home_id() != state.home_id {
-                return Err(DraftMarkerSealServiceError::ForeignHome);
+            access.validate(&mut state)?;
+            if state
+                .orphans
+                .iter()
+                .any(|orphan| orphan.handle == flight && orphan.collision)
+            {
+                return Err(DraftMarkerSealServiceError::ReconciliationCollision);
             }
-            validate_store(&mut state, store)?;
             let Some(index) = state
                 .flights
                 .iter()
@@ -50,17 +65,37 @@ impl DraftMarkerSealService {
                 }
                 state.flights[index].driving = true;
                 break (
-                    state.storage.clone(),
+                    state.storage(),
                     state.command_fault.take(),
                     state.reconcile_fault.take(),
+                    state.flights[index].custody.clone(),
                 );
             }
 
             if !supersession_authenticated {
-                let storage = state.storage.clone();
+                let storage = state.storage();
                 let request = state.flights[index].handle.request;
                 drop(state);
-                authenticate_supersession(&storage, store, request, intent)?;
+                match access {
+                    MarkerAccess::Ordinary(store) => {
+                        authenticate_supersession(&storage, store, request, intent)?
+                    }
+                    MarkerAccess::Candidate(_) => {
+                        if let DraftMarkerSealReleaseIntent::Superseded {
+                            successor_operation_id,
+                            successor,
+                        } = intent
+                        {
+                            if successor_operation_id == request.operation_id
+                                || successor.draft_id() != request.candidate.draft_id()
+                                || successor.session_id() != request.candidate.session_id()
+                            {
+                                return Err(DraftMarkerSealServiceError::InvalidCandidateBinding);
+                            }
+                            access.authenticate(&storage, successor)?;
+                        }
+                    }
+                }
                 supersession_authenticated = true;
                 continue;
             }
@@ -71,20 +106,25 @@ impl DraftMarkerSealService {
             }
             state.flights[index].driving = true;
             break (
-                state.storage.clone(),
+                state.storage(),
                 state.command_fault.take(),
                 state.reconcile_fault.take(),
+                state.flights[index].custody.clone(),
             );
         };
 
-        let update = settle_terminal(
-            store,
-            &storage,
-            flight.request,
-            intent,
-            command_fault,
-            reconcile_fault,
-        );
+        let settled = lock_state(&custody).require_settled(access);
+        let update = settled.and_then(|()| {
+            settle_terminal(
+                access,
+                &storage,
+                flight.request,
+                intent,
+                command_fault,
+                reconcile_fault,
+                &custody,
+            )
+        });
         let mut state = lock_state(&self.inner);
         let Some(index) = state
             .flights
@@ -94,7 +134,15 @@ impl DraftMarkerSealService {
             return Ok(DraftMarkerSealReleaseOutcome::HomeGenerationRetired);
         };
         if matches!(state.lifecycle, ServiceLifecycle::Retired(_)) {
-            state.flights.swap_remove(index);
+            let mut orphan = state.flights.swap_remove(index);
+            orphan.driving = false;
+            if matches!(
+                update,
+                Err(DraftMarkerSealServiceError::ReconciliationCollision)
+            ) {
+                orphan.collision = true;
+            }
+            state.orphans.push(orphan);
             return Ok(DraftMarkerSealReleaseOutcome::HomeGenerationRetired);
         }
         match update {
@@ -108,7 +156,10 @@ impl DraftMarkerSealService {
                 Ok(outcome)
             }
             Err(DraftMarkerSealServiceError::ReconciliationCollision) => {
-                state.flights.swap_remove(index);
+                let mut orphan = state.flights.swap_remove(index);
+                orphan.driving = false;
+                orphan.collision = true;
+                state.orphans.push(orphan);
                 finish_disposal(&mut state);
                 Err(DraftMarkerSealServiceError::ReconciliationCollision)
             }
@@ -123,11 +174,15 @@ impl DraftMarkerSealService {
         &self,
         store: &HomeStore,
     ) -> Result<DraftMarkerSealDisposeOutcome, DraftMarkerSealServiceError> {
+        let _borrow = self.borrow_operations()?;
         let candidate = {
             let mut state = lock_state(&self.inner);
             validate_store(&mut state, store)?;
             if matches!(state.lifecycle, ServiceLifecycle::Active) {
                 state.lifecycle = ServiceLifecycle::Disposing;
+            }
+            if !state.orphans.is_empty() || state.reserved != 0 {
+                return Err(DraftMarkerSealServiceError::ReconciliationCollision);
             }
             if matches!(state.lifecycle, ServiceLifecycle::Disposed) || state.flights.is_empty() {
                 state.lifecycle = ServiceLifecycle::Disposed;
@@ -162,7 +217,12 @@ impl DraftMarkerSealService {
 
     pub fn retire_home_generation(&self) -> DraftMarkerSealRetireOutcome {
         let mut state = lock_state(&self.inner);
-        let (released, settling_drives) = retire(&mut state, HomeLoss::GenerationChanged);
+        let (released, settling_drives) =
+            if self.generation == state.home_generation && !state.recovery_owned {
+                retire(&mut state, HomeLoss::GenerationChanged)
+            } else {
+                (0, 0)
+            };
         DraftMarkerSealRetireOutcome {
             released,
             settling_drives,
@@ -171,32 +231,33 @@ impl DraftMarkerSealService {
 }
 
 fn settle_terminal(
-    store: &HomeStore,
+    access: MarkerAccess<'_>,
     storage: &SyndicStorage,
     request: DraftMarkerSealFlightRequest,
     intent: DraftMarkerSealReleaseIntent,
     command_fault: CommandFault,
     reconcile_fault: ReconcileFault,
+    custody: &std::sync::Mutex<SealCommandCustody>,
 ) -> Result<TerminalUpdate, DraftMarkerSealServiceError> {
     let key = request.seal_request().key();
-    match storage.draft_marker_seal_status(store, key)? {
+    match access.status(storage, key)? {
         DraftMarkerSealStatusV1::Absent => Ok(TerminalUpdate::Complete(
             DraftMarkerSealReleaseOutcome::ReleasedWithoutDurableSeal(intent),
         )),
         DraftMarkerSealStatusV1::Open { .. } => {
-            let revision = storage.revision(store)?;
-            let mut command = HomeCommand::new(store.home_revision()?);
+            let revision = access.syndic_revision(storage)?;
+            let mut command = HomeCommand::new(access.home_revision()?);
             let release = match intent {
                 DraftMarkerSealReleaseIntent::Cancelled
                 | DraftMarkerSealReleaseIntent::SessionDisposed
                 | DraftMarkerSealReleaseIntent::ServiceDisposed => {
-                    let prepared = storage.prepare_draft_marker_seal_cancel(store, key)?;
+                    let prepared = access.cancel(storage, key)?;
                     let release = prepared.release();
                     command.add(storage.cancel_draft_marker_seal(revision, prepared))?;
                     release
                 }
                 DraftMarkerSealReleaseIntent::Failed(reason) => {
-                    let prepared = storage.prepare_draft_marker_seal_fail(store, key, reason)?;
+                    let prepared = access.fail(storage, key, reason)?;
                     let release = prepared.release();
                     command.add(storage.fail_draft_marker_seal(revision, prepared))?;
                     release
@@ -205,18 +266,22 @@ fn settle_terminal(
                     successor_operation_id,
                     ..
                 } => {
-                    let prepared = storage.prepare_draft_marker_seal_supersede(
-                        store,
-                        key,
-                        successor_operation_id,
-                    )?;
+                    let prepared = access.supersede(storage, key, successor_operation_id)?;
                     let release = prepared.release();
                     command.add(storage.supersede_draft_marker_seal(revision, prepared))?;
                     release
                 }
             };
-            let outcome = execute_command(store, command, command_fault);
-            match settle_command(store, outcome, storage, request, reconcile_fault)? {
+            match execute_retained_command(
+                access,
+                command,
+                command_fault,
+                reconcile_fault,
+                storage,
+                request,
+                custody,
+                SealCommandSource::Terminal(release),
+            )? {
                 DurableCommandResult::ExactOld => Ok(TerminalUpdate::Keep(
                     DraftMarkerSealReleaseOutcome::NotCommitted(intent),
                 )),
@@ -280,7 +345,11 @@ fn terminal_status(
 }
 
 pub(super) fn finish_disposal(state: &mut super::ServiceState) {
-    if state.flights.is_empty() && matches!(state.lifecycle, ServiceLifecycle::Disposing) {
+    if state.flights.is_empty()
+        && state.orphans.is_empty()
+        && state.reserved == 0
+        && matches!(state.lifecycle, ServiceLifecycle::Disposing)
+    {
         state.lifecycle = ServiceLifecycle::Disposed;
     }
 }

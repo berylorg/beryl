@@ -76,6 +76,9 @@ pub(super) fn validate_store(
     }
     match state.lifecycle {
         ServiceLifecycle::Active | ServiceLifecycle::Disposing => Ok(()),
+        ServiceLifecycle::Recovering => Err(DraftMarkerSealServiceError::HomeUnavailable(
+            beryl_home_store::HomeHealthState::Reopening,
+        )),
         ServiceLifecycle::Retired(HomeLoss::Unavailable(state)) => {
             Err(DraftMarkerSealServiceError::HomeUnavailable(state))
         }
@@ -86,7 +89,7 @@ pub(super) fn validate_store(
     }
 }
 
-pub(super) fn lock_state(inner: &Mutex<ServiceState>) -> std::sync::MutexGuard<'_, ServiceState> {
+pub(super) fn lock_state<T>(inner: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     inner
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -94,10 +97,18 @@ pub(super) fn lock_state(inner: &Mutex<ServiceState>) -> std::sync::MutexGuard<'
 
 pub(super) fn retire(state: &mut ServiceState, loss: HomeLoss) -> (usize, usize) {
     state.lifecycle = ServiceLifecycle::Retired(loss);
-    let before = state.flights.len();
-    state.flights.retain(|flight| flight.driving);
-    let settling = state.flights.len();
-    (before - settling, settling)
+    let settling = state.flights.iter().filter(|flight| flight.driving).count();
+    let mut index = 0;
+    while index < state.flights.len() {
+        if state.flights[index].driving {
+            index += 1;
+        } else {
+            let flight = state.flights.swap_remove(index);
+            state.orphans.push(flight);
+        }
+    }
+    state.backends.take();
+    (0, settling)
 }
 
 impl ReconcileFault {
@@ -112,7 +123,7 @@ impl ReconcileFault {
     }
 
     #[cfg(feature = "test-faults")]
-    fn run(
+    pub(super) fn run(
         self,
         store: &HomeStore,
         storage: &SyndicStorage,
@@ -124,7 +135,7 @@ impl ReconcileFault {
     }
 
     #[cfg(not(feature = "test-faults"))]
-    fn run(
+    pub(super) fn run(
         self,
         _store: &HomeStore,
         _storage: &SyndicStorage,
@@ -145,12 +156,12 @@ impl CommandFault {
     }
 
     #[cfg(feature = "test-faults")]
-    fn run(self, store: &HomeStore) {
+    pub(super) fn run(self, store: &HomeStore) {
         if let Some(fault) = self.0 {
             fault(store);
         }
     }
 
     #[cfg(not(feature = "test-faults"))]
-    fn run(self, _store: &HomeStore) {}
+    pub(super) fn run(self, _store: &HomeStore) {}
 }

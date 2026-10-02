@@ -5,31 +5,39 @@ use beryl_model::BerylHomeId;
 use beryl_state::{AssetReferenceSetStagingAuthority, AssetState};
 use syndic_storage::{DraftMarkerSealFailureReasonV1, DraftMarkerSealProofV1, SyndicStorage};
 
+mod access;
 mod admission;
+mod custody;
 mod drive;
 mod durability;
 pub(crate) mod initial_preparation;
+mod recovery;
 mod terminal;
 mod types;
 
+pub use recovery::DraftMarkerSealRetainedFlights;
 pub use types::*;
 
 use drive::{drive_asset_seal, drive_begin, drive_page};
-use durability::{lock_state, validate_store};
+use durability::lock_state;
 use terminal::finish_disposal;
 
 pub struct DraftMarkerSealService {
     inner: Arc<Mutex<ServiceState>>,
     home_id: BerylHomeId,
+    generation: HomeGeneration,
 }
 
 struct ServiceState {
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
-    storage: SyndicStorage,
-    assets: AssetState,
+    backends: Option<MarkerBackends>,
     limits: DraftMarkerSealServiceLimits,
     flights: Vec<FlightState>,
+    orphans: Vec<FlightState>,
+    reserved: usize,
+    recovery_owned: bool,
+    active_borrows: usize,
     next_serial: u64,
     high_water: usize,
     denials: u64,
@@ -44,17 +52,42 @@ struct ServiceState {
     fail_next_drive_as_collision: bool,
 }
 
-#[derive(Clone, Copy)]
 struct FlightState {
     handle: DraftMarkerSealFlight,
     phase: FlightPhase,
     driving: bool,
     terminal: Option<DraftMarkerSealReleaseIntent>,
+    custody: Arc<Mutex<custody::SealCommandCustody>>,
+    collision: bool,
+}
+
+#[derive(Clone)]
+struct MarkerBackends {
+    storage: SyndicStorage,
+    assets: AssetState,
+}
+
+impl ServiceState {
+    fn storage(&self) -> SyndicStorage {
+        self.backends
+            .as_ref()
+            .expect("validated marker backend custody")
+            .storage
+            .clone()
+    }
+    fn assets(&self) -> AssetState {
+        self.backends
+            .as_ref()
+            .expect("validated marker backend custody")
+            .assets
+            .clone()
+    }
 }
 
 #[derive(Clone, Copy)]
 enum ServiceLifecycle {
     Active,
+    Recovering,
     Disposing,
     Retired(HomeLoss),
     Disposed,
@@ -83,6 +116,7 @@ enum DriveUpdate {
     Complete(DraftMarkerSealDriveOutcome),
 }
 
+#[derive(Clone, Copy)]
 enum DurableCommandResult {
     ExactOld,
     ExactNew,
@@ -123,7 +157,11 @@ impl DraftMarkerSealService {
         let home_id = store.home_id();
         validate_construction_authority(store, &storage, &assets)?;
         let inner = new_shared_home_state(home_id, home_generation, storage, assets, limits);
-        Ok(Self { inner, home_id })
+        Ok(Self {
+            inner,
+            home_id,
+            generation: home_generation,
+        })
     }
 
     pub fn drive(
@@ -131,12 +169,36 @@ impl DraftMarkerSealService {
         store: &HomeStore,
         flight: DraftMarkerSealFlight,
     ) -> Result<DraftMarkerSealDriveOutcome, DraftMarkerSealServiceError> {
-        let (storage, assets, page_limit, phase, command_fault, reconcile_fault, injected_failure) = {
+        self.drive_with_access(access::MarkerAccess::Ordinary(store), flight)
+    }
+    fn drive_with_access(
+        &self,
+        access: access::MarkerAccess<'_>,
+        flight: DraftMarkerSealFlight,
+    ) -> Result<DraftMarkerSealDriveOutcome, DraftMarkerSealServiceError> {
+        let _borrow = self.borrow_for_access(access.is_candidate())?;
+        let (
+            storage,
+            assets,
+            page_limit,
+            phase,
+            command_fault,
+            reconcile_fault,
+            injected_failure,
+            custody,
+        ) = {
             let mut state = lock_state(&self.inner);
-            validate_store(&mut state, store)?;
-            let storage = state.storage.clone();
-            let assets = state.assets.clone();
+            access.validate(&mut state)?;
+            let storage = state.storage();
+            let assets = state.assets();
             let page_limit = state.limits.markers_per_page.get();
+            if state
+                .orphans
+                .iter()
+                .any(|orphan| orphan.handle == flight && orphan.collision)
+            {
+                return Err(DraftMarkerSealServiceError::ReconciliationCollision);
+            }
             let current = state
                 .flights
                 .iter_mut()
@@ -150,6 +212,7 @@ impl DraftMarkerSealService {
             }
             current.driving = true;
             let phase = current.phase;
+            let custody = current.custody.clone();
             let command_fault = state.command_fault.take();
             let reconcile_fault = state.reconcile_fault.take();
             #[cfg(feature = "test-faults")]
@@ -169,23 +232,28 @@ impl DraftMarkerSealService {
                 command_fault,
                 reconcile_fault,
                 injected_failure,
+                custody,
             )
         };
 
-        let update = if let Some(error) = injected_failure {
+        let settled = lock_state(&custody).require_settled(access);
+        let update = if let Err(error) = settled {
+            Err(error)
+        } else if let Some(error) = injected_failure {
             Err(error)
         } else {
             match phase {
                 FlightPhase::PendingBegin => drive_begin(
-                    store,
+                    access,
                     &storage,
                     &assets,
                     flight.request,
                     command_fault,
                     reconcile_fault,
+                    &custody,
                 ),
                 FlightPhase::Streaming { staging } => drive_page(
-                    store,
+                    access,
                     &storage,
                     &assets,
                     flight.request,
@@ -193,9 +261,10 @@ impl DraftMarkerSealService {
                     page_limit,
                     command_fault,
                     reconcile_fault,
+                    &custody,
                 ),
                 FlightPhase::SealingAsset { staging, syndic } => drive_asset_seal(
-                    store,
+                    access,
                     &storage,
                     &assets,
                     flight.request,
@@ -203,6 +272,7 @@ impl DraftMarkerSealService {
                     syndic,
                     command_fault,
                     reconcile_fault,
+                    &custody,
                 ),
             }
         };
@@ -216,7 +286,15 @@ impl DraftMarkerSealService {
             return Err(DraftMarkerSealServiceError::HomeGenerationChanged);
         };
         if let ServiceLifecycle::Retired(loss) = state.lifecycle {
-            state.flights.swap_remove(index);
+            let mut orphan = state.flights.swap_remove(index);
+            orphan.driving = false;
+            if matches!(
+                update,
+                Err(DraftMarkerSealServiceError::ReconciliationCollision)
+            ) {
+                orphan.collision = true;
+            }
+            state.orphans.push(orphan);
             return Err(match loss {
                 HomeLoss::Unavailable(state) => DraftMarkerSealServiceError::HomeUnavailable(state),
                 HomeLoss::GenerationChanged => DraftMarkerSealServiceError::HomeGenerationChanged,
@@ -237,13 +315,18 @@ impl DraftMarkerSealService {
                 Ok(outcome)
             }
             Err(DraftMarkerSealServiceError::ReconciliationCollision) => {
-                state.flights.swap_remove(index);
+                let mut orphan = state.flights.swap_remove(index);
+                orphan.driving = false;
+                orphan.collision = true;
+                state.orphans.push(orphan);
                 finish_disposal(&mut state);
                 Err(DraftMarkerSealServiceError::ReconciliationCollision)
             }
             Err(error) => {
                 state.flights[index].driving = false;
-                if state.flights[index].terminal.is_none() {
+                if matches!(access, access::MarkerAccess::Ordinary(store) if store.health().state() == HomeHealthState::Healthy)
+                    && state.flights[index].terminal.is_none()
+                {
                     state.flights[index].terminal = Some(DraftMarkerSealReleaseIntent::Failed(
                         DraftMarkerSealFailureReasonV1::Operational,
                     ));
@@ -289,6 +372,7 @@ impl DraftMarkerSealService {
         DraftMarkerSealServiceDiagnostics {
             configured_flight_limit: state.limits.max_concurrent_flights.get(),
             current_flights: state.flights.len(),
+            retained_flights: state.orphans.len() + state.reserved,
             high_water_flights: state.high_water,
             admission_denials: state.denials,
             coalesced_admissions: state.coalesces,
@@ -328,6 +412,7 @@ impl Clone for DraftMarkerSealService {
         Self {
             inner: Arc::clone(&self.inner),
             home_id: self.home_id,
+            generation: self.generation,
         }
     }
 }
@@ -342,10 +427,13 @@ fn new_shared_home_state(
     Arc::new(Mutex::new(ServiceState {
         home_id,
         home_generation,
-        storage,
-        assets,
+        backends: Some(MarkerBackends { storage, assets }),
         limits,
         flights: Vec::new(),
+        orphans: Vec::new(),
+        reserved: 0,
+        recovery_owned: false,
+        active_borrows: 0,
         next_serial: 1,
         high_water: 0,
         denials: 0,

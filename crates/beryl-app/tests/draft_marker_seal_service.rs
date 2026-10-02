@@ -27,6 +27,9 @@ mod app_support;
 
 use app_support::*;
 
+#[path = "draft_marker_seal_service/candidate.rs"]
+mod candidate;
+
 #[path = "support/durable_marker_home.rs"]
 mod marker_home;
 use marker_home::fixture_with_state;
@@ -314,7 +317,7 @@ fn prebegin_release_retire_and_dispose_release_owned_capacity() {
     }
     let _retired = admitted(&service, &store, request(&session, 103, 104));
     let retirement = service.retire_home_generation();
-    assert_eq!(retirement.released(), 1);
+    assert_eq!(retirement.released(), 0);
     assert_eq!(retirement.settling_drives(), 0);
     assert_eq!(service.diagnostics().current_flights(), 0);
     drop(service);

@@ -1335,6 +1335,51 @@ impl DomainMutation<SyndicDomain> for DisposalMutation {
 }
 
 impl SyndicStorage {
+    pub fn validate_draft_editor_candidate_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        expected: DraftEditorCandidateActivationBindingV1,
+    ) -> Result<(), DraftEditorCandidatePublicationCommandErrorV1> {
+        let access = ReadAccess::Candidate(store);
+        let revision = self
+            .revision_with_access(access)
+            .map_err(SyndicReadError::Read)?;
+        let head = match publication_session_with_access(
+            self,
+            access,
+            expected.draft_id(),
+            expected.session_id(),
+        )? {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(head) => head,
+            DraftEditorCandidateSessionReadOutcomeV1::ConcurrentChange => {
+                return Err(SyndicReadError::ConcurrentChange {
+                    operation: "candidate editor checkpoint validation",
+                }
+                .into());
+            }
+            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
+        };
+        if head.active_operation().is_some() {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
+        }
+        if head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
+            || DraftEditorCandidateActivationBindingV1::from_head(&head) != expected
+        {
+            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        if self
+            .revision_with_access(access)
+            .map_err(SyndicReadError::Read)?
+            != revision
+        {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "candidate editor checkpoint validation",
+            }
+            .into());
+        }
+        Ok(())
+    }
+
     pub fn capture_draft_editor_candidate_publication_source(
         &self,
         store: &HomeStore,

@@ -232,6 +232,14 @@ impl AssetState {
         read::require_building_manifest(self, store, authority)
     }
 
+    pub fn staged_reference_set_manifest_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        authority: AssetReferenceSetStagingAuthority,
+    ) -> Result<AssetReferenceSetManifest, AssetReadError> {
+        read::require_building_manifest_candidate(self, access, authority)
+    }
+
     /// Reads a sealed manifest only after rechecking its complete opaque proof.
     pub fn sealed_reference_set_manifest(
         &self,

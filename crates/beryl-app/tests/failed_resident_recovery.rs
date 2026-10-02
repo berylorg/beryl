@@ -9,6 +9,8 @@ mod support;
 #[path = "pending_composer_activation/support.rs"]
 mod widget_support;
 
+#[path = "failed_resident_recovery/candidate_markers.rs"]
+mod candidate_markers;
 #[path = "failed_resident_recovery/host.rs"]
 mod host;
 #[path = "failed_resident_recovery/marker.rs"]

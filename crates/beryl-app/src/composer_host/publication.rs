@@ -199,6 +199,31 @@ pub(super) struct PendingPublication {
 }
 
 impl PendingPublication {
+    pub(super) fn marker_custody_is_captured(
+        &self,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> bool {
+        match &self.stage {
+            PublicationStage::Sealing { service, flight }
+            | PublicationStage::Releasing {
+                service, flight, ..
+            } => custody.authenticates(service, *flight),
+            _ if self.retains_unfinished_marker_authority() => {
+                let authority = self.intent.marker_authority.unwrap();
+                custody.authenticates_request(
+                    self.intent.binding.home_id(),
+                    self.intent.binding.home_generation(),
+                    DraftMarkerSealFlightRequest::new(
+                        self.intent.candidate,
+                        authority.operation_id,
+                        authority.staging,
+                    ),
+                )
+            }
+            _ => true,
+        }
+    }
+
     pub(super) fn retains_unfinished_marker_authority(&self) -> bool {
         self.intent.marker_authority.is_some()
             && matches!(

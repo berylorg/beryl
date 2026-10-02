@@ -236,6 +236,7 @@ impl DraftMarkerSealRetireOutcome {
 pub struct DraftMarkerSealServiceDiagnostics {
     pub(super) configured_flight_limit: usize,
     pub(super) current_flights: usize,
+    pub(super) retained_flights: usize,
     pub(super) high_water_flights: usize,
     pub(super) admission_denials: u64,
     pub(super) coalesced_admissions: u64,
@@ -252,6 +253,10 @@ impl DraftMarkerSealServiceDiagnostics {
 
     pub const fn current_flights(self) -> usize {
         self.current_flights
+    }
+
+    pub const fn retained_flights(self) -> usize {
+        self.retained_flights
     }
 
     pub const fn high_water_flights(self) -> usize {
@@ -285,6 +290,8 @@ impl DraftMarkerSealServiceDiagnostics {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DraftMarkerSealServiceError {
+    #[error("candidate marker source qualification failed: {0}")]
+    CandidatePublication(#[from] syndic_storage::DraftEditorCandidatePublicationCommandErrorV1),
     #[cfg(feature = "test-faults")]
     #[error("injected marker seal operational failure")]
     InjectedOperationalFailure,

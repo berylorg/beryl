@@ -89,37 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 705: Establish Failed-Home Resident Recovery Custody (finished)
+# Phase 706: Prepare Marker Evidence Through Recovery Candidate Access (finished)
 
-Failed-home resident custody, fresh candidate publication with supplied real typed proofs and
-protected same-editor/history reconstruction passed independent review, focused regressions and
-isolated canonical checks. See [acceptance evidence](failures/ordinary-close-recovery.md#failed-resident-capability-acceptance).
-Fresh marker preparation remains phase 706; ordinary command integration remains phase 595.
-
-# Phase 706: Prepare Marker Evidence Through Recovery Candidate Access (wip)
-
-Complete the candidate marker-preparation prerequisite identified by the bounded phase 705 audit.
-The [image-assets system](systems/image-assets/design.md#reference-and-label-evidence),
-[Syndic candidate evidence contract](../crates/syndic-storage/doc/design-draft-storage.md#candidate-marker-evidence-preparation),
-[State Asset contract](../crates/beryl-state/doc/design-assets.md) and
-[app composer authority](../crates/beryl-app/doc/design-catalog-and-composer.md) control this boundary.
-Phase 705's save primitive consumes supplied typed proofs; it does not establish this preparation.
-
-- Add candidate counterparts sharing Syndic's authenticated seal begin/advance/status/terminal
-  preparation and State's original-staging-authority Building/completion reads. Preserve existing
-  atomic contributions, schema, revision fences, bounded pages and exact terminal semantics.
-- Retain unfinished process seal flight authority and independent outcomes before old graph
-  retirement; drive fresh or resumed candidate preparation without old service capabilities or
-  another flight-capacity owner. Refusal and uncertainty preserve custody and block publication.
-- Verify real marker-changing resident preparation/save, original-flight recovery, missing or
-  substituted authority, commit/noncommit/uncertain cuts, cancellation/supersession, stale delivery
-  and resource limits. Require independent persistence/lifecycle review and canonical checks.
-
-Current milestone: implement candidate Asset/marker preparation and retained process flight custody.
-
-No schema or publication-algorithm blocker was found. Current ordinary-only seal/read access and
-non-driving-flight disposal cannot substitute for this capability. Phase 595 consumes it after
-acceptance; its ordinary command mounting remains separate.
+Candidate marker preparation, original flight/outcome custody and exact host handoff passed
+independent persistence/lifecycle review, 133 combined canonical cases and final all-target checks.
+See [acceptance evidence](failures/ordinary-close-recovery.md#candidate-marker-preparation-acceptance),
+including the qualified test-thread-stack limit. Ordinary-command integration remains phase 595.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

@@ -281,6 +281,9 @@ fn digest_vector(
     [seed, proof.asset_chain_digest().as_bytes()]
 }
 
+#[cfg(feature = "test-faults")]
+#[path = "assets_v3_cases/candidate_completion.rs"]
+mod candidate_completion_cases;
 #[path = "assets_v3_cases/completion.rs"]
 mod completion_cases;
 #[path = "assets_v3_cases/digest.rs"]
