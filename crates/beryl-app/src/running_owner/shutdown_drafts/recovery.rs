@@ -228,6 +228,8 @@ impl RunningShutdownDrafts {
             releasing: false,
             released: false,
             ready: true,
+            detached_preparing: false,
+            detached_prepared: false,
         }
     }
 

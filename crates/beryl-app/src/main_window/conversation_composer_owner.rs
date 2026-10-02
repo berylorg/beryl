@@ -30,6 +30,7 @@ use super::{
 mod clipboard;
 mod close;
 mod construction;
+mod detached;
 mod dispatch;
 mod lifecycle;
 mod prepublication;
@@ -109,6 +110,7 @@ enum MainWindowConversationComposerPhase {
     Live,
     Fencing,
     RecoveryFenced,
+    Detached,
     Releasing,
     Released(MainWindowComposerWidgetRelease),
     ReleaseFailed,
@@ -139,6 +141,7 @@ pub struct MainWindowConversationComposer {
     recovery_config: MainWindowConversationComposerConfig,
     input: Entity<RangeTextInput>,
     service: Option<Arc<MainWindowConversationComposerService>>,
+    detached: Option<detached::DetachedComposer>,
     selection: MainWindowComposerSelectionIdentity,
     route: MainWindowConversationComposerRoute,
     pending_realizer: Option<MainWindowConversationComposerPendingRealizer>,
@@ -454,10 +457,10 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.is_live()
+        if (!self.is_live() && self.detached.is_none())
             || self.startup_interaction_gated
             || self.active_flight.is_some()
-            || self.last_error.is_some()
+            || (self.last_error.is_some() && self.detached.is_none())
         {
             return;
         }
@@ -512,6 +515,10 @@ impl MainWindowConversationComposer {
         };
         match action {
             clipboard::PropagatedClipboardAction::Request(request) => {
+                if self.detached.is_some() {
+                    self.drive_detached_clipboard_request(request, selected_range, window, cx);
+                    return;
+                }
                 let (flight, service) = match self.begin_flight() {
                     Ok(flight) => flight,
                     Err(error) => {
@@ -637,7 +644,7 @@ impl MainWindowConversationComposer {
         if let Some(clipboard) = self.propagated_clipboard.take() {
             clipboard.cancel();
         }
-        if self.is_live() {
+        if self.is_live() || self.detached.is_some() {
             self.input.update(cx, |input, cx| {
                 input.set_enabled(!self.startup_interaction_gated, cx)
             });
@@ -716,7 +723,7 @@ impl MainWindowConversationComposer {
         if !self.can_pump()
             || self.scheduled
             || self.active_flight.is_some()
-            || self.last_error.is_some()
+            || (self.last_error.is_some() && self.detached.is_none())
         {
             return;
         }

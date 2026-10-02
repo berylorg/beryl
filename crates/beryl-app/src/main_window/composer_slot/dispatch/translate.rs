@@ -23,6 +23,52 @@ use crate::composer_host::{
 
 use super::MainWindowComposerDispatchError;
 
+pub(in crate::main_window) fn detached_request(
+    source: &syndic_storage::DetachedDraftReadSourceV1,
+    binding: ComposerHostBinding,
+    request: gpui_text_input::RangeTextInputRequest,
+) -> Result<super::MainWindowComposerDispatchOutcome, String> {
+    if source.binding() != binding.candidate() || source.root() != binding.root() {
+        return Err("detached composer binding changed".into());
+    }
+    match request {
+        gpui_text_input::RangeTextInputRequest::Page(request) => {
+            let key = request.key();
+            validate_binding(binding, key.binding(), key.revision())
+                .map_err(|_| "detached text request is stale".to_owned())?;
+            page_purpose(key.purpose())
+                .map_err(|_| "detached text purpose is invalid".to_owned())?;
+            let bytes = usize::try_from(key.max_payload_bytes())
+                .map_err(|_| "detached text bound is invalid".to_owned())?;
+            let result = source
+                .text_demand(text_demand(key), bytes)
+                .map_err(|error| format!("detached text read failed: {error:?}"))?;
+            translate_text_result(key, &result)
+                .map(super::MainWindowComposerDispatchOutcome::Page)
+                .map_err(|_| "detached text response was refused".to_owned())
+        }
+        gpui_text_input::RangeTextInputRequest::ObjectPage(request) => {
+            let key = request.key();
+            validate_binding(binding, key.binding(), key.revision())
+                .map_err(|_| "detached object request is stale".to_owned())?;
+            if key.presentation_generation().get() != binding.presentation_generation().get() {
+                return Err("detached object presentation changed".into());
+            }
+            object_purpose(key.purpose())
+                .map_err(|_| "detached object purpose is invalid".to_owned())?;
+            let demand =
+                marker_demand(key).map_err(|_| "detached object demand is invalid".to_owned())?;
+            let result = source
+                .marker_demand(demand)
+                .map_err(|error| format!("detached object read failed: {error:?}"))?;
+            translate_marker_result(key, &result)
+                .map(super::MainWindowComposerDispatchOutcome::ObjectPage)
+                .map_err(|_| "detached object response was refused".to_owned())
+        }
+        _ => Err("detached composer rejects mutation requests".into()),
+    }
+}
+
 pub(super) fn text_page(
     host: &mut SyndicComposerHost,
     store: &HomeStore,

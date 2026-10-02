@@ -9,7 +9,7 @@ pub(in crate::main_window::shell::host) enum ResidentRetirement {
 }
 
 impl MainWindowShellController {
-    fn retire_construction(&mut self) -> Result<(), String> {
+    pub(super) fn retire_construction(&mut self) -> Result<(), String> {
         match &self.content {
             ShellContent::Retired { .. } => return Ok(()),
             ShellContent::Acquired { custody, .. } => {

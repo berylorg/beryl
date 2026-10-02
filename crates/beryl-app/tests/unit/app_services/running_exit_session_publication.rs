@@ -3,6 +3,11 @@ use crate::running_owner::{
     ExitProgressError, RunningShutdownDraftProgress, RunningShutdownSession,
 };
 
+mod final_teardown {
+    use super::*;
+    include!("running_exit_final_teardown.rs");
+}
+
 mod graph_retirement_support {
     use super::*;
     include!("interrupted_exit_graph_retirement_support.rs");

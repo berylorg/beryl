@@ -89,177 +89,35 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 702: Mount Automatic Interrupted Exit Recovery (finished)
+# Phase 703: Complete Running Exit Final Teardown (finished)
 
-Reported Exit publication failure now starts bounded process-owned recovery through fresh binding
-and coherent completion. Exact original/resume outcomes survive retry, cancellation and graph
-replacement; surviving windows remain intact and the original Exit stays cancelled. Independent
-lifecycle/persistence review accepted the complete boundary. All 19 automatic cases, both actual
-service-retirement cancellation cases and affected native regressions passed using the documented
-[aggregate and corrected-run evidence](failures/automatic-exit-recovery.md#verification).
-Default/fault-enabled app checks, scoped formatting, locked canonical metadata and fault-enabled
-app/test compilation passed. Widget `dcbe549` and Settings `6e233a3` are published and canonically
-pinned with one GPUI/widget graph; the analyzer was refreshed after successful validation.
-Ordinary close/Exit mounting and executable composition remain separate under 595 and 596.
+The running Exit consumer now completes exact service/native cleanup or retains readable,
+selectable and copyable residents with explicit Quit Anyway after late failure. Bounded detached
+sources prepare before session publication and survive home retirement without old service
+access. Independent lifecycle/persistence review, storage and native/clipboard tests, default and
+fault-enabled app checks, and isolated canonical validation passed; see
+[acceptance evidence](failures/running-shutdown-retirement.md#final-teardown-acceptance).
+Ordinary command mounting and executable composition remain phases 595 and 596.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
-Operator approved interrupted-Exit recovery on 2026-09-27. Phase 691 resolves the target contract;
-a reported failed Exit remains cancelled through same-home recovery and requires fresh activation.
-Phases 692–697 supply the exact header-only resume contribution, immutable publication evidence,
-fresh candidate validation, retained resume execution and proven-noncommit retry. Resume settlement and replacement
-composition remain prerequisites to enabled mounting.
+Mount enabled ordinary Exit and native close commands through the persistent running owner under
+[main-window authority](features/main-windows/design.md) and the
+[app lifecycle](../crates/beryl-app/doc/design-shell-lifecycle.md#window-detachment-and-process-shutdown).
+The accepted coordinator, exact native confirmation, serialized window admission, resident draft
+flush, session publication and interrupted-Exit recovery remain reusable. Phase 703 supplies the
+final-teardown consumer and blocked-shutdown outcome; this phase owns ordinary command routing.
 
-Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
-ordinary process window owner. Share serialized final-window designation with construction,
-implement exact side-effect-free native confirmation, preserve ordinary-close versus Exit restore
-modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
-slices and verification from the main-windows feature and app lifecycle authority before activation.
+Preserve nonfinal close as draft/session settlement followed by view and claim release, without
+stopping background work. Serialize final-window designation with construction and other closes.
+Final ordinary close uses the all-work barrier but records an empty restore set; dedicated Exit
+preserves the complete layout. Both require exact native/auxiliary settlement before normal quit,
+and retain the accepted recoverable-before-teardown versus blocked-after-teardown outcomes.
 
-Operator approved on 2026-09-27 the [irreversible final teardown boundary](failures/running-shutdown-retirement.md)
-and read-only blocked-shutdown outcome with explicit Quit Anyway for late cleanup failure. The
-feature, GUI and lifecycle authority now distinguish recoverable failure before teardown from
-blocked cleanup afterward. Include this outcome in ordinary final-close/Exit integration. The
-earlier lock-order and bounded observation prerequisites are accepted in phase 603.
-
-The observed coordinator handoff and graph-owned lifetime integration are accepted in phases
-613–614. Owned native confirmation and canonical dependency publication are accepted in phases
-615–617, including Cancel default, exact duplicate control, focus restoration, native close vetoes
-and disposal ordering. The complete running owner and auxiliary cleanup are accepted in phase 620;
-worker-owned shutdown observation and its distinct-thread count are accepted in phases 621–622;
-read-only invoking-window snapshot inspection is accepted in phase 623. Next mount confirmation and ordinary
-close/Exit policy through that owner, retaining exact published native destruction custody.
-Preserve separate acceptance boundaries for any missing components before final integration.
-The confirmation custody adapter, exact native cleanup evidence and proven-clean failure recovery
-are accepted in phases 624–626. GPUI `49db3ce857` and published widget pins retain a single canonical
-GPUI graph. Phases 627–628 accept exact window-custody validation inside observed admission and
-owner-retained confirmed intent through tagged worker refresh, refusal and late cancellation.
-Phase 629 accepts the revalidated no-work admission boundary through that same retained owner.
-Ordinary close/Exit command routing, automatic refresh scheduling, visible barrier gating,
-coherent failure completion and exact published-window teardown remain
-unmounted; integrate them through the persistent running owner. Successful admission retains its
-original lease and intent. Phase 630 accepts a worker-owned progress pass with complete service
-custody and proven reopening. Phase 631 connects a confirmed worker observation to exact GUI
-admission or cancellation through a retained continuation. Policy-driven
-refresh/progress scheduling and normal process quit remain unmounted. Phase 632 supplies required
-GUI completion notification after each worker progress pass; result consumption and subsequent
-policy actions remain explicit. Phase 633 supplies initial worker observation and GUI delivery;
-choosing confirmation or idle admission and binding it to ordinary commands remain unmounted.
-Phase 634 supplies native confirmation completion notification; result consumption and subsequent
-policy actions remain explicit.
-Phases 635–636 supply owner-retained GUI delivery, exact completion and invoking-window binding of
-the running Exit consumer. Phase 637 supplies exact-request work classification and idle admission;
-phase 638 connects work-bearing observations to owned native confirmation, and phase 639 consumes
-exact confirmation results into cancellation or retained confirmed intent. Phase 640 supplies
-request-retaining initial worker observation from exact command delivery. Phase 641 connects that
-observation to work routing while retaining the request through native settlement. Phase 642 consumes
-the exact confirmation into cancellation or retained confirmed intent during that routing. Phase 643
-carries positive confirmation through one exact worker observation and admission/discard. Ordinary
-toolbar mounting, subsequent refresh/progress routing, and coherent request completion remain unmounted.
-Phase 644 supplies exact-request delivery through one worker progress pass and consumes the settled
-result after complete service return. Policy-driven polling and final teardown remain unmounted.
-Phase 645 guards request completion until owner custody settles; callers still explicitly end an
-unadmitted intent or obtain proven reopening before completion. Automatic outcome handling remains
-unmounted.
-
-Phase 646 supplies automatic delayed progress polling while Waiting, with exact request retention
-and terminal delivery. Phase 647 connects admitted initial routing to that driver under one retained
-attempt. Phase 648 settles unsuccessful outcomes through exact guarded command completion, ending
-only the returned settled unadmitted intent. Readiness and unresolved custody remain retained.
-Visible outcome reporting and final teardown remain pending; these boundaries grant no quit authority.
-Phase 649 connects one retained command wait to that policy, including initial scheduling refusal
-delivery and guarded completion. Successor waits remain explicit; ordinary mounting stays pending.
-Phase 650 reports preparation errors through the existing invoking-window notice arbiter without
-altering policy outcomes. Progress and final-teardown reporting remain separate from that contribution.
-Phase 651 extends that contribution to typed progress-delivery errors while retaining unresolved
-admission. Coordinator failure results still require their own affected-window attribution.
-Phase 652 supplies exact thread-specific coordinator reporting, including unviewed-work attribution;
-phase 653 supplies original-invoker reporting for unattributed coordinator failures. Eligible
-persistent-condition guidance remains pending.
-Phase 654 refreshes explicitly changed confirmed observation/admission evidence without repeating
-confirmation, preserving the original tagged intent through each delay. Idle-path retries remain
-separate; other failures still complete through the existing policy and notice path.
-Phase 655 preserves typed close-preparation failures through idle classification, supplying the
-remaining error provenance needed for initial-evidence refresh. Phase 656 connects that refresh
-to initial Exit routing, reserving successor reads and reclassifying fresh work before confirmation.
-Phase 657 supplies the resident-composer shutdown mutation gate, including independent gate release
-and read-only interaction. Phase 658 supplies the shell adapter and New Window gate.
-Phase 659 supplies admitted-only installation across the published set; phase 660 supplies
-proven-reopening release. Phase 661 connects both to exact-request Exit progress. Remaining
-visible barrier controls and ordinary Exit mounting stay pending. Phase 662 mounts the disabled
-Exit waiting presentation; enabled routing and final teardown remain pending.
-Phase 663 supplies independent shared command availability gates without deferred replay;
-installing current feature gates and exposing enabled toolbar routing remain pending.
-Phase 664 binds those producers to current home health and the original published generation;
-Settings state installation, toolbar notification and enabled routing remain pending.
-Phase 665 supplies automatic shared availability projection and toolbar notification with bounded,
-owner-scoped observation. Settings state installation and enabled routing remain pending.
-Phase 666 retains exact work readiness through result consumption and prevents ordinary duplicate
-polling, while preserving explicit cancelled recovery. Next compose resident draft/session
-obligations before admitting final teardown; work readiness alone cannot authorize destruction.
-Phase 667 supplies exact shell/composer draft preparation and polling through retained close
-tickets. Next aggregate those obligations through the running owner and preserve partial admission
-and recovery custody before composing durable session publication.
-Phase 668 supplies exact resident release completion for recoverable draft cleanup. Next aggregate
-preparation, polling and release under the original running shutdown attempt, retaining every
-partially admitted obligation until recovery or final teardown settles it.
-Phase 669 supplies that retained aggregate and excludes coordinator recovery until every admitted
-preparation releases exactly. Next compose durable session obligations and connect draft polling
-and recovery through the existing Exit driver before enabling ordinary shutdown.
-Phase 670 supplies automatic draft preparation/release polling with exact retained custody.
-Phase 671 supplies the exact-request recovery handoff from draft release through cancelled
-coordinator progression. Next compose durable session publication and connect preparation failure
-policy to that handoff before enabling ordinary shutdown.
-Phase 672 supplies that exact-request preparation policy, preserving both the original failure
-and recovery evidence. Connect it to the ordinary attempt consumer and compose durable session
-publication before enabling ordinary shutdown.
-Phase 673 connects preparation and recovery outcomes to the ordinary attempt consumer. Next
-compose durable session obligations before enabling ordinary shutdown or entering final teardown.
-Phase 674 supplies the complete-set atomic Exit session contribution. Next capture exact native
-placement facts and compose durable publication/reconciliation through the retained running owner.
-Phases 675–676 supply accepted native outer-geometry/restore-state capture and its canonical GPUI
-publication. Next capture virtual-desktop identity, convert the complete native placement facts
-to durable session inputs, and compose publication/reconciliation through the running owner.
-Phase 677 supplies the pure physical-to-durable placement converter. Virtual-desktop observation
-and binding both observations to the original window remain prerequisites to session publication.
-Phase 678 supplies the published native lifetime lease required by that observation. Publish its
-canonical GPUI/widget pins before implementing the desktop COM worker and exact Exit-owner binding.
-Phase 679 completes that publication. Next implement the worker desktop observation under the
-accepted published-window lease, then compose exact Exit-owner placement/session custody.
-Phase 680 supplies that desktop worker. Next bind geometry and desktop observations to the original
-Exit attempt and retain every native settlement before session publication or recovery.
-Phase 681 supplies that retained capture and recovery fence. Next bind the complete captured set to
-the original durable session revisions, compose publication/reconciliation through the retained
-owner, and connect capture failure to exact recovery before enabling ordinary shutdown.
-
-Phase 682 supplies exact-request placement preparation and settled-failure recovery, preserving
-original capture errors alongside recovery evidence. Next bind captured placements to original
-durable revisions and compose session publication/reconciliation before ordinary consumer mounting.
-Phase 683 connects placement preparation to the ordinary attempt consumer after draft readiness.
-Complete placements retain the attempt; capture failure and refusal use the existing completion and
-notice paths. Durable session publication/reconciliation and enabled toolbar mounting remain pending.
-Phase 684 supplies revision-bound command preparation from complete placements. Next retain
-execution and ambiguous-outcome reconciliation under the original running attempt before consuming
-session readiness or admitting final teardown.
-Phase 685 supplies worker execution and explicit reconciliation outcome custody. Next admit and
-retain that worker under the original running Exit attempt, fencing recovery while publication is
-unsettled and composing proven session readiness before final teardown.
-Phase 686 supplies retained running-attempt worker admission, exact service/outcome return and
-recovery exclusion. Next compose outcome consumption, same-home reconciliation and proven session
-readiness without dropping original receipts or pending custody.
-Phase 687 supplies retained explicit reconciliation passes and exact typed result return under
-the original attempt. Next compose outcome readiness and same-home recovery; all session outcomes
-still fence draft release and coordinator recovery until their proof is explicitly consumed.
-Phase 688 supplies uncached session readiness from the retained clean or exact-new receipt under
-current healthy home/session authority. Next integrate the ordinary consumer and same-home failure
-recovery; readiness inspection preserves all custody and grants no teardown or quit authority.
-Phase 689 supplies the exact-request publication handoff with retained outcomes and current readiness
-delivery. Next compose ordinary consumer and same-home failure policy; delivery alone neither
-completes the command nor releases recovery fences.
-Phase 690 connects publication to the ordinary consumer after placement readiness, retaining the
-request through session readiness or typed publication failure and commandless notice delivery.
-Next compose same-home failure recovery and outcome consumption before enabled ordinary mounting
-or final teardown; successful publication alone still retains every shutdown fence.
+Resolve current feature gates before exposing enabled controls, keep native default destruction
+vetoed until owned cleanup succeeds, and require fresh activation after cancellation or failure.
+Derive focused integration cases and independently review the complete ordinary command boundary
+before acceptance. Executable entry composition remains phase 596.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

@@ -1,8 +1,8 @@
 use super::*;
 
 pub struct MainWindowComposerMountRecoveryResources {
-    close: MainWindowConversationComposerCloseTicket,
-    flush: crate::composer_host::ComposerHostFlushTicket,
+    pub(super) close: MainWindowConversationComposerCloseTicket,
+    pub(super) flush: crate::composer_host::ComposerHostFlushTicket,
     pub resident: crate::main_window::MainWindowComposerRecoveryResources,
     pub service: Option<Arc<MainWindowConversationComposerService>>,
     pub publication_adapters: Option<(beryl_state::AssetState, DraftMarkerSealService)>,

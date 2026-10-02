@@ -23,6 +23,21 @@ pub(super) struct RestoredClaimActivation {
 }
 
 impl RestoredWindowComposer {
+    pub(in crate::main_window) fn validate_service_retirement(
+        &self,
+        expected: &Arc<MainWindowConversationComposerService>,
+    ) -> Result<(), String> {
+        self.candidate.validate_service_retirement(expected)?;
+        if self.claim_activation.as_ref().is_none_or(|activation| {
+            !activation.applied
+                || activation.reconciliation.is_some()
+                || activation.local_finalization.is_some()
+        }) {
+            return Err("restored claim activation is not settled for retirement".into());
+        }
+        Ok(())
+    }
+
     pub(in crate::main_window) fn validate_recovery_retirement(&self) -> Result<(), String> {
         self.candidate.validate_recovery_retirement()?;
         if self.claim_activation.as_ref().is_none_or(|activation| {

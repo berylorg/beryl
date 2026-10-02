@@ -36,10 +36,22 @@ pub(in super::super) fn selected_home() -> tempfile::TempDir {
 }
 
 pub(in super::super) fn selected_home_with_windows(count: u8) -> tempfile::TempDir {
+    selected_home_with_draft(count, 0)
+}
+
+pub(in super::super) fn selected_home_with_draft(count: u8, chunks: usize) -> tempfile::TempDir {
     let fixture = shell_support::Fixture::new(194);
     native_appearance::install_native_theme(&fixture.store, &fixture.state);
     for index in 0..count {
         drop(fixture.acquire(195 + index));
+    }
+    if chunks != 0 {
+        composer_support::seed_published_draft_chunks(
+            &fixture.storage,
+            &fixture.store,
+            SyndicThreadId::from_bytes([195u8.wrapping_add(40); 16]),
+            chunks,
+        );
     }
     let shell_support::Fixture {
         directory,
@@ -56,17 +68,29 @@ pub(in super::super) fn selected_home_with_windows(count: u8) -> tempfile::TempD
 }
 
 pub(in super::super) fn selected_inputs() -> crate::app_services::MainWindowServiceInputs {
+    selected_inputs_with_extent(0)
+}
+
+pub(in super::super) fn selected_inputs_with_extent(
+    extent: u64,
+) -> crate::app_services::MainWindowServiceInputs {
     crate::app_services::MainWindowServiceInputs {
         request_source: Arc::new(|_, _| panic!("selected fixture must restore")),
         activation_source: Arc::new(|_| panic!("selected fixture must restore")),
-        restored_activation_source: Arc::new(|record| {
+        restored_activation_source: Arc::new(move |record| {
             Ok((
                 composer_support::activation(
                     record.selected_thread().unwrap().thread_id(),
                     201,
                     202,
                     1,
-                    0,
+                    if record.selected_thread().unwrap().thread_id()
+                        == SyndicThreadId::from_bytes([195u8.wrapping_add(40); 16])
+                    {
+                        extent
+                    } else {
+                        0
+                    },
                 ),
                 composer_support::fixture::operation_id(203),
             ))

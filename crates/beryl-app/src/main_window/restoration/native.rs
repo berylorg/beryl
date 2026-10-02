@@ -35,6 +35,13 @@ pub struct PublishedMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
+    pub(crate) fn shells_mut(&mut self) -> &mut [MainWindowShell] {
+        &mut self.shells
+    }
+
+    pub(crate) fn release_retired_shells(&mut self) {
+        self.shells.clear();
+    }
     pub(crate) fn bind_interrupted_exit_appearance(
         &mut self,
         window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,

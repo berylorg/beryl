@@ -15,6 +15,8 @@ impl MainWindowShellRoot {
             startup_interaction: None,
             shutdown_interaction_gated: false,
             exit_disabled_reason: None,
+            #[cfg(target_os = "windows")]
+            blocked_shutdown: None,
             controller: Some(controller),
             construction_error,
             composer_observer: None,
@@ -22,6 +24,7 @@ impl MainWindowShellRoot {
             creation_observer: None,
             appearance_release: None,
             command_focus: cx.focus_handle(),
+            exit_focus: cx.focus_handle(),
             shell_focus,
             notices,
         };

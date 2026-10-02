@@ -4,6 +4,32 @@ This supplement is normative only for Syndic draft, editor, piece-tree, marker, 
 staging, edit-history, materialization, restoration, and sealed-text storage. The package entry point
 controls scope and rigor; [`design-schema-v7.md`](design-schema-v7.md) controls persisted bytes.
 
+## Detached Immutable Draft Reads
+
+- The package implements the typed draft contribution to
+  [detached shutdown read sources](../../../doc/systems/beryl-home-storage/design.md#detached-shutdown-read-sources).
+  Acquisition names one exact immutable candidate/root, after the caller proves its selected
+  close-ready binding. It uses ordinary historical-root typed reads and never follows a later
+  current-draft selector. The completed source retains immutable identity facts and its temporary
+  backing only, with no HomeStore, service, candidate mutation or history-adoption capability.
+- One opaque file contains a fixed header, contiguous UTF-8 text and ordered fixed-size marker
+  records. Marker records preserve their full typed identity, anchor, order, label and AssetId.
+  Checked root summary counts determine the complete reservation before acquisition. This private
+  transient encoding is not part of persisted V7, and no app consumer encodes or parses it.
+- Acquisition is a cancellable bounded page traversal. It verifies contiguous complete text,
+  expected byte and marker counts, valid UTF-8 and marker anchors, and exact marker ordering before
+  sealing. Failure or cancellation returns no readable source and releases its private backing.
+  No full text, marker vector or size-dependent in-memory index is retained.
+- Detached text and marker demands preserve ordinary exact-root range semantics: UTF-8 boundary
+  validation, forward/backward text, inclusive ranges, exact-anchor scope, directed marker paging,
+  exact cursors, same-anchor continuation and terminal edges. Fixed-record search and bounded
+  file reads replace live storage access. Malformed demands, overflow, short reads and decoding
+  failure are typed refusals, never empty-success or substitute provenance.
+- Verify ordinary-versus-detached demand equivalence for Unicode, empty and marker-only roots,
+  dense same-anchor markers, direction/cursor boundaries and beyond-residency ranges. Verify
+  resource refusal, acquisition cancellation, incomplete backing rejection and independent paging
+  after the originating home closes. Export and reads perform no durable mutation.
+
 ## Draft And Root Authority
 
 A current-draft record binds stable draft and owning-thread identities, a selector revision, one

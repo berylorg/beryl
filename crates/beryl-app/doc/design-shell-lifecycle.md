@@ -1421,6 +1421,14 @@ by the executable composition root.
   policy. The process owner admits at most one exact explicit blocked-shutdown Quit Anyway request;
   ordinary close, cancellation and stale callbacks cannot mint that authority. Execution remains
   fenced until ordinary successful quit or explicit immediate process termination.
+- Before the Exit consumer proceeds from draft readiness to placement and session publication,
+  it prepares the complete detached read-only composer source set defined by the
+  [composer adapter](design-catalog-and-composer.md#detached-read-only-composer).
+  The running owner retains one process staging pool with the storage system's finite limits.
+  Final admission requires complete exact source preparation and installation before consuming
+  services. Surviving detached sources and local clipboard handling outlive home retirement until
+  their native windows are destroyed or the process terminates. Threadless shells need no source.
+  This terminal read-only phase cannot reopen services or enter interrupted-Exit recovery.
 
 ## Prepublication Window Abandonment
 

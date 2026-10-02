@@ -5,6 +5,8 @@ mod threadless;
 pub use threadless::*;
 mod construction;
 mod exit_command;
+#[cfg(target_os = "windows")]
+mod final_teardown;
 mod recovery;
 mod restored;
 mod selected;
@@ -591,6 +593,8 @@ pub struct MainWindowShellRoot {
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,
     exit_disabled_reason: Option<&'static str>,
+    #[cfg(target_os = "windows")]
+    blocked_shutdown: Option<std::rc::Weak<RefCell<crate::running_owner::RunningProcessOwner>>>,
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,
@@ -598,6 +602,7 @@ pub struct MainWindowShellRoot {
     creation_observer: Option<gpui::Subscription>,
     appearance_release: Option<gpui::Subscription>,
     command_focus: gpui::FocusHandle,
+    exit_focus: gpui::FocusHandle,
     pub(super) shell_focus: gpui::FocusHandle,
     pub(super) notices: notices::MainWindowShellNotices,
 }

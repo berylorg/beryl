@@ -3,6 +3,7 @@ pub(crate) mod build_mapping;
 mod builder_model;
 mod checkpoint;
 mod codec;
+mod detached;
 mod history;
 mod marker_commitment;
 mod marker_seal;
@@ -23,13 +24,16 @@ pub use admission::*;
 pub use beryl_model::DraftMarkerCommitmentV1;
 pub use builder_model::*;
 pub(crate) use checkpoint::has_saved_identity as candidate_session_has_saved_identity;
+pub use detached::{
+    DetachedDraftReadErrorV1, DetachedDraftReadLimitsV1, DetachedDraftReadSourceV1,
+};
 pub use history::*;
 pub use marker_commitment::canonical_empty_draft_marker_commitment_v1;
 pub use marker_seal::*;
 pub use materializer::*;
 pub use model::*;
-pub use mutation::{DraftPieceBuildWorkV1, PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
 pub use mutation::staged_command::*;
+pub use mutation::{DraftPieceBuildWorkV1, PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
 pub use publication::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,
@@ -76,8 +80,8 @@ pub(crate) use admission::{
     DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionNodesFamily,
     DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
 };
-pub(crate) use codec::*;
 pub(crate) use build_mapping::DraftPieceBuildMappingCodec;
+pub(crate) use codec::*;
 pub(crate) use history::{
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
     DraftEditHistoryTransitionsCodec, DraftEditHistoryTransitionsFamily,

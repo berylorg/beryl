@@ -4,11 +4,14 @@ use crate::main_window::{
     MainWindowConversationComposerCloseTicket, MainWindowConversationComposerMount,
 };
 
+mod detached;
 mod recovery;
 
 pub struct MainWindowShutdownDraft {
     pub(super) root: gpui::EntityId,
     pub(super) retirement: Option<recovery::ResidentRetirement>,
+    pub(super) detached_source: Option<syndic_storage::DetachedDraftReadSourceV1>,
+    pub(super) detached_installed: bool,
     pub(super) composer: Option<(
         Entity<MainWindowConversationComposerMount>,
         gpui::EntityId,
@@ -83,6 +86,8 @@ impl MainWindowShellRoot {
         Ok(MainWindowShutdownDraft {
             root: cx.entity_id(),
             retirement: None,
+            detached_source: None,
+            detached_installed: false,
             composer,
         })
     }
@@ -182,6 +187,10 @@ impl MainWindowShellRoot {
 }
 
 impl MainWindowShutdownDraft {
+    pub(crate) fn discard_detached_source(&mut self) {
+        self.detached_source.take();
+    }
+
     pub(crate) fn recovery_resident_identity(
         &self,
     ) -> Option<(gpui::EntityId, MainWindowConversationComposerCloseTicket)> {

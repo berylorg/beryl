@@ -25,6 +25,7 @@ mod exit_refresh;
 mod exit_routing;
 mod exit_session_publication;
 mod exit_work;
+mod final_teardown;
 mod initial_observation;
 mod observation;
 mod progress;
@@ -46,6 +47,7 @@ pub(crate) use exit_placement_preparation::ExitPlacementPreparationCompletion;
 pub(crate) use exit_progress::ExitProgressError;
 pub(crate) use exit_routing::{ExitRoutingCompletion, ExitRoutingError};
 pub(crate) use exit_work::{ExitWorkClassification, ExitWorkError, ExitWorkRoute};
+pub(crate) use final_teardown::RunningExitCompletion;
 pub(crate) use observation::ConfirmedShutdownAdmission;
 pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
 pub(crate) use shutdown_session::RunningShutdownSession;
@@ -72,6 +74,8 @@ pub(crate) struct RunningProcessOwner {
     exit_availability: Option<gpui::Task<()>>,
     interrupted_exit: Option<shutdown_session::InterruptedExitRecovery>,
     automatic_recovery: Option<shutdown_session::AutomaticInterruptedExitRecovery>,
+    final_teardown: Option<final_teardown::FinalTeardown>,
+    detached_read_pool: beryl_home_store::TemporaryReadPool,
     #[cfg(test)]
     disable_automatic_recovery: bool,
     #[cfg(test)]
@@ -96,7 +100,19 @@ pub(crate) struct RunningProcess {
 }
 
 impl RunningProcessOwner {
-    pub(crate) fn start(mut process: StartedProcess, app: &mut App) -> Rc<RefCell<Self>> {
+    #[cfg(test)]
+    pub(crate) fn test_detached_read_usage(&self) -> beryl_home_store::TemporaryReadPoolUsage {
+        self.detached_read_pool.usage().unwrap()
+    }
+    pub(crate) fn start(process: StartedProcess, app: &mut App) -> Rc<RefCell<Self>> {
+        Self::start_with_detached_read_limits(process, Default::default(), app)
+    }
+
+    pub(crate) fn start_with_detached_read_limits(
+        mut process: StartedProcess,
+        limits: beryl_home_store::TemporaryReadPoolLimits,
+        app: &mut App,
+    ) -> Rc<RefCell<Self>> {
         process.commands.bind_home(
             process
                 .services
@@ -123,6 +139,8 @@ impl RunningProcessOwner {
             exit_availability: None,
             interrupted_exit: None,
             automatic_recovery: None,
+            final_teardown: None,
+            detached_read_pool: beryl_home_store::TemporaryReadPool::new(limits),
             #[cfg(test)]
             disable_automatic_recovery: false,
             #[cfg(test)]

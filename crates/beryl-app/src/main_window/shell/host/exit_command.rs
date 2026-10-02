@@ -17,6 +17,13 @@ impl MainWindowShellRoot {
     }
 
     fn exit_presentation(&self) -> (&'static str, &'static str) {
+        #[cfg(target_os = "windows")]
+        if self.blocked_shutdown.is_some() {
+            return (
+                "Quit Anyway",
+                "Quit Beryl immediately; cleanup is incomplete.",
+            );
+        }
         if self.shutdown_interaction_gated {
             (
                 "Exiting…",
@@ -55,7 +62,7 @@ pub(super) fn render(
     if let Some(family) = &font.family {
         label_style.font_family = family.clone();
     }
-    let label_width = ["Exit", "Exiting…"]
+    let label_width = ["Exit", "Exiting…", "Quit Anyway"]
         .into_iter()
         .map(|label| {
             window
@@ -70,10 +77,60 @@ pub(super) fn render(
         })
         .fold(px(0.), |width, next| width.max(next));
     let source = cx.weak_entity();
+    #[cfg(target_os = "windows")]
+    let blocked = root.blocked_shutdown.is_some();
+    #[cfg(not(target_os = "windows"))]
+    let blocked = false;
+    let hover = color("button.secondary.hover", Property::Background, 0xeef2f7);
+    let hover_border = color("button.secondary.hover", Property::Border, 0x94a3b8);
+    let hover_foreground = color("button.secondary.hover", Property::Foreground, 0x1f2937);
+    let pressed = color("button.secondary.pressed", Property::Background, 0xe2e8f0);
+    let pressed_border = color("button.secondary.pressed", Property::Border, 0x64748b);
+    let ring = color("focus.ring", Property::Color, 0x2563eb);
+    let toolbar = color("main.toolbar", Property::Background, 0xf8fafc);
     div()
         .id("main-window-exit")
         .debug_selector(|| "main-window-exit".to_owned())
-        .tab_stop(false)
+        .tab_stop(blocked)
+        .when(blocked, |button| {
+            button
+                .track_focus(&root.exit_focus)
+                .cursor_pointer()
+                .hover(move |style| {
+                    style
+                        .bg(hover)
+                        .border_color(hover_border)
+                        .text_color(hover_foreground)
+                })
+                .active(move |style| style.bg(pressed).border_color(pressed_border))
+                .focus(move |style| {
+                    style.shadow(vec![
+                        gpui::BoxShadow {
+                            color: toolbar.into(),
+                            offset: gpui::point(px(0.), px(0.)),
+                            blur_radius: px(0.),
+                            spread_radius: px(2.),
+                        },
+                        gpui::BoxShadow {
+                            color: ring.into(),
+                            offset: gpui::point(px(0.), px(0.)),
+                            blur_radius: px(0.),
+                            spread_radius: px(4.),
+                        },
+                    ])
+                })
+                .on_click(cx.listener(|root, _, _, cx| {
+                    #[cfg(target_os = "windows")]
+                    let _ = root.request_blocked_quit(cx);
+                }))
+                .on_key_down(cx.listener(|root, event: &gpui::KeyDownEvent, _, cx| {
+                    if event.keystroke.key == "enter" || event.keystroke.key == "space" {
+                        #[cfg(target_os = "windows")]
+                        let _ = root.request_blocked_quit(cx);
+                        cx.stop_propagation();
+                    }
+                }))
+        })
         .h(px(32.))
         .w(label_width + px(26.))
         .px(px(12.))
@@ -87,24 +144,36 @@ pub(super) fn render(
         .rounded(px(6.))
         .border_1()
         .border_color(color(
-            "button.secondary.disabled",
+            if blocked {
+                "button.secondary.normal"
+            } else {
+                "button.secondary.disabled"
+            },
             Property::Border,
             0xcbd5e1,
         ))
         .bg(color(
-            "button.secondary.disabled",
+            if blocked {
+                "button.secondary.normal"
+            } else {
+                "button.secondary.disabled"
+            },
             Property::Background,
-            0xf1f5f9,
+            if blocked { 0xf8fafc } else { 0xf1f5f9 },
         ))
         .text_color(color(
-            "button.secondary.disabled",
+            if blocked {
+                "button.secondary.label"
+            } else {
+                "button.secondary.disabled"
+            },
             Property::Foreground,
-            0x94a3b8,
+            if blocked { 0x1f2937 } else { 0x94a3b8 },
         ))
         .text_size(px(font.size))
         .font_weight(gpui::FontWeight(font.weight))
         .when_some(font.family, |button, family| button.font_family(family))
-        .when(root.shutdown_interaction_gated, |button| {
+        .when(root.shutdown_interaction_gated && !blocked, |button| {
             button.opacity(0.72)
         })
         .child(root.exit_presentation().0)

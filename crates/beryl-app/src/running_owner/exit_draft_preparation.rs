@@ -18,7 +18,28 @@ pub(crate) enum ExitDraftPreparationCompletion {
 impl RunningProcessOwner {
     pub(crate) fn prepare_exit_drafts(
         owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            RunningExitRequest,
+            ExitDraftPreparationCompletion,
+            &mut App,
+        ) + 'static,
+    ) -> Result<(), (RunningExitRequest, ExitProgressError)> {
+        Self::prepare_exit_drafts_with_cancellation(
+            owner,
+            request,
+            crate::cas_projection::ProjectionCancellationToken::new(),
+            app,
+            completed,
+        )
+    }
+
+    pub(crate) fn prepare_exit_drafts_with_cancellation(
+        owner: &Rc<RefCell<Self>>,
         mut request: RunningExitRequest,
+        cancellation: crate::cas_projection::ProjectionCancellationToken,
         app: &mut App,
         completed: impl FnOnce(
             &Rc<RefCell<Self>>,
@@ -53,47 +74,78 @@ impl RunningProcessOwner {
                 let (request, completed) = settled.borrow_mut().take().unwrap();
                 let preparation = match result {
                     Ok(RunningShutdownDraftProgress::Ready) => {
-                        completed(owner, request, ExitDraftPreparationCompletion::Ready, app);
+                        Self::prepare_detached_shutdown_sources(
+                            owner,
+                            cancellation,
+                            app,
+                            move |owner, result, app| match result {
+                                Ok(()) => completed(
+                                    owner,
+                                    request,
+                                    ExitDraftPreparationCompletion::Ready,
+                                    app,
+                                ),
+                                Err(preparation) => Self::fail_exit_draft_preparation(
+                                    owner,
+                                    request,
+                                    preparation,
+                                    app,
+                                    completed,
+                                ),
+                            },
+                        );
                         return;
                     }
                     Err(error) => error,
                     Ok(other) => format!("draft preparation returned {other:?}"),
                 };
-                let delivery = Rc::new(RefCell::new(Some((preparation, completed))));
-                let settled = delivery.clone();
-                if let Err((request, error)) = Self::recover_exit_drafts(
-                    owner,
-                    request,
-                    app,
-                    move |owner, request, recovery, app| {
-                        let (preparation, completed) = settled.borrow_mut().take().unwrap();
-                        completed(
-                            owner,
-                            request,
-                            ExitDraftPreparationCompletion::Failed {
-                                preparation,
-                                recovery,
-                            },
-                            app,
-                        );
-                    },
-                ) {
-                    let (preparation, completed) = delivery.borrow_mut().take().unwrap();
-                    completed(
-                        owner,
-                        request,
-                        ExitDraftPreparationCompletion::Failed {
-                            preparation,
-                            recovery: Err(error),
-                        },
-                        app,
-                    );
-                }
+                Self::fail_exit_draft_preparation(owner, request, preparation, app, completed);
             },
         );
         scheduled.map_err(|error| {
             let (request, _) = delivery.borrow_mut().take().unwrap();
             (request, ExitProgressError::DraftPreparation(error))
         })
+    }
+
+    fn fail_exit_draft_preparation(
+        owner: &Rc<RefCell<Self>>,
+        request: RunningExitRequest,
+        preparation: String,
+        app: &mut App,
+        completed: impl FnOnce(
+            &Rc<RefCell<Self>>,
+            RunningExitRequest,
+            ExitDraftPreparationCompletion,
+            &mut App,
+        ) + 'static,
+    ) {
+        let delivery = Rc::new(RefCell::new(Some((preparation, completed))));
+        let settled = delivery.clone();
+        if let Err((request, error)) =
+            Self::recover_exit_drafts(owner, request, app, move |owner, request, recovery, app| {
+                let (preparation, completed) = settled.borrow_mut().take().unwrap();
+                completed(
+                    owner,
+                    request,
+                    ExitDraftPreparationCompletion::Failed {
+                        preparation,
+                        recovery,
+                    },
+                    app,
+                );
+            })
+        {
+            let (preparation, completed) = delivery.borrow_mut().take().unwrap();
+            completed(
+                owner,
+                request,
+                ExitDraftPreparationCompletion::Failed {
+                    preparation,
+                    recovery: Err(error),
+                },
+                app,
+            );
+        }
     }
 }

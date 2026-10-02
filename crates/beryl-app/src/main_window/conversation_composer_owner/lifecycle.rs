@@ -18,6 +18,7 @@ impl MainWindowConversationComposer {
         matches!(
             self.phase,
             MainWindowConversationComposerPhase::Live
+                | MainWindowConversationComposerPhase::Detached
                 | MainWindowConversationComposerPhase::Fencing
         ) || (matches!(
             self.phase,
@@ -347,7 +348,8 @@ impl MainWindowConversationComposer {
         ) -> Result<MainWindowComposerWidgetRelease, String>,
     ) -> Result<MainWindowComposerWidgetRelease, String> {
         match self.phase {
-            MainWindowConversationComposerPhase::RecoveryFenced => {
+            MainWindowConversationComposerPhase::RecoveryFenced
+            | MainWindowConversationComposerPhase::Detached => {
                 return Err("conversation composer is retained for recovery".to_owned());
             }
             MainWindowConversationComposerPhase::Released(release) => return Ok(release),
@@ -404,6 +406,7 @@ impl MainWindowConversationComposer {
         matches!(
             self.phase,
             MainWindowConversationComposerPhase::Live
+                | MainWindowConversationComposerPhase::Detached
                 | MainWindowConversationComposerPhase::Fencing
         )
     }
@@ -414,7 +417,8 @@ impl MainWindowConversationComposer {
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
         match self.phase {
-            MainWindowConversationComposerPhase::RecoveryFenced => {
+            MainWindowConversationComposerPhase::RecoveryFenced
+            | MainWindowConversationComposerPhase::Detached => {
                 return Err("conversation composer is retained for recovery".to_owned());
             }
             MainWindowConversationComposerPhase::Live => {

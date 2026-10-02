@@ -45,6 +45,45 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   guarantees through typed ownership, revision fences, and classified command outcomes rather than
   re-proving them with duplicate reads or whole-store runtime validation.
 
+## Detached Shutdown Read Sources
+
+- Before irreversible running shutdown, the app prepares an exact immutable read source for each
+  selected composer after draft readiness and before publishing the Exit session. This source
+  preserves text and ordered marker identity, anchor, label and asset provenance for bounded
+  browsing, selection and copying after service and home retirement. It grants no mutation,
+  history adoption, execution, home reopening or recovery authority.
+- `syndic-storage` owns the typed export and private transient format. Export reads the exact
+  immutable candidate root through ordinary typed bounded reads; the app supplies its original
+  selected binding and close custody, not raw records or file encodings. Text and marker extents
+  and checked completion must agree before a source becomes readable. No partial export may be
+  attached to a resident. The app revalidates the same closed draft before final attachment.
+- `beryl-home-store` owns the opaque temporary backing independently of a HomeStore lifetime.
+  It uses private anonymous/delete-on-close files in the OS temporary location, outside the home
+  and its sidecar namespace. No filename, filesystem handle, database snapshot, home lease or
+  service reference escapes through the typed source. These files are disposable presentation
+  backing, never durable state, startup input or a second restore/session snapshot.
+- One running process supplies one finite staging pool: default aggregate encoded capacity is
+  1 GiB, at most 256 sources, and one acquisition worker at a time. The immutable process
+  configuration may select other nonzero representable capacities within the 256-window limit.
+  Reserve the complete checked encoded size and source slot before creating or writing its file.
+  The reservation follows the source until its last reader releases it; clones share ownership.
+  Text, marker and file reads reuse finite configured page limits. No full draft or marker index
+  becomes resident, and no source gets a budget independent of the process pool.
+- Capacity, cancellation or I/O failure before session publication discards unpublished artifacts
+  and cancels that Exit through ordinary coherent recovery. This staging limit restricts the
+  shutdown operation, not logical draft size; no content is truncated and no partial window set
+  proceeds to teardown. Completed exports stay attached to the original attempt until attachment
+  or disposal, and a repeated activation cannot allocate another concurrent set.
+- After attachment, source reads run off the GUI executor and remain exact and bounded without
+  consulting retired services. Read failures are explicit, preserve last coherent presentation,
+  and never substitute empty text or guessed marker provenance. Copy keeps the existing configured
+  contiguous clipboard limit and provenance eligibility rules. Cut, editing and history mutation
+  remain unavailable. No image binary is copied into this source merely to preserve marker copy.
+- Normal native destruction, cancellation before attachment and discarded preparation release
+  their exact source ownership. Blocked shutdown retains sources for surviving windows until
+  destruction or process termination. The OS file lifetime removes backing after its final handle
+  closes, including process termination; no startup scavenger or durable garbage collector is added.
+
 ## Physical Home Layout
 
 - One Beryl home owns exactly one Fjall database for durable Syndic records and Beryl application metadata.

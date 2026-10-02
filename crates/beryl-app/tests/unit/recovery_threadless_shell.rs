@@ -264,6 +264,8 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
                 let wrong = MainWindowShutdownDraft {
                     root: other.entity_id(),
                     retirement: None,
+                    detached_source: None,
+                    detached_installed: false,
                     composer: None,
                 };
                 assert!(

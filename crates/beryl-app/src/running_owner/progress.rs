@@ -30,6 +30,9 @@ impl RunningProcessOwner {
         Self::require_shutdown_placements_settled(owner)?;
         let mut services = {
             let mut owner = owner.borrow_mut();
+            if owner.final_teardown.is_some() {
+                return Err("final teardown cannot reopen or poll execution".into());
+            }
             if owner.progress.is_some() {
                 return Err("shutdown progress is pending or has an unconsumed result".into());
             }

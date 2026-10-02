@@ -98,7 +98,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                             if deferred {
                                 producer.borrow().as_ref().unwrap().request_exit();
                             }
-                            RunningProcessOwner::wait_for_exit_attempt(
+                            RunningProcessOwner::wait_for_exit_session(
                                 &owner,
                                 cancellation,
                                 app,
@@ -145,7 +145,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                                         ) });
                                         assert!(owner.borrow().shutdown_status().is_none());
                                         let previous = request.identity();
-                                        RunningProcessOwner::wait_for_exit_attempt(
+                                        RunningProcessOwner::wait_for_exit_session(
                                             owner,
                                             ProjectionCancellationToken::new(),
                                             app,
@@ -172,7 +172,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                                     assert!(delivered.borrow_mut().replace((owner.clone(), request)).is_none());
                                 },
                             ).unwrap();
-                            assert!(RunningProcessOwner::wait_for_exit_attempt(
+                            assert!(RunningProcessOwner::wait_for_exit_session(
                                 &owner, ProjectionCancellationToken::new(), app,
                                 |_, _, _, _| panic!("duplicate wait must not notify"),
                             ).is_err());

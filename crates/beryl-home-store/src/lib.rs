@@ -98,6 +98,7 @@ mod scrub;
 mod sidecar;
 mod store;
 mod successor;
+mod temporary_read;
 mod theme;
 mod turn_start_admission;
 mod writer;
@@ -170,6 +171,12 @@ pub use successor::{
     FirstAcceptancePromotionAdmission, FirstAcceptancePromotionAssetAdapter,
     FirstAcceptancePromotionAssetPlan, FirstAcceptancePromotionAssetSeed,
     FirstAcceptancePromotionObservation, FirstAcceptancePromotionSource,
+};
+#[cfg(feature = "test-faults")]
+pub use temporary_read::TemporaryReadFault;
+pub use temporary_read::{
+    TemporaryReadError, TemporaryReadPool, TemporaryReadPoolLimits, TemporaryReadPoolUsage,
+    TemporaryReadReader, TemporaryReadWriter,
 };
 pub use theme::{
     PreparedThemeWatchSubscription, StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence,

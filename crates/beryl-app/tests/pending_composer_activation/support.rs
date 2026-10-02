@@ -229,26 +229,24 @@ pub fn seed_activation_published_draft_chunks(
     thread: beryl_model::SyndicThreadId,
     chunk_count: usize,
 ) -> u64 {
+    seed_published_draft_chunks(&fixture.storage, &fixture.store, thread, chunk_count)
+}
+pub fn seed_published_draft_chunks(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    thread: beryl_model::SyndicThreadId,
+    chunk_count: usize,
+) -> u64 {
     assert!(chunk_count > 0 && chunk_count < 199);
-    let current = fixture
-        .storage
-        .current_draft(
-            &fixture.store,
-            thread,
-            SyndicPointReadLimit::new(65_536).unwrap(),
-        )
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
         .unwrap()
         .unwrap();
-    let mut session = open_activation_session(fixture.storage.clone(), &fixture.store, &current);
+    let mut session = open_activation_session(storage.clone(), store, &current);
     for chunk in 0..chunk_count {
         let offset = (chunk * ACTIVATION_CHUNK_BYTES) as u64;
-        session = append_activation_chunk(
-            fixture.storage.clone(),
-            &fixture.store,
-            &session,
-            (chunk + 1) as u8,
-            offset,
-        );
+        session =
+            append_activation_chunk(storage.clone(), store, &session, (chunk + 1) as u8, offset);
     }
     let request = DraftEditorCandidatePublicationRequestV1::new(
         selector(&current),
@@ -259,10 +257,9 @@ pub fn seed_activation_published_draft_chunks(
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(1_000),
     );
-    let capture = fixture
-        .storage
+    let capture = storage
         .capture_draft_editor_candidate_publication_source(
-            &fixture.store,
+            store,
             DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
                 request.selector(),
                 syndic_storage::DraftEditorCandidateActivationBindingV1::new(
@@ -279,21 +276,16 @@ pub fn seed_activation_published_draft_chunks(
             ),
         )
         .unwrap();
-    let prepared = fixture
-        .storage
-        .prepare_draft_editor_candidate_publication(&fixture.store, capture, request.evidence())
+    let prepared = storage
+        .prepare_draft_editor_candidate_publication(store, capture, request.evidence())
         .unwrap();
     let outcome = execute(
-        &fixture.store,
-        fixture.storage.publish_draft_editor_candidate(
-            fixture.storage.revision(&fixture.store).unwrap(),
-            prepared.clone(),
-        ),
+        store,
+        storage.publish_draft_editor_candidate(storage.revision(store).unwrap(), prepared.clone()),
     );
     assert!(matches!(
-        fixture
-            .storage
-            .reconcile_draft_editor_candidate_publication(&fixture.store, &prepared, outcome)
+        storage
+            .reconcile_draft_editor_candidate_publication(store, &prepared, outcome)
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));

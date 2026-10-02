@@ -1494,6 +1494,19 @@ the matching rag-rat walker traverses non-Markdown directories and propagates ra
 Discovery and reconciliation succeeded after test cleanup. Git-ignoring `/.tmp/` now prunes that
 temporary tree before traversal; a target-file exclusion alone would not do so in the pinned build.
 
+Nonempty restored-window qualification during final-teardown work exposed another cumulative app
+frame on 2026-10-02. First-chance debugger evidence located `__chkstk` in
+`transition_reference_is_exact`, below current-draft reads, restored-composer revalidation,
+restored-shell preparation and restore-set advancement. The app preparation frame retained about
+257 KiB while its callers retained roughly 144 KiB and 212 KiB. Increasing `RUST_MIN_STACK` does
+not change the WinRT pool's 1 MiB worker stack. The app correction passes restored custody and
+results through boxed private boundaries and separates validation from later shell assembly.
+Run `81223ab0-7b24-4a33-b928-926cb4cde4ed` then reaches nonempty startup, detached source preparation
+and blocked native shutdown on the unchanged executor. The final eight-case native/clipboard run
+`8cd9f41f-8dec-45e8-aae8-ab52490f1fe1` passes, and independent review confirms unchanged validation
+order and returned failure custody. Default/fault-enabled app checks and canonical app/test
+compilation pass; see [final teardown acceptance](running-shutdown-retirement.md#final-teardown-acceptance).
+
 ## Startup Interaction Gate
 
 An enrolled hidden shell now retains command, notice, native-close and editor gates while its

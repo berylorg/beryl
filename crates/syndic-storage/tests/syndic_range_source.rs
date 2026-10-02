@@ -35,6 +35,9 @@ use syndic_storage::test_faults::{
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
 
+#[path = "support/detached_draft_reads.rs"]
+mod detached_draft_reads;
+
 struct TestHome(PathBuf);
 
 impl TestHome {

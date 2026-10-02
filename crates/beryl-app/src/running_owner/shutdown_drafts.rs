@@ -13,6 +13,7 @@ pub(crate) enum RunningShutdownDraftProgress {
     Released,
 }
 
+mod detached;
 mod driver;
 mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
@@ -27,6 +28,8 @@ pub(crate) struct RunningShutdownDrafts {
     releasing: bool,
     released: bool,
     ready: bool,
+    detached_preparing: bool,
+    detached_prepared: bool,
 }
 
 impl RunningShutdownDrafts {
@@ -114,6 +117,8 @@ impl RunningProcessOwner {
             releasing: false,
             released: false,
             ready: false,
+            detached_preparing: false,
+            detached_prepared: false,
         }));
         owner.shutdown.as_mut().unwrap().drafts = Some(drafts.clone());
         Ok(drafts)
@@ -215,6 +220,10 @@ impl RunningProcessOwner {
         if drafts.driving != driving {
             return Err("shutdown draft driver owns progression".into());
         }
+        if drafts.detached_preparing {
+            return Err("detached source acquisition owns the draft set".into());
+        }
+        drafts.discard_detached_sources();
         drafts.releasing = true;
         drafts.released = false;
         let mut failure = None;

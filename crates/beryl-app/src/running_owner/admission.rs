@@ -41,7 +41,7 @@ pub(super) struct RunningShutdownAttempt {
     pub(super) session: Option<super::shutdown_session::RunningShutdownSession>,
     invoking: WindowId,
     intent: ShutdownIntent,
-    lease: WindowCloseLease,
+    pub(super) lease: WindowCloseLease,
     pending: Option<Arc<()>>,
     pub(super) admitted: bool,
     pub(super) work_ready: bool,

@@ -92,6 +92,28 @@ impl MainWindowComposerSelectionIdentity {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn export_detached_source(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        close: MainWindowConversationComposerCloseTicket,
+        selection: MainWindowComposerSelectionIdentity,
+        pool: &beryl_home_store::TemporaryReadPool,
+        cancellation: &beryl_home_store::CommandCancellation,
+    ) -> Result<syndic_storage::DetachedDraftReadSourceV1, String> {
+        if self.window_close != Some(close) || self.selected_identity() != Some(selection) {
+            return Err("detached export lost its exact closed candidate".into());
+        }
+        self.storage
+            .export_detached_draft_read_source(
+                store,
+                selection.binding().candidate(),
+                pool,
+                syndic_storage::DetachedDraftReadLimitsV1::default(),
+                cancellation,
+            )
+            .map_err(|error| format!("detached draft export failed: {error:?}"))
+    }
+
     pub fn retire_clean_window_close(
         mut self: Box<Self>,
         close: MainWindowConversationComposerCloseTicket,

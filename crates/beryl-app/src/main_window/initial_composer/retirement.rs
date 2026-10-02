@@ -60,6 +60,15 @@ impl InitialComposerCandidate {
         &mut self,
         expected: &Arc<MainWindowConversationComposerService>,
     ) -> Result<(), String> {
+        self.validate_service_retirement(expected)?;
+        self.service.take();
+        Ok(())
+    }
+
+    pub(in crate::main_window) fn validate_service_retirement(
+        &self,
+        expected: &Arc<MainWindowConversationComposerService>,
+    ) -> Result<(), String> {
         let Some(service) = self.service.as_ref() else {
             return Ok(());
         };
@@ -68,7 +77,6 @@ impl InitialComposerCandidate {
                 "initial composer construction custody is not settled for this service".into(),
             );
         }
-        self.service.take();
         Ok(())
     }
 

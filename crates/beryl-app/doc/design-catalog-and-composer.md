@@ -42,6 +42,39 @@ governed by [design.md](design.md). It does not independently declare engineerin
   in the [composer feature](../../../doc/features/composer/design.md), and resource policy in the
   [bounded-resource system](../../../doc/systems/bounded-resource-dataflow/design.md).
 
+## Detached Read-Only Composer
+
+- Final shutdown uses the
+  [detached immutable draft source](../../../doc/systems/beryl-home-storage/design.md#detached-shutdown-read-sources)
+  independently of interrupted-Exit recovery. After exact draft readiness, a worker prepares the
+  source from that selected candidate/root under its original close fence. Preparation precedes
+  placement and Exit session publication; failure disposes the attempt's prepared set and uses
+  ordinary draft/coordinator recovery, retaining the readable original resident and a cancelled Exit.
+- At final admission the app revalidates the complete prepared set against the original request,
+  close tickets, resident identities, candidate roots and settled source operations. It installs
+  those sources at one non-yielding GUI cut before retiring live services. All fallible preparation
+  precedes installation. The same editor, binding, caret, directed selection, scroll and coherent
+  surface remain; no hidden replacement editor or focus transfer is introduced.
+- The detached phase keeps the widget enabled and read-only. It does not use protected predecessor
+  recovery, which deliberately disables source-dependent interaction. It admits only bounded
+  text/object reads, cancellation and settlement, selection, navigation, scrolling and Copy.
+  Editing, cut, paste, undo/redo, submission, steering and marker/image actions remain rejected by
+  the app as well as the widget. No read operation may fall back to a retired home/service.
+- Each detached resident permits one bounded worker flight with exact non-reused request identity.
+  Late or foreign completion cannot update another resident or source. In-flight jobs retain only
+  the detached source and bounded request/result custody; disposal cancels and joins them before
+  releasing their source ownership. A read failure preserves coherent paint and reports failure
+  without globally disabling subsequent read-only interaction.
+- The local clipboard writer survives service retirement. Copy uses the unchanged bounded widget
+  coordinator and configured contiguous clipboard limit, validating completion against the exact
+  detached binding rather than live service identity. Preserve the currently supported provenance
+  policy; retaining marker asset facts neither invents private-format eligibility nor enables rich
+  paste. Marker text remains the existing label and image fallback representation. Failed or
+  cancelled copy releases staging and never mutates the draft or writes a partial representation.
+- Verify real selection and Copy beyond the resident page after home closure, marker fallback,
+  clipboard-limit refusal, mutation rejection, stale completion and exact disposal. Independently
+  review source correspondence, callback lifetime and blocked-shutdown integration.
+
 ## Edit, Marker, And Candidate Adaptation
 
 - Typing, paste, cut, deletion, marker operations, undo, and redo enter one exact predecessor-

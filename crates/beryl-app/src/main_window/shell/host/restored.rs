@@ -79,6 +79,32 @@ impl RestoredWindowShellPrepared {
         submission_request_source: MainWindowComposerSubmissionRequestSource,
         appearance: Arc<AppearanceGeneration>,
     ) -> Result<Self, RestoredWindowShellPreparationFailure> {
+        Self::prepare_owned(
+            Box::new(prepared),
+            attempt,
+            registry,
+            composer_configurator,
+            marker_seals,
+            submission_request_source,
+            appearance,
+        )
+        .map(|prepared| *prepared)
+        .map_err(|(prepared, error)| RestoredWindowShellPreparationFailure {
+            prepared: *prepared,
+            error,
+        })
+    }
+
+    #[inline(never)]
+    pub(crate) fn prepare_owned(
+        prepared: Box<RestoredWindowComposerPrepared>,
+        attempt: &RestoredWindowPreparationAttempt,
+        registry: &RuntimeBackedWindowProcessRegistry,
+        composer_configurator: MainWindowShellComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        appearance: Arc<AppearanceGeneration>,
+    ) -> Result<Box<Self>, (Box<RestoredWindowComposerPrepared>, String)> {
         let validation = prepared.revalidate(attempt).and_then(|()| {
             let binding = prepared.selection_identity().binding();
             let home = appearance.prepared().home();
@@ -92,20 +118,40 @@ impl RestoredWindowShellPrepared {
             Ok(())
         });
         if let Err(error) = validation {
-            return Err(RestoredWindowShellPreparationFailure { prepared, error });
+            return Err((prepared, error));
         }
+        let reservation =
+            match registry.reserve_main_window(prepared.selection_identity().window_id()) {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    return Err((
+                        prepared,
+                        format!("restored shell reservation rejected: {error:?}"),
+                    ));
+                }
+            };
+        Ok(Self::assemble_owned(
+            prepared,
+            reservation,
+            composer_configurator,
+            marker_seals,
+            submission_request_source,
+            appearance,
+        ))
+    }
+
+    #[inline(never)]
+    fn assemble_owned(
+        prepared: Box<RestoredWindowComposerPrepared>,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+        composer_configurator: MainWindowShellComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        appearance: Arc<AppearanceGeneration>,
+    ) -> Box<Self> {
         let selection = prepared.selection_identity();
-        let reservation = match registry.reserve_main_window(selection.window_id()) {
-            Ok(reservation) => reservation,
-            Err(error) => {
-                return Err(RestoredWindowShellPreparationFailure {
-                    prepared,
-                    error: format!("restored shell reservation rejected: {error:?}"),
-                });
-            }
-        };
         let (composer, custody) = prepared.into_shell_parts();
-        Ok(Self {
+        Box::new(Self {
             selected: SelectedShellPrepared {
                 content: ShellContent::Restored {
                     custody: Box::new(RestoredWindowShellUnpublished {
@@ -122,7 +168,6 @@ impl RestoredWindowShellPrepared {
             },
         })
     }
-
     pub fn window_id(&self) -> beryl_model::WindowId {
         self.selected.composer.selection_identity().window_id()
     }

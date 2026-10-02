@@ -168,8 +168,8 @@ impl MainWindowRestoreSet {
         prepared: RestoredWindowComposerPrepared,
         configurator: MainWindowShellComposerConfigurator,
     ) -> Result<PreparationStep, String> {
-        match RestoredWindowShellPrepared::prepare(
-            prepared,
+        match RestoredWindowShellPrepared::prepare_owned(
+            Box::new(prepared),
             &self.attempt,
             &self.services.acquisition.process_registry(),
             configurator,
@@ -182,10 +182,10 @@ impl MainWindowRestoreSet {
         ) {
             Ok(prepared) => self
                 .members
-                .push(PreparedRestoreSetMember::Restored(Box::new(prepared))),
-            Err(failure) => {
-                self.current = Some(Box::new(failure.prepared.into_custody()));
-                return Err(failure.error);
+                .push(PreparedRestoreSetMember::Restored(prepared)),
+            Err((prepared, error)) => {
+                self.current = Some(Box::new(prepared.into_custody()));
+                return Err(error);
             }
         }
         Ok(PreparationStep::Continue)

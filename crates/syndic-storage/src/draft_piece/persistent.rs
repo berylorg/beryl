@@ -2964,7 +2964,7 @@ fn marker_in_scope(anchor: u64, scope: DraftPieceMarkerScopeV1) -> bool {
     }
 }
 
-fn marker_retained_bytes(
+pub(super) fn marker_retained_bytes(
     count: usize,
     preceding: DraftPieceMarkerEdgeFactV1,
     following: DraftPieceMarkerEdgeFactV1,

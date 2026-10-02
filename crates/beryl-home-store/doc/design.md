@@ -27,6 +27,8 @@ Beryl metadata domains without exposing Fjall internals to application or backen
 - The package consumes typed domain definitions from `syndic-storage` and Beryl metadata packages
   without making either depend on the other's private records. It does not depend on `gpui`,
   `beryl-app`, `beryl-backend`, or CAS protocol types.
+- Its bounded detached temporary read backing is independent of home/database ownership and
+  supplies only opaque process-local writer and immutable range-reader capabilities.
 - The [Beryl-home storage system](../../../doc/systems/beryl-home-storage/design.md) owns
   cross-package storage interpretation and orchestration. The
   [bounded-resource system](../../../doc/systems/bounded-resource-dataflow/design.md) owns the
@@ -47,7 +49,8 @@ are normative supplements governed by this design and only for their stated role
 - [Atomic commands](design-atomic-commands.md) owns command, result, receipt, durability,
   preparation, reconciliation, free-space query, local-finalization, and operation-scope contracts.
 - [Physical repositories](design-physical-repositories.md) owns physical installed-theme and
-  sidecar file layout, publication ordering, evidence, and watcher guarantees.
+  sidecar file layout, publication ordering, evidence, watcher guarantees and detached temporary
+  read backing.
 
 No supplement owns cross-package behavior outside its role or declares a separate rigor profile.
 

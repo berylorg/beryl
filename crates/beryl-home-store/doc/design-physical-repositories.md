@@ -6,6 +6,25 @@ publication inputs and ordering, bounded evidence, and watcher guarantees. It is
 interpretation and product behavior remain with the
 [theme-runtime system](../../../doc/systems/theme-runtime/design.md).
 
+## Detached Temporary Read Backing
+
+- The package supplies the opaque temporary backing for the
+  [detached shutdown read-source boundary](../../../doc/systems/beryl-home-storage/design.md#detached-shutdown-read-sources).
+  A pool has explicit nonzero aggregate byte, artifact-count and per-read/write page limits;
+  checked admission reserves the declared complete file size and one slot before file creation.
+  It requires no HomeStore and retains no home lock, database, registered domain or health gate.
+- One private anonymous/delete-on-close OS temporary file backs each admitted artifact. Its writer
+  accepts bounded exact-offset chunks within the reservation. Completion requires exact declared
+  length and yields an immutable range reader; incomplete or failed writing yields no reader.
+  This is transient process-local data with no persistence barrier, path publication, crash
+  recovery, sidecar token or mutation authority. No arbitrary path or raw file handle is exposed.
+- Reader clones share the original reservation and file. Range reads reject overflow, oversized
+  pages and out-of-bounds requests before allocating their bounded result; short or failed reads
+  return explicit errors. The final owner closes the file and releases the reservation. Failed
+  creation, cancelled preparation and every unfinished writer release their exact ownership.
+- Verify byte/count admission, checked arithmetic, exact completion, range boundaries, injected
+  creation/write/read failure, clone lifetime and release, and independent use after home closure.
+
 ## Installed-Theme Repository
 
 - The physical layout is `<beryl-home>/themes/manifest.toml` with user-editable stable documents at

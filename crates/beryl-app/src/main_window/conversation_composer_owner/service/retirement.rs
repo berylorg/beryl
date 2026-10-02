@@ -5,6 +5,22 @@ use crate::main_window::{
 };
 
 impl MainWindowConversationComposerService {
+    pub(crate) fn export_detached_source(
+        &self,
+        close: MainWindowConversationComposerCloseTicket,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+        pool: &beryl_home_store::TemporaryReadPool,
+        cancellation: &beryl_home_store::CommandCancellation,
+    ) -> Result<syndic_storage::DetachedDraftReadSourceV1, String> {
+        if !self.window_close_is_current(close) {
+            return Err("detached export close custody changed".into());
+        }
+        self.slot
+            .lock()
+            .map_err(|_| "detached export host lane is unavailable".to_owned())?
+            .export_detached_source(&self.store, close, selection, pool, cancellation)
+    }
+
     pub fn rebind_candidate(
         candidate: &mut beryl_home_store::HomeRecoveryCandidate,
         retired: MainWindowComposerRetiredClose,

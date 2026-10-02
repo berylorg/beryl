@@ -178,6 +178,7 @@ impl MainWindowConversationComposer {
             recovery_config: config,
             input,
             service: Some(service),
+            detached: None,
             selection,
             route,
             pending_realizer: None,

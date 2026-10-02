@@ -151,6 +151,10 @@ impl MainWindowConversationComposerTaskError {
 
 impl MainWindowConversationComposer {
     pub(super) fn pump_one(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.detached.is_some() {
+            self.pump_detached(window, cx);
+            return;
+        }
         if !self.can_pump() || self.active_flight.is_some() || self.last_error.is_some() {
             return;
         }

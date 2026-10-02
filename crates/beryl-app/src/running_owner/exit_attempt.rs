@@ -46,7 +46,7 @@ pub(crate) struct ExitAttemptOutcome {
 }
 
 impl RunningProcessOwner {
-    pub(crate) fn wait_for_exit_attempt(
+    pub(super) fn wait_for_exit_result(
         owner: &Rc<RefCell<Self>>,
         cancellation: ProjectionCancellationToken,
         app: &mut App,
@@ -79,6 +79,17 @@ impl RunningProcessOwner {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn wait_for_exit_session(
+        owner: &Rc<RefCell<Self>>,
+        cancellation: ProjectionCancellationToken,
+        app: &mut App,
+        completed: impl FnOnce(&Rc<RefCell<Self>>, RunningExitRequest, ExitAttemptOutcome, &mut App)
+        + 'static,
+    ) -> Result<(), String> {
+        Self::wait_for_exit_result(owner, cancellation, app, completed)
+    }
+
     pub(crate) fn run_exit_attempt(
         owner: &Rc<RefCell<Self>>,
         request: RunningExitRequest,
@@ -87,13 +98,21 @@ impl RunningProcessOwner {
         completed: impl FnOnce(&Rc<RefCell<Self>>, RunningExitRequest, ExitAttemptOutcome, &mut App)
         + 'static,
     ) -> Result<(), (RunningExitRequest, ExitObservationError)> {
+        let preparation_cancellation = cancellation.clone();
         Self::observe_and_drive_exit(
             owner,
             request,
             cancellation,
             app,
             move |owner, request, result, app| {
-                Self::complete_exit_attempt(owner, request, result, app, completed);
+                Self::complete_exit_attempt(
+                    owner,
+                    request,
+                    result,
+                    preparation_cancellation,
+                    app,
+                    completed,
+                );
             },
         )
     }
@@ -112,6 +131,7 @@ impl RunningProcessOwner {
             Ok(ExitAttemptCompletion::Progress(
                 AppServiceShutdownProgress::Ready,
             )),
+            ProjectionCancellationToken::new(),
             app,
             move |owner, request, outcome, app| {
                 Self::report_exit_failure(owner, &request, &outcome, app);
@@ -124,6 +144,7 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         request: RunningExitRequest,
         result: Result<ExitAttemptCompletion, ExitAttemptError>,
+        cancellation: ProjectionCancellationToken,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, RunningExitRequest, ExitAttemptOutcome, &mut App)
         + 'static,
@@ -180,9 +201,10 @@ impl RunningProcessOwner {
         ) {
             let delivery = Rc::new(RefCell::new(Some(settle)));
             let delivered = delivery.clone();
-            if let Err((request, error)) = Self::prepare_exit_drafts(
+            if let Err((request, error)) = Self::prepare_exit_drafts_with_cancellation(
                 owner,
                 request,
+                cancellation,
                 app,
                 move |owner, request, result, app| {
                     let settle = delivered.borrow_mut().take().unwrap();
