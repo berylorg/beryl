@@ -317,6 +317,61 @@ fn claim_bytes(
     bytes
 }
 
+#[test]
+fn interrupted_close_capture_refuses_exhausted_session_window_or_claim_successors() {
+    for (session_revision, window_revision, claim_revision) in [
+        (u64::MAX, 1, 1),
+        (u64::MAX - 1, 1, 1),
+        (5, u64::MAX, 1),
+        (5, 1, u64::MAX),
+    ] {
+        let directory = tempdir().unwrap();
+        let window_id = [0; 16];
+        let thread_id = [0; 16];
+        let target =
+            RememberedTarget::new(RuntimeId::from_bytes([0; 16]), RootId::from_bytes([0; 16]));
+        let claim = claim_bytes(window_id, thread_id, 1, claim_revision);
+        write_raw(
+            directory.path(),
+            RawMutation {
+                header: Some(header_bytes(
+                    session_revision,
+                    Some(target),
+                    &[(window_id, window_revision)],
+                )),
+                windows: vec![(
+                    window_id,
+                    window_bytes(
+                        window_id,
+                        target,
+                        thread_id,
+                        1,
+                        claim_revision,
+                        window_revision,
+                    ),
+                )],
+                by_window: vec![(window_id, claim.clone())],
+                by_thread: vec![(thread_id, claim)],
+            },
+        );
+        let (home, state) = support::open(directory.path());
+        let before = state.session().minimal_bootstrap(&home).unwrap().unwrap();
+        let revision = home.home_revision().unwrap();
+        assert!(
+            state
+                .session()
+                .capture_window_removal(&home, beryl_model::WindowId::from_bytes(window_id))
+                .is_err()
+        );
+        assert_eq!(home.home_revision().unwrap(), revision);
+        assert_eq!(
+            state.session().minimal_bootstrap(&home).unwrap().unwrap(),
+            before
+        );
+        home.close().unwrap();
+    }
+}
+
 fn registration_error(path: &std::path::Path) -> BerylStateRegistrationError {
     let mut candidate =
         HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();

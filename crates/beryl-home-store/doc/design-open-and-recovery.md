@@ -73,6 +73,9 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
   conversion. Its authority is an explicit input, not ambient or thread-local state. Ordinary and
   candidate operations share the same underlying codecs, limits, writer, durability and outcome
   classification; candidate access cannot weaken a command or grant a second writer.
+- Candidate recovery access exposes its durable home id and borrowed canonical home path for
+  qualifying retained immutable recovery evidence. Reading this metadata performs no storage I/O
+  and grants no filesystem handle, ordinary admission or publication authority.
 - `HomeOpenPublication::recovery_access` and `HomeRecoveryCandidate::recovery_access` borrow their
   owner exclusively and return `HomeCandidateRecoveryAccess`. Each operation checks the owner's
   opening or reopening generation. Same-home recovery assigns the fresh generation while remaining

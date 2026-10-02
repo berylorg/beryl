@@ -428,6 +428,9 @@
   remains separate. See [coordinator acceptance](../../failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance).
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
+- [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
+  independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).
+  Ordinary command and complete recovery mounting remain separate.
 - [x] Accepted composed final teardown with bounded detached read-only sources, exact native cleanup and explicit blocked Quit Anyway; [evidence](../../failures/running-shutdown-retirement.md#final-teardown-acceptance).
 - [x] Clarified complete restore-set validation and the approved native-publication failure exception; [decision evidence](../../failures/target-bootstrap-composition.md#restore-set-native-publication-boundary).
 - [x] Accepted exact empty-session threadless initialization with revision and identity fencing,

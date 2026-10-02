@@ -59,6 +59,11 @@ Preserve each window's visible identity and placement without requiring auxiliar
   failure that does not make that persistent notice eligible likewise exposes no recovery command.
 - Beryl neither guesses completion nor retries the close automatically. After the blocking state is
   coherent again, another close attempt requires a new ordinary window-close activation.
+- Reporting a close failure cancels that close even if recovery later proves its session removal
+  committed. Automatic same-home recovery restores the same surviving window's durable membership
+  and exclusive thread claim before dependent interaction resumes. Its native identity, selected
+  thread, resident content and placement remain preserved; recovery never completes that cancelled
+  close or chooses a substitute window or thread. This also applies to final ordinary close.
 - After every required obligation succeeds, Beryl removes the window from the restore set, releases
   its thread claim, and closes that window.
 - Closing the final main window never leaves Beryl running in a tray or without a main window. If

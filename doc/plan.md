@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 703: Complete Running Exit Final Teardown (finished)
+# Phase 704: Establish Exact Interrupted-Close Session Recovery (finished)
 
-The running Exit consumer now completes exact service/native cleanup or retains readable,
-selectable and copyable residents with explicit Quit Anyway after late failure. Bounded detached
-sources prepare before session publication and survive home retirement without old service
-access. Independent lifecycle/persistence review, storage and native/clipboard tests, default and
-fault-enabled app checks, and isolated canonical validation passed; see
-[acceptance evidence](failures/running-shutdown-retirement.md#final-teardown-acceptance).
-Ordinary command mounting and executable composition remain phases 595 and 596.
+State now supplies bounded exact removal evidence, authenticated removal, fresh-candidate
+qualification and separately reconciled restoration of the same window and renewed paired claim.
+Local and isolated canonical checks, 29 relevant tests across unchanged related and corrected
+recovery runs, and independent persistence review passed; see
+[acceptance evidence](failures/ordinary-close-recovery.md#typed-persistence-acceptance).
+Phase 595 still owns ordinary command mounting and complete interrupted-close recovery integration.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -118,6 +117,24 @@ Resolve current feature gates before exposing enabled controls, keep native defa
 vetoed until owned cleanup succeeds, and require fresh activation after cancellation or failure.
 Derive focused integration cases and independently review the complete ordinary command boundary
 before acceptance. Executable entry composition remains phase 596.
+
+Next milestone: inspect and connect the published-shell native close callback and Exit toolbar
+to persistent running-owner custody. Completion requires actual command delivery, exact draft and
+session settlement, and owned native removal; helper-only admission does not accept this mount.
+
+- Mount current availability before enabling Exit; retain one command consumer across cancelled
+  or coherently failed attempts, with fresh activation and duplicate coalescing.
+- Serialize nonfinal close, final-window designation and construction. Verify nonfinal close
+  preserves background work, failures preserve the resident and claim, and final close publishes
+  an empty restore set while dedicated Exit preserves all placements.
+- Exercise native default-close veto, confirmation cancellation and duplicate delivery, feature
+  gates, durable failure, exact native settlement and successful termination through focused
+  integration tests. Run applicable app checks and canonical dependency validation, then obtain
+  independent lifecycle/persistence review before acceptance.
+
+Consume phase 704's exact persistence boundary for reported-failed ordinary closes. The Operator
+approved this recovery direction on 2026-10-02; the former readiness blocker is recorded in
+[the evidence](failures/ordinary-close-recovery.md). Ordinary routing has no production edits yet.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

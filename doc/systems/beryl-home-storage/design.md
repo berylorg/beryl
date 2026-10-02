@@ -770,6 +770,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   revalidation with window acquisition/removal and shutdown admission; the store does not infer
   process quiescence from a missing claim, empty restore set, or coarse thread activity.
 - Closing the final main window through ordinary close commits removal of the final window record, leaving the active restore set empty, and then terminates the process normally.
+- A reported-failed ordinary close whose removal is proven committed uses the
+  [interrupted-close recovery boundary](../backend-runtime/design.md#interrupted-ordinary-close-during-same-home-recovery).
+  State supplies bounded immutable removal evidence and an exact recovery contribution for the
+  same member and paired claim. This is a separately reconciled transition after cancellation;
+  it neither reinterprets the original outcome nor automatically completes that close.
 - Dedicated application Exit flushes the already-open window set and marks shutdown mode without processing those windows as ordinary closes.
 - External process termination leaves the last `SyncAll`-completed active generation intact.
 - In-memory window identity, placement, or selection retained during a failed store cannot survive process termination unless it was part of that last `SyncAll`-completed generation.

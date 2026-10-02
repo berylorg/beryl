@@ -866,6 +866,16 @@ by the executable composition root.
 
 ## Window Detachment And Process Shutdown
 
+- Ordinary close retains State's immutable exact removal evidence and its command outcome with
+  the same process-owned window custody before publishing session removal. Reported failure
+  cancels that close. Same-home replacement implements the
+  [interrupted-close protocol](../../../doc/systems/backend-runtime/design.md#interrupted-ordinary-close-during-same-home-recovery),
+  settling proven noncommit or the separately reconciled exact restoration before fresh resident
+  binding and interaction release. A committed removal cannot use the header-only interrupted-Exit
+  resume operation. Renewed selected residents use the new claim revision while preserving native
+  identity and content. Final ordinary close and nonfinal close share this session recovery rule;
+  only final close owns the process-wide work barrier.
+
 - Releasing startup interaction never authorizes native default destruction. Main-window native
   close callbacks retain the window until the process owner has completed its close obligations.
   Before ordinary command routing is installed, native close remains vetoed; afterward it submits

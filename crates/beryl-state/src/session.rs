@@ -15,6 +15,7 @@ mod catalog_source;
 mod codec;
 mod error;
 mod mutation;
+mod removal;
 mod validate;
 
 use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec};
@@ -30,6 +31,7 @@ pub use mutation::{
     ExitWindowPlacement, InitializeThreadlessWindow, MarkOrderlyExit, PublishExitSession,
     RemoveSessionWindow, ReplaceWindowClaim, ResumeSessionAfterExit, UpdateWindowPlacement,
 };
+pub use removal::{SessionWindowRemovalEvidence, SessionWindowRemovalState};
 
 /// Hard upper bound on main windows represented by one durable restore set.
 pub const MAX_RESTORABLE_WINDOWS: usize = 256;

@@ -80,6 +80,47 @@ runtime/root, session/window, and thread-claim durable state.
   reopening, rejected malformed or stale inputs, writer revision drift, and ambiguous and
   postcommit outcomes. Independently review this persistence transition.
 
+## Recover A Removed Live Window
+
+- State captures one opaque immutable removal evidence value from a coherent healthy-home read
+  of the exact Running header, one referenced window and its matching active paired claim, or
+  the sole valid threadless window. Bracket these reads with equal home revisions. Retain only
+  the durable home id and canonical home path, fixed-capacity header, one window and optional claim;
+  no store, domain handle, lease or receipt is retained. Missing, changed, malformed or restoring sources
+  refuse capture. Before admitting removal, check availability of both session successors and the
+  one window and optional claim successor needed by restoration. Home and domain revision
+  exhaustion retains the ordinary command refusal and unavailable-recovery semantics; capture
+  reserves no future writer revision.
+- Evidence supplies the exact ordinary removal contribution under the caller's current domain
+  revision. The writer validates the complete original header, exact window and claim before
+  removal, so evidence cannot describe a different successful removal. Existing ordinary command
+  noncommit, commit-with-later-failure and reconciliation custody remain the caller's responsibility.
+- A separate recovery contribution accepts that evidence through fresh same-configured-home
+  candidate authority. It requires the exact post-removal Running header: original revision plus
+  one, original sorted member set minus only that window, unchanged fallback. The removed window
+  record and both relevant claim indexes must be absent. Every mismatch, exhausted revision,
+  conflicting claim or foreign home refuses without writes. The caller must separately prove the
+  original removal committed and its close was cancelled; evidence alone proves neither.
+- Success advances the session revision once, restores the same window with its original record
+  revision plus one, and restores both claim copies with their original claim revision plus one.
+  Claim generation, Active state, thread identity, remembered target, placement and fallback are
+  preserved. The restored window selection references the renewed claim revision. Other windows
+  and claims remain unchanged. Threadless recovery installs no claim and only accepts an empty
+  post-removal header with no fallback. The existing 256-window capacity remains binding.
+- Candidate validation distinguishes the exact original state, exact removed state and exact
+  recovered state using this evidence, including the paired claim copies; it never classifies
+  absence without header and identity proof. Exact surviving header references and writes confined
+  to the affected member preserve otherwise valid records; this adds no recovery-time domain scan.
+  Recovery reserves only its changed
+  header, window and optional paired claim records for ordinary HomeCommand reconciliation.
+  Duplicate recovery cannot apply twice. No durable journal, tombstone, startup restoration or
+  new on-disk schema is introduced.
+- Verify claimed and threadless members, final and nonfinal sets through capacity, preserved
+  identities/placement/fallback, monotonic revisions, stale/foreign/conflicting source refusal,
+  duplicate recovery, writer revision drift, candidate reopening and ambiguous/postcommit outcomes.
+  Independently review this persistence transition. App-owned cancellation, original outcome
+  classification, service replacement and interaction release remain separate obligations.
+
 ## Reverse thread claims
 
 - Window-keyed claim observation is also available through explicit candidate recovery access.

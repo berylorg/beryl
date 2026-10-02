@@ -53,6 +53,10 @@ impl<'a> HomeCandidateRecoveryAccess<'a> {
         self.store.home_id()
     }
 
+    pub fn canonical_path(&self) -> &std::path::Path {
+        self.store.canonical_path()
+    }
+
     pub fn generation(&self) -> HomeGeneration {
         self.generation
     }

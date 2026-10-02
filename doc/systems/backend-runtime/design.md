@@ -271,6 +271,37 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   claims, and absence of automatic Exit after recovery. Independently review this replacement and
   persistence boundary.
 
+### Interrupted Ordinary Close During Same-Home Recovery
+
+- A reported-failed ordinary close remains cancelled. Its process owner retains one bounded,
+  immutable State-owned removal evidence value and the original exact command outcome outside
+  replaceable graphs. It preserves the native window, resident content and process window
+  reservation. The evidence contains no old service handle or execution authority.
+- A pending removal follows home-store exact reconciliation. Proven noncommit requires validation
+  of the unchanged original membership and claim, with no inverse write. Proven commit requires
+  a separate State-owned recovery transition that reinstates the exact removed member and paired
+  claim. Absence alone, collision, an unproven result or changed membership grants no restoration
+  authority. The owner validates the same configured home and the original outcome with fresh
+  candidate handles before preparing the transition.
+- That transition preserves original window identity, selection, placement and target, advances
+  window and claim revisions, and preserves the claim generation and active state. It never
+  restores an old revision, selects another thread or overwrites a conflicting record or claim.
+  The surviving set and fallback must still equal the exact post-removal facts. State owns the
+  precise source/result qualification and fixed reconciliation closure.
+- The restoration has independent ordinary outcome custody. Proven commit is validated and never
+  repeated, noncommit permits a later automatic recovery attempt only after fresh exact source
+  validation, and indeterminate outcome must reconcile before another write. Unsupported successor
+  state or terminal uncertainty retains the window read-only and keeps dependent actions unavailable.
+- Session settlement precedes whole-graph publication and fresh resident binding. Renewed bindings
+  use the restored claim revision; no pre-removal claim capability is revived. The process owner
+  releases interaction only after complete fresh bindings, draft/work settlement and healthy exact
+  durable membership. It then completes the cancelled close request; only fresh activation may
+  close the window. Nonfinal close itself never enters the all-work execution barrier.
+- Verify noncommit, commit with later failure, exact-new reconciliation, failed or ambiguous
+  restoration, stale and duplicate delivery, conflicting membership/claims, and preservation of
+  the same surviving native window. Final close uses the same recovery rule for its empty
+  post-removal set. Independently review the persistence and lifecycle integration.
+
 ## Protocol Ownership
 
 - Authentication, agent execution, configuration, skills, MCP, tools, subagents, sandboxing, approvals, and provider policy remain backend-owned.
