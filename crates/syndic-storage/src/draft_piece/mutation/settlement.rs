@@ -62,6 +62,7 @@ fn authenticate_writer_generation(
     Ok(())
 }
 
+#[inline(never)]
 fn prepare(
     prepared: &PreparedDraftPieceEditV1,
     reader: &DomainReader<'_, SyndicDomain>,
@@ -77,7 +78,7 @@ fn prepare(
             Err(SyndicMutationError::IdentityCollision)
         };
     }
-    let build = required_build(reader, &settlement_key(prepared))?;
+    let build = Box::new(required_build(reader, &settlement_key(prepared))?);
     if !build_matches(&build, prepared)
         || build.lifecycle() != DraftPieceBuildLifecycleV1::Complete
         || build.successor().is_none()

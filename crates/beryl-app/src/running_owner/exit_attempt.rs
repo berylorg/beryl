@@ -11,6 +11,7 @@ use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug)]
 pub(crate) enum ExitAttemptCompletion {
+    WindowClosed,
     Cancelled,
     ConfirmedObservationCancelled,
     SessionReady,
@@ -54,6 +55,33 @@ impl RunningProcessOwner {
         + 'static,
     ) -> Result<(), String> {
         Self::wait_for_exit(owner, app, move |owner, request, app| {
+            if request.is_ordinary_close() {
+                let invoking = request
+                    .invoking_window()
+                    .expect("ordinary close retains its window");
+                let admission = owner.borrow_mut().begin_nonfinal_close(invoking, app);
+                match admission {
+                    Ok(true) => {
+                        Self::run_nonfinal_close(owner, request, app, completed);
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        Self::report_ordinary_command_failure(owner, Some(invoking), &error, app);
+                        let command_completed = Self::finish_exit(owner, &request);
+                        completed(
+                            owner,
+                            request,
+                            ExitAttemptOutcome {
+                                result: Err(ExitAttemptError::SessionPublication(error)),
+                                command_completed,
+                            },
+                            app,
+                        );
+                        return;
+                    }
+                }
+            }
             let delivery = Rc::new(RefCell::new(Some(completed)));
             let settled = delivery.clone();
             if let Err((request, error)) = Self::run_exit_attempt(
@@ -168,7 +196,7 @@ impl RunningProcessOwner {
                     .shutdown_status()
                     .is_some_and(|(window, intent, status)| {
                         invoking == Some(window)
-                            && intent == super::ShutdownIntent::ApplicationExit
+                            && intent == request.shutdown_intent()
                             && status == super::RunningShutdownStatus::AwaitingObservation
                     })
                 {
@@ -210,6 +238,29 @@ impl RunningProcessOwner {
                     let settle = delivered.borrow_mut().take().unwrap();
                     let result = match result {
                         ExitDraftPreparationCompletion::Ready => {
+                            if request.is_ordinary_close() {
+                                Self::publish_ordinary_close_session(
+                                    owner,
+                                    request,
+                                    app,
+                                    move |owner, request, result, app| {
+                                        if result.is_err()
+                                            && owner.borrow().shutdown_session().is_none()
+                                        {
+                                            Self::fail_final_close_before_removal(
+                                                owner,
+                                                request,
+                                                result.unwrap_err(),
+                                                app,
+                                                settle,
+                                            );
+                                        } else {
+                                            settle(owner, request, result, app);
+                                        }
+                                    },
+                                );
+                                return;
+                            }
                             Self::prepare_exit_attempt_placements(owner, request, app, settle);
                             return;
                         }

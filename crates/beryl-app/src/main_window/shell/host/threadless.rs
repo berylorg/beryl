@@ -110,6 +110,7 @@ impl GpuiMainWindowShellHost<'_> {
         }
         options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some(MainWindowShellController {
+            identity: Rc::new(()),
             content: ShellContent::Threadless {
                 source: prepared.source,
                 reservation: prepared.reservation,

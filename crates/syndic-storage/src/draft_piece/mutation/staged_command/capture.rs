@@ -33,26 +33,11 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
         if !matches!(self.command, CommandKind::Transfer(_))
             && !matches!(&self.command, CommandKind::Advance(advance) if advance.bounded.is_some())
         {
-            let staging =
-                required::<DraftMutationStagingHeadsFamily>(reader, &source.staging.identity())?;
-            if staging != source.staging {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            crate::draft_piece::staging::authenticate_staging_head_reader(reader, &staging)?;
-            let expected = source
-                .build
-                .as_ref()
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            let current = required_build(reader, &build_key(expected))?;
-            if current == *expected {
-                source.session = session_head(reader, current.draft_id(), current.session_id())?;
-            } else if matches!(self.command, CommandKind::Terminal(..)) {
-                let settled =
-                    required::<DraftPieceSettlementsFamily>(reader, &build_key(expected))?;
-                if settled.terminal_source() != Some(expected) {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
+            qualify_source(
+                reader,
+                &mut source,
+                matches!(self.command, CommandKind::Terminal(..)),
+            )?;
         }
         let (prepared, target) = match self.command {
             CommandKind::Transfer(value) => preparation::transfer(reader, &source, value)?,
@@ -173,6 +158,33 @@ fn terminal_kind(
         StagedDraftPieceTerminalElectionV1::Error(reason) => Ok(TerminalKind::Error(reason)),
         StagedDraftPieceTerminalElectionV1::Settle => Err(SyndicMutationError::IdentityCollision),
     }
+}
+
+#[inline(never)]
+fn qualify_source(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: &mut CapturedState,
+    terminal: bool,
+) -> Result<(), SyndicMutationError> {
+    let staging = required::<DraftMutationStagingHeadsFamily>(reader, &source.staging.identity())?;
+    if staging != source.staging {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    crate::draft_piece::staging::authenticate_staging_head_reader(reader, &staging)?;
+    let expected = source
+        .build
+        .as_ref()
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    let current = required_build(reader, &build_key(expected))?;
+    if current == *expected {
+        source.session = session_head(reader, current.draft_id(), current.session_id())?;
+    } else if terminal {
+        let settled = required::<DraftPieceSettlementsFamily>(reader, &build_key(expected))?;
+        if settled.terminal_source() != Some(expected) {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    }
+    Ok(())
 }
 
 fn replay_target(

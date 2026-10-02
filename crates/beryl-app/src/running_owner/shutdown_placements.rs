@@ -95,8 +95,19 @@ impl RunningProcessOwner {
                 .window_ids()
                 .iter()
                 .copied()
-                .zip(published.shells().iter().map(|shell| shell.window()))
-                .collect::<Vec<_>>();
+                .map(|id| {
+                    let shell = published
+                        .shells()
+                        .iter()
+                        .find(|shell| {
+                            shell
+                                .retained_window_id(app)
+                                .is_ok_and(|captured| captured == id)
+                        })
+                        .ok_or("Exit placement published window identity is unavailable")?;
+                    Ok::<_, String>((id, shell.window()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             let capture = Rc::new(RefCell::new(RunningShutdownPlacements {
                 settled: false,
                 result: None,

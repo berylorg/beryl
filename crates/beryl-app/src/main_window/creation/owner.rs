@@ -1,3 +1,9 @@
+#[cfg(any(test, feature = "test-faults"))]
+mod test_support;
+
+mod recovery;
+pub(crate) use recovery::PreparedCreationRebind;
+
 use super::*;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 use gpui::{App, AppContext, Context, Entity, Global, KeyBinding, Subscription, WeakEntity};
@@ -42,6 +48,8 @@ pub struct MainWindowCreationOwner {
     generation: beryl_home_store::HomeGeneration,
     entries: HashMap<WindowId, CreationEntry>,
     last_error: Option<String>,
+    running_owner:
+        Option<std::rc::Weak<std::cell::RefCell<crate::running_owner::RunningProcessOwner>>>,
     #[cfg(feature = "test-faults")]
     test_completion_delay: Option<Duration>,
     #[cfg(feature = "test-faults")]
@@ -67,6 +75,16 @@ struct CreationEntry {
 }
 
 impl MainWindowCreationOwner {
+    pub(crate) fn bind_running_process(
+        owner: std::rc::Weak<std::cell::RefCell<crate::running_owner::RunningProcessOwner>>,
+        app: &mut App,
+    ) {
+        if app.has_global::<CreationProcessOwner>() {
+            let creation = app.global::<CreationProcessOwner>()._owner.clone();
+            creation.update(app, |creation, _| creation.running_owner = Some(owner));
+        }
+    }
+
     pub fn install(
         services: Arc<MainWindowCreationServices>,
         appearance: Entity<GpuiAppearanceWindowSet>,
@@ -81,6 +99,7 @@ impl MainWindowCreationOwner {
             .health()
             .generation()
             .ok_or_else(|| "The Beryl home service is unavailable.".to_owned())?;
+        let running_owner = crate::running_owner::RunningProcessOwner::mounted_owner(app);
         let owner = app.new(|_| Self {
             services,
             appearance,
@@ -89,6 +108,7 @@ impl MainWindowCreationOwner {
             generation,
             entries: HashMap::new(),
             last_error: None,
+            running_owner,
             #[cfg(feature = "test-faults")]
             test_completion_delay: None,
             #[cfg(feature = "test-faults")]
@@ -261,10 +281,11 @@ impl MainWindowCreationOwner {
             return;
         };
         entry.running = true;
+        let work = Box::new(work);
         let appearance = self.appearance.read(cx).target().snapshot().current;
         let task = cx
             .background_executor()
-            .spawn(async move { work.advance(appearance) });
+            .spawn(async move { work.advance_owned(appearance) });
         let owner = cx.entity();
         #[cfg(feature = "test-faults")]
         let delay = self.test_completion_delay.take();
@@ -281,7 +302,7 @@ impl MainWindowCreationOwner {
                 });
                 cx.background_executor().timer(delay).await;
             }
-            let _ = owner.update(cx, |owner, cx| owner.complete(window_id, outcome, cx));
+            let _ = owner.update(cx, |owner, cx| owner.complete(window_id, *outcome, cx));
         })
         .detach();
     }
@@ -398,13 +419,32 @@ impl MainWindowCreationOwner {
         }
         if !cancelled {
             shell.attach_creation(cx.entity(), cx);
-            if shell.publish(cx).is_ok() {
-                shell
-                    .release_published_handle(cx)
-                    .unwrap_or_else(|_| panic!("published shell transfers its handle"));
-                self.entries.remove(&window_id);
-                cx.notify();
-                return;
+            if let Some(owner) = &self.running_owner {
+                let publication = match owner.upgrade() {
+                    Some(owner) => {
+                        crate::running_owner::RunningProcessOwner::publish_created_window(
+                            &owner, shell, cx,
+                        )
+                    }
+                    None => Err(shell),
+                };
+                match publication {
+                    Ok(()) => {
+                        self.entries.remove(&window_id);
+                        cx.notify();
+                        return;
+                    }
+                    Err(returned) => shell = returned,
+                }
+            } else {
+                if shell.publish(cx).is_ok() {
+                    shell
+                        .release_published_handle(cx)
+                        .unwrap_or_else(|_| panic!("published shell transfers its handle"));
+                    self.entries.remove(&window_id);
+                    cx.notify();
+                    return;
+                }
             }
         }
         let unpublished = shell
@@ -416,58 +456,6 @@ impl MainWindowCreationOwner {
             unpublished,
             "New Window publication failed or was cancelled.".to_owned(),
         ));
-        self.drive(window_id, cx);
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_uninstall(app: &mut App) {
-        assert!(
-            app.windows().is_empty(),
-            "test removes every native window first"
-        );
-        let owner = &app.global::<CreationProcessOwner>()._owner;
-        assert!(
-            owner.read(app).entries.is_empty(),
-            "test settles every creation first"
-        );
-        app.remove_global::<CreationProcessOwner>();
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_delay_next_completion(&mut self, delay: Duration) {
-        self.test_completion_delay = Some(delay);
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_completion_is_waiting(&self, window_id: WindowId) -> bool {
-        self.entries
-            .get(&window_id)
-            .is_some_and(|entry| entry.test_completion_waiting)
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_hold_next_publication(&mut self) {
-        self.test_hold_publication = true;
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_hidden_window(
-        &self,
-        window_id: WindowId,
-    ) -> Option<gpui::WindowHandle<MainWindowShellRoot>> {
-        self.entries
-            .get(&window_id)?
-            .hidden
-            .as_ref()
-            .map(MainWindowShell::window)
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn test_release_publication(&mut self, window_id: WindowId, cx: &mut Context<Self>) {
-        self.entries
-            .get_mut(&window_id)
-            .unwrap()
-            .test_publication_held = false;
         self.drive(window_id, cx);
     }
 }

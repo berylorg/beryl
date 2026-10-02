@@ -64,10 +64,10 @@ impl PreparedDraftPieceEditV1 {
 pub struct PreparedDraftPieceAdvanceV1 {
     expected_revision: DomainRevision,
     home_generation: beryl_home_store::HomeGeneration,
-    expected: DraftPieceBuildRecordV1,
+    expected: Box<DraftPieceBuildRecordV1>,
     expected_session: DraftEditorCandidateSessionV1,
-    next: DraftPieceBuildRecordV1,
-    next_receipt: DraftPieceBuildProgressReceiptV1,
+    next: Box<DraftPieceBuildRecordV1>,
+    next_receipt: Box<DraftPieceBuildProgressReceiptV1>,
     next_session: DraftEditorCandidateSessionV1,
     leaves: Vec<DraftPieceLeafRecordV1>,
     nodes: Vec<DraftPieceNodeRecordV1>,
@@ -77,7 +77,7 @@ pub struct PreparedDraftPieceAdvanceV1 {
     records_read: u64,
     admission_marker: Option<DraftPieceMarkerV1>,
     admission_consumption: Option<PreparedDraftMarkerAdmissionConsumptionV1>,
-    bounded: Option<sequence_advance::SourceFences>,
+    bounded: Option<Box<sequence_advance::SourceFences>>,
 }
 
 impl PreparedDraftPieceAdvanceV1 {
@@ -341,9 +341,11 @@ impl SyndicStorage {
         }
         let key = DraftPieceSettlementKeyV1::new(draft_id, session_id, operation_id);
         let acquisition = advance_budget::BuildAcquisition::new(self, store);
-        let selected = acquisition
-            .point::<DraftPieceBuildsFamily>(key)?
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        let selected = Box::new(
+            acquisition
+                .point::<DraftPieceBuildsFamily>(key)?
+                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+        );
         if build_key(&selected) != key {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
@@ -439,18 +441,21 @@ fn authenticated_build_from_store(
     store: &HomeStore,
     key: DraftPieceSettlementKeyV1,
 ) -> Result<
-    Option<(DraftPieceBuildRecordV1, DraftEditorCandidateSessionV1)>,
+    Option<(Box<DraftPieceBuildRecordV1>, DraftEditorCandidateSessionV1)>,
     DraftPiecePrepareErrorV1,
 > {
     let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
     let Some(build) = build else { return Ok(None) };
-    let receipt = storage
-        .point::<DraftPieceBuildProgressFamily>(
-            store,
-            build.progress_receipt().key(),
-            point_limit(),
-        )?
-        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let build = Box::new(build);
+    let receipt = Box::new(
+        storage
+            .point::<DraftPieceBuildProgressFamily>(
+                store,
+                build.progress_receipt().key(),
+                point_limit(),
+            )?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+    );
     if !progress_receipt_matches_build(&receipt, &build) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
@@ -478,20 +483,24 @@ pub(super) fn authenticated_staging_build_from_store(
     DraftPiecePrepareErrorV1,
 > {
     authenticated_build_from_store(storage, store, key)
+        .map(|selected| selected.map(|(build, session)| (*build, session)))
 }
 
 pub(super) fn authenticated_staging_window_build_from_store(
     reader: &mut super::staging::StagingWindowAcquisitionReader<'_>,
     key: DraftPieceSettlementKeyV1,
 ) -> Result<
-    Option<(DraftPieceBuildRecordV1, DraftEditorCandidateSessionV1)>,
+    Option<(Box<DraftPieceBuildRecordV1>, DraftEditorCandidateSessionV1)>,
     DraftPiecePrepareErrorV1,
 > {
     let build = reader.point::<DraftPieceBuildsFamily>(key)?;
     let Some(build) = build else { return Ok(None) };
-    let receipt = reader
-        .point::<DraftPieceBuildProgressFamily>(build.progress_receipt().key())?
-        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let build = Box::new(build);
+    let receipt = Box::new(
+        reader
+            .point::<DraftPieceBuildProgressFamily>(build.progress_receipt().key())?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+    );
     if !progress_receipt_matches_build(&receipt, &build) || !progress_receipt_is_exact(&receipt) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
@@ -750,8 +759,8 @@ pub(super) fn initial_build_for_staging(
 ) -> Result<
     (
         PreparedDraftPieceEditV1,
-        DraftPieceBuildRecordV1,
-        DraftPieceBuildProgressReceiptV1,
+        Box<DraftPieceBuildRecordV1>,
+        Box<DraftPieceBuildProgressReceiptV1>,
         DraftEditorCandidateSessionV1,
     ),
     SyndicMutationError,
@@ -841,7 +850,7 @@ pub(super) fn initial_build_for_staging(
     let target_session = source_session
         .advance_active_operation(&expected_staging, custody_for(&build))
         .ok_or(SyndicMutationError::CurrentDraftConflict)?;
-    Ok((prepared, build, receipt, target_session))
+    Ok((prepared, Box::new(build), Box::new(receipt), target_session))
 }
 
 fn terminal_first_build(

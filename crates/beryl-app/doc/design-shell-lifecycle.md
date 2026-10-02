@@ -523,6 +523,28 @@ by the executable composition root.
 
 ## Nonfinal Native Close Recovery
 
+- Before native destruction admission, the running owner may retain a distinct exact pre-native
+  cancellation proof with the request identity, gated shell/resident custody and original removal
+  outcome. The proof requires this request never to have admitted native destruction, no other
+  destruction operation to be pending, and the same published, unretired shell to remain owned.
+  An absent attempt, handle or error alone is insufficient. Serialize dependent window/claim
+  commands while this proof is live; background thread execution continues.
+- If an uncertain removal leaves the original home Healthy, reconcile its retained outcome through
+  ordinary admission before attempting failed-home retirement. Under the pre-native proof, proven
+  noncommit validates the exact original state without an inverse write; proven commit uses the
+  existing ordinary State restoration route and retains separate restoration outcome custody.
+  Reconcile and validate a committed restoration rather than repeating it. Pending uncertainty or
+  conflicting facts retain fenced custody. This proof cannot authorize native destruction or be
+  substituted for GPUI settlement after native admission.
+- Authenticated pre-native restoration rebinds the same editor and renewed claim before coherent
+  gate release and completion of the cancelled request. Preserve the original healthy graph,
+  history, selection and placement. If the home fails, transfer the retained original/restoration
+  outcomes and resident custody through the established failed-home route. Never manufacture home
+  failure, start destruction to obtain a survival proof, or replay the cancelled close.
+- Verify pre-native removal noncommit, committed removal, indeterminate reconciliation, restoration
+  uncertainty/conflict, repeated or stale completion, same resident and background-work continuity,
+  failed-home crossover and fresh-close success. Independently review the proof's admission and
+  consumption together with the persistence and interaction-release boundary.
 - The running owner retains the exact cancelled close request, immutable removal evidence and
   original outcome, native reservation and recoverable shell/resident custody through native
   destruction settlement. Draft and session settlement still precede destruction. Native cleanup

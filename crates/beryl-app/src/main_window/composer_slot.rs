@@ -15,6 +15,7 @@ use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 mod close;
 mod close_retirement;
 mod failed_resident;
+mod surviving_native_close;
 pub use failed_resident::MainWindowFailedComposerRetirement;
 pub(in crate::main_window) mod dispatch;
 mod lifecycle;

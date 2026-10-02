@@ -101,7 +101,7 @@ impl SyndicComposerHost {
             candidate,
             candidate_pair,
             marker_authority,
-            source: Some(source),
+            source: Some(Box::new(source)),
             assets,
             cancellation: cancellation.clone(),
         };

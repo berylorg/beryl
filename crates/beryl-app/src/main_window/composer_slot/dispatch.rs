@@ -373,7 +373,14 @@ fn dispatch(
     marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
     cancellation: &CommandCancellation,
 ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
-    match dispatch_quantum(host, dispatcher, store, request, marker_metadata, cancellation) {
+    match dispatch_quantum(
+        host,
+        dispatcher,
+        store,
+        request,
+        marker_metadata,
+        cancellation,
+    ) {
         Err(MainWindowComposerDispatchError::Host(ComposerHostError::MutationWorkPending)) => {
             Ok(MainWindowComposerDispatchOutcome::MutationWorkPending)
         }

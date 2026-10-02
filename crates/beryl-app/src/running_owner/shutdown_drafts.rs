@@ -15,6 +15,7 @@ pub(crate) enum RunningShutdownDraftProgress {
 
 mod detached;
 mod driver;
+mod nonfinal_native;
 mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
 
@@ -33,6 +34,37 @@ pub(crate) struct RunningShutdownDrafts {
 }
 
 impl RunningShutdownDrafts {
+    pub(super) fn add_recovery_window(
+        &mut self,
+        window: WindowHandle<MainWindowShellRoot>,
+        app: &mut App,
+    ) {
+        if self.windows.iter().any(|(captured, _)| *captured == window) {
+            let entry = self
+                .windows
+                .iter_mut()
+                .find(|(captured, _)| *captured == window)
+                .unwrap();
+            if entry.1.as_ref().is_ok_and(|draft| draft.failed.is_some()) {
+                return;
+            }
+            entry.1 = window
+                .update(app, |root, _, cx| root.begin_failed_shutdown_draft(cx))
+                .map_err(|e| e.to_string())
+                .and_then(|r| r);
+            return;
+        }
+        let draft = window
+            .update(app, |root, window, cx| {
+                let _ = window;
+                root.begin_failed_shutdown_draft(cx)
+            })
+            .map_err(|e| e.to_string())
+            .and_then(|r| r);
+        self.windows.push((window, draft));
+        self.detached_prepared = false;
+        self.prepared = true;
+    }
     pub(crate) fn recovery_residents(
         &self,
     ) -> Vec<(
@@ -100,6 +132,11 @@ impl RunningProcessOwner {
             .windows
             .shells()
             .iter()
+            .filter(|shell| {
+                owner
+                    .ordinary_close_window
+                    .is_none_or(|window| window == shell.window())
+            })
             .map(|shell| {
                 (
                     shell.window(),
@@ -147,6 +184,31 @@ impl RunningProcessOwner {
             return Err("shutdown draft recovery has already started".into());
         }
         if !drafts.prepared {
+            #[cfg(test)]
+            {
+                let mut owner = owner.borrow_mut();
+                if owner.shutdown.as_ref().is_some_and(|attempt| {
+                    matches!(
+                        attempt.intent(),
+                        super::ShutdownIntent::NonfinalWindowClose
+                            | super::ShutdownIntent::FinalWindowClose
+                            | super::ShutdownIntent::ApplicationExit
+                    )
+                }) {
+                    if let Some(hook) = owner.before_ordinary_draft_prepare.take() {
+                        hook(
+                            owner
+                                .process
+                                .services
+                                .as_ref()
+                                .unwrap()
+                                .graph()
+                                .unwrap()
+                                .home(),
+                        );
+                    }
+                }
+            }
             for (window, preparation) in &mut drafts.windows {
                 *preparation = window
                     .update(app, |root, window, cx| {

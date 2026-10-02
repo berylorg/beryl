@@ -1,6 +1,6 @@
 use super::super::publication::{PreparedPublication, RetainedComposerCommandOutcome};
 use super::*;
-use beryl_home_store::{HomeCommand, HomeRecoveryCandidate};
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeCommand, HomeRecoveryCandidate};
 use syndic_storage::{
     DraftEditorCandidatePublicationEvidenceV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,
@@ -17,7 +17,7 @@ pub struct ComposerHostFailedResident {
     canonical_home: std::path::PathBuf,
     capacity: std::num::NonZeroUsize,
     original: Option<Box<super::super::publication::retained::RetainedComposerPublication>>,
-    source: Option<syndic_storage::CapturedDraftEditorCandidatePublicationSourceV1>,
+    source: Option<Box<syndic_storage::CapturedDraftEditorCandidatePublicationSourceV1>>,
     preparation: Option<PreparedPublication>,
     recovery: Option<(PreparedPublication, RetainedComposerCommandOutcome)>,
     previous_recovery: Option<RetainedComposerCommandOutcome>,
@@ -27,6 +27,21 @@ pub struct ComposerHostFailedResident {
 }
 
 impl SyndicComposerHost {
+    pub(crate) fn failed_resident_marker_custody_matches(
+        &self,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> bool {
+        self.publication
+            .lane
+            .as_deref()
+            .is_none_or(|lane| match lane {
+                ComposerHostPublicationLane::Publication(pending) => {
+                    pending.marker_custody_is_captured(custody)
+                }
+                ComposerHostPublicationLane::Disposal(_) => false,
+            })
+    }
+
     pub(crate) fn failed_resident_marker_custody_is_drained(&self) -> bool {
         self.publication
             .lane
@@ -290,25 +305,35 @@ impl ComposerHostFailedResident {
         {
             return Err("failed resident publication is already saved or attempted".into());
         }
+        self.prepare_and_publish_candidate(
+            candidate,
+            storage,
+            assets,
+            operation,
+            at,
+            evidence,
+            cancellation,
+        )
+    }
+
+    #[inline(never)]
+    fn prepare_and_publish_candidate(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &syndic_storage::SyndicStorage,
+        assets: &AssetState,
+        operation: DraftPieceOperationIdV1,
+        at: SyndicTimestamp,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
+        cancellation: CommandCancellation,
+    ) -> Result<(), String> {
         self.require_candidate(candidate)?;
         if cancellation.is_cancelled() {
             return Err("resident publication cancelled before preparation".into());
         }
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
         let revision = access.home_revision().map_err(|e| e.to_string())?;
-        self.source = Some(
-            storage
-                .capture_draft_editor_candidate_publication_source_candidate(
-                    &access,
-                    DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
-                        self.selector,
-                        self.checkpoint,
-                        operation,
-                        at,
-                    ),
-                )
-                .map_err(|e| e.to_string())?,
-        );
+        self.capture_candidate_publication_source(&access, storage, operation, at)?;
         let asset = super::super::publication::prepare_asset_plan_candidate(
             &access,
             assets,
@@ -319,37 +344,87 @@ impl ComposerHostFailedResident {
             evidence,
         )
         .map_err(|e| e.to_string())?;
+        self.prepare_candidate_publication(&access, storage, evidence, asset)?;
+        self.execute_candidate_publication(&access, storage, assets, revision, cancellation)
+    }
+
+    #[inline(never)]
+    fn capture_candidate_publication_source(
+        &mut self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        storage: &syndic_storage::SyndicStorage,
+        operation: DraftPieceOperationIdV1,
+        at: SyndicTimestamp,
+    ) -> Result<(), String> {
+        let source = storage
+            .capture_draft_editor_candidate_publication_source_candidate(
+                access,
+                DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
+                    self.selector,
+                    self.checkpoint,
+                    operation,
+                    at,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        self.source = Some(Box::new(source));
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn prepare_candidate_publication(
+        &mut self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        storage: &syndic_storage::SyndicStorage,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
+        asset: super::super::publication::PublicationAssetPlan,
+    ) -> Result<(), String> {
         let syndic = match storage.prepare_draft_editor_candidate_publication_candidate(
-            &access,
-            self.source.take().unwrap(),
+            access,
+            *self.source.take().unwrap(),
             evidence,
         ) {
             Ok(prepared) => prepared,
             Err(error) => {
                 let (source, error) = error.into_parts();
-                self.source = Some(source);
+                self.source = Some(Box::new(source));
                 return Err(error.to_string());
             }
         };
-        self.preparation = Some(PreparedPublication { syndic, asset });
+        self.preparation = Some(PreparedPublication {
+            syndic: Box::new(syndic),
+            asset,
+        });
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn execute_candidate_publication(
+        &mut self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        storage: &syndic_storage::SyndicStorage,
+        assets: &AssetState,
+        revision: beryl_model::HomeRevision,
+        cancellation: CommandCancellation,
+    ) -> Result<(), String> {
         let prepared = self.preparation.as_ref().unwrap();
         let mut command = HomeCommand::new(revision).with_cancellation(cancellation);
         command
             .add(
                 storage
                     .publish_draft_editor_candidate_candidate(
-                        &access,
+                        access,
                         storage
-                            .revision_candidate(&access)
+                            .revision_candidate(access)
                             .map_err(|e| e.to_string())?,
-                        prepared.syndic.clone(),
+                        prepared.syndic.as_ref().clone(),
                     )
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
         super::super::publication::add_asset_participant_candidate(
             &mut command,
-            &access,
+            access,
             assets,
             prepared.asset,
         )

@@ -7,20 +7,20 @@ use gpui_text_input::{
     RangeSurfaceCharge,
 };
 
-type Worker = MainWindowComposerCandidateWorker<
-    HomeRecoveryCandidate,
+type Worker<C> = MainWindowComposerCandidateWorker<
+    C,
     MainWindowFailedResidentCandidateSource,
     MainWindowFailedComposerRetirement,
 >;
-type Custody = MainWindowComposerCandidateCustody<
-    HomeRecoveryCandidate,
+type Custody<C> = MainWindowComposerCandidateCustody<
+    C,
     MainWindowFailedResidentCandidateSource,
     MainWindowFailedComposerRetirement,
 >;
 
-pub struct MainWindowFailedResidentPreparation {
-    worker: Worker,
-    custody: Custody,
+pub struct MainWindowFailedResidentPreparation<C = HomeRecoveryCandidate> {
+    worker: Worker<C>,
+    custody: Custody<C>,
     capture: Option<MainWindowFailedResidentCapture>,
     session: Option<RangePrepublicationSession>,
     environment: Option<RangePrepublicationEnvironment>,
@@ -91,6 +91,137 @@ impl MainWindowFailedResidentPreparation {
             effects: VecDeque::new(),
             text_system: None,
         })
+    }
+}
+
+impl
+    MainWindowFailedResidentPreparation<
+        crate::app_services::recovery_graph::PreparedRecoveryServiceGraph,
+    >
+{
+    pub(crate) fn prepare_graph(
+        mut graph: crate::app_services::recovery_graph::PreparedRecoveryServiceGraph,
+        capture: MainWindowFailedResidentCapture,
+        app: &mut App,
+        completed: impl FnOnce(&mut App) + 'static,
+    ) -> Self {
+        let window = capture.selection().window_id();
+        let (worker, custody) = Worker::prepare_task(
+            async move {
+                let source = graph.failed_resident_source(window);
+                (graph, source)
+            },
+            crate::app_services::recovery_graph::PreparedRecoveryServiceGraph::failed_resident_read,
+            app,
+            completed,
+        );
+        Self {
+            worker,
+            custody,
+            capture: Some(capture),
+            session: None,
+            environment: None,
+            reservation: None,
+            candidate: None,
+            effects: VecDeque::new(),
+            text_system: None,
+        }
+    }
+}
+
+impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
+    pub(crate) fn adopt_failed_recovery(
+        &mut self,
+        resident: &mut MainWindowConversationComposer,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut Window,
+        cx: &mut Context<MainWindowConversationComposer>,
+    ) -> Result<
+        (
+            C,
+            Arc<MainWindowConversationComposerService>,
+            MainWindowFailedResidentAdoption,
+            crate::main_window::MainWindowConversationComposerCloseTicket,
+        ),
+        String,
+    > {
+        let (candidate, service, adoption) = self.adopt_resident(resident, current, window, cx)?;
+        let fresh = close.with_recovered_selection(adoption.selection());
+        resident.window_close = Some(fresh);
+        resident.unpublished_recovery_protection = Some((fresh, adoption.protection()));
+        resident.last_error = None;
+        Ok((candidate, service, adoption, fresh))
+    }
+
+    pub(crate) fn from_graph_source(
+        graph: C,
+        source: MainWindowFailedResidentCandidateSource,
+        capture: MainWindowFailedResidentCapture,
+        read: fn(
+            &mut C,
+            &MainWindowFailedResidentCandidateSource,
+            &RangePrepublicationEffect,
+        ) -> Result<crate::main_window::MainWindowComposerCandidateRead, String>,
+    ) -> Self {
+        assert_eq!(source.predecessor_selection(), capture.selection());
+        assert_eq!(source.predecessor(), capture.restoration());
+        let (worker, custody) = Worker::from_source(graph, source, read);
+        Self {
+            worker,
+            custody,
+            capture: Some(capture),
+            session: None,
+            environment: None,
+            reservation: None,
+            candidate: None,
+            effects: VecDeque::new(),
+            text_system: None,
+        }
+    }
+
+    pub(crate) fn authenticated_window(&self) -> Result<beryl_state::SessionWindowRecord, String> {
+        self.custody
+            .source()
+            .map(|source| source.window().clone())
+            .ok_or("failed resident source is unavailable".into())
+    }
+
+    pub(crate) fn worker_pending(&self) -> bool {
+        self.custody.pending()
+    }
+    pub(crate) fn preparation_error(&self) -> Option<String> {
+        self.custody.preparation_error()
+    }
+    pub(crate) fn capture(&self) -> Option<&MainWindowFailedResidentCapture> {
+        self.capture.as_ref()
+    }
+    pub(crate) fn take_cancelled_graph_resources(
+        &mut self,
+    ) -> Option<(
+        C,
+        Result<
+            MainWindowFailedResidentCandidateSource,
+            (MainWindowFailedComposerRetirement, String),
+        >,
+        MainWindowFailedResidentCapture,
+    )> {
+        if !self.custody.cancelled() || !self.effects.is_empty() || !self.custody.cleanup_drained()
+        {
+            return None;
+        }
+        if let Some((candidate, source)) = self.custody.take_resources() {
+            return Some((candidate, Ok(source), self.capture.take()?));
+        }
+        self.custody
+            .take_refused_resources()
+            .map(|(candidate, retired, error)| {
+                (
+                    candidate,
+                    Err((retired, error)),
+                    self.capture.take().unwrap(),
+                )
+            })
     }
 
     pub fn authenticated_source(
@@ -221,7 +352,7 @@ impl MainWindowFailedResidentPreparation {
         cx: &mut Context<MainWindowConversationComposer>,
     ) -> Result<
         (
-            HomeRecoveryCandidate,
+            C,
             Arc<MainWindowConversationComposerService>,
             MainWindowFailedResidentAdoption,
         ),
@@ -315,7 +446,7 @@ impl MainWindowFailedResidentPreparation {
     pub fn take_cancelled_resources(
         &mut self,
     ) -> Option<(
-        HomeRecoveryCandidate,
+        C,
         MainWindowFailedResidentCandidateSource,
         MainWindowFailedResidentCapture,
     )> {

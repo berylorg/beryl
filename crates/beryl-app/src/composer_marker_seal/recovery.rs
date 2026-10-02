@@ -101,6 +101,25 @@ impl DraftMarkerSealService {
 }
 
 impl DraftMarkerSealRetainedFlights {
+    pub(crate) fn is_bound_to(&self, candidate: &HomeRecoveryCandidate) -> bool {
+        self.bound
+            && self.home_id == candidate.home_id()
+            && self.generation == candidate.generation()
+            && self.canonical_home == candidate.service_reference().canonical_path()
+    }
+
+    pub(crate) fn is_settled(&self) -> bool {
+        let state = lock_state(&self.inner);
+        self.bound
+            && state.recovery_owned
+            && state.active_borrows == 0
+            && state.reserved == 0
+            && state.flights.is_empty()
+            && state.orphans.is_empty()
+            && self.live.is_none()
+            && self.orphans.is_none()
+    }
+
     pub fn captured_flights(&self) -> impl Iterator<Item = DraftMarkerSealFlight> + '_ {
         self.captured.iter().copied()
     }

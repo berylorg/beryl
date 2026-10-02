@@ -35,6 +35,48 @@ pub struct PublishedMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
+    pub(crate) fn publish_created_window(
+        &mut self,
+        mut shell: MainWindowShell,
+        app: &mut App,
+    ) -> Result<(), MainWindowShell> {
+        let id = match shell.retained_window_id(app) {
+            Ok(id) => id,
+            Err(_) => return Err(shell),
+        };
+        if self.shells.len() >= MAX_RESTORABLE_WINDOWS
+            || self.owner.expected_windows.contains(&id)
+            || shell.is_published()
+        {
+            return Err(shell);
+        }
+        if shell.publish(app).is_err() {
+            return Err(shell);
+        }
+        self.owner.expected_windows.push(id);
+        self.owner.expected_windows.sort_unstable();
+        self.shells.push(shell);
+        Ok(())
+    }
+    pub(crate) fn release_closed_window(
+        &mut self,
+        window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+        app: &mut App,
+    ) -> Result<(), String> {
+        let index = self
+            .shells
+            .iter()
+            .position(|shell| shell.window() == window)
+            .ok_or("closed window is absent from the published set")?;
+        self.shells[index].settle_final_native_cleanup(app)?;
+        let id = self.shells[index].retained_window_id(app)?;
+        let shell = self.shells.remove(index);
+        self.owner
+            .expected_windows
+            .retain(|captured| *captured != id);
+        drop(shell);
+        Ok(())
+    }
     pub(crate) fn shells_mut(&mut self) -> &mut [MainWindowShell] {
         &mut self.shells
     }

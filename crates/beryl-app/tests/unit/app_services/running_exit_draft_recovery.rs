@@ -28,7 +28,7 @@ fn run(preparation_failure: bool, release_failure: bool) {
                 let invoking = running.windows.window_ids()[0];
                 let window = running.windows.shells()[0].window();
                 let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
-                let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                 owner.borrow().window_exit_command(invoking, app).unwrap().request_exit();
                 app.spawn(async move |cx| {
                     let request = next_request(&owner, cx).await;

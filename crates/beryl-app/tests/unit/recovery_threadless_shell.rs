@@ -262,6 +262,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
         window
             .update(cx, |root, _, cx| {
                 let wrong = MainWindowShutdownDraft {
+                    failed: None,
                     root: other.entity_id(),
                     retirement: None,
                     detached_source: None,

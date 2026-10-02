@@ -120,8 +120,8 @@ impl RunningProcessOwner {
                 Ok(invoking) => invoking,
                 Err(error) => return Err((request, ExitProgressError::Request(error))),
             };
-            let admitted = matches!(owner.shutdown_status(), Some((window, ShutdownIntent::ApplicationExit, status))
-                if window == invoking && matches!(status, RunningShutdownStatus::Admitted | RunningShutdownStatus::WorkReady));
+            let admitted = matches!(owner.shutdown_status(), Some((window, intent, status))
+                if window == invoking && intent == request.shutdown_intent() && matches!(status, RunningShutdownStatus::Admitted | RunningShutdownStatus::WorkReady));
             if !admitted {
                 return Err((request, ExitProgressError::Intent));
             }

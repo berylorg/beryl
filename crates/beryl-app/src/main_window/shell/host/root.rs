@@ -15,6 +15,8 @@ impl MainWindowShellRoot {
             startup_interaction: None,
             shutdown_interaction_gated: false,
             exit_disabled_reason: None,
+            running_command: None,
+            ordinary_close_interaction_gated: false,
             #[cfg(target_os = "windows")]
             blocked_shutdown: None,
             controller: Some(controller),
@@ -66,6 +68,9 @@ impl MainWindowShellRoot {
     }
 
     pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {
+        if self.ordinary_close_interaction_gated {
+            return Some("This window is waiting for its draft and durable close state.".into());
+        }
         if self.shutdown_interaction_gated {
             return Some(
                 "Application Exit is waiting for active work and durable state.".to_owned(),
@@ -109,6 +114,11 @@ impl MainWindowShellRoot {
         let _ = owner.update(cx, |owner, cx| {
             owner.activate_captured(source, selection, target, cx)
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_activate_new_window_command(&mut self, cx: &mut Context<Self>) {
+        self.invoke_new_window(cx);
     }
 }
 

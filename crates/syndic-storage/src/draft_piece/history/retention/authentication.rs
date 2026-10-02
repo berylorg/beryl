@@ -243,10 +243,11 @@ fn transition_reference_is_authenticated(
     storage: &SyndicStorage,
     store: ReadAccess<'_>,
     reference: DraftEditHistoryTransitionReferenceV1,
-) -> Result<Option<DraftEditHistoryTransitionV1>, SyndicReadError> {
+) -> Result<Option<Box<DraftEditHistoryTransitionV1>>, SyndicReadError> {
     let Some(value) = transition_reference_is_exact(storage, store, reference)? else {
         return Ok(None);
     };
+    let value = Box::new(value);
     let Ok(charge) = stored_transition_charge(&value) else {
         return Ok(None);
     };

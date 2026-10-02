@@ -146,7 +146,7 @@ fn run(choice: Choice) {
                         .restored_window_attempt()
                         .unwrap();
                     let job = running.services.prepare_shutdown_observation().unwrap();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     app.spawn(async move |cx| {
                         let observation = cx
                             .background_executor()

@@ -5,6 +5,78 @@ use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, AnyView, InteractiveElement, StatefulInteractiveElement};
 
 impl MainWindowShellRoot {
+    pub(crate) fn mount_running_command(
+        &mut self,
+        command: crate::startup_owner::RunningWindowExit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.running_command = Some(command.clone());
+        let root = cx.weak_entity();
+        window.on_window_should_close(cx, move |_, app| {
+            let admitted = root.upgrade().is_some_and(|root| {
+                let root = root.read(app);
+                !root.startup_interaction_gated()
+                    && !root.shutdown_interaction_gated
+                    && !root.ordinary_close_interaction_gated
+                    && command.disabled_reason().is_none()
+            });
+            if admitted {
+                command.request_close();
+            }
+            false
+        });
+        cx.notify();
+    }
+
+    fn exit_enabled(&self) -> bool {
+        !self.startup_interaction_gated()
+            && !self.shutdown_interaction_gated
+            && !self.ordinary_close_interaction_gated
+            && self
+                .running_command
+                .as_ref()
+                .is_some_and(|command| command.disabled_reason().is_none())
+    }
+
+    fn request_running_exit(&self) {
+        if self.exit_enabled() {
+            self.running_command.as_ref().unwrap().request_exit();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_activate_exit_command(&self) {
+        self.request_running_exit();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_exit_command_enabled(&self) -> bool {
+        self.exit_enabled()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_creation_owner_identity(&self, app: &App) -> Option<gpui::EntityId> {
+        self.creation.as_ref()?.upgrade().map(|owner| {
+            let _ = owner.read(app);
+            owner.entity_id()
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_creation_owner_status(
+        &self,
+        app: &App,
+    ) -> Option<(usize, Option<String>, Vec<String>)> {
+        let owner = self.creation.as_ref()?.upgrade()?;
+        let owner = owner.read(app);
+        Some((
+            owner.pending_count(),
+            owner.last_error().map(str::to_owned),
+            owner.test_entry_status(),
+        ))
+    }
+
     pub(crate) fn set_exit_disabled_reason(
         &mut self,
         reason: Option<&'static str>,
@@ -24,7 +96,12 @@ impl MainWindowShellRoot {
                 "Quit Beryl immediately; cleanup is incomplete.",
             );
         }
-        if self.shutdown_interaction_gated {
+        if self.ordinary_close_interaction_gated {
+            (
+                "Exit",
+                "This window is waiting for its draft and durable close state.",
+            )
+        } else if self.shutdown_interaction_gated {
             (
                 "Exiting…",
                 "Application Exit is waiting for active work and durable state.",
@@ -34,8 +111,16 @@ impl MainWindowShellRoot {
         } else {
             (
                 "Exit",
-                self.exit_disabled_reason
-                    .unwrap_or("Application Exit is not available."),
+                self.running_command
+                    .as_ref()
+                    .and_then(|command| command.disabled_reason())
+                    .or(self.exit_disabled_reason)
+                    .or_else(|| {
+                        self.running_command
+                            .is_none()
+                            .then_some("Application Exit is not available.")
+                    })
+                    .unwrap_or("Exit Beryl and restore this layout next time."),
             )
         }
     }
@@ -81,6 +166,7 @@ pub(super) fn render(
     let blocked = root.blocked_shutdown.is_some();
     #[cfg(not(target_os = "windows"))]
     let blocked = false;
+    let enabled = blocked || root.exit_enabled();
     let hover = color("button.secondary.hover", Property::Background, 0xeef2f7);
     let hover_border = color("button.secondary.hover", Property::Border, 0x94a3b8);
     let hover_foreground = color("button.secondary.hover", Property::Foreground, 0x1f2937);
@@ -91,8 +177,8 @@ pub(super) fn render(
     div()
         .id("main-window-exit")
         .debug_selector(|| "main-window-exit".to_owned())
-        .tab_stop(blocked)
-        .when(blocked, |button| {
+        .tab_stop(enabled)
+        .when(enabled, |button| {
             button
                 .track_focus(&root.exit_focus)
                 .cursor_pointer()
@@ -121,12 +207,21 @@ pub(super) fn render(
                 })
                 .on_click(cx.listener(|root, _, _, cx| {
                     #[cfg(target_os = "windows")]
-                    let _ = root.request_blocked_quit(cx);
+                    if root.blocked_shutdown.is_some() {
+                        let _ = root.request_blocked_quit(cx);
+                        return;
+                    }
+                    root.request_running_exit();
                 }))
                 .on_key_down(cx.listener(|root, event: &gpui::KeyDownEvent, _, cx| {
                     if event.keystroke.key == "enter" || event.keystroke.key == "space" {
                         #[cfg(target_os = "windows")]
-                        let _ = root.request_blocked_quit(cx);
+                        if root.blocked_shutdown.is_some() {
+                            let _ = root.request_blocked_quit(cx);
+                            cx.stop_propagation();
+                            return;
+                        }
+                        root.request_running_exit();
                         cx.stop_propagation();
                     }
                 }))
@@ -144,7 +239,7 @@ pub(super) fn render(
         .rounded(px(6.))
         .border_1()
         .border_color(color(
-            if blocked {
+            if enabled {
                 "button.secondary.normal"
             } else {
                 "button.secondary.disabled"
@@ -153,29 +248,30 @@ pub(super) fn render(
             0xcbd5e1,
         ))
         .bg(color(
-            if blocked {
+            if enabled {
                 "button.secondary.normal"
             } else {
                 "button.secondary.disabled"
             },
             Property::Background,
-            if blocked { 0xf8fafc } else { 0xf1f5f9 },
+            if enabled { 0xf8fafc } else { 0xf1f5f9 },
         ))
         .text_color(color(
-            if blocked {
+            if enabled {
                 "button.secondary.label"
             } else {
                 "button.secondary.disabled"
             },
             Property::Foreground,
-            if blocked { 0x1f2937 } else { 0x94a3b8 },
+            if enabled { 0x1f2937 } else { 0x94a3b8 },
         ))
         .text_size(px(font.size))
         .font_weight(gpui::FontWeight(font.weight))
         .when_some(font.family, |button, family| button.font_family(family))
-        .when(root.shutdown_interaction_gated && !blocked, |button| {
-            button.opacity(0.72)
-        })
+        .when(
+            root.shutdown_interaction_gated && !root.ordinary_close_interaction_gated && !blocked,
+            |button| button.opacity(0.72),
+        )
         .child(root.exit_presentation().0)
         .tooltip(move |_, cx| -> AnyView {
             cx.new(|cx| ExitTooltip {

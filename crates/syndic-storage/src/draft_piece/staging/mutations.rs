@@ -475,7 +475,7 @@ impl DomainMutation<SyndicDomain> for StageDurableWindowMutation {
                 _ => None,
             })
             .ok_or(SyndicMutationError::CurrentDraftConflict)?;
-        if stored_build.as_ref() == Some(&p.expected_build) {
+        if stored_build.as_ref() == Some(p.expected_build.as_ref()) {
             super::mutation::authenticate_build(reader, &p.expected_build)?;
             if stored_target_receipt.is_some() || stored_session != p.expected_session {
                 return Err(SyndicMutationError::IdentityCollision);
@@ -487,8 +487,8 @@ impl DomainMutation<SyndicDomain> for StageDurableWindowMutation {
             }
             return Ok(Some(self.prepared));
         }
-        if stored_build.as_ref() == Some(&p.target_build)
-            && stored_target_receipt.as_ref() == Some(&p.target_receipt)
+        if stored_build.as_ref() == Some(p.target_build.as_ref())
+            && stored_target_receipt.as_ref() == Some(p.target_receipt.as_ref())
             && stored_session == p.target_session
         {
             super::mutation::authenticate_build(reader, &p.target_build)?;

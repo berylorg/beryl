@@ -45,6 +45,16 @@ pub struct MainWindowCreationServices {
 
 impl MainWindowCreationServices {
     pub(crate) fn validate_source(&self) -> Result<(), String> {
+        self.validate_prepared_source()?;
+        self.submission_execution
+            .execution_candidate()
+            .map_err(|error| {
+                format!("window creation execution authority is unavailable: {error}")
+            })?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_prepared_source(&self) -> Result<(), String> {
         if !Arc::ptr_eq(&self.store, &self.acquisition.home_reference()) {
             return Err("window creation services have different source custody".to_owned());
         }
@@ -63,11 +73,6 @@ impl MainWindowCreationServices {
                 "window submission authority belongs to another home generation".to_owned(),
             );
         }
-        self.submission_execution
-            .execution_candidate()
-            .map_err(|error| {
-                format!("window creation execution authority is unavailable: {error}")
-            })?;
         Ok(())
     }
 }

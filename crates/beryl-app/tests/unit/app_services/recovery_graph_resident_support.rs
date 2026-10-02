@@ -62,6 +62,8 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
     )
     .unwrap();
     PreparedRecoveryServiceGraph {
+        failed_residents: Vec::new(),
+        recovered_window: None,
         process: owner.process.clone(),
         services: Some(services),
         sessions,

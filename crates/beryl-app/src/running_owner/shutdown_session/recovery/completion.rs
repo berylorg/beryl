@@ -64,6 +64,15 @@ impl RunningProcessOwner {
                 .iter()
                 .map(|shell| shell.window())
                 .collect::<Vec<_>>();
+            let creation = crate::main_window::MainWindowCreationOwner::prepare_recovered_process(
+                owner
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("Recovered creation services are unavailable")?,
+                &appearance,
+                app,
+            )?;
             let released = {
                 let drafts = drafts
                     .try_borrow()
@@ -74,13 +83,29 @@ impl RunningProcessOwner {
                         .services
                         .as_mut()
                         .ok_or("Published recovery services are unavailable")?
-                        .reopen_recovery_admission(generation)
+                        .reopen_recovery_admission(generation)?;
+                    if let Some(creation) = &creation {
+                        creation.require_live_source()?;
+                    }
+                    Ok(())
                 })?
             };
             if !released {
                 return Ok(false);
             }
+            if let Some(creation) = creation {
+                creation.apply(app);
+            }
             // Prepared mounts are now live; no GUI turn intervenes before the remaining gates.
+            #[cfg(target_os = "windows")]
+            for shell in owner.process.windows.shells_mut() {
+                shell
+                    .release_settled_nonfinal_native_if_present()
+                    .expect("prepared recovery native survival remains settled");
+                shell
+                    .release_pre_native_close_if_present(&request.identity(), app)
+                    .expect("prepared recovery pre-native custody remains exact");
+            }
             MainWindowShellRoot::release_shutdown_interaction_gates(&windows, app)
                 .expect("prepared recovered shells remain live during synchronous completion");
             for window in &windows {

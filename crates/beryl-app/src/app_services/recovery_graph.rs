@@ -13,12 +13,14 @@ use crate::{
 use beryl_home_store::{HomeGeneration, HomeRecoveryCandidate};
 
 pub(crate) struct PreparedRecoveryServiceGraph {
+    pub(super) failed_residents: Vec<super::recovery_failed_residents::FailedResidentSource>,
     process: ProcessAdmissionGate,
-    services: Option<PreparedRecoveryAppServices>,
+    pub(super) services: Option<PreparedRecoveryAppServices>,
     sessions: ScheduledExecutionSessions,
     attention: Option<Arc<ProcessLifecycleAttentionPool>>,
-    state: BerylState,
-    syndic: SyndicStorage,
+    pub(super) state: BerylState,
+    pub(super) syndic: SyndicStorage,
+    pub(super) recovered_window: Option<beryl_state::SessionWindowRemovalEvidence>,
 }
 
 pub(crate) enum RecoveryServicePreparationError {
@@ -53,7 +55,7 @@ impl ProcessServiceOwner {
     }
 
     pub(crate) fn prepare_recovery_service_graph(
-        &self,
+        &mut self,
         expected: HomeGeneration,
         candidate: &mut Option<HomeRecoveryCandidate>,
         configuration: AppServiceConfiguration,
@@ -74,18 +76,23 @@ impl ProcessServiceOwner {
         check_cancellation(cancellation).map_err(|error| reject(error.to_string()))?;
         self.require_settled_custody()
             .map_err(|error| reject(error.to_string()))?;
+        if self.failed_markers.is_some() {
+            return Err(reject("original marker custody is not settled".into()));
+        }
         let state =
             BerylState::reacquire_candidate(retained).map_err(|error| reject(error.to_string()))?;
         let syndic = SyndicStorage::reacquire_candidate(retained)
             .map_err(|error| reject(error.to_string()))?;
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
+            failed_residents: Vec::new(),
             process: self.process.clone(),
             services: None,
             sessions,
             attention: Some(Arc::new(ProcessLifecycleAttentionPool::new())),
             state,
             syndic,
+            recovered_window: None,
         };
         let settlement = DiscussionSettlementService::new(
             self.settlements.clone(),
@@ -143,11 +150,24 @@ impl ProcessServiceOwner {
             )
             .map_err(RecoveryServicePreparationError::App)?,
         );
+        prepared.failed_residents = std::mem::take(&mut self.failed_residents);
         Ok(prepared)
     }
 }
 
 impl PreparedRecoveryServiceGraph {
+    pub(crate) fn retain_recovered_window(
+        &mut self,
+        original: &crate::running_owner::RunningShutdownSession,
+    ) {
+        self.recovered_window = match original {
+            crate::running_owner::RunningShutdownSession::RemovedWindow(close) => {
+                close.restored_evidence().cloned()
+            }
+            _ => None,
+        };
+    }
+
     pub(crate) fn revalidate_interrupted_exit_session(
         &mut self,
         home: BerylHomeId,
@@ -166,7 +186,14 @@ impl PreparedRecoveryServiceGraph {
         if candidate.home_id() != home || candidate.generation() != generation {
             return Err("session validation belongs to another recovery candidate".into());
         }
-        original.revalidate_candidate(candidate, &self.state.session())
+        original.revalidate_candidate(candidate, &self.state.session())?;
+        self.recovered_window = match original {
+            crate::running_owner::RunningShutdownSession::RemovedWindow(close) => {
+                close.restored_evidence().cloned()
+            }
+            _ => None,
+        };
+        Ok(())
     }
 
     pub(crate) fn composer_recovery_read(
@@ -191,7 +218,13 @@ impl PreparedRecoveryServiceGraph {
         self.services
             .as_mut()
             .expect("prepared recovery services")
-            .composer_recovery_source(&self.state, self.syndic.clone(), retired, seed)
+            .composer_recovery_source(
+                &self.state,
+                self.syndic.clone(),
+                retired,
+                seed,
+                self.recovered_window.as_ref(),
+            )
     }
 
     pub(crate) fn appearance(&self) -> Arc<crate::theme_runtime::AppearanceGeneration> {

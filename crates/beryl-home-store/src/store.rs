@@ -68,6 +68,12 @@ pub(crate) struct OpenedDatabase {
     pub(crate) header: HomeHeader,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HomeGenerationIdentity {
+    instance: StoreInstanceId,
+    generation: crate::HomeGeneration,
+}
+
 pub(crate) struct StoreGeneration {
     pub(crate) database: Database,
     pub(crate) control: HomeControl,
@@ -275,6 +281,16 @@ impl HomeStore {
     #[must_use]
     pub fn health(&self) -> crate::HomeHealthSnapshot {
         self.health.snapshot()
+    }
+
+    pub fn generation_identity(&self) -> Result<HomeGenerationIdentity, crate::ReadError> {
+        let admission = self.health.admit_generation(self.admitted_generation)?;
+        let identity = HomeGenerationIdentity {
+            instance: self.writer_id,
+            generation: admission.generation(),
+        };
+        admission.confirm()?;
+        Ok(identity)
     }
 
     /// Returns the durable opaque identity stored in the home header.

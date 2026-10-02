@@ -70,58 +70,99 @@ impl MainWindowCreation {
     #[inline(never)]
     pub(super) fn advance_initial(
         &mut self,
-        mut initial: MainWindowInitialComposer,
         appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> CreationStep {
+        let CreationState::Initial(initial) = &mut self.state else {
+            unreachable!("initial creation retains its composer")
+        };
         #[cfg(feature = "test-faults")]
         if let Some(before) = &self.services.test_before_initial_advance {
-            before(&mut initial);
+            before(initial);
         }
-        match initial.advance(&self.cancellation) {
+        let progress = initial.advance(&self.cancellation);
+        self.finish_initial_advance(progress, appearance)
+    }
+
+    #[inline(never)]
+    fn finish_initial_advance(
+        &mut self,
+        progress: Result<MainWindowInitialComposerProgress, String>,
+        appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> CreationStep {
+        match progress {
             Ok(
                 MainWindowInitialComposerProgress::Pending
                 | MainWindowInitialComposerProgress::Retry,
             ) => {
-                self.state = if self.cancellation.is_cancelled() {
-                    CreationState::Retiring(initial)
-                } else {
-                    CreationState::Initial(initial)
-                };
+                if self.cancellation.is_cancelled() {
+                    self.retain_retiring_initial();
+                }
                 return CreationStep::Pending;
             }
             Err(error) => {
                 self.error = Some(error);
-                self.state = CreationState::Retiring(initial);
+                self.retain_retiring_initial();
             }
             Ok(MainWindowInitialComposerProgress::Activated) => {
-                let mut configurator = (self.services.configurator_source)();
-                let prepared = initial.prepare(&mut configurator).and_then(|prepared| {
-                    prepared.into_shell(
-                        configurator,
-                        self.services.marker_seals.clone(),
-                        MainWindowComposerSubmissionRequestSource::new(
-                            self.services.submission_execution.clone(),
-                            self.services.turn_start_requirement,
-                        ),
-                        appearance.clone(),
-                    )
-                });
-                match prepared {
-                    Ok(prepared) if !self.cancellation.is_cancelled() => {
-                        return CreationStep::Prepared(prepared);
-                    }
-                    Ok(prepared) => {
-                        self.error = Some("New Window creation was cancelled.".to_owned());
-                        self.state = CreationState::Unpublished(prepared.into_unpublished());
-                    }
-                    Err(failure) => {
-                        self.error = Some(failure.error);
-                        self.state = CreationState::Retiring(failure.custody);
-                    }
-                }
+                let initial = self.take_initial();
+                return self.prepare_activated_initial(initial, appearance);
             }
         }
 
+        CreationStep::Continue
+    }
+
+    #[inline(never)]
+    fn take_initial(&mut self) -> Box<MainWindowInitialComposer> {
+        let CreationState::Initial(initial) =
+            std::mem::replace(&mut self.state, CreationState::Settled)
+        else {
+            unreachable!("initial creation retains its composer")
+        };
+        Box::new(initial)
+    }
+
+    #[inline(never)]
+    fn retain_retiring_initial(&mut self) {
+        self.state = CreationState::Retiring(*self.take_initial());
+    }
+
+    #[inline(never)]
+    fn prepare_activated_initial(
+        &mut self,
+        initial: Box<MainWindowInitialComposer>,
+        appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> CreationStep {
+        let mut configurator = (self.services.configurator_source)();
+        let prepared = match initial.prepare_owned(&mut configurator) {
+            Ok(prepared) => prepared,
+            Err(failure) => {
+                self.error = Some(failure.error);
+                self.state = CreationState::Retiring(failure.custody);
+                return CreationStep::Continue;
+            }
+        };
+        match prepared.into_shell_owned(
+            configurator,
+            self.services.marker_seals.clone(),
+            MainWindowComposerSubmissionRequestSource::new(
+                self.services.submission_execution.clone(),
+                self.services.turn_start_requirement,
+            ),
+            appearance.clone(),
+        ) {
+            Ok(prepared) if !self.cancellation.is_cancelled() => {
+                return CreationStep::Prepared(prepared);
+            }
+            Ok(prepared) => {
+                self.error = Some("New Window creation was cancelled.".to_owned());
+                self.state = CreationState::Unpublished(prepared.into_unpublished());
+            }
+            Err(failure) => {
+                self.error = Some(failure.error);
+                self.state = CreationState::Retiring(failure.custody);
+            }
+        }
         CreationStep::Continue
     }
 

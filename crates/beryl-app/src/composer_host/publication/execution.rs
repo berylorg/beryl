@@ -27,7 +27,7 @@ impl SyndicComposerHost {
                 .with_cancellation(pending.intent.cancellation.clone());
             command.add(self.storage.publish_draft_editor_candidate(
                 self.storage.revision(store)?,
-                prepared.syndic.clone(),
+                prepared.syndic.as_ref().clone(),
             ))?;
             add_asset_participant(&mut command, store, &pending.intent.assets, prepared.asset)?;
             (pending.intent.binding, prepared, command)

@@ -12,6 +12,12 @@ impl RunningShutdownSession {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
+        if let Self::RemovedWindow(close) = self {
+            return close.revalidate_candidate(candidate, session);
+        }
+        if let Self::UnremovedWindows(windows) = self {
+            return windows.validate(candidate, session);
+        }
         let running = match self {
             Self::Settled(Ok(outcome)) => outcome
                 .validate_candidate(candidate, session)
@@ -36,6 +42,12 @@ impl RunningShutdownSession {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
+        if let Self::RemovedWindow(close) = self {
+            return close.converge_candidate(candidate, session);
+        }
+        if let Self::UnremovedWindows(windows) = self {
+            return windows.validate(candidate, session);
+        }
         if !matches!(self, Self::Resuming(_)) {
             match self
                 .settle_candidate(candidate, session)

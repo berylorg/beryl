@@ -15,10 +15,12 @@ use super::*;
 
 mod builder_continuation;
 mod mapping;
+mod settlement_closure;
 pub(crate) use mapping::canonical_build_mapping_bytes;
 #[cfg(feature = "test-faults")]
 pub(crate) use mapping::mapping_roundtrip_for_test;
 use mapping::{dec_mapping, enc_mapping};
+use settlement_closure::decode_settlement_closure;
 
 #[cfg(feature = "test-faults")]
 pub(crate) use builder_continuation::canonical_active_marker_bytes;
@@ -2421,71 +2423,6 @@ fn settlement_digest_v6(payload: &[u8]) -> DraftPieceDigestV1 {
     digest.update((payload.len() as u64).to_be_bytes());
     digest.update(payload);
     DraftPieceDigestV1::from_bytes(digest.finalize().into())
-}
-
-fn decode_settlement_closure(
-    mut d: &mut Decoder<'_>,
-) -> Result<Box<DraftPieceSettlementClosureV1>, CodecError> {
-    let closure = match d.u8()? {
-        0 => DraftPieceSettlementClosureV1::Committed(DraftPieceCommittedAdoptionV1::new(
-            dec_session_head(&mut d)?,
-            dec_session_head(&mut d)?,
-            DraftPieceRootRecordV1::new(dec_root_reference(&mut d)?),
-            dec_history_frontier(&mut d)?,
-            dec_history_transition(&mut d)?,
-            dec_history_frontier(&mut d)?,
-        )),
-        1 => {
-            let observed_session = dec_session_head(&mut d)?;
-            let observed_history = dec_history_frontier(&mut d)?;
-            let proposed_successor = match d.u8()? {
-                0 => None,
-                1 => Some(dec_root_reference(&mut d)?),
-                tag => {
-                    return Err(CodecError::InvalidTag {
-                        kind: "draft-piece proposed successor option",
-                        tag,
-                    });
-                }
-            };
-            let occupied_identity = match d.u8()? {
-                0 => None,
-                1 => Some(dec_occupied_identity_proof(&mut d)?),
-                tag => {
-                    return Err(CodecError::InvalidTag {
-                        kind: "draft-piece occupied identity proof option",
-                        tag,
-                    });
-                }
-            };
-            let noncommit = match (proposed_successor, occupied_identity) {
-                (Some(successor), Some(proof)) => {
-                    DraftPieceNoncommitClosureV1::with_occupied_identity(
-                        observed_session,
-                        observed_history,
-                        successor,
-                        proof,
-                    )
-                }
-                (successor, None) => {
-                    DraftPieceNoncommitClosureV1::new(observed_session, observed_history, successor)
-                }
-                (None, Some(_)) => {
-                    return Err(CodecError::InvalidLength(
-                        "draft-piece occupied identity successor",
-                    ));
-                }
-            };
-            DraftPieceSettlementClosureV1::Noncommit(noncommit)
-        }
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "draft-piece settlement closure",
-                tag,
-            });
-        }
-    };
-    Ok(Box::new(closure))
 }
 
 fn encode_marker_identity_record(

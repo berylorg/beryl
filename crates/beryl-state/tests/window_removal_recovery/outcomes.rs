@@ -1,6 +1,9 @@
 use super::*;
 
-fn open_with_faults(path: &std::path::Path, faults: &FaultController) -> (HomeStore, BerylState) {
+pub(super) fn open_with_faults(
+    path: &std::path::Path,
+    faults: &FaultController,
+) -> (HomeStore, BerylState) {
     let mut candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults.clone(),

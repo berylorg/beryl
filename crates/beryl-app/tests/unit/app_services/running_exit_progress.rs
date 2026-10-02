@@ -28,7 +28,7 @@ fn exercise(ordinary_close: bool) {
                     let window = running.windows.shells()[0].window();
                     let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
                     let permit = running.services.process.execution_permit();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     command.request_exit();
                     app.spawn(async move |cx| {

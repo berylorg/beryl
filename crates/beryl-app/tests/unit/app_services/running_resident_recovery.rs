@@ -79,7 +79,7 @@ fn resident_run(scenario: ResidentScenario) {
                         panic!("startup failed")
                     };
                     let invoking = running.windows.window_ids()[0];
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     owner
                         .borrow()
                         .window_exit_command(invoking, app)

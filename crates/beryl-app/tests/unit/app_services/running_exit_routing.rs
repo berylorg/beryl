@@ -112,7 +112,7 @@ fn exercise(confirm: Option<bool>, outcome: ObservationOutcome, drive: bool, set
                     let invoking = running.windows.window_ids()[0];
                     let main = running.windows.shells()[0].window();
                     let permit = running.services.process.execution_permit();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     command.request_exit();
                     app.spawn(async move |cx| {
@@ -440,6 +440,9 @@ fn route(
             assert!(!owner.borrow().test_services_on_worker());
             assert!(owner.borrow_mut().take_shutdown_progress().is_none());
             let result = match result {
+                Ok(ExitAttemptCompletion::WindowClosed) => {
+                    panic!("Exit request cannot complete an ordinary close")
+                }
                 Ok(ExitAttemptCompletion::Progress(progress)) => {
                     assert!(matches!(
                         progress,

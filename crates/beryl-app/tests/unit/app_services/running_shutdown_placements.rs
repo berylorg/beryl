@@ -206,7 +206,7 @@ fn run_with_reconciliation(
             let StartupCompletion::Running(running) = running else { panic!("startup failed") };
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
-            let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
             assert!(owner.borrow().require_shutdown_session_ready().is_err());
             assert!(RunningProcessOwner::reconcile_shutdown_session(&owner, app,
                 |_, _| panic!("unadmitted reconciliation")).is_err());

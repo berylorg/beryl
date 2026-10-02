@@ -5,6 +5,11 @@ use gpui::App;
 use std::{cell::RefCell, rc::Rc};
 
 impl RunningProcessOwner {
+    #[cfg(test)]
+    pub(crate) fn test_window_command_unchecked(&self, window: WindowId) -> RunningWindowExit {
+        self.process.commands.window_command(window)
+    }
+
     pub(crate) fn set_exit_gate(&self, gate: RunningExitGate, blocked: bool) {
         self.process.commands.set_gate(gate, blocked);
     }

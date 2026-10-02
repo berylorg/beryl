@@ -37,6 +37,7 @@ struct Commands {
     stage: Stage,
     exit: bool,
     exit_window: Option<WindowId>,
+    ordinary_close: bool,
     retry: Option<StartupAttempt>,
     wake: Option<Waker>,
     active_exit: Option<Rc<()>>,
@@ -63,6 +64,7 @@ impl StartupCommands {
         }
         if !state.exit {
             state.exit_window = invoking;
+            state.ordinary_close = false;
         }
         state.exit = true;
         let stage = state.stage.clone();
@@ -155,6 +157,7 @@ pub(crate) fn start(
         stage: Stage::Preparing(cancellation),
         exit: false,
         exit_window: None,
+        ordinary_close: false,
         retry: None,
         wake: None,
         active_exit: None,

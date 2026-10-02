@@ -53,6 +53,154 @@ impl MainWindowShellController {
 }
 
 impl MainWindowShellRoot {
+    pub(crate) fn begin_failed_shutdown_draft(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowShutdownDraft, String> {
+        if !self.shutdown_interaction_gated || self.startup_interaction_gated() {
+            return Err("failed shutdown capture requires exact running shell gate".into());
+        }
+        let controller = self
+            .controller
+            .as_ref()
+            .ok_or("failed shutdown shell controller is unavailable")?;
+        let mount = if controller.is_threadless() {
+            if controller.composer_mount.is_some() {
+                return Err("failed threadless shell has a composer".into());
+            }
+            None
+        } else {
+            Some(
+                controller
+                    .composer_mount
+                    .clone()
+                    .ok_or("failed selected shell composer is unavailable")?,
+            )
+        };
+        let (composer, failed) = if let Some(mount) = mount {
+            let resident = mount
+                .read(cx)
+                .contribution()
+                .ok_or("failed shutdown resident is unavailable")?
+                .entity_id();
+            let (ticket, close) = mount.update(cx, |mount, cx| {
+                let ticket = mount.begin_failed_resident(cx)?;
+                Ok::<_, String>((ticket, mount.failed_recovery_close_ticket(cx)?))
+            })?;
+            (
+                Some((mount, resident, close)),
+                Some(super::FailedShutdownResident {
+                    adoption: None,
+                    capture: None,
+                    ticket,
+                    resources: None,
+                    retired: false,
+                }),
+            )
+        } else {
+            (None, None)
+        };
+        Ok(MainWindowShutdownDraft {
+            root: cx.entity_id(),
+            failed,
+            retirement: None,
+            detached_source: None,
+            detached_installed: false,
+            composer,
+        })
+    }
+
+    pub(crate) fn retire_failed_shutdown_draft(
+        &mut self,
+        draft: &mut MainWindowShutdownDraft,
+        services: &mut crate::app_services::ProcessServiceOwner,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if draft.root != cx.entity_id()
+            || !self.shutdown_interaction_gated
+            || self.startup_interaction_gated()
+        {
+            return Err("failed shutdown draft lost its exact gated shell".into());
+        }
+        let Some(failed) = draft.failed.as_mut() else {
+            return self.retire_shutdown_draft(draft, cx);
+        };
+        if failed.retired {
+            return Ok(true);
+        }
+        let (mount, editor, _) = draft
+            .composer
+            .as_ref()
+            .ok_or("failed shutdown composer is unavailable")?;
+        let controller = self
+            .controller
+            .as_mut()
+            .ok_or("failed shutdown controller is unavailable")?;
+        if controller.composer_mount.as_ref() != Some(mount)
+            || !mount
+                .read(cx)
+                .contribution()
+                .is_some_and(|resident| resident.entity_id() == *editor)
+        {
+            return Err("failed shutdown resident identity changed".into());
+        }
+        if failed.capture.is_none() {
+            failed.capture = mount.update(cx, |mount, cx| {
+                mount.capture_failed_resident(failed.ticket, cx)
+            })?;
+            if failed.capture.is_none() {
+                return Ok(false);
+            }
+        }
+        let custody = services
+            .failed_marker_custody()
+            .ok_or("failed marker custody is unavailable")?;
+        if failed.resources.is_none() {
+            failed.resources = Some(Box::new(mount.update(cx, |mount, cx| {
+                mount.detach_failed_resident_resources_with_marker_custody(
+                    failed.capture.as_ref().unwrap(),
+                    custody,
+                    cx,
+                )
+            })?));
+        }
+        let service = failed
+            .resources
+            .as_ref()
+            .unwrap()
+            .service
+            .as_ref()
+            .or(failed.resources.as_ref().unwrap().resident.service.as_ref())
+            .ok_or("failed resident service custody is unavailable")?;
+        match &mut controller.content {
+            ShellContent::Acquired { custody, .. } => {
+                if let Some(candidate) = custody.initial_composer.as_mut() {
+                    candidate.release_recovery_service(service)?;
+                }
+            }
+            ShellContent::Restored { custody, .. } => {
+                custody.composer.release_recovery_service(service)?
+            }
+            ShellContent::Recovered { .. } => {}
+            _ => return Err("failed selected construction custody changed".into()),
+        }
+        let resources = *failed.resources.take().unwrap();
+        match resources.retire_with_marker_custody(custody) {
+            Err(resources) => {
+                failed.resources = Some(Box::new(resources));
+                Ok(false)
+            }
+            Ok(retired) => {
+                services
+                    .retain_failed_resident(retired, failed.capture.as_ref().unwrap().restoration())
+                    .map_err(|_| "failed resident retirement is duplicated")?;
+                controller.retire_construction()?;
+                failed.retired = true;
+                Ok(true)
+            }
+        }
+    }
+
     pub(crate) fn retire_shutdown_draft(
         &mut self,
         draft: &mut MainWindowShutdownDraft,

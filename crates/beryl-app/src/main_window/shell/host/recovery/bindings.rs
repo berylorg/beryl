@@ -12,6 +12,10 @@ impl MainWindowShell {
         if !self.startup_publication_allowed() {
             return Err("Recovery shell disposal is pending".into());
         }
+        #[cfg(target_os = "windows")]
+        if !self.nonfinal_native_recovery_allowed() {
+            return Err("Recovery shell native destruction is unresolved".into());
+        }
         if !self.published || !self.appearance_registered || self.appearance_owner != *appearance {
             return Err("Recovery shell appearance ownership is incomplete".into());
         }

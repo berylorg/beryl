@@ -39,7 +39,7 @@ fn run(outcome: Outcome) {
             let invoking = running.windows.window_ids()[0];
             let main = running.windows.shells()[0].window();
             let permit = running.services.process.execution_permit();
-            let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
             app.spawn(async move |cx| {
                 let job = owner.borrow().test_services().prepare_shutdown_observation().unwrap();
                 let idle = cx.background_executor().spawn(async move {

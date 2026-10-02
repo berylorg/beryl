@@ -65,6 +65,23 @@ pub(crate) fn retain_projection_work(
         .with_acquisition(acquisition)
 }
 
+pub(crate) fn retain_admitted_projection_work(
+    service: &super::ProjectionConnectionService,
+    thread: beryl_model::SyndicThreadId,
+) -> impl Send + use<> {
+    let acquisition =
+        super::acquisition::ProjectionAcquisition::admit(&service.live_command_authorizer())
+            .unwrap();
+    let work = super::CasProjectionCoordinator::for_healthy_home(
+        service.live_home_command().unwrap().home(),
+    )
+    .unwrap()
+    .begin_projection(thread)
+    .unwrap();
+    drop(acquisition);
+    work
+}
+
 pub use super::outage_buffer::{
     OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferError,
     OutageBufferLimits, OutageConnectionIdentity, OutageFact, OutageLoss, OutageObservationSlot,

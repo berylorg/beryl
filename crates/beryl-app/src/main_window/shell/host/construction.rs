@@ -146,6 +146,12 @@ impl GpuiMainWindowShellHost<'_> {
             #[cfg(target_os = "windows")]
             startup_disposal: admission,
             #[cfg(target_os = "windows")]
+            nonfinal_native_destruction: None,
+            #[cfg(target_os = "windows")]
+            pre_native_close: None,
+            #[cfg(all(test, target_os = "windows"))]
+            nonfinal_native_fault: None,
+            #[cfg(target_os = "windows")]
             desktop_placement: None,
             #[cfg(all(target_os = "windows", feature = "test-faults"))]
             desktop_worker_gate: None,

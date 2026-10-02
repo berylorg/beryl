@@ -70,16 +70,7 @@ impl DispatchWork {
                 settlement,
             });
         }
-        let mut completed = Box::new(MainWindowConversationComposerDispatch {
-            initiating_selection: selection,
-            settled_selection: selection,
-            outcome: MainWindowComposerDispatchOutcome::Released,
-            proof: None,
-            edit_proof: None,
-            cut_page: None,
-            cut_page_expected: false,
-        });
-        completed.outcome = match route {
+        let outcome = match route {
             MainWindowConversationComposerRoute::Selected => slot.dispatch_selected_request(
                 &service.store,
                 selection,
@@ -101,6 +92,7 @@ impl DispatchWork {
             mutation_key,
             settlement,
         })?;
+        let mut completed = dispatch_completion(selection, outcome);
         populate_successor_proof(service, &mut slot, &mut completed, proof_limits, settlement)?;
         completed.settled_selection = match route {
             MainWindowConversationComposerRoute::Selected => slot.selected_identity(),
@@ -114,6 +106,22 @@ impl DispatchWork {
         })?;
         Ok(completed)
     }
+}
+
+#[inline(never)]
+fn dispatch_completion(
+    selection: MainWindowComposerSelectionIdentity,
+    outcome: MainWindowComposerDispatchOutcome,
+) -> Box<MainWindowConversationComposerDispatch> {
+    Box::new(MainWindowConversationComposerDispatch {
+        initiating_selection: selection,
+        settled_selection: selection,
+        outcome,
+        proof: None,
+        edit_proof: None,
+        cut_page: None,
+        cut_page_expected: false,
+    })
 }
 
 fn populate_successor_proof(

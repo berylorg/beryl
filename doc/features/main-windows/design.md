@@ -64,6 +64,12 @@ Preserve each window's visible identity and placement without requiring auxiliar
   and exclusive thread claim before dependent interaction resumes. Its native identity, selected
   thread, resident content and placement remain preserved; recovery never completes that cancelled
   close or chooses a substitute window or thread. This also applies to final ordinary close.
+- If a nonfinal removal remains uncertain while the original home is Healthy and native destruction
+  has not started, retain the same gated window and reconcile the original write. Proven noncommit
+  requires no inverse write; proven commit restores its exact membership and claim before reopening.
+  Preserve the resident editor, history and background work. Uncertainty or conflict keeps dependent
+  actions unavailable. Never manufacture storage failure or start destruction to obtain recovery
+  authority; the failed close stays cancelled and a later close requires fresh activation.
 - After every required obligation succeeds, Beryl removes the window from the restore set, releases
   its thread claim, and closes that window.
 - If native destruction of a nonfinal window fails and that same window survives, Beryl cancels

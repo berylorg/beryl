@@ -39,8 +39,9 @@ fn run(cancelled: bool) {
                         65_536,
                     )
                     .unwrap();
-                    let owner =
-                        RunningProcessOwner::start_with_detached_read_limits(running, limits, app);
+                    let owner = RunningProcessOwner::test_start_unmounted_with_detached_read_limits(
+                        running, limits, app,
+                    );
                     owner
                         .borrow()
                         .window_exit_command(invoking, app)

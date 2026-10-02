@@ -27,6 +27,7 @@ use super::*;
 
 mod abandon_fresh;
 mod disposal;
+mod preparation;
 mod recovery;
 
 pub(crate) use disposal::{PreparedCandidateDisposal, prepare_candidate_disposal};
@@ -1517,14 +1518,10 @@ impl SyndicStorage {
         PreparedDraftEditorCandidatePublicationV1,
         DraftEditorCandidatePublicationSourcePreparationErrorV1,
     > {
-        let prepared = self.prepare_draft_editor_candidate_publication_inner(
-            ReadAccess::Ordinary(store),
-            &source,
-            evidence,
-        );
-        prepared.map_err(
-            |error| DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error },
-        )
+        let prepared = preparation::prepare(self, ReadAccess::Ordinary(store), &source, evidence);
+        prepared.map(|value| *value).map_err(|error| {
+            DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error }
+        })
     }
 
     pub fn prepare_draft_editor_candidate_publication_candidate(
@@ -1536,122 +1533,9 @@ impl SyndicStorage {
         PreparedDraftEditorCandidatePublicationV1,
         DraftEditorCandidatePublicationSourcePreparationErrorV1,
     > {
-        let prepared = self.prepare_draft_editor_candidate_publication_inner(
-            ReadAccess::Candidate(store),
-            &source,
-            evidence,
-        );
-        prepared.map_err(
-            |error| DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error },
-        )
-    }
-
-    fn prepare_draft_editor_candidate_publication_inner(
-        &self,
-        store: ReadAccess<'_>,
-        source: &CapturedDraftEditorCandidatePublicationSourceV1,
-        evidence: DraftEditorCandidatePublicationEvidenceV1,
-    ) -> Result<
-        PreparedDraftEditorCandidatePublicationV1,
-        DraftEditorCandidatePublicationCommandErrorV1,
-    > {
-        source
-            .storage
-            .revision_with_access(store)
-            .map_err(SyndicReadError::Read)?;
-        let capture = source.request;
-        let candidate = capture.candidate();
-        let request = DraftEditorCandidatePublicationRequestV1::new(
-            capture.selector(),
-            candidate.session_id(),
-            capture.operation_id(),
-            candidate.candidate_generation(),
-            DraftRootHistoryPairV1::new(candidate.root(), candidate.history()),
-            evidence,
-            capture.published_at(),
-        );
-        if !request.candidate().is_coherent()
-            || request.candidate_generation()
-                != request.candidate().history().candidate_generation()
-            || request.selector().draft_id() != request.candidate().root().key().draft_id()
-            || !publication_evidence_is_exact(request)
-        {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        let limit = point_limit();
-        let root = self
-            .point_with_access::<DraftPieceRootsFamily>(
-                store,
-                request.candidate().root().key(),
-                limit,
-            )?
-            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-        if root.reference() != request.candidate().root()
-            || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
-        {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        if let Some(record) = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
-            store,
-            publication_key(request),
-            limit,
-        )? {
-            let DraftEditorCandidateSessionRecordV1::OpenReceipt(occupied) = record else {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            };
-            let occupied = occupied
-                .publication()
-                .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-            if !validate_publication_receipt_with_access(self, store, occupied)? {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            }
-            return Ok(PreparedDraftEditorCandidatePublicationV1 {
-                request,
-                canonical_request: canonical_candidate_publication_request_bytes(request),
-                source_frontier: occupied.captured_frontier().clone(),
-                captured_frontier: occupied.captured_frontier().clone(),
-                captured_head: occupied.before_head().clone(),
-                initially_absent: false,
-            });
-        }
-        let head = match publication_session_with_access(
-            self,
-            store,
-            request.selector().draft_id(),
-            request.session_id(),
-        )? {
-            DraftEditorCandidateSessionReadOutcomeV1::Active(head)
-            | DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => head,
-            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
-        };
-        if head.active_operation().is_some() {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
-        }
-        let captured = &source.captured_head;
-        let source_frontier = &source.source_frontier;
-        if captured.draft_id() != request.selector().draft_id()
-            || captured.session_id() != request.session_id()
-            || captured.newest_candidate_generation() != request.candidate_generation()
-            || captured.newest_root() != request.candidate().root()
-            || captured.newest_history() != request.candidate().history()
-            || source_frontier.reference() != request.candidate().history()
-            || !captured_publication_source_matches(&head, captured)
-            || !candidate_session_publication_is_exact_with_access(self, store, &head)?
-            || !candidate_session_publication_is_exact_with_access(self, store, captured)?
-            || !captured_adoption_is_exact_with_access(self, store, captured, source_frontier)?
-        {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        let captured_frontier = source_frontier
-            .publication_snapshot(request.session_id(), request.operation_id())
-            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-        Ok(PreparedDraftEditorCandidatePublicationV1 {
-            request,
-            canonical_request: canonical_candidate_publication_request_bytes(request),
-            source_frontier: source_frontier.clone(),
-            captured_frontier,
-            captured_head: captured.clone(),
-            initially_absent: true,
+        let prepared = preparation::prepare(self, ReadAccess::Candidate(store), &source, evidence);
+        prepared.map(|value| *value).map_err(|error| {
+            DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error }
         })
     }
 

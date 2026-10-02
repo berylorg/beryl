@@ -28,10 +28,15 @@ mod exit_work;
 mod final_teardown;
 mod initial_observation;
 mod observation;
+mod ordinary_close_session;
+mod ordinary_commands;
 mod progress;
 mod shutdown_drafts;
+mod unremoved_windows;
 #[cfg(test)]
 pub(crate) use shutdown_drafts::RunningShutdownDrafts;
+#[cfg(test)]
+pub(crate) use unremoved_windows::UnremovedWindows;
 mod shutdown_interaction;
 mod shutdown_placements;
 mod shutdown_session;
@@ -71,6 +76,17 @@ pub(crate) struct RunningProcessOwner {
     progress: Option<progress::RunningShutdownProgress>,
     observing_initial_work: bool,
     waiting_for_exit: bool,
+    ordinary_close_window: Option<gpui::WindowHandle<crate::main_window::MainWindowShellRoot>>,
+    ordinary_commands_mounted: bool,
+    cancelled_ordinary_close: Option<ordinary_close_session::OrdinaryCloseSession>,
+    #[cfg(test)]
+    before_ordinary_session_removal: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
+    #[cfg(test)]
+    before_ordinary_command_admission: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
+    #[cfg(test)]
+    before_ordinary_draft_prepare: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore)>>,
+    #[cfg(test)]
+    before_native_close_restoration: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
     exit_availability: Option<gpui::Task<()>>,
     interrupted_exit: Option<shutdown_session::InterruptedExitRecovery>,
     automatic_recovery: Option<shutdown_session::AutomaticInterruptedExitRecovery>,
@@ -109,6 +125,40 @@ impl RunningProcessOwner {
     }
 
     pub(crate) fn start_with_detached_read_limits(
+        process: StartedProcess,
+        limits: beryl_home_store::TemporaryReadPoolLimits,
+        app: &mut App,
+    ) -> Rc<RefCell<Self>> {
+        let owner = Self::construct_running_owner(process, limits, app);
+        if let Err(error) = Self::mount_ordinary_commands(&owner, app) {
+            owner
+                .borrow()
+                .process
+                .commands
+                .set_gate(crate::startup_owner::RunningExitGate::Unavailable, true);
+            Self::report_ordinary_command_failure(&owner, None, &error, app);
+        }
+        owner
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_start_unmounted(
+        process: StartedProcess,
+        app: &mut App,
+    ) -> Rc<RefCell<Self>> {
+        Self::construct_running_owner(process, Default::default(), app)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_start_unmounted_with_detached_read_limits(
+        process: StartedProcess,
+        limits: beryl_home_store::TemporaryReadPoolLimits,
+        app: &mut App,
+    ) -> Rc<RefCell<Self>> {
+        Self::construct_running_owner(process, limits, app)
+    }
+
+    fn construct_running_owner(
         mut process: StartedProcess,
         limits: beryl_home_store::TemporaryReadPoolLimits,
         app: &mut App,
@@ -136,6 +186,17 @@ impl RunningProcessOwner {
             progress: None,
             observing_initial_work: false,
             waiting_for_exit: false,
+            ordinary_close_window: None,
+            ordinary_commands_mounted: false,
+            cancelled_ordinary_close: None,
+            #[cfg(test)]
+            before_ordinary_session_removal: None,
+            #[cfg(test)]
+            before_ordinary_command_admission: None,
+            #[cfg(test)]
+            before_ordinary_draft_prepare: None,
+            #[cfg(test)]
+            before_native_close_restoration: None,
             exit_availability: None,
             interrupted_exit: None,
             automatic_recovery: None,

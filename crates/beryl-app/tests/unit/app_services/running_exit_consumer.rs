@@ -68,7 +68,7 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                             }, app);
                         }
                     }
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     app.spawn(async move |cx| {
                         if refusal {

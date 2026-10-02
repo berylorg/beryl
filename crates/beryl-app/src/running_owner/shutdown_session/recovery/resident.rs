@@ -1,6 +1,8 @@
 use super::*;
 mod attachment;
 mod drain;
+mod failed;
+mod preparation;
 mod window;
 use crate::app_services::recovery_graph::PreparedRecoveryServiceGraph;
 use crate::main_window::{
@@ -11,6 +13,7 @@ use crate::main_window::{
 };
 use gpui::{AnyWindowHandle, WeakEntity, Window};
 use gpui_text_input::{RangePrepublicationEnvironment, RangeRestorationSeed, RangeSurfaceCharge};
+use preparation::{Preparation, ReturnedPreparation};
 use settlement::CandidateSettlement;
 
 type Environment = Box<
@@ -38,13 +41,13 @@ pub(super) struct ResidentPreparation {
     pub(super) home: beryl_model::BerylHomeId,
     pub(super) generation: beryl_home_store::HomeGeneration,
     window: AnyWindowHandle,
-    preparation: MainWindowComposerRecoveryPreparation<PreparedRecoveryServiceGraph>,
+    preparation: Preparation,
     environment: Option<Environment>,
     result: Result<Progress, String>,
     cancelled: bool,
     cleanup_failed: bool,
     scheduled: Option<Rc<()>>,
-    returned: Option<Box<CancelledResidentPreparation>>,
+    returned: Option<ReturnedPreparation>,
     completed: Option<Completion>,
     _window_closed: gpui::Subscription,
 }
@@ -242,7 +245,7 @@ impl RunningProcessOwner {
             home,
             generation,
             window,
-            preparation,
+            preparation: Preparation::Clean(Box::new(preparation)),
             environment: Some(Box::new(environment)),
             result: Ok(Progress::Waiting),
             cancelled: false,
@@ -389,11 +392,7 @@ impl RunningProcessOwner {
             let again = if flight.cancelled {
                 match flight.preparation.advance_cleanup() {
                     Ok(true) => {
-                        if let Some((graph, source)) = flight.preparation.take_cancelled_resources()
-                        {
-                            flight.returned =
-                                Some(Box::new(CancelledResidentPreparation { graph, source }));
-                        }
+                        flight.returned = flight.preparation.take_cancelled();
                         false
                     }
                     Ok(false) => !flight.preparation.worker_pending(),
@@ -481,7 +480,13 @@ impl RunningProcessOwner {
         if !matches!(slot.as_ref(), Some(CandidateSettlement::Pending)) {
             return None;
         }
-        let resources = *flight.returned.take()?;
+        if !matches!(flight.returned, Some(ReturnedPreparation::Clean(_))) {
+            return None;
+        }
+        let ReturnedPreparation::Clean(resources) = flight.returned.take()? else {
+            unreachable!()
+        };
+        let resources = *resources;
         *slot = Some(CandidateSettlement::Services(Ok(resources.graph)));
         recovery.resident.take();
         Some(resources.source)
@@ -509,27 +514,20 @@ impl ResidentPreparation {
             .resident
             .upgrade()
             .ok_or("Recovery resident was abandoned")?;
-        let composer = resident.read(app);
-        composer.validate_recovery_retirement(self.close, app)?;
-        let Some((seed, selection)) = self.preparation.authenticated_source()? else {
-            return Ok(Progress::Waiting);
-        };
-        if selection.binding().home_id() != self.home
-            || selection.binding().home_generation() != self.generation
-        {
-            return Err("Resident recovery candidate generation changed".into());
+        if let Some((_, selection)) = self.preparation.authenticated_source()? {
+            if selection.binding().home_id() != self.home
+                || selection.binding().home_generation() != self.generation
+            {
+                return Err("Resident recovery candidate generation changed".into());
+            }
         }
-        let protection = composer.recovery_snapshot().unwrap().protection();
-        let input = composer.gpui_input();
-        if let Some(environment) = self.environment.take() {
-            let (environment, capacity) = environment(seed, selection, window)?;
-            self.preparation
-                .admit(input.read(app), protection, environment, capacity)?;
-        }
-        // The entity read cannot borrow App across a worker dispatch.
-        input.update(app, |input, app| {
-            self.preparation
-                .advance(input, window.text_system(), app, completed)
-        })
+        self.preparation.advance(
+            &resident,
+            self.close,
+            &mut self.environment,
+            window,
+            app,
+            completed,
+        )
     }
 }

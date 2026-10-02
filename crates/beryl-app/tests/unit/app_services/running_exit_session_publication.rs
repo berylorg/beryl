@@ -818,7 +818,7 @@ fn run_with_windows(
                     assert_eq!(running.windows.shells().len(), usize::from(selected_count.max(1)));
                     let invoking = running.windows.window_ids()[0];
                     let window = running.windows.shells()[0].window();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let automatic_snapshot = if let RecoveryPublicationDelivery::Automatic(scenario) = publication_delivery {
                         Some((automatic_recovery::capture(&owner, app), scenario))
                     } else {

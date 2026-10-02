@@ -177,10 +177,7 @@ impl BuildBudget {
     ) -> Result<Option<F::Value>, SyndicMutationError> {
         self.acquire::<F>(key, false, || {
             reader
-                .point::<ExactCodec<F>>(
-                    key,
-                    crate::codec::family_point_limit::<F>(),
-                )
+                .point::<ExactCodec<F>>(key, crate::codec::family_point_limit::<F>())
                 .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)
         })
         .map_err(|_| SyndicMutationError::IdentityCollision)
@@ -212,8 +209,10 @@ impl<'a> BuildAcquisition<'a> {
                 .point::<F>(
                     self.store,
                     key.clone(),
-                    crate::SyndicPointReadLimit::new(crate::codec::family_point_limit::<F>().max_bytes())
-                        .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?,
+                    crate::SyndicPointReadLimit::new(
+                        crate::codec::family_point_limit::<F>().max_bytes(),
+                    )
+                    .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?,
                 )
                 .map_err(DraftPiecePrepareErrorV1::from)
         })

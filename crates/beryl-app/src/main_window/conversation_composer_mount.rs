@@ -168,6 +168,7 @@ pub struct MainWindowConversationComposerMount {
     window_close_generation: u64,
     window_close_released: Option<MainWindowConversationComposerCloseTicket>,
     failed_resident: Option<super::MainWindowFailedResidentTicket>,
+    failed_recovery_close: Option<MainWindowConversationComposerCloseTicket>,
     failed_resident_detached: bool,
     #[cfg(test)]
     test_defer_recovered_mount: bool,
@@ -405,6 +406,7 @@ impl MainWindowConversationComposerMount {
             window_close_generation: 0,
             window_close_released: None,
             failed_resident: None,
+            failed_recovery_close: None,
             failed_resident_detached: false,
             #[cfg(test)]
             test_defer_recovered_mount: false,

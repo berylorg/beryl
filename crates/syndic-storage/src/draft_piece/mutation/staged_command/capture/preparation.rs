@@ -13,20 +13,30 @@ pub(super) fn transfer(
         writer_progress_allowed: true,
     }
     .prepare(reader)?;
-    let target = match prepared.as_deref() {
+    let target = transfer_target(reader, source, prepared.as_deref())?;
+    Ok((PreparedCommandMutation::Transfer(prepared), target))
+}
+
+#[inline(never)]
+fn transfer_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: &CapturedState,
+    prepared: Option<&(
+        PreparedDraftMutationTransferV1,
+        Option<DraftMarkerAdmissionHeadV1>,
+    )>,
+) -> Result<Box<CapturedState>, SyndicMutationError> {
+    let target = match prepared {
         Some((value, _)) => CapturedState {
             staging: value.target_head.clone(),
-            build: Some(value.build.clone()),
+            build: Some(value.build.as_ref().clone()),
             session: value.target_session.clone(),
             settlement: None,
             terminal_admission: None,
         },
         None => replay_target(reader, source)?,
     };
-    Ok((
-        PreparedCommandMutation::Transfer(prepared),
-        Box::new(target),
-    ))
+    Ok(Box::new(target))
 }
 
 pub(super) fn window(
@@ -42,7 +52,7 @@ pub(super) fn window(
     let target = match &prepared {
         Some(value) => CapturedState {
             staging: source.staging.clone(),
-            build: Some(value.target_build.clone()),
+            build: Some(value.target_build.as_ref().clone()),
             session: value.target_session.clone(),
             settlement: None,
             terminal_admission: None,
@@ -68,7 +78,7 @@ pub(super) fn advance(
     let target = match &prepared {
         Some((value, _)) => CapturedState {
             staging: source.staging.clone(),
-            build: Some(value.next.clone()),
+            build: Some(value.next.as_ref().clone()),
             session: value.next_session.clone(),
             settlement: None,
             terminal_admission: None,
@@ -88,7 +98,17 @@ pub(super) fn settle(
     generation: HomeGeneration,
 ) -> CapturedPreparation {
     let prepared = settlement::prepare_for_generation(&value, reader, generation, &[])?;
-    let target = match &prepared {
+    let target = settle_target(reader, source, prepared.as_deref())?;
+    Ok((PreparedCommandMutation::Settle(prepared), target))
+}
+
+#[inline(never)]
+fn settle_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: &CapturedState,
+    prepared: Option<&settlement::PreparedSettlementContribution>,
+) -> Result<Box<CapturedState>, SyndicMutationError> {
+    let target = match prepared {
         Some(value) => CapturedState {
             staging: source.staging.clone(),
             build: Some(value.terminal.clone()),
@@ -98,7 +118,7 @@ pub(super) fn settle(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((PreparedCommandMutation::Settle(prepared), Box::new(target)))
+    Ok(Box::new(target))
 }
 
 pub(super) fn terminal(

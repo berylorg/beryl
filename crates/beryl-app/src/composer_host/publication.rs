@@ -187,7 +187,7 @@ struct PublicationIntent {
     candidate: DraftEditorCandidateActivationBindingV1,
     candidate_pair: DraftRootHistoryPairV1,
     marker_authority: Option<ComposerHostMarkerSealAuthority>,
-    source: Option<CapturedDraftEditorCandidatePublicationSourceV1>,
+    source: Option<Box<CapturedDraftEditorCandidatePublicationSourceV1>>,
     assets: AssetState,
     cancellation: CommandCancellation,
 }
@@ -277,7 +277,7 @@ impl SyndicComposerHost {
 
 #[derive(Clone)]
 pub(super) struct PreparedPublication {
-    pub(in crate::composer_host) syndic: PreparedDraftEditorCandidatePublicationV1,
+    pub(in crate::composer_host) syndic: Box<PreparedDraftEditorCandidatePublicationV1>,
     pub(in crate::composer_host) asset: PublicationAssetPlan,
 }
 
@@ -390,11 +390,12 @@ fn prepare_publication(
         .source
         .take()
         .ok_or(ComposerHostError::PublicationUnavailable)?;
-    let syndic = match storage.prepare_draft_editor_candidate_publication(store, source, evidence) {
-        Ok(prepared) => prepared,
+    let syndic = match storage.prepare_draft_editor_candidate_publication(store, *source, evidence)
+    {
+        Ok(prepared) => Box::new(prepared),
         Err(failure) => {
             let (source, error) = failure.into_parts();
-            intent.source = Some(source);
+            intent.source = Some(Box::new(source));
             return Err(error.into());
         }
     };

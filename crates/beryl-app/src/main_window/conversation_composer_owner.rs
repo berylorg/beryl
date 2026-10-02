@@ -42,6 +42,7 @@ mod selected_preparation;
 mod service;
 mod shutdown;
 mod startup;
+mod surviving_native_close;
 
 pub use failed_resident::preparation::{
     MainWindowFailedResidentAdoption, MainWindowFailedResidentPreparation,

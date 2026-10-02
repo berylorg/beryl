@@ -54,6 +54,53 @@ impl RunningProcessOwner {
                 .ok_or("Resident is not captured by the interrupted Exit")?;
             (mount, resident, close)
         };
+        let capture = {
+            let mut retained = owner.borrow_mut();
+            retained
+                .shutdown
+                .as_mut()
+                .and_then(|attempt| attempt.drafts.as_ref())
+                .ok_or("failed resident draft set is unavailable")?
+                .borrow_mut()
+                .take_failed_capture(window)?
+        };
+        if let Some(capture) = capture {
+            let _ = mount;
+            let prepared = Self::prepare_failed_interrupted_exit_resident(
+                owner,
+                request,
+                &resident,
+                close,
+                window.into(),
+                generation,
+                capture,
+                Box::new(move |seed, selection, window| {
+                    let (config, capacity) = configure(seed, selection, window)?;
+                    Ok((
+                        config.resident_recovery_environment(seed, window)?,
+                        capacity,
+                    ))
+                }),
+                app,
+                Box::new(completed),
+            );
+            return match prepared {
+                Ok(key) => Ok(key),
+                Err((capture, error)) => {
+                    owner
+                        .borrow_mut()
+                        .shutdown
+                        .as_mut()
+                        .unwrap()
+                        .drafts
+                        .as_ref()
+                        .unwrap()
+                        .borrow_mut()
+                        .return_failed_capture(window, capture);
+                    Err(error)
+                }
+            };
+        }
         if retired.is_none() {
             *retired = mount.update(app, |mount, cx| {
                 mount.take_interrupted_exit_retirement(close, cx)

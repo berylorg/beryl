@@ -137,9 +137,196 @@ GUI's composer-slot mutex and required termination of its exact test child. A fr
 debugger capture proved a worker-stack overflow during actual edit staging, before the ordinary
 close failure hook, while that mutex was held. The failed worker stranded the guard; treating the
 foreground wait as a logical lock cycle would target the wrong cause. The bounded app correction
-separates dispatch-completion allocation from deep staging. Its runtime qualification and the
-remaining close/recovery failures are still pending. Subsequent native runs use an external
+separates dispatch-completion allocation from deep staging. Subsequent private transfer boxing and
+frame separation progressed genuine editing to build advancement. A fresh first-chance capture
+in `.tmp/dirty-stack-correction/current-worker-stacks.txt` places the remaining overflow in build
+decoding below `authenticated_build_from_store`, `prepare_draft_piece_build_advance` and
+`prepare_staged_draft_piece_advance`; their observed frames total 577,600 bytes before decoding
+and the outer app worker. Large private by-value preparation records remain the next correction
+boundary. This evidence does not justify increasing the native worker stack or changing codecs,
+validation order or publication semantics. Runtime qualification and remaining close/recovery
+failures are still pending. Subsequent native runs use an external
 per-case deadline as well as their GUI deadline, since a blocked GUI cannot enforce its own timer.
+
+The subsequent seven-path private boxing correction passed 34 affected staging/outcome cases in
+107.274 seconds (`cc755f83-ec1c-4be7-9634-f12443cfc6c4`). Independent review found no changed
+record bytes, public signatures, validation/admission order, outcome custody or unbounded retention.
+Remaining record unboxing and compiler-generated construction temporaries are diagnostic targets
+if the rebuilt native case still overflows; source review and these tests do not prove native stack
+safety. Evidence remains in `.tmp/dirty-stack-correction/advance-staging-regressions.txt`.
+
+Rebuilt native run `4fd05208-05d9-417b-be35-6f960ab46fda` still overflowed and timed out at
+60.048 seconds. The next exact first-chance trace in
+`.tmp/dirty-stack-correction/advance-worker-stacks.txt` gets beyond advancement into durable-window
+preparation: `prepare_next_durable_draft_piece_window` holds 417,424 bytes and its caller
+`prepare_staged_draft_piece_window` holds 245,744 bytes while staging-head decoding exhausts the
+remaining stack. Continue bounded private allocation/frame separation at this proven boundary;
+retain codec and validation semantics. Both exactly identified test/debugger fixture homes were
+removed after path and reparse checks; the debugger and test child ended.
+
+The durable-window correction passed the same 34 affected cases in 108.390 seconds
+(`cbb4f4ee-fbe0-4578-99f6-ff07eb25376d`). Independent six-path review found no semantic blocker;
+all reviewed hashes matched after verification. Its private prepared records use bounded heap
+ownership, and deep acquisition runs outside later result construction frames. Native proof is
+still pending. The separate app session/clean-native run `af622868-5d92-494e-9dad-b1b67f22dfd7`
+passed two of four cases: exact healthy restoration and removal-noncommit handling passed, while
+the native survivor case reached its fixture deadline and a crossover fixture expected an error
+from a fault that could be reconciled successfully. Neither failure is evidence of another stack
+overflow; app runtime diagnosis and fixture correction remain required.
+
+Rebuilt dirty run `1be00e8d-57e4-4568-ae9c-d7a7acb37326` aborted after 20.700 seconds when
+the edit-settlement fixture deadline expired. It logged no worker stack overflow. Logical extent
+remained zero with no reported admission/dispatch error and no active flight; the native callback
+then aborted because the fixture panic could not unwind. This does not establish successful native
+editing or justify another storage boxing change. Investigate real input/dispatch settlement;
+retain the unchanged-stack requirement. Log: `.tmp/dirty-stack-correction/window-dirty-native.txt`.
+The exact aborted fixture home was removed after checked process exit, path and reparse validation.
+
+A subsequent native diagnostic run beginning `2451828a` did report worker overflow and timed out
+at 60.054 seconds. Fresh first-chance evidence in
+`.tmp/dirty-stack-correction/window-worker-stacks.txt` locates receipt decoding below
+`sequence_advance::prepare` (329,056 bytes), with its ordinary and staged preparation callers
+holding another 97,616 and 116,560 bytes. The earlier no-overflow log was inconclusive, not native
+acceptance. Continue the private frame correction at this measured sequence-preparation boundary.
+The same app diagnostic run identifies the clean restored-window failure as reversible mount
+custody validation after both durable commands committed; correct that app binding independently.
+The exact failed-run and debugger fixture homes were removed after checked process exit and
+path/reparse validation.
+
+Run `ea90cd04-497e-406a-b99d-679ef25d73b1` passed all three healthy app session cases and
+the two-real-marker-resident capacity-one regression. Its native case exposed a new restoration
+check that required optional native-lineage recovery control to exist, although healthy mounts
+initialize that control as absent and retain it optionally. Removing only that invalid requirement
+preserves the captured value and the exact service, selection, editor and adapter checks.
+Targeted review confirmed the correction against mount construction and detachment custody.
+Native run `69a0f320-426b-4307-869c-be93875de3aa` then passed in 3.497 seconds: same surviving
+window/editor/history, healthy graph and background-work permit, renewed claim release, fresh
+successful close and subsequent Exit. Logs remain in `.tmp/ordinary-recovery-integration`.
+
+The sequence-preparation correction passed 34 cases in 112.355 seconds
+(`0835d9a2-f9c7-4c9b-9824-26066d05910c`) and independent semantic review with matching hashes.
+Native run `c27a4231-6048-410e-aef3-4a741c8f3ff6` still overflowed and timed out at 60.078 seconds.
+Fresh `.tmp/dirty-stack-correction/sequence-worker-stacks.txt` evidence progresses into the writer's
+staged settlement: build decoding exhausts the stack below active-custody authentication
+(128,416-byte frame), settlement preparation (88,416 bytes) and staged capture settlement
+(147,712 bytes). Preserve all writer-time authentication and outcome checks while reducing these
+private temporaries. This is not evidence for revisiting the already corrected sequence frame or
+enlarging the native stack. Exact failed-run/debugger fixture homes were checked and removed.
+
+Combined native run `5f8f7376-a575-4a84-b3c4-16b5f64de107` passed three of 12 in 122.419 seconds:
+healthy conflict, healthy Survived restoration and app Unresolved custody. Nine failed-home routes
+still failed. Some report stale recovery state; others log worker overflow. Fresh first-chance
+`.tmp/ordinary-recovery-integration/recovery-worker-stacks.txt` evidence locates the latter in app
+candidate construction: `MainWindowFailedResidentCandidateSource::new` holds 428,928 bytes,
+`PreparedRecoveryServiceGraph::failed_resident_source` 158,304 bytes and its preparation worker
+77,584 bytes above ordinary history-frontier decoding. Reduce those private candidate temporaries;
+do not change the decoder or infer that stale-state failures share this cause. The exact debugger
+fixture was checked and removed after its process ended. The source and native boundary remains
+unaccepted pending these corrections, combined verification and canonical acceptance.
+
+Writer-settlement changes passed 38 regressions in 122.306 seconds
+(`57ea420c-e2eb-4dbc-baee-81cb71330e78`) and independent semantic review. App candidate correction
+heap-owns only the private failed host in `MainWindowFailedComposerRetirement`, preserving all
+retained access, outcome and reconstruction operations; targeted review found no semantic change.
+Native run `f39a7121-dc73-4d1f-86df-c129449f7f62` passed the storage-failure crossover and
+Unresolved consumer cases with no reported overflow. Genuine dirty editing now reaches the close
+flush wait but does not settle, and pre-draft recovery still reports stale state. Two of four cases
+passed in 31.857 seconds. Continue those distinct app diagnoses; do not infer full stack or phase
+acceptance from this partial run. Log: `.tmp/ordinary-recovery-integration/boxed-retirement-native.txt`.
+
+Diagnostic run beginning `8da449cf` confirmed worker overflow during dirty flush after editing,
+before a session outcome exists. The first debugger replay hit an edit fixture deadline without
+overflow; the second `.tmp/dirty-stack-correction/flush-worker-overflow.txt` captured first-chance
+overflow in history-transition decoding below publication. Observed enclosing frames include
+151,408 bytes in storage publication and 102,624 plus 166,704 bytes in app publication/capture.
+Map source carefully because adjacent symbols can share optimized addresses; retain all history
+authentication and reduce only proven private temporary allocations. Separately, the stale route
+refuses the initial failed-service-graph retirement validator before candidate preparation. All
+three exact dirty/debugger fixture homes were checked and removed after process termination.
+
+Publication/history changes passed 38 cases in 101.586 seconds
+(`57871fd3-8d72-400e-9a81-bb4e4a6fdc0c`) and independent review. App publication boxing also
+passed independent review, including its two failed-resident consumers. Native diagnostic run
+`e1120926-603f-469b-83f7-094b46eaa9cc` failed all three selected cases in 37.282 seconds, but dirty
+editing and flush preparation progressed to a truthful reconciliation-collision failure before
+overflowing during failed-home recovery. Fresh `.tmp/dirty-stack-correction/dirty-recovery-overflow.txt`
+shows candidate saved-state validation under app frames of 132,656 and 136,480 bytes plus process
+preparation of 50,848 bytes above settlement decoding. Continue that private app allocation
+correction; the first debugger replay only reached an edit fixture deadline. Exact failed-run and
+both debugger fixture homes were checked and removed.
+
+## Healthy Pre-Native Indeterminate Removal
+
+The same diagnostic run proves both stale routes reach failed-service-graph retirement with
+Healthy generation 1, a published graph and no failed-close or retirement custody. The pre-draft
+test seam requires an actual state-dependent read to observe its retained maintenance failure;
+correct that fixture rather than weakening the Failed validator. The indeterminate-removal case
+is a separate production lifecycle gap: an uncertain command outcome need not fail the home, but
+the current ordinary command route attempts failed-home recovery immediately.
+
+The existing feature requires preservation of the same window, claim and editor after a failed
+close. The app's approved healthy-restoration route currently requires GPUI's settled surviving
+native-attempt proof; it did not grant pre-native reopening authority. The following extension was
+proposed at the checkpoint and subsequently approved in the continuation recorded below:
+
+- Retain exact request, gated shell/resident and original removal outcome before any native
+  destruction admission. A distinct pre-native proof must establish that this request never began
+  destruction; absence of a handle or an arbitrary error is insufficient.
+- Reconcile the original command through ordinary admission while the original home stays Healthy.
+  Proven noncommit validates the exact original state without an inverse write. Proven commit
+  restores the exact member and claim through the existing State route, retaining separate
+  restoration outcome custody. Uncertainty or conflict retains fenced custody.
+- Authenticate and rebind the same retained editor and renewed claim before coherent gate release.
+  Preserve the healthy graph and background work. Reported failure permanently cancels the close;
+  another close requires fresh activation.
+- If storage becomes Failed, transfer both retained outcomes and resident custody through the
+  established failed-home route. Never manufacture home failure or begin/retry native destruction
+  to obtain restoration authority. Verify both outcome branches, repeated/stale completion,
+  crossover and fresh close, with independent lifecycle review.
+
+This sub-boundary was paused under the repository instruction to stop when a planned step cannot
+technically work. The Operator subsequently approved the recommended extension with “go with
+recommended”. Feature and app lifecycle authority now define its exact pre-native proof and
+ordinary reconciliation/restoration route. Implementation and acceptance resume under phase 595.
+
+The pre-draft observation correction passed a native case in run
+`de124854-f643-436c-a56b-b862de5a18ea`; its dirty case still overflowed. Fresh
+`.tmp/dirty-stack-correction/candidate-saved-overflow.txt` showed candidate publication progressed
+beyond the first saved-state guard, with 136,352 bytes of app preparation above settlement decode
+frames of 167,296 and 62,656 bytes. The app now privately boxes retained source custody and separates
+capture, preparation and command execution without changing their order. Independent review
+accepted that delta. Exact known failed-run and debugger homes were checked and removed.
+
+The decoder addresses map to `decode_settlement_closure`, not the adjacent encoder symbol names
+shown by the debugger. Splitting its private committed/noncommit reads and final assembly with
+fixed temporary heap ownership preserves field/tag/error precedence and the unchanged outer
+finish/re-encode/digest/closure validation. Independent review accepted both codec paths; 60 focused
+cases passed in 121.797 seconds (`ca55590a-f276-4199-86d0-4206e8d12d1f`), with one previously
+qualified long continuation case excluded. Evidence:
+`.tmp/dirty-stack-correction/settlement-decoder-regressions.txt`. Native qualification remains pending.
+
+Native run `9aa6e212-6387-4b4f-88e7-42de08f0ef22` completed recovery without reported overflow,
+then failed a test requiring the dirty Session history key to equal the saved Publication key.
+The existing publication promotion changes that key while preserving its frontier revision and
+undo/redo availability; same widget, selection, member identities, content and root assertions had
+passed. The proposed replacement compared exact history metadata and captured transition heads
+using existing read-only publication preparation. That API works for the initial dirty checkpoint
+but refuses the already-saved publication, so it is not a valid post-recovery inspector.
+
+The final authorized close/toolbar run `2923fe69-e71b-4b19-9d77-fcebb3516e8d` failed both tests
+at that helper in 6.610 seconds after recovery settled, with no reported worker overflow. Preserve
+the meaningful history and fresh-close checks; replace the invalid helper through supported
+authenticated evidence or exercised history behavior, not a weaker key or availability assertion.
+No production change was made for this test failure. Work paused at that checkpoint with the
+separate healthy pre-native policy approval pending. That approval is now recorded above;
+combined/canonical verification and phase acceptance remain outstanding.
+
+The corrected inspector selects the original operation ID from a saved Publication frontier.
+Existing occupied-receipt preparation authenticates that exact saved frontier; the helper asserts
+the returned reference equals the current binding. Before recovery, fresh read-only preparation
+provides the corresponding publication snapshot for comparison. This preserves full journal,
+undo/redo, retention-floor and accounting assertions despite the legitimate identity promotion.
+Independent source review accepted the fixture correction; native verification remains pending.
 
 The common nonfinal-close failure was subsequently localized to detached-install qualification:
 the shell's ordinary-close flag was set, but the exact resident's interaction fence remained open.
@@ -412,3 +599,108 @@ After validation, the mandatory Serena restart returned a 120-second tools-call 
 Implementation stopped under the repository's explicit restart-failure rule; no stale semantic
 results were used. Restore the language server before resuming phase 595. The four exact owned
 canonical checkouts are removed after absolute-path and reparse checks; retained logs remain bounded.
+
+The Operator restarted Serena; a fresh semantic lookup resolved the accepted GPUI native
+destruction API on 2026-10-02 and implementation resumed.
+
+## Exact Original Opening Identity
+
+The first healthy State restoration run `c55255b8-eb3e-4c3d-9cfc-a629d8be7b3f` passed four
+candidate cases, then rejected the implementation's assumption that durable home identity plus
+`HomeGeneration` identifies an original opening. Closing and reopening the same home resets the
+numeric health generation to `INITIAL`, so stale removal evidence incorrectly passed ordinary
+classification. Eight remaining cases were cancelled; this is not acceptance evidence.
+
+The existing contract requires original process-opening identity. Qualify it using an opaque
+immutable pair of private store-instance identity and admitted generation, captured through
+ordinary healthy admission without retaining a store resource. Keep candidate recovery's explicit
+same-home replacement authority separate. Add same-home close/reopen refusal to the regression
+boundary and independently review the HomeStore/State integration before acceptance.
+
+The corrected local run passed all 16 selected cases (three HomeStore identity cases and 13 State
+removal/recovery cases) in 12.538 seconds. The final command selected `generation_identity` and
+`window_removal_recovery` with `test-faults`, the locked local graph and one test thread. Focused
+HomeStore/State all-target checking passed in 23.86 seconds; locked metadata, exact-file formatting
+and diff checks passed. Independent review found no blocking defect across identity admission,
+ordinary and candidate qualification, read bracketing, writer reclassification and preserved paired
+claim restoration. App lifecycle integration and combined canonical acceptance remain outstanding.
+
+Canonical qualification of the current HomeStore, State and Syndic source subsequently passed all
+76 selected cases in 134.087 seconds (`660e7718-8ec8-488b-88b0-d03d74ddf331`). This combines
+the 16 identity/removal cases with 60 publication/history/checkpoint/staged-outcome regressions;
+the previously qualified long continuation case remains excluded. All-target checks for all three
+crates passed in 65 seconds. The isolated checkout has no local Cargo overrides, all 31 copied
+source/test/document paths match the retained SHA-256 inventory, and copied source timestamps
+were refreshed before compilation. Evidence is retained under
+`.tmp/ordinary-recovery-integration/canonical-storage-*`. This qualifies the storage boundary;
+current app/native integration and full phase acceptance remain outstanding.
+
+## Final Ordinary Recovery Integration
+
+The pre-native route passed independent lifecycle review after a final-window gate mismatch was
+corrected. Final ordinary close owns a shutdown gate, while native-survival reattachment also
+requires the nonfinal ordinary-close gate. Setting that second gate during final close would hide
+the admitted barrier's `Exiting…` presentation. The corrected pre-native entry instead validates
+the exact retained proof before entering the private shared reattachment body. Native-survival
+admission retains its strict gate; common draft, window, controller, resident and claim checks
+remain in force.
+
+Focused native run `ff40a135-bb24-46d5-928e-db1a3bb46fe2` passed eight cases in 26.763 seconds,
+including dirty close/toolbar recovery with full authenticated history checks and three pre-native
+proof/restoration cases. Combined run `17f6becb-da13-49cb-8c9d-d89cbeb85e77` passed 54 of 57
+cases in 185.217 seconds, including the added final-window `Exiting…`/fresh-close case. It exposed
+a created-window Exit delivery timeout, a final-close test incorrectly retaining its old execution
+permit, and an actual clean-editor recovery worker-stack overflow. These failures prevent acceptance.
+
+The frozen binary's first-chance debugger trace is retained in
+`.tmp/ordinary-recovery-integration/final-recovery-worker-stacks.txt`. Clean slot reconstruction
+held a 205,648-byte construction frame above saved-candidate authentication and settlement
+decoding. Moving that private construction into a non-inlined helper keeps its frame out of the
+authentication call chain without changing public APIs, validation order or error custody.
+Worker stacks remain unchanged. The exact debugger fixture was removed after path/reparse checks;
+focused verification and independent correction review remain required.
+
+Independent review accepted the constructor extraction. Focused run
+`9e45cf5d-cd84-4a7d-a2df-ed5c92c4f512` then passed both final-close cases, including the former
+worker overflow, in a three-case run lasting 38.241 seconds. The remaining created-window Exit
+failure now reports an exact placement identity mismatch. Placement capture zipped sorted window
+IDs with insertion-ordered shells; a newly created ID can sort before an existing member. Replace
+that positional pairing with exact identity lookup while retaining complete-set and per-window
+validation, and add a deterministic reversed-shell-order regression before acceptance.
+
+The exact lookup correction and deterministic reversed-order fixture passed independent review.
+Run `89bce977-5b32-42e1-bd58-fc54fcb371c5` passed both that regression and the original
+created-window Exit case in 5.011 seconds. All prior failed cases now have passing focused evidence;
+the final combined canonical run and current app checks remain the acceptance gate.
+
+## Ordinary Command Integration Acceptance
+
+Phase 595 passed completion review on 2026-10-02. Ordinary native close and dedicated toolbar Exit
+now consume the process-owned command route, including windows created after startup. Nonfinal
+close preserves background work; final close records an empty restore set, while dedicated Exit
+preserves the complete exact layout. Failed-home recovery preserves resident editor/history and
+marker custody. Healthy native-survival and distinct pre-native cancellation proofs restore exact
+membership and claims before reopening, retain unresolved custody, and require fresh activation.
+
+Independent review covered the complete ordinary-command boundary, the healthy restoration and
+opening-identity additions, measured private stack corrections, and exact placement lookup. The
+final-window gate mismatch and positional placement bug found during review/verification are
+resolved without weakening native or persistence validators. Formatting-only reconciliation and
+removal of temporary test diagnostics followed those semantic reviews.
+
+Canonical run `49106e21-209a-4e80-99ed-e5bbc86661e8` passed all 58 selected app cases in 145.336
+seconds. It covers native close/Exit, created-window commands, confirmation and feature gates,
+dirty resident history, marker capacity, native survival/uncertainty, pre-native cancellation,
+final-window presentation, session outcomes, activation and mutation feedback. Current canonical
+app all-target checking passed in 80 seconds. The previously recorded 76 canonical storage cases
+and three-crate all-target check remain applicable; all their inputs are unchanged.
+
+The isolated checkout contained no local Cargo overrides and resolved one GPUI package at the
+accepted revision. All 167 copied app/storage paths matched their recorded SHA-256 values after
+verification; the canonical lockfile and manifests remained unchanged. Tests used the existing
+60-second per-case deadline, one build/test job, LLVM, disabled debug/incremental compilation and
+process-local 32-MiB Rust test-thread stacks. Production WinRT worker stacks were unchanged.
+All 31 explicitly recorded ordinary fixture homes are absent, including the retained Unresolved
+fixture removed after its child exited. The older ambiguous Temp directory remains untouched.
+Bounded logs and inventories remain in `.tmp/ordinary-recovery-integration`; executable bootstrap
+and crash-reporter process-entry mounting remain separate planned boundaries.

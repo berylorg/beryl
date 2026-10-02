@@ -34,13 +34,30 @@ impl MainWindowConversationComposerService {
         ),
         (MainWindowComposerRetiredClose, String),
     > {
+        Self::rebind_candidate_for_recovery(candidate, retired, storage, state, None)
+    }
+
+    pub(crate) fn rebind_candidate_for_recovery(
+        candidate: &mut beryl_home_store::HomeRecoveryCandidate,
+        retired: MainWindowComposerRetiredClose,
+        storage: syndic_storage::SyndicStorage,
+        state: &beryl_state::BerylState,
+        recovered_window: Option<&beryl_state::SessionWindowRemovalEvidence>,
+    ) -> Result<
+        (
+            Self,
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        ),
+        (MainWindowComposerRetiredClose, String),
+    > {
         let store = candidate.service_reference();
         let access = match candidate.recovery_access() {
             Ok(access) => access,
             Err(error) => return Err((retired, error.to_string())),
         };
         let (slot, close, window) = retired
-            .rebind_candidate(&access, storage, state)
+            .rebind_candidate_for_recovery(&access, storage, state, recovered_window)
             .map_err(|(retired, error)| (retired, error.to_string()))?;
         let mut service = Self::from_boxed_slot(store, slot);
         service.window_close = Mutex::new(Some(close));

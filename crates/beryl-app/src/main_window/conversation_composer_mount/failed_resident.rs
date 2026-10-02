@@ -14,6 +14,44 @@ pub struct MainWindowFailedResidentMountResources {
 }
 
 impl MainWindowFailedResidentMountResources {
+    pub(crate) fn retire_with_marker_custody(
+        mut self,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> Result<MainWindowFailedComposerRetirement, Self> {
+        if self
+            .service
+            .as_ref()
+            .or(self.resident.service.as_ref())
+            .is_none_or(|service| !service.failed_resident_marker_custody_matches(custody))
+        {
+            return Err(self);
+        }
+        match (&self.service, &self.resident.service) {
+            (None, None) => return Err(self),
+            (Some(mount), Some(resident)) if !Arc::ptr_eq(mount, resident) => return Err(self),
+            _ => {}
+        }
+        let service = self
+            .service
+            .take()
+            .or_else(|| self.resident.service.take())
+            .unwrap();
+        self.resident.service.take();
+        self.resident.clipboard_writer.take();
+        self.resident.mutation_failure.take();
+        self.publication_adapters.take();
+        self.configurator.take();
+        self.submission_source.take();
+        self.native_lineage_control.take();
+        match service.retire_failed_resident_with_marker_custody(custody) {
+            Ok(retired) => Ok(retired),
+            Err(service) => {
+                self.service = Some(service);
+                Err(self)
+            }
+        }
+    }
+
     pub fn retire(mut self) -> Result<MainWindowFailedComposerRetirement, Self> {
         if self
             .service
@@ -58,6 +96,109 @@ impl MainWindowFailedResidentMountResources {
 }
 
 impl MainWindowConversationComposerMount {
+    pub(crate) fn adopt_failed_recovery<C: Send + 'static>(
+        &mut self,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+        preparation: &mut crate::main_window::MainWindowFailedResidentPreparation<C>,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<MainWindowConversationComposerConfigurator>,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<
+        (
+            C,
+            crate::main_window::MainWindowFailedResidentAdoption,
+            crate::main_window::MainWindowConversationComposerCloseTicket,
+        ),
+        String,
+    > {
+        if !self.failed_resident_detached
+            || self.service.is_some()
+            || self.configurator.is_some()
+            || self.native_lineage_recovery.is_some()
+            || self.failed_recovery_close.is_some()
+        {
+            return Err("failed resident old mount resources remain attached".into());
+        }
+        let (_, selection) = preparation
+            .authenticated_source()
+            .ok_or("failed resident source is unavailable")?;
+        if !adapters.as_ref().is_some_and(|a| {
+            a.matches(
+                selection.binding().home_id(),
+                selection.binding().home_generation(),
+            )
+        }) || configurator.is_none()
+        {
+            return Err("failed resident fresh adapters do not match".into());
+        }
+        let publication = self.autosave.recovery_adapters()?;
+        let submission = self.submission.recovery_source()?;
+        if publication.is_some() || submission.is_some() {
+            return Err("failed resident adapter custody is occupied".into());
+        }
+        let resident = self
+            .contribution
+            .as_ref()
+            .ok_or("failed resident editor is unavailable")?
+            .clone();
+        let (graph, service, adoption, fresh) = resident.update(cx, |resident, cx| {
+            preparation.adopt_failed_recovery(resident, close, current, window, cx)
+        })?;
+        let (assets, marker, submission_source, native) = adapters.take().unwrap().into_parts();
+        *publication = Some((assets, marker));
+        *submission = Some(submission_source);
+        self.service = Some(service);
+        self.configurator = configurator.take();
+        self.native_lineage_recovery = Some(native);
+        self.failed_recovery_close = Some(fresh);
+        self.window_close = Some(super::close::ActiveWindowClose {
+            ticket: fresh,
+            flush: None,
+            state: crate::main_window::MainWindowConversationComposerCloseAdvance::Preparing,
+            disposing: false,
+            disposal_captured: false,
+            release_requested: false,
+            recovery_fenced: true,
+            resources_detached: false,
+            restore_enabled: None,
+            #[cfg(feature = "test-faults")]
+            cancel_disposal: false,
+        });
+        Ok((graph, adoption, fresh))
+    }
+
+    pub(crate) fn failed_recovery_close_ticket(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<crate::main_window::MainWindowConversationComposerCloseTicket, String> {
+        self.begin_failed_resident(cx)?;
+        if let Some(close) = self.window_close {
+            return Ok(close.ticket);
+        }
+        let selection = self
+            .contribution
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .selection_identity();
+        let generation = self
+            .window_close_generation
+            .checked_add(1)
+            .ok_or("failed recovery close identity exhausted")?;
+        self.window_close_generation = generation;
+        Ok(
+            crate::main_window::MainWindowConversationComposerCloseTicket::for_recovery(
+                cx.entity_id(),
+                generation,
+                selection,
+            ),
+        )
+    }
+
     pub fn begin_failed_resident(
         &mut self,
         cx: &mut Context<Self>,
@@ -101,22 +242,45 @@ impl MainWindowConversationComposerMount {
         capture: &MainWindowFailedResidentCapture,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowFailedResidentMountResources, String> {
+        self.detach_failed_resident_resources_inner(capture, None, cx)
+    }
+
+    pub(crate) fn detach_failed_resident_resources_with_marker_custody(
+        &mut self,
+        capture: &MainWindowFailedResidentCapture,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowFailedResidentMountResources, String> {
+        self.detach_failed_resident_resources_inner(capture, Some(custody), cx)
+    }
+
+    fn detach_failed_resident_resources_inner(
+        &mut self,
+        capture: &MainWindowFailedResidentCapture,
+        custody: Option<&crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowFailedResidentMountResources, String> {
         self.validate_failed_mount(capture.ticket())?;
         if self.failed_resident_detached || !self.failed_mount_drained() {
             return Err("failed resident mount is detached or work is not drained".into());
         }
         self.validate_failed_native_resources()?;
-        if !self
-            .bound_service()?
-            .failed_resident_marker_custody_is_drained()
-        {
+        if !match custody {
+            Some(custody) => self
+                .bound_service()?
+                .failed_resident_marker_custody_matches(custody),
+            None => self
+                .bound_service()?
+                .failed_resident_marker_custody_is_drained(),
+        } {
             return Err("failed resident original marker authority is not drained".into());
         }
-        if self
-            .autosave
-            .recovery_adapters()?
-            .as_ref()
-            .is_some_and(|(_, seals)| seals.diagnostics().current_flights() != 0)
+        if custody.is_none()
+            && self
+                .autosave
+                .recovery_adapters()?
+                .as_ref()
+                .is_some_and(|(_, seals)| seals.diagnostics().current_flights() != 0)
         {
             return Err("failed resident marker seal custody is not drained".into());
         }

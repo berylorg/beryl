@@ -53,6 +53,7 @@ pub(crate) struct RunningExitCommands(StartupCommands);
 pub(crate) struct RunningExitRequest {
     identity: Rc<()>,
     invoking: Option<WindowId>,
+    ordinary_close: bool,
 }
 
 impl RunningExitRequest {
@@ -60,6 +61,7 @@ impl RunningExitRequest {
         Self {
             identity: self.identity.clone(),
             invoking: self.invoking,
+            ordinary_close: self.ordinary_close,
         }
     }
     #[cfg(test)]
@@ -67,11 +69,24 @@ impl RunningExitRequest {
         Self {
             identity: Rc::new(()),
             invoking: self.invoking,
+            ordinary_close: self.ordinary_close,
         }
     }
 
     pub(crate) fn invoking_window(&self) -> Option<WindowId> {
         self.invoking
+    }
+
+    pub(crate) fn is_ordinary_close(&self) -> bool {
+        self.ordinary_close
+    }
+
+    pub(crate) fn shutdown_intent(&self) -> crate::running_owner::ShutdownIntent {
+        if self.ordinary_close {
+            crate::running_owner::ShutdownIntent::FinalWindowClose
+        } else {
+            crate::running_owner::ShutdownIntent::ApplicationExit
+        }
     }
 
     pub(crate) fn identity(&self) -> Rc<()> {
@@ -83,15 +98,57 @@ impl RunningExitRequest {
 pub(crate) struct RunningWindowExit {
     commands: StartupCommands,
     invoking: WindowId,
+    generation: Option<beryl_home_store::HomeGeneration>,
 }
 
 impl RunningWindowExit {
     pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
-        self.commands.0.borrow().exit_gates.disabled_reason()
+        let state = self.commands.0.borrow();
+        if state
+            .exit_gates
+            .home
+            .as_ref()
+            .and_then(|(_, generation)| *generation)
+            != self.generation
+        {
+            return Some("This window command belongs to a retired home generation.");
+        }
+        state.exit_gates.disabled_reason().or_else(|| {
+            (state.active_exit.is_some() || state.exit).then_some(if state.ordinary_close {
+                "A main window is waiting for its draft and durable close state."
+            } else {
+                "Application Exit is waiting for active work and durable state."
+            })
+        })
     }
 
     pub(crate) fn request_exit(&self) {
+        if self.disabled_reason().is_some() {
+            return;
+        }
         self.commands.request_exit_from(Some(self.invoking));
+    }
+
+    pub(crate) fn request_close(&self) {
+        if self.disabled_reason().is_some() {
+            return;
+        }
+        let mut state = self.commands.0.borrow_mut();
+        if !matches!(state.stage, Stage::Running)
+            || state.exit
+            || state.active_exit.is_some()
+            || state.exit_gates.disabled_reason().is_some()
+        {
+            return;
+        }
+        state.exit = true;
+        state.exit_window = Some(self.invoking);
+        state.ordinary_close = true;
+        let wake = state.wake.take();
+        drop(state);
+        if let Some(wake) = wake {
+            wake.wake();
+        }
     }
 }
 
@@ -160,6 +217,14 @@ impl RunningExitCommands {
         RunningWindowExit {
             commands: self.0.clone(),
             invoking,
+            generation: self
+                .0
+                .0
+                .borrow()
+                .exit_gates
+                .home
+                .as_ref()
+                .and_then(|(_, generation)| *generation),
         }
     }
 
@@ -207,6 +272,7 @@ impl RunningExitCommands {
             return Poll::Ready(RunningExitRequest {
                 identity: request,
                 invoking: state.exit_window.take(),
+                ordinary_close: state.ordinary_close,
             });
         }
         state.wake = Some(cx.waker().clone());

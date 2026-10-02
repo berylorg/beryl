@@ -41,6 +41,16 @@ impl RunningProcessOwner {
         if drafts.recovery_residents() != recovery.residents {
             return Err("Interrupted Exit draft set changed or is not ready".into());
         }
-        drafts.retire_residents(app)
+        if drafts.has_failed_residents() {
+            let services = self
+                .process
+                .services
+                .as_mut()
+                .ok_or("failed service owner is unavailable")?;
+            services.capture_failed_markers()?;
+            drafts.retire_failed_residents(services, app)
+        } else {
+            drafts.retire_residents(app)
+        }
     }
 }

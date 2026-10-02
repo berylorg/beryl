@@ -1,6 +1,16 @@
 use super::*;
 
 impl MainWindowConversationComposerService {
+    pub(in crate::main_window) fn failed_resident_marker_custody_matches(
+        &self,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> bool {
+        self.slot.lock().is_ok_and(|slot| {
+            slot.selected_host()
+                .is_some_and(|host| host.failed_resident_marker_custody_matches(custody))
+        })
+    }
+
     pub(in crate::main_window) fn failed_resident_marker_custody_is_drained(&self) -> bool {
         self.slot.lock().is_ok_and(|slot| {
             slot.selected_host()
@@ -46,7 +56,21 @@ impl MainWindowConversationComposerService {
         Ok(())
     }
     pub fn retire_failed_resident(
+        self: Arc<Self>,
+    ) -> Result<crate::main_window::MainWindowFailedComposerRetirement, Arc<Self>> {
+        self.retire_failed_resident_inner(None)
+    }
+
+    pub(crate) fn retire_failed_resident_with_marker_custody(
+        self: Arc<Self>,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> Result<crate::main_window::MainWindowFailedComposerRetirement, Arc<Self>> {
+        self.retire_failed_resident_inner(Some(custody))
+    }
+
+    fn retire_failed_resident_inner(
         mut self: Arc<Self>,
+        custody: Option<&crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     ) -> Result<crate::main_window::MainWindowFailedComposerRetirement, Arc<Self>> {
         let Some(service) = Arc::get_mut(&mut self) else {
             return Err(self);
@@ -62,11 +86,10 @@ impl MainWindowConversationComposerService {
         {
             return Err(self);
         }
-        let retirement = service
-            .slot
-            .get_mut()
-            .ok()
-            .and_then(|slot| slot.take_failed_resident(&service.store));
+        let retirement = service.slot.get_mut().ok().and_then(|slot| match custody {
+            Some(custody) => slot.take_failed_resident_with_marker_custody(&service.store, custody),
+            None => slot.take_failed_resident(&service.store),
+        });
         retirement.ok_or(self)
     }
 }

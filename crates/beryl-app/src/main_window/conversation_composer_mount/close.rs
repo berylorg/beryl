@@ -5,6 +5,7 @@ mod detached;
 mod recovery;
 mod recovery_attachment;
 mod recovery_resources;
+mod surviving_native;
 mod work;
 
 pub use recovery_resources::MainWindowComposerMountRecoveryResources;
@@ -17,6 +18,17 @@ pub struct MainWindowConversationComposerCloseTicket {
 }
 
 impl MainWindowConversationComposerCloseTicket {
+    pub(in crate::main_window) fn for_recovery(
+        owner: gpui::EntityId,
+        generation: u64,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Self {
+        Self {
+            owner,
+            generation,
+            selection,
+        }
+    }
     pub(in crate::main_window) const fn with_recovered_selection(
         self,
         selection: MainWindowComposerSelectionIdentity,
@@ -82,17 +94,17 @@ pub enum MainWindowConversationComposerCloseRelease {
 
 #[derive(Clone, Copy)]
 pub(super) struct ActiveWindowClose {
-    ticket: MainWindowConversationComposerCloseTicket,
-    flush: Option<ComposerHostFlushTicket>,
-    state: MainWindowConversationComposerCloseAdvance,
-    disposing: bool,
-    disposal_captured: bool,
-    release_requested: bool,
-    recovery_fenced: bool,
-    resources_detached: bool,
-    restore_enabled: Option<bool>,
+    pub(super) ticket: MainWindowConversationComposerCloseTicket,
+    pub(super) flush: Option<ComposerHostFlushTicket>,
+    pub(super) state: MainWindowConversationComposerCloseAdvance,
+    pub(super) disposing: bool,
+    pub(super) disposal_captured: bool,
+    pub(super) release_requested: bool,
+    pub(super) recovery_fenced: bool,
+    pub(super) resources_detached: bool,
+    pub(super) restore_enabled: Option<bool>,
     #[cfg(feature = "test-faults")]
-    cancel_disposal: bool,
+    pub(super) cancel_disposal: bool,
 }
 
 impl MainWindowConversationComposerMount {

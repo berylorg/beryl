@@ -299,5 +299,7 @@ fn original_state_never_authorizes_recovery_and_foreign_handles_or_homes_are_rej
 
 #[path = "window_removal_recovery/guards.rs"]
 mod guards;
+#[path = "window_removal_recovery/healthy.rs"]
+mod healthy;
 #[path = "window_removal_recovery/outcomes.rs"]
 mod outcomes;

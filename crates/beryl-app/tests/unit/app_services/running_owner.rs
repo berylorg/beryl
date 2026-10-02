@@ -74,7 +74,7 @@ fn run(with_surface: bool, lose_surface: bool) {
                         }
                         let owner = cx
                             .update(|app| {
-                                let owner = RunningProcessOwner::start(running, app);
+                                let owner = RunningProcessOwner::test_start_unmounted(running, app);
                                 if with_surface {
                                     assert_eq!(
                                         owner.borrow().startup_cleanup(),

@@ -670,7 +670,9 @@ fn exercise_mounted_composer_scale(cx: &mut gpui::TestAppContext, coverage: Scal
     });
     eprintln!("mounted scale: exact EOF caret and filler assertions passed");
     if coverage == ScaleCoverage::EofCaret {
-        assert_realization_budgets(&input.read_with(cx, |input, _| input.realization_diagnostics()));
+        assert_realization_budgets(
+            &input.read_with(cx, |input, _| input.realization_diagnostics()),
+        );
         return;
     }
     let before_shift = input.read_with(cx, |input, _| input.realization_diagnostics());
@@ -901,7 +903,11 @@ fn exercise_mounted_composer_scale(cx: &mut gpui::TestAppContext, coverage: Scal
         redo_cleared_source
     );
 
-    let marker_count = if coverage == ScaleCoverage::Disposal { 2 } else { SAME_ANCHOR_MARKERS };
+    let marker_count = if coverage == ScaleCoverage::Disposal {
+        2
+    } else {
+        SAME_ANCHOR_MARKERS
+    };
     for index in 0..marker_count {
         let prior_generation = service
             .selected_identity()
@@ -1152,30 +1158,38 @@ fn exercise_mounted_composer_scale(cx: &mut gpui::TestAppContext, coverage: Scal
     };
     let checkpoint_revision = store.home_revision().unwrap();
     let checkpoint = mount
-        .update(cx, |mount, _| mount.capture_flush_publication(
-            mount.selected_identity().unwrap(),
-            disposal_flush,
-            assets.clone(),
-            &marker_seals,
-            operation_id(201),
-            None,
-            current_timestamp(),
-            &CommandCancellation::new(),
-        ))
+        .update(cx, |mount, _| {
+            mount.capture_flush_publication(
+                mount.selected_identity().unwrap(),
+                disposal_flush,
+                assets.clone(),
+                &marker_seals,
+                operation_id(201),
+                None,
+                current_timestamp(),
+                &CommandCancellation::new(),
+            )
+        })
         .unwrap();
-    assert_eq!(checkpoint,
-        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired));
+    assert_eq!(
+        checkpoint,
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
     assert_eq!(store.home_revision().unwrap(), checkpoint_revision);
     let disposal_capture = mount
-            .update(cx, |mount, _| mount.capture_flush_disposal(
+        .update(cx, |mount, _| {
+            mount.capture_flush_disposal(
                 mount.selected_identity().unwrap(),
                 disposal_flush,
                 operation_id(31),
                 &CommandCancellation::new(),
-            ))
-            .unwrap();
-    assert_eq!(disposal_capture,
-        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired));
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        disposal_capture,
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
     let mut disposed = None;
     for _ in 0..256 {
         drive(cx, 4);
@@ -1434,20 +1448,62 @@ fn mounted_activation_with_demand_count(
 }
 
 fn assert_realization_budgets(diagnostics: &gpui_text_input::RangeRealizationDiagnostics) {
-    assert!(diagnostics.high_water.owned_bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
-    assert!(diagnostics.high_water.owned_items <= diagnostics.max_surface_items, "{diagnostics:?}");
-    assert!(diagnostics.high_water.resident_pages <= diagnostics.max_owned_pages, "{diagnostics:?}");
-    assert!(diagnostics.high_water.resident_objects <= diagnostics.max_surface_items, "{diagnostics:?}");
-    assert!(diagnostics.geometry_high_water_bytes <= diagnostics.max_geometry_bytes, "{diagnostics:?}");
-    assert!(diagnostics.geometry_high_water_items <= diagnostics.max_geometry_items, "{diagnostics:?}");
-    assert!(diagnostics.current.owned_bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
-    assert!(diagnostics.current.owned_items <= diagnostics.max_surface_items, "{diagnostics:?}");
-    assert!(diagnostics.current.resident_pages <= diagnostics.max_owned_pages, "{diagnostics:?}");
-    assert!(diagnostics.current.resident_objects <= diagnostics.max_surface_items, "{diagnostics:?}");
-    assert!(diagnostics.surface_high_water.bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
-    assert!(diagnostics.surface_high_water.items <= diagnostics.max_surface_items, "{diagnostics:?}");
-    assert!(diagnostics.high_water.resident_page_bytes < LARGE_DRAFT_BYTES as usize, "{diagnostics:?}");
-    assert!(diagnostics.high_water.resident_object_bytes < LARGE_DRAFT_BYTES as usize, "{diagnostics:?}");
+    assert!(
+        diagnostics.high_water.owned_bytes <= diagnostics.max_surface_bytes,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.high_water.owned_items <= diagnostics.max_surface_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.high_water.resident_pages <= diagnostics.max_owned_pages,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.high_water.resident_objects <= diagnostics.max_surface_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.geometry_high_water_bytes <= diagnostics.max_geometry_bytes,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.geometry_high_water_items <= diagnostics.max_geometry_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.current.owned_bytes <= diagnostics.max_surface_bytes,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.current.owned_items <= diagnostics.max_surface_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.current.resident_pages <= diagnostics.max_owned_pages,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.current.resident_objects <= diagnostics.max_surface_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.surface_high_water.bytes <= diagnostics.max_surface_bytes,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.surface_high_water.items <= diagnostics.max_surface_items,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.high_water.resident_page_bytes < LARGE_DRAFT_BYTES as usize,
+        "{diagnostics:?}"
+    );
+    assert!(
+        diagnostics.high_water.resident_object_bytes < LARGE_DRAFT_BYTES as usize,
+        "{diagnostics:?}"
+    );
 }
 
 fn drive_until(

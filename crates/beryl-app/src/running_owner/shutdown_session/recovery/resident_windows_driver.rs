@@ -269,7 +269,9 @@ impl RunningProcessOwner {
                     .as_ref()
                     .ok_or("Interrupted Exit service owner is unavailable")?
                     .validate_retired_service_home_return(retired, Some(home.home_id()))
-                    .map_err(|error| format!("{error:?}"))?;
+                    .map_err(|error| {
+                        format!("resident recovery retired-home correspondence: {error:?}")
+                    })?;
                 let generation = home.home_generation();
                 let previous = owner.process.appearance.clone();
                 let capacity =

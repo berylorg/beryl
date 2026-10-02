@@ -12,10 +12,21 @@ impl RunningProcessOwner {
         outcome: &ExitAttemptOutcome,
         app: &mut App,
     ) {
-        if matches!(
-            &outcome.result,
-            Err(ExitAttemptError::SessionPublication(_))
-        ) {
+        let healthy_ordinary_close =
+            request.is_ordinary_close() && !Self::ordinary_close_home_unavailable(owner);
+        if !healthy_ordinary_close
+            && (matches!(
+                &outcome.result,
+                Err(ExitAttemptError::SessionPublication(_))
+            ) || (outcome.result.is_err()
+                && request.is_ordinary_close()
+                && owner.borrow().shutdown_session().is_some())
+                || (outcome.result.is_err()
+                    && matches!(
+                        owner.borrow().shutdown_session(),
+                        Some(super::RunningShutdownSession::UnremovedWindows(_))
+                    )))
+        {
             owner.borrow_mut().retain_reported_exit_failure(request);
             Self::start_reported_exit_recovery(owner, request, app);
         }

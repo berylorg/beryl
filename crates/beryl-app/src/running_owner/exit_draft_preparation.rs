@@ -57,7 +57,7 @@ impl RunningProcessOwner {
             if owner.shutdown_status()
                 != Some((
                     invoking,
-                    ShutdownIntent::ApplicationExit,
+                    request.shutdown_intent(),
                     RunningShutdownStatus::WorkReady,
                 ))
             {
@@ -120,6 +120,21 @@ impl RunningProcessOwner {
             &mut App,
         ) + 'static,
     ) {
+        if Self::ordinary_close_home_unavailable(owner) {
+            let recovery = Self::prepare_ordinary_close_recovery(owner, app)
+                .map(|()| crate::app_services::AppServiceShutdownProgress::Waiting)
+                .map_err(ExitProgressError::DraftRelease);
+            completed(
+                owner,
+                request,
+                ExitDraftPreparationCompletion::Failed {
+                    preparation,
+                    recovery,
+                },
+                app,
+            );
+            return;
+        }
         let delivery = Rc::new(RefCell::new(Some((preparation, completed))));
         let settled = delivery.clone();
         if let Err((request, error)) =

@@ -31,6 +31,7 @@ mod failed_resident;
 pub use failed_candidate_source::MainWindowFailedResidentCandidateSource;
 mod native_disposal;
 mod retirement;
+mod surviving_native_close;
 
 pub use candidate_source::MainWindowComposerCandidateSource;
 pub use candidate_worker::*;

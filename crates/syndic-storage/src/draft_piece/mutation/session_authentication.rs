@@ -49,75 +49,90 @@ pub(super) fn authenticate_active_custody(
 ) -> Result<(), SyndicMutationError> {
     if let Some(custody) = head.active_operation() {
         if let Some(staging_receipt) = custody.staging_receipt() {
-            let identity = staging_receipt.identity();
-            let staging_head = required::<DraftMutationStagingHeadsFamily>(reader, &identity)?;
-            let receipt =
-                super::super::staging::authenticate_staging_head_reader(reader, &staging_head)?;
-            if staging_head.receipt() != staging_receipt
-                || custody.operation_id() != identity.operation_id().as_piece_operation()
-                || custody.begin_digest() != Some(staging_head.begin_digest())
-                || custody.predecessor_candidate_generation()
-                    != staging_head.begin().predecessor_candidate_generation()
-                || custody.predecessor_root() != staging_head.begin().predecessor_root()
-                || custody.predecessor_history() != staging_head.begin().predecessor_history()
-                || receipt.custody_after() != DraftMutationStagingCustodyTagV1::Staging
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
+            authenticate_staging_custody(reader, custody, staging_receipt)?;
         } else {
-            let key = DraftPieceSettlementKeyV1::new(
-                head.draft_id(),
-                head.session_id(),
-                custody.operation_id(),
-            );
-            let build = required_build(reader, &key)?;
-            if Some(build.proposal_digest()) != custody.proposal_digest()
-                || build.predecessor_candidate_generation()
-                    != custody.predecessor_candidate_generation()
-                || build.predecessor_root() != custody.predecessor_root()
-                || Some(build.progress_receipt()) != custody.build_receipt()
-                || !matches!(
-                    build.lifecycle(),
-                    DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
-                )
-                || point::<DraftPieceSettlementsFamily>(reader, &key)?.is_some()
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            let next_ordinal = build
-                .progress_receipt()
-                .key()
-                .transition_ordinal()
-                .checked_add(1)
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            if point::<DraftPieceBuildProgressFamily>(
-                reader,
-                &DraftPieceBuildProgressReceiptKeyV1::new(
-                    build.draft_id(),
-                    build.session_id(),
-                    build.operation_id(),
-                    next_ordinal,
-                ),
-            )?
-            .is_some()
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            if build.staged_fragment_count() < build.fragment_count()
-                && point::<DraftPieceBuildFragmentsFamily>(
-                    reader,
-                    &DraftPieceBuildFragmentKeyV1::new(
-                        build.draft_id(),
-                        build.session_id(),
-                        build.operation_id(),
-                        build.staged_fragment_count() + 1,
-                    ),
-                )?
-                .is_some()
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
+            authenticate_build_custody(reader, head, custody)?;
         }
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn authenticate_staging_custody(
+    reader: &DomainReader<'_, SyndicDomain>,
+    custody: &DraftEditorActiveOperationV1,
+    staging_receipt: DraftMutationStagingProgressReceiptReferenceV1,
+) -> Result<(), SyndicMutationError> {
+    let identity = staging_receipt.identity();
+    let staging_head = required::<DraftMutationStagingHeadsFamily>(reader, &identity)?;
+    let receipt = super::super::staging::authenticate_staging_head_reader(reader, &staging_head)?;
+    if staging_head.receipt() != staging_receipt
+        || custody.operation_id() != identity.operation_id().as_piece_operation()
+        || custody.begin_digest() != Some(staging_head.begin_digest())
+        || custody.predecessor_candidate_generation()
+            != staging_head.begin().predecessor_candidate_generation()
+        || custody.predecessor_root() != staging_head.begin().predecessor_root()
+        || custody.predecessor_history() != staging_head.begin().predecessor_history()
+        || receipt.custody_after() != DraftMutationStagingCustodyTagV1::Staging
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn authenticate_build_custody(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+    custody: &DraftEditorActiveOperationV1,
+) -> Result<(), SyndicMutationError> {
+    let key =
+        DraftPieceSettlementKeyV1::new(head.draft_id(), head.session_id(), custody.operation_id());
+    let build = Box::new(required_build(reader, &key)?);
+    if Some(build.proposal_digest()) != custody.proposal_digest()
+        || build.predecessor_candidate_generation() != custody.predecessor_candidate_generation()
+        || build.predecessor_root() != custody.predecessor_root()
+        || Some(build.progress_receipt()) != custody.build_receipt()
+        || !matches!(
+            build.lifecycle(),
+            DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
+        )
+        || point::<DraftPieceSettlementsFamily>(reader, &key)?.is_some()
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    let next_ordinal = build
+        .progress_receipt()
+        .key()
+        .transition_ordinal()
+        .checked_add(1)
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    if point::<DraftPieceBuildProgressFamily>(
+        reader,
+        &DraftPieceBuildProgressReceiptKeyV1::new(
+            build.draft_id(),
+            build.session_id(),
+            build.operation_id(),
+            next_ordinal,
+        ),
+    )?
+    .is_some()
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    if build.staged_fragment_count() < build.fragment_count()
+        && point::<DraftPieceBuildFragmentsFamily>(
+            reader,
+            &DraftPieceBuildFragmentKeyV1::new(
+                build.draft_id(),
+                build.session_id(),
+                build.operation_id(),
+                build.staged_fragment_count() + 1,
+            ),
+        )?
+        .is_some()
+    {
+        return Err(SyndicMutationError::IdentityCollision);
     }
     Ok(())
 }

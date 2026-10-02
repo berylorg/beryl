@@ -117,7 +117,7 @@ impl MainWindowShellRoot {
     ) -> Result<bool, String> {
         if draft.root != cx.entity_id()
             || !draft.detached_installed
-            || !self.shutdown_interaction_gated
+            || !(self.shutdown_interaction_gated || self.ordinary_close_interaction_gated)
         {
             return Err("final resident retirement lost its installed source".into());
         }

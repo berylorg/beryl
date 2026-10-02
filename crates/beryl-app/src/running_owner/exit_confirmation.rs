@@ -36,7 +36,7 @@ impl RunningProcessOwner {
             return Ok(None);
         };
         if operation.context.invoking != invoking
-            || operation.context.intent != ShutdownIntent::ApplicationExit
+            || operation.context.intent != request.shutdown_intent()
             || !operation
                 .exit_request
                 .as_ref()

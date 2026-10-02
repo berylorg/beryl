@@ -68,7 +68,7 @@ impl RunningProcessOwner {
                 Self::begin_shutdown_confirmation(
                     owner,
                     invoking,
-                    ShutdownIntent::ApplicationExit,
+                    request.shutdown_intent(),
                     observation,
                     app,
                     completed,
@@ -94,6 +94,9 @@ impl RunningProcessOwner {
         let invoking = self
             .resolve_exit_window(request, app)
             .map_err(ExitWorkError::Request)?;
+        if let Some(reason) = self.process.commands.disabled_reason() {
+            return Err(ExitWorkError::Request(reason.into()));
+        }
         if self.observing_initial_work
             || self.confirmation.is_some()
             || self.shutdown.is_some()
@@ -108,7 +111,7 @@ impl RunningProcessOwner {
                 observation,
             });
         }
-        self.try_begin_idle_shutdown(invoking, ShutdownIntent::ApplicationExit, &observation, app)?;
+        self.try_begin_idle_shutdown(invoking, request.shutdown_intent(), &observation, app)?;
         Ok(ExitWorkClassification::Admitted)
     }
 }

@@ -12,6 +12,53 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(crate) fn adopt_failed_recovered_shell<C: Send + 'static>(
+        &mut self,
+        root: &mut MainWindowShellRoot,
+        resident: gpui::EntityId,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+        preparation: &mut crate::main_window::MainWindowFailedResidentPreparation<C>,
+        adapters: &mut Option<
+            crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        >,
+        configurator: &mut Option<crate::main_window::MainWindowConversationComposerConfigurator>,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<
+        (
+            C,
+            crate::main_window::MainWindowConversationComposerCloseTicket,
+        ),
+        String,
+    > {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("failed recovery draft set is unavailable".into());
+        }
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("failed recovery window is missing")?
+            .1
+            .as_mut()
+            .map_err(|e| e.clone())?;
+        if draft.recovery_resident_identity() != Some((resident, close)) {
+            return Err("failed recovery resident differs from captured draft".into());
+        }
+        let adopted = root.adopt_failed_interrupted_exit_shell(
+            draft,
+            preparation,
+            adapters,
+            configurator,
+            current,
+            window,
+            cx,
+        )?;
+        self.ready = false;
+        Ok(adopted)
+    }
+
     pub(crate) fn release_recovered_mounts(
         &self,
         published: &crate::main_window::PublishedMainWindowRestoreSet,
@@ -271,5 +318,72 @@ impl RunningShutdownDrafts {
             Some(error) => Err(error),
             None => Ok(ready),
         }
+    }
+
+    pub(in crate::running_owner) fn retire_failed_residents(
+        &mut self,
+        services: &mut crate::app_services::ProcessServiceOwner,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("failed resident capture is unavailable".into());
+        }
+        let mut ready = true;
+        for (window, draft) in &mut self.windows {
+            let draft = draft.as_mut().map_err(|e| e.clone())?;
+            ready &= window
+                .update(app, |root, _, cx| {
+                    root.retire_failed_shutdown_draft(draft, services, cx)
+                })
+                .map_err(|e| e.to_string())??;
+        }
+        Ok(ready)
+    }
+
+    pub(in crate::running_owner) fn take_failed_capture(
+        &mut self,
+        window: WindowHandle<MainWindowShellRoot>,
+    ) -> Result<Option<crate::main_window::MainWindowFailedResidentCapture>, String> {
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| *handle == window)
+            .ok_or("failed recovery window is unavailable")?
+            .1
+            .as_mut()
+            .map_err(|e| e.clone())?;
+        Ok(draft
+            .failed
+            .as_mut()
+            .map(|failed| {
+                failed
+                    .capture
+                    .take()
+                    .ok_or("failed resident capture is already owned")
+            })
+            .transpose()?)
+    }
+
+    pub(in crate::running_owner) fn has_failed_residents(&self) -> bool {
+        self.windows
+            .iter()
+            .any(|(_, draft)| draft.as_ref().is_ok_and(|draft| draft.failed.is_some()))
+    }
+    pub(in crate::running_owner) fn return_failed_capture(
+        &mut self,
+        window: WindowHandle<MainWindowShellRoot>,
+        capture: crate::main_window::MainWindowFailedResidentCapture,
+    ) {
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| *handle == window)
+            .unwrap()
+            .1
+            .as_mut()
+            .unwrap();
+        let failed = draft.failed.as_mut().unwrap();
+        assert!(failed.capture.is_none() && capture.ticket() == failed.ticket);
+        failed.capture = Some(capture);
     }
 }

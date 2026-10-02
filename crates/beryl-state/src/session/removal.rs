@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use beryl_home_store::{
-    DomainHandle, HomeCandidateRecoveryAccess, HomeStore, MutationContribution, PointReadLimit,
-    ReadError, RecordCodec,
+    DomainHandle, HomeCandidateRecoveryAccess, HomeGenerationIdentity, HomeStore,
+    MutationContribution, PointReadLimit, ReadError, RecordCodec,
 };
 use beryl_model::{BerylHomeId, DomainRevision, WindowId};
 
@@ -21,6 +21,7 @@ mod mutation;
 pub struct SessionWindowRemovalEvidence {
     home_id: BerylHomeId,
     canonical_path: PathBuf,
+    original_generation: HomeGenerationIdentity,
     header: SessionHeader,
     window: SessionWindowRecord,
     claim: Option<ThreadClaimRecord>,
@@ -172,6 +173,7 @@ impl SessionState {
         let evidence = SessionWindowRemovalEvidence {
             home_id: store.home_id(),
             canonical_path: store.canonical_path().to_owned(),
+            original_generation: store.generation_identity()?,
             header,
             window,
             claim: by_window,
@@ -187,11 +189,38 @@ impl SessionState {
         evidence: &SessionWindowRemovalEvidence,
     ) -> Result<MutationContribution, SessionMutationError> {
         store.domain_revision(&self.handle)?;
-        qualify(store.home_id(), store.canonical_path(), evidence)?;
+        qualify_original(store, evidence)?;
         Ok(self.handle.contribution(
             expected_revision,
             mutation::RemoveCapturedWindow(evidence.clone()),
         ))
+    }
+
+    pub fn classify_window_removal(
+        &self,
+        store: &HomeStore,
+        evidence: &SessionWindowRemovalEvidence,
+    ) -> Result<SessionWindowRemovalState, SessionMutationError> {
+        let revision = store.home_revision()?;
+        qualify_original(store, evidence)?;
+        let source = read_source(&self.handle, ReadAccess::Store(store), evidence)?;
+        if store.home_revision()? != revision {
+            return Err(invalid("session changed during removal classification"));
+        }
+        classify(&source, evidence)
+    }
+
+    pub fn recover_removed_window(
+        &self,
+        store: &HomeStore,
+        expected_revision: DomainRevision,
+        evidence: &SessionWindowRemovalEvidence,
+    ) -> Result<MutationContribution, SessionMutationError> {
+        self.window_recovery_contribution(
+            self.classify_window_removal(store, evidence)?,
+            expected_revision,
+            evidence,
+        )
     }
 
     pub fn classify_window_removal_candidate(
@@ -214,9 +243,20 @@ impl SessionState {
         expected_revision: DomainRevision,
         evidence: &SessionWindowRemovalEvidence,
     ) -> Result<MutationContribution, SessionMutationError> {
-        if self.classify_window_removal_candidate(access, evidence)?
-            != SessionWindowRemovalState::Removed
-        {
+        self.window_recovery_contribution(
+            self.classify_window_removal_candidate(access, evidence)?,
+            expected_revision,
+            evidence,
+        )
+    }
+
+    fn window_recovery_contribution(
+        &self,
+        source: SessionWindowRemovalState,
+        expected_revision: DomainRevision,
+        evidence: &SessionWindowRemovalEvidence,
+    ) -> Result<MutationContribution, SessionMutationError> {
+        if source != SessionWindowRemovalState::Removed {
             return Err(invalid("window recovery requires the exact removed source"));
         }
         if evidence.header.windows.len() > MAX_RESTORABLE_WINDOWS {
@@ -228,6 +268,19 @@ impl SessionState {
             mutation::RecoverRemovedWindow(evidence.clone()),
         ))
     }
+}
+
+fn qualify_original(
+    store: &HomeStore,
+    evidence: &SessionWindowRemovalEvidence,
+) -> Result<(), SessionMutationError> {
+    qualify(store.home_id(), store.canonical_path(), evidence)?;
+    if store.generation_identity()? != evidence.original_generation {
+        return Err(invalid(
+            "removal evidence belongs to another home generation",
+        ));
+    }
+    Ok(())
 }
 
 fn qualify(

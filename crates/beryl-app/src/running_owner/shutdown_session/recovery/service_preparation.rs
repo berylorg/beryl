@@ -99,7 +99,7 @@ impl RunningProcessOwner {
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
-        let (services, session_slot, settlement_slot, original, candidate) = {
+        let (mut services, session_slot, settlement_slot, original, candidate) = {
             let mut owner = owner.borrow_mut();
             owner.interrupted_exit_graph_retirement_result(request)?;
             if cancellation.is_cancelled() {
@@ -155,36 +155,49 @@ impl RunningProcessOwner {
         let work = app.background_executor().spawn(async move {
             let mut original = original;
             let mut candidate = candidate;
-            let settled =
-                match original.revalidate_candidate(&mut candidate.candidate, &candidate.session) {
-                    Err(error) => CandidateSettlement::Returned {
-                        candidate,
-                        result: Err(CandidateSettlementError::Candidate(error)),
-                    },
-                    Ok(()) => {
-                        let mut storage = Some(candidate.candidate);
-                        let result = services.prepare_recovery_service_graph(
+            let settled = match original
+                .revalidate_candidate(&mut candidate.candidate, &candidate.session)
+                .and_then(|()| {
+                    services.prepare_failed_residents(
+                        &mut candidate.candidate,
+                        &original,
+                        at,
+                        &worker_cancellation,
+                    )
+                }) {
+                Err(error) => CandidateSettlement::Returned {
+                    candidate,
+                    result: Err(CandidateSettlementError::Candidate(error)),
+                },
+                Ok(()) => {
+                    let mut storage = Some(candidate.candidate);
+                    let result = services
+                        .prepare_recovery_service_graph(
                             generation,
                             &mut storage,
                             configuration,
                             at,
                             &worker_cancellation,
-                        );
-                        match result {
-                            Err(RecoveryServicePreparationError::Refused(error)) => {
-                                CandidateSettlement::Returned {
-                                    candidate: InterruptedExitCandidate {
-                                        candidate: storage
-                                            .expect("refused preparation retains candidate"),
-                                        session: candidate.session,
-                                    },
-                                    result: Err(CandidateSettlementError::Candidate(error)),
-                                }
+                        )
+                        .map(|mut graph| {
+                            graph.retain_recovered_window(&original);
+                            graph
+                        });
+                    match result {
+                        Err(RecoveryServicePreparationError::Refused(error)) => {
+                            CandidateSettlement::Returned {
+                                candidate: InterruptedExitCandidate {
+                                    candidate: storage
+                                        .expect("refused preparation retains candidate"),
+                                    session: candidate.session,
+                                },
+                                result: Err(CandidateSettlementError::Candidate(error)),
                             }
-                            result => CandidateSettlement::Services(result),
                         }
+                        result => CandidateSettlement::Services(result),
                     }
-                };
+                }
+            };
             (services, original, settled)
         });
         app.spawn(async move |cx| {

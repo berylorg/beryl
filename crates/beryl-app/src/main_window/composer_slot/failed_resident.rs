@@ -5,7 +5,7 @@ use beryl_home_store::HomeRecoveryCandidate;
 
 pub struct MainWindowFailedComposerRetirement {
     selection: MainWindowComposerSelectionIdentity,
-    host: Option<ComposerHostFailedResident>,
+    host: Option<Box<ComposerHostFailedResident>>,
     last_activation_generation: u64,
     reconstructed: bool,
 }
@@ -14,6 +14,22 @@ impl MainWindowComposerSlot {
     pub(in crate::main_window) fn take_failed_resident(
         &mut self,
         store: &HomeStore,
+    ) -> Option<MainWindowFailedComposerRetirement> {
+        self.take_failed_resident_inner(store, None)
+    }
+
+    pub(in crate::main_window) fn take_failed_resident_with_marker_custody(
+        &mut self,
+        store: &HomeStore,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+    ) -> Option<MainWindowFailedComposerRetirement> {
+        self.take_failed_resident_inner(store, Some(custody))
+    }
+
+    fn take_failed_resident_inner(
+        &mut self,
+        store: &HomeStore,
+        custody: Option<&crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     ) -> Option<MainWindowFailedComposerRetirement> {
         if self.disposed
             || self.pending.is_some()
@@ -34,12 +50,18 @@ impl MainWindowComposerSlot {
             draft_state,
             host,
         } = self.selected.take().unwrap();
-        match Box::new(host).retire_failed_resident(store) {
+        let result = match custody {
+            Some(custody) => {
+                Box::new(host).retire_failed_resident_with_marker_custody(store, custody)
+            }
+            None => Box::new(host).retire_failed_resident(store),
+        };
+        match result {
             Ok(host) => {
                 self.disposed = true;
                 Some(MainWindowFailedComposerRetirement {
                     selection: identity,
-                    host: Some(host),
+                    host: Some(Box::new(host)),
                     last_activation_generation: self.last_activation_generation,
                     reconstructed: false,
                 })
@@ -58,6 +80,10 @@ impl MainWindowComposerSlot {
 }
 
 impl MainWindowFailedComposerRetirement {
+    pub(crate) fn prior_selector(&self) -> syndic_storage::DraftEditorCurrentSelectorV1 {
+        self.host.as_ref().unwrap().selector()
+    }
+
     pub fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
     }

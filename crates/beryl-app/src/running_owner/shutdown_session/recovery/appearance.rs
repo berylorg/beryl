@@ -18,7 +18,25 @@ impl RunningProcessOwner {
             .ok_or("Published recovery graph is unavailable")?
             .home()
             .service_reference();
+        crate::main_window::MainWindowCreationOwner::validate_recovered_process(&home, app)?;
         self.process.commands.bind_recovered_home(request, home)?;
+        if self.ordinary_commands_mounted {
+            for shell in self.process.windows.shells() {
+                let window = shell.window();
+                let id = window
+                    .read(app)
+                    .map_err(|e| e.to_string())?
+                    .controller()
+                    .ok_or("Recovered command controller is unavailable")?
+                    .window_id();
+                let command = self.process.commands.window_command(id);
+                window
+                    .update(app, |root, window, cx| {
+                        root.mount_running_command(command, window, cx)
+                    })
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         self.process.appearance = appearance.clone();
         Ok(())
     }

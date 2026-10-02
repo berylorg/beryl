@@ -26,6 +26,17 @@ impl MainWindowComposerCandidateSource {
         state: &beryl_state::BerylState,
         seed: RangeRestorationSeed,
     ) -> Result<Self, (MainWindowComposerRetiredClose, String)> {
+        Self::new_for_recovery(candidate, retired, storage, state, seed, None)
+    }
+
+    pub(crate) fn new_for_recovery(
+        candidate: &mut HomeRecoveryCandidate,
+        retired: MainWindowComposerRetiredClose,
+        storage: syndic_storage::SyndicStorage,
+        state: &beryl_state::BerylState,
+        seed: RangeRestorationSeed,
+        recovered_window: Option<&beryl_state::SessionWindowRemovalEvidence>,
+    ) -> Result<Self, (MainWindowComposerRetiredClose, String)> {
         let binding = retired.host().binding();
         if seed.binding != binding.range_binding()
             || seed.history != Some(binding.range_history_frontier())
@@ -52,12 +63,14 @@ impl MainWindowComposerCandidateSource {
         }
         let predecessor = retired.close_ticket();
         let selector = retired.host().selector();
-        let (service, close, window) = MainWindowConversationComposerService::rebind_candidate(
-            candidate,
-            retired,
-            storage.clone(),
-            state,
-        )?;
+        let (service, close, window) =
+            MainWindowConversationComposerService::rebind_candidate_for_recovery(
+                candidate,
+                retired,
+                storage.clone(),
+                state,
+                recovered_window,
+            )?;
         let selection = service
             .selected_identity()
             .expect("reconstructed service has selected host");

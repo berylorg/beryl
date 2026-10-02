@@ -76,6 +76,12 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
 - Candidate recovery access exposes its durable home id and borrowed canonical home path for
   qualifying retained immutable recovery evidence. Reading this metadata performs no storage I/O
   and grants no filesystem handle, ordinary admission or publication authority.
+- Ordinary healthy access can capture an opaque immutable `HomeGenerationIdentity` combining the
+  private store instance and admitted home generation. Equality identifies the exact process-local
+  opening, including across close/reopen where the numeric generation may repeat. The value retains
+  no store, handle, lease or lifecycle resource, exposes no constructible identity fields, and
+  grants no read or mutation authority. Capturing it requires ordinary healthy admission; consumers
+  still perform their normal handle, revision and operation checks.
 - `HomeOpenPublication::recovery_access` and `HomeRecoveryCandidate::recovery_access` borrow their
   owner exclusively and return `HomeCandidateRecoveryAccess`. Each operation checks the owner's
   opening or reopening generation. Same-home recovery assigns the fresh generation while remaining

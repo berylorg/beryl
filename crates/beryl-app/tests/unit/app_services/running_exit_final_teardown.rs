@@ -65,7 +65,7 @@ fn run(selected_count: u8, failure: Failure) {
             let StartupCompletion::Running(running) = result else { panic!("startup failed") };
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
-            let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
             if failure == Failure::Service {
                 owner.borrow_mut().test_services_mut().test_fail_shutdown_completion();
             }

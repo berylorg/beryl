@@ -76,7 +76,7 @@ fn run_with_missing_window(
                         .unwrap()
                         .restored_window_attempt()
                         .unwrap();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let original_reason = window.read(app).unwrap().new_window_disabled_reason(app);
                     assert!(RunningProcessOwner::release_shutdown_interaction_gate(&owner, app).is_err());
                     assert!(RunningProcessOwner::install_shutdown_interaction_gate(&owner, app).is_err());

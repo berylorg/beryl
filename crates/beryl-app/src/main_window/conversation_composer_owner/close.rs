@@ -12,6 +12,7 @@ impl MainWindowConversationComposer {
         }
         self.phase = MainWindowConversationComposerPhase::Live;
         self.window_close = None;
+        self.failed_resident = None;
         self.sync_mutation_gate(cx);
         cx.notify();
         Ok(true)

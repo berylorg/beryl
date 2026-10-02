@@ -50,7 +50,7 @@ pub fn activation(
     end: u64,
 ) -> ComposerHostActivationRequest {
     let mut demands = Vec::new();
-    let page_count = if end == 0 { 1 } else { 8 };
+    let page_count = end.div_ceil(ACTIVATION_PAGE_BYTES as u64).clamp(1, 8);
     for page in 0..page_count {
         let start = page * ACTIVATION_PAGE_BYTES as u64;
         demands.push(ComposerHostInitialDemand::Text {

@@ -43,15 +43,27 @@ impl RunningProcessOwner {
         if self.interrupted_exit.is_some() {
             return Err("The reported failed Exit is cancelled".into());
         }
-        self.shutdown_placements()?;
+        if self
+            .shutdown
+            .as_ref()
+            .is_some_and(|attempt| attempt.intent() == super::ShutdownIntent::ApplicationExit)
+        {
+            self.shutdown_placements()?;
+        }
         let graph = self
             .process
             .services
             .as_ref()
             .and_then(|services| services.graph())
             .ok_or("the complete service graph is unavailable")?;
-        self.shutdown_session()
-            .ok_or("Exit session execution has not started")?
-            .require_ready(graph.home(), &graph.state().session())
+        let session = self
+            .shutdown_session()
+            .ok_or("Exit session execution has not started")?;
+        match session {
+            RunningShutdownSession::RemovedWindow(close) => {
+                close.require_ready(graph.home(), &graph.state().session())
+            }
+            other => other.require_ready(graph.home(), &graph.state().session()),
+        }
     }
 }

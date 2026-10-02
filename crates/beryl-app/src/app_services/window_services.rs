@@ -39,6 +39,18 @@ pub(crate) enum CloseConfirmationPreparationError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn admit_ordinary_close(
+        &self,
+        members: &[WindowId],
+    ) -> Result<crate::window_acquisition::WindowCloseLease, String> {
+        self.windows
+            .admit_close(
+                self.windows
+                    .snapshot_for_close(members)
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())
+    }
     pub(crate) fn admit_close_confirmation(
         &self,
         snapshot: crate::window_acquisition::WindowCloseSnapshot,
@@ -114,6 +126,49 @@ impl ProcessServiceOwner {
                 .as_ref()
                 .ok_or_else(|| "restore service generation is retired".to_owned())?,
         );
+        let creation = self.build_creation_services(
+            inputs.request_source,
+            inputs.activation_source,
+            inputs.configurator_source,
+        )?;
+        creation.validate_source()?;
+        Ok(PublishedMainWindowServices {
+            creation,
+            lifetime,
+            restored_activation: inputs.restored_activation_source,
+        })
+    }
+
+    pub(crate) fn recovered_creation_services(
+        &self,
+        previous: &MainWindowCreationServices,
+        previous_generation: beryl_home_store::HomeGeneration,
+    ) -> Result<Arc<MainWindowCreationServices>, String> {
+        let graph = self
+            .graph()
+            .ok_or("recovered creation graph is unavailable")?;
+        if graph.home().home_id() != previous.store.home_id()
+            || graph.home().health().generation() == Some(previous_generation)
+            || graph.home().health().state() != beryl_home_store::HomeHealthState::Healthy
+        {
+            return Err("creation replacement is not a fresh same-home graph".into());
+        }
+        self.build_creation_services(
+            previous.request_source.clone(),
+            previous.activation_source.clone(),
+            previous.configurator_source.clone(),
+        )
+    }
+
+    fn build_creation_services(
+        &self,
+        request_source: MainWindowCreationRequestSource,
+        activation_source: MainWindowCreationActivationSource,
+        configurator_source: MainWindowCreationConfiguratorSource,
+    ) -> Result<Arc<MainWindowCreationServices>, String> {
+        let graph = self
+            .graph()
+            .ok_or("creation service graph is unavailable")?;
         let store = Arc::new(graph.home().service_reference());
         let creation = Arc::new(MainWindowCreationServices {
             acquisition: RuntimeBackedWindowAcquisitionService::new(
@@ -125,21 +180,17 @@ impl ProcessServiceOwner {
             store,
             state: graph.state.clone(),
             storage: graph.syndic.clone(),
-            request_source: inputs.request_source,
-            activation_source: inputs.activation_source,
-            configurator_source: inputs.configurator_source,
+            request_source,
+            activation_source,
+            configurator_source,
             marker_seals: graph.marker(),
             turn_start_requirement: graph.cas().config().turn_start_admission_requirement(),
             submission_execution: graph.cas().submission_execution_wake(),
             #[cfg(feature = "test-faults")]
             test_before_initial_advance: None,
         });
-        creation.validate_source()?;
-        Ok(PublishedMainWindowServices {
-            creation,
-            lifetime,
-            restored_activation: inputs.restored_activation_source,
-        })
+        creation.validate_prepared_source()?;
+        Ok(creation)
     }
 }
 

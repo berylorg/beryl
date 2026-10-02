@@ -2,20 +2,18 @@
 
 use std::num::NonZeroU64;
 
-use beryl_model::{
-    AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
-};
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId};
 use syndic_storage::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS,
     DRAFT_MARKER_ADMISSION_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_HEADS,
     DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT, DraftEditorCandidateSessionIdV1,
     DraftMarkerAdmissionAssignmentGroupV1, DraftMarkerAdmissionChildV1,
-    DraftMarkerAdmissionCodecFixtureV1,
-    DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1,
-    DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodeV1,
-    DraftMarkerAdmissionOperationIdV1, DraftMarkerAdmissionOwnerV1,
-    DraftMarkerAdmissionPageIdentityV1, DraftMarkerAdmissionRetainedChargeV1,
-    DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
+    DraftMarkerAdmissionCodecFixtureV1, DraftMarkerAdmissionCommandIdV1,
+    DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1,
+    DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionOperationIdV1,
+    DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPageIdentityV1,
+    DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
+    DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
     DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
     canonical_empty_draft_marker_admission_root_v1,
     checked_draft_marker_admission_capacity_successor_v1,
@@ -237,7 +235,11 @@ fn assignment_groups_have_exact_keys_and_reject_mismatched_evidence() {
     );
     assert_eq!(
         allocate.canonical_bytes(),
-        [vec![1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 0x0102_u64.to_be_bytes().to_vec()].concat()
+        [
+            vec![1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            0x0102_u64.to_be_bytes().to_vec()
+        ]
+        .concat()
     );
 
     let fresh_asset = AssetId::sha256_v1([4; 32], NonZeroU64::new(0x0102).unwrap());
@@ -260,7 +262,10 @@ fn assignment_groups_have_exact_keys_and_reject_mismatched_evidence() {
     assert_eq!(
         DraftMarkerAdmissionNodeV1::source_leaf(
             key,
-            DraftMarkerAdmissionSourceKeyV1::new(preserve, SyndicDraftMarkerId::from_bytes([31; 16])),
+            DraftMarkerAdmissionSourceKeyV1::new(
+                preserve,
+                SyndicDraftMarkerId::from_bytes([31; 16])
+            ),
             accepted_evidence(label(3), asset(30)),
             asset(30),
         ),

@@ -133,6 +133,8 @@ impl RunningProcessOwner {
             self.shutdown_session(),
             Some(
                 RunningShutdownSession::Settled(_)
+                    | RunningShutdownSession::RemovedWindow(_)
+                    | RunningShutdownSession::UnremovedWindows(_)
                     | RunningShutdownSession::Reconciled(_)
                     | RunningShutdownSession::Unwound
             )

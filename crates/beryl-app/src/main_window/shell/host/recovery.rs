@@ -11,6 +11,101 @@ mod appearance;
 mod bindings;
 
 impl MainWindowShellRoot {
+    pub(crate) fn adopt_failed_interrupted_exit_shell<C: Send + 'static>(
+        &mut self,
+        draft: &mut MainWindowShutdownDraft,
+        preparation: &mut crate::main_window::MainWindowFailedResidentPreparation<C>,
+        adapters: &mut Option<PreparedComposerRecoveryAdapters>,
+        configurator: &mut Option<MainWindowConversationComposerConfigurator>,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(C, MainWindowConversationComposerCloseTicket), String> {
+        if draft.root != cx.entity_id()
+            || !self.shutdown_interaction_gated
+            || self.startup_interaction_gated()
+            || draft.retirement.is_some()
+        {
+            return Err("failed shell recovery lost its exact gated draft".into());
+        }
+        let failed = draft
+            .failed
+            .as_mut()
+            .ok_or("failed shell retirement is unavailable")?;
+        if !failed.retired
+            || failed.adoption.is_some()
+            || failed.resources.is_some()
+            || failed.capture.is_some()
+            || preparation
+                .capture()
+                .is_none_or(|capture| capture.ticket() != failed.ticket)
+        {
+            return Err("failed shell capture or retirement changed".into());
+        }
+        let controller = self
+            .controller
+            .as_mut()
+            .ok_or("failed shell controller is unavailable")?;
+        let ShellContent::Retired {
+            window_id,
+            threadless: false,
+            reservation: Some(_),
+            ..
+        } = &controller.content
+        else {
+            return Err("failed selected shell construction is not retired".into());
+        };
+        let (mount, editor, close) = draft
+            .composer
+            .as_mut()
+            .ok_or("failed shell composer is unavailable")?;
+        if controller.composer_mount.as_ref() != Some(mount)
+            || !mount
+                .read(cx)
+                .contribution()
+                .is_some_and(|resident| resident.entity_id() == *editor)
+        {
+            return Err("failed shell resident identity changed".into());
+        }
+        let (_, selection) = preparation
+            .authenticated_source()
+            .ok_or("failed shell source is unavailable")?;
+        let record = preparation.authenticated_window()?;
+        if selection.window_id() != *window_id
+            || record.window_id() != *window_id
+            || record.selected_thread() != Some(selection.claim())
+            || record.remembered_target().is_none()
+            || close.selection().binding().home_id() != selection.binding().home_id()
+            || close.selection().binding().home_generation()
+                == selection.binding().home_generation()
+        {
+            return Err("failed shell fresh window and resident correspondence changed".into());
+        }
+        let (graph, adoption, fresh) = mount.update(cx, |mount, cx| {
+            mount.adopt_failed_recovery(
+                *close,
+                preparation,
+                adapters,
+                configurator,
+                current,
+                window,
+                cx,
+            )
+        })?;
+        let ShellContent::Retired { reservation, .. } = &mut controller.content else {
+            unreachable!()
+        };
+        controller.content = ShellContent::Recovered {
+            window: record,
+            selection,
+            reservation: reservation.take().unwrap(),
+        };
+        failed.adoption = Some(adoption);
+        *close = fresh;
+        cx.notify();
+        Ok((graph, fresh))
+    }
+
     pub(crate) fn adopt_interrupted_exit_threadless_shell(
         &mut self,
         draft: &MainWindowShutdownDraft,
@@ -114,7 +209,8 @@ impl MainWindowShellRoot {
             || record.selected_thread() != Some(selection.claim())
             || record.remembered_target().is_none()
             || previous.window_id() != *window_id
-            || previous.claim() != selection.claim()
+            || previous.claim().thread_id() != selection.claim().thread_id()
+            || previous.claim().generation() != selection.claim().generation()
             || previous.binding().home_id() != selection.binding().home_id()
             || previous.binding().home_generation() == selection.binding().home_generation()
         {

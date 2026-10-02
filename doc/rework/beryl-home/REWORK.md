@@ -426,7 +426,9 @@
   and Exit confirmation, serialized close designation, and durable restore-mode integration.
   The service component is accepted with 18 focused and 81 affected regressions; native mounting
   remains separate. See [coordinator acceptance](../../failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance).
-- [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
+- [x] Accepted process-owned ordinary close versus Exit, including created windows, exact layout,
+  healthy and failed-home resident recovery and fresh activation after cancellation; [evidence](../../failures/ordinary-close-recovery.md#ordinary-command-integration-acceptance).
+- [ ] Implement restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).

@@ -35,11 +35,24 @@ impl MainWindowInitialComposer {
     }
 
     pub fn prepare(
-        mut self,
+        self,
         configurator: &mut impl FnMut(
             MainWindowComposerSelectionIdentity,
         ) -> Result<MainWindowConversationComposerConfig, String>,
     ) -> Result<MainWindowInitialComposerPrepared, MainWindowInitialComposerFailure> {
+        Box::new(self)
+            .prepare_owned(configurator)
+            .map(|prepared| *prepared)
+            .map_err(|failure| *failure)
+    }
+
+    #[inline(never)]
+    pub(in crate::main_window) fn prepare_owned(
+        mut self: Box<Self>,
+        configurator: &mut impl FnMut(
+            MainWindowComposerSelectionIdentity,
+        ) -> Result<MainWindowConversationComposerConfig, String>,
+    ) -> Result<Box<MainWindowInitialComposerPrepared>, Box<MainWindowInitialComposerFailure>> {
         let service = &self.acquisition_service;
         let acquisition = &self.acquisition;
         let store = self.acquisition_store.clone();
@@ -58,14 +71,14 @@ impl MainWindowInitialComposer {
                 Ok(prepared)
             });
         match result {
-            Ok(prepared) => Ok(MainWindowInitialComposerPrepared {
+            Ok(prepared) => Ok(Box::new(MainWindowInitialComposerPrepared {
                 prepared,
-                custody: self,
-            }),
-            Err(error) => Err(MainWindowInitialComposerFailure {
-                custody: self,
+                custody: *self,
+            })),
+            Err(error) => Err(Box::new(MainWindowInitialComposerFailure {
+                custody: *self,
                 error,
-            }),
+            })),
         }
     }
 }

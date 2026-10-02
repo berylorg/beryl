@@ -32,6 +32,13 @@ impl MainWindowShellRoot {
 }
 
 impl MainWindowShell {
+    pub(crate) fn retained_window_id(&self, app: &App) -> Result<beryl_model::WindowId, String> {
+        self.root
+            .read(app)
+            .controller()
+            .map(|controller| controller.window_id())
+            .ok_or_else(|| "retained shell controller is unavailable".into())
+    }
     pub(crate) fn begin_final_native_cleanup(
         &mut self,
         app: &mut App,
@@ -39,7 +46,7 @@ impl MainWindowShell {
         let root = self.root.read(app);
         if !self.published
             || root.startup_interaction_gated()
-            || !root.shutdown_interaction_gated
+            || !(root.shutdown_interaction_gated || root.ordinary_close_interaction_gated)
             || !root.controller.as_ref().is_some_and(|controller| {
                 matches!(controller.content, ShellContent::Retired { .. })
             })
@@ -47,6 +54,7 @@ impl MainWindowShell {
         {
             return Err("native cleanup requires the exact retired running shell".into());
         }
+        self.pre_native_close = None;
         let receipt = match self.startup_disposal.as_mut() {
             Some(admission) if admission.preserve_records && !admission.started => {
                 admission.started = true;

@@ -16,6 +16,8 @@ pub(crate) use recovery::{
 
 #[derive(Debug)]
 pub(crate) enum RunningShutdownSession {
+    RemovedWindow(super::ordinary_close_session::OrdinaryCloseSession),
+    UnremovedWindows(super::unremoved_windows::UnremovedWindows),
     Pending,
     Settled(Result<ExitSessionExecution, ExitSessionPreparationError>),
     Reconciling,

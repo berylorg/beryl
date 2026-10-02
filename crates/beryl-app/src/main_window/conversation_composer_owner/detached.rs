@@ -5,7 +5,7 @@ use syndic_storage::DetachedDraftReadSourceV1;
 pub(super) struct DetachedComposer {
     source: DetachedDraftReadSourceV1,
     cancellation: Option<CommandCancellation>,
-    disposing: bool,
+    pub(super) disposing: bool,
 }
 
 impl Drop for DetachedComposer {

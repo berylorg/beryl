@@ -98,7 +98,7 @@ impl RunningProcessOwner {
             if owner.shutdown_status()
                 != Some((
                     invoking,
-                    ShutdownIntent::ApplicationExit,
+                    request.shutdown_intent(),
                     RunningShutdownStatus::WorkReady,
                 ))
             {

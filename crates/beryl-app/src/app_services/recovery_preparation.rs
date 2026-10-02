@@ -87,6 +87,7 @@ impl PreparedRecoveryAppServices {
         syndic: SyndicStorage,
         retired: crate::main_window::MainWindowComposerRetiredClose,
         seed: gpui_text_input::RangeRestorationSeed,
+        recovered_window: Option<&beryl_state::SessionWindowRemovalEvidence>,
     ) -> Result<
         crate::main_window::MainWindowComposerCandidateSource,
         (crate::main_window::MainWindowComposerRetiredClose, String),
@@ -99,8 +100,13 @@ impl PreparedRecoveryAppServices {
         else {
             return Err((retired, "recovery handoff is unavailable".into()));
         };
-        crate::main_window::MainWindowComposerCandidateSource::new(
-            candidate, retired, syndic, state, seed,
+        crate::main_window::MainWindowComposerCandidateSource::new_for_recovery(
+            candidate,
+            retired,
+            syndic,
+            state,
+            seed,
+            recovered_window,
         )
     }
 

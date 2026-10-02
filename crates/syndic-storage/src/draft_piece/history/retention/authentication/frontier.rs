@@ -2,10 +2,10 @@ use super::*;
 
 #[derive(Default)]
 struct FrontierMembers {
-    floor: Option<DraftEditHistoryTransitionV1>,
-    journal: Option<DraftEditHistoryTransitionV1>,
-    undo: Option<DraftEditHistoryTransitionV1>,
-    redo: Option<DraftEditHistoryTransitionV1>,
+    floor: Option<Box<DraftEditHistoryTransitionV1>>,
+    journal: Option<Box<DraftEditHistoryTransitionV1>>,
+    undo: Option<Box<DraftEditHistoryTransitionV1>>,
+    redo: Option<Box<DraftEditHistoryTransitionV1>>,
 }
 
 pub(super) fn authenticate_frontier_for_mutation(
@@ -16,16 +16,18 @@ pub(super) fn authenticate_frontier_for_mutation(
     read_mutation_floor(reader, frontier, &mut members.floor)?;
     read_mutation_members(reader, frontier, &mut members)?;
     authenticate_mutation_members(reader, frontier, &members)?;
-    authenticate_mutation_retained_bytes(frontier, members.floor.as_ref())
+    authenticate_mutation_retained_bytes(frontier, members.floor.as_deref())
 }
 
 fn read_mutation_floor(
     reader: &DomainReader<'_, SyndicDomain>,
     frontier: &DraftEditHistoryFrontierV1,
-    floor: &mut Option<DraftEditHistoryTransitionV1>,
+    floor: &mut Option<Box<DraftEditHistoryTransitionV1>>,
 ) -> Result<(), SyndicMutationError> {
     *floor = match frontier.oldest_eligible() {
-        Some(reference) => Some(authenticated_transition_reference(reader, reference)?),
+        Some(reference) => Some(Box::new(authenticated_transition_reference(
+            reader, reference,
+        )?)),
         None => None,
     };
     Ok(())
@@ -44,8 +46,8 @@ fn read_mutation_members(
     .into_iter()
     .flatten()
     {
-        let value = authenticated_transition_reference(reader, reference)?;
-        if members.floor.as_ref().is_some_and(|floor| {
+        let value = Box::new(authenticated_transition_reference(reader, reference)?);
+        if members.floor.as_deref().is_some_and(|floor| {
             value.cumulative_encoded_bytes() < floor.cumulative_encoded_bytes()
         }) {
             return Err(SyndicMutationError::IdentityCollision);
@@ -75,13 +77,13 @@ fn authenticate_mutation_members(
     frontier: &DraftEditHistoryFrontierV1,
     members: &FrontierMembers,
 ) -> Result<(), SyndicMutationError> {
-    let Some(head) = members.journal.as_ref() else {
+    let Some(head) = members.journal.as_deref() else {
         return Ok(());
     };
     for member in [
-        members.floor.as_ref(),
-        members.undo.as_ref(),
-        members.redo.as_ref(),
+        members.floor.as_deref(),
+        members.undo.as_deref(),
+        members.redo.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -102,7 +104,7 @@ fn authenticate_mutation_members(
     {
         return Err(SyndicMutationError::IdentityCollision);
     }
-    authenticate_mutation_stack(reader, frontier, head, members.floor.as_ref())
+    authenticate_mutation_stack(reader, frontier, head, members.floor.as_deref())
 }
 
 fn authenticate_mutation_stack(
@@ -191,7 +193,7 @@ pub(super) fn authenticate_frontier(
     if !members_are_exact(storage, store, frontier, &members)? {
         return Ok(false);
     }
-    retained_bytes_are_exact(frontier, members.floor.as_ref())
+    retained_bytes_are_exact(frontier, members.floor.as_deref())
 }
 
 fn read_members(
@@ -220,7 +222,7 @@ fn read_members(
         let Some(value) = transition_reference_is_authenticated(storage, store, reference)? else {
             return Ok(false);
         };
-        if members.floor.as_ref().is_some_and(|floor| {
+        if members.floor.as_deref().is_some_and(|floor| {
             value.cumulative_encoded_bytes() < floor.cumulative_encoded_bytes()
         }) || Some(reference) == frontier.journal_head()
             && value.successor_root() != frontier.reference().root()
@@ -246,13 +248,13 @@ fn members_are_exact(
     frontier: &DraftEditHistoryFrontierV1,
     members: &FrontierMembers,
 ) -> Result<bool, SyndicReadError> {
-    let Some(head) = members.journal.as_ref() else {
+    let Some(head) = members.journal.as_deref() else {
         return Ok(true);
     };
     for member in [
-        members.floor.as_ref(),
-        members.undo.as_ref(),
-        members.redo.as_ref(),
+        members.floor.as_deref(),
+        members.undo.as_deref(),
+        members.redo.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -273,7 +275,7 @@ fn members_are_exact(
     {
         return Ok(false);
     }
-    stack_is_exact(storage, store, frontier, head, members.floor.as_ref())
+    stack_is_exact(storage, store, frontier, head, members.floor.as_deref())
 }
 
 fn stack_is_exact(

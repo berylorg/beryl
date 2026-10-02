@@ -31,7 +31,7 @@ fn native_exit_availability_updates_tooltips_without_replay_or_owner_retention()
                     };
                     running.commands.set_gate(Gate::SettingsReconciliation, true);
                     let main = running.windows.shells()[0].window();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     assert_eq!(
                         main.read(app).unwrap().test_exit_presentation(),
                         ("Exit", "Application Exit is waiting for Settings reconciliation.")
@@ -115,8 +115,8 @@ fn run_delivery(pending: bool, unavailable: bool) {
                     let main = running.windows.shells()[0].window();
                     let permit = running.services.process.execution_permit();
                     let absent = beryl_model::WindowId::from_bytes([249; 16]);
-                    let unavailable_command = running.commands.window_command(absent);
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
+                    let unavailable_command = owner.borrow().test_window_command_unchecked(absent);
                     assert!(owner.borrow().window_exit_command(absent, app).is_err());
                     let window_command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     owner

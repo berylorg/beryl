@@ -27,6 +27,9 @@ impl RunningProcessOwner {
                         if flight.cleanup_failed {
                             return Err(flight.result.as_ref().unwrap_err().clone());
                         }
+                        if matches!(flight.returned, Some(ReturnedPreparation::Failed(_))) {
+                            return Err("failed resident cancellation retains exact source and protected editor custody".into());
+                        }
                     }
                     Self::cancel_interrupted_exit_resident(&owner.recovery_owner()?, key, app)?;
                     Ok(owner

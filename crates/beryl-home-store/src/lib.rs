@@ -166,7 +166,9 @@ pub use sidecar::{
 };
 #[cfg(feature = "test-faults")]
 pub use store::HomeOwnershipTestSeam;
-pub use store::{HomeDurabilityTier, HomeOpenOptions, HomeServiceReference, HomeStore};
+pub use store::{
+    HomeDurabilityTier, HomeGenerationIdentity, HomeOpenOptions, HomeServiceReference, HomeStore,
+};
 pub use successor::{
     FirstAcceptancePromotionAdmission, FirstAcceptancePromotionAssetAdapter,
     FirstAcceptancePromotionAssetPlan, FirstAcceptancePromotionAssetSeed,

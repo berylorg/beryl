@@ -131,7 +131,7 @@ impl MainWindowConversationComposer {
         })
     }
 
-    pub(super) fn validate_failed_capture(
+    pub(crate) fn validate_failed_capture(
         &self,
         capture: &MainWindowFailedResidentCapture,
         cx: &App,

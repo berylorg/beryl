@@ -50,6 +50,65 @@ pub(super) struct RunningShutdownAttempt {
         Option<Rc<RefCell<super::shutdown_placements::RunningShutdownPlacements>>>,
 }
 
+impl RunningShutdownAttempt {
+    pub(super) fn intent(&self) -> ShutdownIntent {
+        self.intent
+    }
+}
+
+impl RunningProcessOwner {
+    pub(super) fn begin_nonfinal_close(
+        &mut self,
+        invoking: WindowId,
+        app: &App,
+    ) -> Result<bool, String> {
+        if self.shutdown.is_some()
+            || self.confirmation.is_some()
+            || self.progress.is_some()
+            || self.observing_initial_work
+        {
+            return Err("window close owner is busy".into());
+        }
+        let services = self
+            .process
+            .services
+            .as_ref()
+            .ok_or("window close services are unavailable")?;
+        let lease = services.admit_ordinary_close(self.process.windows.window_ids())?;
+        if lease.is_final(invoking).map_err(|e| e.to_string())? {
+            return Ok(false);
+        }
+        self.ordinary_close_window = Some(
+            self.process
+                .windows
+                .shells()
+                .iter()
+                .find(|shell| {
+                    shell
+                        .window()
+                        .read(app)
+                        .ok()
+                        .and_then(|root| root.controller())
+                        .is_some_and(|controller| controller.window_id() == invoking)
+                })
+                .ok_or("ordinary close invoking window is unavailable")?
+                .window(),
+        );
+        self.shutdown = Some(RunningShutdownAttempt {
+            session: None,
+            invoking,
+            intent: ShutdownIntent::NonfinalWindowClose,
+            lease,
+            pending: None,
+            admitted: true,
+            work_ready: true,
+            drafts: None,
+            placements: None,
+        });
+        Ok(true)
+    }
+}
+
 pub(crate) struct PreparedConfirmedShutdownObservation {
     identity: Arc<()>,
     work: PreparedShutdownObservation,

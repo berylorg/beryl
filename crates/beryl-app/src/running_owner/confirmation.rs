@@ -8,6 +8,7 @@ use crate::{cas_projection::ShutdownWorkObservation, window_acquisition::WindowC
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ShutdownIntent {
+    NonfinalWindowClose,
     FinalWindowClose,
     ApplicationExit,
 }

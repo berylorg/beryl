@@ -77,13 +77,15 @@ impl MainWindowComposerCandidateWorker {
     }
 }
 
-impl<C: Send + 'static> MainWindowComposerCandidateWorker<C> {
-    fn prepare_task(
-        task: impl Future<Output = (C, PreparedSource)> + Send + 'static,
-        read: CandidateRead<C>,
+impl<C: Send + 'static, S: MainWindowComposerPrepublicationSource, R: Send + 'static>
+    MainWindowComposerCandidateWorker<C, S, R>
+{
+    pub(in crate::main_window) fn prepare_task(
+        task: impl Future<Output = (C, PreparedSource<S, R>)> + Send + 'static,
+        read: CandidateRead<C, S>,
         app: &mut App,
         completed: impl FnOnce(&mut App) + 'static,
-    ) -> (Self, MainWindowComposerCandidateCustody<C>) {
+    ) -> (Self, MainWindowComposerCandidateCustody<C, S, R>) {
         let state = Rc::new(RefCell::new(State {
             generation: None,
             resources: None,

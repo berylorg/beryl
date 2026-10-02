@@ -18,6 +18,7 @@ fn producer() -> StartupCommands {
         stage: Stage::Waiting,
         exit: false,
         exit_window: None,
+        ordinary_close: false,
         retry: None,
         wake: None,
         active_exit: None,

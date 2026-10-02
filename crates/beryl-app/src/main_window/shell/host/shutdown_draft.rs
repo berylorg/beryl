@@ -5,9 +5,10 @@ use crate::main_window::{
 };
 
 mod detached;
-mod recovery;
+pub(super) mod recovery;
 
 pub struct MainWindowShutdownDraft {
+    pub(crate) failed: Option<FailedShutdownResident>,
     pub(super) root: gpui::EntityId,
     pub(super) retirement: Option<recovery::ResidentRetirement>,
     pub(super) detached_source: Option<syndic_storage::DetachedDraftReadSourceV1>,
@@ -17,6 +18,14 @@ pub struct MainWindowShutdownDraft {
         gpui::EntityId,
         MainWindowConversationComposerCloseTicket,
     )>,
+}
+
+pub(crate) struct FailedShutdownResident {
+    pub(crate) adoption: Option<crate::main_window::MainWindowFailedResidentAdoption>,
+    pub(crate) capture: Option<crate::main_window::MainWindowFailedResidentCapture>,
+    pub(crate) ticket: crate::main_window::MainWindowFailedResidentTicket,
+    pub(crate) resources: Option<Box<crate::main_window::MainWindowFailedResidentMountResources>>,
+    pub(crate) retired: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,7 +45,9 @@ impl MainWindowShellRoot {
         &self,
         cx: &App,
     ) -> Result<Option<Entity<MainWindowConversationComposerMount>>, String> {
-        if !self.shutdown_interaction_gated || self.startup_interaction_gated() {
+        if !(self.shutdown_interaction_gated || self.ordinary_close_interaction_gated)
+            || self.startup_interaction_gated()
+        {
             return Err("shutdown draft requires the running shutdown interaction gate".into());
         }
         let controller = self
@@ -84,6 +95,7 @@ impl MainWindowShellRoot {
             None => None,
         };
         Ok(MainWindowShutdownDraft {
+            failed: None,
             root: cx.entity_id(),
             retirement: None,
             detached_source: None,
@@ -187,6 +199,30 @@ impl MainWindowShellRoot {
 }
 
 impl MainWindowShutdownDraft {
+    pub(crate) fn retained_native_close_service(
+        &self,
+    ) -> Result<
+        Option<(
+            std::sync::Arc<crate::main_window::MainWindowConversationComposerService>,
+            MainWindowConversationComposerCloseTicket,
+        )>,
+        String,
+    > {
+        if !self.detached_installed || self.failed.is_some() {
+            return Err("nonfinal native recovery has no reversible draft".into());
+        }
+        match (&self.composer, &self.retirement) {
+            (None, None) => Ok(None),
+            (Some((_, _, close)), Some(recovery::ResidentRetirement::Detached(resources))) => {
+                resources
+                    .service
+                    .as_ref()
+                    .map(|service| Some((service.clone(), *close)))
+                    .ok_or_else(|| "nonfinal native recovery service is unavailable".into())
+            }
+            _ => Err("nonfinal native recovery draft correspondence changed".into()),
+        }
+    }
     pub(crate) fn discard_detached_source(&mut self) {
         self.detached_source.take();
     }

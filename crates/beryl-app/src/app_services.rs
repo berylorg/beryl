@@ -35,6 +35,7 @@ mod initial_disposal;
 mod preparation;
 mod published;
 pub(crate) mod recovery_composer;
+mod recovery_failed_residents;
 pub(crate) mod recovery_graph;
 pub(crate) mod recovery_preparation;
 mod recovery_retirement;
@@ -131,6 +132,8 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    failed_residents: Vec<recovery_failed_residents::FailedResidentSource>,
+    failed_markers: Option<crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     graph: Option<PublishedAppServices>,
     failed_close: Option<beryl_home_store::HomeCloseError>,
     failed_retirement: Option<crate::cas_projection::CasRetirementDisposalFailure>,
@@ -176,6 +179,8 @@ impl ProcessServiceOwner {
     ) -> Self {
         let process = ProcessAdmissionGate::new();
         Self {
+            failed_residents: Vec::new(),
+            failed_markers: None,
             graph: None,
             failed_close: None,
             failed_retirement: None,

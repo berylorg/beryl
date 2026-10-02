@@ -5,14 +5,27 @@ impl MainWindowRestoreSet {
         if !self.discovery.settle(&self.services.store)? {
             return Ok(false);
         }
-        if let Some(current) = self.current.take() {
-            if let RestoredWindowComposerRetirement::Pending(failure) =
-                current.retire(CommandCancellation::new())
-            {
-                self.current = Some(Box::new(failure.custody));
-                return Err(failure.error);
-            }
+        self.dispose_current()?;
+        self.dispose_unpublished()?;
+        if !self.dispose_replacement()? {
+            return Ok(false);
         }
+        self.dispose_member()
+    }
+
+    #[inline(never)]
+    fn dispose_current(&mut self) -> Result<(), String> {
+        if let Some(current) = self.current.as_mut() {
+            if !current.drive_retirement(CommandCancellation::new())? {
+                return Err("restored editor retirement remains pending".to_owned());
+            }
+            self.current.take();
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn dispose_unpublished(&mut self) -> Result<(), String> {
         if let Some(unpublished) = self.retiring.take() {
             if let RestoredWindowShellRetirement::Pending { unpublished, error } =
                 unpublished.retire(CommandCancellation::new())
@@ -21,6 +34,11 @@ impl MainWindowRestoreSet {
                 return Err(error);
             }
         }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn dispose_replacement(&mut self) -> Result<bool, String> {
         if let Some(work) = self.replacement.take() {
             work.cancellation().cancel();
             match work.advance(self.appearance.clone()) {
@@ -39,6 +57,11 @@ impl MainWindowRestoreSet {
                 }
             }
         }
+        Ok(true)
+    }
+
+    #[inline(never)]
+    fn dispose_member(&mut self) -> Result<bool, String> {
         if let Some(member) = self.members.pop() {
             match member {
                 PreparedRestoreSetMember::Restored(prepared) => {

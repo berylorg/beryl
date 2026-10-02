@@ -37,15 +37,23 @@ pub(super) enum CreationState {
 enum CreationStep {
     Continue,
     Pending,
-    Prepared(MainWindowShellPrepared),
+    Prepared(Box<MainWindowShellPrepared>),
     Settled,
 }
 
 impl MainWindowCreation {
     pub fn advance(
-        mut self,
+        self,
         appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> MainWindowCreationOutcome {
+        *Box::new(self).advance_owned(appearance)
+    }
+
+    #[inline(never)]
+    pub(in crate::main_window) fn advance_owned(
+        mut self: Box<Self>,
+        appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> Box<MainWindowCreationOutcome> {
         for _ in 0..16 {
             if let Err(error) = self.services.validate_source() {
                 self.error.get_or_insert(error);
@@ -53,7 +61,9 @@ impl MainWindowCreation {
             }
             match self.advance_state(&appearance) {
                 CreationStep::Continue => {}
-                CreationStep::Pending => return MainWindowCreationOutcome::Pending(self),
+                CreationStep::Pending => {
+                    return self.pending_owned();
+                }
                 CreationStep::Prepared(prepared) => {
                     if let Err(error) = self.services.validate_source() {
                         self.error = Some(error);
@@ -61,26 +71,55 @@ impl MainWindowCreation {
                         self.state = CreationState::Unpublished(prepared.into_unpublished());
                         continue;
                     }
-                    return MainWindowCreationOutcome::Prepared {
-                        prepared,
-                        cancellation: self.cancellation,
-                    };
+                    return self.prepared_owned(prepared);
                 }
                 CreationStep::Settled => {
-                    return MainWindowCreationOutcome::Settled {
-                        window_id: self.window_id,
-                        error: self.error,
-                    };
+                    return self.settled_owned();
                 }
             }
         }
-        MainWindowCreationOutcome::Pending(self)
+        self.pending_owned()
+    }
+
+    #[inline(never)]
+    fn pending_owned(self: Box<Self>) -> Box<MainWindowCreationOutcome> {
+        Box::new(MainWindowCreationOutcome::Pending(*self))
+    }
+
+    #[inline(never)]
+    fn prepared_owned(
+        self: Box<Self>,
+        prepared: Box<MainWindowShellPrepared>,
+    ) -> Box<MainWindowCreationOutcome> {
+        Box::new(MainWindowCreationOutcome::Prepared {
+            prepared: *prepared,
+            cancellation: self.cancellation,
+        })
+    }
+
+    #[inline(never)]
+    fn settled_owned(self: Box<Self>) -> Box<MainWindowCreationOutcome> {
+        Box::new(MainWindowCreationOutcome::Settled {
+            window_id: self.window_id,
+            error: self.error,
+        })
     }
 
     #[inline(never)]
     fn advance_state(
         &mut self,
         appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> CreationStep {
+        if matches!(&self.state, CreationState::Initial(_)) {
+            return self.advance_initial(appearance);
+        }
+        self.advance_other_state(appearance)
+    }
+
+    #[inline(never)]
+    fn advance_other_state(
+        &mut self,
+        _appearance: &Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> CreationStep {
         let state = std::mem::replace(&mut self.state, CreationState::Settled);
         match state {
@@ -105,7 +144,7 @@ impl MainWindowCreation {
                 acquisition,
                 reservation,
             } => self.prepare_initial(acquisition, reservation),
-            CreationState::Initial(initial) => self.advance_initial(initial, appearance),
+            CreationState::Initial(_) => unreachable!("initial creation advances in place"),
             CreationState::Retiring(initial) => self.retire_initial(initial),
             CreationState::Unpublished(unpublished) => self.prepare_abandonment(unpublished),
             CreationState::Abandonment(abandonment) => self.abandon_acquisition(abandonment),

@@ -124,7 +124,7 @@ impl MainWindowFailedResidentCandidateSource {
         Ok(())
     }
 
-    pub(in crate::main_window) fn read(
+    pub(crate) fn read(
         candidate: &mut HomeRecoveryCandidate,
         source: &Self,
         effect: &RangePrepublicationEffect,

@@ -94,8 +94,8 @@ pub struct PreparedDraftMutationTransferV1 {
     pub(in crate::draft_piece) source_session: DraftEditorCandidateSessionV1,
     pub(in crate::draft_piece) target_session: DraftEditorCandidateSessionV1,
     pub(in crate::draft_piece) prepared_edit: PreparedDraftPieceEditV1,
-    pub(in crate::draft_piece) build: DraftPieceBuildRecordV1,
-    pub(in crate::draft_piece) build_receipt: DraftPieceBuildProgressReceiptV1,
+    pub(in crate::draft_piece) build: Box<DraftPieceBuildRecordV1>,
+    pub(in crate::draft_piece) build_receipt: Box<DraftPieceBuildProgressReceiptV1>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -152,10 +152,10 @@ impl DraftPieceDurableBuildWindowLimitsV1 {
 pub struct PreparedDraftPieceStagingWindowV1 {
     pub(in crate::draft_piece) staging_head: DraftMutationStagingHeadV1,
     staging_pages: Box<[DraftMutationStagingPageV1]>,
-    pub(in crate::draft_piece) expected_build: DraftPieceBuildRecordV1,
+    pub(in crate::draft_piece) expected_build: Box<DraftPieceBuildRecordV1>,
     pub(in crate::draft_piece) expected_session: DraftEditorCandidateSessionV1,
-    pub(in crate::draft_piece) target_build: DraftPieceBuildRecordV1,
-    pub(in crate::draft_piece) target_receipt: DraftPieceBuildProgressReceiptV1,
+    pub(in crate::draft_piece) target_build: Box<DraftPieceBuildRecordV1>,
+    pub(in crate::draft_piece) target_receipt: Box<DraftPieceBuildProgressReceiptV1>,
     pub(in crate::draft_piece) target_session: DraftEditorCandidateSessionV1,
     fragments: Box<[DraftPieceBuildFragmentV1]>,
     inserted_utf8_bytes: usize,

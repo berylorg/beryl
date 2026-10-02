@@ -24,27 +24,93 @@ impl MainWindowComposerRetiredClose {
         ),
         (Self, MainWindowComposerSlotError),
     > {
+        self.rebind_candidate_for_recovery(access, storage, state, None)
+    }
+
+    pub(crate) fn rebind_candidate_for_recovery(
+        self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        storage: SyndicStorage,
+        state: &beryl_state::BerylState,
+        recovered_window: Option<&beryl_state::SessionWindowRemovalEvidence>,
+    ) -> Result<
+        (
+            Box<MainWindowComposerSlot>,
+            MainWindowConversationComposerCloseTicket,
+            beryl_state::SessionWindowRecord,
+        ),
+        (Self, MainWindowComposerSlotError),
+    > {
         let result = (|| {
-            let window = self.selection.validate_candidate_claim(access, state)?;
-            let claim = self.selection.claim();
+            let window = match recovered_window
+                .filter(|e| e.window().window_id() == self.selection.window_id())
+            {
+                Some(evidence) => {
+                    if evidence.window().selected_thread() != Some(self.selection.claim())
+                        || state
+                            .session()
+                            .classify_window_removal_candidate(access, evidence)
+                            .map_err(|_| MainWindowComposerSlotError::IdentityMismatch)?
+                            != beryl_state::SessionWindowRemovalState::Recovered
+                    {
+                        return Err(MainWindowComposerSlotError::IdentityMismatch);
+                    }
+                    state
+                        .session()
+                        .minimal_bootstrap_candidate(access)?
+                        .ok_or(MainWindowComposerSlotError::IdentityMismatch)?
+                        .windows()
+                        .iter()
+                        .find(|window| window.window_id() == self.selection.window_id())
+                        .cloned()
+                        .ok_or(MainWindowComposerSlotError::IdentityMismatch)?
+                }
+                None => self.selection.validate_candidate_claim(access, state)?,
+            };
+            let claim = window
+                .selected_thread()
+                .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
             let assets = state.assets();
             assets.revision_candidate(access)?;
             let host = self.host.reconstruct_candidate(access, storage.clone())?;
-            let mut slot = Box::new(MainWindowComposerSlot::new(
-                self.selection.window_id(),
-                claim,
-                *host,
+            let (slot, close) = self.reconstruct_slot(
+                host,
                 storage,
+                claim,
                 MainWindowComposerMarkerMetadataAuthority::new(assets),
-            )?);
-            slot.last_activation_generation = self.last_activation_generation;
-            let close = self
-                .close
-                .with_recovered_selection(slot.selected_identity().unwrap());
-            slot.window_close = Some(close);
+            )?;
             Ok((slot, close, window))
         })();
         result.map_err(|error| (self, error))
+    }
+
+    #[inline(never)]
+    fn reconstruct_slot(
+        &self,
+        host: Box<SyndicComposerHost>,
+        storage: SyndicStorage,
+        claim: WindowClaimSelection,
+        marker_authority: MainWindowComposerMarkerMetadataAuthority,
+    ) -> Result<
+        (
+            Box<MainWindowComposerSlot>,
+            MainWindowConversationComposerCloseTicket,
+        ),
+        MainWindowComposerSlotError,
+    > {
+        let mut slot = Box::new(MainWindowComposerSlot::new(
+            self.selection.window_id(),
+            claim,
+            *host,
+            storage,
+            marker_authority,
+        )?);
+        slot.last_activation_generation = self.last_activation_generation;
+        let close = self
+            .close
+            .with_recovered_selection(slot.selected_identity().unwrap());
+        slot.window_close = Some(close);
+        Ok((slot, close))
     }
 
     pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {

@@ -1,6 +1,14 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(crate) fn set_ordinary_close_interaction_gated(
+        &mut self,
+        gated: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.ordinary_close_interaction_gated = gated;
+        cx.notify();
+    }
     pub(crate) fn release_shutdown_interaction_gates(
         windows: &[WindowHandle<Self>],
         app: &mut App,
@@ -28,12 +36,14 @@ impl MainWindowShellRoot {
                 settle()?;
                 root.set_shutdown_interaction_gated(false, cx)
                     .expect("validated composer remains live during synchronous gate release");
+                root.set_ordinary_close_interaction_gated(false, cx);
                 for window in rest {
                     window
                         .update(cx, |root, _, cx| {
                             root.set_shutdown_interaction_gated(false, cx).expect(
                                 "validated composer remains live during synchronous gate release",
                             );
+                            root.set_ordinary_close_interaction_gated(false, cx);
                         })
                         .expect("validated window remains live during synchronous gate release");
                 }

@@ -4,6 +4,9 @@ use crate::running_owner::{
     ShutdownConfirmationResult, ShutdownIntent,
 };
 
+#[path = "ordinary_commands.rs"]
+mod ordinary_commands;
+
 mod exit_observation {
     use super::*;
     include!(concat!(
@@ -143,7 +146,7 @@ fn run(new_work: bool, confirm: Option<bool>, replace_request: Option<bool>) {
                     };
                     let invoking = running.windows.window_ids()[0];
                     let permit = running.services.process.execution_permit();
-                    let owner = RunningProcessOwner::start(running, app);
+                    let owner = RunningProcessOwner::test_start_unmounted(running, app);
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     command.request_exit();
                     app.spawn(async move |cx| {

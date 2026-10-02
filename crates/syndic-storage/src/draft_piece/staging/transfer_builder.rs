@@ -1,5 +1,15 @@
 use super::*;
 
+struct WindowTransitionInput {
+    staging_head: DraftMutationStagingHeadV1,
+    build: Box<DraftPieceBuildRecordV1>,
+    session: DraftEditorCandidateSessionV1,
+    pages: Vec<DraftMutationStagingPageV1>,
+    replacements: Vec<DraftPieceReplacementV1>,
+    continuation: DraftPieceDurableBuildContinuationV1,
+    inserted_utf8_bytes: usize,
+}
+
 impl SyndicStorage {
     pub fn transfer_draft_mutation_staging_to_builder(
         &self,
@@ -207,30 +217,19 @@ impl SyndicStorage {
         if !target_continuation.is_locally_exact() {
             return Err(DraftMutationStagingErrorV1::Invariant);
         }
-        let prepared_edit = super::mutation::prepared_edit_from_staging_build(&build, &session)
-            .map_err(|_| DraftMutationStagingErrorV1::Invariant)?;
-        let (target_build, target_receipt, target_session, fragments) =
-            super::mutation::staged_page_transition(
-                &prepared_edit,
-                &build,
-                &session,
-                &replacements,
-                target_continuation,
-            )
-            .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
-        Ok(Some(PreparedDraftPieceStagingWindowV1 {
-            staging_head: head,
-            staging_pages: pages.into_boxed_slice(),
-            expected_build: build,
-            expected_session: session,
-            target_build,
-            target_receipt,
-            target_session,
-            fragments,
-            inserted_utf8_bytes,
-            acquisition_read_count: acquisition.reads(),
-            acquisition_encoded_value_bytes: acquisition.encoded_value_bytes(),
-        }))
+        prepare_window_transition(
+            &acquisition,
+            WindowTransitionInput {
+                staging_head: head,
+                build,
+                session,
+                pages,
+                replacements,
+                continuation: target_continuation,
+                inserted_utf8_bytes,
+            },
+        )
+        .map(Some)
     }
 
     pub fn stage_next_durable_draft_piece_window(
@@ -295,6 +294,38 @@ impl SyndicStorage {
             crate::SyndicPointReadLimit::new(65_536).expect("staging point limit is nonzero"),
         )
     }
+}
+
+#[inline(never)]
+fn prepare_window_transition(
+    acquisition: &StagingWindowAcquisitionReader<'_>,
+    input: WindowTransitionInput,
+) -> Result<PreparedDraftPieceStagingWindowV1, DraftMutationStagingErrorV1> {
+    let prepared_edit =
+        super::mutation::prepared_edit_from_staging_build(&input.build, &input.session)
+            .map_err(|_| DraftMutationStagingErrorV1::Invariant)?;
+    let (target_build, target_receipt, target_session, fragments) =
+        super::mutation::staged_page_transition(
+            &prepared_edit,
+            &input.build,
+            &input.session,
+            &input.replacements,
+            input.continuation,
+        )
+        .map_err(|_| DraftMutationStagingErrorV1::Invalid)?;
+    Ok(PreparedDraftPieceStagingWindowV1 {
+        staging_head: input.staging_head,
+        staging_pages: input.pages.into_boxed_slice(),
+        expected_build: input.build,
+        expected_session: input.session,
+        target_build: Box::new(target_build),
+        target_receipt: Box::new(target_receipt),
+        target_session,
+        fragments,
+        inserted_utf8_bytes: input.inserted_utf8_bytes,
+        acquisition_read_count: acquisition.reads(),
+        acquisition_encoded_value_bytes: acquisition.encoded_value_bytes(),
+    })
 }
 
 fn replacement_inserted_utf8_bytes(

@@ -63,7 +63,27 @@ impl MainWindowInitialComposerPrepared {
         submission_request_source: super::MainWindowComposerSubmissionRequestSource,
         appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> Result<super::MainWindowShellPrepared, MainWindowInitialComposerFailure> {
-        let Self { prepared, custody } = self;
+        Box::new(self)
+            .into_shell_owned(
+                composer_configurator,
+                marker_seals,
+                submission_request_source,
+                appearance,
+            )
+            .map(|prepared| *prepared)
+            .map_err(|failure| *failure)
+    }
+
+    #[inline(never)]
+    pub(in crate::main_window) fn into_shell_owned(
+        self: Box<Self>,
+        composer_configurator: super::MainWindowShellComposerConfigurator,
+        marker_seals: crate::composer_marker_seal::DraftMarkerSealService,
+        submission_request_source: super::MainWindowComposerSubmissionRequestSource,
+        appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> Result<Box<super::MainWindowShellPrepared>, Box<MainWindowInitialComposerFailure>> {
+        let prepared = &self.prepared;
+        let custody = &self.custody;
         let validation = (|| {
             custody.validate_source()?;
             custody
@@ -81,8 +101,12 @@ impl MainWindowInitialComposerPrepared {
             Ok(())
         })();
         if let Err(error) = validation {
-            return Err(MainWindowInitialComposerFailure { custody, error });
+            return Err(Box::new(MainWindowInitialComposerFailure {
+                custody: self.custody,
+                error,
+            }));
         }
+        let Self { prepared, custody } = *self;
         let MainWindowInitialComposer {
             acquisition,
             reservation,
@@ -90,15 +114,17 @@ impl MainWindowInitialComposerPrepared {
             acquisition_service: _,
             acquisition_store: _,
         } = custody;
-        Ok(super::MainWindowShellPrepared::from_initial_composer(
-            acquisition,
-            reservation,
-            prepared,
-            composer_configurator,
-            marker_seals,
-            submission_request_source,
-            appearance,
-            Box::new(candidate),
+        Ok(Box::new(
+            super::MainWindowShellPrepared::from_initial_composer(
+                acquisition,
+                reservation,
+                prepared,
+                composer_configurator,
+                marker_seals,
+                submission_request_source,
+                appearance,
+                Box::new(candidate),
+            ),
         ))
     }
 

@@ -7,6 +7,10 @@ mod construction;
 mod exit_command;
 #[cfg(target_os = "windows")]
 mod final_teardown;
+#[cfg(target_os = "windows")]
+mod nonfinal_native;
+#[cfg(target_os = "windows")]
+mod pre_native_close;
 mod recovery;
 mod restored;
 mod selected;
@@ -230,6 +234,7 @@ impl GpuiMainWindowShellHost<'_> {
         options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
+                identity: Rc::new(()),
                 content,
                 appearance,
                 minimum_size,
@@ -343,6 +348,7 @@ impl GpuiMainWindowShellHost<'_> {
 }
 
 pub struct MainWindowShellController {
+    identity: Rc<()>,
     content: ShellContent,
     pub(super) appearance: MainWindowShellAppearance,
     minimum_size: gpui::Size<gpui::Pixels>,
@@ -433,6 +439,12 @@ pub struct MainWindowShell {
     published: bool,
     #[cfg(target_os = "windows")]
     startup_disposal: Option<startup_disposal::ShellStartupDisposalAdmission>,
+    #[cfg(target_os = "windows")]
+    nonfinal_native_destruction: Option<gpui::WindowsNativeWindowDestruction>,
+    #[cfg(target_os = "windows")]
+    pre_native_close: Option<pre_native_close::PreNativeCloseCustody>,
+    #[cfg(all(test, target_os = "windows"))]
+    nonfinal_native_fault: Option<gpui::WindowsNativeWindowDestructionTestFault>,
     #[cfg(target_os = "windows")]
     desktop_placement: Option<desktop_flight::ShellDesktopPlacementAdmission>,
     #[cfg(all(target_os = "windows", feature = "test-faults"))]
@@ -593,6 +605,8 @@ pub struct MainWindowShellRoot {
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,
     exit_disabled_reason: Option<&'static str>,
+    running_command: Option<crate::startup_owner::RunningWindowExit>,
+    ordinary_close_interaction_gated: bool,
     #[cfg(target_os = "windows")]
     blocked_shutdown: Option<std::rc::Weak<RefCell<crate::running_owner::RunningProcessOwner>>>,
     pub(super) controller: Option<MainWindowShellController>,

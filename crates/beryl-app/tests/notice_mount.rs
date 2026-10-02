@@ -2,8 +2,6 @@
 
 #[path = "notice_mount/composer_feedback.rs"]
 mod composer_feedback;
-#[path = "notice_mount/mutation_completion.rs"]
-mod mutation_completion;
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
 #[path = "main_window_creation/support.rs"]
@@ -12,6 +10,8 @@ mod creation_support;
 mod home_support;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[path = "notice_mount/mutation_completion.rs"]
+mod mutation_completion;
 #[path = "syndic_composer_history/support.rs"]
 mod mutation_support;
 #[path = "notice_mount/support.rs"]

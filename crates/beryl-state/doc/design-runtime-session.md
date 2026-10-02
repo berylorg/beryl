@@ -122,7 +122,8 @@ runtime/root, session/window, and thread-claim durable state.
 - Ordinary healthy access exposes the same bounded classification for the original generation.
   Removal and restoration have separate command outcomes and reconciliation custody. An unrelated
   home writer revision may require fresh preparation, but cannot relax exact session/window/claim
-  comparisons. The composing caller retains cancellation and native-survival proof; State evidence
+  comparisons. The composing caller retains cancellation and exact native-survival proof, either
+  settled native survival or the app's separately qualified custody before destruction admission; State evidence
   alone authorizes neither reopening nor native retry. If the home fails, ordinary admission closes
   and retained immutable evidence continues through the existing candidate recovery route.
 - Verify claimed and threadless members, final and nonfinal sets through capacity, preserved

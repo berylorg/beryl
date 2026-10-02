@@ -134,8 +134,8 @@ fn prepare_transfer(
     }
     if stored_head.as_ref() == Some(&p.target_head)
         && stored_transfer.as_ref() == Some(&p.receipt)
-        && stored_build.as_ref() == Some(&p.build)
-        && stored_build_receipt.as_ref() == Some(&p.build_receipt)
+        && stored_build.as_ref() == Some(p.build.as_ref())
+        && stored_build_receipt.as_ref() == Some(p.build_receipt.as_ref())
         && stored_session == p.target_session
         && point::<DraftPieceSettlementsFamily>(reader, &build_key)?.is_none()
         && point::<DraftPieceRootsFamily>(

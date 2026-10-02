@@ -109,6 +109,9 @@ impl MainWindowConversationComposerMount {
             return Ok(false);
         }
         self.window_close = None;
+        self.failed_recovery_close = None;
+        self.failed_resident = None;
+        self.failed_resident_detached = false;
         cx.notify();
         Ok(true)
     }
@@ -152,6 +155,24 @@ impl MainWindowConversationComposerMount {
         ticket: MainWindowConversationComposerCloseTicket,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerCloseRelease, String> {
+        if self.failed_recovery_close == Some(ticket) {
+            if !self.recovery_binding_current(ticket) {
+                return Err("failed recovery mount binding changed".into());
+            }
+            let resident = self
+                .contribution
+                .as_ref()
+                .ok_or("failed recovery resident is unavailable")?
+                .clone();
+            if !resident.update(cx, |resident, cx| {
+                resident.recovered_close_release_ready(ticket, cx)
+            })? || !self.prepare_recovered_autosave(ticket.selection())?
+            {
+                return Ok(MainWindowConversationComposerCloseRelease::Pending);
+            }
+            self.window_close_released = Some(ticket);
+            return Ok(MainWindowConversationComposerCloseRelease::Released);
+        }
         if ticket.owner != cx.entity_id() || !self.recovery_binding_current(ticket) {
             return Err("recovered draft close ticket is stale".into());
         }

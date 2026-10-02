@@ -14,7 +14,7 @@ fn native_partial_preparation_retains_later_member_until_exact_release() {
                 let invoking = first.windows.window_ids()[0];
                 let first_window = first.windows.shells()[0].window();
                 let second_window = second.windows.shells()[0].window();
-                let owner = RunningProcessOwner::start(first, app);
+                let owner = RunningProcessOwner::test_start_unmounted(first, app);
                 app.spawn(async move |cx| {
                     let deadline = Instant::now() + Duration::from_secs(5);
                     loop {

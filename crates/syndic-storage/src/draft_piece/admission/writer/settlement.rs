@@ -190,7 +190,12 @@ pub(crate) struct PreparedDraftMarkerWriterTerminalV1 {
 }
 
 impl PreparedDraftMarkerWriterTerminalV1 {
-    pub(crate) fn outcome_evidence(&self) -> (DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionReplayReceiptV1) {
+    pub(crate) fn outcome_evidence(
+        &self,
+    ) -> (
+        DraftMarkerAdmissionHeadV1,
+        DraftMarkerAdmissionReplayReceiptV1,
+    ) {
         (self.head.clone(), self.receipt.clone())
     }
 }

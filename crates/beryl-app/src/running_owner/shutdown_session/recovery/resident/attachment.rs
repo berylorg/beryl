@@ -81,17 +81,30 @@ impl RunningProcessOwner {
         if !matches!(slot.as_ref(), Some(CandidateSettlement::Pending)) {
             return Err("Resident preparation graph custody changed".into());
         }
-        let (graph, close) = drafts.adopt_recovered_shell(
-            root,
-            resident.entity_id(),
-            flight.close,
-            &mut flight.preparation,
-            adapters,
-            configurator,
-            current,
-            window,
-            cx,
-        )?;
+        let (graph, close) = match &mut flight.preparation {
+            Preparation::Failed(preparation) => drafts.adopt_failed_recovered_shell(
+                root,
+                resident.entity_id(),
+                flight.close,
+                preparation,
+                adapters,
+                configurator,
+                current,
+                window,
+                cx,
+            )?,
+            Preparation::Clean(preparation) => drafts.adopt_recovered_shell(
+                root,
+                resident.entity_id(),
+                flight.close,
+                preparation,
+                adapters,
+                configurator,
+                current,
+                window,
+                cx,
+            )?,
+        };
         captured.2 = close;
         *slot = Some(CandidateSettlement::Services(Ok(graph)));
         recovery.resident.take();
