@@ -85,7 +85,8 @@ runtime/root, session/window, and thread-claim durable state.
 - State captures one opaque immutable removal evidence value from a coherent healthy-home read
   of the exact Running header, one referenced window and its matching active paired claim, or
   the sole valid threadless window. Bracket these reads with equal home revisions. Retain only
-  the durable home id and canonical home path, fixed-capacity header, one window and optional claim;
+  the durable home id, canonical home path and original process home-generation identity,
+  fixed-capacity header, one window and optional claim;
   no store, domain handle, lease or receipt is retained. Missing, changed, malformed or restoring sources
   refuse capture. Before admitting removal, check availability of both session successors and the
   one window and optional claim successor needed by restoration. Home and domain revision
