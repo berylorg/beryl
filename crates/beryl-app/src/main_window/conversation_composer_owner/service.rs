@@ -25,9 +25,12 @@ use crate::main_window::MainWindowComposerSlot;
 mod candidate_source;
 mod candidate_worker;
 mod close;
-mod retirement;
 mod close_cleanup;
+mod failed_candidate_source;
+mod failed_resident;
+pub use failed_candidate_source::MainWindowFailedResidentCandidateSource;
 mod native_disposal;
+mod retirement;
 
 pub use candidate_source::MainWindowComposerCandidateSource;
 pub use candidate_worker::*;

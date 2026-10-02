@@ -38,15 +38,36 @@ impl SyndicComposerHost {
             fault(store, self.storage.clone());
         }
         let outcome = store.execute(command);
-        match outcome {
-            CommandOutcome::Indeterminate { reconciliation, .. } => {
-                self.pending_publication_mut(ticket)?.stage = PublicationStage::Reconciling {
-                    prepared,
-                    handle: reconciliation.install_and_handle(),
-                };
+        self.retain_publication_command(binding, prepared.clone(), outcome);
+        match &self.publication.retained.as_ref().unwrap().outcome {
+            RetainedComposerCommandOutcome::Indeterminate { handle, .. } => {
+                let handle = handle.clone();
+                self.pending_publication_mut(ticket)?.stage =
+                    PublicationStage::Reconciling { prepared, handle };
                 Ok(ComposerHostPublicationCompletion::ReconciliationPending)
             }
-            outcome => self.settle_publication(store, ticket, binding, prepared, outcome),
+            RetainedComposerCommandOutcome::NotCommitted(_) => {
+                let classification = self
+                    .publication
+                    .retained
+                    .as_ref()
+                    .unwrap()
+                    .outcome
+                    .noncommitted_classification()
+                    .unwrap();
+                self.settle_publication(store, ticket, binding, prepared, classification)
+            }
+            RetainedComposerCommandOutcome::Committed { .. } => {
+                let classification = self
+                    .publication
+                    .retained
+                    .as_ref()
+                    .unwrap()
+                    .outcome
+                    .committed_classification()
+                    .unwrap();
+                self.settle_publication(store, ticket, binding, prepared, classification)
+            }
         }
     }
 
@@ -63,10 +84,26 @@ impl SyndicComposerHost {
             };
             (pending.intent.binding, prepared.clone(), handle.clone())
         };
-        let outcome = match store.reconcile(&handle)? {
-            ReconciliationResolution::ExactOld => CommandOutcome::NotCommitted {
-                evidence: CommandError::ReentrantWriter,
-            },
+        let resolution = store.reconcile(&handle)?;
+        let RetainedComposerCommandOutcome::Indeterminate { result, .. } = &mut self
+            .publication
+            .retained
+            .as_mut()
+            .ok_or(ComposerHostError::PublicationUnavailable)?
+            .outcome
+        else {
+            return Err(ComposerHostError::PublicationUnavailable);
+        };
+        *result = Some(Ok(resolution.clone()));
+        let outcome = match resolution {
+            ReconciliationResolution::ExactOld => self
+                .publication
+                .retained
+                .as_ref()
+                .unwrap()
+                .outcome
+                .noncommitted_classification()
+                .unwrap(),
             ReconciliationResolution::ExactNew { receipt } => CommandOutcome::Committed {
                 receipt,
                 later_failure: None,
@@ -287,6 +324,7 @@ impl SyndicComposerHost {
             active.session_disposed = false;
         }
         self.publication.lane = None;
+        self.publication.retained = None;
         Ok(completion)
     }
 }
@@ -298,6 +336,15 @@ fn add_asset_participant(
     plan: PublicationAssetPlan,
 ) -> Result<(), ComposerHostError> {
     let revision = assets.revision(store)?;
+    append_asset_participant(command, assets, revision, plan)
+}
+
+pub(super) fn append_asset_participant(
+    command: &mut HomeCommand,
+    assets: &AssetState,
+    revision: beryl_model::DomainRevision,
+    plan: PublicationAssetPlan,
+) -> Result<(), ComposerHostError> {
     match plan {
         PublicationAssetPlan::Replace {
             draft,

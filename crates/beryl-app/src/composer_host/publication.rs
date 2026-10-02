@@ -1,6 +1,12 @@
+mod candidate;
 mod disposal;
+pub(in crate::composer_host) use candidate::{
+    add_asset_participant_candidate, prepare_asset_plan_candidate,
+};
 mod execution;
 mod lane;
+pub(in crate::composer_host) mod retained;
+pub(crate) use retained::RetainedComposerCommandOutcome;
 
 use beryl_home_store::{CommandCancellation, HomeStore, ReconciliationHandle};
 use beryl_model::{SealedAssetReferenceSetProof, SyndicDraftId};
@@ -152,6 +158,7 @@ pub enum ComposerHostPublicationUnavailable {
 pub(super) struct ComposerHostPublicationCoordinator {
     lane_generation: u64,
     pub(super) lane: Option<Box<ComposerHostPublicationLane>>,
+    pub(in crate::composer_host) retained: Option<Box<retained::RetainedComposerPublication>>,
     #[cfg(feature = "test-faults")]
     convergence_read_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, syndic_storage::SyndicStorage) + Send>>,
@@ -162,6 +169,7 @@ impl ComposerHostPublicationCoordinator {
         Self {
             lane_generation: 0,
             lane: None,
+            retained: None,
             #[cfg(feature = "test-faults")]
             convergence_read_fault: None,
         }
@@ -191,6 +199,14 @@ pub(super) struct PendingPublication {
 }
 
 impl PendingPublication {
+    pub(super) fn retains_unfinished_marker_authority(&self) -> bool {
+        self.intent.marker_authority.is_some()
+            && matches!(
+                self.stage,
+                PublicationStage::Terminal { prepared: None, .. }
+            )
+    }
+
     pub(super) const fn binding(&self) -> ComposerHostBinding {
         self.intent.binding
     }
@@ -236,12 +252,12 @@ impl SyndicComposerHost {
 
 #[derive(Clone)]
 pub(super) struct PreparedPublication {
-    syndic: PreparedDraftEditorCandidatePublicationV1,
-    asset: PublicationAssetPlan,
+    pub(in crate::composer_host) syndic: PreparedDraftEditorCandidatePublicationV1,
+    pub(in crate::composer_host) asset: PublicationAssetPlan,
 }
 
 #[derive(Clone, Copy)]
-enum PublicationAssetPlan {
+pub(in crate::composer_host) enum PublicationAssetPlan {
     Replace {
         draft: SyndicDraftId,
         expected: Option<AssetOwnerHeadExpectation>,
@@ -366,12 +382,26 @@ fn prepare_asset_plan(
     candidate: DraftRootHistoryPairV1,
     evidence: DraftEditorCandidatePublicationEvidenceV1,
 ) -> Result<PublicationAssetPlan, ComposerHostError> {
-    let draft = candidate.root().key().draft_id();
-    let owner = AssetOwner::CurrentDraft(draft);
+    let owner = AssetOwner::CurrentDraft(candidate.root().key().draft_id());
     let current = assets.owner_head(store, owner)?;
     match evidence {
-        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty { asset_proof, .. } => {
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty { asset_proof, .. }
+        | DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty { asset_proof } => {
             assets.sealed_reference_set_manifest(store, asset_proof)?;
+        }
+        _ => {}
+    }
+    prepare_asset_plan_from_head(candidate, evidence, current)
+}
+
+fn prepare_asset_plan_from_head(
+    candidate: DraftRootHistoryPairV1,
+    evidence: DraftEditorCandidatePublicationEvidenceV1,
+    current: Option<beryl_state::AssetOwnerHeadRecord>,
+) -> Result<PublicationAssetPlan, ComposerHostError> {
+    let draft = candidate.root().key().draft_id();
+    match evidence {
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty { asset_proof, .. } => {
             let expected = current.as_ref().map(|head| head.expectation());
             if expected.is_some_and(|value| value.set() == asset_proof) {
                 return Err(ComposerHostError::PublicationAssetMismatch);
@@ -390,7 +420,6 @@ fn prepare_asset_plan(
             Ok(PublicationAssetPlan::Remove { draft, expected })
         }
         DraftEditorCandidatePublicationEvidenceV1::UnchangedNonempty { asset_proof } => {
-            assets.sealed_reference_set_manifest(store, asset_proof)?;
             let expected = current
                 .as_ref()
                 .filter(|head| head.set() == asset_proof)

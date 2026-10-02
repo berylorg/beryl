@@ -1,7 +1,7 @@
 use super::*;
 use gpui_text_input::RangePrepublicationCleanupToken;
 
-impl<C> MainWindowComposerCandidateCustody<C> {
+impl<C, S: MainWindowComposerPrepublicationSource, R> MainWindowComposerCandidateCustody<C, S, R> {
     pub fn settle_undispatched(
         &mut self,
         effect: RangePrepublicationEffect,

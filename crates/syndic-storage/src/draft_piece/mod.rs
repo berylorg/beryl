@@ -36,9 +36,11 @@ pub use mutation::staged_command::*;
 pub use mutation::{DraftPieceBuildWorkV1, PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
 pub use publication::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
+    DraftEditorCandidatePublicationCorrespondenceV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,
     DraftEditorCandidatePublicationSourcePreparationErrorV1,
-    PreparedDraftEditorCandidatePublicationV1, PreparedDraftEditorCandidateSessionAbandonFreshV1,
+    DraftEditorCandidateSavedCorrespondenceV1, PreparedDraftEditorCandidatePublicationV1,
+    PreparedDraftEditorCandidateSessionAbandonFreshV1,
     PreparedDraftEditorCandidateSessionDisposeV1,
 };
 pub(crate) use publication::{PreparedCandidateDisposal, prepare_candidate_disposal};

@@ -21,11 +21,13 @@ use super::{
 
 mod autosave;
 mod close;
+mod failed_resident;
 mod flush;
 mod retirement;
 mod service;
 mod settlement;
 
+pub use failed_resident::ComposerHostFailedResident;
 pub use retirement::ComposerHostRetiredClose;
 
 use settlement::{

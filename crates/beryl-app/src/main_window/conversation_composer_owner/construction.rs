@@ -206,6 +206,8 @@ impl MainWindowConversationComposer {
             release_fence_requires_restoration: false,
             window_close: None,
             recovery_snapshot: None,
+            failed_resident: None,
+            failed_resident_generation: 0,
             unpublished_recovery_protection: None,
             startup_interaction_gated: false,
             shutdown_interaction_gated: false,

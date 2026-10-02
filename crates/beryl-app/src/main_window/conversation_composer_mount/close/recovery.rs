@@ -9,7 +9,8 @@ impl MainWindowConversationComposerMount {
     }
 
     pub(in crate::main_window::conversation_composer_mount) fn recovery_fenced(&self) -> bool {
-        self.window_close.is_some_and(|close| close.recovery_fenced)
+        self.failed_resident.is_some()
+            || self.window_close.is_some_and(|close| close.recovery_fenced)
     }
 
     pub fn detach_interrupted_exit_native_lineage_control(

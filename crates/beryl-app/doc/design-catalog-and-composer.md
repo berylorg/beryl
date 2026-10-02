@@ -216,6 +216,47 @@ governed by [design.md](design.md). It does not independently declare engineerin
   worker completion, candidate failure, environment/capacity refusal, cancellation and complete
   cleanup. Independently review the source correspondence and lifecycle composition; widget-only
   evidence cannot establish service-worker retirement or whole-home recovery.
+- Failed-home resident recovery has separate move-only retirement custody for a selected active
+  editor whose home has failed, including an unflushed candidate. It installs the exact resident
+  input fence, retains widget protection and bounded selection/restoration facts, drains admitted
+  adapter work and explicitly retires old services. The custody retains the exact live candidate,
+  activation/checkpoint/root/history, previous durable selector and original publication or flush
+  outcome/reconciliation. It retains no old home/service capability after completed retirement.
+- Fresh same-home candidate qualification authenticates all retained candidate/session provenance,
+  State membership and paired claim before reconstruction. Original publication uncertainty must
+  reconcile first. Retain an older autosave's captured checkpoint separately from newer live
+  edits; its proven commit cannot mark those newer edits saved or be repeated. An authenticated
+  saved candidate needs no write; proving that the retained unsaved checkpoint has no committed
+  or unresolved publication permits its exact captured publication through candidate access with independent
+  result/reconciliation custody. Conflict, unresolved work, corruption or terminal uncertainty
+  preserves the resident and cannot establish readiness.
+- The candidate-save boundary accepts existing typed marker and Asset publication evidence;
+  the recovery caller prepares it through fresh bounded candidate services before invoking a
+  marker-changing save. Retirement retains the source facts needed for this preparation, without
+  retaining old service capabilities. Missing or mismatched evidence preserves failed-resident
+  custody. Ordinary-command recovery owns this preparation routing and complete graph integration.
+- The supplied-proof failed-resident primitive must refuse before dropping adapters or services
+  while any unfinished marker flight or unretained terminal marker authority remains. Its host
+  boundary leaves caller-owned marker-service custody with that caller; the caller preserves it
+  before graph retirement. An empty flight count alone cannot prove settlement when collision
+  removed a service flight but left original staging authority in the host publication lane.
+- Recovery preparation preserves unfinished process-owned seal flights before old graph retirement,
+  including original typed staging authority and command/reconciliation custody. It drives fresh
+  candidate seal and reference-set preparation under the existing single injected service's
+  finite capacity and bounded page protocol. Missing capture or uncertain completion blocks
+  retirement/publication; dropping a non-driving flight is not recovery settlement. Ordinary
+  Healthy/generation guards remain unchanged.
+- This route reconstructs the same editor session and live history after independently proven
+  save; it does not open a fresh session or import another unpublished checkpoint. The existing
+  checked widget adoption, capacity reservation, stale-completion and cleanup rules apply with
+  the newly authenticated saved checkpoint. Caret, directed selection, inline gaps, scroll and
+  history remain preserved. Failed-generation custody is distinct from clean retired-host facts;
+  clean retirement and saved-checkpoint validators are unchanged. Coherent process recovery,
+  rather than a local successful save, releases interaction.
+- Verify failed-home admission, dirty and already-saved candidates, original noncommit/commit/
+  indeterminate outcomes, fresh save failures and reconciliation, stale/foreign/colliding facts,
+  cancellation and retained custody, renewed claims and unchanged editor/input/history state.
+  Independently review source provenance, persistence outcomes and native lifecycle integration.
 - Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
   decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
   background cleanup remains bounded. The mounted interaction gate, admission reservation, and

@@ -56,6 +56,9 @@ This entry point governs these bounded normative supplements:
 - `AssetState::revision_candidate` reads only the asset-domain revision through borrowed explicit
   candidate recovery access. It preserves exact home/generation handle qualification and read
   confirmation failures; it neither grants ordinary admission nor publishes the candidate.
+- `AssetState::owner_head_candidate` and `sealed_reference_set_manifest_candidate` expose the
+  existing bounded typed owner and authenticated sealed-manifest reads through that same private
+  access, preserving the [Asset proof contract](design-assets.md).
 
 - `SessionState::revision_candidate` reads the session domain revision through explicit candidate
   recovery access, retaining typed home and generation checks without ordinary read admission.

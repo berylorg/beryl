@@ -648,3 +648,65 @@ and compact restoration reads through borrowed home-candidate access and fresh S
 It uses the same bounds and authentication as ordinary reads, performs no writes, and does not
 open ordinary service access. The caller separately authenticates the retained saved checkpoint
 and claims before deriving a replacement composer binding.
+
+## Retained Composer Candidate Recovery Publication
+
+- Borrowed same-home recovery candidate access supports exact retained editor-candidate
+  qualification and publication source capture, preparation and submission before graph
+  publication. This boundary shares ordinary provenance, source eligibility, revision fences,
+  marker/Asset witnesses, bounded preparation and atomic publication algorithms. It neither
+  exposes healthy-store admission nor creates another editor session or publication algorithm.
+- Qualification authenticates the retained active session, exact candidate generation/root/live
+  history and prior durable selector/checkpoint through fresh typed handles. Current-session
+  eligibility, settled staging/building custody and captured-checkpoint provenance remain
+  mandatory. Foreign homes, conflicting selectors, disposed sessions and unproven
+  candidate facts fail closed. Exact retained same-process recovery is not permission to adopt
+  unpublished state from another session or process.
+- An already-saved checkpoint returns authenticated saved correspondence without publication.
+  An unsaved checkpoint may publish only after the caller settles any original publication
+  outcome and proves that this checkpoint has no committed or unresolved publication. An older
+  autosave's proven commit is neither repeated nor evidence that newer retained edits are saved;
+  fresh qualification uses the authenticated resulting selector before saving those newer edits.
+  Preparation retains the exact captured checkpoint even when
+  newer facts exist; it cannot substitute the newest candidate or mark a later generation saved.
+  Original and recovery publication outcomes have independent ordinary reconciliation custody.
+  Proven commit is freshly validated and never repeated; uncertainty authorizes no retry or save.
+- Qualification returns typed saved correspondence for the retained candidate and authenticated
+  resulting selector/active binding. Ordinary publication's canonical live-to-published history
+  normalization remains Syndic-owned and preserves logical undo/redo history, root and generation.
+  Correspondence authenticates that exact captured publication and current resulting head; a
+  different later checkpoint is refused. Callers neither copy stale pre-save bindings nor derive
+  private history mappings. The facts remain bound to the fresh home/generation and confer no
+  service or graph publication authority.
+- An older publication may advance the editor session generation while preserving a newer live
+  checkpoint. A separate move-only publication correspondence authenticates the exact retained
+  binding against the receipt's before-head, its older captured checkpoint, unchanged newer
+  candidate/root/live history, and the exact current after-head and resulting selector. Fresh
+  revision and idle-session closure checks remain mandatory. This correspondence supplies the
+  current binding for separate saved observation or save; it is not a saved-checkpoint proof.
+  Callers retain the original capture separately from the rebound checkpoint and preserve
+  independent original/recovery outcome custody across repeated qualification and retry.
+- Candidate publication preserves the existing V7 schema and command/receipt semantics, including
+  marker-aware atomic Asset/Syndic proof composition. Access remains private and bounded by the
+  owning recovery attempt; publication alone grants no app graph publication, widget attachment,
+  claim restoration or interaction-release authority. No raw record access or app-derived proof
+  mapping supplies this boundary.
+- Verify saved/unsaved checkpoints, inherited generations and live history, marker-aware sources,
+  stale/foreign/conflicting session and selector facts, pending staging/building, commit/noncommit/
+  indeterminate publication outcomes and reconciliation, duplicate refusal and cancellation
+  custody. Independently review provenance, revision fencing and persistence outcomes.
+
+## Candidate Marker Evidence Preparation
+
+- Borrowed same-home recovery candidate access supports seal begin, bounded advancement, status
+  and cancel/fail/supersede preparation through the ordinary seal algorithms and authenticated
+  source, marker-tree, cursor and frontier readers. Fresh home/generation and revision fences,
+  exact source commitments, configured page limits and terminal-state validation remain intact.
+- Existing typed seal contributions and State reference-set contributions retain their atomic
+  command semantics. The recovery caller preserves the original staging capability and each
+  command outcome/reconciliation independently, authenticates committed completion before using
+  opaque proofs, and rejects unresolved, colliding or substituted facts. No schema change, raw
+  record access, synthetic witness or ordinary healthy admission is granted by these counterparts.
+- Verify fresh and resumed marker flights, exact old/new reconciliation, bounded cursor closure,
+  source substitution, stale/foreign handles, read and command failures, terminal idempotence and
+  collision, and atomic Syndic/Asset preparation. Independent persistence/resource review applies.

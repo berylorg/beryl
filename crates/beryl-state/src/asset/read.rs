@@ -1,4 +1,4 @@
-use beryl_home_store::{HomeStore, ReadError};
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore, ReadError};
 use beryl_model::{
     AssetReferenceSetId, OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof,
     SequentialMarkerSummaryV1,
@@ -58,10 +58,45 @@ pub(super) fn require_sealed_manifest(
     store: &HomeStore,
     proof: SealedAssetReferenceSetProof,
 ) -> Result<AssetReferenceSetManifest, AssetReadError> {
-    let manifest = read_manifest(state, store, proof.set_id())?
-        .ok_or(AssetReadError::ReferenceSetMissing(proof.set_id()))?;
-    let evidence = read_completion_evidence(state, store, proof.set_id())?
-        .ok_or(AssetReadError::CompletionEvidenceMismatch(proof.set_id()))?;
+    require_sealed_manifest_using(
+        proof,
+        || read_manifest(state, store, proof.set_id()),
+        || read_completion_evidence(state, store, proof.set_id()),
+    )
+}
+
+pub(super) fn require_sealed_manifest_candidate(
+    state: &AssetState,
+    access: &HomeCandidateRecoveryAccess<'_>,
+    proof: SealedAssetReferenceSetProof,
+) -> Result<AssetReferenceSetManifest, AssetReadError> {
+    require_sealed_manifest_using(
+        proof,
+        || {
+            access.read_point::<AssetDomain, AssetReferenceManifestCodec>(
+                &state.handle,
+                &proof.set_id(),
+                manifest_point_limit(),
+            )
+        },
+        || {
+            access.read_point::<AssetDomain, AssetReferenceCompletionEvidenceCodec>(
+                &state.handle,
+                &proof.set_id(),
+                completion_evidence_point_limit(),
+            )
+        },
+    )
+}
+
+fn require_sealed_manifest_using(
+    proof: SealedAssetReferenceSetProof,
+    read_manifest: impl FnOnce() -> Result<Option<AssetReferenceSetManifest>, ReadError>,
+    read_evidence: impl FnOnce() -> Result<Option<AssetReferenceSetCompletionEvidence>, ReadError>,
+) -> Result<AssetReferenceSetManifest, AssetReadError> {
+    let manifest = read_manifest()?.ok_or(AssetReadError::ReferenceSetMissing(proof.set_id()))?;
+    let evidence =
+        read_evidence()?.ok_or(AssetReadError::CompletionEvidenceMismatch(proof.set_id()))?;
     verify_sealed_manifest(&manifest, &evidence, proof)?;
     Ok(manifest)
 }

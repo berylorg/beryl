@@ -109,6 +109,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerCloseAdmission, String> {
+        if self.failed_resident.is_some() {
+            return Err("window close is retained by failed resident recovery".into());
+        }
         if let Some(close) = self.window_close {
             if close.recovery_fenced {
                 return Err("window close is retained for recovery".to_owned());

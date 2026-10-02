@@ -33,6 +33,16 @@ and repair-media participants.
   one duplicate-free validation-only participant: it checks exact optional heads and revision
   fence, makes no write, advances no asset revision, and is absent from affected receipt domains.
   An all-assertion batch is `NoEffect`.
+- Borrowed same-home candidate recovery access exposes bounded owner-head and sealed-reference-set
+  manifest reads through fresh Asset handles. These preserve ordinary typed codecs, home/generation
+  qualification, limits and complete sealed-proof/completion-evidence validation. They grant no
+  ordinary admission, asset mutation, graph publication or caller-derived proof authority, and
+  support the existing typed Asset contribution to retained composer recovery publication.
+- Candidate recovery also supports authenticated Building-manifest and reference-set completion
+  reads with the original typed staging capability. Completion shares ordinary manifest/evidence,
+  lifecycle, frontier, local-chain and final-summary validation; it returns exact Building state
+  or the actual committed Sealed proof, never a proposed seal or authority reconstructed from a
+  bare identity. Fresh handles and read failure retain ordinary candidate invalidation rules.
 - Next-turn promotion atomically removes the exact AcceptedInput head and publishes the exact fresh
   SubmittedTurnItem head over the same sealed set; marker-free promotion asserts both absent and
   never touches CurrentDraft. Removing any head does not delete metadata or sidecar bytes, prove

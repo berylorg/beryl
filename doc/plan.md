@@ -89,14 +89,37 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 704: Establish Exact Interrupted-Close Session Recovery (finished)
+# Phase 705: Establish Failed-Home Resident Recovery Custody (finished)
 
-State now supplies bounded exact removal evidence, authenticated removal, fresh-candidate
-qualification and separately reconciled restoration of the same window and renewed paired claim.
-Local and isolated canonical checks, 29 relevant tests across unchanged related and corrected
-recovery runs, and independent persistence review passed; see
-[acceptance evidence](failures/ordinary-close-recovery.md#typed-persistence-acceptance).
-Phase 595 still owns ordinary command mounting and complete interrupted-close recovery integration.
+Failed-home resident custody, fresh candidate publication with supplied real typed proofs and
+protected same-editor/history reconstruction passed independent review, focused regressions and
+isolated canonical checks. See [acceptance evidence](failures/ordinary-close-recovery.md#failed-resident-capability-acceptance).
+Fresh marker preparation remains phase 706; ordinary command integration remains phase 595.
+
+# Phase 706: Prepare Marker Evidence Through Recovery Candidate Access (wip)
+
+Complete the candidate marker-preparation prerequisite identified by the bounded phase 705 audit.
+The [image-assets system](systems/image-assets/design.md#reference-and-label-evidence),
+[Syndic candidate evidence contract](../crates/syndic-storage/doc/design-draft-storage.md#candidate-marker-evidence-preparation),
+[State Asset contract](../crates/beryl-state/doc/design-assets.md) and
+[app composer authority](../crates/beryl-app/doc/design-catalog-and-composer.md) control this boundary.
+Phase 705's save primitive consumes supplied typed proofs; it does not establish this preparation.
+
+- Add candidate counterparts sharing Syndic's authenticated seal begin/advance/status/terminal
+  preparation and State's original-staging-authority Building/completion reads. Preserve existing
+  atomic contributions, schema, revision fences, bounded pages and exact terminal semantics.
+- Retain unfinished process seal flight authority and independent outcomes before old graph
+  retirement; drive fresh or resumed candidate preparation without old service capabilities or
+  another flight-capacity owner. Refusal and uncertainty preserve custody and block publication.
+- Verify real marker-changing resident preparation/save, original-flight recovery, missing or
+  substituted authority, commit/noncommit/uncertain cuts, cancellation/supersession, stale delivery
+  and resource limits. Require independent persistence/lifecycle review and canonical checks.
+
+Current milestone: implement candidate Asset/marker preparation and retained process flight custody.
+
+No schema or publication-algorithm blocker was found. Current ordinary-only seal/read access and
+non-driving-flight disposal cannot substitute for this capability. Phase 595 consumes it after
+acceptance; its ordinary command mounting remains separate.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -118,9 +141,11 @@ vetoed until owned cleanup succeeds, and require fresh activation after cancella
 Derive focused integration cases and independently review the complete ordinary command boundary
 before acceptance. Executable entry composition remains phase 596.
 
-Next milestone: inspect and connect the published-shell native close callback and Exit toolbar
-to persistent running-owner custody. Completion requires actual command delivery, exact draft and
-session settlement, and owned native removal; helper-only admission does not accept this mount.
+Next milestone: verify the connected native close callback and Exit toolbar through production
+running-owner construction, including windows created after startup. Implementation also connects
+exact restored-claim rebinding after interrupted close and retains newly created shells in the
+complete process-owned set. Completion requires actual command delivery, exact draft and session
+settlement, and owned native removal; helper-only admission does not accept this mount.
 
 - Mount current availability before enabling Exit; retain one command consumer across cancelled
   or coherently failed attempts, with fresh activation and duplicate coalescing.
@@ -134,7 +159,29 @@ session settlement, and owned native removal; helper-only admission does not acc
 
 Consume phase 704's exact persistence boundary for reported-failed ordinary closes. The Operator
 approved this recovery direction on 2026-10-02; the former readiness blocker is recorded in
-[the evidence](failures/ordinary-close-recovery.md). Ordinary routing has no production edits yet.
+[the evidence](failures/ordinary-close-recovery.md). Implementation is connecting the ordinary
+command boundary to retained running-owner custody and the accepted exact recovery transition.
+
+Current checkpoint: production routing and recovery are implemented but not accepted. Eight app
+session cases and focused mounted close/Exit, confirmed durable-work shutdown, small-draft
+cancellation and unavailable-origin cases pass. New Window now publishes on the unchanged WinRT
+stack after bounded creation-frame corrections. A broader run passed 19 of 28 cases, including all
+ten shared activation cases. Corrected nonfinal resident fencing and healthy-conflict notice
+admission then passed both focused cases, preserving background work and permitting fresh close.
+
+Created-window close/Exit and the corrected nonfinal toolbar presentation now pass. Thirteen of
+21 mounted cases have passing per-case evidence; seven recovery cases and genuine dirty editing
+remain unresolved. Five existing dispatch regressions pass, but the real enabled-editor dirty case
+still overflows the worker stack. No final combined run or phase acceptance is claimed.
+
+Prerequisite identified on 2026-10-02: independent readiness review confirmed that surviving residents cannot enter
+ordinary close admission after home failure, and existing retirement/reconstruction accepts only
+a proven clean checkpoint. It cannot represent a failed dirty flush. The proposed separate
+[failed-home resident recovery prerequisite](failures/ordinary-close-recovery.md#failed-home-resident-recovery-readiness)
+was approved by the Operator and is now phase 705 under the updated app/storage contracts.
+Preserve current source/test progress and existing clean validators. After that prerequisite and
+the dirty worker-stack correction, run combined native/session/affected regressions and final
+independent/canonical acceptance checks. Native verification retains an external per-case deadline.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

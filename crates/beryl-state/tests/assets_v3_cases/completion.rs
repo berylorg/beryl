@@ -7,6 +7,160 @@ use beryl_state::AssetReferenceSetManifestCorruption;
 #[cfg(feature = "test-faults")]
 use beryl_state::BerylStateRegistrationError;
 
+#[cfg(feature = "test-faults")]
+#[test]
+fn candidate_reference_reads_preserve_proof_and_handle_qualification() {
+    use beryl_home_store::test_faults::{FaultController, FaultPoint};
+
+    let directory = tempdir().unwrap();
+    let foreign_directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let (store, state) = support::state_fixture::open_with_faults(directory.path(), faults.clone());
+    let (_foreign_store, foreign_state) = support::open(foreign_directory.path());
+    let (asset_id, _) = publish_metadata(&store, &state);
+    let proof = seal_one_entry_set(
+        &store,
+        &state,
+        AssetReferenceSetId::from_bytes([121; 16]),
+        marker(1),
+        ImageLabelOrdinal::FIRST,
+        asset_id,
+    );
+    let owner = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([122; 16]));
+    execute(
+        &store,
+        state.assets().update_owner_heads(
+            state.assets().revision(&store).unwrap(),
+            UpdateAssetOwnerHeads::new(Box::from([AssetOwnerHeadUpdate::replace(
+                owner,
+                None,
+                Some(proof),
+            )]))
+            .unwrap(),
+        ),
+    );
+    let expected_head = state.assets().owner_head(&store, owner).unwrap().unwrap();
+    let expected_revision = state.assets().revision(&store).unwrap();
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(store.home_revision().is_err());
+    let mut recovered = store.recover_same_home().unwrap();
+    let fresh = BerylState::reacquire_candidate(&recovered).unwrap();
+    let reference = recovered.service_reference();
+    let access = recovered.recovery_access().unwrap();
+
+    assert!(fresh.assets().owner_head(&reference, owner).is_err());
+    assert!(state.assets().owner_head_candidate(&access, owner).is_err());
+    assert!(
+        foreign_state
+            .assets()
+            .owner_head_candidate(&access, owner)
+            .is_err()
+    );
+    assert!(
+        state
+            .assets()
+            .sealed_reference_set_manifest_candidate(&access, proof)
+            .is_err()
+    );
+    assert!(
+        foreign_state
+            .assets()
+            .sealed_reference_set_manifest_candidate(&access, proof)
+            .is_err()
+    );
+    assert_eq!(
+        fresh
+            .assets()
+            .owner_head_candidate(&access, owner)
+            .unwrap()
+            .unwrap()
+            .expectation(),
+        expected_head.expectation(),
+    );
+    let manifest = fresh
+        .assets()
+        .sealed_reference_set_manifest_candidate(&access, proof)
+        .unwrap();
+    assert_eq!(manifest.sequential(), proof.sequential());
+    assert_eq!(manifest.ordered_assets(), proof.ordered_assets());
+    let changed_proof = SealedAssetReferenceSetProof::new(
+        proof.set_id(),
+        marker_summary([(marker(2), ImageLabelOrdinal::FIRST)]),
+        ordered_marker_asset_summary([(marker(2), ImageLabelOrdinal::FIRST, asset_id)]),
+        proof.entry_frontier(),
+        proof.asset_chain_digest(),
+    )
+    .unwrap();
+    assert!(matches!(
+        fresh
+            .assets()
+            .sealed_reference_set_manifest_candidate(&access, changed_proof),
+        Err(AssetReadError::SealedProofMismatch(_)),
+    ));
+    assert_eq!(
+        fresh.assets().revision_candidate(&access).unwrap(),
+        expected_revision
+    );
+    let published = recovered.publish().unwrap();
+    assert_eq!(
+        fresh
+            .assets()
+            .owner_head(&published, owner)
+            .unwrap()
+            .unwrap()
+            .expectation(),
+        expected_head.expectation()
+    );
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn candidate_reference_read_failure_keeps_replacement_unpublished() {
+    use beryl_home_store::test_faults::{FaultController, FaultPoint};
+
+    for manifest_read in [false, true] {
+        let directory = tempdir().unwrap();
+        let faults = FaultController::new();
+        let (store, state) =
+            support::state_fixture::open_with_faults(directory.path(), faults.clone());
+        let (asset_id, _) = publish_metadata(&store, &state);
+        let proof = seal_one_entry_set(
+            &store,
+            &state,
+            AssetReferenceSetId::from_bytes([123; 16]),
+            marker(1),
+            ImageLabelOrdinal::FIRST,
+            asset_id,
+        );
+        faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        assert!(store.home_revision().is_err());
+        let mut recovered = store.recover_same_home().unwrap();
+        let fresh = BerylState::reacquire_candidate(&recovered).unwrap();
+        let access = recovered.recovery_access().unwrap();
+        faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        if manifest_read {
+            assert!(
+                fresh
+                    .assets()
+                    .sealed_reference_set_manifest_candidate(&access, proof)
+                    .is_err()
+            );
+        } else {
+            assert!(
+                fresh
+                    .assets()
+                    .owner_head_candidate(
+                        &access,
+                        AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([124; 16]))
+                    )
+                    .is_err()
+            );
+        }
+        assert!(fresh.assets().revision_candidate(&access).is_err());
+        assert!(recovered.publish().is_err());
+    }
+}
+
 #[test]
 fn completion_read_returns_only_the_current_open_manifest_without_advancing_state() {
     let directory = tempdir().unwrap();

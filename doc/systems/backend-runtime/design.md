@@ -301,6 +301,22 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   restoration, stale and duplicate delivery, conflicting membership/claims, and preservation of
   the same surviving native window. Final close uses the same recovery rule for its empty
   post-removal set. Independently review the persistence and lifecycle integration.
+- Failed-home recovery captures every preserved resident through a separate failed-generation
+  retirement boundary, including residents not captured before the failure and an unsaved
+  candidate whose flush failed. It fences input, drains admitted work and retains bounded exact
+  candidate/root/history, prior durable selector and original publication outcome custody.
+  Ordinary healthy-close admission and clean-checkpoint retirement are not substitutes.
+- After old graph retirement, fresh same-home candidate access authenticates this custody and
+  settles original publication outcomes before any new save. State membership/claim settlement
+  precedes dependent resident reconstruction. Syndic owns candidate provenance and publication;
+  Asset qualifications remain typed and atomic. Already-saved facts require validation only;
+  proven noncommit of an unsaved checkpoint permits separately retained candidate publication.
+  Indeterminate, conflicting or unsupported facts retain custody and interaction fencing.
+- Reconstruction preserves the same protected native editor and its captured input/history
+  state. Successful save alone grants no graph publication or interaction release. Complete
+  fresh graph bindings, exact saved-checkpoint authentication and all resident/work settlement
+  still precede coherent reopening. This route creates no new editor session, adopts no unrelated
+  unpublished state and does not relax clean interrupted-Exit validators.
 
 ## Protocol Ownership
 

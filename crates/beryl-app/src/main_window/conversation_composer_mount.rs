@@ -27,6 +27,8 @@ use super::{
 
 pub(super) mod autosave;
 mod close;
+mod failed_resident;
+pub use failed_resident::MainWindowFailedResidentMountResources;
 mod native_disposal;
 mod native_lineage;
 mod pending_presentation;
@@ -165,6 +167,8 @@ pub struct MainWindowConversationComposerMount {
     window_close: Option<close::ActiveWindowClose>,
     window_close_generation: u64,
     window_close_released: Option<MainWindowConversationComposerCloseTicket>,
+    failed_resident: Option<super::MainWindowFailedResidentTicket>,
+    failed_resident_detached: bool,
     #[cfg(test)]
     test_defer_recovered_mount: bool,
     #[cfg(test)]
@@ -400,6 +404,8 @@ impl MainWindowConversationComposerMount {
             window_close: None,
             window_close_generation: 0,
             window_close_released: None,
+            failed_resident: None,
+            failed_resident_detached: false,
             #[cfg(test)]
             test_defer_recovered_mount: false,
             #[cfg(test)]

@@ -19,6 +19,7 @@ impl MainWindowConversationComposer {
         self.startup_interaction_gated
             || self.shutdown_interaction_gated
             || self.window_close.is_some()
+            || self.failed_resident.is_some()
     }
 
     pub(super) fn sync_mutation_gate(&self, cx: &mut Context<Self>) {

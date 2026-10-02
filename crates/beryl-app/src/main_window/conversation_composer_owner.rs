@@ -32,6 +32,7 @@ mod close;
 mod construction;
 mod detached;
 mod dispatch;
+mod failed_resident;
 mod lifecycle;
 mod prepublication;
 mod realization;
@@ -42,6 +43,10 @@ mod service;
 mod shutdown;
 mod startup;
 
+pub use failed_resident::preparation::{
+    MainWindowFailedResidentAdoption, MainWindowFailedResidentPreparation,
+};
+pub use failed_resident::{MainWindowFailedResidentCapture, MainWindowFailedResidentTicket};
 #[cfg(feature = "test-faults")]
 pub use prepublication::MainWindowNativeLineagePrepublicationDiagnostics;
 pub(in crate::main_window) use prepublication::{
@@ -56,6 +61,7 @@ pub use recovery::{
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowComposerCandidateSource;
 pub use service::MainWindowConversationComposerService;
+pub use service::MainWindowFailedResidentCandidateSource;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 pub use service::{
     MainWindowComposerCandidateCompletion, MainWindowComposerCandidateCustody,
@@ -173,6 +179,8 @@ pub struct MainWindowConversationComposer {
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     recovery_snapshot: Option<MainWindowComposerRecoverySnapshot>,
+    failed_resident: Option<failed_resident::FailedResidentFence>,
+    failed_resident_generation: u64,
     unpublished_recovery_protection: Option<(
         super::MainWindowConversationComposerCloseTicket,
         gpui_text_input::RangeResidentProtection,

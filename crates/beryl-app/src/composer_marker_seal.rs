@@ -40,6 +40,8 @@ struct ServiceState {
     reconcile_fault: ReconcileFault,
     #[cfg(feature = "test-faults")]
     fail_next_drive_operationally: bool,
+    #[cfg(feature = "test-faults")]
+    fail_next_drive_as_collision: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -151,8 +153,12 @@ impl DraftMarkerSealService {
             let command_fault = state.command_fault.take();
             let reconcile_fault = state.reconcile_fault.take();
             #[cfg(feature = "test-faults")]
-            let injected_failure = std::mem::take(&mut state.fail_next_drive_operationally)
-                .then_some(DraftMarkerSealServiceError::InjectedOperationalFailure);
+            let injected_failure = if std::mem::take(&mut state.fail_next_drive_as_collision) {
+                Some(DraftMarkerSealServiceError::ReconciliationCollision)
+            } else {
+                std::mem::take(&mut state.fail_next_drive_operationally)
+                    .then_some(DraftMarkerSealServiceError::InjectedOperationalFailure)
+            };
             #[cfg(not(feature = "test-faults"))]
             let injected_failure: Option<DraftMarkerSealServiceError> = None;
             (
@@ -271,6 +277,13 @@ impl DraftMarkerSealService {
         state.fail_next_drive_operationally = true;
     }
 
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_drive_as_collision(&self) {
+        let mut state = lock_state(&self.inner);
+        assert!(!state.fail_next_drive_as_collision);
+        state.fail_next_drive_as_collision = true;
+    }
+
     pub fn diagnostics(&self) -> DraftMarkerSealServiceDiagnostics {
         let state = lock_state(&self.inner);
         DraftMarkerSealServiceDiagnostics {
@@ -343,6 +356,8 @@ fn new_shared_home_state(
         reconcile_fault: ReconcileFault::default(),
         #[cfg(feature = "test-faults")]
         fail_next_drive_operationally: false,
+        #[cfg(feature = "test-faults")]
+        fail_next_drive_as_collision: false,
     }))
 }
 

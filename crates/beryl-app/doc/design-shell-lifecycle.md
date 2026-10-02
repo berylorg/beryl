@@ -1494,6 +1494,27 @@ by the executable composition root.
   barrier. Health transition invalidates mutation authority by generation while windows may retain
   only last coherent inert presentation.
 
+## Failed-Home Resident Recovery
+
+- The running owner captures the complete preserved window set under its exact cancelled request
+  before allowing old graph retirement. Selected residents use the separate failed-generation
+  capture and retirement boundary in [composer authority](design-catalog-and-composer.md);
+  threadless residents retain their existing exact custody. Capture remains available after home
+  failure and does not call ordinary healthy close admission or synthesize a successful flush.
+- Each retained resident owns at most one capture, preparation and publication outcome flight.
+  Input protection, native identity, claims and reservations remain owned while admitted work
+  drains. Incomplete capture, work settlement or service-reference retirement blocks replacement.
+  Nonfinal close still admits no all-work barrier; failed-home whole-graph recovery owns its
+  separate process fencing and retirement.
+- Fresh candidate work settles exact session membership/claim recovery before dependent resident
+  qualification. It authenticates the captured candidate and original publication outcome,
+  independently settles any necessary save, and returns explicit retained custody on failure,
+  cancellation or stale delivery. Only complete fresh resident/session/graph bindings and draft
+  and work settlement authorize the existing atomic reopening boundary.
+- Normal healthy close, clean interrupted-Exit retirement, detached final-teardown sources and
+  their readiness proofs retain their existing contracts. Failed-generation custody cannot
+  authorize native destruction, service publication, automatic close retry or interaction release.
+
 ## Same-Home Replacement Contribution
 
 - The process root retains the bounded Activity enrollment owner across current and candidate

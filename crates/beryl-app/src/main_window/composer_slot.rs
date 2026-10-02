@@ -14,6 +14,8 @@ use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
 mod close;
 mod close_retirement;
+mod failed_resident;
+pub use failed_resident::MainWindowFailedComposerRetirement;
 pub(in crate::main_window) mod dispatch;
 mod lifecycle;
 mod model;
@@ -90,11 +92,11 @@ impl MainWindowComposerSlot {
         }
         let dispatcher = MainWindowComposerDispatcher::new(binding);
         let draft_state = draft_state_for_host(&host, binding)?;
-        Ok(Self {
+        Ok(Self::from_selected(
             window_id,
             storage,
             marker_authority,
-            selected: Some(SelectedComposer {
+            SelectedComposer {
                 identity: MainWindowComposerSelectionIdentity {
                     window_id,
                     claim,
@@ -103,7 +105,21 @@ impl MainWindowComposerSlot {
                 dispatcher,
                 draft_state,
                 host,
-            }),
+            },
+        ))
+    }
+
+    fn from_selected(
+        window_id: WindowId,
+        storage: SyndicStorage,
+        marker_authority: MainWindowComposerMarkerMetadataAuthority,
+        selected: SelectedComposer,
+    ) -> Self {
+        Self {
+            window_id,
+            storage,
+            marker_authority,
+            selected: Some(selected),
             pending: None,
             last_activation_generation: 0,
             disposed: false,
@@ -115,7 +131,7 @@ impl MainWindowComposerSlot {
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
             abandonment_before_execute_fault: None,
-        })
+        }
     }
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {

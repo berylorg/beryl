@@ -118,6 +118,18 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   receives the original capability with the exact request-owned authority when Syndic already
   proves the matching marker seal complete, so a final Asset-seal commit never requires another
   marker traversal.
+- Failed-home resident recovery prepares or resumes marker evidence through borrowed fresh
+  same-home candidate access before graph publication. Syndic shares ordinary authenticated seal
+  begin, bounded advancement, status and terminal preparation; State shares proof-gated Building
+  and completion reads. Fresh revisions fence the existing atomic begin/page commands, and exact
+  committed or reconciled completion authenticates the final proofs. Uncertainty, collision,
+  substituted authority or read failure permits neither another write nor proof selection.
+- Before retiring the old graph, the process preserves each unfinished seal flight's exact
+  request/source, original typed reference-set staging capability, bounded cursor/frontier and
+  independent command outcomes/reconciliation. These facts retain no old service capability and
+  consume the existing process flight capacity. Bare set/request identities cannot reconstruct
+  staging authority. Capture refusal retains original custody and blocks graph retirement;
+  cancellation, failure and supersession retain ordinary exact terminal semantics and cleanup.
 - Final marker-changing current-draft publication uses one mutating Syndic participant plus one
   Asset participant in a single `HomeCommand`. For a changed nonempty commitment, the Syndic
   participant validates its seal proof against the captured root and commitment and requires the

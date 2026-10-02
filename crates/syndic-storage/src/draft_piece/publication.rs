@@ -1,8 +1,9 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CommandOutcome, DomainMutation, DomainReader, HomeStore, MutationBuilder, MutationContribution,
-    ReconciliationFailure, ReconciliationReservation, ReconciliationResolution,
+    CommandOutcome, DomainMutation, DomainReader, HomeCandidateRecoveryAccess, HomeStore,
+    MutationBuilder, MutationContribution, ReconciliationFailure, ReconciliationReservation,
+    ReconciliationResolution,
 };
 use beryl_model::DomainRevision;
 use beryl_model::{
@@ -16,6 +17,7 @@ use crate::codec::{
 };
 use crate::domain::{SyndicDomain, SyndicStorage};
 use crate::mutation::{current_draft, point, required};
+use crate::read::access::ReadAccess;
 use crate::{
     DraftByThreadRecord, DraftRecord, HistorySummaryRecord, SyndicMutationError, SyndicReadError,
     SyndicTimestamp,
@@ -25,12 +27,16 @@ use super::*;
 
 mod abandon_fresh;
 mod disposal;
+mod recovery;
 
 pub(crate) use disposal::{PreparedCandidateDisposal, prepare_candidate_disposal};
 
 pub use abandon_fresh::PreparedDraftEditorCandidateSessionAbandonFreshV1;
 #[cfg(feature = "test-faults")]
 pub use abandon_fresh::test_abandon_fresh_reconciliation_resolution;
+pub use recovery::{
+    DraftEditorCandidatePublicationCorrespondenceV1, DraftEditorCandidateSavedCorrespondenceV1,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DraftEditorCandidatePublicationSourceCaptureRequestV1 {
@@ -448,20 +454,6 @@ fn session_descends_from_publication(
                         && current.newest_history() == current.published_history()))
 }
 
-fn captured_adoption_is_exact_in_store(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    captured: &DraftEditorCandidateSessionV1,
-    frontier: &DraftEditHistoryFrontierV1,
-) -> Result<bool, SyndicReadError> {
-    captured_adoption_is_exact_with_access(
-        storage,
-        crate::read::access::ReadAccess::Ordinary(store),
-        captured,
-        frontier,
-    )
-}
-
 fn captured_adoption_is_exact_with_access(
     storage: &SyndicStorage,
     store: crate::read::access::ReadAccess<'_>,
@@ -744,18 +736,6 @@ fn candidate_session_publication_history_is_exact_with_access(
     )
 }
 
-fn validate_publication_receipt_history_in_store(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    receipt: &DraftEditorCandidatePublicationReceiptV1,
-) -> Result<bool, SyndicReadError> {
-    validate_publication_receipt_history_with_access(
-        storage,
-        crate::read::access::ReadAccess::Ordinary(store),
-        receipt,
-    )
-}
-
 fn validate_publication_receipt_history_with_access(
     storage: &SyndicStorage,
     store: crate::read::access::ReadAccess<'_>,
@@ -804,15 +784,15 @@ fn validate_publication_receipt_history_with_access(
         && session_descends_from_publication(&head, receipt.after_head()))
 }
 
-fn validate_publication_receipt_in_store(
+fn validate_publication_receipt_with_access(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     receipt: &DraftEditorCandidatePublicationReceiptV1,
 ) -> Result<bool, SyndicReadError> {
-    if !validate_publication_receipt_history_in_store(storage, store, receipt)? {
+    if !validate_publication_receipt_history_with_access(storage, store, receipt)? {
         return Ok(false);
     }
-    let head = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let head = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         session_key(
             receipt.after_head().draft_id(),
@@ -823,7 +803,54 @@ fn validate_publication_receipt_in_store(
     let Some(DraftEditorCandidateSessionRecordV1::Head(head)) = head else {
         return Ok(false);
     };
-    session::candidate_session_closure_is_exact_in_store(storage, store, &head)
+    match store {
+        ReadAccess::Ordinary(store) => {
+            session::candidate_session_closure_is_exact_in_store(storage, store, &head)
+        }
+        ReadAccess::Candidate(_) => {
+            session::idle_candidate_closure_is_exact_with_access(storage, store, &head)
+        }
+    }
+}
+
+fn publication_session_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    draft: beryl_model::SyndicDraftId,
+    session_id: DraftEditorCandidateSessionIdV1,
+) -> Result<DraftEditorCandidateSessionReadOutcomeV1, SyndicReadError> {
+    if let ReadAccess::Ordinary(store) = store {
+        return storage.draft_editor_candidate_session(store, draft, session_id);
+    }
+    let key = session_key(draft, session_id);
+    let first = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+        store,
+        key,
+        point_limit(),
+    )?;
+    let Some(DraftEditorCandidateSessionRecordV1::Head(head)) = &first else {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::InvariantFailure);
+    };
+    if head.active_operation().is_some() {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::Active(
+            head.clone(),
+        ));
+    }
+    let exact = session::idle_candidate_closure_is_exact_with_access(storage, store, head)?;
+    let last = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+        store,
+        key,
+        point_limit(),
+    )?;
+    if first != last {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::ConcurrentChange);
+    }
+    if !exact || head.draft_id() != draft || head.session_id() != session_id {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::InvariantFailure);
+    }
+    Ok(DraftEditorCandidateSessionReadOutcomeV1::Active(
+        head.clone(),
+    ))
 }
 
 fn disposal_request_matches_head(
@@ -1316,6 +1343,54 @@ impl SyndicStorage {
         CapturedDraftEditorCandidatePublicationSourceV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
+        self.capture_draft_editor_candidate_publication_source_with_access(
+            ReadAccess::Ordinary(store),
+            request,
+        )
+    }
+
+    pub fn capture_draft_editor_candidate_publication_source_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        request: DraftEditorCandidatePublicationSourceCaptureRequestV1,
+    ) -> Result<
+        CapturedDraftEditorCandidatePublicationSourceV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        self.capture_draft_editor_candidate_publication_source_with_access(
+            ReadAccess::Candidate(store),
+            request,
+        )
+    }
+
+    fn capture_draft_editor_candidate_publication_source_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        request: DraftEditorCandidatePublicationSourceCaptureRequestV1,
+    ) -> Result<
+        CapturedDraftEditorCandidatePublicationSourceV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        let revision = self
+            .revision_with_access(store)
+            .map_err(SyndicReadError::Read)?;
+        let current = self
+            .current_draft_with_access(store, request.selector().thread_id(), point_limit())?
+            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
+        let selected = DraftEditorCurrentSelectorV1::new(
+            current.thread().id(),
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().piece_root(),
+            current.draft().history(),
+        );
+        if selected != request.selector() {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "candidate publication source selector",
+            }
+            .into());
+        }
         let candidate = request.candidate();
         let pair = DraftRootHistoryPairV1::new(candidate.root(), candidate.history());
         if candidate.draft_id() != request.selector().draft_id()
@@ -1326,14 +1401,15 @@ impl SyndicStorage {
         }
         let limit = point_limit();
         let root = self
-            .point::<DraftPieceRootsFamily>(store, candidate.root().key(), limit)?
+            .point_with_access::<DraftPieceRootsFamily>(store, candidate.root().key(), limit)?
             .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
         if root.reference() != candidate.root()
             || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
-        let head = match self.draft_editor_candidate_session(
+        let head = match publication_session_with_access(
+            self,
             store,
             request.selector().draft_id(),
             candidate.session_id(),
@@ -1353,13 +1429,31 @@ impl SyndicStorage {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
         let source_frontier = self
-            .point::<DraftEditHistoryFrontiersFamily>(store, candidate.history().key(), limit)?
+            .point_with_access::<DraftEditHistoryFrontiersFamily>(
+                store,
+                candidate.history().key(),
+                limit,
+            )?
             .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
         if source_frontier.reference() != candidate.history()
-            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &source_frontier)?
-            || !session::candidate_session_adoption_is_exact(self, store, &head)?
+            || !draft_edit_history_frontier_is_authenticated_with_access(
+                self,
+                store,
+                &source_frontier,
+            )?
+            || !session::idle_candidate_closure_is_exact_with_access(self, store, &head)?
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+        }
+        if self
+            .revision_with_access(store)
+            .map_err(SyndicReadError::Read)?
+            != revision
+        {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "candidate publication source capture",
+            }
+            .into());
         }
         Ok(CapturedDraftEditorCandidatePublicationSourceV1 {
             storage: self.clone(),
@@ -1378,8 +1472,30 @@ impl SyndicStorage {
         PreparedDraftEditorCandidatePublicationV1,
         DraftEditorCandidatePublicationSourcePreparationErrorV1,
     > {
-        let prepared =
-            self.prepare_draft_editor_candidate_publication_inner(store, &source, evidence);
+        let prepared = self.prepare_draft_editor_candidate_publication_inner(
+            ReadAccess::Ordinary(store),
+            &source,
+            evidence,
+        );
+        prepared.map_err(
+            |error| DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error },
+        )
+    }
+
+    pub fn prepare_draft_editor_candidate_publication_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        source: CapturedDraftEditorCandidatePublicationSourceV1,
+        evidence: DraftEditorCandidatePublicationEvidenceV1,
+    ) -> Result<
+        PreparedDraftEditorCandidatePublicationV1,
+        DraftEditorCandidatePublicationSourcePreparationErrorV1,
+    > {
+        let prepared = self.prepare_draft_editor_candidate_publication_inner(
+            ReadAccess::Candidate(store),
+            &source,
+            evidence,
+        );
         prepared.map_err(
             |error| DraftEditorCandidatePublicationSourcePreparationErrorV1 { source, error },
         )
@@ -1387,7 +1503,7 @@ impl SyndicStorage {
 
     fn prepare_draft_editor_candidate_publication_inner(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         source: &CapturedDraftEditorCandidatePublicationSourceV1,
         evidence: DraftEditorCandidatePublicationEvidenceV1,
     ) -> Result<
@@ -1396,7 +1512,7 @@ impl SyndicStorage {
     > {
         source
             .storage
-            .revision(store)
+            .revision_with_access(store)
             .map_err(SyndicReadError::Read)?;
         let capture = source.request;
         let candidate = capture.candidate();
@@ -1419,14 +1535,18 @@ impl SyndicStorage {
         }
         let limit = point_limit();
         let root = self
-            .point::<DraftPieceRootsFamily>(store, request.candidate().root().key(), limit)?
+            .point_with_access::<DraftPieceRootsFamily>(
+                store,
+                request.candidate().root().key(),
+                limit,
+            )?
             .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
         if root.reference() != request.candidate().root()
             || !draft_piece_root_reference_is_locally_exact_v1(root.reference())
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
-        if let Some(record) = self.point::<DraftEditorCandidateSessionsFamily>(
+        if let Some(record) = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
             store,
             publication_key(request),
             limit,
@@ -1437,7 +1557,7 @@ impl SyndicStorage {
             let occupied = occupied
                 .publication()
                 .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-            if !validate_publication_receipt_in_store(self, store, occupied)? {
+            if !validate_publication_receipt_with_access(self, store, occupied)? {
                 return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
             }
             return Ok(PreparedDraftEditorCandidatePublicationV1 {
@@ -1449,7 +1569,8 @@ impl SyndicStorage {
                 initially_absent: false,
             });
         }
-        let head = match self.draft_editor_candidate_session(
+        let head = match publication_session_with_access(
+            self,
             store,
             request.selector().draft_id(),
             request.session_id(),
@@ -1470,9 +1591,9 @@ impl SyndicStorage {
             || captured.newest_history() != request.candidate().history()
             || source_frontier.reference() != request.candidate().history()
             || !captured_publication_source_matches(&head, captured)
-            || !candidate_session_publication_is_exact_in_store(self, store, &head)?
-            || !candidate_session_publication_is_exact_in_store(self, store, captured)?
-            || !captured_adoption_is_exact_in_store(self, store, captured, source_frontier)?
+            || !candidate_session_publication_is_exact_with_access(self, store, &head)?
+            || !candidate_session_publication_is_exact_with_access(self, store, captured)?
+            || !captured_adoption_is_exact_with_access(self, store, captured, source_frontier)?
         {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
@@ -1498,6 +1619,25 @@ impl SyndicStorage {
             .contribution(expected_domain_revision, PublicationMutation { prepared })
     }
 
+    pub fn publish_draft_editor_candidate_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        expected_domain_revision: DomainRevision,
+        prepared: PreparedDraftEditorCandidatePublicationV1,
+    ) -> Result<MutationContribution, DraftEditorCandidatePublicationCommandErrorV1> {
+        if store
+            .domain_revision(&self.handle)
+            .map_err(SyndicReadError::Read)?
+            != expected_domain_revision
+        {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "candidate publication contribution",
+            }
+            .into());
+        }
+        Ok(self.publish_draft_editor_candidate(expected_domain_revision, prepared))
+    }
+
     pub fn reconcile_draft_editor_candidate_publication(
         &self,
         store: &HomeStore,
@@ -1507,27 +1647,64 @@ impl SyndicStorage {
         DraftEditorCandidatePublicationOutcomeV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
+        self.reconcile_draft_editor_candidate_publication_with_access(
+            ReadAccess::Ordinary(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    pub fn reconcile_draft_editor_candidate_publication_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        prepared: &PreparedDraftEditorCandidatePublicationV1,
+        outcome: CommandOutcome,
+    ) -> Result<
+        DraftEditorCandidatePublicationOutcomeV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        self.reconcile_draft_editor_candidate_publication_with_access(
+            ReadAccess::Candidate(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    fn reconcile_draft_editor_candidate_publication_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        prepared: &PreparedDraftEditorCandidatePublicationV1,
+        outcome: CommandOutcome,
+    ) -> Result<
+        DraftEditorCandidatePublicationOutcomeV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
         let committed = match outcome {
             CommandOutcome::NotCommitted { .. } => false,
             CommandOutcome::Committed { .. } => true,
-            CommandOutcome::Indeterminate { reconciliation, .. } => match store
-                .reconcile(&reconciliation.install_and_handle())
-                .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?
-            {
-                ReconciliationResolution::ExactNew { .. } => true,
-                ReconciliationResolution::ExactOld => false,
-                ReconciliationResolution::ExactSuccessor { .. }
-                | ReconciliationResolution::Collision => {
-                    return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+            CommandOutcome::Indeterminate { reconciliation, .. } => {
+                let handle = reconciliation.install_and_handle();
+                let resolution = match store {
+                    ReadAccess::Ordinary(store) => store.reconcile(&handle),
+                    ReadAccess::Candidate(store) => store.reconcile(&handle),
                 }
-            },
+                .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?;
+                match resolution {
+                    ReconciliationResolution::ExactNew { .. } => true,
+                    ReconciliationResolution::ExactOld => false,
+                    ReconciliationResolution::ExactSuccessor { .. }
+                    | ReconciliationResolution::Collision => {
+                        return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
+                    }
+                }
+            }
         };
-        self.publication_outcome(store, prepared, committed)
+        self.publication_outcome_with_access(store, prepared, committed)
     }
 
-    fn publication_outcome(
+    fn publication_outcome_with_access(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         prepared: &PreparedDraftEditorCandidatePublicationV1,
         committed: bool,
     ) -> Result<
@@ -1536,7 +1713,7 @@ impl SyndicStorage {
     > {
         let request = prepared.request;
         let limit = point_limit();
-        if let Some(record) = self.point::<DraftEditorCandidateSessionsFamily>(
+        if let Some(record) = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
             store,
             publication_key(request),
             limit,
@@ -1548,7 +1725,7 @@ impl SyndicStorage {
                 .publication()
                 .cloned()
                 .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-            if !validate_publication_receipt_in_store(self, store, &receipt)? {
+            if !validate_publication_receipt_with_access(self, store, &receipt)? {
                 return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
             }
             if receipt.request_bytes() != prepared.canonical_request {
@@ -1572,7 +1749,8 @@ impl SyndicStorage {
                 ))
             };
         }
-        let head = match self.draft_editor_candidate_session(
+        let head = match publication_session_with_access(
+            self,
             store,
             request.selector().draft_id(),
             request.session_id(),
@@ -1591,7 +1769,7 @@ impl SyndicStorage {
             ));
         }
         let current = self
-            .current_draft(store, request.selector().thread_id(), limit)?
+            .current_draft_with_access(store, request.selector().thread_id(), limit)?
             .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
         let selector = DraftEditorCurrentSelectorV1::new(
             current.thread().id(),

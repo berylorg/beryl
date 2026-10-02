@@ -241,6 +241,14 @@ impl AssetState {
         read::require_sealed_manifest(self, store, proof)
     }
 
+    pub fn sealed_reference_set_manifest_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        proof: SealedAssetReferenceSetProof,
+    ) -> Result<AssetReferenceSetManifest, AssetReadError> {
+        read::require_sealed_manifest_candidate(self, access, proof)
+    }
+
     pub fn reference_set_entries(
         &self,
         store: &HomeStore,
@@ -346,6 +354,18 @@ impl AssetState {
         owner: AssetOwner,
     ) -> Result<Option<AssetOwnerHeadRecord>, ReadError> {
         store.read_point::<AssetDomain, AssetOwnerHeadCodec>(
+            &self.handle,
+            &owner,
+            head_point_limit(),
+        )
+    }
+
+    pub fn owner_head_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        owner: AssetOwner,
+    ) -> Result<Option<AssetOwnerHeadRecord>, ReadError> {
+        access.read_point::<AssetDomain, AssetOwnerHeadCodec>(
             &self.handle,
             &owner,
             head_point_limit(),

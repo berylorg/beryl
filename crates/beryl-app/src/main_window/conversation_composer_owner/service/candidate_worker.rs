@@ -19,15 +19,14 @@ use crate::main_window::MainWindowComposerRetiredClose;
 
 mod authentication;
 mod cleanup;
+mod source;
+pub use source::MainWindowComposerPrepublicationSource;
 
-type PreparedSource =
-    Result<MainWindowComposerCandidateSource, (MainWindowComposerRetiredClose, String)>;
+type PreparedSource<S = MainWindowComposerCandidateSource, R = MainWindowComposerRetiredClose> =
+    Result<S, (R, String)>;
 
-type CandidateRead<C> = fn(
-    &mut C,
-    &MainWindowComposerCandidateSource,
-    &RangePrepublicationEffect,
-) -> Result<MainWindowComposerCandidateRead, String>;
+type CandidateRead<C, S = MainWindowComposerCandidateSource> =
+    fn(&mut C, &S, &RangePrepublicationEffect) -> Result<MainWindowComposerCandidateRead, String>;
 
 pub enum MainWindowComposerCandidateRead {
     Validation(RangePrepublicationValidationResponse),
@@ -40,22 +39,30 @@ pub struct MainWindowComposerCandidateCompletion {
     pub result: Result<MainWindowComposerCandidateRead, String>,
 }
 
-struct State<C> {
+struct State<C, S: MainWindowComposerPrepublicationSource, R> {
     generation: Option<RangePrepublicationSessionGeneration>,
-    resources: Option<(C, PreparedSource)>,
-    read: CandidateRead<C>,
+    resources: Option<(C, PreparedSource<S, R>)>,
+    read: CandidateRead<C, S>,
     completion: Option<MainWindowComposerCandidateCompletion>,
     pending: bool,
     cancelled: bool,
     cleanup: Option<Arc<MainWindowNativeLineagePrepublicationSource>>,
 }
 
-pub struct MainWindowComposerCandidateWorker<C = HomeRecoveryCandidate> {
-    state: Rc<RefCell<State<C>>>,
+pub struct MainWindowComposerCandidateWorker<
+    C = HomeRecoveryCandidate,
+    S: MainWindowComposerPrepublicationSource = MainWindowComposerCandidateSource,
+    R = MainWindowComposerRetiredClose,
+> {
+    state: Rc<RefCell<State<C, S, R>>>,
 }
 
-pub struct MainWindowComposerCandidateCustody<C = HomeRecoveryCandidate> {
-    state: Rc<RefCell<State<C>>>,
+pub struct MainWindowComposerCandidateCustody<
+    C = HomeRecoveryCandidate,
+    S: MainWindowComposerPrepublicationSource = MainWindowComposerCandidateSource,
+    R = MainWindowComposerRetiredClose,
+> {
+    state: Rc<RefCell<State<C, S, R>>>,
 }
 
 impl MainWindowComposerCandidateWorker {
@@ -81,7 +88,7 @@ impl MainWindowComposerCandidateWorker {
     }
 }
 
-impl<C> MainWindowComposerCandidateWorker<C> {
+impl<C, S: MainWindowComposerPrepublicationSource, R> MainWindowComposerCandidateWorker<C, S, R> {
     pub fn cancel(&mut self) {
         let mut state = self.state.borrow_mut();
         state.cancelled = true;
@@ -122,7 +129,9 @@ impl<C> MainWindowComposerCandidateWorker<C> {
     }
 }
 
-impl<C: Send + 'static> MainWindowComposerCandidateWorker<C> {
+impl<C: Send + 'static, S: MainWindowComposerPrepublicationSource, R: Send + 'static>
+    MainWindowComposerCandidateWorker<C, S, R>
+{
     pub fn start(
         &mut self,
         effect: RangePrepublicationEffect,
@@ -215,13 +224,15 @@ impl<C: Send + 'static> MainWindowComposerCandidateWorker<C> {
     }
 }
 
-impl<C> Drop for MainWindowComposerCandidateWorker<C> {
+impl<C, S: MainWindowComposerPrepublicationSource, R> Drop
+    for MainWindowComposerCandidateWorker<C, S, R>
+{
     fn drop(&mut self) {
         self.cancel();
     }
 }
 
-impl<C> MainWindowComposerCandidateCustody<C> {
+impl<C, S: MainWindowComposerPrepublicationSource, R> MainWindowComposerCandidateCustody<C, S, R> {
     pub(in crate::main_window) fn retain_adoption_cleanup(
         &self,
         executor: gpui::BackgroundExecutor,
@@ -242,7 +253,7 @@ impl<C> MainWindowComposerCandidateCustody<C> {
         )
     }
 
-    pub fn source(&self) -> Option<Ref<'_, MainWindowComposerCandidateSource>> {
+    pub fn source(&self) -> Option<Ref<'_, S>> {
         Ref::filter_map(self.state.borrow(), |state| {
             state.resources.as_ref()?.1.as_ref().ok()
         })
@@ -297,7 +308,7 @@ impl<C> MainWindowComposerCandidateCustody<C> {
         Ok(Some(delivery))
     }
 
-    pub fn take_resources(&mut self) -> Option<(C, MainWindowComposerCandidateSource)> {
+    pub fn take_resources(&mut self) -> Option<(C, S)> {
         let mut state = self.state.borrow_mut();
         if state.pending
             || state.completion.is_some()
@@ -311,9 +322,7 @@ impl<C> MainWindowComposerCandidateCustody<C> {
         Some((candidate, source))
     }
 
-    pub fn take_refused_resources(
-        &mut self,
-    ) -> Option<(C, MainWindowComposerRetiredClose, String)> {
+    pub fn take_refused_resources(&mut self) -> Option<(C, R, String)> {
         let mut state = self.state.borrow_mut();
         if state.pending
             || state.completion.is_some()
