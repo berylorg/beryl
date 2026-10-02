@@ -35,8 +35,13 @@ pub(super) async fn verify_and_dispose(
     let mut preparation = None;
     let mut appearance = None;
     let mut adapters = None;
-    let mut configurator: Option<MainWindowConversationComposerConfigurator> =
-        Some(Box::new(resident_fixture::configure));
+    let layout = input
+        .read_with(cx, |input, _| input.resident_layout_snapshot())
+        .unwrap();
+    let mut configurator: Option<MainWindowConversationComposerConfigurator> = Some(Box::new({
+        let layout = layout.clone();
+        move |selection| resident_fixture::configure_current(selection, &layout)
+    }));
     let mut retirement = None;
     let current = Rc::new(RefCell::new(None));
     let admitted = std::cell::Cell::new(None);
@@ -106,8 +111,12 @@ pub(super) async fn verify_and_dispose(
                     generation,
                     &mut retirement,
                     move |seed, selection, window| {
-                        let (environment, capacity) =
-                            resident_fixture::environment(seed, selection, window)?;
+                        let (environment, capacity) = resident_fixture::environment_with_layout(
+                            seed,
+                            selection,
+                            window,
+                            Some(&layout),
+                        )?;
                         *captured.borrow_mut() =
                             Some(gpui_text_input::RangePrepublicationCurrent {
                                 binding: seed.binding,

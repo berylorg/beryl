@@ -276,6 +276,41 @@ async fn prepare_inner(
 
 pub(in super::super) use shell_support::config as configure;
 
+pub(in super::super) fn configure_current(
+    selection: MainWindowComposerSelectionIdentity,
+    snapshot: &gpui_text_input::RangeResidentLayoutSnapshot,
+) -> Result<MainWindowConversationComposerConfig, String> {
+    let mut widget = widget_support::widget_config(
+        selection.binding().range_binding(),
+        selection.binding().presentation_generation(),
+    );
+    widget.layout = snapshot.layout.clone();
+    widget.style = snapshot.style.clone();
+    widget.viewport_extent = snapshot.viewport_extent;
+    MainWindowConversationComposerConfig::new(selection, widget).map_err(|error| error.to_string())
+}
+
+pub(in super::super) fn recovery_configuration_current(
+    selection: MainWindowComposerSelectionIdentity,
+    snapshot: &gpui_text_input::RangeResidentLayoutSnapshot,
+) -> Result<
+    (
+        MainWindowConversationComposerConfig,
+        gpui_text_input::RangeSurfaceCharge,
+    ),
+    String,
+> {
+    let config = configure_current(selection, snapshot)?;
+    let current = config.native_lineage_current();
+    Ok((
+        config,
+        gpui_text_input::RangeSurfaceCharge {
+            bytes: current.available_capacity.bytes * 2,
+            items: current.available_capacity.items * 2,
+        },
+    ))
+}
+
 pub(in super::super) fn recovery_configuration(
     selection: MainWindowComposerSelectionIdentity,
 ) -> Result<
@@ -305,11 +340,31 @@ pub(in super::super) fn environment(
     ),
     String,
 > {
+    environment_with_layout(seed, selection, window, None)
+}
+
+pub(in super::super) fn environment_with_layout(
+    seed: gpui_text_input::RangeRestorationSeed,
+    selection: MainWindowComposerSelectionIdentity,
+    window: &gpui::Window,
+    snapshot: Option<&gpui_text_input::RangeResidentLayoutSnapshot>,
+) -> Result<
+    (
+        gpui_text_input::RangePrepublicationEnvironment,
+        gpui_text_input::RangeSurfaceCharge,
+    ),
+    String,
+> {
     use gpui_text_input::*;
     let mut config =
         widget_support::widget_config(seed.binding, selection.binding().presentation_generation());
     config.viewport_extent = gpui::px(96.);
     config.limits.max_realized_block_extent = config.viewport_extent;
+    if let Some(snapshot) = snapshot {
+        config.layout = snapshot.layout.clone();
+        config.style = snapshot.style.clone();
+        config.viewport_extent = snapshot.viewport_extent;
+    }
     let capacity = RangeSurfaceCharge {
         bytes: config.limits.max_surface_bytes * 2,
         items: config.limits.max_surface_items * 2,

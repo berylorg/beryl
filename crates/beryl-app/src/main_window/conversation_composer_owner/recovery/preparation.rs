@@ -275,6 +275,12 @@ impl<C: Send + 'static> MainWindowComposerRecoveryPreparation<C> {
             input
                 .release_resident_protection(protection, cx)
                 .expect("adopted resident retains its exact predecessor protection");
+            resident.unpublished_recovery_protection = Some((
+                adopted.1.close_ticket(),
+                input
+                    .protect_resident(cx)
+                    .expect("fresh prepared successor retains a quiescent disabled widget"),
+            ));
             Ok::<_, String>(adopted)
         })?;
         let selection = source.selection();

@@ -50,8 +50,8 @@ pub(crate) use observation::ConfirmedShutdownAdmission;
 pub(crate) use shutdown_drafts::{RunningShutdownDraftAction, RunningShutdownDraftProgress};
 pub(crate) use shutdown_session::RunningShutdownSession;
 pub(crate) use shutdown_session::{
-    InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
-    ResidentRecoveryWindow,
+    InterruptedExitCandidate, InterruptedExitRecoveryOutcome, RecoveryPreparationFailure,
+    ResidentPreparationKey, ResidentRecoveryWindow,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -71,6 +71,15 @@ pub(crate) struct RunningProcessOwner {
     waiting_for_exit: bool,
     exit_availability: Option<gpui::Task<()>>,
     interrupted_exit: Option<shutdown_session::InterruptedExitRecovery>,
+    automatic_recovery: Option<shutdown_session::AutomaticInterruptedExitRecovery>,
+    #[cfg(test)]
+    disable_automatic_recovery: bool,
+    #[cfg(test)]
+    cancel_recovery_before_publication_validation: bool,
+    #[cfg(test)]
+    cancel_recovery_after_publication: bool,
+    #[cfg(test)]
+    cancel_recovery_after_resident_admission: bool,
     #[cfg(test)]
     exit_waiting_passes: usize,
     #[cfg(test)]
@@ -113,6 +122,15 @@ impl RunningProcessOwner {
             waiting_for_exit: false,
             exit_availability: None,
             interrupted_exit: None,
+            automatic_recovery: None,
+            #[cfg(test)]
+            disable_automatic_recovery: false,
+            #[cfg(test)]
+            cancel_recovery_before_publication_validation: false,
+            #[cfg(test)]
+            cancel_recovery_after_publication: false,
+            #[cfg(test)]
+            cancel_recovery_after_resident_admission: false,
             #[cfg(test)]
             exit_waiting_passes: 0,
             #[cfg(test)]

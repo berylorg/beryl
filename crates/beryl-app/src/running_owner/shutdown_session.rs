@@ -7,10 +7,11 @@ use std::panic::AssertUnwindSafe;
 mod readiness;
 mod reconciliation;
 mod recovery;
+pub(super) use recovery::AutomaticInterruptedExitRecovery;
 pub(super) use recovery::InterruptedExitRecovery;
 pub(crate) use recovery::{
-    InterruptedExitCandidate, RecoveryPreparationFailure, ResidentPreparationKey,
-    ResidentRecoveryWindow,
+    InterruptedExitCandidate, InterruptedExitRecoveryOutcome, RecoveryPreparationFailure,
+    ResidentPreparationKey, ResidentRecoveryWindow,
 };
 
 #[derive(Debug)]

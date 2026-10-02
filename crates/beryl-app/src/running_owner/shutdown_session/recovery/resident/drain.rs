@@ -2,7 +2,7 @@ use super::*;
 
 impl RunningProcessOwner {
     pub(crate) async fn cancel_and_drain_interrupted_exit_resident(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         preparation: &mut Option<ResidentPreparationKey>,
         cx: &mut gpui::AsyncApp,
     ) -> Result<
@@ -14,7 +14,8 @@ impl RunningProcessOwner {
             let returned = cx
                 .update(|app| {
                     {
-                        let retained = owner.borrow();
+                        let retained_owner = owner.recovery_owner()?;
+                        let retained = retained_owner.borrow();
                         let flight = retained
                             .interrupted_exit
                             .as_ref()
@@ -27,8 +28,11 @@ impl RunningProcessOwner {
                             return Err(flight.result.as_ref().unwrap_err().clone());
                         }
                     }
-                    Self::cancel_interrupted_exit_resident(owner, key, app)?;
-                    Ok(owner.borrow_mut().take_cancelled_resident_preparation(key))
+                    Self::cancel_interrupted_exit_resident(&owner.recovery_owner()?, key, app)?;
+                    Ok(owner
+                        .recovery_owner()?
+                        .borrow_mut()
+                        .take_cancelled_resident_preparation(key))
                 })
                 .map_err(|error| error.to_string())??;
             if let Some(returned) = returned {

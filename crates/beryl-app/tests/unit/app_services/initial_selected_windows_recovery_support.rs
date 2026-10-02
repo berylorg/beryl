@@ -42,6 +42,22 @@ pub(super) async fn verify_and_dispose(
         )
     };
     assert_eq!(windows.len(), 2);
+    let layouts = windows
+        .iter()
+        .map(|window| {
+            window
+                .read_with(cx, |root, app| {
+                    let mount = root.controller().unwrap().composer_mount().unwrap();
+                    let composer = mount.read(app).contribution().unwrap();
+                    composer
+                        .read(app)
+                        .gpui_input()
+                        .read(app)
+                        .resident_layout_snapshot()
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
     let mut residents = Vec::new();
     for window in &windows {
         residents.push(
@@ -68,9 +84,16 @@ pub(super) async fn verify_and_dispose(
         );
     }
     let make_entry = |window| {
+        let layout = layouts[windows
+            .iter()
+            .position(|candidate| *candidate == window)
+            .unwrap()]
+        .clone();
         ResidentRecoveryWindow::unprepared(
             window,
-            Box::new(resident_fixture::recovery_configuration),
+            Box::new(move |selection| {
+                resident_fixture::recovery_configuration_current(selection, &layout)
+            }),
         )
     };
     let mut appearance = None;
@@ -206,6 +229,7 @@ pub(super) async fn verify_and_dispose(
         factory_calls.set(index + 1);
         let counts = configured_counts.clone();
         let generation = generation.clone();
+        let layout = layouts[index].clone();
         Ok(Box::new(
             move |selection: crate::main_window::MainWindowComposerSelectionIdentity| {
                 counts.borrow_mut()[index] += 1;
@@ -214,7 +238,7 @@ pub(super) async fn verify_and_dispose(
                 if let Some(previous) = generation.replace(Some(fresh)) {
                     assert_eq!(previous, fresh);
                 }
-                resident_fixture::recovery_configuration(selection)
+                resident_fixture::recovery_configuration_current(selection, &layout)
             },
         ) as Box<dyn FnMut(_) -> _>)
     };

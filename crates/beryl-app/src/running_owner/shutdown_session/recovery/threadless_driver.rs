@@ -21,7 +21,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn recover_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -31,9 +31,11 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         if owner
+            .recovery_owner()?
             .borrow()
             .interrupted_exit
             .as_ref()
@@ -44,7 +46,8 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit fresh appearance is already retained".into());
         }
         cx.update(|app| -> Result<_, String> {
-            let owner = owner.borrow();
+            let retained_owner = owner.recovery_owner()?;
+            let owner = retained_owner.borrow();
             let shells = owner.process.windows.shells();
             if shells.len() != 1 || shells[0].window() != window {
                 return Err("Interrupted Exit requires the sole retained threadless window".into());
@@ -97,7 +100,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_retired_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -107,6 +110,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::prepare_retired_interrupted_exit_threadless_pass(
@@ -123,7 +127,7 @@ impl RunningProcessOwner {
     }
 
     async fn prepare_retired_interrupted_exit_threadless_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -136,7 +140,8 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit preparation was cancelled".into());
         }
         cx.update(|app| -> Result<(), String> {
-            let owner = owner.borrow();
+            let retained_owner = owner.recovery_owner()?;
+            let owner = retained_owner.borrow();
             owner.validate_interrupted_exit_preparation(request, retired)?;
             if owner
                 .interrupted_exit
@@ -172,7 +177,12 @@ impl RunningProcessOwner {
             Ok(())
         })
         .map_err(|error| error.to_string())??;
-        let configuration = owner.borrow().process.configuration.clone();
+        let configuration = owner
+            .recovery_owner()?
+            .borrow()
+            .process
+            .configuration
+            .clone();
         Self::retry_interrupted_exit_preparation_attempts(
             owner,
             request,
@@ -201,7 +211,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn complete_prepared_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -209,6 +219,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::complete_prepared_interrupted_exit_threadless_pass(
@@ -223,7 +234,7 @@ impl RunningProcessOwner {
     }
 
     async fn complete_prepared_interrupted_exit_threadless_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -235,7 +246,8 @@ impl RunningProcessOwner {
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let prepared = owner.interrupted_exit_appearance(request)?;
                 if owner
                     .interrupted_exit
@@ -306,7 +318,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn continue_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,
         retired: HomeGeneration,
@@ -316,6 +328,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let appearance = owner
+            .recovery_owner()?
             .borrow_mut()
             .interrupted_exit_threadless_appearance(request)?;
         Self::attach_and_complete_interrupted_exit_threadless(

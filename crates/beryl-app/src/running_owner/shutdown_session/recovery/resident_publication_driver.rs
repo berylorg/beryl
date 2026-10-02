@@ -13,7 +13,7 @@ use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
     pub(crate) async fn recover_interrupted_exit_resident_window(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
@@ -39,6 +39,7 @@ impl RunningProcessOwner {
         String,
     > {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         if preparation.is_some() || appearance.is_some() || adapters.is_some() {
@@ -49,7 +50,8 @@ impl RunningProcessOwner {
         }
         let (previous, capacity) = cx
             .update(|app| -> Result<_, String> {
-                let owner = owner.borrow();
+                let retained_owner = owner.recovery_owner()?;
+                let owner = retained_owner.borrow();
                 let shells = owner.process.windows.shells();
                 if shells.len() != 1 || shells[0].window() != window {
                     return Err(
@@ -104,15 +106,21 @@ impl RunningProcessOwner {
         }
         let generation = cx
             .update(|app| -> Result<_, String> {
-                let prepared = owner.borrow().interrupted_exit_appearance(request)?;
+                let prepared = owner
+                    .recovery_owner()?
+                    .borrow()
+                    .interrupted_exit_appearance(request)?;
                 let home = prepared.prepared().home();
                 let generation = home.home_generation();
-                let fresh_adapters = owner.borrow().interrupted_exit_composer_adapters(
-                    request,
-                    home.home_id(),
-                    generation,
-                    configuration.projection.turn_start_admission_requirement(),
-                )?;
+                let fresh_adapters = owner
+                    .recovery_owner()?
+                    .borrow()
+                    .interrupted_exit_composer_adapters(
+                        request,
+                        home.home_id(),
+                        generation,
+                        configuration.projection.turn_start_admission_requirement(),
+                    )?;
                 previous.update(app, |set, _| set.retire());
                 *appearance = Some(GpuiAppearanceWindowSet::new(prepared, capacity, app));
                 *adapters = Some(fresh_adapters);
@@ -150,7 +158,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_and_complete_interrupted_exit_resident_window(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -174,6 +182,7 @@ impl RunningProcessOwner {
         String,
     > {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         let attached = Self::prepare_and_attach_interrupted_exit_resident_pass(

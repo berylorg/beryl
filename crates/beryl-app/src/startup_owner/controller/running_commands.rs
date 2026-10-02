@@ -56,6 +56,12 @@ pub(crate) struct RunningExitRequest {
 }
 
 impl RunningExitRequest {
+    pub(crate) fn retain_for_recovery(&self) -> Self {
+        Self {
+            identity: self.identity.clone(),
+            invoking: self.invoking,
+        }
+    }
     #[cfg(test)]
     pub(crate) fn test_foreign(&self) -> Self {
         Self {

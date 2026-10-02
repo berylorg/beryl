@@ -11,7 +11,7 @@ use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
     pub(crate) async fn prepare_and_attach_interrupted_exit_resident_window(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
@@ -35,6 +35,7 @@ impl RunningProcessOwner {
         String,
     > {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::prepare_and_attach_interrupted_exit_resident_pass(
@@ -54,7 +55,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn prepare_and_attach_interrupted_exit_resident_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
@@ -97,7 +98,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn attach_and_retain_interrupted_exit_resident_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
@@ -120,13 +121,28 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         if preparation.is_none() {
             cx.update(|app| {
-                if !owner.borrow().process.commands.is_active(request) {
+                if !owner
+                    .recovery_owner()?
+                    .borrow()
+                    .process
+                    .commands
+                    .is_active(request)
+                {
                     return Err("Interrupted Exit request changed".to_string());
                 }
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
                 *preparation = Some(admit(app)?);
+                #[cfg(test)]
+                if std::mem::take(
+                    &mut owner
+                        .recovery_owner()?
+                        .borrow_mut()
+                        .cancel_recovery_after_resident_admission,
+                ) {
+                    cancellation.cancel();
+                }
                 Ok(())
             })
             .map_err(|error| error.to_string())??;
@@ -139,14 +155,19 @@ impl RunningProcessOwner {
             let attached = cx
                 .update(|app| {
                     let progress = {
-                        let retained = owner.borrow();
+                        let retained_owner = owner.recovery_owner()?;
+                        let retained = retained_owner.borrow();
                         if !retained.process.commands.is_active(request) {
                             return Err("Interrupted Exit request changed".into());
                         }
                         retained.interrupted_exit_resident_result(&key)?
                     };
                     if cancellation.is_cancelled() {
-                        Self::cancel_interrupted_exit_resident(owner, &key, app)?;
+                        Self::cancel_interrupted_exit_resident(
+                            &owner.recovery_owner()?,
+                            &key,
+                            app,
+                        )?;
                         return Err("Interrupted Exit attachment was cancelled".into());
                     }
                     if progress != MainWindowComposerRecoveryProgress::Ready {
@@ -155,21 +176,25 @@ impl RunningProcessOwner {
                     let attached = window
                         .update(app, |root, window, cx| {
                             let current = current.take().unwrap()(window, cx)?;
-                            owner.borrow_mut().attach_interrupted_exit_resident(
-                                request,
-                                &key,
-                                root,
-                                adapters,
-                                configurator,
-                                current,
-                                window,
-                                cx,
-                            )
+                            owner
+                                .recovery_owner()?
+                                .borrow_mut()
+                                .attach_interrupted_exit_resident(
+                                    request,
+                                    &key,
+                                    root,
+                                    adapters,
+                                    configurator,
+                                    current,
+                                    window,
+                                    cx,
+                                )
                         })
                         .map_err(|error| error.to_string())??;
                     preparation.take();
                     *attachment = Some(attached);
                     owner
+                        .recovery_owner()?
                         .borrow_mut()
                         .bind_interrupted_exit_appearance(request, window, appearance, app)?;
                     Ok::<_, String>(Some(()))
@@ -185,7 +210,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn attach_interrupted_exit_threadless_window(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,
         retired_generation: HomeGeneration,
@@ -195,6 +220,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::attach_interrupted_exit_threadless_pass(
@@ -211,7 +237,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn attach_interrupted_exit_threadless_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,
         retired_generation: HomeGeneration,
@@ -233,7 +259,7 @@ impl RunningProcessOwner {
                 })
                 .map_err(|error| error.to_string())??;
             Self::prepare_interrupted_exit_threadless_window(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 retired_home,
                 retired_generation,
@@ -254,16 +280,14 @@ impl RunningProcessOwner {
             }
             window
                 .update(app, |root, window, cx| {
-                    owner.borrow_mut().attach_interrupted_exit_threadless(
-                        request,
-                        root,
-                        &mut source,
-                        window,
-                        cx,
-                    )
+                    owner
+                        .recovery_owner()?
+                        .borrow_mut()
+                        .attach_interrupted_exit_threadless(request, root, &mut source, window, cx)
                 })
                 .map_err(|error| error.to_string())??;
             owner
+                .recovery_owner()?
                 .borrow_mut()
                 .bind_interrupted_exit_appearance(request, window, appearance, app)
         })
@@ -271,7 +295,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_interrupted_exit_service_graph(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -282,7 +306,7 @@ impl RunningProcessOwner {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::prepare_interrupted_exit_services(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 retired,
                 configuration,
@@ -298,22 +322,26 @@ impl RunningProcessOwner {
         receiver
             .await
             .map_err(|_| "Interrupted Exit service preparation delivery is unavailable")?;
-        let result = owner.borrow().interrupted_exit_services_result(request);
+        let result = owner
+            .recovery_owner()?
+            .borrow()
+            .interrupted_exit_services_result(request);
         if let Err(error) = result {
             Self::dispose_returned_interrupted_exit_failure(owner, request, retired, cx).await?;
-            let failed_preparation =
-                owner
-                    .borrow()
-                    .interrupted_exit
-                    .as_ref()
-                    .is_some_and(|recovery| {
-                        matches!(
-                            recovery.settlement.borrow().as_ref(),
-                            Some(super::settlement::CandidateSettlement::Services(Err(_)))
-                        )
-                    });
+            let failed_preparation = owner
+                .recovery_owner()?
+                .borrow()
+                .interrupted_exit
+                .as_ref()
+                .is_some_and(|recovery| {
+                    matches!(
+                        recovery.settlement.borrow().as_ref(),
+                        Some(super::settlement::CandidateSettlement::Services(Err(_)))
+                    )
+                });
             if failed_preparation {
                 owner
+                    .recovery_owner()?
                     .borrow_mut()
                     .return_interrupted_exit_preparation_home(request, retired)?;
             }
@@ -326,7 +354,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn retire_interrupted_exit_for_preparation(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         cancellation: CommandCancellation,
@@ -340,7 +368,8 @@ impl RunningProcessOwner {
                         return Err("Interrupted Exit retirement was cancelled".into());
                     }
                     {
-                        let mut owner = owner.borrow_mut();
+                        let retained_owner = owner.recovery_owner()?;
+                        let mut owner = retained_owner.borrow_mut();
                         owner
                             .process
                             .services
@@ -353,7 +382,7 @@ impl RunningProcessOwner {
                         }
                     }
                     Self::retire_interrupted_exit_graph(
-                        owner,
+                        &owner.recovery_owner()?,
                         request,
                         generation,
                         app,
@@ -375,6 +404,7 @@ impl RunningProcessOwner {
             .await
             .map_err(|_| "Interrupted Exit retirement delivery is unavailable")?;
         owner
+            .recovery_owner()?
             .borrow()
             .interrupted_exit_graph_retirement_result(request)?;
         if cancellation.is_cancelled() {
@@ -384,7 +414,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn retire_and_prepare_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -393,6 +423,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::retire_interrupted_exit_for_preparation(
@@ -415,13 +446,14 @@ impl RunningProcessOwner {
         .await
     }
     pub(super) async fn dispose_returned_interrupted_exit_failure(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let failed_candidate = {
-            let owner = owner.borrow();
+            let retained_owner = owner.recovery_owner()?;
+            let owner = retained_owner.borrow();
             owner.interrupted_exit_graph_retirement_result(request)?;
             matches!(
                 owner
@@ -442,18 +474,22 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn construct_and_settle_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let retry = owner
+            .recovery_owner()?
             .borrow()
             .carried_interrupted_exit_resume_retry(request)?;
         loop {
             loop {
-                let deadline = owner.borrow().interrupted_exit_reopen_deadline(request)?;
+                let deadline = owner
+                    .recovery_owner()?
+                    .borrow()
+                    .interrupted_exit_reopen_deadline(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit candidate construction was cancelled".into());
                 }
@@ -469,7 +505,7 @@ impl RunningProcessOwner {
             let (sender, receiver) = futures_channel::oneshot::channel();
             cx.update(|app| {
                 Self::construct_interrupted_exit_candidate(
-                    owner,
+                    &owner.recovery_owner()?,
                     request,
                     retired,
                     cancellation.clone(),
@@ -484,6 +520,7 @@ impl RunningProcessOwner {
                 .await
                 .map_err(|_| "Interrupted Exit construction delivery is unavailable")?;
             if owner
+                .recovery_owner()?
                 .borrow()
                 .interrupted_exit_reopen_deadline(request)?
                 .is_some()
@@ -491,6 +528,7 @@ impl RunningProcessOwner {
                 continue;
             }
             owner
+                .recovery_owner()?
                 .borrow()
                 .interrupted_exit_construction_result(request)?;
             break;
@@ -499,14 +537,20 @@ impl RunningProcessOwner {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             owner
+                .recovery_owner()?
                 .borrow()
                 .interrupted_exit_construction_result(request)?;
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit candidate settlement was cancelled".into());
             }
-            Self::settle_constructed_exit_candidate(owner, request, app, move |_, _| {
-                let _ = sender.send(());
-            })
+            Self::settle_constructed_exit_candidate(
+                &owner.recovery_owner()?,
+                request,
+                app,
+                move |_, _| {
+                    let _ = sender.send(());
+                },
+            )
         })
         .map_err(|error| error.to_string())??;
         receiver
@@ -520,6 +564,7 @@ impl RunningProcessOwner {
                         return Err("Interrupted Exit candidate settlement was cancelled".into());
                     }
                     if owner
+                        .recovery_owner()?
                         .borrow()
                         .interrupted_exit_candidate_result(request)
                         .is_ok()
@@ -528,7 +573,7 @@ impl RunningProcessOwner {
                     }
                     let (sender, receiver) = futures_channel::oneshot::channel();
                     Self::retry_interrupted_exit_resume_pass(
-                        owner,
+                        &owner.recovery_owner()?,
                         request,
                         retry,
                         app,
@@ -548,12 +593,15 @@ impl RunningProcessOwner {
 
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
-            owner.borrow().interrupted_exit_candidate_result(request)?;
+            owner
+                .recovery_owner()?
+                .borrow()
+                .interrupted_exit_candidate_result(request)?;
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit process-work settlement was cancelled".into());
             }
             Self::settle_interrupted_exit_process_work(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 cancellation.clone(),
                 app,
@@ -566,7 +614,10 @@ impl RunningProcessOwner {
         receiver
             .await
             .map_err(|_| "Interrupted Exit process-work settlement delivery is unavailable")?;
-        owner.borrow().interrupted_exit_candidate_result(request)?;
+        owner
+            .recovery_owner()?
+            .borrow()
+            .interrupted_exit_candidate_result(request)?;
         if cancellation.is_cancelled() {
             return Err("Interrupted Exit process-work settlement was cancelled".into());
         }

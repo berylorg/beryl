@@ -35,7 +35,23 @@ impl MainWindowConversationComposer {
     ) -> Result<(), String> {
         self.input
             .update(cx, |input, input_cx| {
-                input.set_appearance(theme, scrollbar_style, input_cx)
+                let protected = self.unpublished_recovery_protection;
+                if let Some((_, protection)) = protected {
+                    if !input.resident_protection_is_current(protection) {
+                        return Err(gpui_text_input::RangeTextInputError::Stale);
+                    }
+                    input.release_resident_protection(protection, input_cx)?;
+                }
+                let applied = input.set_appearance(theme, scrollbar_style, input_cx);
+                if let Some((close, _)) = protected {
+                    self.unpublished_recovery_protection = Some((
+                        close,
+                        input.protect_resident(input_cx).expect(
+                            "visual appearance preserves the exact quiescent disabled resident",
+                        ),
+                    ));
+                }
+                applied
             })
             .map_err(|error| error.to_string())
     }

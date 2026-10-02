@@ -219,6 +219,57 @@ impl MainWindowComposerActivationResidency {
 }
 
 impl MainWindowConversationComposerConfig {
+    pub(in crate::main_window) fn retain_resident_layout(
+        &mut self,
+        snapshot: gpui_text_input::RangeResidentLayoutSnapshot,
+    ) {
+        self.widget.layout = snapshot.layout;
+        self.widget.style = snapshot.style;
+        self.widget.viewport_extent = snapshot.viewport_extent;
+    }
+    pub(crate) fn interrupted_exit_configurator(
+        &mut self,
+    ) -> Result<
+        Box<
+            dyn FnMut(
+                MainWindowComposerSelectionIdentity,
+            ) -> Result<(Self, gpui_text_input::RangeSurfaceCharge), String>,
+        >,
+        String,
+    > {
+        let settlement_capacity = self.widget.settlement_coordinator.capacity();
+        self.widget.settlement_coordinator = gpui_text_input::RangeSettlementCoordinator::new(
+            settlement_capacity,
+        )
+        .map_err(|error| format!("Recovery settlement configuration was rejected: {error:?}"))?;
+        let widget = self.widget.clone();
+        let capacity = gpui_text_input::RangeSurfaceCharge {
+            bytes: widget
+                .limits
+                .max_surface_bytes
+                .checked_add(widget.limits.max_surface_bytes)
+                .ok_or("Recovery surface byte capacity overflowed")?,
+            items: widget
+                .limits
+                .max_surface_items
+                .checked_add(widget.limits.max_surface_items)
+                .ok_or("Recovery surface item capacity overflowed")?,
+        };
+        Ok(Box::new(move |selection| {
+            let mut widget = widget.clone();
+            widget.binding = selection.binding().range_binding();
+            widget.presentation_generation = gpui_text_input::PresentationGeneration::new(
+                selection.binding().presentation_generation().get(),
+            );
+            widget.settlement_coordinator =
+                gpui_text_input::RangeSettlementCoordinator::new(settlement_capacity).map_err(
+                    |error| format!("Recovery settlement configuration was rejected: {error:?}"),
+                )?;
+            Self::new(selection, widget)
+                .map(|config| (config, capacity))
+                .map_err(|error| format!("Recovery composer configuration was rejected: {error:?}"))
+        }))
+    }
     pub(in crate::main_window) fn shell_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
         gpui::size(
             self.widget.layout.font_size.max(gpui::px(1.))

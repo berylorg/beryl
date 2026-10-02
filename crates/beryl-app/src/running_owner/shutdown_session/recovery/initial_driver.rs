@@ -7,7 +7,7 @@ use syndic_storage::SyndicTimestamp;
 
 impl RunningProcessOwner {
     async fn recover_resident_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -17,7 +17,8 @@ impl RunningProcessOwner {
         let (threadless, home, retired, generation) = cx
             .update(|app| -> Result<_, String> {
                 use crate::theme_runtime::AppearancePublicationTarget;
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 owner.interrupted_exit_graph_retirement_result(request)?;
                 let snapshot = appearance.read(app).target().snapshot();
@@ -63,13 +64,14 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn recover_prepared_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let publication_returned = {
-            let mut owner = owner.borrow_mut();
+            let retained_owner = owner.recovery_owner()?;
+            let mut owner = retained_owner.borrow_mut();
             let _driver = owner.reserve_interrupted_exit_driver(request)?;
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit preparation was cancelled".into());
@@ -88,7 +90,8 @@ impl RunningProcessOwner {
         }
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
@@ -148,7 +151,7 @@ impl RunningProcessOwner {
     }
 
     async fn recover_published_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -156,7 +159,8 @@ impl RunningProcessOwner {
         let appearance =
             Self::retained_interrupted_exit_appearance(owner, request, &cancellation, cx)?;
         let activated = {
-            let mut owner = owner.borrow_mut();
+            let retained_owner = owner.recovery_owner()?;
+            let mut owner = retained_owner.borrow_mut();
             let _driver = owner.reserve_interrupted_exit_driver(request)?;
             owner.interrupted_exit_publication_result(request)?;
             if owner.process.services.is_none() {
@@ -192,14 +196,15 @@ impl RunningProcessOwner {
     }
 
     fn retained_interrupted_exit_appearance(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: &CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>, String> {
         let threadless = cx
             .update(|app| -> Result<_, String> {
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
@@ -209,17 +214,19 @@ impl RunningProcessOwner {
             .map_err(|error| error.to_string())??;
         if threadless {
             owner
+                .recovery_owner()?
                 .borrow_mut()
                 .interrupted_exit_threadless_appearance(request)
         } else {
             owner
+                .recovery_owner()?
                 .borrow_mut()
                 .interrupted_exit_selected_appearance(request)
         }
     }
 
     pub(crate) async fn recover_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
@@ -231,7 +238,8 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
@@ -295,7 +303,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn recover_retired_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
@@ -304,7 +312,8 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 let _driver = owner.reserve_interrupted_exit_driver(request)?;
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());

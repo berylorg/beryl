@@ -25,6 +25,24 @@ impl MainWindowConversationComposer {
         if !self.recovered_close_release_ready(ticket, cx)? {
             return Ok(false);
         }
+        if let Some((close, protection)) = self.unpublished_recovery_protection {
+            if close != ticket
+                || !self
+                    .input
+                    .read(cx)
+                    .resident_protection_is_current(protection)
+            {
+                return Err("unpublished recovery resident protection changed".into());
+            }
+            self.input
+                .update(cx, |input, cx| {
+                    input.release_resident_protection(protection, cx)
+                })
+                .map_err(|error| {
+                    format!("recovered resident protection release was rejected: {error:?}")
+                })?;
+            self.unpublished_recovery_protection = None;
+        }
         self.input.update(cx, |input, cx| {
             input.set_read_only(true, cx);
             input.set_enabled(true, cx);

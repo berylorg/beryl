@@ -29,7 +29,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_retired_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -38,9 +38,11 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         owner
+            .recovery_owner()?
             .borrow()
             .validate_interrupted_exit_preparation(request, generation)?;
         Self::prepare_interrupted_exit_attempt(
@@ -86,7 +88,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn prepare_interrupted_exit_attempt(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,

@@ -8,6 +8,9 @@ mod construction;
 mod disposal;
 mod driver;
 mod initial_driver;
+mod supervisor;
+pub(in crate::running_owner) use supervisor::AutomaticInterruptedExitRecovery;
+pub(crate) use supervisor::InterruptedExitRecoveryOutcome;
 mod preparation_driver;
 mod preparation_retry;
 mod publication_driver;
@@ -31,6 +34,23 @@ mod theme_activation;
 mod threadless;
 mod threadless_driver;
 pub(crate) use settlement::InterruptedExitCandidate;
+
+pub(crate) trait RecoveryOwnerAccess {
+    fn recovery_owner(&self) -> Result<Rc<RefCell<RunningProcessOwner>>, String>;
+}
+
+impl RecoveryOwnerAccess for Rc<RefCell<RunningProcessOwner>> {
+    fn recovery_owner(&self) -> Result<Rc<RefCell<RunningProcessOwner>>, String> {
+        Ok(self.clone())
+    }
+}
+
+impl RecoveryOwnerAccess for std::rc::Weak<RefCell<RunningProcessOwner>> {
+    fn recovery_owner(&self) -> Result<Rc<RefCell<RunningProcessOwner>>, String> {
+        self.upgrade()
+            .ok_or_else(|| "Interrupted Exit owner was disposed".into())
+    }
+}
 
 pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,

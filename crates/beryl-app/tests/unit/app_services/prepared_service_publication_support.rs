@@ -273,6 +273,8 @@ pub(super) async fn verify(
         if mode == "publish" {
             match delivery {
                 RecoveryPublicationDelivery::Whole(_)
+                | RecoveryPublicationDelivery::Automatic(_)
+                | RecoveryPublicationDelivery::CancelledServiceFailure(_)
                 | RecoveryPublicationDelivery::SelectedWindows(_)
                 | RecoveryPublicationDelivery::WholeSelected(_)
                 | RecoveryPublicationDelivery::WholeSelectedWindows(_) => {

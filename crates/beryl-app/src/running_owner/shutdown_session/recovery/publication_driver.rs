@@ -6,7 +6,7 @@ use std::time::Duration;
 
 impl RunningProcessOwner {
     pub(crate) async fn attach_and_complete_interrupted_exit_threadless(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired_home: beryl_model::BerylHomeId,
         retired: HomeGeneration,
@@ -17,6 +17,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::attach_interrupted_exit_threadless_pass(
@@ -43,7 +44,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn publish_and_complete_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -52,6 +53,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::publish_and_complete_interrupted_exit_pass(
@@ -67,7 +69,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn publish_and_complete_interrupted_exit_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -75,10 +77,29 @@ impl RunningProcessOwner {
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        loop {
+            let released = cx
+                .update(|app| {
+                    if cancellation.is_cancelled() {
+                        return Err("Interrupted Exit publication was cancelled".into());
+                    }
+                    owner
+                        .recovery_owner()?
+                        .borrow()
+                        .release_interrupted_exit_drafts(request, appearance, app)
+                })
+                .map_err(|error| error.to_string())??;
+            if released {
+                break;
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+        }
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::publish_interrupted_exit_services(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 retired,
                 generation,
@@ -106,13 +127,14 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn activate_and_complete_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::activate_and_complete_interrupted_exit_pass(
@@ -126,7 +148,7 @@ impl RunningProcessOwner {
     }
 
     async fn activate_and_complete_interrupted_exit_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
@@ -135,7 +157,7 @@ impl RunningProcessOwner {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::activate_interrupted_exit_theme(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 appearance,
                 cancellation.clone(),
@@ -155,13 +177,14 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn bind_and_complete_interrupted_exit(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::bind_and_complete_interrupted_exit_pass(owner, request, appearance, cancellation, cx)
@@ -169,7 +192,7 @@ impl RunningProcessOwner {
     }
 
     async fn bind_and_complete_interrupted_exit_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
@@ -179,7 +202,8 @@ impl RunningProcessOwner {
             if cancellation.is_cancelled() {
                 return Err("Interrupted Exit completion was cancelled".into());
             }
-            let mut running = owner.borrow_mut();
+            let retained_owner = owner.recovery_owner()?;
+            let mut running = retained_owner.borrow_mut();
             running.interrupted_exit_theme_activation_result(request)?;
             running.bind_interrupted_exit_process(request, appearance, app)
         })
@@ -188,19 +212,20 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn await_interrupted_exit_completion(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::await_interrupted_exit_completion_pass(owner, request, cancellation, cx).await
     }
 
     async fn await_interrupted_exit_completion_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -211,7 +236,7 @@ impl RunningProcessOwner {
                     if cancellation.is_cancelled() {
                         return Err("Interrupted Exit completion was cancelled".into());
                     }
-                    Self::complete_interrupted_exit(owner, request, app)
+                    Self::complete_interrupted_exit(&owner.recovery_owner()?, request, app)
                 })
                 .map_err(|error| error.to_string())??;
             if complete {

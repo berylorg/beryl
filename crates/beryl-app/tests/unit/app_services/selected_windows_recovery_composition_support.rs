@@ -34,6 +34,22 @@ pub(super) async fn verify_and_dispose(
         })
         .unwrap();
     let configured_counts = Rc::new(RefCell::new([0, 0]));
+    let layouts = windows
+        .iter()
+        .map(|window| {
+            window
+                .read_with(cx, |root, app| {
+                    let mount = root.controller().unwrap().composer_mount().unwrap();
+                    let composer = mount.read(app).contribution().unwrap();
+                    composer
+                        .read(app)
+                        .gpui_input()
+                        .read(app)
+                        .resident_layout_snapshot()
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
     let refuse_configuration = matches!(delivery, SelectedWindowsDelivery::ConfigurationRefused);
     let make_entry = |window| {
         ResidentRecoveryWindow::new(
@@ -55,12 +71,13 @@ pub(super) async fn verify_and_dispose(
                     .iter()
                     .position(|candidate| *candidate == window)
                     .unwrap();
+                let layout = layouts[index].clone();
                 move |selection| {
                     counts.borrow_mut()[index] += 1;
                     if refuse_configuration && index == 0 && counts.borrow()[index] == 2 {
                         return Err("current configuration refused".into());
                     }
-                    resident_fixture::recovery_configuration(selection)
+                    resident_fixture::recovery_configuration_current(selection, &layout)
                 }
             }),
         )

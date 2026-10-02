@@ -281,8 +281,19 @@ pub(super) async fn attempt(
     cx: &mut AsyncApp,
 ) -> bool {
     let mut preparation = Some(key.clone());
+    let layout = resident
+        .read_with(cx, |resident, app| {
+            resident.gpui_input().read(app).resident_layout_snapshot()
+        })
+        .unwrap();
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
-        Some(Box::new(resident_fixture::configure));
+        Some(Box::new(move |selection| {
+            if scenario == ResidentScenario::DrivenAppearanceRefusal {
+                resident_fixture::configure_current(selection, &layout)
+            } else {
+                resident_fixture::configure(selection)
+            }
+        }));
     let foreign = request.test_foreign();
     assert!(
         RunningProcessOwner::prepare_and_attach_interrupted_exit_resident_window(
@@ -315,9 +326,9 @@ pub(super) async fn attempt(
         current.available_capacity = gpui_text_input::RangeSurfaceCharge { bytes: 0, items: 0 };
     }
     let (input, focus) = window
-        .update(cx, |_, window, app| {
+        .update(cx, |root, window, app| {
             let input = resident.read(app).gpui_input();
-            input.update(app, |input, _| input.focus(window));
+            root.notice_safe_focus(app).focus(window);
             (input, window.focused(app))
         })
         .unwrap();

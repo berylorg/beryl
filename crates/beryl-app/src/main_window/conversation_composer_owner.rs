@@ -136,6 +136,7 @@ pub(in crate::main_window) struct MainWindowConversationComposerPendingRealizerT
 }
 
 pub struct MainWindowConversationComposer {
+    recovery_config: MainWindowConversationComposerConfig,
     input: Entity<RangeTextInput>,
     service: Option<Arc<MainWindowConversationComposerService>>,
     selection: MainWindowComposerSelectionIdentity,
@@ -169,6 +170,10 @@ pub struct MainWindowConversationComposer {
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     recovery_snapshot: Option<MainWindowComposerRecoverySnapshot>,
+    unpublished_recovery_protection: Option<(
+        super::MainWindowConversationComposerCloseTicket,
+        gpui_text_input::RangeResidentProtection,
+    )>,
     startup_interaction_gated: bool,
     shutdown_interaction_gated: bool,
     startup_release_started: bool,
@@ -183,6 +188,27 @@ pub struct MainWindowConversationComposer {
 impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversationComposer {}
 
 impl MainWindowConversationComposer {
+    pub(crate) fn interrupted_exit_configurator(
+        &mut self,
+        cx: &Context<Self>,
+    ) -> Result<
+        Box<
+            dyn FnMut(
+                MainWindowComposerSelectionIdentity,
+            ) -> Result<
+                (
+                    MainWindowConversationComposerConfig,
+                    gpui_text_input::RangeSurfaceCharge,
+                ),
+                String,
+            >,
+        >,
+        String,
+    > {
+        self.recovery_config
+            .retain_resident_layout(self.input.read(cx).resident_layout_snapshot());
+        self.recovery_config.interrupted_exit_configurator()
+    }
     pub fn mutation_feedback(&self) -> Option<MainWindowComposerMutationFeedback> {
         self.mutation_feedback.filter(|feedback| {
             self.route == MainWindowConversationComposerRoute::Selected

@@ -4,19 +4,20 @@ use settlement::{CandidateSettlement, CandidateSettlementError};
 
 impl RunningProcessOwner {
     pub(crate) async fn dispose_and_take_interrupted_exit_candidate_failure(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         cx: &mut gpui::AsyncApp,
     ) -> Result<CandidateSettlementError, String> {
         Self::dispose_interrupted_exit_candidate_failure(owner, request, generation, cx).await?;
         owner
+            .recovery_owner()?
             .borrow_mut()
             .take_interrupted_exit_candidate_failure(request)
     }
 
     pub(super) async fn dispose_interrupted_exit_candidate_failure(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         cx: &mut gpui::AsyncApp,
@@ -24,7 +25,7 @@ impl RunningProcessOwner {
         let (sender, receiver) = futures_channel::oneshot::channel();
         cx.update(|app| {
             Self::dispose_failed_interrupted_exit_candidate(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 generation,
                 app,

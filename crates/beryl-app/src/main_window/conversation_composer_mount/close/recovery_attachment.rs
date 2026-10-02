@@ -5,6 +5,95 @@ use crate::{
 };
 
 impl MainWindowConversationComposerMount {
+    #[cfg(test)]
+    pub(crate) fn test_unpublished_recovery_detached(&mut self) -> bool {
+        self.window_close
+            .is_some_and(|close| close.resources_detached && close.recovery_fenced)
+            && self.service.is_none()
+            && self.configurator.is_none()
+            && self.native_lineage_recovery.is_none()
+            && self
+                .autosave
+                .recovery_adapters()
+                .is_ok_and(|adapters| adapters.is_none())
+            && self
+                .submission
+                .recovery_source()
+                .is_ok_and(|source| source.is_none())
+    }
+
+    pub(crate) fn detach_unpublished_recovery(
+        &mut self,
+        ticket: MainWindowConversationComposerCloseTicket,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        let close = self
+            .window_close
+            .filter(|close| {
+                close.ticket == ticket
+                    && ticket.owner == cx.entity_id()
+                    && close.recovery_fenced
+                    && !close.disposing
+                    && !close.disposal_captured
+                    && !close.release_requested
+                    && close.flush.is_none()
+                    && close.state == MainWindowConversationComposerCloseAdvance::Preparing
+            })
+            .ok_or("unpublished recovery close custody changed")?;
+        if ticket.selection().binding().home_id() != home
+            || ticket.selection().binding().home_generation() != generation
+        {
+            return Err("unpublished recovery candidate identity changed".into());
+        }
+        if close.resources_detached {
+            return Ok(true);
+        }
+        if !self.recovery_binding_current(ticket) {
+            return Err("unpublished recovery mount binding changed".into());
+        }
+        if self.window_close_task.is_some()
+            || self.window_close_workers.retained() != 0
+            || !self.autosave.workers_drained()
+            || !self.submission.workers_drained()
+            || self.submission.is_active()
+            || self.pending_presentation.is_some()
+            || self.native_lineage_snapshot.is_some()
+            || self.native_lineage_validation_task.is_some()
+            || self.native_lineage_workers.retained() != 0
+            || self.pending_cleanup_workers.retained() != 0
+            || self.native_disposal_workers.retained() != 0
+            || self.native_lineage_disposal_active
+            || self.native_lineage_disposal_task.is_some()
+            || self.native_lineage_disposal_flush.is_some()
+        {
+            return Ok(false);
+        }
+        self.validate_recovery_native_resources()?;
+        let adapters = self.autosave.recovery_adapters()?;
+        let submission = self.submission.recovery_source()?;
+        if !self
+            .contribution
+            .as_ref()
+            .ok_or("unpublished recovery resident is unavailable")?
+            .update(cx, |resident, cx| {
+                resident.detach_unpublished_recovery(ticket, cx)
+            })?
+        {
+            return Ok(false);
+        }
+        adapters.take();
+        submission.take();
+        self.service.take();
+        self.configurator.take();
+        self.native_lineage_recovery.take();
+        self.native_lineage_refresh_task.take();
+        self.window_close.as_mut().unwrap().resources_detached = true;
+        cx.notify();
+        Ok(true)
+    }
+
     pub(in crate::main_window) fn release_interrupted_exit_mount(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
@@ -53,6 +142,11 @@ impl MainWindowConversationComposerMount {
         std::mem::replace(&mut self.test_defer_recovered_mount, deferred)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_set_recovery_draft_release_deferred(&mut self, deferred: bool) -> bool {
+        std::mem::replace(&mut self.test_defer_recovery_draft_release, deferred)
+    }
+
     pub(crate) fn release_interrupted_exit_draft(
         &mut self,
         ticket: MainWindowConversationComposerCloseTicket,
@@ -82,6 +176,10 @@ impl MainWindowConversationComposerMount {
         }
         if self.window_close_released == Some(ticket) {
             return Ok(MainWindowConversationComposerCloseRelease::Released);
+        }
+        #[cfg(test)]
+        if std::mem::take(&mut self.test_defer_recovery_draft_release) {
+            return Ok(MainWindowConversationComposerCloseRelease::Pending);
         }
         if !self.prepare_recovered_autosave(ticket.selection())? {
             return Ok(MainWindowConversationComposerCloseRelease::Pending);

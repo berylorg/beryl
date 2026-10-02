@@ -175,6 +175,7 @@ impl MainWindowConversationComposer {
                 .expect("exact initial composer history frontier");
         }
         let mut this = Self {
+            recovery_config: config,
             input,
             service: Some(service),
             selection,
@@ -204,6 +205,7 @@ impl MainWindowConversationComposer {
             release_fence_requires_restoration: false,
             window_close: None,
             recovery_snapshot: None,
+            unpublished_recovery_protection: None,
             startup_interaction_gated: false,
             shutdown_interaction_gated: false,
             startup_release_started: false,

@@ -12,6 +12,61 @@ pub(super) struct SelectedWindowRecovery {
 }
 
 impl SelectedWindowRecovery {
+    pub(super) async fn detach_unpublished(
+        &mut self,
+        owner: &impl RecoveryOwnerAccess,
+        home: beryl_model::BerylHomeId,
+        generation: HomeGeneration,
+        cx: &mut AsyncApp,
+    ) -> Result<(), String> {
+        for entry in &mut self.windows {
+            if entry.preparation.is_some() {
+                match RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+                    owner,
+                    &mut entry.preparation,
+                    cx,
+                )
+                .await?
+                {
+                    Ok(source) => drop(source),
+                    Err((retired, _)) => entry.retirement = Some(retired),
+                }
+            }
+            if let Some((close, _)) = entry.attached {
+                loop {
+                    let detached = cx
+                        .update(|app| {
+                            let mount = entry
+                                .window
+                                .read(app)
+                                .map_err(|error| error.to_string())?
+                                .controller()
+                                .ok_or("unpublished recovery controller is unavailable")?
+                                .composer_mount()
+                                .ok_or("unpublished recovery mount is unavailable")?;
+                            mount.update(app, |mount, cx| {
+                                mount.detach_unpublished_recovery(close, home, generation, cx)
+                            })
+                        })
+                        .map_err(|error| error.to_string())??;
+                    if detached {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(50))
+                        .await;
+                }
+            }
+            entry.adapters.take();
+            entry.configurator.take();
+        }
+        if let Some(appearance) = self.appearance.take() {
+            cx.update(|app| appearance.update(app, |appearance, _| appearance.retire()))
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
     pub(super) fn has_appearance(&self) -> bool {
         self.appearance.is_some()
     }
@@ -61,7 +116,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn recover_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         at: SyndicTimestamp,
@@ -70,6 +125,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let retained = owner
+            .recovery_owner()?
             .borrow_mut()
             .interrupted_exit_selected_windows(request)?;
         let mut retained = retained
@@ -79,7 +135,12 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
-        let configuration = owner.borrow().process.configuration.clone();
+        let configuration = owner
+            .recovery_owner()?
+            .borrow()
+            .process
+            .configuration
+            .clone();
         Self::recover_interrupted_exit_resident_windows(
             owner,
             request,
@@ -96,7 +157,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_retired_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         at: SyndicTimestamp,
@@ -105,9 +166,11 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let retained = owner
+            .recovery_owner()?
             .borrow_mut()
             .interrupted_exit_selected_windows(request)?;
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         let mut retained = retained
@@ -117,7 +180,12 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
-        let configuration = owner.borrow().process.configuration.clone();
+        let configuration = owner
+            .recovery_owner()?
+            .borrow()
+            .process
+            .configuration
+            .clone();
         Self::prepare_retired_interrupted_exit_resident_windows_pass(
             owner,
             request,
@@ -134,16 +202,18 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn complete_prepared_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let retained = owner
+            .recovery_owner()?
             .borrow_mut()
             .interrupted_exit_selected_windows(request)?;
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         let mut retained = retained
@@ -153,7 +223,12 @@ impl RunningProcessOwner {
             windows,
             appearance,
         } = &mut *retained;
-        let configuration = owner.borrow().process.configuration.clone();
+        let configuration = owner
+            .recovery_owner()?
+            .borrow()
+            .process
+            .configuration
+            .clone();
         Self::complete_prepared_interrupted_exit_resident_windows_pass(
             owner,
             request,
@@ -168,7 +243,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn continue_interrupted_exit_selected_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -176,6 +251,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let retained = owner
+            .recovery_owner()?
             .borrow_mut()
             .interrupted_exit_selected_windows(request)?;
         let mut retained = retained

@@ -14,13 +14,13 @@ pub(crate) use configuration::ResidentRecoveryConfigurator;
 use configuration::ResidentWindowConfiguration;
 
 pub(crate) struct ResidentRecoveryWindow {
-    window: WindowHandle<MainWindowShellRoot>,
-    preparation: Option<resident::ResidentPreparationKey>,
-    adapters: Option<PreparedComposerRecoveryAdapters>,
-    configurator: Option<MainWindowConversationComposerConfigurator>,
+    pub(super) window: WindowHandle<MainWindowShellRoot>,
+    pub(super) preparation: Option<resident::ResidentPreparationKey>,
+    pub(super) adapters: Option<PreparedComposerRecoveryAdapters>,
+    pub(super) configurator: Option<MainWindowConversationComposerConfigurator>,
     configuration: Rc<RefCell<ResidentWindowConfiguration>>,
-    retirement: Option<crate::main_window::MainWindowComposerRetiredClose>,
-    attached: Option<(
+    pub(super) retirement: Option<crate::main_window::MainWindowComposerRetiredClose>,
+    pub(super) attached: Option<(
         MainWindowConversationComposerCloseTicket,
         beryl_state::SessionWindowRecord,
     )>,
@@ -88,7 +88,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn recover_interrupted_exit_resident_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
@@ -100,6 +100,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         if appearance.is_some()
@@ -117,7 +118,8 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit preparation was cancelled".into());
         }
         cx.update(|app| -> Result<_, String> {
-            let owner = owner.borrow();
+            let retained_owner = owner.recovery_owner()?;
+            let owner = retained_owner.borrow();
             owner.validate_interrupted_exit_resident_windows(windows, app)?;
             if owner
                 .process
@@ -158,7 +160,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn prepare_retired_interrupted_exit_resident_windows_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
@@ -184,7 +186,8 @@ impl RunningProcessOwner {
             return Err("Interrupted Exit selected recovery inputs are already retained".into());
         }
         cx.update(|app| -> Result<(), String> {
-            let owner = owner.borrow();
+            let retained_owner = owner.recovery_owner()?;
+            let owner = retained_owner.borrow();
             owner.validate_interrupted_exit_resident_windows(windows, app)?;
             owner.validate_interrupted_exit_preparation(request, retired)?;
             std::num::NonZeroUsize::new(
@@ -230,7 +233,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn complete_prepared_interrupted_exit_resident_windows_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
@@ -255,7 +258,8 @@ impl RunningProcessOwner {
         }
         let generation = cx
             .update(|app| -> Result<_, String> {
-                let owner = owner.borrow();
+                let retained_owner = owner.recovery_owner()?;
+                let owner = retained_owner.borrow();
                 owner.validate_interrupted_exit_resident_windows(windows, app)?;
                 let prepared = owner.interrupted_exit_appearance(request)?;
                 let home = prepared.prepared().home();
@@ -306,7 +310,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn prepare_and_complete_interrupted_exit_resident_windows(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -316,6 +320,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::prepare_and_complete_interrupted_exit_resident_windows_pass(
@@ -371,7 +376,7 @@ impl RunningProcessOwner {
     }
 
     async fn prepare_and_complete_interrupted_exit_resident_windows_pass(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -385,6 +390,7 @@ impl RunningProcessOwner {
         }
         cx.update(|app| {
             owner
+                .recovery_owner()?
                 .borrow()
                 .validate_interrupted_exit_resident_windows(windows, app)
         })
@@ -402,7 +408,7 @@ impl RunningProcessOwner {
                     |app| {
                         ResidentWindowConfiguration::prepare(
                             configuration,
-                            owner,
+                            &owner.recovery_owner()?,
                             request,
                             window,
                             generation,
@@ -424,12 +430,10 @@ impl RunningProcessOwner {
             }
             if !entry.bound {
                 cx.update(|app| {
-                    owner.borrow_mut().bind_interrupted_exit_appearance(
-                        request,
-                        entry.window,
-                        appearance,
-                        app,
-                    )
+                    owner
+                        .recovery_owner()?
+                        .borrow_mut()
+                        .bind_interrupted_exit_appearance(request, entry.window, appearance, app)
                 })
                 .map_err(|error| error.to_string())??;
                 entry.bound = true;

@@ -179,6 +179,7 @@ fn run_with_settlement(
         let snapshot = resident.recovery_snapshot().unwrap();
         (*snapshot.restoration(), snapshot.protection())
     });
+    let layout = input.read_with(cx, |input, _| input.resident_layout_snapshot());
     let (candidate, mut adapters, state, storage, fresh_appearance) = home_support::join(
         home_support::worker(move || {
             let mut candidate = Arc::try_unwrap(store)
@@ -215,6 +216,9 @@ fn run_with_settlement(
     );
     config.viewport_extent = px(96.);
     config.limits.max_realized_block_extent = config.viewport_extent;
+    config.layout = layout.layout.clone();
+    config.style = layout.style.clone();
+    config.viewport_extent = layout.viewport_extent;
     let current = RangePrepublicationCurrent {
         binding: fresh.binding,
         history: fresh.history,
@@ -263,7 +267,17 @@ fn run_with_settlement(
     }
     assert!(ready);
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
-        Some(Box::new(support::config));
+        Some(Box::new(move |selection| {
+            let mut widget = composer_support::widget_config(
+                selection.binding().range_binding(),
+                selection.binding().presentation_generation(),
+            );
+            widget.layout = layout.layout.clone();
+            widget.style = layout.style.clone();
+            widget.viewport_extent = layout.viewport_extent;
+            MainWindowConversationComposerConfig::new(selection, widget)
+                .map_err(|error| error.to_string())
+        }));
     let occupancy = process.main_window_occupancy();
     let mut draft = Some(draft);
     let mut retained = aggregate.then(|| {

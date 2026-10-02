@@ -13,6 +13,34 @@ impl RunningProcessOwner {
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, Result<(), String>, &mut App) + 'static,
     ) -> Result<(), String> {
+        #[cfg(test)]
+        let before_validate = {
+            let cancel = std::mem::take(
+                &mut owner
+                    .borrow_mut()
+                    .cancel_recovery_before_publication_validation,
+            );
+            let cancellation = cancellation.clone();
+            move || {
+                if cancel {
+                    cancellation.cancel();
+                }
+            }
+        };
+        #[cfg(not(test))]
+        let before_validate = || {};
+        #[cfg(test)]
+        let before_delivery = {
+            let cancel = std::mem::take(&mut owner.borrow_mut().cancel_recovery_after_publication);
+            let cancellation = cancellation.clone();
+            move || {
+                if cancel {
+                    cancellation.cancel();
+                }
+            }
+        };
+        #[cfg(not(test))]
+        let before_delivery = || {};
         Self::publish_interrupted_exit_services_with(
             owner,
             request,
@@ -22,8 +50,8 @@ impl RunningProcessOwner {
             cancellation,
             app,
             completed,
-            || {},
-            || {},
+            before_validate,
+            before_delivery,
         )
     }
 

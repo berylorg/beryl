@@ -167,6 +167,8 @@ pub struct MainWindowConversationComposerMount {
     window_close_released: Option<MainWindowConversationComposerCloseTicket>,
     #[cfg(test)]
     test_defer_recovered_mount: bool,
+    #[cfg(test)]
+    test_defer_recovery_draft_release: bool,
     window_close_task: Option<Task<()>>,
     window_close_workers: worker::WorkerLifetime,
     native_lineage_recovery: Option<crate::cas_projection::NativeLineageRecoveryControl>,
@@ -400,6 +402,8 @@ impl MainWindowConversationComposerMount {
             window_close_released: None,
             #[cfg(test)]
             test_defer_recovered_mount: false,
+            #[cfg(test)]
+            test_defer_recovery_draft_release: false,
             window_close_task: None,
             window_close_workers: worker::WorkerLifetime::default(),
             native_lineage_recovery: None,

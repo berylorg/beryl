@@ -48,6 +48,50 @@ impl MainWindowComposerRecoverySnapshot {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn detach_unpublished_recovery(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        let (retained, protection) = self
+            .unpublished_recovery_protection
+            .ok_or("unpublished resident protection is unavailable")?;
+        if retained != close
+            || !self
+                .input
+                .read(cx)
+                .resident_protection_is_current(protection)
+        {
+            return Err("unpublished recovery resident protection changed".into());
+        }
+        if self.service.is_none() {
+            return Ok(true);
+        }
+        if self.recovery_snapshot.is_some() || !self.recovered_close_release_ready(close, cx)? {
+            return Ok(false);
+        }
+        if self.pending_realizer.is_some()
+            || !self.activation_seeds.is_empty()
+            || self.propagated_cut.is_some()
+            || self.pending_marker_metadata.is_some()
+            || self.mutation_evidence.is_some()
+            || self.pending_marker_removal.is_some()
+            || self.image_surface_attachment.is_some()
+            || self.startup_release_completion.is_some()
+            || !self.input.read(cx).is_quiescent()
+        {
+            return Ok(false);
+        }
+        self.service.take();
+        self.clipboard_writer.take();
+        self.last_mutation_admission_failure.take();
+        self.admitted_positions = None;
+        self.scheduled = false;
+        self.phase = MainWindowConversationComposerPhase::RecoveryFenced;
+        cx.notify();
+        Ok(true)
+    }
+
     pub(in crate::main_window) fn take_recovery_retirement(
         &mut self,
         close: MainWindowConversationComposerCloseTicket,

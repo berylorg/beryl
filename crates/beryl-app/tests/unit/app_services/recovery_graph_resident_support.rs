@@ -1,5 +1,17 @@
 use super::*;
 
+impl PreparedRecoveryServiceGraph {
+    pub(crate) fn test_retain_recovery_provider(&self) -> impl Send + 'static + use<> {
+        self.services
+            .as_ref()
+            .unwrap()
+            .cas
+            .as_ref()
+            .unwrap()
+            .test_retain_recovery_provider()
+    }
+}
+
 pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServiceGraph {
     let one = NonZeroUsize::new(1).unwrap();
     let owner = ProcessServiceOwner::new(candidate.home_id(), one, one);

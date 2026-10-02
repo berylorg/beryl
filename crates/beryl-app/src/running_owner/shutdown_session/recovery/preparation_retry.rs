@@ -16,7 +16,7 @@ pub(crate) enum RecoveryPreparationFailure {
 
 impl RunningProcessOwner {
     pub(crate) async fn retry_interrupted_exit_preparation(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -26,6 +26,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::retry_interrupted_exit_preparation_attempts(
@@ -42,7 +43,7 @@ impl RunningProcessOwner {
     }
 
     pub(crate) async fn retire_and_retry_interrupted_exit_preparation(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -52,6 +53,7 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         let _driver = owner
+            .recovery_owner()?
             .borrow_mut()
             .reserve_interrupted_exit_driver(request)?;
         Self::retire_interrupted_exit_for_preparation(
@@ -76,7 +78,7 @@ impl RunningProcessOwner {
     }
 
     pub(super) async fn retry_interrupted_exit_preparation_attempts(
-        owner: &Rc<RefCell<Self>>,
+        owner: &impl RecoveryOwnerAccess,
         request: &RunningExitRequest,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
@@ -87,6 +89,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         loop {
             owner
+                .recovery_owner()?
                 .borrow()
                 .validate_interrupted_exit_preparation(request, generation)?;
             if cancellation.is_cancelled() {
@@ -106,7 +109,7 @@ impl RunningProcessOwner {
                 return result;
             }
             Self::hand_off_interrupted_exit_resume_failures(
-                owner,
+                &owner.recovery_owner()?,
                 request,
                 &cancellation,
                 &mut failed,
@@ -122,7 +125,8 @@ impl RunningProcessOwner {
                 return result;
             }
             let failure = {
-                let mut owner = owner.borrow_mut();
+                let retained_owner = owner.recovery_owner()?;
+                let mut owner = retained_owner.borrow_mut();
                 owner.interrupted_exit_graph_retirement_result(request)?;
                 let candidate = match owner
                     .interrupted_exit

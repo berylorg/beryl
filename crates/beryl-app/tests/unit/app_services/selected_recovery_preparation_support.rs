@@ -190,6 +190,11 @@ pub(super) async fn verify_and_dispose(
         return;
     }
 
+    let held_provider = matches!(
+        delivery,
+        RecoveryPublicationDelivery::CancelledServiceFailure(true)
+    )
+    .then(|| owner.borrow().test_retain_recovery_provider());
     let (sender, receiver) = futures_channel::oneshot::channel();
     cx.update(|app| {
         RunningProcessOwner::cancel_interrupted_exit_services(&owner, request, app, move |_, _| {
@@ -199,6 +204,57 @@ pub(super) async fn verify_and_dispose(
     .unwrap()
     .unwrap();
     receiver.await.unwrap();
+    if let RecoveryPublicationDelivery::CancelledServiceFailure(unconfirmed) = delivery {
+        for _ in 0..2 {
+            let result = RunningProcessOwner::test_settle_automatic_exit_cancellation(
+                &owner, request, retired, cx,
+            )
+            .await;
+            assert_eq!(result.is_err(), unconfirmed, "{result:?}");
+            assert!(owner.borrow().exit_requested());
+            assert!(!owner.borrow().test_services_on_worker());
+            assert!(owner.borrow().test_services().graph().is_none());
+            assert_eq!(
+                original,
+                publication_evidence(&owner.borrow().interrupted_exit_session().unwrap())
+            );
+        }
+        if unconfirmed {
+            let failure = owner.borrow().test_take_unreturned_service_failure();
+            let crate::app_services::recovery_graph::RecoveryServicePreparationError::App(failure) =
+                failure
+            else {
+                panic!("expected actual cancelled app graph failure")
+            };
+            assert!(matches!(failure.error(), AppServiceOpenError::Cancelled));
+            drop((held_provider, residents));
+            let running = Rc::try_unwrap(owner)
+                .ok()
+                .unwrap()
+                .into_inner()
+                .test_into_process();
+            cx.update(|app| {
+                for window in windows {
+                    window
+                        .update(app, |_, window, _| window.remove_window())
+                        .unwrap();
+                }
+                drop(running.windows);
+                running
+                    .appearance
+                    .update(app, |appearance, _| appearance.retire());
+                assert!(app.windows().is_empty());
+            })
+            .unwrap();
+            cx.background_executor()
+                .spawn(async move {
+                    failure.close().unwrap();
+                    drop(running.services);
+                })
+                .await;
+            return;
+        }
+    }
     assert!(matches!(
         owner
             .borrow_mut()

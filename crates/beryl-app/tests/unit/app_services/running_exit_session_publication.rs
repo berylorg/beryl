@@ -58,6 +58,59 @@ mod initial_selected_windows_driver {
     include!("initial_selected_windows_recovery_support.rs");
 }
 
+mod automatic_recovery {
+    use super::*;
+    include!("automatic_interrupted_exit_support.rs");
+}
+
+#[test]
+fn native_reported_exit_automatically_recovers_selected_noncommit() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Automatic(automatic_recovery::Scenario::Complete),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_reported_exit_automatically_recovers_selected_commit() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Automatic(automatic_recovery::Scenario::Complete),
+        None,
+        2,
+    );
+}
+
+#[test]
+fn native_reported_exit_automatically_recovers_threadless_noncommit() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::Automatic(automatic_recovery::Scenario::Complete),
+        None,
+        0,
+    );
+}
+
+#[test]
+fn native_reported_exit_automatically_recovers_threadless_commit() {
+    run_with_windows(
+        Some(FaultPoint::AfterPersist),
+        true,
+        false,
+        RecoveryPublicationDelivery::Automatic(automatic_recovery::Scenario::Complete),
+        None,
+        0,
+    );
+}
+
 #[test]
 fn native_exit_selected_windows_recover_noncommitted_exit_to_running() {
     run_with_windows(
@@ -367,6 +420,8 @@ fn native_exit_attempt_session_publication_retains_settlement_unwind() {
 
 #[derive(Clone, Copy)]
 enum RecoveryPublicationDelivery {
+    Automatic(automatic_recovery::Scenario),
+    CancelledServiceFailure(bool),
     SelectedWindows(SelectedWindowsDelivery),
     WholeSelected(bool),
     WholeSelectedWindows(bool),
@@ -383,6 +438,30 @@ enum RecoveryPublicationDelivery {
     ThemeActivationFailure,
     ThemeActivationUnwind,
     ThemeActivationCancelled,
+}
+
+#[test]
+fn native_exit_cancellation_preserves_unconfirmed_service_retirement_failure() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::CancelledServiceFailure(true),
+        None,
+        1,
+    );
+}
+
+#[test]
+fn native_exit_cancellation_returns_failed_service_home_once() {
+    run_with_windows(
+        Some(FaultPoint::BeforeCommit),
+        true,
+        false,
+        RecoveryPublicationDelivery::CancelledServiceFailure(false),
+        None,
+        1,
+    );
 }
 
 #[test]
@@ -735,6 +814,12 @@ fn run_with_windows(
                     let invoking = running.windows.window_ids()[0];
                     let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::start(running, app);
+                    let automatic_snapshot = if let RecoveryPublicationDelivery::Automatic(scenario) = publication_delivery {
+                        Some((automatic_recovery::capture(&owner, app), scenario))
+                    } else {
+                        owner.borrow_mut().test_disable_automatic_recovery();
+                        None
+                    };
                     owner
                         .borrow()
                         .window_exit_command(invoking, app)
@@ -851,6 +936,7 @@ fn run_with_windows(
                         let thread = std::thread::current().id();
                         assert!(
                             cx.update(|app| {
+                                let automatic_faults = faults.clone();
                                 let completed = move |owner: &Rc<RefCell<RunningProcessOwner>>, request, result: Result<(), String>, app: &mut gpui::App| {
                                     assert_eq!(thread, std::thread::current().id());
                                     assert!(owner.try_borrow_mut().is_ok());
@@ -907,7 +993,10 @@ fn run_with_windows(
                                         ) => {}
                                         other => panic!("unexpected publication: {other:?}"),
                                     }
-                                    sender.send((owner.clone(), request)).ok().unwrap();
+                                    if let RecoveryPublicationDelivery::Automatic(scenario) = publication_delivery {
+                                        automatic_recovery::after_report(owner, &request, scenario, &automatic_faults, app);
+                                    }
+                                    sender.send((owner.clone(), request, result.err())).ok().unwrap();
                                 };
                                 if consumer {
                                     RunningProcessOwner::test_complete_exit_work(&owner, request, app,
@@ -940,8 +1029,27 @@ fn run_with_windows(
                         );
                         drop(owner);
                         assert!(weak.upgrade().is_some());
-                        let (owner, request) = receiver.await.unwrap();
+                        let (owner, request, original_error) = receiver.await.unwrap();
                         assert!(Rc::ptr_eq(&identity, &request.identity()));
+                        if let Some((snapshot, scenario)) = automatic_snapshot {
+                            if !consumer {
+                                let home = owner.borrow().test_services().graph().unwrap().home().service_reference();
+                                let read_faults = faults.clone();
+                                cx.background_executor().spawn(async move {
+                                    assert_eq!(home.health().state(), HomeHealthState::Healthy);
+                                    read_faults.fail_next(FaultPoint::BeforeReadConfirmation);
+                                    assert!(home.home_revision().is_err());
+                                    assert_eq!(home.health().state(), HomeHealthState::Failed);
+                                }).await;
+                                cx.update(|app| RunningProcessOwner::test_report_exit_delivery_failure(
+                                    &owner, &request, crate::running_owner::ExitAttemptError::SessionPublication(original_error.unwrap()), false, app,
+                                )).unwrap();
+                            }
+                            automatic_recovery::verify_and_dispose(owner, &request, snapshot, scenario, cx).await;
+                            observed.set(true);
+                            cx.update(|app| app.quit()).unwrap();
+                            return;
+                        }
                         let (request, error) = cx
                             .update(|app| {
                                 RunningProcessOwner::publish_exit_session(

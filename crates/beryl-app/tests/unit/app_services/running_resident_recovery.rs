@@ -246,6 +246,7 @@ fn resident_run(scenario: ResidentScenario) {
                                     crate::app_services::tests::configuration().projection.turn_start_admission_requirement(),
                                 ).unwrap());
                             }).unwrap();
+                        let layout = cx.update(|app| composer.read(app).gpui_input().read(app).resident_layout_snapshot()).unwrap();
                         let admit = |app: &mut gpui::App| {
                                 let key = RunningProcessOwner::prepare_interrupted_exit_resident(
                                     &owner,
@@ -260,8 +261,9 @@ fn resident_run(scenario: ResidentScenario) {
                                             Err("injected environment refusal".into())
                                         } else {
                                             let (environment, mut capacity) =
-                                                resident_fixture::environment(
+                                                resident_fixture::environment_with_layout(
                                                     seed, selection, window,
+                                                    (scenario == ResidentScenario::DrivenAppearanceRefusal).then_some(&layout),
                                                 )?;
                                             if scenario == ResidentScenario::Capacity {
                                                 capacity.bytes = 0;

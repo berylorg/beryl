@@ -7,6 +7,18 @@ use beryl_home_store::{
 use beryl_state::BerylState;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+impl PreparedRecoveryCasServices {
+    pub(crate) fn test_retain_recovery_provider(&self) -> impl Send + 'static + use<> {
+        self.service
+            .as_ref()
+            .unwrap()
+            .scheduled_ordinary_provider
+            .as_ref()
+            .unwrap()
+            .clone()
+    }
+}
+
 mod discussion_handoff {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
