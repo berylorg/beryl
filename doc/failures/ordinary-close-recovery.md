@@ -341,3 +341,43 @@ compilation initially reused a stale test library. Refreshing the isolated sourc
 forced recompilation before the successful combined run and final all-target check; failed-build
 output is retained, not acceptance evidence. Bounded logs and inventories remain under
 `.tmp/candidate-marker-evidence`. The isolated checkout is removed after exact-path/reparse checks.
+
+## Nonfinal Native Destruction Failure
+
+Complete phase 595 review on 2026-10-02 invalidated routing every reported nonfinal close failure
+through failed-home recovery. In `running_owner/ordinary_commands/nonfinal.rs`, durable removal
+precedes `complete_nonfinal_close`, which installs detached sources and retires residents before
+`begin_final_native_cleanup`. Windows destruction can then fail. The surviving shell is retired
+and durable membership absent, but the home remains Healthy. Failed-resident capture and failed
+graph retirement correctly reject that generation; they cannot restore coherent interaction.
+
+Acquiring the native observer earlier can move preflight refusal before retirement, but cannot
+eliminate subsequent destruction failure. Destroying the window before durable settlement would
+violate the existing close ordering. Do not manufacture home failure or reuse process Quit Anyway
+authority for a nonfinal close. Main-window feature and app lifecycle authority must select an
+exact healthy-home restoration path or a separately specified nonfinal blocked outcome. The
+recommended restoration path must retain exact member/claim/editor custody, cancel the failed
+request permanently, and require fresh close activation. The Operator approved this direction on
+2026-10-02. Updated main-window, State and app lifecycle authority defines original Healthy-
+generation restoration with reversible resident custody and exact native-survival settlement;
+implementation and acceptance remain outstanding.
+
+Independent review covered the complete pending ordinary-command app boundary. Three source
+corrections are present but await integration evidence: release each completed saved marker flight
+before admitting the next resident under capacity one; filter restored-removal evidence by exact
+window; and retain/start failed-home recovery for toolbar Exit's `UnremovedWindows` draft failure.
+The seven-case native recovery run `77cc512b-0025-4aa5-b054-d25d463dffd9` passed zero cases,
+exposing worker stack overflow and a restored composer-slot identity mismatch. The genuine dirty
+run `e8857034-3bd5-411a-a36a-f2fa81adbbdf` timed out at 60 seconds after WinRT worker overflow.
+Logs and review inventories remain in `.tmp/ordinary-recovery-integration`.
+
+Bounded boxing and frame separation in five Syndic mutation/staging files passed independent
+semantic review and 34 focused regressions in `c1b3791a-8056-4fdb-94dc-d77ebb353ed7`; this does
+not establish native stack safety. Evidence remains in `.tmp/dirty-stack-correction`. Production
+worker stacks were not enlarged. Phase 595 remains unaccepted with all pending source preserved;
+the approved native failure policy permits resumption; finish its implementation, stack/identity fixes,
+toolbar dirty-failure and multi-resident capacity-one tests, and combined canonical acceptance.
+The last review and claim-adoption corrections remain uncompiled; formatting is pending. The
+worker's 33-path inventory and hashes are retained in `.tmp/ordinary-recovery-integration`.
+All eight exactly identified fixture homes were removed after path/reparse checks; no owned test,
+Cargo or debugger process remains at the checkpoint.

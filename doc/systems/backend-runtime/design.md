@@ -273,6 +273,14 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 ### Interrupted Ordinary Close During Same-Home Recovery
 
+- A nonfinal native-destruction failure while the original home remains Healthy uses the separate
+  [app-owned healthy restoration path](../../../crates/beryl-app/doc/design-shell-lifecycle.md#nonfinal-native-close-recovery).
+  State supplies ordinary authenticated access to the same exact removed-member transition.
+  No runtime service replacement or all-work barrier is required. If that home subsequently fails,
+  the process owner transfers original removal and restoration outcomes plus protected resident
+  custody into this replacement protocol; an already committed restoration is validated, never
+  repeated. Home failure must be real, and exact native-survival settlement remains a prerequisite
+  for restoring the cancelled close's member.
 - A reported-failed ordinary close remains cancelled. Its process owner retains one bounded,
   immutable State-owned removal evidence value and the original exact command outcome outside
   replaceable graphs. It preserves the native window, resident content and process window

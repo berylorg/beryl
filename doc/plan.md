@@ -96,6 +96,15 @@ independent persistence/lifecycle review, 133 combined canonical cases and final
 See [acceptance evidence](failures/ordinary-close-recovery.md#candidate-marker-preparation-acceptance),
 including the qualified test-thread-stack limit. Ordinary-command integration remains phase 595.
 
+# Phase 707: Retain Native Windows Through Destruction Failure (wip)
+
+Implement and independently accept the owned GPUI
+[recoverable destruction boundary](../../zed-fork/doc/design.md#recoverable-native-window-destruction-on-windows)
+before integrating healthy nonfinal restoration. Existing irreversible removal drops the GPUI slot
+before native destruction and cannot establish surviving-window recovery. The fork plan owns its
+bounded implementation and real Windows evidence. Pin the accepted revision and verify canonical
+dependency resolution; phase 595 retains durable restoration and editor/claim integration.
+
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Mount enabled ordinary Exit and native close commands through the persistent running owner under
@@ -153,10 +162,25 @@ Prerequisite identified on 2026-10-02: independent readiness review confirmed th
 ordinary close admission after home failure, and existing retirement/reconstruction accepts only
 a proven clean checkpoint. It cannot represent a failed dirty flush. The proposed separate
 [failed-home resident recovery prerequisite](failures/ordinary-close-recovery.md#failed-home-resident-recovery-readiness)
-was approved by the Operator and is now phase 705 under the updated app/storage contracts.
-Preserve current source/test progress and existing clean validators. After that prerequisite and
-the dirty worker-stack correction, run combined native/session/affected regressions and final
+was approved by the Operator and is accepted in phases 705 and 706 under the updated app/storage contracts.
+Connect those retained resident and marker capabilities while preserving existing clean validators.
+After this integration and the dirty worker-stack correction, run combined native/session/affected regressions and final
 independent/canonical acceptance checks. Native verification retains an external per-case deadline.
+
+Operator approved exact healthy-home restoration on 2026-10-02, resolving the nonfinal native
+failure policy gap under the updated feature, State and
+[app lifecycle contracts](../crates/beryl-app/doc/design-shell-lifecycle.md#nonfinal-native-close-recovery).
+Implement ordinary authenticated exact restoration, retain reversible shell/resident custody
+through native settlement, and renew claim bindings before reopening the cancelled close.
+Verify proven surviving-window failure, stale/uncertain native settlement, successful destruction,
+restoration noncommit/commit/uncertainty and transition to failed-home recovery without duplicate
+writes. Mounted verification must preserve the exact editor/history and background work and allow
+fresh close after recovery. Independently review this persistence/lifecycle addition before the
+complete phase acceptance; it remains part of the ordinary nonfinal-close outcome.
+See [checkpoint and decision evidence](failures/ordinary-close-recovery.md#nonfinal-native-destruction-failure).
+Pending source is preserved, not accepted. Latest seven native recovery cases passed none; dirty
+editing still overflows the WinRT worker stack. Review corrections for per-window evidence,
+single-slot marker release and toolbar Exit recovery await focused and combined verification.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

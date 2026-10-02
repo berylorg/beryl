@@ -222,6 +222,17 @@ governed by [design.md](design.md). It does not independently declare engineerin
   adapter work and explicitly retires old services. The custody retains the exact live candidate,
   activation/checkpoint/root/history, previous durable selector and original publication or flush
   outcome/reconciliation. It retains no old home/service capability after completed retirement.
+- Healthy nonfinal native-close detachment retains distinct reversible custody of the settled
+  resident and its quiescent services through native settlement. It preserves the same protected
+  widget, checkpoint/history and presentation while detached reads serve the surviving surface.
+  After proven native failure, authenticated restored membership and the renewed exact claim
+  permit rebinding to the same healthy generation before interaction release. Old claim authority
+  is not revived. Successful destruction disposes custody once; uncertain native settlement cannot
+  release it. A subsequent home failure transfers resident facts through the existing failed-home
+  capture/retirement boundary, retaining both original and restoration outcomes. Drain detached
+  reads and restore capture-compatible fenced custody before that transfer; do not feed a Detached
+  resident into ordinary failed-resident admission or briefly reopen interaction. This route does
+  not weaken clean saved-checkpoint or failed-home admission validators.
 - Fresh same-home candidate qualification authenticates all retained candidate/session provenance,
   State membership and paired claim before reconstruction. Original publication uncertainty must
   reconcile first. Retain an older autosave's captured checkpoint separately from newer live

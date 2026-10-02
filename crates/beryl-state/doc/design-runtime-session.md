@@ -96,7 +96,10 @@ runtime/root, session/window, and thread-claim durable state.
   removal, so evidence cannot describe a different successful removal. Existing ordinary command
   noncommit, commit-with-later-failure and reconciliation custody remain the caller's responsibility.
 - A separate recovery contribution accepts that evidence through fresh same-configured-home
-  candidate authority. It requires the exact post-removal Running header: original revision plus
+  candidate authority or authenticated ordinary access to the original still-Healthy home
+  generation. Both routes use the same exact source/result validation and mutation algorithm;
+  ordinary access does not bypass home admission or grant candidate authority.
+  It requires the exact post-removal Running header: original revision plus
   one, original sorted member set minus only that window, unchanged fallback. The removed window
   record and both relevant claim indexes must be absent. Every mismatch, exhausted revision,
   conflicting claim or foreign home refuses without writes. The caller must separately prove the
@@ -115,9 +118,17 @@ runtime/root, session/window, and thread-claim durable state.
   header, window and optional paired claim records for ordinary HomeCommand reconciliation.
   Duplicate recovery cannot apply twice. No durable journal, tombstone, startup restoration or
   new on-disk schema is introduced.
+- Ordinary healthy access exposes the same bounded classification for the original generation.
+  Removal and restoration have separate command outcomes and reconciliation custody. An unrelated
+  home writer revision may require fresh preparation, but cannot relax exact session/window/claim
+  comparisons. The composing caller retains cancellation and native-survival proof; State evidence
+  alone authorizes neither reopening nor native retry. If the home fails, ordinary admission closes
+  and retained immutable evidence continues through the existing candidate recovery route.
 - Verify claimed and threadless members, final and nonfinal sets through capacity, preserved
   identities/placement/fallback, monotonic revisions, stale/foreign/conflicting source refusal,
   duplicate recovery, writer revision drift, candidate reopening and ambiguous/postcommit outcomes.
+  Exercise healthy-generation restoration and classification with equivalent refusal and outcome
+  coverage, including transition to failed-home candidate recovery without a duplicate write.
   Independently review this persistence transition. App-owned cancellation, original outcome
   classification, service replacement and interaction release remain separate obligations.
 

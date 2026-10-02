@@ -521,6 +521,45 @@ by the executable composition root.
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
 
+## Nonfinal Native Close Recovery
+
+- The running owner retains the exact cancelled close request, immutable removal evidence and
+  original outcome, native reservation and recoverable shell/resident custody through native
+  destruction settlement. Draft and session settlement still precede destruction. Native cleanup
+  admission requires quiescent detached presentation; nonfinal detachment transfers recoverable
+  construction custody instead of irreversibly disposing it. Final teardown keeps its separate
+  irreversible contract. No GUI callback waits for storage or worker completion.
+- Native observer admission precedes durable removal where possible. A failed native operation
+  permits restoration only after exact settlement proves the original window survives and no
+  pending destruction can later consume it. Handle absence or an error string is not proof.
+  Proven destruction releases retained custody once; uncertainty keeps custody and dependent
+  actions fenced. Failure never starts another native destruction operation automatically.
+- Consume GPUI's owned recoverable native-destruction attempt, which retains the exact window
+  slot/root/wrapper until settlement. Its settled surviving-failure result supplies native survival
+  proof; the irreversible `remove_window` path and its observation receipt cannot supply that proof.
+- While the original home remains Healthy, use State's authenticated ordinary restoration route
+  under the same generation. Proven removal noncommit requires exact original-state validation
+  without an inverse write. Proven commit requires the exact State restoration contribution, with
+  separate outcome/reconciliation custody. Validate a committed restoration rather than repeating
+  it. Preserve serialization of window creation, claims, selection and competing close/Exit
+  commands while this attempt can restore membership; background thread execution continues.
+- Restore the same protected editor and shell using authenticated restored window/claim facts.
+  Renew affected claim capabilities rather than reviving pre-removal revisions. Unchanged healthy
+  graph resources need no replacement. Preserve native identity, resident history, caret, directed
+  selection, inline gaps, scroll and placement. Complete durable settlement and exact shell/resident
+  binding precede atomic gate release and completion of the cancelled request. Fresh activation is
+  required for another close.
+- If storage fails during restoration, transfer immutable original and restoration outcomes plus
+  retained resident custody to existing failed-home recovery. Reconcile the restoration before any
+  new inverse write, retire old-generation resources through their established boundaries, and
+  bind through the replacement graph. Never mark a Healthy home Failed merely to enter recovery.
+  Terminal uncertainty or conflicting facts retain fenced custody and the reported failure.
+- Verify native preflight refusal, settled destruction failure with exact surviving identity,
+  successful destruction, delayed/duplicate/stale native completion, healthy restoration noncommit,
+  commit and uncertainty, conflicting claims, and storage failure during restoration. Mounted
+  evidence must prove unchanged editor/history, renewed claim, background-work continuity and
+  fresh-close success. Independently review persistence and native lifecycle composition.
+
 ## Hidden Native Operation Lifetime
 
 - A Windows desktop worker receives a move-only operation token for one exact hidden, never

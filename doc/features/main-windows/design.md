@@ -66,6 +66,14 @@ Preserve each window's visible identity and placement without requiring auxiliar
   close or chooses a substitute window or thread. This also applies to final ordinary close.
 - After every required obligation succeeds, Beryl removes the window from the restore set, releases
   its thread claim, and closes that window.
+- If native destruction of a nonfinal window fails and that same window survives, Beryl cancels
+  the close and automatically restores its durable membership, exclusive thread claim and protected
+  resident editor before reopening interaction. Preserve its native identity, selection, content,
+  editing history and placement. Report a bounded commandless close-failure notice; a new close
+  requires fresh activation. This recovery also applies while storage remains healthy and does not
+  stop background work or enter application shutdown. While native settlement or restoration is
+  unresolved, retain the window's readable presentation and keep dependent actions unavailable.
+  Do not invent a home-failure notice, a substitute window or a Quit Anyway command for this case.
 - Closing the final main window never leaves Beryl running in a tray or without a main window. If
   no process work remains, it durably records an empty restore set and terminates Beryl normally.
 - When final ordinary close finds any active turn, context compaction, admitted pending work,
