@@ -51,9 +51,6 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                     };
                     let invoking = running.windows.window_ids()[0];
                     let window = running.windows.shells()[0].window();
-                    let missing_command = missing.then(|| running.commands.window_command(
-                        beryl_model::WindowId::from_bytes([249; 16]),
-                    ));
                     if full {
                         let ingress = window.update(app, |root, window, cx|
                             root.notice_ingress(window, cx)).unwrap();
@@ -69,6 +66,12 @@ fn run_consumer_with_notices(deferred: bool, refusal: bool, full: bool, missing:
                         }
                     }
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
+                    let missing_command = missing.then(|| owner.borrow().test_window_command_unchecked(
+                        beryl_model::WindowId::from_bytes([249; 16]),
+                    ));
+                    if let Some(command) = &missing_command {
+                        assert!(command.disabled_reason().is_none());
+                    }
                     let command = owner.borrow().window_exit_command(invoking, app).unwrap();
                     app.spawn(async move |cx| {
                         if refusal {

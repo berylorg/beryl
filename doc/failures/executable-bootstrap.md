@@ -13,9 +13,15 @@ Use the established native-font theme fixture for app-native lifecycle/input che
 the actual executable's built-in fallback separately without app development/test-support feature
 unification. Do not install fonts, change product typography, or widen production thread stacks
 to make these native tests pass. The three exactly logged aborted fixture homes were reclaimed.
-The same run exposed two old Exit-delivery fixtures that attempted to reuse producers created
+Native verification also exposed old Exit-delivery fixtures that attempted to reuse producers created
 before home binding or from a retired generation; those fixtures must preserve the generation
 fence and create a current producer for subsequent fresh-activation assertions.
+The later warning-mount run exposed the same error in an Exit-consumer no-redirection fixture:
+its missing-window producer was created before binding and was correctly rejected, allowing the
+subsequent valid command to produce an ordinary Exit error. Diagnostic output established an
+empty startup notice followed by `Couldn't exit Beryl`, invalidating an initial startup-warning
+hypothesis. Obtain the missing-window producer after running-owner binding; preserve the exact
+no-redirection assertions and production generation fences.
 
 ## Production Input Prerequisites
 
@@ -65,3 +71,26 @@ the qualified source with zero mismatches. Bounded logs and the inventory remain
 `.tmp/bootstrap-app-evidence`; the canonical checkout and exactly logged native fixture homes
 were verified absent. Production worker stacks were unchanged. Real production panic/report-window
 evidence remains the separate crash-reporting mount boundary.
+
+## Best-Effort Home Warning Acceptance
+
+Accepted on 2026-10-03. Successful startup preparation carries only home durability classification
+to Notifications. The common native publication path offers the warning to restored and later
+windows; the surviving root retains admission history across recovery's notice replacement.
+The existing arbiter owns priority and bounds. One cancelable timer tracks the exact visible
+record and arm, with a fresh five-second interval after preemption and rejection of stale expiry.
+
+Local focused verification passed 25 cases. Locked canonical metadata and combined app/executable
+all-target checks passed without local dependency overrides. Final canonical run
+`574f45fe-9898-4a4a-89fa-88232ed4a567` passed 52/52 cases in 58.585 seconds: actual startup and
+Retry, native NTFS suppression, recovery replacement, corrected Exit notice routing, existing
+arbiter bounds, later-window publication, manual dismissal, exact timer timing, preemption,
+revision changes and queue eviction without readmission. Independent semantic review accepted
+the complete boundary and the fixture correction above; all 14 app source/test/doc snapshot
+hashes matched the qualified files. Bounded evidence remains in `.tmp/home-warning-evidence`.
+
+Native fixtures now explicitly classify unrelated lifecycle homes as fully supported; dedicated
+warning cases select both tiers through actual opening. Fixture creation logs exact temporary
+paths. Two logged aborted fixture homes were reclaimed; the first failed run did not log its
+home path, so any residue remains unidentified and was not swept. No production worker stack,
+dependency, manifest, lockfile or storage behavior changed.

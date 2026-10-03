@@ -8,6 +8,8 @@ mod composer_support;
 mod creation_support;
 #[path = "main_window_shell/support.rs"]
 mod home_support;
+#[path = "notice_mount/home_warning.rs"]
+mod home_warning;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
 #[path = "notice_mount/mutation_completion.rs"]

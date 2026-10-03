@@ -12,12 +12,19 @@ pub(super) fn native_home() -> tempfile::TempDir {
     let store = candidate.publish().unwrap();
     native_appearance::install_native_theme(&store, &state);
     store.close().unwrap();
+    eprintln!("native startup test home: {}", directory.path().display());
     directory
 }
 
 pub(super) fn open(path: &std::path::Path) -> StartupHomeOpen {
-    let mut candidate =
-        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    open_with_options(
+        HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)
+            .with_durability_tier_for_tests(beryl_home_store::HomeDurabilityTier::Full),
+    )
+}
+
+pub(super) fn open_with_options(options: HomeOpenOptions) -> StartupHomeOpen {
+    let mut candidate = HomeOpenCandidate::open(options).unwrap();
     let state = BerylState::register(&mut candidate).unwrap();
     let syndic = SyndicStorage::register(&mut candidate).unwrap();
     let candidate = candidate

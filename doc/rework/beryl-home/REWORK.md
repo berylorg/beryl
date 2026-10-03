@@ -490,8 +490,8 @@
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
 - [x] Implemented and accepted the bounded notice widget with selectable detail, exact commands, focus continuity, inert behavior, and themed rendering.
 - [x] Mounted and accepted the per-window notice projection with exact ownership, stable overlay geometry, focus return, and atomic appearance updates.
-- [ ] Implement the warned best-effort-home startup notice, exact soft-stop
-  feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
+- [x] Mounted and accepted the best-effort-home warning through successful startup and native window publication with exact admission and visible timer lifecycle.
+- [ ] Implement exact soft-stop feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.

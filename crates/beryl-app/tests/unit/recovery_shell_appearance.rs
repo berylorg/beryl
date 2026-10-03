@@ -104,6 +104,14 @@ pub(super) fn verify(
     fresh: Arc<AppearanceGeneration>,
     cx: &mut TestAppContext,
 ) -> Entity<GpuiAppearanceWindowSet> {
+    cx.update(|app| crate::main_window::test_publish_home_open_notice_classification(true, app));
+    let old_warning_timer = window
+        .update(cx, |root, window, cx| {
+            root.test_repeat_home_warning_trigger(window, cx);
+            root.test_home_warning_timer()
+                .expect("successful startup warning")
+        })
+        .unwrap();
     let old_ingress = window
         .update(cx, |root, window, cx| root.notice_ingress(window, cx))
         .unwrap();
@@ -191,6 +199,10 @@ pub(super) fn verify(
                 &fresh
             ));
             assert!(root.notice_projection().is_none());
+            root.test_repeat_home_warning_trigger(window, cx);
+            root.test_expire_home_warning(&old_warning_timer, window, cx);
+            assert!(root.notice_projection().is_none());
+            assert!(root.test_home_warning_timer().is_none());
             root.notice_ingress(window, cx)
         })
         .unwrap();

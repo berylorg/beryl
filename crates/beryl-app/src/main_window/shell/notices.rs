@@ -9,6 +9,12 @@ use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearancePublicatio
 use gpui::Focusable;
 
 mod composer;
+mod home_warning;
+#[cfg(feature = "test-faults")]
+pub use home_warning::BestEffortHomeWarningTimer;
+pub(crate) use home_warning::publish_home_open_notice_classification;
+#[cfg(feature = "test-faults")]
+pub use home_warning::test_publish_home_open_notice_classification;
 
 #[derive(Clone)]
 pub struct MainWindowNoticeIngress {
@@ -145,6 +151,7 @@ pub(super) struct MainWindowShellNotices {
     diagnostic_key: MainWindowNoticeDiagnosticKey,
     inert: bool,
     retired: bool,
+    home_warning: home_warning::HomeWarning,
 }
 
 impl MainWindowShellNotices {
@@ -186,6 +193,7 @@ impl MainWindowShellNotices {
             diagnostic_key: MainWindowNoticeDiagnosticKey::from_opaque_bytes([0; 32]),
             inert: false,
             retired: false,
+            home_warning: home_warning::HomeWarning::default(),
         }
     }
 
@@ -263,6 +271,7 @@ impl MainWindowShellRoot {
         }
         self.refresh_notice_safe_focus(cx);
         self.notices.inert = inert;
+        self.sync_home_warning_timer(window, cx);
         let inert = inert || self.startup_interaction_gated();
         self.notices
             .widget
@@ -288,6 +297,7 @@ impl MainWindowShellRoot {
         }
         self.refresh_notice_safe_focus(cx);
         self.notices.retired = true;
+        self.notices.home_warning = home_warning::HomeWarning::default();
         self.notices.subscription = None;
         self.notices.composer = composer::ComposerNoticeContribution::default();
         self.notices.arbiter.dispose();
@@ -376,6 +386,7 @@ impl MainWindowShellRoot {
             return;
         }
         self.sync_composer_notice(cx);
+        self.sync_home_warning_timer(window, cx);
         self.refresh_notice_safe_focus(cx);
         let viewport = window.viewport_size();
         let chrome = self

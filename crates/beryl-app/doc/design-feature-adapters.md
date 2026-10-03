@@ -50,6 +50,12 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 - Notice adapters accept bounded typed records and exact eligibility and route them to the
   [notifications feature](../../../doc/features/notifications/design.md); they do not choose
   treatment, persistence, dismissal, or sound eligibility.
+- Successful startup preparation supplies only the opened home's durability classification to
+  Notifications. Native main-window publication offers its startup warning through the existing
+  arbiter; later-created windows use the same startup classification. Admission history belongs to
+  the surviving window root and remains intact when recovery replaces its notice bindings.
+  The notice owner retains at most one cancelable warning timer, bound to the exact visible
+  record and arm; retirement releases it and stale expiry cannot affect another notice.
 - One process audio lane owns at most one active open/read/decode/playback attempt and one latest
   waiting metadata-only event. It reserves configured encoded and decoded bytes before acquisition,
   moves charges with resources, and releases all handles, buffers, work, and charges on every

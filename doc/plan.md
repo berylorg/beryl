@@ -89,26 +89,25 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 382: Mount Crash Reporting At Process Entry (finished)
+# Phase 708: Mount The Best-Effort Home Warning (finished)
 
-Accepted actual executable fatal-hook ordering and reserved reporter isolation, real application
-panic followed by an independent report window, and silent reporter release after Running exit.
-Canonical checks, 13 executable cases and independent review passed; see
-[acceptance evidence](failures/crash-report-test-containment.md#executable-mount-acceptance).
+Accepted successful-open warning publication for restored and later windows, admission history
+across recovery, and exact visible-only dismissal timing. Canonical checks, 52 focused cases and
+independent review passed; see [acceptance evidence](failures/executable-bootstrap.md#best-effort-home-warning-acceptance).
 
-# Phase 708: Mount The Best-Effort Home Warning (pending)
+# Phase 709: Mount Exact Stop-Feedback Notices (pending)
 
-Complete the bounded startup-warning slice of the active shell checkpoint, now that actual
-executable startup and the sole Notifications notice projection are accepted. Follow
-[Beryl-home opening](features/beryl-home/design.md#home-opening),
-[warning lifecycle](features/notifications/design.md#best-effort-home-warning), and
-[notice mounting](features/notifications/gui.md#main-conversation-notices).
+Complete the next bounded Notifications contributor from the active shell checkpoint. Follow
+[exact stop feedback](features/notifications/design.md#exact-stop-feedback-notices),
+[status-line feedback](features/status-line/design.md#turn-state-view-count-and-stop-controls), and
+[exact soft stop](systems/cas-live-syndic-transcript/design.md#exact-soft-stop).
+Connect the existing exact feedback projection to the sole notice arbiter when its popup anchor
+cannot safely retain progress or outcome. Preserve opaque request identity, priority, bounded
+updates, persistent waiting state and resolved dismissal without issuing another interruption.
 
-Carry only the successful-open classification into restored and later-created main windows.
-Admit one warning per startup generation/window identity through the existing Notifications
-arbiter, preserving its priority, bounds and single visible notice. Verify no warning for native
-local NTFS or unsuccessful opening, no duplicate after rerender/replacement/dismissal, one warning
-for a later-created window, manual dismissal, visible-only five-second timing, fresh timing after
-preemption, and stale timer refusal without changing home/thread/focus state. Reuse accepted
-notice widget/arbiter behavior and qualify the real startup/window publication mount with focused
-lifecycle tests and proportionate independent review. Keep other notice contributors separate.
+Verify popup/notice eligibility transitions, repeated updates, stale request or selection changes,
+durable and volatile nondispatch, interrupted completion without error payload, and authority
+loss. Notices must not invent retry eligibility, terminal completion or a durable operation;
+dismissal must not mutate thread or execution state. Qualify the real mounted contributor with
+focused lifecycle tests and independent semantic review, reusing accepted stop and arbiter
+evidence. Keep audio and other unavailable-feature notices separate.

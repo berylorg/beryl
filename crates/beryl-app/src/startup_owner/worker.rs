@@ -49,6 +49,7 @@ pub(super) enum Preparation {
     Ready {
         native: PreparedNativeMainWindowRestoreSet,
         appearance: Arc<AppearanceGeneration>,
+        best_effort_home: bool,
     },
     Busy,
     Failed {
@@ -86,6 +87,8 @@ impl Worker {
                 return self.failure(detail);
             }
         };
+        let best_effort_home =
+            candidate.durability_tier() == beryl_home_store::HomeDurabilityTier::BestEffort;
         let owner = self.services.get_or_insert_with(|| {
             ProcessServiceOwner::new(
                 candidate.home_id(),
@@ -157,7 +160,11 @@ impl Worker {
                                 }
                                 native
                             };
-                            return Preparation::Ready { native, appearance };
+                            return Preparation::Ready {
+                                native,
+                                appearance,
+                                best_effort_home,
+                            };
                         }
                         Err(failure) => {
                             native_preparation_error = Some(failure.error);

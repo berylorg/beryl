@@ -29,6 +29,7 @@ impl MainWindowShellRoot {
             exit_focus: cx.focus_handle(),
             shell_focus,
             notices,
+            home_warning_startup: None,
         };
         root.subscribe_notices(window, cx);
         root

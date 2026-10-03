@@ -480,7 +480,13 @@ impl MainWindowShell {
             return Err("hidden main-window composer is not first-presentable".to_owned());
         }
         self.window
-            .update(app, |_, window, cx| window.publish(cx))
+            .update(app, |root, window, cx| {
+                let result = window.publish(cx);
+                if result.is_ok() {
+                    root.admit_best_effort_home_warning(window, cx);
+                }
+                result
+            })
             .map_err(|error| error.to_string())?
             .map_err(|error| error.to_string())?;
         self.published = true;
@@ -619,6 +625,7 @@ pub struct MainWindowShellRoot {
     exit_focus: gpui::FocusHandle,
     pub(super) shell_focus: gpui::FocusHandle,
     pub(super) notices: notices::MainWindowShellNotices,
+    pub(super) home_warning_startup: Option<Arc<()>>,
 }
 
 mod root;

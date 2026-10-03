@@ -261,7 +261,11 @@ impl Controller {
                 .await;
             self.custody.worker = worker;
             let (detail, blocked, busy) = match prepared {
-                Preparation::Ready { native, appearance } => {
+                Preparation::Ready {
+                    native,
+                    appearance,
+                    best_effort_home,
+                } => {
                     let (sender, receiver) = futures_channel::oneshot::channel();
                     let commands = self.commands.clone();
                     let completion = self.completion.clone();
@@ -270,6 +274,10 @@ impl Controller {
                     let surface = self.custody.surface.take();
                     let cancellation = cx
                         .update(|app| {
+                            crate::main_window::publish_home_open_notice_classification(
+                                best_effort_home,
+                                app,
+                            );
                             let appearance = GpuiAppearanceWindowSet::new(
                                 appearance,
                                 NonZeroUsize::new(beryl_state::MAX_RESTORABLE_WINDOWS).unwrap(),
