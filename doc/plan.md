@@ -89,28 +89,30 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 718: Qualify Running-Session Recovery Mounting Prerequisites (finished)
+# Phase 719: Establish Ordinary Running-Home Recovery Custody Authority (finished)
 
-Reconciled reusable graph/interrupted-Exit evidence with the missing ordinary running-home route
-and separate runtime Retry requirements. Independent review accepted the source-backed readiness
-and identified the app's cancelled-Exit-only custody contract as the next authority prerequisite.
-Recovery gates remain unchanged; no new runtime qualification is claimed. See
-[readiness](failures/executable-bootstrap.md#running-session-recovery-mounting-readiness).
+Established ordinary home-attempt, preserved window/resident and unchanged Running-session custody
+in the app lifecycle and composer supplements, preserving distinct interrupted Exit/close outcomes.
+Independent semantic/source review and documentation checks passed; Phase720 is architecture-ready.
+No recovery activation or runtime qualification is claimed. See
+[readiness](failures/executable-bootstrap.md#ordinary-running-home-recovery-custody-readiness).
 
-# Phase 719: Establish Ordinary Running-Home Recovery Custody Authority (pending)
+# Phase 720: Mount Ordinary Running-Home Recovery (pending)
 
-Resolve the app-owned ordinary-session custody prerequisite under the existing
-[home recovery](features/beryl-home/design.md#recovery-boundary) and
-[same-home composition](systems/backend-runtime/design.md#same-home-recovery-composition) contracts.
-Specify ordinary home-attempt identity, preserved complete native window/session/resident custody,
-fresh-candidate validation of unchanged Running session and claims, resident flight/attachment and
-coherent reopening in the owning app lifecycle and composer supplements. Reconcile their current
-cancelled-Exit-only contracts while preserving original Exit/close outcome and reconciliation custody;
-do not manufacture a lifecycle request or an Exit-to-Running resume for an already Running session.
+Mount the actual failed-home observation in `RunningProcessOwner` under the
+[ordinary custody contract](../crates/beryl-app/doc/design-shell-lifecycle.md#ordinary-running-home-recovery-ownership).
+Admit and coalesce the exact failed generation without an Exit request, capture the complete
+preserved window/session/resident set, and drive the existing supervisor's bounded shared retries.
+Use complete graph retirement, retained same-home reopening, fresh Running-session/claim validation,
+retained process and resident outcome settlement, convergence, checked resident/threadless attachment,
+appearance rebinding and serialized whole-graph publication before coherent reopening. Replace
+request-specific private mechanics where necessary while preserving distinct interrupted Exit/close
+custody; do not manufacture requests, repeat uncertain writes or resume an already Running session.
 
-Identify exact consumer and observable evidence for failure without an Exit request, duplicate/stale
-attempts, selected/threadless multiwindow preservation, candidate failure/cancellation and serialization
-with close/Exit. Independently review ownership, source correspondence, persistence and lifecycle
-readiness, reconcile the documentation index, then derive the bounded production mounting phase using
-accepted graph implementations. This authority boundary activates no recovery and accepts no runtime
-qualification; healthy-home runtime Retry and conditional terminal repair remain gated.
+Qualify the production failure entry through recovery with selected and threadless native windows,
+unsaved edits/history/selection/placement, duplicate/stale attempts, candidate failure/cancellation,
+partial attachment, retained lock/reconciliation/proof custody and close/Exit races. Reuse unchanged
+accepted graph evidence within its recorded limits, and run focused plus combined lifecycle checks
+with independent persistence/source/custody review. Completion requires the newly mounted ordinary
+route to recover the complete graph and preserved windows without a lifecycle request. Healthy-home
+runtime Retry, conditional terminal repair and other rework checkpoints remain separate.

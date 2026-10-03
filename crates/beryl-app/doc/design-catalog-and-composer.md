@@ -193,8 +193,11 @@ governed by [design.md](design.md). It does not independently declare engineerin
   opaque source/history authority are replaced; the captured caret, directed selection, inline
   gaps and exact scroll continuation are preserved. Fresh marker/presentation adapters belong to
   that same candidate generation and must satisfy the captured presentation and layout inputs.
-- Recovery owns one bounded preparation flight per preserved resident, tagged by the cancelled
-  Exit request, resident identity, predecessor close ticket and fresh candidate generation. Its
+- Recovery owns one bounded preparation flight per preserved resident, tagged by the exact ordinary
+  home attempt or cancelled lifecycle request, resident identity, predecessor close ticket and fresh
+  candidate generation. These ownership forms remain distinct under
+  [shell lifecycle authority](design-shell-lifecycle.md#ordinary-running-home-recovery-ownership);
+  an ordinary attempt cannot authorize Exit settlement or a Running-session resume. Its
   fresh service dispatches prepublication reads off the GUI thread and returns exact keyed results
   to explicitly scheduled bounded GUI realization steps. Ordinary resident pumping stays fenced;
   assigning a service does not authorize old callbacks or requests. Worker lifetime, cancellation
@@ -202,9 +205,9 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - The app retains the widget fence, old coherent paint and focus identity throughout preparation.
   It reserves the widget's combined old/new capacity envelope before realization and checks the
   exact flight and live predecessor again before adoption. Changed source/history, environment,
-  claim, window or request evidence refuses attachment without resetting the editor. There is no
-  direct-rebind/import fallback, hidden replacement widget or automatic focus transfer. Cancellation
-  drains candidate effects and cleanup without releasing interaction or replaying Exit.
+  claim, window or attempt/request evidence refuses attachment without resetting the editor.
+  There is no direct-rebind/import fallback, hidden replacement widget or automatic focus transfer. Cancellation
+  drains candidate effects and cleanup without releasing interaction or replaying a lifecycle request.
 - Fresh service and adapter custody remains recovery-owned until coherent widget adoption and
   exact resident association succeed together in one GUI completion with no intervening callback.
   All fallible validation and admission precede that publication; refused adoption preserves the

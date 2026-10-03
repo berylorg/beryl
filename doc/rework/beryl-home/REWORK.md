@@ -559,7 +559,7 @@
 - [x] Accepted fresh reopening-candidate CAS preparation, configuration, cancellation and failure custody through shared convergence and fenced construction; initial/recovery regressions and independent review passed.
 - [x] Gate: independently accepted unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation. This does not accept complete-stack publication or running-window recovery.
 - [x] Reconciled accepted complete graph and interrupted-Exit evidence against the remaining ordinary running-home supervisor and runtime Retry gaps; [readiness](../../failures/executable-bootstrap.md#running-session-recovery-mounting-readiness).
-- [ ] Establish ordinary Running-session recovery custody in the app lifecycle and composer supplements before mounting the route outside cancelled Exit/close recovery.
+- [x] Established ordinary Running-session recovery custody in the app lifecycle and composer supplements with independent readiness review; [evidence](../../failures/executable-bootstrap.md#ordinary-running-home-recovery-custody-readiness).
 - [ ] Mount and verify ordinary running-home failure recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication without an Exit request.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff

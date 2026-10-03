@@ -528,6 +528,78 @@ by the executable composition root.
   replacement, refused stale or unproven state, resume outcome custody and unchanged native windows
   and claims. Independently review lifecycle and persistence composition.
 
+## Ordinary Running-Home Recovery Ownership
+
+- The running process owner admits an ordinary returned home failure independently of Exit or
+  native-close requests. The existing process supervisor owns the exact configured home, failed
+  home/service generation, unique attempt identity, retry deadline and publication slot under
+  [same-home composition](../../../doc/systems/backend-runtime/design.md#same-home-recovery-composition).
+  A runtime failure in a Healthy home does not admit this route. Duplicate notices for the owned
+  failed generation coalesce; old-generation notices and stale attempt completions cannot replace
+  current custody. No synthetic Exit, close, startup restoration or session-resume command is used.
+- Before graph retirement, the owner fences home-dependent command admission and captures every
+  surviving published window in its bounded process window set. Capture records the exact native
+  identity and reservation, shell/root/mount/resident identity, session/window and paired-claim
+  facts, selection, placement and last coherent presentation. Selected residents use failed-home
+  move-only capture, including unsaved live edits and original publication/reconciliation custody;
+  threadless residents retain their exact construction and sole-member session facts. Native
+  windows, focus, position, size and desktop placement remain preserved. This capture uses a
+  recovery fence, not healthy close admission or a fictitious successful draft flush.
+- The preserved set and admission fence belong to the process owner across bounded attempts.
+  Each attempt owns at most one worker flight, and each resident owns at most one preparation
+  flight. Worker delivery returns candidate, service and resident/outcome custody even when stale,
+  cancelled or unwound. A refused or incomplete capture, admitted mutation, unsettled native
+  operation, pending resident work or incomplete old-service retirement blocks replacement.
+  Abandoned GUI delivery drains candidate resources through their owning cleanup boundary.
+- The unchanged-session route has no session mutation to undo. Fresh typed candidate State access
+  validates the captured complete Running session, exact membership/window revisions and placements,
+  selected-thread bindings and paired Active claims under one unchanged home revision. Threadless
+  membership retains the existing no-selection/no-fallback contract. Changed membership, claims,
+  selection or unsupported successor refuses this route; absence or a healthy graph is not proof.
+  Reads and outcome reconciliation run off the GUI thread. Actual admitted command outcomes settle
+  through their original typed custody before any dependent qualification; terminal uncertainty
+  keeps the affected request unavailable and cannot be converted into noncommit or replay authority.
+- An already admitted Exit or close retains its distinct request, original command outcome,
+  reconciliation and native-settlement custody. It uses the corresponding interrupted lifecycle
+  recovery contract where settlement requires a resume or membership restoration. The ordinary
+  attempt never adopts its facts as unchanged Running evidence. The process owner serializes
+  lifecycle admission with capture and publication: a request admitted first must settle or transfer
+  to its exact interrupted route before ordinary capture; a request arriving after fencing cannot
+  mutate the preserved set or start native destruction. A shutdown racing publication follows the
+  system cancellation-or-new-graph-close rule and cannot consume unpublished resident custody.
+- Successful complete retirement precedes reopening. Fresh candidate work validates session and
+  claims, settles retained process enrollment/nondispatch and original resident outcomes, and uses
+  the complete graph preparation and convergence contracts. No old service capability transfers.
+  Failed candidate validation or construction disposes and joins candidate work, retaining actual
+  writes and failed-home lock/reconciliation custody for the same supervisor's bounded retry.
+- Selected attachment follows the checked preserved-resident adoption contract in
+  [composer authority](design-catalog-and-composer.md), keyed by ordinary attempt identity instead
+  of a cancelled request. It renews the exact resident binding and service close ticket while
+  retaining local recovery fencing. Threadless attachment authenticates the same surviving window
+  and replacement generation and transfers its existing native reservation without a composer.
+  Neither attachment enters startup publication, creates a native window or grants destruction.
+- Every surviving shell requires fresh candidate-generation appearance, notice, subscription and
+  native-release ownership. Registration uses the existing preserved-shell validation and one GUI
+  commit; all fallible preparation precedes adoption. Complete binding validation matches each
+  captured native window exactly once to its fresh shell and selected resident or threadless facts.
+  Refusal preserves custody and fencing, including after partial multiwindow attachment.
+- Before whole-graph publication, fresh candidate revalidation proves the unchanged Running session
+  and claims; complete graph/supervisor attachment, resident draft/work settlement, renewed service
+  close-custody settlement and complete shell bindings must all belong to this exact attempt and
+  candidate. The process publication slot serializes the existing atomic whole-stack transition.
+  No fallible constructor or attachment follows storage publication. Coherent interaction reopening
+  releases only settled recovery fences; independently terminal unavailable requests retain their
+  intent, evidence, duplicate suppression and explanation. Affected turns resolve as repaired or
+  explicitly incomplete before successor admission. Recovery never automatically repeats input,
+  Exit, close or an uncertain mutation.
+- Verify the actual running-owner failure entry without an Exit request through complete old-worker
+  disposal, same locked-home candidate, fresh graph and preserved-window attachment, publication and
+  interaction reopening. Cover selected and threadless sets, unsaved edits/history/selection and
+  placement, duplicate/stale notices and deliveries, candidate failure/cancellation, partial binding,
+  retained original outcome/proof custody, and close/Exit admission and publication races. Independently
+  review source correspondence, persistence, worker cleanup and lifecycle ownership; helper or widget
+  evidence alone does not establish this production route.
+
 ## Nonfinal Native Close Recovery
 
 - Before native destruction admission, the running owner may retain a distinct exact pre-native
@@ -1564,7 +1636,8 @@ by the executable composition root.
 
 ## Failed-Home Resident Recovery
 
-- The running owner captures the complete preserved window set under its exact cancelled request
+- The running owner captures the complete preserved window set under its exact ordinary home
+  attempt or cancelled lifecycle request, as defined by their separate ownership contracts,
   before allowing old graph retirement. Selected residents use the separate failed-generation
   capture and retirement boundary in [composer authority](design-catalog-and-composer.md);
   threadless residents retain their existing exact custody. Capture remains available after home

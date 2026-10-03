@@ -731,3 +731,37 @@ and conditional terminal repair remain gated.
 Independent completion review accepted the corrected readiness boundary and authority-only successor
 with no remaining blockers. Scoped diff checks passed; no Cargo verification was needed for this
 documentation-only change. Existing runtime evidence is reused only within its recorded boundaries.
+
+## Ordinary Running-Home Recovery Custody Readiness
+
+On 2026-10-03, the app-owned
+[ordinary running-home contract](../../crates/beryl-app/doc/design-shell-lifecycle.md#ordinary-running-home-recovery-ownership)
+and [resident preparation contract](../../crates/beryl-app/doc/design-catalog-and-composer.md)
+resolve the cancelled-request-only prerequisite identified above. The ordinary supervisor attempt
+owns preserved window/session/resident custody independently of Exit or close. Fresh candidate
+validation proves the unchanged Running session and claims; it performs no session resume write.
+Previously admitted lifecycle work retains its exact original outcomes and uses its own interrupted
+route. Shared process serialization prevents ordinary capture from treating those outcomes as
+unchanged-session evidence or publishing over an admitted native operation.
+
+The existing graph factories and interrupted lifecycle drivers remain reusable source-backed
+implementations, not evidence that this ordinary route is mounted. Its intended consumer is
+`RunningProcessOwner` observing an actual failed home generation; acceptance must begin there
+without an Exit request and reach complete replacement publication and preserved-window reopening.
+The new app contract identifies the capture, off-GUI validation/settlement, selected and threadless
+attachment, appearance, binding, service-ticket and publication obligations. Request-specific
+private mechanics need replacement where necessary; ordinary attempt identity cannot be relabelled
+as a cancelled Exit capability. Changed inputs require affected integration evidence rather than
+unqualified reuse of the earlier graph or interrupted-Exit tests.
+
+This boundary changes authority and planning only. It adds no source, tests, dependency or runtime
+qualification and activates neither ordinary home recovery nor healthy-home runtime Retry. The
+next bounded phase mounts and verifies the ordinary production route under these contracts.
+
+Independent completion review accepted the full authority boundary and derived production mounting
+phase with no blocking findings or unresolved material choices. It checked parent feature/system
+guarantees, composer/shell preservation and bounded semantic source correspondence: the current
+retirement, supervisor and publication callers remain request-specific, while complete graph
+factories remain reusable. Scoped diff checks passed. No Cargo or native-process checks were run
+for this documentation-only change. The documentation index was reconciled with the pinned tool;
+bounded index/reconciliation outputs remain in `.tmp/ordinary-recovery-authority`.
