@@ -65,6 +65,7 @@ mod service_config;
 mod service_registry;
 mod service_supervisor;
 mod stop;
+pub(crate) use stop::ExactStopFeedbackIdentity;
 pub use stop::{
     ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
     ExactStopAttemptKind, ExactStopFeedback, ExactStopFeedbackSnapshot, ExactStopFeedbackState,

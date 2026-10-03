@@ -89,30 +89,10 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 711: Mount Exact Status Stop Controls (finished)
+# Phase 709: Mount Exact Stop-Feedback Notices (finished)
 
-Accepted the production status strip and exact Soft stop popup with coherent worker observations,
-opaque operation origins, selection/publication fences and bounded feedback retention. Canonical
-metadata, combined app/executable checks, 88 passing cases including seven mounted lifecycle cases,
-and independent review passed; see [acceptance evidence](failures/executable-bootstrap.md#exact-status-mount-qualification).
-Model/context operations and exact View values remain deferred; notice fallback is the next boundary.
-
-# Phase 709: Mount Exact Stop-Feedback Notices (pending)
-
-Complete the next bounded Notifications contributor from the active shell checkpoint. Follow
-[exact stop feedback](features/notifications/design.md#exact-stop-feedback-notices),
-[status-line feedback](features/status-line/design.md#turn-state-view-count-and-stop-controls), and
-[exact soft stop](systems/cas-live-syndic-transcript/design.md#exact-soft-stop).
-Connect the prerequisite exact feedback projection to the sole notice arbiter when its popup anchor
-cannot safely retain progress or outcome. Preserve opaque request identity, priority, bounded
-updates, persistent waiting state and resolved dismissal without issuing another interruption.
-
-Verify popup/notice eligibility transitions, repeated updates, stale request or selection changes,
-durable and volatile nondispatch, interrupted completion without error payload, and authority
-loss. Notices must not invent retry eligibility, terminal completion or a durable operation;
-dismissal must not mutate thread or execution state. Qualify the real mounted contributor with
-focused lifecycle tests and independent semantic review, reusing accepted stop and arbiter
-evidence. Keep audio and other unavailable-feature notices separate.
-
-Depends on phases 710 and 711. The Operator authorized their separate prerequisite boundaries
-after the 2026-10-03 readiness finding; notice-only integration remains insufficient.
+Accepted FIFO exact-feedback fallback through the sole notice arbiter, bounded acknowledgement,
+popup recovery and volatile refusal across temporary publication/proof loss. Canonical metadata,
+combined app/executable checks,128 passing cases and independent semantic review passed; see
+[qualification](failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).
+Audio, deferred status operations and unavailable repair/recovery mounts remain separate.

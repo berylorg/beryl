@@ -40,6 +40,18 @@ pub struct ExactStopFeedback {
     pub(in crate::cas_projection) inner: Arc<FeedbackRecord>,
 }
 
+#[derive(Clone)]
+pub(crate) struct ExactStopFeedbackIdentity(Weak<FeedbackRecord>);
+
+impl ExactStopFeedbackIdentity {
+    pub(crate) fn is_live(&self) -> bool {
+        self.0.strong_count() != 0
+    }
+    pub(crate) fn matches(&self, feedback: &ExactStopFeedback) -> bool {
+        self.0.ptr_eq(&Arc::downgrade(&feedback.inner))
+    }
+}
+
 impl std::fmt::Debug for ExactStopFeedback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExactStopFeedback")
@@ -57,6 +69,15 @@ impl PartialEq for ExactStopFeedback {
 impl Eq for ExactStopFeedback {}
 
 impl ExactStopFeedback {
+    pub(crate) fn weak_identity(&self) -> ExactStopFeedbackIdentity {
+        ExactStopFeedbackIdentity(Arc::downgrade(&self.inner))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_resolve_projected_feedback(&self, state: ExactStopFeedbackState) {
+        assert_ne!(state, ExactStopFeedbackState::Waiting);
+        self.inner.update(state, None);
+    }
     pub fn operation_origin(&self) -> Option<crate::cas_projection::ExactOperationOrigin> {
         self.inner
             .origin

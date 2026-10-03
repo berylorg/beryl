@@ -96,12 +96,20 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   contributor. Disposal releases presentation ownership without changing execution. View counts
   remain unknown unless their separate exact history and viewport facts are available; status
   observation never loads history or submits backend work to fill them.
-- Each window awaits at most one status read at a time and retains at most 72 exact feedback
-  handles, including its current popup and pending Notifications handoffs. Retention exhaustion
+- Each window awaits at most one status read at a time and shares a limit of 72 across exact feedback
+  handles and opaque weak acknowledgement/refusal records, including its current popup and pending
+  Notifications handoffs. Retention exhaustion
   disables new request admission before any stop effect; required waiting or resolved feedback is
   not evicted to make room. This presentation budget grants no additional service or execution
   capacity. A disposed view releases its observation task and presentation handles without
   cancelling an admitted request.
+- The existing single status-observation loop also reads the latest bounded feedback revisions,
+  including when no thread is selected. Notification acknowledgement releases only an exact resolved
+  handle, clears cached eligibility, and preserves a bounded opaque-origin volatile refusal until
+  a positively observed different service incarnation or same-thread operation successor makes it
+  dispensable. Absent publication or same-origin inactivity alone does not release that refusal.
+  Expired weak acknowledgement records without a required refusal can be reclaimed. No separate polling backlog,
+  execution owner, retry capability or durable acknowledgement follows from this presentation state.
 
 ## Compaction And Continuation
 

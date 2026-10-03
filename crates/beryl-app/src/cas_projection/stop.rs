@@ -39,6 +39,7 @@ mod work_facts;
 pub(in crate::cas_projection) use custody::PermissionCustodyToken;
 
 pub(in crate::cas_projection) use feedback::EligibilityRecord;
+pub(crate) use feedback::ExactStopFeedbackIdentity;
 pub use feedback::{
     ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
     ExactStopAttemptKind, ExactStopFeedback, ExactStopFeedbackSnapshot, ExactStopFeedbackState,

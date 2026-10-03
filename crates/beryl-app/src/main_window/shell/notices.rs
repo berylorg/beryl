@@ -10,6 +10,7 @@ use gpui::Focusable;
 
 mod composer;
 mod home_warning;
+mod stop_feedback;
 #[cfg(feature = "test-faults")]
 pub use home_warning::BestEffortHomeWarningTimer;
 pub(crate) use home_warning::publish_home_open_notice_classification;
@@ -139,6 +140,7 @@ impl MainWindowNoticeIngress {
 pub(super) struct MainWindowShellNotices {
     arbiter: MainWindowNoticeArbiter,
     composer: composer::ComposerNoticeContribution,
+    stop_feedback: stop_feedback::StopFeedbackNoticeContribution,
     window_id: beryl_model::WindowId,
     pub(super) widget: Entity<MainWindowNoticeWidget>,
     home: beryl_state::ThemeHomeIdentity,
@@ -181,6 +183,7 @@ impl MainWindowShellNotices {
         Self {
             arbiter: MainWindowNoticeArbiter::new(controller.window_id()),
             composer: composer::ComposerNoticeContribution::default(),
+            stop_feedback: stop_feedback::StopFeedbackNoticeContribution::default(),
             window_id: controller.window_id(),
             home: appearance.prepared().home(),
             publication,
@@ -300,6 +303,7 @@ impl MainWindowShellRoot {
         self.notices.home_warning = home_warning::HomeWarning::default();
         self.notices.subscription = None;
         self.notices.composer = composer::ComposerNoticeContribution::default();
+        self.notices.stop_feedback = stop_feedback::StopFeedbackNoticeContribution::default();
         self.notices.arbiter.dispose();
         self.notices.projected = None;
         self.notices.allocation = None;
@@ -342,6 +346,7 @@ impl MainWindowShellRoot {
                     .arbiter
                     .dismiss(&token)
                     .map_err(Rejection::Notice)?;
+                self.acknowledge_stop_notice(&token);
                 self.sync_notices(window, cx);
             }
             MainWindowNoticeWidgetEvent::Command { token, command } => {
@@ -386,6 +391,7 @@ impl MainWindowShellRoot {
             return;
         }
         self.sync_composer_notice(cx);
+        self.sync_stop_feedback_notice();
         self.sync_home_warning_timer(window, cx);
         self.refresh_notice_safe_focus(cx);
         let viewport = window.viewport_size();

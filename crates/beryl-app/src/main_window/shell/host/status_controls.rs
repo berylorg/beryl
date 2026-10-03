@@ -11,7 +11,9 @@ use gpui::{AnyElement, AnyView, InteractiveElement, StatefulInteractiveElement};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+mod feedback;
 mod render;
+use feedback::AcknowledgedStopFeedback;
 pub(super) use render::{render_menu, render_strip};
 
 const FEEDBACK_LIMIT: usize = 72;
@@ -29,6 +31,7 @@ pub(super) struct ExactStatusControls {
     poll: Option<gpui::Task<()>>,
     request_pending: Option<ExactOperationOrigin>,
     feedback: Vec<ExactStopFeedbackHandoff>,
+    acknowledged: Vec<AcknowledgedStopFeedback>,
     request_failure: Option<&'static str>,
     menu_anchor: Option<ExactOperationOrigin>,
     menu_focus: gpui::FocusHandle,
@@ -45,6 +48,7 @@ impl ExactStatusControls {
             poll: None,
             request_pending: None,
             feedback: Vec::new(),
+            acknowledged: Vec::new(),
             request_failure: None,
             menu_anchor: None,
             menu_focus: cx.focus_handle(),
@@ -63,6 +67,7 @@ impl ExactStatusControls {
 
     fn request_blocked(&self) -> bool {
         self.request_pending.is_some()
+            || self.volatile_refused()
             || self.feedback().is_some_and(|feedback| {
                 matches!(
                     feedback.snapshot().state,
@@ -82,16 +87,19 @@ impl ExactStatusControls {
     fn command_enabled(&self) -> bool {
         self.menu_available()
             && !self.request_blocked()
-            && self.feedback.len() < FEEDBACK_LIMIT
+            && self.feedback_budget() < FEEDBACK_LIMIT
             && matches!(self.snapshot.stop, ExactSoftStopAvailability::Eligible(_))
     }
 
     fn reason(&self) -> &'static str {
-        if self.feedback.len() == FEEDBACK_LIMIT {
+        if self.feedback_budget() == FEEDBACK_LIMIT {
             return "The bounded stop feedback capacity is full.";
         }
         if self.request_pending.is_some() {
             return "The exact soft-stop request is being admitted.";
+        }
+        if self.volatile_refused() {
+            return "This volatile soft-stop request was not dispatched and cannot be retried.";
         }
         if let Some(feedback) = self.feedback() {
             match feedback.snapshot().state {
@@ -123,10 +131,14 @@ impl ExactStatusControls {
     fn retain_feedback(&mut self, origin: ExactOperationOrigin, feedback: ExactStopFeedback) {
         if feedback.operation_origin().as_ref() != Some(&origin)
             || self.feedback.iter().any(|entry| entry.feedback == feedback)
+            || self
+                .acknowledged
+                .iter()
+                .any(|entry| entry.identity.matches(&feedback))
         {
             return;
         }
-        if self.feedback.len() < FEEDBACK_LIMIT {
+        if self.feedback_budget() < FEEDBACK_LIMIT {
             self.feedback
                 .push(ExactStopFeedbackHandoff { origin, feedback });
         }
@@ -197,6 +209,7 @@ impl MainWindowShellRoot {
     }
 
     pub(super) fn sync_status_controls(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.status_controls.prune_acknowledgments();
         if self
             .status_controls
             .worker
@@ -241,6 +254,7 @@ impl MainWindowShellRoot {
             loop {
                 let observation = this.update_in(cx, |root, window, cx| {
                     root.sync_status_controls(window, cx);
+                    root.sync_notices(window, cx);
                     Some((
                         root.status_controls.worker.clone()?,
                         root.status_controls.selection?,

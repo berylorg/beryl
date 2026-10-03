@@ -112,6 +112,14 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 ## Exact Stop-Feedback Notices
 
+- Select the oldest retained unacknowledged request whose exact popup cannot safely retain its
+  required feedback. Keep that request selected until its popup can safely retain the same feedback
+  again or its resolved notice is dismissed. Later requests remain bounded and retained without
+  eviction or acknowledgement; when selection ends, choose the next eligible request in FIFO order.
+  Closing a popup voluntarily does not by itself make its exact anchor unsafe.
+- Popup suppression applies only to the same exact feedback association. Resolved dismissal
+  releases that request's presentation and cannot readmit it. It does not restore stop eligibility;
+  volatile nondispatch refusal remains effective for the same operation even after dismissal.
 - The status-line feature contributes at most one exact stop-feedback record for the selected
   request when its anchored popup can no longer retain required request progress or outcome
   feedback. Notifications uses the opaque exact feedback association supplied by the stop system;

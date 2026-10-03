@@ -293,3 +293,71 @@ rechecked them before removing the exact canonical checkout. Evidence remains bo
 Cargo/native-test process or isolated checkout remains. No software, dependency, manifest,
 lockfile or production worker-stack change was introduced. Notifications mounting remains a
 separate acceptance boundary.
+
+## Exact Stop Notice Selection Readiness
+
+Inspection after status-control acceptance on 2026-10-03 confirmed that opaque feedback identity
+and revisions, bounded host retention, popup safety and the existing notice arbiter suffice for
+notice integration. No additional service API or widget is needed. One owning-feature policy is
+missing: Notifications permits at most one exact stop-feedback record for the selected request,
+and the arbiter rejects a second protected exact-stop condition with `ProtectedConditionOccupied`,
+but the host can retain up to 72 distinct requests. Neither the feature nor app contracts select
+which retained request becomes the current fallback condition after selection or service changes.
+FIFO ordering of already admitted notices does not define selection before that admission.
+
+Recommended clarification, awaiting Operator direction: choose the oldest retained unacknowledged
+request requiring fallback, hold that exact opaque association until the same request regains a
+safe popup or its resolved notice is exactly dismissed, and advance FIFO after dismissal. Skip
+only feedback that its own popup can safely retain; user closure alone is not anchor loss. Later
+requests stay bounded without evicting waiting feedback or replacing it with a newer request.
+
+Resolved dismissal must not revive the same request or make volatile nondispatch retryable. Release
+only presentation ownership, invalidate cached eligibility at that acknowledgment, and preserve
+the exact-origin volatile refusal until authoritative replacement or loss makes it dispensable.
+An opaque dismissal association prevents re-admission of the same resolved handle. The existing
+bounded observation loop can inspect latest feedback even without a selected thread; this requires
+no second timer, event backlog or backend command. These are proposed clarifications and remaining
+implementation obligations, not accepted policy. Phase 709 stopped before source or test edits;
+no Cargo, homes, listener, checkout or other runtime resource was created for this inspection.
+
+## Exact Stop Notice Acknowledgement Lifetime
+
+Operator continuation on 2026-10-03 accepted the preceding FIFO recommendation in the owning
+Notifications feature. Initial mounted qualification passed ten cases, but independent review
+and worker self-review found that acknowledgement pruning treated window-publication expiry and
+same-origin inactivity as sufficient to release volatile refusal. A failed shutdown can republish
+the same CAS service, and transient proof loss can precede another observation of the same exact
+operation. Fresh eligibility after that presentation transition could then enable a prohibited
+second volatile request.
+
+Preserve the bounded exact-origin refusal through absent or expired publication and same-origin
+inactive observations. Release it only when an authoritative service replacement or same-thread
+successor proves the original operation is no longer selectable. Presentation loss is not that
+proof. Qualify expiry/remount and inactive/recovered observations on the mounted contributor;
+cached eligibility and acknowledgement identity remain independently fenced. This is enforcement
+of the accepted no-retry policy within the notice mount, not another stop or recovery mechanism.
+
+## Exact Stop Notice Mount Qualification
+
+Accepted the production contributor on 2026-10-03. The existing status loop supplies bounded latest
+feedback to the sole per-window notice arbiter even without a selected thread. FIFO selection
+retains one exact request through updates and preemption; same-request popup recovery suppresses
+duplicate presentation, and exact resolved dismissal advances without changing execution. Strong
+feedback and opaque weak acknowledgement/refusal records share the window's 72-slot budget.
+Waiting remains persistent; all eight resolved states have their design-owned severity and
+dismissal behavior. Volatile refusal survives temporary publication and same-origin proof loss.
+
+Initial local mounted run `9173fd0a-b99b-4808-8aa8-d9e91a6202d5` passed 10/10. The corrected
+volatile-dismissal regression passed 1/1 in `90d3c4ab-3c81-41ff-91f2-89afd9048a92`. Canonical
+locked metadata and final combined app/executable all-target checks passed in the isolated
+checkout without local dependency overrides. Final serial run
+`3da0c09c-1844-4577-9558-7cdbf40196b3` passed 128/128 in 276.387 seconds: selected window-service
+and exact-stop unit cases, terminal/service regressions, ten mounted status/stop-notice cases,
+sixteen arbiter cases and twenty-one notice-mount cases. The process-local stable toolchain,
+32 MiB test stack and Windows ErrorMode were restored after execution.
+
+Independent semantic review accepted the corrected complete boundary with no remaining findings
+and independently matched all ten source/test hashes. Root matched both working and canonical
+hashes again after qualification. Bounded logs and inventories remain under
+`.tmp/exact-stop-notice-evidence`; accepted unchanged service and widget evidence is reused.
+No software, dependency, manifest, lockfile, audio or additional stop capability was introduced.

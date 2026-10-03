@@ -18,6 +18,21 @@ impl std::fmt::Debug for ExactOperationOrigin {
     }
 }
 
+impl ExactOperationOrigin {
+    pub(crate) fn same_selected_thread(&self, other: &Self) -> bool {
+        self.home_id == other.home_id
+            && self.home_generation == other.home_generation
+            && self.service_generation == other.service_generation
+            && self.thread == other.thread
+    }
+    pub(crate) fn belongs_to_service(
+        &self,
+        identity: (BerylHomeId, HomeGeneration, ProjectionServiceGeneration),
+    ) -> bool {
+        (self.home_id, self.home_generation, self.service_generation) == identity
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExactParentState {
     Unknown,

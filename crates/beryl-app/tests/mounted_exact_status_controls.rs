@@ -6,6 +6,8 @@ mod compaction;
 mod composer_support;
 #[path = "normal_terminal/server.rs"]
 mod server;
+#[path = "mounted_exact_status_controls/stop_feedback.rs"]
+mod stop_feedback;
 #[path = "mounted_exact_status_controls/support.rs"]
 mod support;
 #[path = "projection/syndic.rs"]
@@ -125,6 +127,16 @@ fn run_mounted(
     stop: bool,
     retire: bool,
     projected: Option<(ExactStopFeedbackState, usize)>,
+) {
+    run_mounted_with_notices(cx, stop, retire, projected, None);
+}
+
+fn run_mounted_with_notices(
+    cx: &mut gpui::TestAppContext,
+    stop: bool,
+    retire: bool,
+    projected: Option<(ExactStopFeedbackState, usize)>,
+    notice_scenario: Option<stop_feedback::Scenario>,
 ) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let server = if stop {
@@ -280,6 +292,23 @@ fn run_mounted(
         support::wait(window, cx, |diagnostic| {
             diagnostic.0 == "working" && diagnostic.2
         });
+        if let Some(scenario) = notice_scenario {
+            stop_feedback::exercise(
+                scenario,
+                window,
+                cx,
+                &worker,
+                fixture.thread,
+                &mut publication,
+                fixture.state.session(),
+            );
+            window
+                .update(cx, |_, window, _| window.remove_window())
+                .unwrap();
+            server.close_connection();
+            let _ = capture.join().unwrap();
+            return direct;
+        }
         let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
         let anchor = visual.debug_bounds("main-window-status-turn").unwrap();
         let prior_focus = window
@@ -351,6 +380,11 @@ fn run_mounted(
             support::wait(window, cx, |diagnostic| {
                 diagnostic.4 == Some(ExactStopFeedbackState::Waiting)
             });
+            assert!(
+                window
+                    .read_with(cx, |root, _| root.notice_projection().is_none())
+                    .unwrap()
+            );
             let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
             visual.simulate_click(anchor.center(), gpui::Modifiers::none());
             assert!(
@@ -368,6 +402,15 @@ fn run_mounted(
             support::wait(window, cx, |diagnostic| {
                 diagnostic.0 == "interrupted" && !diagnostic.1
             });
+            window
+                .read_with(cx, |root, _| {
+                    let notice = root.notice_projection().unwrap();
+                    assert_eq!(notice.kind, NoticeKind::ExactStopFeedback);
+                    assert_eq!(notice.content.variant, NoticeVariant::Info);
+                    assert_eq!(notice.content.dismissal, NoticeDismissal::Dismissible);
+                    assert_eq!(notice.content.commands().count(), 0);
+                })
+                .unwrap();
             assert_eq!(
                 window
                     .read_with(cx, |root, _| root.test_exact_status_diagnostics().3)

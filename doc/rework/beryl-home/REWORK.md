@@ -499,8 +499,11 @@
 - [x] Mounted and independently accepted the production exact status strip and Soft stop popup,
   with coherent typed observations, opaque operation origins, bounded feedback and window/selection
   fences; [canonical mounted evidence](../../failures/executable-bootstrap.md#exact-status-mount-qualification).
-  Notice fallback remains the next separate mount; other status operations remain deferred.
-- [ ] Implement exact soft-stop feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
+  Other status operations remain deferred.
+- [x] Mounted and independently accepted exact soft-stop notice fallback through the sole arbiter,
+  preserving FIFO identity, popup recovery, resolved dismissal and volatile refusal across temporary
+  loss; [canonical qualification](../../failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).
+- [ ] Implement bounded notification-audio ownership and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
