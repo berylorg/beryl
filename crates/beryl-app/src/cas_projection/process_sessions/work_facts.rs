@@ -85,14 +85,20 @@ impl ScheduledExecutionSessions {
         let start = cursor.map_or(Bound::Unbounded, |cursor| Bound::Excluded(cursor.after));
         let mut slots = state.slots.range((start, Bound::Unbounded)).peekable();
         let mut preparing = state.preparing.range((start, Bound::Unbounded)).peekable();
+        let mut recovering = state.recovering.range((start, Bound::Unbounded)).peekable();
         let mut records = Vec::new();
         let mut bytes = 0_usize;
         let mut has_more = false;
         loop {
-            let thread_id = match (slots.peek(), preparing.peek()) {
-                (Some((left, _)), Some((right, _))) => **left.min(right),
-                (Some((thread, _)), None) | (None, Some((thread, _))) => **thread,
-                (None, None) => break,
+            let Some(thread_id) = slots
+                .peek()
+                .map(|(id, _)| **id)
+                .into_iter()
+                .chain(preparing.peek().map(|(id, _)| **id))
+                .chain(recovering.peek().map(|(id, _)| **id))
+                .min()
+            else {
+                break;
             };
             if records.len() == limits.max_records {
                 has_more = true;
@@ -106,12 +112,17 @@ impl ScheduledExecutionSessions {
                 .peek()
                 .filter(|(id, _)| **id == thread_id)
                 .map(|(_, worker)| *worker);
+            let recovery = recovering
+                .peek()
+                .filter(|(id, _)| **id == thread_id)
+                .map(|(_, binding)| *binding);
             let record_bytes = size_of::<ScheduledSessionWorkRecord>()
                 .checked_add(slot.map_or(0, |slot| slot.binding.root_path().as_str().len()))
                 .and_then(|bytes| {
-                    bytes.checked_add(
-                        preparation.map_or(0, |worker| worker.binding.root_path().as_str().len()),
-                    )
+                    bytes.checked_add(preparation.map_or_else(
+                        || recovery.map_or(0, |binding| binding.root_path().as_str().len()),
+                        |worker| worker.binding.root_path().as_str().len(),
+                    ))
                 })
                 .ok_or(ScheduledSessionWorkError::ByteLimit)?;
             let next_bytes = bytes
@@ -139,10 +150,17 @@ impl ScheduledExecutionSessions {
                         ScheduledSessionWorkState::Available
                     },
                 }),
-                preparation: preparation.map(|worker| ScheduledSessionPreparationFact {
-                    binding: worker.binding.clone(),
-                    complete: worker.complete,
-                }),
+                preparation: preparation
+                    .map(|worker| ScheduledSessionPreparationFact {
+                        binding: worker.binding.clone(),
+                        complete: worker.complete,
+                    })
+                    .or_else(|| {
+                        recovery.map(|binding| ScheduledSessionPreparationFact {
+                            binding: binding.clone(),
+                            complete: false,
+                        })
+                    }),
             });
             bytes = next_bytes;
             if slot.is_some() {
@@ -150,6 +168,9 @@ impl ScheduledExecutionSessions {
             }
             if preparation.is_some() {
                 preparing.next();
+            }
+            if recovery.is_some() {
+                recovering.next();
             }
         }
         if self.current_work_revision(&state)? != *expected {

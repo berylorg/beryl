@@ -26,10 +26,10 @@ impl ScheduledExecutionSessions {
             if policy.thread_options().is_ephemeral() {
                 return Err(ScheduledSessionRegistrationError::EphemeralThreadPolicy);
             }
-            if state.slots.contains_key(&thread_id) {
+            if state.slots.contains_key(&thread_id) || state.recovering.contains_key(&thread_id) {
                 return Err(ScheduledSessionRegistrationError::ThreadOccupied);
             }
-            if state.slots.len() >= context.capacity {
+            if state.slots.len() + state.recovering.len() >= context.capacity {
                 return Err(ScheduledSessionRegistrationError::CapacityFull);
             }
             let registration = ScheduledSessionRegistration {
@@ -50,7 +50,11 @@ impl ScheduledExecutionSessions {
                     policy,
                     assets,
                     connection: Arc::clone(session.connection()),
-                    resources: Some(SessionResources { session, tools }),
+                    resources: Some(SessionResources {
+                        session,
+                        tools,
+                        projection: None,
+                    }),
                     checked_out: false,
                     retiring: false,
                 },

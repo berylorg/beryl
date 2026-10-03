@@ -32,9 +32,18 @@ pub struct CasProjectionRequest {
     model_context_window_tokens: Option<u64>,
     observed_at: SyndicTimestamp,
     timeout: Duration,
+    recovery_only: bool,
 }
 
 impl CasProjectionRequest {
+    pub(in crate::cas_projection) fn for_recovery_only(mut self) -> Self {
+        self.recovery_only = true;
+        self
+    }
+
+    pub(in crate::cas_projection) fn is_recovery_only(&self) -> bool {
+        self.recovery_only
+    }
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub const fn new(
@@ -54,6 +63,7 @@ impl CasProjectionRequest {
             model_context_window_tokens,
             observed_at,
             timeout,
+            recovery_only: false,
         }
     }
 
@@ -374,6 +384,13 @@ impl LoadedCasProjection {
             Some(lease) => lease.is_live(),
             None => Ok(false),
         }
+    }
+
+    pub(in crate::cas_projection) fn try_with_live_authority<T>(
+        &self,
+        publish: impl FnOnce() -> T,
+    ) -> Option<T> {
+        self.lease.as_ref()?.try_with_live_authority(publish)
     }
 
     pub fn observed_thread_metadata(

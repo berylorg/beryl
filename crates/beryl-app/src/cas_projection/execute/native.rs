@@ -36,15 +36,11 @@ impl CasProjectionCoordinator {
         lease: LoadedProjectionLease,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_home(home)?;
-        let publication = PublishValidBinding::new(
-            request.thread_id(),
-            basis.expected_binding_revision(),
-            basis.selected_path(),
+        let publication = PublishValidBinding::from_native(
+            basis,
             request.execution_binding().clone(),
             source.binding().cas_thread_id().clone(),
-            basis.represented_prefix(),
             source.binding().native_turn_count(),
-            basis.tool_profile(),
             source.binding().lineage(),
         );
         let revision = publication::publish_valid(home, storage, &publication, point_limit())?;
@@ -160,15 +156,11 @@ impl CasProjectionCoordinator {
         }
 
         self.ensure_home(home)?;
-        let publication = PublishValidBinding::new(
-            request.thread_id(),
-            basis.expected_binding_revision(),
-            basis.selected_path(),
+        let publication = PublishValidBinding::from_native(
+            basis,
             request.execution_binding().clone(),
             cas_thread_id.clone(),
-            basis.represented_prefix(),
             source.binding().native_turn_count(),
-            basis.tool_profile(),
             lineage,
         );
         match publication::publish_valid(home, storage, &publication, point_limit()) {
@@ -335,6 +327,11 @@ impl CasProjectionCoordinator {
         reason: &'static str,
         native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        if request.is_recovery_only() {
+            return Err(ProjectionExecutionError::ProjectionBasisChanged {
+                thread_id: request.thread_id(),
+            });
+        }
         let source_is_target = source.thread_id() == request.thread_id();
         let retirement_basis_revision = if source_is_target {
             basis.expected_binding_revision()

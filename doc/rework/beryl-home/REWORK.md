@@ -518,6 +518,7 @@
 - [x] Mounted selected-runtime failure through the weak published reader and sole notice arbiter,
   preserving exact identity and unavailable recovery gates;
   [canonical qualification](../../failures/executable-bootstrap.md#selected-runtime-notice-qualification).
+- [x] Mounted exact healthy-home selected-runtime Retry with retained no-input projection usability and bounded notice feedback; [qualification](../../failures/executable-bootstrap.md#runtime-retry-qualification-boundaries).
 - [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
   capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

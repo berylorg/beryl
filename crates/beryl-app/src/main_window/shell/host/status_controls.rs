@@ -152,6 +152,10 @@ impl Drop for ExactStatusControls {
 }
 
 impl MainWindowShellRoot {
+    pub(in crate::main_window::shell) fn runtime_retry_interaction_gated(&self) -> bool {
+        self.status_mutation_gate().is_some()
+    }
+
     fn status_mutation_gate(&self) -> Option<&'static str> {
         if self.shutdown_interaction_gated {
             Some("Application Exit is waiting for active work and durable state.")
@@ -261,21 +265,32 @@ impl MainWindowShellRoot {
                         root.status_controls.worker.clone()?,
                         root.status_controls.selection?,
                         root.status_controls.generation.load(Ordering::Acquire),
+                        root.runtime_retry_observation_target(),
                     ))
                 });
                 let Ok(observation) = observation else {
                     break;
                 };
-                if let Some((worker, selection, generation)) = observation {
+                if let Some((worker, selection, generation, retained_failure)) = observation {
                     let result = background
                         .spawn(async move {
                             let runtime = worker.selected_runtime_failure(selection);
-                            (worker.selected_operation_snapshot(selection), runtime)
+                            let target = match &runtime {
+                                crate::cas_projection::SelectedRuntimeFailureObservation::Unavailable { execution, failure } => {
+                                    Some((execution.clone(), *failure))
+                                }
+                                crate::cas_projection::SelectedRuntimeFailureObservation::Unknown => retained_failure,
+                            };
+                            let eligibility = target.map(|(execution, failure)| {
+                                let eligible = worker.selected_runtime_retry_eligible(selection, &execution, failure);
+                                (execution, failure, eligible)
+                            });
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility)
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
                         root.apply_runtime_failure_observation(
-                            selection, generation, result.1, window, cx,
+                            selection, generation, result.1, result.2, window, cx,
                         );
                         root.apply_status_observation(selection, generation, result.0, window, cx);
                     });
@@ -298,11 +313,25 @@ impl MainWindowShellRoot {
             .then(|| worker.worker_identity())
     }
 
+    pub(in crate::main_window::shell) fn runtime_notice_worker(
+        &self,
+    ) -> Option<PublishedExactStopWorker> {
+        self.status_controls
+            .worker
+            .clone()
+            .filter(|worker| worker.publication_current())
+    }
+
     fn apply_runtime_failure_observation(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,
         generation: u64,
         observation: crate::cas_projection::SelectedRuntimeFailureObservation,
+        eligibility: Option<(
+            beryl_model::ExecutionBinding,
+            crate::cas_projection::RuntimeFailureSnapshot,
+            bool,
+        )>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -316,6 +345,7 @@ impl MainWindowShellRoot {
             return;
         };
         self.retain_runtime_failure(selection, service, observation);
+        self.retain_runtime_retry_eligibility(eligibility);
         self.sync_notices(window, cx);
     }
 
@@ -499,7 +529,7 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.apply_runtime_failure_observation(stamp.0, stamp.1, result, window, cx);
+        self.apply_runtime_failure_observation(stamp.0, stamp.1, result, None, window, cx);
     }
 
     pub fn test_mount_exact_status_worker(
@@ -512,6 +542,22 @@ impl MainWindowShellRoot {
     ) {
         self.mount_exact_status_worker(
             PublishedExactStopWorker::for_test(worker, lifetime, session),
+            window,
+            cx,
+        );
+    }
+
+    pub fn test_mount_exact_status_worker_with_retry(
+        &mut self,
+        worker: crate::cas_projection::ExactStopWorker,
+        retry: crate::cas_projection::SelectedRuntimeRetryWorker,
+        lifetime: std::sync::Weak<()>,
+        session: beryl_state::SessionState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.mount_exact_status_worker(
+            PublishedExactStopWorker::for_test_with_retry(worker, retry, lifetime, session),
             window,
             cx,
         );

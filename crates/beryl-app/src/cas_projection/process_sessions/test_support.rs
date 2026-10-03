@@ -15,6 +15,10 @@ pub(super) struct IdleSessionElectionHook {
 }
 
 impl IdleSessionElectionPause {
+    pub fn try_entered(&self) -> bool {
+        self.entered.try_recv().is_ok()
+    }
+
     pub fn wait(&self, timeout: Duration) {
         self.entered
             .recv_timeout(timeout)
@@ -33,6 +37,21 @@ impl Drop for IdleSessionElectionPause {
 }
 
 impl ScheduledExecutionSessions {
+    pub fn retire_idle_thread_for_test(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<bool, crate::cas_projection::ProjectionCoordinatorError> {
+        let registration = self
+            .lock()
+            .slots
+            .get(&thread_id)
+            .map(|slot| slot.registration);
+        match registration {
+            Some(registration) => self.retire_if_idle(registration),
+            None => Ok(false),
+        }
+    }
+
     pub fn install_idle_election_pause_for_test(
         &self,
         thread_id: SyndicThreadId,

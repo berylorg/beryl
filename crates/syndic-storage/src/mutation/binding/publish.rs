@@ -12,6 +12,7 @@ pub struct PublishValidBinding {
     pub(super) native_turn_count: CasNativeTurnCount,
     pub(super) tool_profile: CasConversationToolProfile,
     pub(super) lineage: CasLineageProof,
+    pub(super) native_basis: Option<crate::NativeProjectionBasis>,
 }
 
 impl PublishValidBinding {
@@ -38,7 +39,47 @@ impl PublishValidBinding {
             native_turn_count,
             tool_profile,
             lineage,
+            native_basis: None,
         }
+    }
+
+    #[must_use]
+    pub fn from_native(
+        basis: crate::NativeProjectionBasis,
+        execution: ExecutionBinding,
+        cas_thread_id: CasThreadId,
+        native_turn_count: CasNativeTurnCount,
+        lineage: CasLineageProof,
+    ) -> Self {
+        let mut request = Self::new(
+            basis.thread_id(),
+            basis.expected_binding_revision(),
+            basis.selected_path(),
+            execution,
+            cas_thread_id,
+            basis.represented_prefix(),
+            native_turn_count,
+            basis.tool_profile(),
+            lineage,
+        );
+        request.native_basis = Some(basis);
+        request
+    }
+
+    #[must_use]
+    pub fn from_native_recovery(
+        basis: crate::NativeProjectionRecoveryBasis,
+        cas_thread_id: CasThreadId,
+        native_turn_count: CasNativeTurnCount,
+        lineage: CasLineageProof,
+    ) -> Self {
+        Self::from_native(
+            basis.native_basis(),
+            basis.execution().clone(),
+            cas_thread_id,
+            native_turn_count,
+            lineage,
+        )
     }
 
     #[must_use]

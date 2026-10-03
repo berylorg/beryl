@@ -101,6 +101,14 @@ impl Default for ProcessAdmissionGate {
 }
 
 impl ProcessAdmissionGate {
+    pub(crate) fn try_admit<T>(&self, admit: impl FnOnce() -> T) -> Option<T> {
+        let state = self.inner.try_lock().ok()?;
+        if state.fenced {
+            return None;
+        }
+        Some(admit())
+    }
+
     pub(crate) fn same_process(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }

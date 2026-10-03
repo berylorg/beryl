@@ -1,5 +1,12 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    pub(crate) fn try_with_work_open<T>(&self, publish: impl FnOnce() -> T) -> Option<T> {
+        self.process.try_admit(|| {
+            let _commands = self.try_hold_work_open().ok()?;
+            Some(publish())
+        })?
+    }
+
     #[cfg(target_os = "windows")]
     pub(crate) fn parent_sound_sink(
         &self,

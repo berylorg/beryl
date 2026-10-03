@@ -110,15 +110,11 @@ impl CasProjectionCoordinator {
             ));
         }
         self.ensure_home(home)?;
-        let publication = PublishValidBinding::new(
-            request.thread_id(),
-            basis.expected_binding_revision(),
-            basis.selected_path(),
+        let publication = PublishValidBinding::from_native(
+            basis,
             request.execution_binding().clone(),
             cas_thread_id.clone(),
-            basis.represented_prefix(),
             native_turn_count,
-            basis.tool_profile(),
             lineage,
         );
         match publication::publish_valid(home, storage, &publication, point_limit()) {

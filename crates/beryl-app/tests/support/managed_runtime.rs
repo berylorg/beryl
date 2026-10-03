@@ -66,6 +66,14 @@ impl Fixture {
         provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
         worker_capacity: u64,
     ) -> Self {
+        Self::with_capacities(provider, worker_capacity, NonZeroUsize::new(1).unwrap())
+    }
+
+    pub(crate) fn with_capacities(
+        provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+        worker_capacity: u64,
+        runtime_capacity: NonZeroUsize,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         fs::create_dir(directory.path().join("root-1")).unwrap();
         fs::create_dir(directory.path().join("root-2")).unwrap();
@@ -92,7 +100,7 @@ impl Fixture {
         let enrollments =
             beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
                 home.home_id(),
-                NonZeroUsize::new(1).unwrap(),
+                runtime_capacity,
             );
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let mut service = ProjectionConnectionService::new(
@@ -111,7 +119,7 @@ impl Fixture {
         service
             .configure_runtime_interest(
                 RuntimeInterestConfig::new(
-                    NonZeroUsize::new(1).unwrap(),
+                    runtime_capacity,
                     NonZeroUsize::new(4).unwrap(),
                     TIMEOUT,
                 )

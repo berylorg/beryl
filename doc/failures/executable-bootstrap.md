@@ -787,6 +787,64 @@ Independent semantic and adversarial source review accepted the app, system and 
 and derived mounting boundary without remaining blockers. Scoped documentation checks passed;
 no new Cargo or runtime qualification is claimed for this documentation-only boundary.
 
+## Runtime Retry Qualification Boundaries
+
+Paused native-response tests cannot run the synchronous Retry worker directly through GPUI's
+test background executor. Its test dispatcher executes the runnable on the test thread; waiting
+for projection evidence consequently blocks until the backend timeout, before the test can edit,
+cancel or release the response. The mounted fixture now opts into one bounded native test worker,
+awaits its existing oneshot result and joins the exact thread on completion or fixture disposal.
+The production executor and recovery owners remain unchanged. The three mounted Retry tests
+passed in run `c19d975d-d17d-4e43-a4fe-78220dd969d7`, including live edits, focus and history.
+
+A failed runtime's old View interest does not retain its successor attempt. Adding a replacement
+View to the fixture nevertheless masks the real qualification boundary: production does not
+acquire that interest, and the retained projection's loaded lease already prevents idle retirement
+through `connection_has_authority`. A rejected idle election can briefly contend with publication
+because it starts a work-boundary mutation before checking that lease. Qualification therefore
+uses the existing exact election pause, without synthetic View ownership, and checks actual lease
+retention. Contention remains an explicitly permitted refusal, never automatic recovery.
+
+The same run exposed a separate handoff failure: implicitly dropping the retained projection in
+ordinary checkout requests connection retirement before the session can be issued. Checkout must
+consume the existing explicit projection release outside the session mutex and preserve typed
+cleanup and original return custody. Cleanup failure returns a localized unavailable result;
+genuine home authority failures retain their existing classification. The real recovered-pending
+scheduler regression verifies unchanged accepted input, healthy admission and an already-issued
+independent runtime lease's actual connection and binding authority after the local refusal.
+
+An apparent later fatal scheduler transition was caused by the fixture returning the same fresh
+CAS thread identity for different immutable source revisions. Exact binding publication correctly
+rejected that collision; fresh fixture identities now include the physical process and connection.
+Do not weaken publication or abandonment validation to admit impossible fresh-identity reuse.
+Observe the first refusal through the actual recovered-pending scheduler, and retain an already
+issued independent runtime lease to test its actual connection and binding authority afterward.
+These findings change implementation and test mechanics, not the selected Retry ownership contract.
+
+Two combined-run fixtures incorrectly assumed contention-free observation/publication. The direct
+case now shares the no-View election fixture. The mounted case binds the pause to its actual
+selected claim, pumps GPUI while observing arrival, and permits one separately explicit Retry only
+after exact current-authority refusal. It still requires actual usability, the same edited composer,
+history and focus, and rejection of old failure resurrection. Production performs no automatic Retry.
+
+Accepted on 2026-10-03 with independent lifecycle, persistence and external-effect completion review.
+Canonical qualification excluded ignored local dependency overrides and used locked, one-job,
+nonincremental Cargo execution. The ten-target combined run
+`cf635a22-9040-43ab-9514-68e202e345ae` passed 125 of 127 cases and exposed the two fixture assumptions
+above. After their correction, all 44 affected `runtime_session_preparation` cases passed in
+100.606 seconds (`be2ccaab-aafd-44c6-929a-24281a8d15e8`). The other nine targets' 83 passing cases
+are reused with unchanged production, shared-helper, dependency and configuration inputs; this is
+127 distinct qualified app cases, not a claim that the original combined run passed.
+
+Affected storage verification passed 70 distinct cases, including all ten new no-input planning
+and exact-publication cases. Final `cargo check -p beryl-app -p beryl --all-targets --features
+beryl-app/test-faults --locked`, scoped formatting and diff checks passed. All 54 source/test
+snapshot paths, including the six restored diagnostic-only paths, matched the canonical checkout.
+Bounded accepted logs and hashes remain in `.tmp/runtime-retry-qualified-evidence`; superseded
+diagnostics and the canonical checkout are reclaimed. No dependency, manifest, lockfile, V7 storage
+format or production worker stack changed. Broader repair/recovery and Running threads mounting
+remain separate rework boundaries.
+
 ## Ordinary Running-Home Recovery Custody Readiness
 
 On 2026-10-03, the app-owned

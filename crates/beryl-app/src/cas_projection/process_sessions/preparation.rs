@@ -9,19 +9,20 @@ use syndic_storage::SyndicStorage;
 
 use super::*;
 mod handoff;
+mod recovery;
 mod run;
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../tests/unit/shutdown_preparation_capture.rs"]
 mod shutdown_capture_tests;
 mod target;
 mod token_directory;
-pub use token_directory::RuntimeTokenDirectory;
 use crate::cas_projection::{
     ProcessOrdinaryDynamicToolAuthority, RuntimeInterestError, RuntimeInterestStatus,
     ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionUnavailable, runtime_interest::RuntimeInterestOwner,
     service::ProjectionAdmissionContext, service_config::ProjectionWorkerPool,
 };
+pub use token_directory::RuntimeTokenDirectory;
 
 pub struct RuntimeSessionPreparationConfig {
     pub runtime_roots: RuntimeRootState,
@@ -155,7 +156,10 @@ impl ScheduledExecutionSessions {
         {
             return admission.decline(ScheduledOrdinaryExecutionUnavailable::ShuttingDown);
         }
-        if state.preparing.contains_key(&thread_id) || state.preparing.len() >= capacity {
+        if state.preparing.contains_key(&thread_id)
+            || state.recovering.contains_key(&thread_id)
+            || state.preparing.len() + state.recovering.len() >= capacity
+        {
             return admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady);
         }
         let sessions = self.clone();

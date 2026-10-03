@@ -1,6 +1,81 @@
 use super::*;
 
 impl RuntimeInterestOwner {
+    pub(in crate::cas_projection) fn try_with_selected_retry_ready<T>(
+        &self,
+        snapshot: RuntimeFailureSnapshot,
+        process_generation: CasProcessGeneration,
+        publish: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let state = self.shared.state.try_lock().ok()?;
+        if state.closed || snapshot.service_generation != self.shared.commands.service_generation()
+        {
+            return None;
+        }
+        let entry = state.runtimes.get(&snapshot.runtime_id)?;
+        if entry.recovered_from_attempt != Some(snapshot.attempt)
+            || !matches!(entry.status, RuntimeInterestStatus::Ready(ready)
+                if ready.process_generation() == process_generation)
+        {
+            return None;
+        }
+        Some(publish())
+    }
+
+    pub(in crate::cas_projection) fn selected_retry_eligible(
+        &self,
+        snapshot: RuntimeFailureSnapshot,
+        binding: &ExecutionBinding,
+    ) -> bool {
+        let mut state = self.shared.lock();
+        self.reap_finished(&mut state);
+        if state.closed
+            || !self.shared.commands.is_open()
+            || snapshot.service_generation != self.shared.commands.service_generation()
+            || snapshot.runtime_id != binding.runtime_id()
+        {
+            return false;
+        }
+        state
+            .runtimes
+            .get(&snapshot.runtime_id)
+            .is_some_and(|entry| {
+                (entry.attempt == snapshot.attempt
+                    && matches!(entry.status, RuntimeInterestStatus::Unavailable(_))
+                    && entry.worker.is_none()
+                    && entry.cleanup_complete)
+                    || (entry.recovered_from_attempt == Some(snapshot.attempt)
+                        && matches!(
+                            entry.status,
+                            RuntimeInterestStatus::Starting | RuntimeInterestStatus::Ready(_)
+                        ))
+            })
+    }
+
+    pub(in crate::cas_projection) fn authorize_selected_retry(
+        &self,
+        snapshot: RuntimeFailureSnapshot,
+        thread_id: SyndicThreadId,
+        binding: ExecutionBinding,
+    ) -> Result<(), RuntimeInterestError> {
+        if !self.selected_retry_eligible(snapshot, &binding) {
+            return Err(RuntimeInterestError::RetryMismatch);
+        }
+        {
+            let state = self.shared.lock();
+            if let Some(entry) = state.runtimes.get(&snapshot.runtime_id)
+                && ((entry.recovered_from_attempt == Some(snapshot.attempt)
+                    && matches!(
+                        entry.status,
+                        RuntimeInterestStatus::Starting | RuntimeInterestStatus::Ready(_)
+                    ))
+                    || (entry.attempt == snapshot.attempt && entry.retry.is_some()))
+            {
+                return Ok(());
+            }
+        }
+        self.authorize_retry(snapshot, thread_id, binding)
+    }
     pub(in crate::cas_projection) fn pending_retry(
         &self,
         runtime_id: RuntimeId,

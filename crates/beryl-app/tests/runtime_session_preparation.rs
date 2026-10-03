@@ -14,8 +14,14 @@ mod graceful_shutdown;
 mod idle_maintenance;
 #[path = "runtime_session_preparation/notice_shell.rs"]
 mod notice_shell;
+#[path = "runtime_session_preparation/recovery.rs"]
+mod recovery;
 #[path = "runtime_session_preparation/runtime_notice.rs"]
 mod runtime_notice;
+#[path = "runtime_session_preparation/runtime_notice_retry.rs"]
+mod runtime_notice_retry;
+#[path = "runtime_session_preparation/selected_runtime_retry.rs"]
+mod selected_runtime_retry;
 #[path = "runtime_session_preparation/work_facts.rs"]
 mod work_facts;
 
@@ -73,8 +79,19 @@ fn fixture(
     ScheduledExecutionSessions,
     Arc<ProcessLifecycleAttentionPool>,
 ) {
+    fixture_with_runtime_capacity(capacity, std::num::NonZeroUsize::new(1).unwrap())
+}
+
+fn fixture_with_runtime_capacity(
+    capacity: u64,
+    runtime_capacity: std::num::NonZeroUsize,
+) -> (
+    Fixture,
+    ScheduledExecutionSessions,
+    Arc<ProcessLifecycleAttentionPool>,
+) {
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
-    let fixture = Fixture::with_capacity(Box::new(provider), capacity);
+    let fixture = Fixture::with_capacities(Box::new(provider), capacity, runtime_capacity);
     let live = fixture.service().live_home_command().unwrap();
     let home = live.home();
     let executable = canonical_path(Path::new(env!("CARGO_BIN_EXE_managed-runtime-fixture")));
@@ -186,19 +203,33 @@ fn checkout(
     fixture: &Fixture,
     root: u8,
 ) -> beryl_app::cas_projection::ScheduledOrdinaryExecutionLease {
+    checkout_binding(fixture, thread_id(root), binding(fixture, root))
+}
+
+fn checkout_binding(
+    fixture: &Fixture,
+    thread: SyndicThreadId,
+    execution: ExecutionBinding,
+) -> beryl_app::cas_projection::ScheduledOrdinaryExecutionLease {
     use beryl_app::cas_projection::{ProjectionCoordinatorError, ScheduledOrdinaryAdmissionError};
     let deadline = std::time::Instant::now() + TIMEOUT;
     loop {
         match fixture
             .service()
-            .checkout_scheduled_session_for_test(thread_id(root), binding(fixture, root))
+            .checkout_scheduled_session_for_test(thread, execution.clone())
         {
             Ok(ScheduledOrdinaryAdmissionResult::Issued(lease)) => return lease,
             Err(ScheduledOrdinaryAdmissionError::Authority(
                 ProjectionCoordinatorError::ProjectionWorkerCapacityFull { .. }
                 | ProjectionCoordinatorError::ProjectionInFlight { .. },
             )) => {}
-            Ok(ScheduledOrdinaryAdmissionResult::Unavailable(_)) => {}
+            Ok(ScheduledOrdinaryAdmissionResult::Unavailable(reason)) => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "prepared checkout remained unavailable: {reason:?}; execution {execution:?}; workers {:?}",
+                    fixture.service().worker_pool_diagnostics()
+                );
+            }
             Err(error) => panic!("prepared checkout lost authority: {error}"),
         }
         assert!(

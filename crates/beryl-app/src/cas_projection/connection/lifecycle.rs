@@ -1014,6 +1014,10 @@ impl ProjectionConnection {
         self.authority.is_retired()
     }
 
+    pub(super) fn try_forwarding_attached(&self) -> bool {
+        self.forwarding_hub.try_is_attached()
+    }
+
     pub(in crate::cas_projection) fn is_detached(&self) -> bool {
         self.forwarding_hub.is_detached()
             && self

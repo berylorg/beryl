@@ -1,5 +1,7 @@
 use std::sync::Weak;
 
+mod runtime_retry;
+
 use super::*;
 use crate::{
     main_window::{
@@ -30,6 +32,7 @@ pub(crate) struct PublishedMainWindowServices {
 #[derive(Clone)]
 pub(crate) struct PublishedExactStopWorker {
     worker: crate::cas_projection::ExactStopWorker,
+    runtime_retry: Option<crate::cas_projection::SelectedRuntimeRetryWorker>,
     lifetime: Weak<()>,
     session: Option<beryl_state::SessionState>,
 }
@@ -70,6 +73,7 @@ impl PublishedExactStopWorker {
     ) -> Self {
         Self {
             worker,
+            runtime_retry: None,
             lifetime,
             session: Some(session),
         }
@@ -190,6 +194,7 @@ pub(crate) fn request_published_exact_soft_stop_for_test(
 {
     PublishedExactStopWorker {
         worker,
+        runtime_retry: None,
         lifetime,
         session: None,
     }
@@ -213,6 +218,7 @@ impl ProcessServiceOwner {
         let graph = self.graph()?;
         Some(PublishedExactStopWorker {
             worker: graph.cas().exact_stop_worker(),
+            runtime_retry: Some(graph.cas().selected_runtime_retry_worker(&graph.sessions)),
             lifetime: Arc::downgrade(graph.restore_lifetime.as_ref()?),
             session: Some(graph.state().session()),
         })
@@ -314,6 +320,7 @@ impl ProcessServiceOwner {
             creation,
             exact_stop: PublishedExactStopWorker {
                 worker: graph.cas().exact_stop_worker(),
+                runtime_retry: Some(graph.cas().selected_runtime_retry_worker(&graph.sessions)),
                 lifetime: lifetime.clone(),
                 session: Some(graph.state().session()),
             },

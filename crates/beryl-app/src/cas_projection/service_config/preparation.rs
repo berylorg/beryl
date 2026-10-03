@@ -1,6 +1,11 @@
 use super::*;
 
 impl ProjectionWorkerPool {
+    pub(in crate::cas_projection) fn preparation_capacity_available(&self, cold: bool) -> bool {
+        self.inner.try_lock().is_ok_and(|state| {
+            state.noncritical_role_fits(CONNECTION_WORKER_PERMITS * if cold { 2 } else { 1 })
+        })
+    }
     pub(in crate::cas_projection) fn try_acquire_cold_preparation_or_arm(
         &self,
     ) -> Result<(ProjectionWorkerPermitPair, ProjectionWorkerPermitPair), ProjectionWorkerPermitError>

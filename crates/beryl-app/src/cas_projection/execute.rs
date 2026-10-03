@@ -24,6 +24,48 @@ pub(super) mod support;
 use support::{point_limit, recovered_process_matches};
 
 impl CasProjectionCoordinator {
+    pub(in crate::cas_projection) fn obtain_selected_recovery_projection(
+        &self,
+        home: &HomeStore,
+        storage: &SyndicStorage,
+        session: &mut AdmittedProjectionSession,
+        request: &CasProjectionRequest,
+        cancellation: &ProjectionCancellationToken,
+        flight: &ProjectionFlight,
+        plan: NativeProjectionPlan,
+    ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        self.ensure_projection_flight(flight, request.thread_id())?;
+        let (request, _) = self.prepare_projection_request(home, session, request, cancellation)?;
+        let acquisition =
+            flight
+                .acquisition()
+                .ok_or(ProjectionCoordinatorError::ProjectionFlightMismatch {
+                    thread_id: request.thread_id(),
+                })?;
+        if !session
+            .connection()
+            .validate_projection_acquisition(acquisition)?
+        {
+            return Err(ProjectionCoordinatorError::ProjectionFlightMismatch {
+                thread_id: request.thread_id(),
+            }
+            .into());
+        }
+        if matches!(plan, NativeProjectionPlan::Unavailable { .. }) {
+            return Err(ProjectionExecutionError::ProjectionBasisChanged {
+                thread_id: request.thread_id(),
+            });
+        }
+        self.execute_plan(
+            home,
+            storage,
+            session,
+            &request.for_recovery_only(),
+            cancellation,
+            plan,
+            None,
+        )
+    }
     /// Obtains one exact loaded projection and publishes durable authority before returning it.
     pub fn obtain_projection(
         &self,
@@ -431,6 +473,11 @@ impl CasProjectionCoordinator {
         reason: &'static str,
         native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        if request.is_recovery_only() {
+            return Err(ProjectionExecutionError::ProjectionBasisChanged {
+                thread_id: request.thread_id(),
+            });
+        }
         if source.thread_id() != request.thread_id() {
             return Err(ProjectionExecutionError::ProjectionBasisChanged {
                 thread_id: request.thread_id(),

@@ -684,43 +684,31 @@ pub use discussion_gate::{
     DiscussionHandoffGateRecord, DiscussionHandoffGateRevision, DiscussionHandoffGateState,
 };
 pub use discussion_source::{DiscussionSourceError, PreparedDiscussionSource};
-pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation};
+pub use domain::SyndicStorage;
+pub use draft_piece::*;
+pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
+pub use footprint::{accepted_input_promotion_max_footprint, idle_submission_max_footprint};
 pub use mutation::{
     ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
     ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,
     PreparedActivityEnrollment,
 };
 pub use mutation::{
-    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
-    PreparedDiscussionParent,
-    DiscussionParentExecution, DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
-    PreparedDiscussionParentExecution,
-    GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
-    GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
-};
-pub use mutation::{DiscussionChildSettlement, DiscussionChildSettlementDisposition, PreparedDiscussionChildSettlement};
-pub use mutation::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
-pub use domain::SyndicStorage;
-pub use draft_piece::*;
-pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
-pub use footprint::{accepted_input_promotion_max_footprint, idle_submission_max_footprint};
-pub use mutation::{
     AbandonActiveBinding, AbandonCompactionOperation, AbandonStopOperation,
     AcceptGeneratedThreadTitle, AcceptedInputPromotionStatus, ActivateBinding,
-    ActiveCasTurnPublicationStatus, AdmitCompactionOperation, AdmitStopOperation,
-    AdvanceItemProjectionBuild, AdvanceTranscriptBuild,
-    BeginAcceptedInputDelivery, BindingPublicationStatus, CONTENT_APPEND_MAX_CHUNKS,
-    CancelBindingActivation, ClaimCompactionDispatch, ClaimStopDispatch, CompactionProviderEvent,
-    CompleteAcceptedInputDelivery, CompleteTerminalHistory, ContentAppend, ContentBuild,
-    ConvergeRepairIncomplete, CreateThread, CreateThreadError, ExactRejectedInputDelivery,
-    FinalizeNextTurnItem, FirstAcceptance, FirstAcceptanceKind, FirstAcceptanceStatus,
-    FreezeNextTurnItem, JoinStopCause, LiveSourceEvent, LiveSourceEventStatus,
-    PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS, PreparedProviderFrame, PromoteAcceptedInput,
-    ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
+    ActiveCasTurnPublicationStatus, ActivityRetirementFingerprint, ActivitySourceQualification,
+    AdmitCompactionOperation, AdmitStopOperation, AdvanceItemProjectionBuild,
+    AdvanceTranscriptBuild, BeginAcceptedInputDelivery, BindingPublicationStatus,
+    CONTENT_APPEND_MAX_CHUNKS, CancelBindingActivation, ClaimCompactionDispatch, ClaimStopDispatch,
+    CompactionProviderEvent, CompleteAcceptedInputDelivery, CompleteTerminalHistory, ContentAppend,
+    ContentBuild, ConvergeRepairIncomplete, CreateThread, CreateThreadError,
+    ExactRejectedInputDelivery, FinalizeNextTurnItem, FirstAcceptance, FirstAcceptanceKind,
+    FirstAcceptanceStatus, FreezeNextTurnItem, JoinStopCause, LiveSourceEvent,
+    LiveSourceEventStatus, PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS, PreparedProviderFrame,
+    PromoteAcceptedInput, ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
     ProviderFrameStageError, ProviderFrameStageOutcome, ProviderObservationMutationError,
-    ActivityRetirementFingerprint, ActivitySourceQualification,
     PublishActiveCasTurn, PublishActivityChildHandoff, PublishCompactionProviderEvent,
     PublishCompactionRequestDisposition, PublishStaleBinding, PublishThreadUsage,
     PublishUnboundBinding, PublishValidBinding, RequireTerminalRepair, RetryAcceptedInputDelivery,
@@ -728,9 +716,27 @@ pub use mutation::{
     StartItemProjectionBuild, StartTranscriptBuild, SteeringRejection, SyndicMutationError,
     ThreadCreationStatus, prepare_provider_frame, stage_provider_frame,
 };
+pub use mutation::{
+    AdmitDiscussionHandoff, DiscussionHandoffIntent, DiscussionHandoffMutation,
+    DiscussionHandoffStatus, DiscussionParentFrontierProof, PreparedDiscussionHandoff,
+};
+pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation};
+pub use mutation::{
+    DiscussionChildSettlement, DiscussionChildSettlementDisposition,
+    PreparedDiscussionChildSettlement,
+};
+pub use mutation::{
+    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentExecution,
+    DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
+    DiscussionParentRequest, GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery,
+    GeneratedDiscussionInputIntent, GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus,
+    PreparedDiscussionParent, PreparedDiscussionParentExecution, PreparedGeneratedDiscussionInput,
+};
 pub use native_projection::{
-    NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,
-    NativeProjectionSource, NativeProjectionUnavailable,
+    NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan,
+    NativeProjectionRecoveryBasis, NativeProjectionRecoveryPlan,
+    NativeProjectionRecoveryUnavailable, NativeProjectionRequest, NativeProjectionSource,
+    NativeProjectionUnavailable,
 };
 pub use pristine_thread::{
     PristineThreadAudit, PristineThreadCandidate, PristineThreadRemovalAudit,

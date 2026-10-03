@@ -135,6 +135,40 @@ impl LoadedProjectionLease {
         )
     }
 
+    pub(in crate::cas_projection) fn try_with_live_authority<T>(
+        &self,
+        publish: impl FnOnce() -> T,
+    ) -> Option<T> {
+        if !self.active || self.connection.authority.is_retired() {
+            return None;
+        }
+        let boundary = &self.connection.authority.work_boundary;
+        let observation = boundary.try_observe().ok()?;
+        if !self.connection.try_forwarding_attached() {
+            return None;
+        }
+        registry::try_with_exact_lease(
+            &self.key,
+            self.connection.authority.generation,
+            self.owner,
+            self.generation,
+            self.token,
+            || {
+                boundary
+                    .try_elect(&observation, || {
+                        if self.connection.authority.is_retired() {
+                            None
+                        } else {
+                            Some(publish())
+                        }
+                    })
+                    .ok()
+                    .flatten()
+            },
+        )
+        .flatten()
+    }
+
     pub(in crate::cas_projection) fn observed_metadata(
         &self,
     ) -> Result<Option<beryl_backend::ThreadSessionMetadata>, ProjectionCoordinatorError> {

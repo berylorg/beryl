@@ -19,7 +19,9 @@ use super::{
 
 mod checkout;
 mod control;
+mod recovery;
 mod retirement;
+pub(crate) use recovery::{RetainedSelectedProjection, SelectedProjectionRecoveryError};
 #[cfg(feature = "test-faults")]
 mod test_support;
 #[cfg(feature = "test-faults")]
@@ -114,6 +116,21 @@ pub struct ScheduledExecutionSessions {
     work_identity: Arc<()>,
 }
 
+#[derive(Clone)]
+pub(crate) struct WeakScheduledExecutionSessions {
+    state: Weak<Mutex<SessionState>>,
+    work_identity: Weak<()>,
+}
+
+impl WeakScheduledExecutionSessions {
+    pub(crate) fn upgrade(&self) -> Option<ScheduledExecutionSessions> {
+        Some(ScheduledExecutionSessions {
+            state: self.state.upgrade()?,
+            work_identity: self.work_identity.upgrade()?,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ScheduledSessionRegistration {
     service_generation: ProjectionServiceGeneration,
@@ -159,6 +176,7 @@ struct SessionState {
     slots: BTreeMap<SyndicThreadId, SessionSlot>,
     preparation: Option<Arc<preparation::PreparationContext>>,
     preparing: BTreeMap<SyndicThreadId, preparation::PreparationWorker>,
+    recovering: BTreeMap<SyndicThreadId, ExecutionBinding>,
     #[cfg(feature = "test-faults")]
     idle_election_pause: Option<test_support::IdleSessionElectionHook>,
 }
@@ -185,6 +203,7 @@ struct SessionSlot {
 struct SessionResources {
     session: AdmittedProjectionSession,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
+    projection: Option<super::LoadedCasProjection>,
 }
 
 impl ProcessScheduledExecutionProvider {
@@ -207,6 +226,7 @@ impl ProcessScheduledExecutionProvider {
                 slots: BTreeMap::new(),
                 preparation: None,
                 preparing: BTreeMap::new(),
+                recovering: BTreeMap::new(),
                 #[cfg(feature = "test-faults")]
                 idle_election_pause: None,
             })),

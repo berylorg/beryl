@@ -269,6 +269,29 @@ pub(in crate::cas_projection) fn contains_exact(
     }))
 }
 
+pub(in crate::cas_projection) fn try_with_exact_lease<T>(
+    key: &LoadedThreadKey,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+    generation: CasLoadedSessionGeneration,
+    token: LeaseToken,
+    publish: impl FnOnce() -> T,
+) -> Option<T> {
+    if generation.process() != key.process_generation {
+        return None;
+    }
+    let state = LOADED_THREADS.get()?.try_lock().ok()?;
+    let entry = state.entries.get(key)?;
+    if entry.connection != connection
+        || entry.owner != owner
+        || entry.generation != generation.thread()
+        || !entry.leases.contains(&token)
+    {
+        return None;
+    }
+    Some(publish())
+}
+
 pub(in crate::cas_projection) fn observed_metadata(
     key: &LoadedThreadKey,
     connection: ConnectionGeneration,

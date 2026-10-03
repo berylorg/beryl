@@ -184,7 +184,14 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
         execution::serve(&mut socket, &mode);
         return;
     }
-    if matches!(mode.as_str(), "pause-projection" | "projection-lifetime") && index > 0 {
+    if matches!(
+        mode.as_str(),
+        "pause-projection"
+            | "projection-lifetime"
+            | "projection-multiple-bindings"
+            | "projection-reject-unsubscribe"
+    ) && index > 0
+    {
         let projection = read_json(&mut socket);
         assert_eq!(projection["method"], "thread/start");
         fs::write("runtime-projection-evidence.json", serde_json::to_vec(&json!({
@@ -208,15 +215,78 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             "runtimeWorkspaceRoots": [], "instructionSources": [], "approvalPolicy": "never", "approvalsReviewer": "user",
             "sandbox": {}, "activePermissionProfile": null, "reasoningEffort": null, "multiAgentMode": "explicitRequestOnly"
         }});
+        let mut response = response;
+        if mode == "projection-reject-unsubscribe" {
+            response["result"]["thread"]["id"] =
+                json!(format!("prepared-thread-{}-{index}", std::process::id()));
+        }
+        if mode == "projection-multiple-bindings" {
+            let cwd = projection["params"]["cwd"].as_str().unwrap();
+            let root = std::path::Path::new(cwd)
+                .file_name()
+                .unwrap()
+                .to_string_lossy();
+            response["result"]["thread"]["id"] = json!(format!("prepared-{root}"));
+            fs::write(
+                format!("runtime-projection-evidence-{index}.json"),
+                serde_json::to_vec(&projection).unwrap(),
+            )
+            .unwrap();
+        }
         let _ = socket.send(Message::Text(response.to_string().into()));
+    }
+    if mode == "reject-native-recovery" && index > 0 {
+        let mut ordinal = 0;
+        while let Ok(message) = socket.read() {
+            if message.is_close() {
+                break;
+            }
+            if !message.is_text() {
+                continue;
+            }
+            let request: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            fs::write(
+                format!("runtime-native-request-{ordinal}.json"),
+                serde_json::to_vec(&request).unwrap(),
+            )
+            .unwrap();
+            ordinal += 1;
+            assert_eq!(request["method"], "thread/resume");
+            send_json(
+                &mut socket,
+                json!({"id": request["id"],
+                "error": {"code": -32600, "message": "fixture native source unavailable"}}),
+            );
+        }
+        return;
     }
     while let Ok(message) = socket.read() {
         if message.is_close() {
             break;
         }
-        if mode == "projection-lifetime" && message.is_text() {
+        if matches!(
+            mode.as_str(),
+            "projection-lifetime"
+                | "projection-multiple-bindings"
+                | "projection-reject-unsubscribe"
+        ) && message.is_text()
+        {
             let request: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
             assert_eq!(request["method"], "thread/unsubscribe");
+            if mode == "projection-reject-unsubscribe" {
+                fs::write(
+                    "runtime-unsubscribe-evidence.json",
+                    serde_json::to_vec(&request).unwrap(),
+                )
+                .unwrap();
+                send_json(
+                    &mut socket,
+                    json!({"id": request["id"], "error": {
+                        "code": -32600, "message": "fixture unsubscribe unavailable"
+                    }}),
+                );
+                std::process::exit(3);
+            }
             send_json(
                 &mut socket,
                 json!({"id": request["id"], "result": {"status": "unsubscribed"}}),

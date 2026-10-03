@@ -4,6 +4,8 @@
 mod divergent_fork;
 #[path = "native_projection/fixtures.rs"]
 mod fixtures;
+#[path = "native_projection/recovery.rs"]
+mod recovery;
 #[path = "support/mod.rs"]
 mod support;
 
@@ -202,7 +204,10 @@ fn compatible_thread_revision_descendant_preserves_exact_native_resume() {
         .unwrap()
         .expect("admission descendant retains its immutable accepted-input receipt");
     assert_eq!(
-        admitted.composer_admission().unwrap().expected_thread_revision(),
+        admitted
+            .composer_admission()
+            .unwrap()
+            .expected_thread_revision(),
         requested.thread_revision()
     );
     let gate = storage

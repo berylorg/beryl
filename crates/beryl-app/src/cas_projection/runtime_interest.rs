@@ -331,6 +331,7 @@ struct RuntimeEntry {
     failed_acquisition: Option<super::acquisition::ProjectionAcquisition>,
     spec: ManagedBackendLaunchSpec,
     attempt: u64,
+    recovered_from_attempt: Option<u64>,
     interests: HashMap<u64, RuntimeInterestRecord>,
     status: RuntimeInterestStatus,
     worker: Option<JoinHandle<bool>>,

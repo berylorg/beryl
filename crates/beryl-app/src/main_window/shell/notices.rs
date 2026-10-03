@@ -159,6 +159,9 @@ pub(super) struct MainWindowShellNotices {
     inert: bool,
     retired: bool,
     home_warning: home_warning::HomeWarning,
+    #[cfg(feature = "test-faults")]
+    runtime_retry_test_worker:
+        Option<std::sync::Weak<std::sync::Mutex<Option<std::thread::JoinHandle<()>>>>>,
 }
 
 impl MainWindowShellNotices {
@@ -204,6 +207,8 @@ impl MainWindowShellNotices {
             inert: false,
             retired: false,
             home_warning: home_warning::HomeWarning::default(),
+            #[cfg(feature = "test-faults")]
+            runtime_retry_test_worker: None,
         }
     }
 
@@ -386,6 +391,9 @@ impl MainWindowShellRoot {
                 self.sync_notices(window, cx);
             }
             MainWindowNoticeWidgetEvent::Command { token, command } => {
+                if self.runtime_retry_duplicate(&token, command) {
+                    return Ok(());
+                }
                 let current = self
                     .notices
                     .arbiter
@@ -399,7 +407,9 @@ impl MainWindowShellRoot {
                 }) {
                     return Err(Rejection::CommandUnavailable);
                 }
-                cx.emit(MainWindowNoticeOwnerCommand { token, command });
+                if !self.activate_runtime_retry(&token, command, window, cx) {
+                    cx.emit(MainWindowNoticeOwnerCommand { token, command });
+                }
             }
         }
         Ok(())

@@ -1,3 +1,6 @@
+mod recovery;
+pub(super) use recovery::validate_native_recovery;
+
 use beryl_home_store::DomainReader;
 use beryl_model::{BindingRevision, CasNativeTurnCount, CasThreadId, SyndicThreadId};
 

@@ -89,33 +89,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 721: Establish Healthy-Home Runtime Retry Usability Authority (finished)
+# Phase 722: Mount Healthy-Home Selected Runtime Retry (finished)
 
-Established app-owned exact Retry admission, shared launch election, retained selected-projection
-usability and notice publication, plus system/storage no-input planning and exact publication
-contracts. Independent source-backed semantic and adversarial readiness review and scoped
-checks passed. See [readiness and remaining implementation obligations](failures/executable-bootstrap.md#healthy-home-runtime-retry-usability-readiness).
-Production Retry remains disabled until the mounting boundary below is accepted.
+Mounted exact selected-runtime Retry with no-input source planning, retained projection usability
+and bounded notice feedback through the existing process owners. Draft/history/focus, stale
+authority, cancellation and unrelated-runtime continuity are qualified. Affected app and storage
+tests, locked app/executable checks and independent completion review passed; see
+[qualification and fixture lessons](failures/executable-bootstrap.md#runtime-retry-qualification-boundaries).
 
-# Phase 722: Mount Healthy-Home Selected Runtime Retry (pending)
+# Phase 723: Establish Running Threads Mounting Readiness (pending)
 
-Mount the existing notice's Retry command through the app's
-[selected runtime Retry owner](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#selected-runtime-retry-ownership)
-and [notice adapter](../crates/beryl-app/doc/design-feature-adapters.md#activity-status-notices-and-audio).
-Compose recovery-only session preparation and exact source projection establishment through the
-existing process owners without durable input admission, model dispatch or a parallel lease owner.
-Retain the actual loaded projection in that exclusive owner and constrain source-plan execution
-before backend effects; the general acquisition path's pending-turn history fallback is ineligible.
-Implement the [storage no-input planning boundary](../crates/syndic-storage/doc/design-history-storage.md#exact-source-planning-without-input-admission)
-and exact binding publication for the eligible selected prefix, preserving gate and delivery facts.
-Enable the command only from current eligibility; coalesce pending activation and shared runtime
-launch while publishing success separately for each selected binding. Remove the blocking notice
-only on its current retained-projection usability result; preserve exact bounded failure feedback.
+Derive the next bounded mount from the rework tracker's remaining live detach/reattach and Running
+threads item. Produce a source-backed readiness and gap map for the concrete main-window command,
+count and picker under [conversation-thread behavior](features/conversation-threads/design.md#running-threads),
+[GUI composition](features/conversation-threads/gui.md#running-threads-command),
+[process projection and custody](systems/cas-live-syndic-transcript/design.md#request-custody-and-running-thread-projection)
+and [Notifications attention ownership](features/notifications/design.md#main-conversation-notices).
+Trace exact current-row activation, existing-window reveal, unviewed live attachment through ordinary
+draft/session flush, attention acknowledgement, generation replacement and bounded source/rendering
+limits to their production consumers. Check preservation of execution and input custody, coherent
+failure presentation and absence of automatic focus or dispatch effects.
 
-Qualify no-input success and failure, duplicates/multiwindow shared runtime, native-source failure
-without fallback, stale selection/source/attempt/result, loss before publication, capacity refusal,
-cancellation, close/Exit and home replacement. Verify draft/history/focus and unaffected runtime
-continuity, no healthy-home retirement, no uncertain-input replay and original outcome custody.
-Complete focused and combined affected checks, locked app/executable all-target checks and
-affected storage checks and independent lifecycle/persistence/external-effect review before
-accepting the mounted production route.
+Acceptance is independent review of the bounded readiness evidence and derived implementation
+boundary. Route missing or contradictory material contracts to their owning authority before
+planning implementation; this diagnosis authorizes no production mounting or new architecture.

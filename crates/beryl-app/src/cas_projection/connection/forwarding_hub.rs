@@ -237,6 +237,12 @@ impl ForwardingHub {
             .is_ok_and(|state| state.endpoint.is_none())
     }
 
+    pub(super) fn try_is_attached(&self) -> bool {
+        self.state
+            .try_lock()
+            .is_ok_and(|state| state.endpoint.is_some())
+    }
+
     fn observe_state<'a>(
         &'a self,
         state: MutexGuard<'a, ForwardingHubState>,

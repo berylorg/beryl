@@ -1,7 +1,7 @@
 use super::*;
 use crate::discussion_settlement::DiscussionPreparationFailure;
 
-pub(super) enum TargetError {
+pub(in crate::cas_projection::process_sessions) enum TargetError {
     Closed,
     Read,
     Changed,
@@ -25,7 +25,7 @@ impl PreparationContext {
         self.launch_spec_for(admission.thread_id(), admission.execution_binding())
     }
 
-    pub(super) fn launch_spec_for(
+    pub(in crate::cas_projection::process_sessions) fn launch_spec_for(
         &self,
         thread_id: SyndicThreadId,
         binding: &ExecutionBinding,

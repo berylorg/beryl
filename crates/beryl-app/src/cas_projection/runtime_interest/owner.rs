@@ -234,6 +234,7 @@ impl RuntimeInterestOwner {
                         activity: Arc::clone(&activity),
                         spec,
                         attempt: interest,
+                        recovered_from_attempt: retry.map(|snapshot| snapshot.attempt),
                         interests: HashMap::from([(
                             interest,
                             RuntimeInterestRecord {

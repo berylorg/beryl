@@ -3,7 +3,7 @@ use beryl_app::cas_projection::{RuntimeFailure, SelectedRuntimeFailureObservatio
 use beryl_model::{WindowBounds, WindowDisplayState, WindowId, WindowPlacement};
 use beryl_state::{InitializeThreadlessWindow, RememberedTarget, ReplaceWindowClaim};
 
-fn select(fixture: &Fixture) -> (WindowId, beryl_state::WindowClaimSelection) {
+pub(super) fn select(fixture: &Fixture) -> (WindowId, beryl_state::WindowClaimSelection) {
     let live = fixture.service().live_home_command().unwrap();
     let home = live.home();
     let session = fixture.state.session();
@@ -181,7 +181,7 @@ fn actual_runtime_failure_mount_is_persistent_and_publication_fenced(
                     .disabled_reason()
                     .unwrap()
                     .as_str()
-                    .contains("not available yet")
+                    .contains("does not currently qualify for recovery")
             );
             projection.token.clone()
         })

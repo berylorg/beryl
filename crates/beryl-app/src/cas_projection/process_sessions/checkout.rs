@@ -52,7 +52,7 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
         admission: ScheduledOrdinaryAdmission,
     ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
         self.sessions.reap();
-        let (registration, resources, policy, assets) = {
+        let (registration, mut resources, policy, assets) = {
             let mut state = self.sessions.lock();
             let Some(context) = state.context.as_ref() else {
                 return Ok(
@@ -93,6 +93,21 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
             state.work_changed();
             checkout
         };
+        if let Some(projection) = resources.projection.take()
+            && let Err(error) = projection.release()
+        {
+            self.sessions.settle_return(registration, resources);
+            return match error {
+                crate::cas_projection::LoadedProjectionReleaseError::Registry(
+                    error @ (crate::cas_projection::ProjectionCoordinatorError::HomeNotHealthy { .. }
+                    | crate::cas_projection::ProjectionCoordinatorError::HomeGenerationMismatch { .. }
+                    | crate::cas_projection::ProjectionCoordinatorError::LiveCommandPersistentHomeFailure { .. }),
+                ) => Err(ScheduledOrdinaryAdmissionError::Authority(error)),
+                _ => Ok(
+                    admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady)
+                ),
+            };
+        }
         let returned = Arc::new(CheckoutReturn {
             owner: self.sessions.clone(),
             registration,
@@ -190,7 +205,13 @@ impl Drop for CheckoutReturn {
             .unwrap_or_else(|poison| poison.into_inner())
             .take()
             .expect("paired checkout returns its tools exactly once");
-        self.owner
-            .settle_return(self.registration, SessionResources { session, tools });
+        self.owner.settle_return(
+            self.registration,
+            SessionResources {
+                session,
+                tools,
+                projection: None,
+            },
+        );
     }
 }

@@ -14,6 +14,12 @@ use crate::{
 };
 
 mod classify;
+pub(crate) mod recovery;
+
+pub use recovery::{
+    NativeProjectionRecoveryBasis, NativeProjectionRecoveryPlan,
+    NativeProjectionRecoveryUnavailable,
+};
 
 /// Exact request to classify native CAS lineage for one pending selected turn.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -70,6 +76,7 @@ pub struct NativeProjectionBasis {
     selected_path: SelectedPathProof,
     represented_prefix: CasRepresentedPrefixProof,
     tool_profile: CasConversationToolProfile,
+    pub(crate) recovery: Option<recovery::RecoveryAnchor>,
 }
 
 impl NativeProjectionBasis {
@@ -335,6 +342,7 @@ impl SyndicStorage {
             selected_path,
             represented_prefix,
             tool_profile: request.tool_profile,
+            recovery: None,
         };
 
         let plan = self.classify_native_projection(

@@ -389,6 +389,16 @@ impl ScheduledOrdinaryExecutionLease {
         self.session.session()
     }
 
+    #[cfg(feature = "test-faults")]
+    pub fn session_authority_current_for_test(&mut self) -> bool {
+        !self.connection.is_retired()
+            && !self.connection.is_detached()
+            && self
+                .session
+                .session()
+                .permits_execution_binding(&self.execution_binding)
+    }
+
     pub(super) fn handlers(&mut self) -> OrdinaryDynamicToolHandlers<'_> {
         self.tools.handlers()
     }
