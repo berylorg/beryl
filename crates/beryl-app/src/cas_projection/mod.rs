@@ -187,7 +187,7 @@ pub(crate) use service::recovery_preparation::{
 };
 pub(crate) use service::recovery_retirement::{CasRetirementDisposalFailure, CasRetirementFailure};
 pub use service::{
-    CasProjectionCoordinator, DiscussionResolutionOutcome, LiveHomeCommand, ProcessWorkCursor,
+    CasProjectionCoordinator, DiscussionResolutionOutcome, ExactStopWorker, LiveHomeCommand, ProcessWorkCursor,
     ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
     ProcessWorkPageLimits, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,

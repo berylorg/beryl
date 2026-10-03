@@ -494,6 +494,8 @@
 - [x] Accepted the production exact-stop eligibility and bounded request-feedback service,
   preserving durable/volatile identity, terminal outcomes and disposal independently of operational
   inventory; [evidence](../../failures/executable-bootstrap.md#exact-stop-feedback-admission-evidence).
+- [x] Accepted generation-bound exact-stop worker access through published window services without
+  retaining graph or execution resources; [canonical and review evidence](../../failures/executable-bootstrap.md#exact-stop-worker-access-readiness).
   Status controls and notice fallback remain separate mounts.
 - [ ] Implement exact soft-stop feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.

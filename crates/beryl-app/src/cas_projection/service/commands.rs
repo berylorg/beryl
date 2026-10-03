@@ -229,105 +229,20 @@ impl ProjectionConnectionService {
         proof: super::super::connection::StopTargetProof,
         cause: StopCause,
     ) -> Result<StopCoordinationOutcome, StopCoordinationError> {
-        match connection.coordinate_stop(&self.stop_coordinator, proof, cause)? {
-            StopOwnership::Primary(owner) => {
-                #[cfg(feature = "test-faults")]
-                crate::cas_projection::test_faults::pause_stop_handoff(
-                    owner.operation_id().thread_id(),
-                );
-                connection.dispatch_exact_stop(owner)
-            }
-            StopOwnership::Joined {
-                operation_id,
-                interruption: _,
-            } => Ok(StopCoordinationOutcome::Stopping {
-                operation_id,
-                primary_owner: false,
-            }),
-        }
-    }
-
-    #[cfg(feature = "test-faults")]
-    pub fn has_local_stop_for_test(&self, thread: SyndicThreadId) -> bool {
-        self.stop_coordinator.has_local_stop_for_test(thread)
+        self.exact_stop_read()
+            .coordinate_prepared_stop(connection, proof, cause)
     }
 
     pub(super) fn prepare_stop(
         &self,
         thread_id: SyndicThreadId,
     ) -> Result<PreparedStop, StopCoordinationError> {
-        let command = self
-            .command_authorizer
-            .authorize()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        self.ensure_current()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        let home = self
-            .home
-            .as_deref()
-            .ok_or(StopCoordinationError::HomeAuthorityLost)?;
-        let read = self.storage.stop_admission_read(
-            home,
-            thread_id,
-            SyndicPointReadLimit::new(1_000_000)
-                .expect("stop coordination point-read bound is nonzero"),
-        )?;
-        let (target, stopping) = match read {
-            StopAdmissionRead::Admissible(candidate) => (candidate.target().clone(), false),
-            StopAdmissionRead::Stopping(live) => (live.target().clone(), true),
-            StopAdmissionRead::Ineligible(reason) => {
-                return Ok(PreparedStop::Ineligible(reason));
-            }
-        };
-        let (connection, proof) = self.stop_connection(&target)?;
-        if !command.is_current() {
-            return Err(StopCoordinationError::HomeAuthorityLost);
-        }
-        Ok(PreparedStop::Exact {
-            stopping,
-            target,
-            connection,
-            proof,
-        })
+        self.exact_stop_read().prepare_stop(thread_id)
     }
 
-    fn stop_connection(
-        &self,
-        target: &syndic_storage::StopOperationTarget,
-    ) -> Result<
-        (
-            Arc<ProjectionConnection>,
-            super::super::connection::StopTargetProof,
-        ),
-        StopCoordinationError,
-    > {
-        let mut connections = self
-            .connections
-            .lock()
-            .map_err(|_| StopCoordinationError::TargetUnavailable)?;
-        let mut found = None;
-        let mut duplicate = false;
-        connections.retain(|connection| {
-            if connection.is_detached() {
-                return false;
-            }
-            if connection.runtime_id() == target.runtime_id()
-                && connection.process_generation() == target.loaded_generation().process()
-                && let Ok(proof) = connection.stop_target(target)
-            {
-                if found.is_some() {
-                    duplicate = true;
-                    return true;
-                }
-
-                found = Some((Arc::clone(connection), proof));
-            }
-            true
-        });
-        if duplicate {
-            return Err(StopCoordinationError::LocalAuthorityMismatch);
-        }
-        found.ok_or(StopCoordinationError::TargetUnavailable)
+    #[cfg(feature = "test-faults")]
+    pub fn has_local_stop_for_test(&self, thread: SyndicThreadId) -> bool {
+        self.stop_coordinator.has_local_stop_for_test(thread)
     }
 
     /// Returns the registered Syndic handle paired with this owned home.

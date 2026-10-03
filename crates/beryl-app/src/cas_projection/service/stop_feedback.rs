@@ -1,13 +1,13 @@
 use std::sync::{Arc, Mutex};
 
-use super::{ProjectionConnectionService, commands::PreparedStop};
+use super::commands::PreparedStop;
 use crate::cas_projection::{
     ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
     ExactStopFeedback, ExactStopFeedbackState, ExactStopRequestError,
     stop::{EligibilityRecord, StopCoordinationError},
 };
 
-impl ProjectionConnectionService {
+impl super::stop_worker::ExactStopRead {
     pub fn exact_soft_stop_eligibility(
         &self,
         thread: beryl_model::SyndicThreadId,
@@ -103,5 +103,21 @@ impl ProjectionConnectionService {
             }
         }
         Ok(feedback)
+    }
+}
+
+impl super::ProjectionConnectionService {
+    pub fn exact_soft_stop_eligibility(
+        &self,
+        thread: beryl_model::SyndicThreadId,
+    ) -> ExactSoftStopAvailability {
+        self.exact_stop_read().exact_soft_stop_eligibility(thread)
+    }
+
+    pub fn request_exact_soft_stop(
+        &self,
+        eligibility: &ExactSoftStopEligibility,
+    ) -> Result<ExactStopFeedback, ExactStopRequestError> {
+        self.exact_stop_read().request_exact_soft_stop(eligibility)
     }
 }

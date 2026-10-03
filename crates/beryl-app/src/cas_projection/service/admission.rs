@@ -502,7 +502,7 @@ impl ProjectionAdmissionContext {
     }
 }
 
-fn ensure_current_home(
+pub(super) fn ensure_current_home(
     home: Option<&HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,

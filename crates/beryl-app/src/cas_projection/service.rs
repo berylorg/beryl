@@ -91,6 +91,8 @@ pub(crate) use shutdown_settlement::{
     ShutdownThreadDisposition, ShutdownThreadSettlement, ShutdownThreadSettlementError,
 };
 mod stop_feedback;
+mod stop_worker;
+pub use stop_worker::ExactStopWorker;
 mod stop_work;
 mod work_facts;
 mod work_sources;

@@ -89,14 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 710: Expose Exact Stop Eligibility And Request Feedback (finished)
+# Phase 712: Expose Generation-Bound Exact Stop Worker Access (finished)
 
-Accepted opaque exact eligibility and bounded retained durable/volatile feedback through the
-production service, with existing sole-driver dispatch and no presentation-owned execution
-effects. Canonical checks, passing evidence for 166 distinct cases and independent semantic
-review passed; see [acceptance evidence](failures/executable-bootstrap.md#exact-stop-feedback-admission-evidence).
+Accepted the weak, generation-bound worker capability through published window services, sharing
+the service's sole stop implementation and preserving feedback after request processing begins.
+Canonical metadata, combined app/executable checks, 81 passing cases and independent semantic
+review passed; see [acceptance evidence](failures/executable-bootstrap.md#exact-stop-worker-access-readiness).
 
-# Phase 711: Mount Exact Status Stop Controls (pending)
+# Phase 711: Mount Exact Status Stop Controls (wip)
 
 Connect the accepted exact eligibility and request feedback to the production main-window
 turn segment and operations popup under the Status Line contract. Preserve selection, home
@@ -110,6 +110,18 @@ service ownership before applying asynchronous results. Verify duplicate activat
 responses after switching or retirement, durable nondispatch with fresh eligibility, volatile
 nondispatch without retry, terminal popup closure and disposal without altering execution.
 Reuse the accepted service tests; require mounted lifecycle evidence and independent review.
+
+Active milestone: replace the production main-window host's empty status-line slot with the
+selected-operation turn segment and its anchored single-command popup. Consume the accepted
+service capability off the GUI thread and qualify the mounted path; legacy shell controls do not
+establish this acceptance. Other status feature operations remain deferred. Preserve the current
+bundled widget's pointer-only segment interaction and the menu's own focus and dismissal contract.
+
+Readiness finding on 2026-10-03: the accepted exact-stop methods require the process-owned service, but
+production window inputs expose no sendable worker capability for those methods. Calling them
+from GPUI violates the worker-only service contract. Phase 712 accepted the Operator-authorized
+worker access prerequisite; consume it through published window services for this mount. See
+[readiness evidence](failures/executable-bootstrap.md#exact-stop-worker-access-readiness).
 
 # Phase 709: Mount Exact Stop-Feedback Notices (pending)
 

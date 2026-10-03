@@ -61,6 +61,18 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   saturation without dispatch or eviction of a live record. This presentation limit does not replace
   execution queue, worker or stop-custody limits. Duplicate handles share one record. Service teardown
   resolves waiting handles without reviving them in a replacement service.
+- The process-owned service's `exact_stop_worker` exposes a sendable `ExactStopWorker` for window
+  consumers. It remains bound to that service's home and service generations, uses the same
+  eligibility, request admission and sole-driver implementation as the service methods, and grants
+  no shutdown or general service access. Holding it does not retain the home, connection registry,
+  stop coordinator or published graph. Each worker call requires live command admission and exact
+  current authority; retirement or missing ownership makes the capability inert. Window publication
+  also binds it to the graph's weak restoration lifetime. GUI consumers revalidate authoritative
+  selection before dispatch and before applying an asynchronous result. An in-flight admitted stop
+  retains the existing execution custody independently of window presentation or capability drop.
+  Publication loss may reject entry or invalidate an eligibility observation, but cannot replace
+  feedback returned after request processing begins with a rejection. Preserve that opaque handle
+  and fence its visible application separately; publication loss grants no retry or successor access.
 
 ## Compaction And Continuation
 

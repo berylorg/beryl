@@ -51,6 +51,8 @@ pub(crate) use shutdown::{
 pub(crate) use window_services::{
     CloseConfirmationPreparationError, MainWindowServiceInputs, PublishedMainWindowServices,
 };
+#[cfg(feature = "test-faults")]
+pub(crate) use window_services::request_published_exact_soft_stop_for_test;
 
 #[derive(Clone)]
 pub(crate) struct AppServiceConfiguration {

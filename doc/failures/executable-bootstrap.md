@@ -154,3 +154,57 @@ after exact path and reparse checks. Bounded logs and hashes remain under
 `.tmp/exact-stop-feedback-evidence`; the earlier unlogged fixture residue remains unidentified.
 No dependency, manifest, lockfile or production worker-stack change was made. Status controls and
 notice fallback are not yet mounted.
+
+## Exact Stop Worker Access Readiness
+
+On 2026-10-03, production mount inspection invalidated the assumption that the accepted service
+methods were already reachable from a shell worker. `ProjectionConnectionService` owns the
+exact-stop methods in `cas_projection/service/stop_feedback.rs`; their shared `prepare_stop` in
+`service/commands.rs` requires current command admission, home/storage access and the connection
+registry. `PublishedAppServices` owns that service by value within the GUI process owner's
+`Rc<RefCell<_>>` custody. Production window inputs have submission wake access, but no sendable
+exact-stop service capability. The private service-supervisor lease is not the production owner's
+access path. Calling the methods on GPUI would violate the app's worker-only service contract.
+
+The Operator authorized this correction on 2026-10-03: expose a narrow generation-bound worker
+facade using existing home/service identities, command authorizer and storage, with weak home,
+connection-registry and stop-coordinator references. Share private eligibility, preparation and
+coordination implementation with the existing service methods; preserve the sole dispatch driver.
+Package the facade with the graph's weak publication lifetime and revalidate shell selection before
+dispatch and result application. Do not move or wrap the complete service in shared ownership to
+make it callable. Verify foreign-service rejection, retirement, revocation and absence of resource
+pinning before mounting the GUI. Phase 712 establishes this prerequisite before phase 711;
+no source edits, builds or temporary resources were created during the readiness inspection.
+
+Worker-boundary review rejected treating publication loss after request processing as `Revoked`:
+the stop may already have been admitted or dispatched, and that error erased its feedback
+association. Publication checks may reject entry and stale eligibility observations; once the
+service returns request feedback, preserve its handle and fence visible application separately.
+This follows the existing system guarantee and does not create retry authority.
+
+Canonical qualification exposed a competing-reader fixture assumption in the existing window
+factory test. Its store-global `BeforeReadConfirmation` fault could be consumed by the released
+initial handoff or scheduler, structurally invalidating the home before factory validation.
+The factory's new capability mint follows validation and only clones metadata and weak references;
+it performs no storage read. Qualify the no-read guarantee with the actual prepared/published graph
+while retaining its existing unreleased initial-start owner, then require the explicit settings
+read to consume the fault. Do not change factory behavior or remove the no-read assertion.
+
+Accepted on 2026-10-03. `ExactStopWorker` shares the service's target preparation, feedback
+admission and sole-driver dispatch. Actual threaded requests qualify interrupted, completed and
+failed convergence, foreign-token rejection, duplicate association, capability disposal without
+gate reopening, weak-resource release, graph replacement and publication expiry during dispatch.
+The process gate for admitting new execution remains distinct from the command gate for stopping
+existing work; an invalid test assertion conflating them was removed.
+
+Locked canonical metadata and combined app/executable all-target checks passed in 1m 26s.
+Canonical run `82b42088-19a7-4e36-bc4d-f478fc30f786` passed 81/81 cases in 241.730 seconds,
+including the corrected factory fixture, public service/worker tests and stop regressions.
+Independent semantic review accepted the complete boundary and corrections; all 11 final
+source/test hashes matched the qualified snapshot. Unchanged prior uncertainty and volatile
+evidence is reused. Bounded logs and hashes remain in `.tmp/exact-stop-worker-evidence`.
+
+The isolated canonical checkout was removed after exact path and reparse checks; no owned build
+or test process remains. Failed fixtures omitted home paths, so any residue remains unidentified
+and was not swept. No dependency, manifest, lockfile or production worker-stack change was made.
+Status controls and notice fallback remain separate mounts.

@@ -185,23 +185,31 @@ fn graph_bundles_share_window_reservations_and_reject_retired_services_after_ret
 #[test]
 fn published_window_factory_does_not_read_storage_and_rejects_unavailable_graphs() {
     let (directory, candidate, state, syndic, faults) = fixture();
+    eprintln!(
+        "window-factory fault fixture home: {}",
+        directory.path().display()
+    );
     let mut owner = owner(&candidate);
     assert!(owner.window_services(inputs()).is_err());
-    owner
-        .open_initial(
-            candidate,
-            state,
-            syndic,
-            configuration(),
-            SyndicTimestamp::from_unix_millis(1),
-            CommandCancellation::new(),
-        )
-        .unwrap();
+    let cancellation = CommandCancellation::new();
+    let prepared = preparation::PreparedAppServices::prepare(
+        &owner,
+        candidate,
+        state,
+        syndic,
+        configuration(),
+        SyndicTimestamp::from_unix_millis(1),
+        &cancellation,
+    )
+    .unwrap();
+    let (graph, start) = prepared.publish(&cancellation).unwrap();
+    owner.graph = Some(graph);
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     let bundle = owner.window_services(inputs()).unwrap();
     let services = bundle.creation_services();
     assert!(services.state.settings().revision(&services.store).is_err());
     assert!(MainWindowCreation::admit(services, WindowId::from_bytes([51; 16]), target()).is_err());
+    drop(start);
     drop(owner.graph.take());
     assert!(owner.window_services(inputs()).is_err());
     assert_reopens(&directory);
@@ -254,5 +262,93 @@ fn restoration_worker_rejects_graph_retirement_during_its_first_read() {
     assert!(reached, "restoration worker never reached its first read");
     assert!(result.is_err());
     assert_eq!(registry.main_window_occupancy(), 0);
+    close(&mut owner);
+}
+
+#[test]
+fn exact_stop_window_worker_runs_off_thread_and_never_rebinds_after_graph_replacement() {
+    use crate::cas_projection::{ExactSoftStopAvailability, ExactSoftStopUnavailable};
+    let (directory, mut owner, _) = installed();
+    let bundle = owner.window_services(inputs()).unwrap();
+    let worker = bundle.exact_stop_worker();
+    let identity = worker.worker_identity();
+    let graph = owner.graph().unwrap();
+    assert_eq!(
+        identity,
+        (
+            graph.cas().home_id(),
+            graph.cas().home_generation(),
+            graph.cas().service_generation()
+        )
+    );
+    let thread = beryl_model::SyndicThreadId::from_bytes([91; 16]);
+    crate::support::seed_canonical_empty_thread(
+        graph.home(),
+        graph.syndic().clone(),
+        thread,
+        beryl_model::SyndicDraftId::from_bytes([91; 16]),
+    );
+    let call = worker.clone();
+    assert!(matches!(
+        std::thread::spawn(move || call.exact_soft_stop_eligibility(thread))
+            .join()
+            .unwrap(),
+        ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::NoExactTarget)
+    ));
+    close(&mut owner);
+    let (candidate, state, syndic) = super::reopening::candidate_at(&directory);
+    owner
+        .open_initial(
+            candidate,
+            state,
+            syndic,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            CommandCancellation::new(),
+        )
+        .unwrap();
+    let replacement = owner.window_services(inputs()).unwrap().exact_stop_worker();
+    assert_ne!(replacement.worker_identity(), identity);
+    assert_eq!(worker.worker_identity(), identity);
+    let call = worker.clone();
+    assert!(matches!(
+        std::thread::spawn(move || call.exact_soft_stop_eligibility(thread))
+            .join()
+            .unwrap(),
+        ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::AuthorityUnavailable)
+    ));
+    assert!(matches!(
+        replacement.exact_soft_stop_eligibility(thread),
+        ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::NoExactTarget)
+    ));
+    close(&mut owner);
+    assert_reopens(&directory);
+}
+
+#[test]
+fn exact_stop_window_worker_rejects_result_after_graph_publication_retires() {
+    use crate::cas_projection::{ExactSoftStopAvailability, ExactSoftStopUnavailable};
+    let (_directory, mut owner, _) = installed();
+    let worker = owner.window_services(inputs()).unwrap().exact_stop_worker();
+    let thread = beryl_model::SyndicThreadId::from_bytes([92; 16]);
+    let graph = owner.graph().unwrap();
+    crate::support::seed_canonical_empty_thread(
+        graph.home(),
+        graph.syndic().clone(),
+        thread,
+        beryl_model::SyndicDraftId::from_bytes([92; 16]),
+    );
+    assert!(matches!(
+        worker.exact_soft_stop_eligibility(thread),
+        ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::NoExactTarget)
+    ));
+    let lifetime = owner.graph_mut().unwrap().restore_lifetime.take().unwrap();
+    let result = std::thread::spawn(move || worker.eligibility_then(thread, || drop(lifetime)))
+        .join()
+        .unwrap();
+    assert!(matches!(
+        result,
+        ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::AuthorityUnavailable)
+    ));
     close(&mut owner);
 }

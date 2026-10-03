@@ -154,9 +154,34 @@ fn exact_stop_feedback_drop_does_not_reopen_waiting_control() {
 }
 
 fn run_terminal(status: &'static str, expected: ExactStopFeedbackState, drop_waiting: bool) {
+    run_terminal_using(status, expected, drop_waiting, false);
+}
+
+fn run_terminal_using(
+    status: &'static str,
+    expected: ExactStopFeedbackState,
+    drop_waiting: bool,
+    use_worker: bool,
+) {
+    run_terminal_scenario(status, expected, drop_waiting, use_worker, false);
+}
+
+fn run_terminal_scenario(
+    status: &'static str,
+    expected: ExactStopFeedbackState,
+    drop_waiting: bool,
+    use_worker: bool,
+    retire_publication: bool,
+) {
     let _guard = TEST_LOCK.lock().unwrap();
     let mut fixture = Fixture::new(181);
+    let worker = fixture.store.exact_stop_worker();
     let submitted = fixture.submit_text(SUBMITTED_TEXT);
+    let caller = if use_worker {
+        ExactStopCaller::Worker(worker.clone())
+    } else {
+        ExactStopCaller::Service(&fixture.store)
+    };
     let server = NormalTerminalServer::spawn_stop_feedback_terminal(status);
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
@@ -207,34 +232,81 @@ fn run_terminal(status: &'static str, expected: ExactStopFeedbackState, drop_wai
             )
         });
         super::stop_retention::wait_for_active(&fixture, submitted.turn);
-        let ExactSoftStopAvailability::Eligible(token) =
-            fixture.store.exact_soft_stop_eligibility(fixture.thread)
-        else {
+        let ExactSoftStopAvailability::Eligible(token) = caller.eligibility(fixture.thread) else {
             panic!("exact stop eligibility required");
         };
         let foreign = Fixture::new(182);
         assert!(matches!(
-            foreign.store.request_exact_soft_stop(&token),
+            foreign
+                .store
+                .exact_stop_worker()
+                .request_exact_soft_stop(&token),
             Err(ExactStopRequestError::Revoked)
         ));
         drop(foreign);
-        let feedback = fixture.store.request_exact_soft_stop(&token).unwrap();
+        let feedback = if retire_publication {
+            use beryl_app::cas_projection::test_faults::{
+                install_stop_handoff_barrier, request_published_exact_soft_stop_for_test,
+            };
+            let publication = std::sync::Arc::new(());
+            let expired = std::sync::Arc::downgrade(&publication);
+            drop(publication);
+            let stale_worker = worker.clone();
+            let stale_token = token.clone();
+            assert!(matches!(
+                std::thread::spawn(move || request_published_exact_soft_stop_for_test(
+                    stale_worker,
+                    expired,
+                    &stale_token
+                ))
+                .join()
+                .unwrap(),
+                Err(ExactStopRequestError::Revoked)
+            ));
+            assert!(!fixture.store.has_local_stop_for_test(fixture.thread));
+            assert!(matches!(
+                caller.eligibility(fixture.thread),
+                ExactSoftStopAvailability::Eligible(_)
+            ));
+            let publication = std::sync::Arc::new(());
+            let lifetime = std::sync::Arc::downgrade(&publication);
+            let barrier = install_stop_handoff_barrier(fixture.thread);
+            let request_worker = worker.clone();
+            let request_token = token.clone();
+            let request = std::thread::spawn(move || {
+                request_published_exact_soft_stop_for_test(request_worker, lifetime, &request_token)
+            });
+            barrier.wait();
+            let retained = caller.request(&token).unwrap();
+            drop(publication);
+            barrier.release(false);
+            let returned = request.join().unwrap().unwrap();
+            assert_eq!(returned, retained);
+            assert!(matches!(
+                caller.eligibility(fixture.thread),
+                ExactSoftStopAvailability::Unavailable(_)
+            ));
+            returned
+        } else {
+            caller.request(&token).unwrap()
+        };
         let first = feedback.snapshot();
         assert_eq!(first.state, ExactStopFeedbackState::Waiting);
         assert_eq!(first.attempt, ExactStopAttemptKind::Durable);
         assert!(fixture.store.request_exact_soft_stop(&token).unwrap() == feedback);
+        assert!(caller.request(&token).unwrap() == feedback);
         assert!(matches!(
-            fixture.store.exact_soft_stop_eligibility(fixture.thread),
+            caller.eligibility(fixture.thread),
             ExactSoftStopAvailability::Unavailable(_)
         ));
         if drop_waiting {
             drop(feedback);
             assert!(matches!(
-                fixture.store.request_exact_soft_stop(&token),
+                caller.request(&token),
                 Err(ExactStopRequestError::Revoked)
             ));
             assert!(matches!(
-                fixture.store.exact_soft_stop_eligibility(fixture.thread),
+                caller.eligibility(fixture.thread),
                 ExactSoftStopAvailability::Unavailable(
                     beryl_app::cas_projection::ExactSoftStopUnavailable::RequestInProgress
                 )
@@ -258,13 +330,13 @@ fn run_terminal(status: &'static str, expected: ExactStopFeedbackState, drop_wai
                 .records()
                 .is_empty()
         );
-        assert!(fixture.store.request_exact_soft_stop(&token).unwrap() == feedback);
+        assert!(caller.request(&token).unwrap() == feedback);
         let retained = feedback.clone();
         drop(feedback);
         assert_eq!(retained.snapshot(), final_state);
         drop(retained);
         assert!(matches!(
-            fixture.store.request_exact_soft_stop(&token),
+            caller.request(&token),
             Err(ExactStopRequestError::Revoked)
         ));
         token
@@ -276,7 +348,126 @@ fn run_terminal(status: &'static str, expected: ExactStopFeedbackState, drop_wai
         fixture.store.request_exact_soft_stop(&feedback),
         Err(ExactStopRequestError::Revoked)
     ));
+    drop(caller);
     let (directory, service) = fixture.into_service();
     let _ = service.close().unwrap();
+    assert_eq!(worker.test_resource_strong_counts(), [0, 0, 0]);
+    assert!(matches!(
+        worker.request_exact_soft_stop(&feedback),
+        Err(ExactStopRequestError::Revoked)
+    ));
+    drop(directory);
+}
+
+#[test]
+fn exact_stop_worker_invokes_shared_interrupted_terminal_and_duplicate_identity_on_threads() {
+    run_terminal_using(
+        "interrupted",
+        ExactStopFeedbackState::Interrupted,
+        false,
+        true,
+    );
+}
+
+#[test]
+fn exact_stop_worker_invokes_shared_completed_terminal_on_threads() {
+    run_terminal_using("completed", ExactStopFeedbackState::Completed, false, true);
+}
+
+#[test]
+fn exact_stop_worker_invokes_shared_failed_terminal_on_threads() {
+    run_terminal_using("failed", ExactStopFeedbackState::Failed, false, true);
+}
+
+#[test]
+fn exact_stop_worker_disposal_does_not_reopen_waiting_control() {
+    run_terminal_using(
+        "interrupted",
+        ExactStopFeedbackState::Interrupted,
+        true,
+        true,
+    );
+}
+
+#[test]
+fn exact_stop_published_worker_retains_feedback_after_midrequest_retirement() {
+    run_terminal_scenario(
+        "interrupted",
+        ExactStopFeedbackState::Interrupted,
+        false,
+        true,
+        true,
+    );
+}
+
+enum ExactStopCaller<'a> {
+    Service(&'a beryl_app::cas_projection::ProjectionConnectionService),
+    Worker(beryl_app::cas_projection::ExactStopWorker),
+}
+
+impl ExactStopCaller<'_> {
+    fn eligibility(&self, thread: beryl_model::SyndicThreadId) -> ExactSoftStopAvailability {
+        match self {
+            Self::Service(service) => service.exact_soft_stop_eligibility(thread),
+            Self::Worker(worker) => {
+                let worker = worker.clone();
+                std::thread::spawn(move || worker.exact_soft_stop_eligibility(thread))
+                    .join()
+                    .unwrap()
+            }
+        }
+    }
+
+    fn request(
+        &self,
+        token: &beryl_app::cas_projection::ExactSoftStopEligibility,
+    ) -> Result<beryl_app::cas_projection::ExactStopFeedback, ExactStopRequestError> {
+        match self {
+            Self::Service(service) => service.request_exact_soft_stop(token),
+            Self::Worker(worker) => {
+                let worker = worker.clone();
+                let token = token.clone();
+                std::thread::spawn(move || worker.request_exact_soft_stop(&token))
+                    .join()
+                    .unwrap()
+            }
+        }
+    }
+}
+
+#[test]
+fn exact_stop_worker_clones_do_not_pin_resources_and_retirement_is_inert() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new(184);
+    let worker = fixture.store.exact_stop_worker();
+    let counts = worker.test_resource_strong_counts();
+    let retained = worker.clone();
+    assert_eq!(retained.test_resource_strong_counts(), counts);
+    assert_eq!(worker.home_id(), fixture.store.home_id());
+    assert_eq!(worker.home_generation(), fixture.store.home_generation());
+    assert_eq!(
+        worker.service_generation(),
+        fixture.store.service_generation()
+    );
+    let thread = fixture.thread;
+    let call = retained.clone();
+    assert!(matches!(
+        std::thread::spawn(move || call.exact_soft_stop_eligibility(thread))
+            .join()
+            .unwrap(),
+        ExactSoftStopAvailability::Unavailable(
+            beryl_app::cas_projection::ExactSoftStopUnavailable::NoExactTarget
+        )
+    ));
+    let (directory, service) = fixture.into_service();
+    let _ = service.close().unwrap();
+    assert_eq!(worker.test_resource_strong_counts(), [0, 0, 0]);
+    assert_eq!(retained.test_resource_strong_counts(), [0, 0, 0]);
+    assert!(matches!(
+        worker.exact_soft_stop_eligibility(thread),
+        ExactSoftStopAvailability::Unavailable(
+            beryl_app::cas_projection::ExactSoftStopUnavailable::AuthorityUnavailable
+        )
+    ));
     drop(directory);
 }

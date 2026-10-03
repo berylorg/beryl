@@ -24,6 +24,84 @@ pub(crate) struct PublishedMainWindowServices {
     creation: Arc<MainWindowCreationServices>,
     lifetime: Weak<()>,
     restored_activation: RestoredWindowActivationSource,
+    exact_stop: PublishedExactStopWorker,
+}
+
+#[derive(Clone)]
+pub(crate) struct PublishedExactStopWorker {
+    worker: crate::cas_projection::ExactStopWorker,
+    lifetime: Weak<()>,
+}
+
+impl PublishedExactStopWorker {
+    pub(crate) fn publication_current(&self) -> bool {
+        self.lifetime.upgrade().is_some()
+    }
+
+    pub(crate) fn worker_identity(
+        &self,
+    ) -> (
+        beryl_model::BerylHomeId,
+        beryl_home_store::HomeGeneration,
+        crate::cas_projection::ProjectionServiceGeneration,
+    ) {
+        (
+            self.worker.home_id(),
+            self.worker.home_generation(),
+            self.worker.service_generation(),
+        )
+    }
+
+    pub(crate) fn exact_soft_stop_eligibility(
+        &self,
+        thread: beryl_model::SyndicThreadId,
+    ) -> crate::cas_projection::ExactSoftStopAvailability {
+        self.eligibility_then(thread, || {})
+    }
+
+    pub(super) fn eligibility_then(
+        &self,
+        thread: beryl_model::SyndicThreadId,
+        after_read: impl FnOnce(),
+    ) -> crate::cas_projection::ExactSoftStopAvailability {
+        use crate::cas_projection::{ExactSoftStopAvailability, ExactSoftStopUnavailable};
+        if self.lifetime.upgrade().is_none() {
+            return ExactSoftStopAvailability::Unavailable(
+                ExactSoftStopUnavailable::AuthorityUnavailable,
+            );
+        }
+        let result = self.worker.exact_soft_stop_eligibility(thread);
+        after_read();
+        if self.lifetime.upgrade().is_none() {
+            return ExactSoftStopAvailability::Unavailable(
+                ExactSoftStopUnavailable::AuthorityUnavailable,
+            );
+        }
+        result
+    }
+
+    pub(crate) fn request_exact_soft_stop(
+        &self,
+        eligibility: &crate::cas_projection::ExactSoftStopEligibility,
+    ) -> Result<
+        crate::cas_projection::ExactStopFeedback,
+        crate::cas_projection::ExactStopRequestError,
+    > {
+        if self.lifetime.upgrade().is_none() {
+            return Err(crate::cas_projection::ExactStopRequestError::Revoked);
+        }
+        self.worker.request_exact_soft_stop(eligibility)
+    }
+}
+
+#[cfg(feature = "test-faults")]
+pub(crate) fn request_published_exact_soft_stop_for_test(
+    worker: crate::cas_projection::ExactStopWorker,
+    lifetime: Weak<()>,
+    eligibility: &crate::cas_projection::ExactSoftStopEligibility,
+) -> Result<crate::cas_projection::ExactStopFeedback, crate::cas_projection::ExactStopRequestError>
+{
+    PublishedExactStopWorker { worker, lifetime }.request_exact_soft_stop(eligibility)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -134,6 +212,10 @@ impl ProcessServiceOwner {
         creation.validate_source()?;
         Ok(PublishedMainWindowServices {
             creation,
+            exact_stop: PublishedExactStopWorker {
+                worker: graph.cas().exact_stop_worker(),
+                lifetime: lifetime.clone(),
+            },
             lifetime,
             restored_activation: inputs.restored_activation_source,
         })
@@ -195,6 +277,9 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedMainWindowServices {
+    pub(crate) fn exact_stop_worker(&self) -> PublishedExactStopWorker {
+        self.exact_stop.clone()
+    }
     pub(crate) fn creation_services(&self) -> Arc<MainWindowCreationServices> {
         self.creation.clone()
     }

@@ -13,6 +13,14 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
+
+pub fn request_published_exact_soft_stop_for_test(
+    worker: super::ExactStopWorker,
+    lifetime: std::sync::Weak<()>,
+    eligibility: &super::ExactSoftStopEligibility,
+) -> Result<super::ExactStopFeedback, super::ExactStopRequestError> {
+    crate::app_services::request_published_exact_soft_stop_for_test(worker, lifetime, eligibility)
+}
 pub use super::outage_buffer::{OutageCaptureSnapshot, OutageCaptureState};
 
 pub struct OutageCaptureObserver(std::sync::Weak<super::outage_buffer::OutageInventory>);
