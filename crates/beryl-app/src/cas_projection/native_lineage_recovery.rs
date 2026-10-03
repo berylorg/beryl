@@ -7,6 +7,9 @@ use std::{
 use beryl_home_store::HomeGeneration;
 use beryl_model::{BerylHomeId, BindingRevision, SyndicThreadId};
 
+mod history;
+pub use history::{NativeLineageHistoryRecovery, NativeLineageRecoveryDenial};
+
 use super::{
     NativeLineageOperation, NativeLineageRecoveryDecision, ProjectionCancellationToken,
     ProjectionServiceGeneration, ScheduledOrdinaryExecutionLease,
@@ -41,14 +44,14 @@ pub enum NativeLineageRecoveryCommand {
 pub enum NativeLineageRecoveryStatus {
     Loading,
     Ready {
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
     },
     Running {
         command: NativeLineageRecoveryCommand,
     },
     Failed {
         command: NativeLineageRecoveryCommand,
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
     },
     Unavailable,
     Leaving {
@@ -237,7 +240,7 @@ impl NativeLineageRecoveryControl {
         source_binding_revision: BindingRevision,
         operation: NativeLineageOperation,
         failed_attempts: u8,
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
     ) -> Option<NativeLineageRecoveryKey> {
         let mut control = self
             .inner
@@ -262,7 +265,7 @@ impl NativeLineageRecoveryControl {
                         source_binding_revision,
                         operation,
                         failed_attempts,
-                        status: NativeLineageRecoveryStatus::Ready { recovery_available },
+                        status: NativeLineageRecoveryStatus::Ready { history_recovery },
                     },
                     command: None,
                     continuation: None,
@@ -356,15 +359,16 @@ impl NativeLineageRecoveryControl {
         if state.snapshot.key != key {
             return Err(NativeLineageRecoveryCommandError::Stale);
         }
-        let recovery_available = match state.snapshot.status {
-            NativeLineageRecoveryStatus::Ready { recovery_available }
+        let history_recovery = match state.snapshot.status {
+            NativeLineageRecoveryStatus::Ready { history_recovery }
             | NativeLineageRecoveryStatus::Failed {
-                recovery_available, ..
-            } => recovery_available,
+                history_recovery, ..
+            } => history_recovery,
             _ => return Err(NativeLineageRecoveryCommandError::NotActionable),
         };
         if (!state.test_only && state.continuation.is_none())
-            || (command == NativeLineageRecoveryCommand::RecoverFromSyndic && !recovery_available)
+            || (command == NativeLineageRecoveryCommand::RecoverFromSyndic
+                && !history_recovery.is_available())
         {
             return Err(NativeLineageRecoveryCommandError::NotActionable);
         }
@@ -429,7 +433,7 @@ impl NativeLineageRecoveryControl {
     pub(in crate::cas_projection) fn park(
         &self,
         mut decision: Box<NativeLineageRecoveryDecision>,
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
         execution: ParkedScheduledOrdinaryExecution,
     ) -> NativeLineageParkDisposition {
         if decision.home_id() != self.inner.home_id
@@ -470,7 +474,7 @@ impl NativeLineageRecoveryControl {
                     snapshot: snapshot_for(
                         key,
                         &decision,
-                        NativeLineageRecoveryStatus::Ready { recovery_available },
+                        NativeLineageRecoveryStatus::Ready { history_recovery },
                     ),
                     command: None,
                     continuation: Some(ParkedContinuation {
@@ -692,7 +696,7 @@ impl NativeLineageRecoveryAttempt {
         decision: Box<NativeLineageRecoveryDecision>,
         execution: ScheduledOrdinaryExecutionLease,
         command: NativeLineageRecoveryCommand,
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
     ) {
         let continuation = ParkedContinuation {
             decision,
@@ -720,7 +724,7 @@ impl NativeLineageRecoveryAttempt {
                 &continuation.decision,
                 NativeLineageRecoveryStatus::Failed {
                     command,
-                    recovery_available,
+                    history_recovery,
                 },
             );
             state.command = None;

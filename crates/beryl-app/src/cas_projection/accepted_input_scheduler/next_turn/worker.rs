@@ -290,10 +290,10 @@ fn execute_candidate(
         }
         PendingTurnExecutionDisposition::ParkNativeLineage {
             decision,
-            recovery_available,
+            history_recovery,
         } => {
             let execution = lease.park();
-            match native_lineage_recovery.park(decision, recovery_available, execution) {
+            match native_lineage_recovery.park(decision, history_recovery, execution) {
                 NativeLineageParkDisposition::Parked => WorkerDisposition::NextContinue,
                 NativeLineageParkDisposition::Rejected => WorkerDisposition::Fatal,
             }

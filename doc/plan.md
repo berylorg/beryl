@@ -89,28 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 715: Establish Deferred Repair And Recovery Mount Readiness (finished)
+# Phase 716: Mount Exact Native-Lineage Recovery Disabled Reasons (finished)
 
-Accepted source/consumer readiness inspection and contract review; see
-[evidence](failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
-Exact repair states already publish. Native-lineage denial loses its closest explanation, and
-selected-runtime notice publication is absent. No recovery action or repair source was enabled.
-
-# Phase 716: Mount Exact Native-Lineage Recovery Disabled Reasons (pending)
-
-Preserve bounded typed denial from the existing exact recovery preflight through ordinary and
-recovered-pending route parking, command failure and the production native-lineage prompt. Replace
-the boolean-only history availability with a closest supported explanation while preserving the
-original route key, source binding revision, validation and command admission. The observable
-outcome is a visible disabled `Recover from Syndic history` command naming its actual blocking
-condition, without enabling a previously ineligible path or changing Retry semantics.
-
-Keep loading, pending, disposal, stale-route and publication explanations closer than retained
-history denial. Do not retain raw error payloads, fabricate runtime failure, replay input, reopen
-conditional repair or loosen complete-prefix requirements. Verify real preflight denial mapping,
-route transitions, bounded retention and stale selection/service rejection through the mounted
-consumer. Run canonical locked metadata, app/executable checks and focused native-lineage/composer
-regressions; independently review exact identity, admission preservation and visible explanations.
+Mounted bounded typed preflight denial through both parked scheduler lanes, command failure and
+the existing prompt, preserving exact identity, recovery eligibility and Retry admission.
+Canonical locked metadata, app/executable checks, 31 focused regressions and independent semantic
+review passed; see [qualification](failures/executable-bootstrap.md#native-lineage-recovery-disabled-reason-qualification).
 
 # Phase 717: Mount Selected Runtime Unavailability Presentation (pending)
 

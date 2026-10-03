@@ -2,6 +2,8 @@
 
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 
+#[path = "native_lineage_scheduler/history_denial.rs"]
+mod history_denial;
 #[path = "native_lineage_scheduler/preflight_retry.rs"]
 mod preflight_retry;
 #[path = "native_lineage_scheduler/scheduler.rs"]
@@ -26,14 +28,21 @@ use syndic_storage::{AcceptedRouteEffectiveState, SyndicStorage, TurnLifecycle};
 use scheduler_support::{
     NextRecordIds, SessionPool, SessionSlot, accepted_route_state,
     admit_runtime_next_input_after_direct_setup, current_cas_thread_id, point_limit,
-    pooled_ready_provider, ready_provider,
-    seed_runtime_next_input_on_without_wake_after_direct_setup, wait_until,
+    pooled_ready_provider, seed_runtime_next_input_on_without_wake_after_direct_setup, wait_until,
 };
 use server_support::{AUTHORIZATION, NativeLineageServer, TIMEOUT};
 
 fn scheduler_fixture(
     seed: u8,
     worker_capacity: u64,
+) -> (syndic::Fixture, FaultController, SessionSlot, Box<str>) {
+    scheduler_fixture_with_context(seed, worker_capacity, Some(2_000_000))
+}
+
+fn scheduler_fixture_with_context(
+    seed: u8,
+    worker_capacity: u64,
+    model_context_window_tokens: Option<u64>,
 ) -> (syndic::Fixture, FaultController, SessionSlot, Box<str>) {
     let faults = FaultController::new();
     let slot = SessionSlot::default();
@@ -42,7 +51,13 @@ fn scheduler_fixture(
         seed,
         faults.clone(),
         worker_capacity,
-        move |assets| Box::new(ready_provider(provider_slot, assets)),
+        move |assets| {
+            Box::new(scheduler_support::ready_provider_with_context(
+                provider_slot,
+                assets,
+                model_context_window_tokens,
+            ))
+        },
     );
     let parent = fixture.submit_text(" completed parent");
     fixture.complete_with_assistant(parent, " completed answer");
@@ -260,7 +275,7 @@ fn scheduler_parks_without_worker_custody_and_retry_continues_the_exact_turn_onc
     assert_eq!(
         initial.status(),
         NativeLineageRecoveryStatus::Ready {
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         }
     );
     assert_eq!(
@@ -623,7 +638,7 @@ fn route_full_candidate_waits_without_churn_while_unrelated_work_progresses() {
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             0,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         ) else {
             break;
         };
@@ -638,7 +653,7 @@ fn route_full_candidate_waits_without_churn_while_unrelated_work_progresses() {
                 BindingRevision::new(1).unwrap(),
                 NativeLineageOperation::Resume,
                 0,
-                true,
+                beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
             )
             .is_none()
     );
@@ -758,7 +773,7 @@ fn route_full_candidate_waits_without_churn_while_unrelated_work_progresses() {
     assert_eq!(
         promoted.status(),
         NativeLineageRecoveryStatus::Ready {
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         }
     );
     let command_home = fixture.store.live_home_command().unwrap();
@@ -833,7 +848,7 @@ fn bounded_route_reissues_the_exact_actionable_decision_after_failure() {
             revision,
             NativeLineageOperation::Resume,
             3,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     assert!(
@@ -844,7 +859,7 @@ fn bounded_route_reissues_the_exact_actionable_decision_after_failure() {
                 revision,
                 NativeLineageOperation::Fork,
                 3,
-                true,
+                beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
             )
             .is_none()
     );
@@ -857,7 +872,7 @@ fn bounded_route_reissues_the_exact_actionable_decision_after_failure() {
     assert_eq!(
         initial.status(),
         NativeLineageRecoveryStatus::Ready {
-            recovery_available: true
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available
         }
     );
 
@@ -883,7 +898,7 @@ fn bounded_route_reissues_the_exact_actionable_decision_after_failure() {
         key,
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         },
     ));
     let reissued = control.snapshot_for_thread(thread).unwrap();
@@ -922,7 +937,9 @@ fn unavailable_recovery_remains_visible_but_rejects_both_commands() {
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             3,
-            false,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(
+                beryl_app::cas_projection::NativeLineageRecoveryDenial::CompleteHistoryRequired,
+            ),
         )
         .unwrap();
     assert_eq!(
@@ -952,7 +969,7 @@ fn cancellation_releases_capacity_and_stale_route_keys_cannot_target_a_successor
             BindingRevision::new(4).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     control.cancel(first).unwrap();
@@ -965,7 +982,7 @@ fn cancellation_releases_capacity_and_stale_route_keys_cannot_target_a_successor
             BindingRevision::new(5).unwrap(),
             NativeLineageOperation::Fork,
             2,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     assert_ne!(first, successor);
@@ -990,7 +1007,9 @@ fn cancellation_releases_capacity_and_stale_route_keys_cannot_target_a_successor
                 BindingRevision::new(6).unwrap(),
                 NativeLineageOperation::Resume,
                 0,
-                false,
+                beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(
+                    beryl_app::cas_projection::NativeLineageRecoveryDenial::CompleteHistoryRequired
+                ),
             )
             .is_some()
     );
@@ -1007,7 +1026,7 @@ fn service_disposal_closes_routes_and_rejects_late_commands() {
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             0,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     control.close_for_test();
@@ -1024,7 +1043,7 @@ fn service_disposal_closes_routes_and_rejects_late_commands() {
                 BindingRevision::new(2).unwrap(),
                 NativeLineageOperation::Resume,
                 0,
-                true,
+                beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
             )
             .is_none()
     );

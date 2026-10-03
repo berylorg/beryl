@@ -179,37 +179,39 @@ fn execute_work(
                     }
                 };
             }
-            let recovery_available = lease.with_execution_authority(|session, _, _, _, _, _| {
-                coordinator
-                    .validate_native_lineage_recovery_in_flight(
-                        &validator.home,
-                        storage,
-                        session,
-                        &decision,
-                        &cancellation,
-                    )
-                    .is_ok()
-            });
-            attempt.failed(decision, lease, command, recovery_available);
+            let history_recovery =
+                crate::cas_projection::NativeLineageHistoryRecovery::from_preflight(
+                    lease.with_execution_authority(|session, _, _, _, _, _| {
+                        coordinator.validate_native_lineage_recovery_in_flight(
+                            &validator.home,
+                            storage,
+                            session,
+                            &decision,
+                            &cancellation,
+                        )
+                    }),
+                );
+            attempt.failed(decision, lease, command, history_recovery);
             return WorkerDisposition::NextContinue;
         }
     };
     attempt.leaving();
-    let outcome = lease.with_execution_authority(|_, policy, assets, handoff, mut tools, flight| {
-        execute_retained_projection(projection, |projection| {
-            coordinator.execute_ordinary_turn_in_flight(
-                &validator.home,
-                storage,
-                assets,
-                handoff,
-                projection,
-                &cancellation,
-                policy.turn(),
-                tools.reborrow(),
-                flight,
-            )
-        })
-    });
+    let outcome =
+        lease.with_execution_authority(|_, policy, assets, handoff, mut tools, flight| {
+            execute_retained_projection(projection, |projection| {
+                coordinator.execute_ordinary_turn_in_flight(
+                    &validator.home,
+                    storage,
+                    assets,
+                    handoff,
+                    projection,
+                    &cancellation,
+                    policy.turn(),
+                    tools.reborrow(),
+                    flight,
+                )
+            })
+        });
     match settle_ordinary_outcome(validator, outcome) {
         OrdinaryTurnSettlement::Settled => WorkerDisposition::NextContinue,
         OrdinaryTurnSettlement::PersistentHomeFailure => WorkerDisposition::PersistentHomeFailure,

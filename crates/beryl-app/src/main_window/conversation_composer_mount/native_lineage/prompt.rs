@@ -80,9 +80,9 @@ impl MainWindowConversationComposerMount {
             retry_disabled_explanation,
             recover_disabled_explanation,
         ) = match status {
-            NativeLineageRecoveryStatus::Ready { recovery_available } => (
+            NativeLineageRecoveryStatus::Ready { history_recovery } => (
                 Enabled,
-                if recovery_available {
+                if history_recovery.is_available() {
                     Enabled
                 } else {
                     Disabled
@@ -91,11 +91,7 @@ impl MainWindowConversationComposerMount {
                 "Retry",
                 "Recover from Syndic history",
                 "",
-                if recovery_available {
-                    ""
-                } else {
-                    "Recover from Syndic history is unavailable because the selected history cannot be represented safely or contains a repair-pending turn."
-                },
+                history_recovery.disabled_explanation(),
             ),
             NativeLineageRecoveryStatus::Running { command } => (
                 if matches!(command, NativeLineageRecoveryCommand::Retry) {
@@ -138,10 +134,10 @@ impl MainWindowConversationComposerMount {
             ),
             NativeLineageRecoveryStatus::Failed {
                 command,
-                recovery_available,
+                history_recovery,
             } => (
                 Enabled,
-                if recovery_available {
+                if history_recovery.is_available() {
                     Enabled
                 } else {
                     Disabled
@@ -150,11 +146,7 @@ impl MainWindowConversationComposerMount {
                 "Retry",
                 "Recover from Syndic history",
                 "",
-                if recovery_available {
-                    ""
-                } else {
-                    "Recover from Syndic history is unavailable because the selected history cannot be represented safely or contains a repair-pending turn."
-                },
+                history_recovery.disabled_explanation(),
             ),
             NativeLineageRecoveryStatus::Loading
             | NativeLineageRecoveryStatus::Unavailable
@@ -312,34 +304,26 @@ impl MainWindowConversationComposerMount {
             )
         } else {
             match status {
-                NativeLineageRecoveryStatus::Ready { recovery_available } => (
+                NativeLineageRecoveryStatus::Ready { history_recovery } => (
                     true,
-                    recovery_available,
+                    history_recovery.is_available(),
                     "Retry",
                     "Recover from Syndic history",
                     "",
-                    if recovery_available {
-                        ""
-                    } else {
-                        "Recover from Syndic history is unavailable because the selected history cannot be represented safely or contains a repair-pending turn."
-                    },
+                    history_recovery.disabled_explanation(),
                     "The selected conversation cannot continue from its current native source. Retry the exact source, or recover from durable Syndic history when available.",
                     None,
                 ),
                 NativeLineageRecoveryStatus::Failed {
                     command,
-                    recovery_available,
+                    history_recovery,
                 } => (
                     true,
-                    recovery_available,
+                    history_recovery.is_available(),
                     "Retry",
                     "Recover from Syndic history",
                     "",
-                    if recovery_available {
-                        ""
-                    } else {
-                        "Recover from Syndic history is unavailable because the selected history cannot be represented safely or contains a repair-pending turn."
-                    },
+                    history_recovery.disabled_explanation(),
                     match command {
                         NativeLineageRecoveryCommand::Retry => {
                             "Retrying the exact native source failed. Your draft remains preserved; retry again or recover from durable Syndic history when available."

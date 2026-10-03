@@ -214,7 +214,7 @@ fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::T
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let mounted_service = service.clone();
@@ -327,7 +327,7 @@ fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::T
         key,
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         }
     ));
     cx.executor().advance_clock(Duration::from_millis(100));
@@ -339,7 +339,7 @@ fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::T
             .status(),
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         }
     ));
     let prompt = mount.read_with(cx, |mount, _| {
@@ -376,7 +376,7 @@ fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::T
         key,
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true,
+            history_recovery: beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         }
     ));
     let mut recover = None;
@@ -458,7 +458,9 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            false,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(
+                beryl_app::cas_projection::NativeLineageRecoveryDenial::CompleteHistoryRequired,
+            ),
         )
         .unwrap();
     assert!(
@@ -469,7 +471,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
                 BindingRevision::new(1).unwrap(),
                 NativeLineageOperation::Resume,
                 1,
-                true,
+                beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
             )
             .is_none()
     );
@@ -524,6 +526,88 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
         prior_binding
     );
     wait_for_native_lineage_prompt(cx, &mount, "cycle one prompt after pending edit");
+    let denied = beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::CompleteHistoryRequired,
+    );
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Disabled
+    );
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
+    assert_eq!(
+        prompt.recover_disabled_explanation,
+        denied.disabled_explanation()
+    );
+    assert!(
+        cx.debug_bounds("native-lineage-recover-from-syndic")
+            .is_some()
+    );
+    for denial in [
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::ModelContextUnavailable,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::MissingHistory,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::UnsupportedHistory,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::MediaHistory,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::ItemCountLimit,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::Utf8BytesLimit,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::HistoryReadFailed,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::SelectedPathChanged,
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::PublicationUnavailable,
+    ] {
+        let history_recovery =
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(denial);
+        assert!(control.set_status_for_test(
+            first_key,
+            NativeLineageRecoveryStatus::Ready { history_recovery }
+        ));
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 4);
+        let prompt = mount.read_with(cx, |mount, _| {
+            mount.test_native_lineage_prompt_diagnostics()
+        });
+        assert_eq!(
+            prompt.recover_disabled_explanation,
+            history_recovery.disabled_explanation()
+        );
+        assert_eq!(
+            prompt.retry,
+            MainWindowNativeLineagePromptCommandPresentation::Enabled
+        );
+        let button = cx
+            .debug_bounds("native-lineage-recover-from-syndic")
+            .unwrap();
+        cx.simulate_click(button.center(), gpui::Modifiers::none());
+        assert_eq!(control.take_command_for_test(first_key), None);
+    }
+    assert!(control.set_status_for_test(
+        first_key,
+        NativeLineageRecoveryStatus::Failed {
+            command: NativeLineageRecoveryCommand::Retry,
+            history_recovery: denied
+        }
+    ));
+    cx.executor().advance_clock(Duration::from_millis(100));
+    drive(cx, 4);
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.recover_disabled_explanation,
+        denied.disabled_explanation()
+    );
+    assert_eq!(
+        prompt.failed_command,
+        Some(NativeLineageRecoveryCommand::Retry)
+    );
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
     assert!(first_input.read_with(cx, |input, _| input.surface().is_none()));
     assert_eq!(
         service
@@ -582,7 +666,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             2,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     for _ in 0..64 {
@@ -629,7 +713,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     control.cancel(unrelated_key).unwrap();
@@ -640,7 +724,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             3,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     assert_ne!(second_key, first_key);
@@ -658,7 +742,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             3,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     cx.update(|_, app| {
@@ -788,7 +872,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let first_service = service.clone();
@@ -851,7 +935,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             2,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let second_service = service.clone();
@@ -918,7 +1002,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             3,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let third_service = service.clone();
@@ -1152,7 +1236,7 @@ fn native_lineage_late_settlement_drains_after_actual_mount_and_service_drop(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let mounted_service = service.clone();
@@ -1278,7 +1362,7 @@ fn native_lineage_disposal_reconciliation_drains_after_actual_mount_and_service_
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let mounted_service = service.clone();
@@ -1427,7 +1511,7 @@ fn native_lineage_prompt_survives_disposal_admission_and_advance_failures(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let mounted_service = service.clone();
@@ -1560,7 +1644,7 @@ fn native_lineage_pending_turn_leaves_without_remounting_or_focusing_a_composer(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let mounted_service = service.clone();
@@ -2697,7 +2781,7 @@ fn prove_native_lineage_late_flight_cleanup(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             failed_attempts,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     cx.update(|_, app| {
@@ -2816,7 +2900,7 @@ fn prove_native_lineage_host_failure_cleanup(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             failed_attempts,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     cx.update(|_, app| {

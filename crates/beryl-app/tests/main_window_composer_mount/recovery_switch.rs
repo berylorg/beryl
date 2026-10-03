@@ -21,6 +21,9 @@ fn prove_recovery_after_failed_dirty_switch(
     cx: &mut gpui::TestAppContext,
     switch_after_failure: bool,
 ) {
+    let history_recovery = beryl_app::cas_projection::NativeLineageHistoryRecovery::Denied(
+        beryl_app::cas_projection::NativeLineageRecoveryDenial::MediaHistory,
+    );
     cx.update(ensure_text_input_bindings);
     let (
         _directory,
@@ -44,7 +47,7 @@ fn prove_recovery_after_failed_dirty_switch(
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            history_recovery,
         )
         .unwrap();
     let (root, cx) = cx.add_window_view(|window, cx| {
@@ -104,6 +107,12 @@ fn prove_recovery_after_failed_dirty_switch(
         mount.attach_native_lineage_recovery(control.clone(), mount_cx)
     });
     wait_for_native_lineage_prompt(cx, &mount, "switch source prompt");
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount
+            .test_native_lineage_prompt_diagnostics()
+            .recover_disabled_explanation),
+        history_recovery.disabled_explanation()
+    );
     assert!(original_input.read_with(cx, |input, _| input.surface().is_none()));
     cx.simulate_keystrokes("enter");
     assert_eq!(
@@ -256,7 +265,7 @@ fn prove_recovery_after_failed_dirty_switch(
         key,
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true
+            history_recovery
         }
     ));
     drive(cx, 8);
@@ -286,6 +295,12 @@ fn prove_recovery_after_failed_dirty_switch(
     wait_for_native_lineage_prompt(cx, &mount, "same recovery after switch back");
     assert_eq!(
         mount.read_with(cx, |mount, _| mount
+            .test_native_lineage_prompt_diagnostics()
+            .recover_disabled_explanation),
+        history_recovery.disabled_explanation()
+    );
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount
             .native_lineage_recovery_snapshot()
             .unwrap()
             .key()),
@@ -295,8 +310,8 @@ fn prove_recovery_after_failed_dirty_switch(
         control.snapshot_for_thread(thread).unwrap().status(),
         NativeLineageRecoveryStatus::Failed {
             command: NativeLineageRecoveryCommand::Retry,
-            recovery_available: true
-        }
+            history_recovery: retained_history
+        } if retained_history == history_recovery
     ));
     control.cancel(key).unwrap();
 }

@@ -453,10 +453,10 @@ fn execute_source(
         }
         super::next_turn::PendingTurnExecutionDisposition::ParkNativeLineage {
             decision,
-            recovery_available,
+            history_recovery,
         } => {
             let execution = lease.park();
-            match native_lineage_recovery.park(decision, recovery_available, execution) {
+            match native_lineage_recovery.park(decision, history_recovery, execution) {
                 crate::cas_projection::native_lineage_recovery::NativeLineageParkDisposition::Parked => {
                     WorkerDisposition::RecoveredPendingContinue
                 }

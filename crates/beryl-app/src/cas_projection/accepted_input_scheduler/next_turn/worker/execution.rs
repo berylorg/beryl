@@ -9,8 +9,9 @@ use super::{
 };
 use crate::cas_projection::{
     CasProjectionCoordinator, CasProjectionRequest, LoadedProjectionReleaseError,
-    NativeLineageRecoveryControl, NativeLineageRecoveryDecision, ProjectionCancellationToken,
-    ProjectionCoordinatorError, ProjectionExecutionError, ScheduledOrdinaryExecutionLease,
+    NativeLineageHistoryRecovery, NativeLineageRecoveryControl, NativeLineageRecoveryDecision,
+    ProjectionCancellationToken, ProjectionCoordinatorError, ProjectionExecutionError,
+    ScheduledOrdinaryExecutionLease,
 };
 
 pub(in crate::cas_projection::accepted_input_scheduler) enum PendingTurnExecutionDisposition {
@@ -21,7 +22,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) enum PendingTurnExecutio
     NativeLineageCapacityBlocked,
     ParkNativeLineage {
         decision: Box<NativeLineageRecoveryDecision>,
-        recovery_available: bool,
+        history_recovery: NativeLineageHistoryRecovery,
     },
 }
 
@@ -69,18 +70,18 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
         ) {
             Ok(projection) => projection,
             Err(ProjectionExecutionError::NativeLineageRecoveryRequired { decision }) => {
-                let recovery_available = coordinator
-                    .validate_native_lineage_recovery_in_flight(
+                let history_recovery = NativeLineageHistoryRecovery::from_preflight(
+                    coordinator.validate_native_lineage_recovery_in_flight(
                         &validator.home,
                         storage,
                         session,
                         &decision,
                         cancellation,
-                    )
-                    .is_ok();
+                    ),
+                );
                 return PendingTurnExecutionDisposition::ParkNativeLineage {
                     decision,
-                    recovery_available,
+                    history_recovery,
                 };
             }
             Err(ProjectionExecutionError::NativeLineageRouteCapacityFull { .. }) => {

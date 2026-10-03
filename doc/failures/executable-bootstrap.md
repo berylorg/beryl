@@ -509,3 +509,52 @@ against those owning contracts. No source, tests, manifests, runtime resources o
 changed, so no Cargo verification was required. The investigation worker supplied initial findings
 before a model-capacity failure; the root completed and validated the source inspection. The
 Checkpoint 4 mounting item remains open.
+
+## Native-Lineage Recovery Disabled Reason Qualification
+
+The readiness inspection at `c3e842de` found that the scheduler discarded the exact recovery
+preflight error with `is_ok()`, so a disabled history command showed one generic explanation.
+The accepted correction retains only `Available` or a closed denial category from that same
+preflight. Both ordinary and recovered-pending parking, failed command reevaluation and the
+production native-lineage prompt now carry that bounded value. Categories distinguish model
+metadata, selected source changes, pending-tail eligibility, missing or incomplete history,
+unsupported representation or media, empty items, item/byte limits, read/proof failure,
+cancellation, publication and exact execution authority. Raw strings, identifiers, history and
+numeric error payloads are discarded; visible explanations are fixed static text.
+
+Admission remains equivalent to the previous boolean: only successful preflight enables history
+recovery. The original coordinator calls, route key, source thread and binding revision,
+reservation/custody, consuming validation and Retry gates remain unchanged. Loading, running,
+disposal, stale route and publication conditions retain their closer prompt explanations.
+Storage eligibility was untouched, including its existing exact authority-lost terminal exception.
+Conditional repair remains blocked; selected-runtime unavailable presentation remains separate.
+
+Canonical verification used an isolated checkout without ignored local Cargo overrides and a
+hash-matched inventory of all 17 changed source/test files. Locked metadata resolved eight members;
+`cargo +stable check -p beryl-app -p beryl --all-targets --features beryl-app/test-faults --locked`
+passed with the shared target directory. An initial source-only overlay compiled production but
+failed against a fixture still using the old boolean; the complete fixture overlay and final
+check passed. A test-server correction gave denial tests an explicit remain-parked-after-Retry
+scenario, so they do not expect forbidden recovery before closing.
+
+Direct `cargo-nextest.exe nextest run` used stable, a 32 MiB test stack, one build job and one test
+thread, with the existing 60-second per-case profile. Run `e47f795a-c339-4532-a651-47fcc36ec2e0`
+passed all 31 selected cases across `native_lineage_scheduler`, `main_window_composer_mount`,
+`native_lineage_seed_publication` and `resident_close_flush` in 42.513 seconds; 83 unrelated cases
+were skipped. Actual missing/zero model context preflight tests exercise both scheduler lanes,
+same-route failed Retry, rejected history recovery, preserved pending input and zero source
+events. Mapping tests cover every recovery-projection error category and bounded raw erasure.
+Mounted cases cover distinct reasons, disabled clicks, selection switches, stale updates,
+capacity, cancellation, disposal and publication retention.
+
+Independent semantic review of the final inventory found no blocking findings. It checked
+admission equivalence, original identity/custody, complete-prefix validation and mounted
+precedence. Actual scheduler integration covers model-context denial; other denial categories
+have mapping and mounted-state coverage. Display text is asserted through prompt diagnostics;
+the reviewer inspected the production tooltip path using the same typed explanation. These
+limits do not constitute live qualification of every storage denial or manual tooltip interaction.
+
+Bounded logs and source hashes remain under `.tmp/native-recovery-denial-evidence`; the exact
+canonical checkout is removed after final hash and reparse checks. No manifests, dependencies,
+repair adapter or runtime-recovery command activation changed. The broader unavailable-state
+mounting checkpoint remains open.

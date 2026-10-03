@@ -166,7 +166,7 @@ fn install(fixture: &Fixture) -> NativeLineageRecoveryKey {
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap()
 }

@@ -128,8 +128,9 @@ pub use model::{
     NativeLineageRecoveryDecision,
 };
 pub use native_lineage_recovery::{
-    NativeLineageRecoveryCommand, NativeLineageRecoveryCommandError, NativeLineageRecoveryControl,
-    NativeLineageRecoveryKey, NativeLineageRecoverySnapshot, NativeLineageRecoveryStatus,
+    NativeLineageHistoryRecovery, NativeLineageRecoveryCommand, NativeLineageRecoveryCommandError,
+    NativeLineageRecoveryControl, NativeLineageRecoveryDenial, NativeLineageRecoveryKey,
+    NativeLineageRecoverySnapshot, NativeLineageRecoveryStatus,
 };
 pub use ordinary::{
     BranchDiscussionResolutionContext, OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers,

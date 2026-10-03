@@ -76,7 +76,7 @@ fn recovery_transfers_native_control_and_refuses_late_attachment(cx: &mut TestAp
             BindingRevision::new(1).unwrap(),
             NativeLineageOperation::Resume,
             1,
-            true,
+            beryl_app::cas_projection::NativeLineageHistoryRecovery::Available,
         )
         .unwrap();
     let worker = fixture.mount.read_with(cx, |mount, _| {

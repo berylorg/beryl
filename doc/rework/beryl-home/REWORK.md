@@ -512,6 +512,9 @@
 - [x] Established deferred repair/recovery presentation readiness: selected repair states already
   publish, native-lineage denial loses its exact reason, and selected-runtime notice publication
   remains absent; [readiness evidence](../../failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
+- [x] Mounted exact bounded native-lineage history-recovery disabled explanations through parked
+  routes and failed commands, preserving admission and Retry;
+  [canonical qualification](../../failures/executable-bootstrap.md#native-lineage-recovery-disabled-reason-qualification).
 - [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
   capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

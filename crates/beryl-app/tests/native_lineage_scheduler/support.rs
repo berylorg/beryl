@@ -26,6 +26,7 @@ enum NativeLineageServerCommand {
 enum NativeLineageServerScenario {
     RetrySucceeds,
     RetryFailsThenRecoverySucceeds,
+    RetryFailsThenRemainsParked,
     RemainParked,
     CompleteNormally,
     RecoverNormally,
@@ -51,6 +52,13 @@ impl NativeLineageServer {
         Self::spawn(
             Some(cas_thread_id.into()),
             NativeLineageServerScenario::RetryFailsThenRecoverySucceeds,
+        )
+    }
+
+    pub fn spawn_retry_failure_then_park(cas_thread_id: impl Into<Box<str>>) -> Self {
+        Self::spawn(
+            Some(cas_thread_id.into()),
+            NativeLineageServerScenario::RetryFailsThenRemainsParked,
         )
     }
 
@@ -240,6 +248,13 @@ fn run_native_lineage_server(
                 .send(NativeLineageServerEvent::RecoveryInjected(items))
                 .unwrap();
             complete_turn_and_report(&mut socket, &events, CAS_THREAD_ID, expected_input);
+            read_until_close(&mut socket).unwrap();
+        }
+        NativeLineageServerScenario::RetryFailsThenRemainsParked => {
+            reject_resume_batch(&mut socket, Some(&cas_thread_id), None, resume_requests);
+            events
+                .send(NativeLineageServerEvent::CommandRetriesExhausted)
+                .unwrap();
             read_until_close(&mut socket).unwrap();
         }
         NativeLineageServerScenario::RemainParked => {

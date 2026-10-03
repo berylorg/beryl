@@ -157,6 +157,7 @@ pub struct CheckoutProvider {
     slot: SessionSlot,
     assets: AssetState,
     clear_session_on_shutdown: bool,
+    model_context_window_tokens: Option<u64>,
 }
 
 pub struct PooledCheckoutProvider {
@@ -209,7 +210,7 @@ impl ScheduledOrdinaryExecutionProvider for CheckoutProvider {
                     session: Some(session),
                     slot: self.slot.clone(),
                 }),
-                request_policy(),
+                request_policy_with_context(self.model_context_window_tokens),
                 self.assets.clone(),
                 None,
                 Box::new(ToolAuthority {
@@ -241,10 +242,19 @@ impl ScheduledOrdinaryExecutionProvider for UnavailableProvider {
 }
 
 pub fn ready_provider(slot: SessionSlot, assets: AssetState) -> CheckoutProvider {
+    ready_provider_with_context(slot, assets, Some(2_000_000))
+}
+
+pub fn ready_provider_with_context(
+    slot: SessionSlot,
+    assets: AssetState,
+    model_context_window_tokens: Option<u64>,
+) -> CheckoutProvider {
     CheckoutProvider {
         slot,
         assets,
         clear_session_on_shutdown: true,
+        model_context_window_tokens,
     }
 }
 
@@ -253,9 +263,15 @@ pub fn pooled_ready_provider(pool: SessionPool, assets: AssetState) -> PooledChe
 }
 
 fn request_policy() -> ScheduledOrdinaryRequestPolicy {
+    request_policy_with_context(Some(2_000_000))
+}
+
+fn request_policy_with_context(
+    model_context_window_tokens: Option<u64>,
+) -> ScheduledOrdinaryRequestPolicy {
     ScheduledOrdinaryRequestPolicy::new(
         ThreadStartOptions::persistent(),
-        Some(2_000_000),
+        model_context_window_tokens,
         TIMEOUT,
         OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
     )
