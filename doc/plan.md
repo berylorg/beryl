@@ -89,22 +89,33 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 720: Mount Ordinary Running-Home Recovery (finished)
+# Phase 721: Establish Healthy-Home Runtime Retry Usability Authority (finished)
 
-Mounted ordinary failed-home recovery without an Exit request, preserving the complete native,
-resident and unchanged Running-session set through fresh same-home graph publication and reopening.
-All twelve ordinary cases have passing evidence, the combined affected suite passed 165/165, and
-locked app/executable all-target checks and independent custody review passed. See
-[qualification and lessons](failures/ordinary-running-home-recovery.md).
+Established app-owned exact Retry admission, shared launch election, retained selected-projection
+usability and notice publication, plus system/storage no-input planning and exact publication
+contracts. Independent source-backed semantic and adversarial readiness review and scoped
+checks passed. See [readiness and remaining implementation obligations](failures/executable-bootstrap.md#healthy-home-runtime-retry-usability-readiness).
+Production Retry remains disabled until the mounting boundary below is accepted.
 
-# Phase 721: Establish Healthy-Home Runtime Retry Usability Authority (pending)
+# Phase 722: Mount Healthy-Home Selected Runtime Retry (pending)
 
-Resolve the selected-runtime Retry consumer contract identified by
-[mounting readiness](failures/executable-bootstrap.md#running-session-recovery-mounting-readiness)
-under [backend recovery](features/backend-runtime-recovery/design.md). Establish the app/service
-ownership of exact selection and publication admission, pending coalescing, failure feedback and
-positive usability evidence for the same runtime/root/thread source and foreground projection.
-Runtime Ready or an absent failure does not prove selected-binding usability. Preserve the healthy
-home, unrelated local workflows and uncertain input outcomes. Independently review source-backed
-authority readiness before deriving the bounded production Retry mounting phase; this boundary
-does not activate Retry or authorize a new recovery path.
+Mount the existing notice's Retry command through the app's
+[selected runtime Retry owner](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#selected-runtime-retry-ownership)
+and [notice adapter](../crates/beryl-app/doc/design-feature-adapters.md#activity-status-notices-and-audio).
+Compose recovery-only session preparation and exact source projection establishment through the
+existing process owners without durable input admission, model dispatch or a parallel lease owner.
+Retain the actual loaded projection in that exclusive owner and constrain source-plan execution
+before backend effects; the general acquisition path's pending-turn history fallback is ineligible.
+Implement the [storage no-input planning boundary](../crates/syndic-storage/doc/design-history-storage.md#exact-source-planning-without-input-admission)
+and exact binding publication for the eligible selected prefix, preserving gate and delivery facts.
+Enable the command only from current eligibility; coalesce pending activation and shared runtime
+launch while publishing success separately for each selected binding. Remove the blocking notice
+only on its current retained-projection usability result; preserve exact bounded failure feedback.
+
+Qualify no-input success and failure, duplicates/multiwindow shared runtime, native-source failure
+without fallback, stale selection/source/attempt/result, loss before publication, capacity refusal,
+cancellation, close/Exit and home replacement. Verify draft/history/focus and unaffected runtime
+continuity, no healthy-home retirement, no uncertain-input replay and original outcome custody.
+Complete focused and combined affected checks, locked app/executable all-target checks and
+affected storage checks and independent lifecycle/persistence/external-effect review before
+accepting the mounted production route.

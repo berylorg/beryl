@@ -69,6 +69,25 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   binding alone cannot establish that the blocking condition is the same. It retains no editor, history,
   execution session or recovery capability. Retry availability follows its owning product gate;
   observation and runtime cleanup readiness do not grant recovery admission.
+- The selected-runtime notice's Retry adapter captures its exact record/condition revision,
+  selection and publication lifetime and submits only to the
+  [selected runtime Retry owner](design-live-projection-and-scheduling.md#selected-runtime-retry-ownership).
+  Enabled state requires that owner's current admission eligibility, including completed runtime
+  cleanup and no overlapping recovery. The adapter retains one pending presentation identity;
+  duplicate activation observes it rather than admitting another operation. The same persistent
+  notice and command remain published while pending, with Retry unavailable.
+- An exact unsuccessful completion updates that record with bounded typed failure feedback and
+  recomputes eligibility; it never stacks a notice, clears the failure or launches another attempt.
+  Cancellation without confirmed usability leaves the still-eligible blocking condition visible.
+  Only a current service-issued usability result, revalidated for that selected binding at
+  publication, removes the recovered condition. Unknown observations cannot undo this result or
+  resurrect an older failure; a newer exact failure remains eligible. Selection change ends only
+  the old presentation scope, not a shared process recovery or another window's notice.
+- Publishing the native-lineage prompt for the same blocking condition suppresses this notice
+  through the existing arbiter contract; the prompt's explicit command owner remains distinct.
+  Late Retry completion cannot dismiss a newer condition or the prompt. Notice Retry preserves
+  the mounted editor, local edits, focus and transcript selection; it mounts no replacement editor
+  and acquires no draft content or history collection.
 - Successful startup preparation supplies only the opened home's durability classification to
   Notifications. Native main-window publication offers its startup warning through the existing
   arbiter; later-created windows use the same startup classification. Admission history belongs to

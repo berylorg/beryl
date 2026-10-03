@@ -293,6 +293,16 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Thread activation and history browsing never resume, enumerate, or read CAS.
 - Different Syndic threads may execute concurrently through distinct exclusive CAS projections. Same-thread execution, steering, stop, compaction, fork, rollback, and repair are serialized.
 
+- Explicit same-source runtime recovery may establish projection usability without a pending
+  submission. Syndic supplies a bounded, revision-authenticated planning basis for the exact
+  selected execution, binding, source, tool profile and represented prefix. For an eligible idle
+  thread this is its selected committed prefix; for already-admitted pending input it remains that
+  input's proven parent prefix. Active, unknown-terminal, repair-pending or unprovable context
+  remains unavailable until its existing convergence or separate context contract permits recovery.
+  Planning and projection publication neither create nor consume input, advance the selected tail,
+  mutate delivery provenance nor grant dispatch. No-input establishment cannot select alternate
+  history or broaden a native source; binding publication follows ordinary exact atomic authority.
+
 ## Submission And Turn-Start Admission
 
 - Before durable admission of an ordinary turn that can require `turn/start`, Beryl queries the

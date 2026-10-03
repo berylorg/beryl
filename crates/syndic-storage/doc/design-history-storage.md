@@ -288,6 +288,23 @@ durable publication or exact already-published classification under the mutation
 Exact already-published classification is a typed noncommit outcome and leaves the stored manifest
 revision and home/domain revisions unchanged.
 
+## Exact Source Planning Without Input Admission
+
+The native projection planning boundary supports explicit same-source recovery from the exact
+selected prefix without requiring a manufactured pending turn. It authenticates the thread,
+execution, current binding and source, selected-path and input-gate revisions, represented prefix
+and tool profile under one stable domain revision using bounded point and ancestry reads. An
+eligible idle selection represents its committed prefix; an existing pending selection represents
+only its authenticated parent prefix. An active, unknown-terminal, repair-pending or unsupported
+context returns typed unavailability rather than guessing a prefix or changing history source.
+
+The returned basis is descriptive planning evidence. It creates no draft, turn, input admission,
+dispatch or cleanup authority. Binding publication authenticates that basis and its unchanged
+selection/gate/source revisions through the existing atomic mutation and reconciliation boundary;
+it changes only eligible projection-binding records and preserves input and delivery provenance.
+Persisted bytes remain governed by V7. Process and connection usability and window selection
+publication remain consumer-owned under the CAS-live system and app contracts.
+
 ## History, Activity, And Projection Records
 
 History summaries, activity-query records, transcript views, item-projection sets, projection builds,

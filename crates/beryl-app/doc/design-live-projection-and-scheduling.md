@@ -121,6 +121,54 @@ topology and typed execution surfaces.
   current operation and required reconciliation handoff. Driver and ingester joins precede attachment
   disposal; transient bytes and cancellation handles never transfer to a replacement service.
 
+## Selected Runtime Retry Ownership
+
+- The app service owns one explicit selected-binding recovery operation; the window owns only its
+  presentation and cancellation interest. Admission authenticates the healthy home/service
+  generation, exact State window claim and selection revision, durable execution binding,
+  configured runtime/root, current thread source and represented prefix, and the original runtime
+  failure attempt. It uses the existing command/publication fences; a notice record or a cloned
+  failure snapshot grants no recovery capability. Validation and backend work execute off GPUI.
+- The runtime owner elects launch Retry for the exact failed runtime attempt only after its prior
+  cleanup completes. Concurrent windows share that election, but success for one selected thread
+  does not certify another thread or root. If that exact launch has already succeeded while the
+  selected condition still lacks usability proof, a later explicit Retry prepares the selected
+  projection on the current matching runtime; it does not reauthorize the ended failed launch
+  attempt or restart a healthy runtime. A newer runtime failure requires its own current failure
+  authority. Each selected-binding operation retains at most one
+  current attempt and one bounded terminal result, charged to existing worker, connection and
+  projection-flight capacities. Contention supplies an unavailable result or an existing bounded
+  capacity wake, never an extra waiter queue, timer retry or automatic second attempt.
+- Retry establishes the same configured runtime and root through exact release admission, obtains
+  a full foreground connection and an exclusive loaded projection through the existing session
+  and projection owners, and keeps the same exact thread source. The command cannot select Syndic
+  recovery in place of native lineage. Projection establishment may perform only the source-owned
+  operations already allowed by the CAS-live system; it starts no model turn, admits no input and
+  sends no steering fragment. Ordinary activation and history browsing remain backend-free.
+- A successful result is a bounded, non-authorizing usability observation issued by the service
+  only after the exact projection has been established and its real lease retained by the existing
+  process session owner. It correlates the home/service, runtime/process, foreground connection,
+  loaded-session and projection generations, thread, full execution binding, exact source,
+  represented prefix and tool profile with the admitted recovery attempt. Runtime Ready, session
+  registration, checkout, a missing failure or a connection initialize response alone cannot issue
+  it. A result never contains a cloneable execution lease or lets the window dispatch backend work.
+- Publication revalidates the original selection and graph lifetime, current durable source/prefix
+  and the still-live projection authority under the existing nonblocking publication fences.
+  Source drift, retirement, connection loss, replacement, contention or missing proof refuses
+  success publication. The normal command owners still revalidate authority at each later use;
+  recovery success does not promise every command is enabled despite independent turn, repair,
+  approval or capacity gates. Other windows need their own exact usability observation.
+- Cancellation, selection loss, window closure, Exit and home/service replacement revoke result
+  publication and settle the operation through its original owners. Window interest cannot retire
+  a shared runtime or an admitted execution session. Already-dispatched source operations retain
+  their exact outcome and reconciliation custody until settlement; cancellation cannot certify
+  nondispatch or authorize replay. A failed home transfers to the established home-recovery path
+  and cannot keep this healthy-home operation current.
+- Runtime Retry neither retires nor replaces a healthy home or its service graph. It leaves draft,
+  history and delivery-unknown facts intact. Generated jobs paused for runtime failure still require
+  their existing explicit handoff retry; establishing usability does not unpause them. Distinct
+  already-admitted input can proceed only through its existing scheduler and delivery eligibility.
+
 ## Projection Authority And Leases
 
 - A projection is usable only with exact home, service, runtime, managed-process, connection,

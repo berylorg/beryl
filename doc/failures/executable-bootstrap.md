@@ -732,6 +732,61 @@ Independent completion review accepted the corrected readiness boundary and auth
 with no remaining blockers. Scoped diff checks passed; no Cargo verification was needed for this
 documentation-only change. Existing runtime evidence is reused only within its recorded boundaries.
 
+## Healthy-Home Runtime Retry Usability Readiness
+
+The plausible shortcut of enabling the notice from `retry_runtime_session` and clearing it on
+Runtime Ready is insufficient. Source inspection on 2026-10-03 confirms that
+`process_sessions/preparation.rs::retry_runtime_session` validates a launch target, records Retry
+authorization and notifies readiness; it returns no selected projection. The runtime owner's
+`retry.rs::authorize_retry` excludes stale attempts, incomplete cleanup and duplicates, but grants
+only launch admission. `preparation/run.rs::prepare_session` consumes a scheduled ordinary
+admission and registers a foreground session, not an established thread projection. Reusing that
+scheduled entry for notice Retry would incorrectly make recovery depend on admitted input.
+
+`service/runtime_failure.rs::RuntimeFailureReader::read` authenticates the selected durable
+execution before and after observing the exact failure; it has no positive outcome.
+`main_window/shell/notices/runtime.rs` consequently keeps Retry disabled.
+`execute.rs::obtain_projection` supplies the existing exact projection-establishment boundary,
+including source preparation, exclusive acquisition and its loaded projection result. It does not
+by itself provide window selection admission, recovery-only session preparation, retained
+process-owned lease custody or selected success publication.
+
+Existing process session resources do not yet retain a `LoadedCasProjection`. Also, general
+projection execution can route an unavailable native plan into `recover_projection`; that recovery
+path is tied to a pending turn and a fresh history target. Neither seam can be consumed unchanged
+as no-input exact-source Retry. Mounting must retain the established projection through the
+existing exclusive process owner and explicitly refuse alternate-source plans before backend
+effects, rather than assuming a general successful acquisition proves the admitted source.
+`syndic-storage::prepare_native_projection` also requires a pending selected turn and derives its
+represented prefix from that turn's parent. The
+[CAS-live no-input contract](../systems/cas-live-syndic-transcript/design.md#exclusive-cas-projection)
+and [storage planning boundary](../../crates/syndic-storage/doc/design-history-storage.md#exact-source-planning-without-input-admission)
+therefore define the bounded exact idle-prefix planning and publication seam needed by mounting;
+active, unknown-terminal, repair-pending and unsupported contexts remain unavailable.
+The binding validator already accepts empty or proven-terminal selected prefixes and a pending
+turn's exact parent. Its current publication request does not carry the new planning gate revision,
+and its selected-path validation permits compatible descendants. Reuse of that atomic machinery
+therefore requires the new exact planning-revision fence; existing API success alone is insufficient.
+
+The correction belongs to the app's
+[selected Retry ownership](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md#selected-runtime-retry-ownership)
+and [notice adapter](../../crates/beryl-app/doc/design-feature-adapters.md#activity-status-notices-and-audio)
+contracts. An explicit bounded operation composes the existing launch, connection and projection
+owners without inventing input admission or dispatch. Its positive result proves exact current
+selected-source usability with real lease custody, separately from runtime launch readiness.
+Shared runtime launch election does not certify every thread; each notice consumes only its own
+selection/publication-fenced result. No capability probe, alternate lineage, home retirement or
+uncertain-input replay is authorized.
+
+Production mounting must qualify no-input recovery, exact-source success and failure, duplicate
+activation and shared-runtime windows, stale selection/source/failure/result, loss between
+establishment and publication, capacity refusal, cancellation, close/Exit and home replacement.
+It must preserve edits/history/focus, unrelated runtime work and original uncertain-effect custody.
+This record establishes authority readiness only; source remains unchanged and Retry disabled.
+Independent semantic and adversarial source review accepted the app, system and storage authority
+and derived mounting boundary without remaining blockers. Scoped documentation checks passed;
+no new Cargo or runtime qualification is claimed for this documentation-only boundary.
+
 ## Ordinary Running-Home Recovery Custody Readiness
 
 On 2026-10-03, the app-owned
