@@ -215,6 +215,8 @@ pub mod startup_surface;
 mod startup_owner;
 #[cfg(target_os = "windows")]
 mod running_owner;
+#[cfg(target_os = "windows")]
+mod notification_audio;
 pub mod theme_runtime;
 pub mod window_acquisition;
 

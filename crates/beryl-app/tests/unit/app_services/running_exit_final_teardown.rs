@@ -66,6 +66,7 @@ fn run(selected_count: u8, failure: Failure) {
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
+            let audio_ingress = owner.borrow().test_process().notification_audio.ingress();
             if failure == Failure::Service {
                 owner.borrow_mut().test_services_mut().test_fail_shutdown_completion();
             }
@@ -78,6 +79,9 @@ fn run(selected_count: u8, failure: Failure) {
                         assert!(app.windows().is_empty());
                         assert!(owner.borrow().test_process().windows.shells().is_empty());
                         assert!(owner.borrow().test_services().graph().is_none());
+                        assert!(owner.borrow().test_process().notification_audio.is_finished());
+                        assert_eq!(audio_ingress.offer(crate::notification_audio::SoundKind::EndTurn,
+                            std::path::Path::new("C:\\notification-sounds\\late.wav")), crate::notification_audio::Admission::Closed);
                         completed.set(true);
                     }).unwrap();
                 command.request_exit();
@@ -118,6 +122,8 @@ fn run(selected_count: u8, failure: Failure) {
                     RunningProcessOwner::finish_ready_exit(&owner, request, app, |_, _, _| panic!("unready teardown"))
                 }).unwrap().err().unwrap();
                 assert!(!refusal.is_empty());
+                assert!(!audio_ingress.is_closed());
+                assert!(audio_ingress.same_lane(&owner.borrow().test_process().notification_audio.ingress()));
                 let (sender, receiver) = futures_channel::oneshot::channel();
                 assert!(cx.update(|app| RunningProcessOwner::run_exit_attempt(&owner, request,
                     ProjectionCancellationToken::new(), app, move |_, request, outcome, _| {
@@ -137,6 +143,9 @@ fn run(selected_count: u8, failure: Failure) {
                 let native_gate = cx.update(|app| {
                     assert!(RunningProcessOwner::finish_ready_exit(&owner, request, app, move |owner, result, app| {
                         assert!(!owner.borrow().test_services_on_worker());
+                        assert!(owner.borrow().test_process().notification_audio.is_finished());
+                        assert!(audio_ingress.is_closed());
+                        assert!(audio_ingress.same_lane(&owner.borrow().test_process().notification_audio.ingress()));
                         if failure == Failure::None {
                             assert!(matches!(result, RunningExitCompletion::Finished), "{result:?}: {:?}", owner.borrow().test_final_teardown_detail());
                             assert!(app.windows().is_empty());

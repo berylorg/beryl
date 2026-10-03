@@ -80,6 +80,7 @@ fn resident_run(scenario: ResidentScenario) {
                     };
                     let invoking = running.windows.window_ids()[0];
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
+                    let audio_ingress = owner.borrow().test_process().notification_audio.ingress();
                     owner
                         .borrow()
                         .window_exit_command(invoking, app)
@@ -566,6 +567,8 @@ fn resident_run(scenario: ResidentScenario) {
                             ).unwrap();
                         }).unwrap();
                         disposal.await.unwrap();
+                        assert!(audio_ingress.same_lane(&owner.borrow().test_process().notification_audio.ingress()));
+                        assert!(!audio_ingress.is_closed());
                         let failure = owner.borrow().test_take_resident_graph_failure();
                         cx.background_executor().spawn(async move { failure.close().unwrap(); }).await;
                         resident_directory.close().unwrap();

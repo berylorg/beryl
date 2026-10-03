@@ -132,6 +132,7 @@ impl RunningProcessOwner {
         {
             let mut owner = owner.borrow_mut();
             owner.exit_availability.take();
+            owner.process.notification_audio.close();
             owner.final_teardown = Some(FinalTeardown {
                 identity: identity.clone(),
                 request,
@@ -190,6 +191,8 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let mut audio = owner.borrow_mut().process.notification_audio.take_worker();
+        cx.background_executor().spawn(async move { audio.finish(); }).await;
         let drafts = owner
             .borrow()
             .shutdown

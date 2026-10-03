@@ -107,6 +107,7 @@ pub(crate) struct RunningProcessOwner {
 }
 
 pub(crate) struct RunningProcess {
+    pub(crate) notification_audio: crate::notification_audio::NotificationAudioLane,
     configuration: AppServiceConfiguration,
     services: Option<ProcessServiceOwner>,
     pub(crate) windows: PublishedMainWindowRestoreSet,
@@ -208,6 +209,7 @@ impl RunningProcessOwner {
         let surface = process.startup_surface.take();
         let owner = Rc::new(RefCell::new(Self {
             process: RunningProcess {
+                notification_audio: crate::notification_audio::NotificationAudioLane::new(),
                 configuration: process.configuration,
                 services: Some(process.services),
                 windows: process.windows,

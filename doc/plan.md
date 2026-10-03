@@ -89,10 +89,18 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 709: Mount Exact Stop-Feedback Notices (finished)
+# Phase 713: Own The Bounded Process Notification Audio Lane (finished)
 
-Accepted FIFO exact-feedback fallback through the sole notice arbiter, bounded acknowledgement,
-popup recovery and volatile refusal across temporary publication/proof loss. Canonical metadata,
-combined app/executable checks,128 passing cases and independent semantic review passed; see
-[qualification](failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).
-Audio, deferred status operations and unavailable repair/recovery mounts remain separate.
+Accepted the single running-process audio lane with finite WAV/resource bounds, latest waiting
+replacement and off-GPUI final drainage. Canonical metadata, combined app/executable checks,
+25 passing cases and independent lifecycle/effect review passed; see
+[qualification](failures/executable-bootstrap.md#notification-audio-qualification).
+Automatic completion/attention producers remain the next separate boundary.
+
+# Phase 714: Mount Exact Parent Completion Sound Eligibility (pending)
+
+Connect exact source-owned ordinary parent terminal events and desktop attention facts to the
+accepted process lane, consuming current configured sound without replaying restored/status facts.
+Qualify deduplication, attention OR semantics, settings changes and lifecycle exclusions on the
+production owner. Establish the exact event/attention adapter prerequisites in their owning authority
+before activation; keep optional lifecycle sounds absent until separately configured by Beryl policy.

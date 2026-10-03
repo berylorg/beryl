@@ -60,6 +60,22 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   waiting metadata-only event. It reserves configured encoded and decoded bytes before acquisition,
   moves charges with resources, and releases all handles, buffers, work, and charges on every
   failure, cancellation, replacement, terminal, and disposal cut.
+- The running process owns this lane independently of Beryl-home service publication. Recovery,
+  window detachment and publication replacement neither duplicate it nor retain a home service in
+  audio work. Irreversible final teardown closes audio admission, discards waiting metadata, stops
+  playback and awaits its owned worker before quitting GPUI. Reversible Exit attempts do not end
+  the lane. Its ingress retains only bounded sound kind/path metadata and grants no thread or
+  execution authority. Terminal-event and attention adapters remain separate consumers; selected
+  status observations and restored state cannot substitute for those event sources.
+- The lane rejects paths exceeding 32 KiB of stored metadata, encoded WAV input over 8 MiB,
+  decoded samples over 16 MiB, duration over 30 seconds, channel counts other than mono/stereo,
+  and sample rates outside 8–192 kHz. Unsupported WAV formats remain best-effort failures.
+  The bounded decoder admits validated RIFF PCM 8/16/24/32-bit and IEEE float32 in supported
+  16/18-byte format headers; unsupported variants, inconsistent extents and nonfinite samples fail.
+  Decoded storage moves into an owned playback iterator without a second decoded buffer.
+  Cancellation is checked before and after synchronous regular-file calls and between bounded
+  acquisition/decode blocks. Final drain awaits an in-flight OS call and worker release off GPUI;
+  this contract does not promise a bounded shutdown wall time or preemptible synchronous file I/O.
 
 ## Settings And Themes
 

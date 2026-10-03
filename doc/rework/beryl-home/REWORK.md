@@ -503,7 +503,10 @@
 - [x] Mounted and independently accepted exact soft-stop notice fallback through the sole arbiter,
   preserving FIFO identity, popup recovery, resolved dismissal and volatile refusal across temporary
   loss; [canonical qualification](../../failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).
-- [ ] Implement bounded notification-audio ownership and explicit fail-closed repair and recovery
+- [x] Implemented and independently accepted bounded process notification-audio ownership and
+  final teardown drainage, preserving one open lane across actual recovery;
+  [canonical qualification](../../failures/executable-bootstrap.md#notification-audio-qualification).
+- [ ] Mount exact parent completion/attention sound producers and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.

@@ -361,3 +361,34 @@ and independently matched all ten source/test hashes. Root matched both working 
 hashes again after qualification. Bounded logs and inventories remain under
 `.tmp/exact-stop-notice-evidence`; accepted unchanged service and widget evidence is reused.
 No software, dependency, manifest, lockfile, audio or additional stop capability was introduced.
+
+## Notification Audio Qualification
+
+Replaced the unused detached four-entry FIFO player with one running-process-owned lane on
+2026-10-03. One active attempt and one replaceable latest metadata event share finite encoded and
+decoded reservations. Validated regular-file RIFF input feeds the existing Rodio/Hound decoder;
+owned sample iteration avoids a second decoded allocation. Final teardown closes admission and
+awaits cancellation/worker release off GPUI before further cleanup and quit. Actual resident
+recovery preserves the same open lane; reversible Exit refusal does not close it.
+
+Validation tightened two initially incomplete boundaries before acceptance: odd-sized RIFF data
+requires its padding byte in the declared extent, and Windows device namespaces/reserved DOS
+device names must be rejected before regular-file acquisition. Metadata remains bounded even if
+the caller's path has excessive allocation capacity. Synchronous OS acquisition is still owned
+until it returns; no preemptible-I/O or bounded shutdown-wall-time guarantee was introduced.
+
+Local combined run `929bb4ba-d650-495e-af38-019992183558` passed 23/23; final audio run
+`a63765b7-128d-4ae3-93db-41e943475f6c` passed 10/10 after path/alignment corrections, and actual
+recovery run `d143cab7-f40c-43ec-8526-1feae3712cf7` passed 1/1. Canonical locked metadata and
+combined app/executable all-target checks passed without local overrides. Final canonical run
+`529e74aa-a99d-4f90-92c2-c562d32f6554` passed 25/25 in 16.316 seconds: ten audio cases, eight
+policy/adapter cases, two retained candidate cases, four native teardown cases and actual recovery.
+The process-local toolchain, 32 MiB test stack and Windows ErrorMode were restored.
+
+Independent lifecycle/effect review accepted the boundary. Short control contention is a
+diagnosed best-effort admission failure; accepted offers replace waiting metadata without
+interrupting the active attempt. Device failure is nonfatal. No audible-device qualification was
+performed; generated silence-tail mechanics and exact CPAL stream teardown were reviewed with
+[dependency evidence](../memory/crates.io/rodio/0.22.2/bounded-wav-and-owned-playback.md).
+Completion/attention producers remain separate and no automatic sound trigger is mounted yet.
+Bounded logs and eleven source/test hashes remain in `.tmp/notification-audio-evidence`.
