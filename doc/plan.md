@@ -89,18 +89,18 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 716: Mount Exact Native-Lineage Recovery Disabled Reasons (finished)
+# Phase 717: Mount Selected Runtime Unavailability Presentation (finished)
 
-Mounted bounded typed preflight denial through both parked scheduler lanes, command failure and
-the existing prompt, preserving exact identity, recovery eligibility and Retry admission.
-Canonical locked metadata, app/executable checks, 31 focused regressions and independent semantic
-review passed; see [qualification](failures/executable-bootstrap.md#native-lineage-recovery-disabled-reason-qualification).
+Mounted actual typed selected-runtime failure through a weak published reader, the existing
+awaited status loop and sole notice arbiter, preserving original attempt/binding and unknown-state
+retention. Retry and complete recovery remain gated; unrelated native prompts do not suppress it.
+Canonical locked metadata, app/executable checks, 72 focused regressions and independent semantic
+review passed; see [qualification](failures/executable-bootstrap.md#selected-runtime-notice-qualification).
 
-# Phase 717: Mount Selected Runtime Unavailability Presentation (pending)
+# Phase 718: Qualify Running-Session Recovery Mounting Prerequisites (pending)
 
-Derive the exact selected-runtime notice contribution from actual typed runtime failure through a
-bounded weak published reader and the sole Notifications arbiter. Preserve original failure,
-binding and selection identity, closest unavailable explanations, unaffected local workflows and
-native-lineage prompt exclusion. Establish owning publication prerequisites before implementation;
-missing adapters never fabricate failure. Keep Retry activation and complete running-session
-recovery behind their existing product gates; this boundary accepts unavailable presentation only.
+Identify the remaining complete-graph publication and supervisor prerequisites for runtime Retry
+and same-home running-session recovery from the accepted contracts and rework tracker. Preserve
+the current unavailable presentation and command gates. Produce bounded source-backed readiness
+evidence and derive the next implementation slice before activating recovery; component protocols
+alone cannot accept complete running-session recovery.

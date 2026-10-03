@@ -186,7 +186,10 @@ impl MainWindowShellRoot {
         cx.notify();
     }
 
-    fn status_selection(&self, app: &App) -> Option<MainWindowComposerSelectionIdentity> {
+    pub(in crate::main_window::shell) fn status_selection(
+        &self,
+        app: &App,
+    ) -> Option<MainWindowComposerSelectionIdentity> {
         let controller = self.controller.as_ref()?;
         let expected = match &controller.content {
             ShellContent::Acquired { selection, .. }
@@ -195,8 +198,7 @@ impl MainWindowShellRoot {
             _ => return None,
         };
         let mount = controller.composer_mount.as_ref()?.read(app);
-        let composer = mount.contribution()?;
-        let selection = composer.read(app).selection_identity();
+        let selection = mount.selected_identity()?;
         if selection.window_id() != expected.window_id() || selection.claim() != expected.claim() {
             return None;
         }
@@ -266,15 +268,55 @@ impl MainWindowShellRoot {
                 };
                 if let Some((worker, selection, generation)) = observation {
                     let result = background
-                        .spawn(async move { worker.selected_operation_snapshot(selection) })
+                        .spawn(async move {
+                            let runtime = worker.selected_runtime_failure(selection);
+                            (worker.selected_operation_snapshot(selection), runtime)
+                        })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
-                        root.apply_status_observation(selection, generation, result, window, cx);
+                        root.apply_runtime_failure_observation(
+                            selection, generation, result.1, window, cx,
+                        );
+                        root.apply_status_observation(selection, generation, result.0, window, cx);
                     });
                 }
                 background.timer(Duration::from_millis(250)).await;
             }
         }));
+    }
+
+    pub(in crate::main_window::shell) fn runtime_notice_service_identity(
+        &self,
+    ) -> Option<(
+        beryl_model::BerylHomeId,
+        beryl_home_store::HomeGeneration,
+        crate::cas_projection::ProjectionServiceGeneration,
+    )> {
+        let worker = self.status_controls.worker.as_ref()?;
+        worker
+            .publication_current()
+            .then(|| worker.worker_identity())
+    }
+
+    fn apply_runtime_failure_observation(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        generation: u64,
+        observation: crate::cas_projection::SelectedRuntimeFailureObservation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync_status_controls(window, cx);
+        if self.status_controls.generation.load(Ordering::Acquire) != generation
+            || self.status_selection(cx) != Some(selection)
+        {
+            return;
+        }
+        let Some(service) = self.runtime_notice_service_identity() else {
+            return;
+        };
+        self.retain_runtime_failure(selection, service, observation);
+        self.sync_notices(window, cx);
     }
 
     fn apply_status_observation(
@@ -450,6 +492,16 @@ impl MainWindowShellRoot {
 
 #[cfg(feature = "test-faults")]
 impl MainWindowShellRoot {
+    pub fn test_apply_runtime_failure_observation(
+        &mut self,
+        stamp: (MainWindowComposerSelectionIdentity, u64),
+        result: crate::cas_projection::SelectedRuntimeFailureObservation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_runtime_failure_observation(stamp.0, stamp.1, result, window, cx);
+    }
+
     pub fn test_mount_exact_status_worker(
         &mut self,
         worker: crate::cas_projection::ExactStopWorker,

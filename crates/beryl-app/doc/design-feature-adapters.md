@@ -50,6 +50,25 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 - Notice adapters accept bounded typed records and exact eligibility and route them to the
   [notifications feature](../../../doc/features/notifications/design.md); they do not choose
   treatment, persistence, dismissal, or sound eligibility.
+- `RuntimeFailureReader` holds only weak runtime and home ownership, exact home and
+  service identity, and bounded typed observation facts. Window publication additionally fences it
+  by the graph's weak restoration lifetime and exact State window claim. Reads authenticate the
+  selected durable execution binding before and after observation and execute off GPUI through the
+  existing single awaited status-observation loop; each window retains only its latest result.
+  `SelectedRuntimeFailureObservation` carries unknown or the exact execution binding and original
+  typed unavailable failure; it supplies no command or successful-recovery authority.
+- An unavailable observation preserves the runtime owner's original typed failure and opaque
+  attempt identity. Missing ownership, missing runtime state, closed publication, contention or
+  unavailable read authority yields unknown, never fabricated failure or successful recovery.
+  Unknown retains an already observed failure only for the same exact selection and publication.
+  Selection or publication retirement ends that presentation eligibility. Runtime readiness alone
+  does not prove the selected thread's required backend operations usable; clearing a failure as
+  recovered requires the separately accepted exact selected-thread recovery result.
+- The runtime notice contribution is suppressed only by the actually published native-lineage
+  prompt for the same exact selected binding and blocking condition. Matching thread, runtime or
+  binding alone cannot establish that the blocking condition is the same. It retains no editor, history,
+  execution session or recovery capability. Retry availability follows its owning product gate;
+  observation and runtime cleanup readiness do not grant recovery admission.
 - Successful startup preparation supplies only the opened home's durability classification to
   Notifications. Native main-window publication offers its startup warning through the existing
   arbiter; later-created windows use the same startup classification. Admission history belongs to

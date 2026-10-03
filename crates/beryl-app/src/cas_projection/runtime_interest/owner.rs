@@ -347,6 +347,28 @@ impl RuntimeInterestOwner {
         })
     }
 
+    pub(in crate::cas_projection) fn observe_failure(
+        &self,
+        runtime_id: RuntimeId,
+    ) -> Option<RuntimeFailureSnapshot> {
+        let mut state = self.shared.state.try_lock().ok()?;
+        self.reap_finished(&mut state);
+        if state.closed || !self.shared.commands.is_open() {
+            return None;
+        }
+        let entry = state.runtimes.get(&runtime_id)?;
+        let RuntimeInterestStatus::Unavailable(failure) = entry.status else {
+            return None;
+        };
+        Some(RuntimeFailureSnapshot {
+            runtime_id,
+            service_generation: self.shared.commands.service_generation(),
+            attempt: entry.attempt,
+            failure,
+            retry_ready: entry.worker.is_none() && entry.cleanup_complete && entry.retry.is_none(),
+        })
+    }
+
     pub(in crate::cas_projection) fn shutdown(&self) -> bool {
         let workers = {
             let mut state = self.shared.lock();

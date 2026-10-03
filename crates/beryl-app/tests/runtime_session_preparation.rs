@@ -3,12 +3,19 @@
 mod acquisition;
 #[path = "runtime_session_preparation/compaction_lifetime.rs"]
 mod compaction_lifetime;
+#[allow(dead_code)]
+#[path = "pending_composer_activation/support.rs"]
+mod composer_support;
 #[path = "runtime_session_preparation/execution_lifetime.rs"]
 mod execution_lifetime;
 #[path = "runtime_session_preparation/graceful_shutdown.rs"]
 mod graceful_shutdown;
 #[path = "runtime_session_preparation/idle_maintenance.rs"]
 mod idle_maintenance;
+#[path = "runtime_session_preparation/notice_shell.rs"]
+mod notice_shell;
+#[path = "runtime_session_preparation/runtime_notice.rs"]
+mod runtime_notice;
 #[path = "runtime_session_preparation/work_facts.rs"]
 mod work_facts;
 

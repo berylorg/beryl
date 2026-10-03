@@ -86,6 +86,22 @@ pub struct RuntimeFailureSnapshot {
 }
 
 impl RuntimeFailureSnapshot {
+    pub(crate) fn same_attempt(self, other: Self) -> bool {
+        self.runtime_id == other.runtime_id
+            && self.service_generation == other.service_generation
+            && self.attempt == other.attempt
+    }
+
+    pub(crate) fn precedes(self, other: Self) -> bool {
+        self.runtime_id == other.runtime_id
+            && self.service_generation == other.service_generation
+            && self.attempt < other.attempt
+    }
+
+    pub(crate) fn belongs_to_service(self, generation: super::ProjectionServiceGeneration) -> bool {
+        self.service_generation == generation
+    }
+
     pub fn runtime_id(self) -> RuntimeId {
         self.runtime_id
     }

@@ -35,6 +35,33 @@ pub(crate) struct PublishedExactStopWorker {
 }
 
 impl PublishedExactStopWorker {
+    pub(crate) fn selected_runtime_failure(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> crate::cas_projection::SelectedRuntimeFailureObservation {
+        use crate::cas_projection::SelectedRuntimeFailureObservation;
+        let identity = self.worker_identity();
+        if !self.publication_current()
+            || selection.binding().home_id() != identity.0
+            || selection.binding().home_generation() != identity.1
+        {
+            return SelectedRuntimeFailureObservation::Unknown;
+        }
+        let Some(session) = self.session.as_ref() else {
+            return SelectedRuntimeFailureObservation::Unknown;
+        };
+        let observation = self.worker.runtime_failure_reader().observe(
+            session,
+            selection.window_id(),
+            selection.claim(),
+        );
+        if self.publication_current() {
+            observation
+        } else {
+            SelectedRuntimeFailureObservation::Unknown
+        }
+    }
+
     #[cfg(feature = "test-faults")]
     pub(crate) fn for_test(
         worker: crate::cas_projection::ExactStopWorker,

@@ -61,6 +61,7 @@ mod runtime_work;
 mod scheduled_ordinary;
 mod service;
 pub use service::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
+pub use service::{RuntimeFailureReader, SelectedRuntimeFailureObservation};
 mod service_config;
 mod service_registry;
 mod service_supervisor;

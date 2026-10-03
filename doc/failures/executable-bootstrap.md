@@ -558,3 +558,80 @@ Bounded logs and source hashes remain under `.tmp/native-recovery-denial-evidenc
 canonical checkout is removed after final hash and reparse checks. No manifests, dependencies,
 repair adapter or runtime-recovery command activation changed. The broader unavailable-state
 mounting checkpoint remains open.
+
+## Selected Runtime Notice Readiness
+
+Phase 717 initially appeared blocked because the native-lineage decision and published prompt
+carry no runtime failure attempt association. Matching their thread, runtime or binding would not
+prove that the prompt presents the same blocking condition as a runtime notice. Independent source
+review invalidated the stronger assumption that a new association is required for the current
+supported producers.
+
+`execute/native_retry.rs` produces a native `RetryExhausted` decision only for
+`Backend(RequestFailed)`. The backend's `session/bounded_request.rs` constructs that variant from
+a received JSON-RPC rejection, and `session.rs::invalidates_connection_authority` excludes it.
+The connection driver's `lifecycle.rs::publish_ordered_result` replaces a noninvalidating result
+with terminal connection or routing failure when such failure accompanies it. Actual runtime
+process, connection and preparation failures follow their separate typed owner paths.
+
+An existing `Failed` prompt does not prove another request rejection: the scheduler may retain the
+original decision after other projection refusals. It revalidates that decision's runtime interest
+as current and Ready before publishing Failed; its feedback does not identify a runtime-owner
+failure. A later runtime failure can coexist with this retained prompt and must remain independently
+eligible. No current prompt producer is proven to present the notice's exact runtime failure.
+
+The accepted correction is to preserve the distinct conditions, without suppressing a runtime
+notice merely because a prompt shares its selected binding. If a future prompt explicitly presents
+runtime-owner failure, that producer must supply exact condition evidence before suppression.
+Publication still needs a weak exact reader, off-GPUI binding/claim validation and unknown-state
+retention. Missing runtime failure snapshots neither fabricate failure nor prove selected-thread
+recovery. The package adapter contract records these boundaries; Retry activation and complete
+running-session recovery remain separately gated.
+
+## Selected Runtime Notice Qualification
+
+Phase 717 publishes the runtime owner's actual typed failure through `RuntimeFailureReader`,
+transported by the existing weak published status worker. It retains weak home/runtime ownership,
+exact home/service identity and no execution session or retry capability. Background observation
+authenticates the exact State window claim and durable execution record before and after reading,
+then verifies the opaque original runtime attempt again. The existing single awaited status loop
+retains only the latest result; GUI application fences selection, publication and read generation.
+
+The sole Notifications arbiter receives one persistent RuntimeUnavailable error identifying the
+runtime, with bounded static typed detail and a visible disabled Retry. Its closest reason names
+pending cleanup/admitted retry or the remaining exact recovery gate. Unknown does not create
+failure or claim recovery and preserves known failure only within the same selection/publication.
+Newer retained attempts reject older observations. A runtime change after a completed observation
+may leave prior failure evidence briefly displayed; it grants no retry or dispatch authority.
+Runtime readiness alone cannot clear the notice as selected-thread recovery. Current native
+prompts represent distinct conditions under the preceding source proof and do not suppress it.
+
+Canonical qualification used an isolated checkout without ignored local Cargo overrides and a
+hash-matched inventory of all 13 changed source/test files. Locked metadata resolved eight members;
+the combined app/executable all-target check with `beryl-app/test-faults` passed in 74 seconds.
+The initial check compiled production and found only a nonexistent test window-cleanup helper;
+the corrected test uses the established native removal path. Two later diagnostic lines record
+exact owned fixture paths and compiled in the final test run.
+
+Direct nextest run `a07ca9d5-7a6f-4c72-9c82-05a027f7ca81` used stable, a 32 MiB test stack,
+one build job and test thread, and the existing 60-second per-case profile. All 72 cases passed
+across `runtime_session_preparation`, `mounted_exact_status_controls`, `notice_arbiter` and
+`native_lineage_scheduler` in 107.474 seconds, with none skipped. New cases exercise actual managed
+release-admission failure through the weak reader and mounted arbiter, no-failure Unknown, exact
+same-window claim replacement, another root binding, weak-owner disposal, an actual newer failed
+retry attempt, delayed older-result rejection, stable persistent notice/disabled Retry, unknown
+retention, actually mounted unrelated prompt coexistence and late publication-loss rejection.
+
+Independent semantic review found no blocking unmet guarantee and verified all final hashes.
+The mounted test supplies the published wrapper through the test adapter with a synthetic weak
+lifetime; production graph construction is source-reviewed, not complete native running-graph
+qualification. Prompt coexistence uses a synthetic prompt plus production source proof.
+Draft/history/navigation preservation follows the absence of mutations or extra gating, rather
+than independent qualification of those complete workflows. Existing stop, arbiter, scheduler,
+runtime lifetime, capacity and shutdown regressions passed in the combined run.
+
+Bounded logs and hashes remain in `.tmp/runtime-notice-evidence`; the exact qualification checkout
+is removed after final hash/reparse checks. Process-local toolchain, stack and Windows ErrorMode
+are restored. Successful fixtures closed normally; no failed-fixture cleanup is outstanding.
+Runtime Retry activation, complete running-session recovery and the broader unavailable-state
+checkpoint remain open. No manifest, dependency or repair policy changed.

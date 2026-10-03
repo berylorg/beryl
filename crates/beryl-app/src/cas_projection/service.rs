@@ -81,7 +81,9 @@ pub(crate) use graceful_shutdown::{
 };
 mod process_work;
 pub use process_work::*;
+mod runtime_failure;
 mod runtime_interest;
+pub use runtime_failure::{RuntimeFailureReader, SelectedRuntimeFailureObservation};
 mod runtime_preparation;
 mod scheduling;
 mod shutdown;

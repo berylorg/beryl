@@ -515,6 +515,9 @@
 - [x] Mounted exact bounded native-lineage history-recovery disabled explanations through parked
   routes and failed commands, preserving admission and Retry;
   [canonical qualification](../../failures/executable-bootstrap.md#native-lineage-recovery-disabled-reason-qualification).
+- [x] Mounted selected-runtime failure through the weak published reader and sole notice arbiter,
+  preserving exact identity and unavailable recovery gates;
+  [canonical qualification](../../failures/executable-bootstrap.md#selected-runtime-notice-qualification).
 - [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
   capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

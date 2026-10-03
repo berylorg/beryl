@@ -10,6 +10,7 @@ use gpui::Focusable;
 
 mod composer;
 mod home_warning;
+mod runtime;
 mod stop_feedback;
 #[cfg(feature = "test-faults")]
 pub use home_warning::BestEffortHomeWarningTimer;
@@ -141,6 +142,7 @@ pub(super) struct MainWindowShellNotices {
     arbiter: MainWindowNoticeArbiter,
     composer: composer::ComposerNoticeContribution,
     stop_feedback: stop_feedback::StopFeedbackNoticeContribution,
+    runtime: runtime::RuntimeNoticeContribution,
     window_id: beryl_model::WindowId,
     pub(super) widget: Entity<MainWindowNoticeWidget>,
     home: beryl_state::ThemeHomeIdentity,
@@ -184,6 +186,7 @@ impl MainWindowShellNotices {
             arbiter: MainWindowNoticeArbiter::new(controller.window_id()),
             composer: composer::ComposerNoticeContribution::default(),
             stop_feedback: stop_feedback::StopFeedbackNoticeContribution::default(),
+            runtime: runtime::RuntimeNoticeContribution::default(),
             window_id: controller.window_id(),
             home: appearance.prepared().home(),
             publication,
@@ -304,6 +307,7 @@ impl MainWindowShellRoot {
         self.notices.subscription = None;
         self.notices.composer = composer::ComposerNoticeContribution::default();
         self.notices.stop_feedback = stop_feedback::StopFeedbackNoticeContribution::default();
+        self.notices.runtime = runtime::RuntimeNoticeContribution::default();
         self.notices.arbiter.dispose();
         self.notices.projected = None;
         self.notices.allocation = None;
@@ -392,6 +396,7 @@ impl MainWindowShellRoot {
         }
         self.sync_composer_notice(cx);
         self.sync_stop_feedback_notice();
+        self.sync_runtime_notice(cx);
         self.sync_home_warning_timer(window, cx);
         self.refresh_notice_safe_focus(cx);
         let viewport = window.viewport_size();

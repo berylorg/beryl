@@ -14,6 +14,7 @@ use crate::cas_projection::{
 
 #[derive(Clone)]
 pub struct ExactStopWorker {
+    runtime_failure: super::RuntimeFailureReader,
     home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -37,6 +38,7 @@ pub(super) struct ExactStopRead {
 impl ProjectionConnectionService {
     pub fn exact_stop_worker(&self) -> ExactStopWorker {
         ExactStopWorker {
+            runtime_failure: self.runtime_failure_reader(),
             home: self.home.as_ref().map_or_else(Weak::new, Arc::downgrade),
             home_id: self.home_id,
             home_generation: self.home_generation,
@@ -62,6 +64,10 @@ impl ProjectionConnectionService {
 }
 
 impl ExactStopWorker {
+    pub fn runtime_failure_reader(&self) -> super::RuntimeFailureReader {
+        self.runtime_failure.clone()
+    }
+
     pub(crate) fn window_selection_current(
         &self,
         session: &beryl_state::SessionState,
