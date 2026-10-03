@@ -7,8 +7,9 @@ use beryl_model::SyndicAcceptedInputId;
 #[path = "../../../tests/unit/admission_reopening.rs"]
 mod admission_reopening_tests;
 
-enum PreparedStop {
+pub(super) enum PreparedStop {
     Exact {
+        stopping: bool,
         target: syndic_storage::StopOperationTarget,
         connection: Arc<ProjectionConnection>,
         proof: super::super::connection::StopTargetProof,
@@ -212,15 +213,28 @@ impl ProjectionConnectionService {
                 target,
                 connection,
                 proof,
+                ..
             } => (target, connection, proof),
             PreparedStop::Ineligible(reason) => {
                 return Ok((StopCoordinationOutcome::Ineligible(reason), None));
             }
         };
-        let outcome = match connection.coordinate_stop(&self.stop_coordinator, proof, cause)? {
+        let outcome = self.coordinate_prepared_stop(connection, proof, cause)?;
+        Ok((outcome, Some(target)))
+    }
+
+    pub(super) fn coordinate_prepared_stop(
+        &self,
+        connection: Arc<ProjectionConnection>,
+        proof: super::super::connection::StopTargetProof,
+        cause: StopCause,
+    ) -> Result<StopCoordinationOutcome, StopCoordinationError> {
+        match connection.coordinate_stop(&self.stop_coordinator, proof, cause)? {
             StopOwnership::Primary(owner) => {
                 #[cfg(feature = "test-faults")]
-                crate::cas_projection::test_faults::pause_stop_handoff(thread_id);
+                crate::cas_projection::test_faults::pause_stop_handoff(
+                    owner.operation_id().thread_id(),
+                );
                 connection.dispatch_exact_stop(owner)
             }
             StopOwnership::Joined {
@@ -230,8 +244,7 @@ impl ProjectionConnectionService {
                 operation_id,
                 primary_owner: false,
             }),
-        }?;
-        Ok((outcome, Some(target)))
+        }
     }
 
     #[cfg(feature = "test-faults")]
@@ -239,7 +252,7 @@ impl ProjectionConnectionService {
         self.stop_coordinator.has_local_stop_for_test(thread)
     }
 
-    fn prepare_stop(
+    pub(super) fn prepare_stop(
         &self,
         thread_id: SyndicThreadId,
     ) -> Result<PreparedStop, StopCoordinationError> {
@@ -259,9 +272,9 @@ impl ProjectionConnectionService {
             SyndicPointReadLimit::new(1_000_000)
                 .expect("stop coordination point-read bound is nonzero"),
         )?;
-        let target = match read {
-            StopAdmissionRead::Admissible(candidate) => candidate.target().clone(),
-            StopAdmissionRead::Stopping(live) => live.target().clone(),
+        let (target, stopping) = match read {
+            StopAdmissionRead::Admissible(candidate) => (candidate.target().clone(), false),
+            StopAdmissionRead::Stopping(live) => (live.target().clone(), true),
             StopAdmissionRead::Ineligible(reason) => {
                 return Ok(PreparedStop::Ineligible(reason));
             }
@@ -271,6 +284,7 @@ impl ProjectionConnectionService {
             return Err(StopCoordinationError::HomeAuthorityLost);
         }
         Ok(PreparedStop::Exact {
+            stopping,
             target,
             connection,
             proof,

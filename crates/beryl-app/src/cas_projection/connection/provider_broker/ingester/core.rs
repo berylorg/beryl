@@ -7,6 +7,8 @@ impl Ingester {
         let home_generation = self.home_generation;
         let clean = catch_unwind(AssertUnwindSafe(|| self.run_loop())).is_ok();
         self.passive.finish();
+        self.stop_coordinator
+            .feedback_connection_retired(self.passive.connection_generation());
         self.approval.close();
         // The sole producer has returned or unwound, so no reserved installation can follow.
         self.approval.cancel_reservation();

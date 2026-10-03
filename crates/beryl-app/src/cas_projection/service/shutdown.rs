@@ -259,5 +259,6 @@ impl ProjectionConnectionService {
 impl Drop for ProjectionConnectionService {
     fn drop(&mut self) {
         let _ = self.close_inner();
+        self.stop_coordinator.dispose_feedback();
     }
 }

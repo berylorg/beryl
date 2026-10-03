@@ -604,6 +604,29 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   revoked on drift and cannot be reconstructed from displayed ids, activity, or backend
   availability. Each durable or volatile request also projects one opaque stable feedback identity;
   volatile feedback remains valid without implying a durable operation, retry, or terminal claim.
+- Eligibility is a revocable observation, not reserved dispatch authority. Consuming it revalidates
+  the exact service incarnation, foreground target and operation fence at the existing stop
+  admission cut; a successor is never selected in its place.
+- Before a GUI request can cause admission or dispatch, it reserves a bounded feedback record.
+  Capacity refusal has no stop effect. The request returns the same opaque consumer handle once
+  processing has begun, including when dispatch or admission is uncertain; an error cannot erase
+  the request association or authorize retry. Duplicate activation of that exact request observes
+  the same record and cannot create another request attempt.
+- Feedback owns only a fixed-size, revisioned latest observation, never an event backlog or raw
+  backend payload. Consumer handles retain resolved feedback after operational stop inventory
+  retires. Releasing the last handle releases presentation retention without cancelling execution,
+  reopening a gate, acknowledging a provider request, or changing durable state. Service retirement
+  resolves remaining waiting feedback to authority loss; no handle crosses into a replacement
+  service as eligibility or dispatch authority.
+- Feedback distinguishes waiting, proven durable nondispatch, proven volatile nondispatch and exact
+  terminal or authority-loss convergence. A terminal observation preserves the actual interrupted,
+  completed or failed result even when it races interruption. Request acceptance and inventory
+  disappearance alone cannot manufacture terminal completion. Fresh eligibility is a separate fact
+  after durable nondispatch; volatile nondispatch never supplies retry or join eligibility.
+- Proven failure before either a durable admission or volatile attempt becomes a bounded
+  request-not-admitted result, with no terminal or retry claim. Typed noncommit permits the narrow
+  volatile exception but does not require dispatch when no valid single-use authorization was
+  produced; uncertainty never becomes proven nonadmission.
 - Before the sole driver consumes volatile authorization or dispatches `turn/interrupt`, the
   same-thread cut cancels any process-local lifecycle continuation intent for that exact target and
   preserves accepted input as ordered next-turn work. No volatile request outcome or process restart

@@ -64,6 +64,11 @@ mod service_config;
 mod service_registry;
 mod service_supervisor;
 mod stop;
+pub use stop::{
+    ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
+    ExactStopAttemptKind, ExactStopFeedback, ExactStopFeedbackSnapshot, ExactStopFeedbackState,
+    ExactStopRequestError,
+};
 mod stop_work;
 pub use compaction_work::{
     CompactionCommandWorkStage, CompactionOperationWorkFact, CompactionWorkCursor,

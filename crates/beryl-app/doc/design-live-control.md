@@ -51,6 +51,16 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   [status-line](../../../doc/features/status-line/design.md),
   [notifications](../../../doc/features/notifications/design.md), and
   [main-windows](../../../doc/features/main-windows/design.md) features.
+- The production CAS-live service exposes opaque exact eligibility and consumer-owned feedback
+  handles for these features. Service calls and storage reads execute off GPUI; presentation reads
+  consume bounded observations. Feedback records are separate from operational work inventory and
+  retain only the latest typed state and revision. The service retains weak associations so dropping
+  the last consumer releases resolved presentation state without retaining an execution owner.
+- At most 72 distinct live feedback records may be retained per service incarnation. Reserve a slot
+  before GUI stop admission, reclaim expired associations before testing capacity, and report
+  saturation without dispatch or eviction of a live record. This presentation limit does not replace
+  execution queue, worker or stop-custody limits. Duplicate handles share one record. Service teardown
+  resolves waiting handles without reviving them in a replacement service.
 
 ## Compaction And Continuation
 

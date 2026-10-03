@@ -94,3 +94,63 @@ warning cases select both tiers through actual opening. Fixture creation logs ex
 paths. Two logged aborted fixture homes were reclaimed; the first failed run did not log its
 home path, so any residue remains unidentified and was not swept. No production worker stack,
 dependency, manifest, lockfile or storage behavior changed.
+
+## Exact Stop Notice Readiness
+
+Readiness inspection on 2026-10-03 invalidated the proposed notice-only integration's assumption
+that an exact stop-feedback projection already exists. The production renderer in
+`crates/beryl-app/src/main_window/shell/host/root.rs` renders `main-window-status-line` as an
+empty zero-height slot. The legacy `shell/status_line.rs` projection contains a cancellable
+thread/turn pair, not the opaque eligibility and request-feedback facts required by current
+Status Line and Notifications authority.
+
+`cas_projection/stop_work/records.rs::StopWorkFact` describes durable operation identity,
+target, dispatch and custody; `cas_projection/stop.rs::StopCoordinationOutcome` supplies
+one-shot coordination results. Neither is the required retained request-feedback projection
+that also covers volatile nondispatch without inventing a durable operation. The notice kind
+and arbiter priority exist, but they do not establish this missing producer or popup lifecycle.
+
+The clean correction is to qualify the CAS-live opaque eligibility/request-feedback capability
+and production status controls as prerequisite acceptance boundaries before mounting notice
+fallback. Do not infer feedback identity from visible IDs, convert work inventory into terminal
+outcomes, or accept a test-only notice contributor as production completion. Phase 709 remains
+pending and blocked; no production code changed during this inspection.
+
+## Exact Stop Feedback Admission Evidence
+
+The Operator authorized the missing service and status-control prerequisites on 2026-10-03.
+Service implementation review found that a generic error after durable stop admission cannot
+prove request nonadmission: the admission may commit before its follow-up read loses home
+authority. Feedback now records durable admission before that read, including the typed
+committed-with-later-failure result, and marks joins of an existing durable stop as durable.
+Indeterminate admission remains waiting. Focused tests distinguish these boundaries from
+proven noncommit and from terminal completion.
+
+In the home-writer-failure fixture, closing only the mock transport left a capture join waiting
+after the request had already returned its correct nonadmission feedback. Explicit original-session
+retirement before joining capture corrected the fixture; the seven public service cases then
+passed together under bounded serial execution. Verification uses serial
+nextest execution with the existing 30-second slow interval and termination after two intervals.
+The first stalled run lacked those settings and did not log its fixture home, so any residue
+is unidentified and must not be swept. The later exactly logged timeout home was safely removed.
+
+Accepted on 2026-10-03. The production service exposes revocable exact eligibility and opaque
+consumer-owned feedback, with 72 distinct retained records, no event backlog and no execution
+effect from releasing presentation. Actual terminal outcomes, uncertain admission, durable and
+volatile nondispatch, same-request duplication and exact service/connection disposal are covered.
+An operational stopping gate keeps controls unavailable even after all feedback consumers drop.
+
+Canonical locked metadata and combined app/executable all-target checks passed. Canonical run
+`d6bacfdb-147d-477e-b97e-a94288ca4f6d` passed 165 of 166 cases in 298.694 seconds, including all
+13 new cases. Its sole failure was an obsolete source assertion forbidding any `Mutex` in the
+already-accepted private initial-start gate. Removing only that blanket assertion preserved all
+public authority guards. The corrected five-case boundary target passed in 0.207 seconds under
+`0ff84e68-3c46-4892-8c72-48a221825038`; unchanged evidence is reused for the other cases, giving
+passing evidence for all 166 distinct cases without repeating unrelated tests.
+
+Independent semantic review accepted the complete service boundary and test corrections.
+All 23 final source/test hashes matched the canonical snapshot. The isolated checkout was removed
+after exact path and reparse checks. Bounded logs and hashes remain under
+`.tmp/exact-stop-feedback-evidence`; the earlier unlogged fixture residue remains unidentified.
+No dependency, manifest, lockfile or production worker-stack change was made. Status controls and
+notice fallback are not yet mounted.

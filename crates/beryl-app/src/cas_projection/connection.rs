@@ -89,6 +89,7 @@ pub(in crate::cas_projection) use router::LiveEventTargetHandoffError;
 #[cfg(test)]
 pub(in crate::cas_projection) use router::PersistentFailureTargetIneligibility;
 pub(in crate::cas_projection) use router::PersistentFailureTargetWitness;
+pub(in crate::cas_projection) use router::SourcePublicationPermit;
 pub(in crate::cas_projection) use router::TargetRegistrationProof;
 pub(in crate::cas_projection) use router::TargetTurnRegistration;
 pub(in crate::cas_projection) use router::{

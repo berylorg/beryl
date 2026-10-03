@@ -153,6 +153,14 @@ impl Ingester {
                         Some(OutageFact::Terminal(terminal.status())),
                         false,
                     );
+                    if !self.cancelled.load(Ordering::Acquire) {
+                        self.stop_coordinator.feedback_passive_terminal(
+                            self.passive.connection.connection,
+                            terminal.thread_id(),
+                            terminal.turn_id(),
+                            terminal.status(),
+                        );
+                    }
                     applied()
                 }
                 Op::DynamicBegin(call) => {

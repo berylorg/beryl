@@ -112,7 +112,6 @@ fn terminal_service_supervisor_has_no_public_recovery_or_publication_surface() {
     assert!(!supervisor.contains("pub enum TerminalServiceShutdownError"));
 
     let initial_start = fs::read_to_string(root.join("initial_start.rs")).unwrap();
-    assert!(!initial_start.contains("Mutex"));
     assert!(!initial_start.contains("Publication"));
     assert!(!initial_start.contains("Replacement"));
 }

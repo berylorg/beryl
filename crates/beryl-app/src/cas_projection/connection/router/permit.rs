@@ -36,6 +36,15 @@ pub(in crate::cas_projection) struct SourcePublicationPostCommit {
 }
 
 impl SourcePublicationPermit {
+    pub(in crate::cas_projection) fn stop_feedback_binding(
+        &self,
+    ) -> (u64, u64, CasLoadedSessionGeneration) {
+        (
+            self.router.connection_generation,
+            self.registration,
+            self.loaded_generation,
+        )
+    }
     pub(in crate::cas_projection) const fn syndic_thread_id(&self) -> SyndicThreadId {
         self.owner
     }

@@ -310,11 +310,15 @@ impl Drop for StopFixture {
 
 impl StopFixture {
     fn new(seed: u8) -> Self {
+        Self::with_faults(seed, beryl_home_store::test_faults::FaultController::new())
+    }
+
+    fn with_faults(seed: u8, faults: beryl_home_store::test_faults::FaultController) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
-            directory.path(),
-            HomeSchemaVersion::CURRENT,
-        ))
+        let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+            faults,
+        )
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let home = home

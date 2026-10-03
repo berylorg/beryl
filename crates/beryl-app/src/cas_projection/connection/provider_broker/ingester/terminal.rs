@@ -192,6 +192,8 @@ impl Ingester {
             return self.failed_normal_terminal_permit(permit, terminal);
         }
         self.stop_coordinator
+            .feedback_published_terminal(&permit, status.outcome());
+        self.stop_coordinator
             .terminal_consumed(target.thread_id(), target.turn_id());
         self.finish_normal_terminal_permit(permit, ProvenTerminalOutcome::new(status, observed_at))
     }
@@ -217,6 +219,8 @@ impl Ingester {
         {
             return self.failed_normal_terminal_permit(permit, terminal);
         }
+        self.stop_coordinator
+            .feedback_published_terminal(&permit, status.outcome());
         self.stop_coordinator.terminal_consumed(
             authority.operation_id().thread_id(),
             authority.provider_turn_id(),

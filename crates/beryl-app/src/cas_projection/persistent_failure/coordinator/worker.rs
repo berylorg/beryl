@@ -100,9 +100,12 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             );
             return;
         }
-        let Ok(results) =
-            freeze_and_dispatch_targets(identity, &context.connections, &context.outage_inventory)
-        else {
+        let Ok(results) = freeze_and_dispatch_targets(
+            identity,
+            &context.connections,
+            &context.outage_inventory,
+            &context.stop_coordinator,
+        ) else {
             finish_worker(
                 &context,
                 PersistentFailureCutState::Incomplete,
@@ -131,6 +134,7 @@ fn freeze_and_dispatch_targets(
     identity: PersistentFailureCutIdentity,
     connections: &crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
     outage_inventory: &crate::cas_projection::outage_buffer::OutageInventory,
+    stops: &crate::cas_projection::stop::StopCoordinator,
 ) -> Result<CutResultCounts, ()> {
     let mut frozen = Vec::new();
     let mut results = CutResultCounts::default();
@@ -145,11 +149,13 @@ fn freeze_and_dispatch_targets(
                     frozen.push((Arc::clone(connection), workers, batch));
                 } else {
                     for candidate in batch.into_candidates() {
-                        let (_, proof) = candidate.into_parts();
-                        results.record(PersistentFailureDriverResult::NoDispatch(match proof {
+                        let (witness, proof) = candidate.into_parts();
+                        let result = PersistentFailureDriverResult::NoDispatch(match proof {
                             Ok(_) => PersistentFailureNoDispatchReason::DriverUnavailable,
                             Err(reason) => PersistentFailureNoDispatchReason::Router(reason),
-                        }));
+                        });
+                        stops.feedback_volatile_result(&witness, result);
+                        results.record(result);
                     }
                 }
             }
@@ -182,10 +188,11 @@ fn freeze_and_dispatch_targets(
                     proofs.push(proof);
                 }
                 Err(reason) => {
-                    drop(witness);
-                    results.record(PersistentFailureDriverResult::NoDispatch(
+                    let result = PersistentFailureDriverResult::NoDispatch(
                         PersistentFailureNoDispatchReason::Router(reason),
-                    ));
+                    );
+                    stops.feedback_volatile_result(&witness, result);
+                    results.record(result);
                 }
             }
         }
@@ -199,16 +206,19 @@ fn freeze_and_dispatch_targets(
             }
             Ok(_) | Err(()) => {
                 for witness in proof_witnesses {
-                    drop(witness);
-                    results.record(PersistentFailureDriverResult::NoDispatch(
+                    let result = PersistentFailureDriverResult::NoDispatch(
                         PersistentFailureNoDispatchReason::DriverUnavailable,
-                    ));
+                    );
+                    stops.feedback_volatile_result(&witness, result);
+                    results.record(result);
                 }
             }
         }
     }
     for pending in pending_results {
-        results.record(pending.completion.wait());
+        let completed = pending.completion.wait_with_witness();
+        stops.feedback_volatile_result(completed.witness(), completed.result());
+        results.record(completed.result());
     }
     drop(retained_workers);
     Ok(results)
@@ -250,6 +260,7 @@ fn finish_worker(
 ) {
     if phase != PersistentFailureCutState::Finished {
         context.outage_inventory.retire();
+        context.stop_coordinator.dispose_feedback();
     }
     let mut state = context
         .state

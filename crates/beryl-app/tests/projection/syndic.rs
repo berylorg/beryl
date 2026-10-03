@@ -93,6 +93,9 @@ impl std::ops::Deref for FixtureHome<'_> {
 }
 
 impl Fixture {
+    pub fn home_path(&self) -> &std::path::Path {
+        self._directory.path()
+    }
     pub fn home(&self) -> FixtureHome<'_> {
         FixtureHome(self.store.live_home_command().unwrap())
     }

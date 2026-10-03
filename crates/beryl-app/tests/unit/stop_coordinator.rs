@@ -22,6 +22,13 @@ mod work_facts {
     ));
 }
 
+mod feedback {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/stop_coordinator/feedback.rs"
+    ));
+}
+
 mod compaction {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),

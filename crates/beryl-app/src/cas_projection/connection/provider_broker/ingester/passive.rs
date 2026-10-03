@@ -32,6 +32,9 @@ pub(super) struct PassiveIngress {
 }
 
 impl PassiveIngress {
+    pub(super) fn connection_generation(&self) -> u64 {
+        self.connection.connection
+    }
     pub(super) fn new(
         identity: PersistentFailureCutIdentity,
         connection: OutageConnectionIdentity,

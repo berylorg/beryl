@@ -51,6 +51,7 @@ enum ServerScenario {
     ConnectionLoss,
     ControlledConnectionLoss,
     AcceptedStop,
+    StopFeedbackTerminal(&'static str),
     PermissionStop,
     SteeringCorrelationLoss,
 }
@@ -61,6 +62,7 @@ enum ServerCommand {
     ReleaseTurnStartRejection,
     ReleaseUnsubscribe,
     SendPermission,
+    ReleaseStopTerminal,
     SendSteeringCorrelationLoss(String),
 }
 
@@ -168,6 +170,16 @@ impl NormalTerminalServer {
 
     pub fn spawn_accepted_stop() -> Self {
         Self::spawn_scenario(ServerScenario::AcceptedStop)
+    }
+
+    pub fn spawn_stop_feedback_terminal(status: &'static str) -> Self {
+        Self::spawn_scenario(ServerScenario::StopFeedbackTerminal(status))
+    }
+
+    pub fn release_stop_terminal(&self) {
+        self.commands
+            .send(ServerCommand::ReleaseStopTerminal)
+            .unwrap();
     }
 
     pub fn spawn_permission_stop() -> Self {
@@ -490,6 +502,30 @@ fn run_server(
             );
             read_until_close(&mut socket).unwrap();
         }
+        ServerScenario::StopFeedbackTerminal(status) => {
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
+            let interrupt = read_json(&mut socket).expect("one exact stop interrupt");
+            assert_eq!(interrupt["method"], "turn/interrupt");
+            assert_eq!(interrupt["params"]["threadId"], CAS_THREAD_ID);
+            assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
+            send_json(
+                &mut socket,
+                &json!({"id": interrupt["id"], "result": {}}).to_string(),
+            );
+            assert!(matches!(
+                commands.recv_timeout(TIMEOUT).unwrap(),
+                ServerCommand::ReleaseStopTerminal
+            ));
+            let error = if status == "failed" {
+                json!({"message":"expected failed terminal", "codexErrorInfo":null, "additionalDetails":null})
+            } else {
+                json!(null)
+            };
+            send_json(&mut socket, &json!({"method":"turn/completed", "params":{"threadId":CAS_THREAD_ID, "turn":{"id":CAS_TURN_ID,"items":[],"itemsView":"notLoaded","status":status,"error":error,"startedAt":37010,"completedAt":37011,"durationMs":1}}}).to_string());
+            read_until_close(&mut socket).unwrap();
+        }
         ServerScenario::PermissionStop => {
             complete_projection(&mut socket);
             events.send(ServerEvent::ProjectionReady).unwrap();
@@ -775,6 +811,7 @@ fn complete_steering_correlation_loss(
         | ServerCommand::ReleaseTurnStartRejection
         | ServerCommand::ReleaseUnsubscribe
         | ServerCommand::CloseConnection
+        | ServerCommand::ReleaseStopTerminal
         | ServerCommand::SendPermission => {
             panic!("steering-loss server received an unrelated control command")
         }

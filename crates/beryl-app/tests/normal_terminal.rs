@@ -32,6 +32,8 @@ mod candidate_startup;
 mod compaction_custody;
 #[path = "normal_terminal/completion.rs"]
 mod completion;
+#[path = "normal_terminal/exact_stop_feedback.rs"]
+mod exact_stop_feedback;
 #[path = "normal_terminal/loss.rs"]
 mod loss;
 #[path = "normal_terminal/ordinary_custody.rs"]

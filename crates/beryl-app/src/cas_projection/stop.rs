@@ -30,6 +30,7 @@ use super::connection::{
 
 mod close_continuation;
 mod custody;
+mod feedback;
 mod lifecycle;
 mod persistent_failure;
 mod state;
@@ -37,6 +38,12 @@ mod work_facts;
 
 pub(in crate::cas_projection) use custody::PermissionCustodyToken;
 
+pub(in crate::cas_projection) use feedback::EligibilityRecord;
+pub use feedback::{
+    ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
+    ExactStopAttemptKind, ExactStopFeedback, ExactStopFeedbackSnapshot, ExactStopFeedbackState,
+    ExactStopRequestError,
+};
 use lifecycle::AcceptedLifecycleYield;
 pub use lifecycle::ProcessLifecycleYieldHandler;
 
@@ -75,6 +82,8 @@ struct LifecycleYieldKey {
 
 #[derive(Default)]
 struct StopCoordinatorState {
+    feedback: Vec<Weak<feedback::FeedbackRecord>>,
+    feedback_epoch: u64,
     stops: std::collections::BTreeMap<SyndicThreadId, LocalStop>,
     live_custody: std::collections::BTreeMap<StopOperationId, custody::LiveStopCustody>,
     permissions: std::collections::BTreeMap<u64, super::stop_work::PermissionInterruptionWorkFact>,
@@ -101,6 +110,7 @@ pub(in crate::cas_projection) struct StopCoordinator {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum StopRaceStage {
+    AdmissionPublishedBeforeRead,
     ElectionHeldBeforeAdmissionGate,
     BeforeClaimFence,
     ClaimFenceHeld,
@@ -473,6 +483,17 @@ impl StopCoordinator {
             return Err(StopCoordinationError::HomeAuthorityLost);
         }
         if state.stops.contains_key(&proof.syndic_thread_id()) {
+            let target = state
+                .stops
+                .get(&proof.syndic_thread_id())
+                .expect("checked local stop remains present")
+                .target
+                .clone();
+            for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                if record.matches_target(&target) {
+                    record.mark_durable();
+                }
+            }
             let ownership = {
                 let local = state
                     .stops
@@ -487,6 +508,11 @@ impl StopCoordinator {
                 .target
                 .clone();
             cancel_automatic_continuation(&mut state, &target);
+            for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                if record.matches_target(&target) {
+                    record.mark_durable();
+                }
+            }
             return Ok(ownership);
         }
         drop(state);
@@ -504,6 +530,17 @@ impl StopCoordinator {
             if state.persistent_failure.is_some() {
                 return Err(StopCoordinationError::HomeAuthorityLost);
             }
+            let target = state
+                .stops
+                .get(&proof.syndic_thread_id())
+                .expect("checked local stop remains present after stop election")
+                .target
+                .clone();
+            for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                if record.matches_target(&target) {
+                    record.mark_durable();
+                }
+            }
             let ownership = {
                 let local = state
                     .stops
@@ -518,6 +555,11 @@ impl StopCoordinator {
                 .target
                 .clone();
             cancel_automatic_continuation(&mut state, &target);
+            for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                if record.matches_target(&target) {
+                    record.mark_durable();
+                }
+            }
             drop(state);
             permit.finish();
             return Ok(ownership);
@@ -542,6 +584,11 @@ impl StopCoordinator {
                             failure.syndic_turn_id(),
                         );
                         drop(state);
+                        self.feedback_for_target(
+                            candidate.target(),
+                            ExactStopFeedbackState::Waiting,
+                            Some(ExactStopAttemptKind::Volatile),
+                        );
                         failure
                             .preserve()
                             .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
@@ -553,7 +600,23 @@ impl StopCoordinator {
                 };
                 #[cfg(test)]
                 self.pause_race_if_requested(StopRaceStage::ClaimFenceHeld);
-                self.execute_admission(&admission)?;
+                if let Err(error) = self.execute_admission(&admission) {
+                    if matches!(error, StopCoordinationError::CommandCommitted { .. }) {
+                        for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                            if record.matches_target(candidate.target()) {
+                                record.mark_durable();
+                            }
+                        }
+                    }
+                    return Err(error);
+                }
+                for record in state.feedback.iter().filter_map(Weak::upgrade) {
+                    if record.matches_target(candidate.target()) {
+                        record.mark_durable();
+                    }
+                }
+                #[cfg(test)]
+                self.pause_race_if_requested(StopRaceStage::AdmissionPublishedBeforeRead);
                 (
                     self.require_live(proof.syndic_thread_id(), admission.operation_id())?,
                     permit,
@@ -570,6 +633,11 @@ impl StopCoordinator {
             }
         };
         let live = self.join_if_missing(live, cause)?;
+        for record in state.feedback.iter().filter_map(Weak::upgrade) {
+            if record.matches_target(live.target()) {
+                record.mark_durable();
+            }
+        }
         cancel_automatic_continuation(&mut state, live.target());
         state.stops.insert(
             proof.syndic_thread_id(),
@@ -1182,6 +1250,11 @@ impl StopCoordinator {
             }
             StopAdmissionRead::Stopping(_) => Err(StopCoordinationError::LocalAuthorityMismatch),
             StopAdmissionRead::Admissible(_) | StopAdmissionRead::Ineligible(_) => {
+                self.feedback_for_target(
+                    &local.target,
+                    ExactStopFeedbackState::AuthorityLost,
+                    None,
+                );
                 self.remove_local(operation_id);
                 Ok(false)
             }
@@ -1371,6 +1444,11 @@ impl StopCoordinator {
                     .current_safely_reopen_stop_operation(request.clone()),
             ),
         )?;
+        self.feedback_for_target(
+            live.target(),
+            ExactStopFeedbackState::DurableNondispatch,
+            None,
+        );
         self.remove_local(operation_id);
         Ok(StopDispatchSettlement::SafelyReopened(operation_id))
     }
@@ -1448,6 +1526,9 @@ impl StopCoordinator {
             return Err(StopCoordinationError::LocalAuthorityMismatch);
         }
         local.dispatch = LocalDispatchState::DurablyAbandoned;
+        let target = local.target.clone();
+        drop(state);
+        self.feedback_for_target(&target, ExactStopFeedbackState::AuthorityLost, None);
         Ok(StopDispatchSettlement::Abandoned(operation_id))
     }
 

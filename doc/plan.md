@@ -89,11 +89,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 708: Mount The Best-Effort Home Warning (finished)
+# Phase 710: Expose Exact Stop Eligibility And Request Feedback (finished)
 
-Accepted successful-open warning publication for restored and later windows, admission history
-across recovery, and exact visible-only dismissal timing. Canonical checks, 52 focused cases and
-independent review passed; see [acceptance evidence](failures/executable-bootstrap.md#best-effort-home-warning-acceptance).
+Accepted opaque exact eligibility and bounded retained durable/volatile feedback through the
+production service, with existing sole-driver dispatch and no presentation-owned execution
+effects. Canonical checks, passing evidence for 166 distinct cases and independent semantic
+review passed; see [acceptance evidence](failures/executable-bootstrap.md#exact-stop-feedback-admission-evidence).
+
+# Phase 711: Mount Exact Status Stop Controls (pending)
+
+Connect the accepted exact eligibility and request feedback to the production main-window
+turn segment and operations popup under the Status Line contract. Preserve selection, home
+and service fences, worker-only service access, feedback-only disabled controls and exact
+popup eligibility. Qualify actual mounted activation and lifecycle transitions before the
+Notifications fallback boundary.
+
+Use [exact stop controls](features/status-line/design.md#turn-state-view-count-and-stop-controls)
+and the [status GUI mount](features/status-line/gui.md). Revalidate authoritative selection and
+service ownership before applying asynchronous results. Verify duplicate activation, stale
+responses after switching or retirement, durable nondispatch with fresh eligibility, volatile
+nondispatch without retry, terminal popup closure and disposal without altering execution.
+Reuse the accepted service tests; require mounted lifecycle evidence and independent review.
 
 # Phase 709: Mount Exact Stop-Feedback Notices (pending)
 
@@ -101,7 +117,7 @@ Complete the next bounded Notifications contributor from the active shell checkp
 [exact stop feedback](features/notifications/design.md#exact-stop-feedback-notices),
 [status-line feedback](features/status-line/design.md#turn-state-view-count-and-stop-controls), and
 [exact soft stop](systems/cas-live-syndic-transcript/design.md#exact-soft-stop).
-Connect the existing exact feedback projection to the sole notice arbiter when its popup anchor
+Connect the prerequisite exact feedback projection to the sole notice arbiter when its popup anchor
 cannot safely retain progress or outcome. Preserve opaque request identity, priority, bounded
 updates, persistent waiting state and resolved dismissal without issuing another interruption.
 
@@ -111,3 +127,6 @@ loss. Notices must not invent retry eligibility, terminal completion or a durabl
 dismissal must not mutate thread or execution state. Qualify the real mounted contributor with
 focused lifecycle tests and independent semantic review, reusing accepted stop and arbiter
 evidence. Keep audio and other unavailable-feature notices separate.
+
+Depends on phases 710 and 711. The Operator authorized their separate prerequisite boundaries
+after the 2026-10-03 readiness finding; notice-only integration remains insufficient.

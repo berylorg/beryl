@@ -24,6 +24,15 @@ pub(in crate::cas_projection) struct StopTargetProof {
 }
 
 impl StopTargetProof {
+    pub(in crate::cas_projection) fn connection_generation(&self) -> u64 {
+        self.connection_generation
+    }
+    pub(in crate::cas_projection) fn registration(&self) -> u64 {
+        self.registration
+    }
+    pub(in crate::cas_projection) fn loaded_generation(&self) -> CasLoadedSessionGeneration {
+        self.loaded_generation
+    }
     pub(in crate::cas_projection) fn permission_work_fact(
         &self,
         item_id: Option<beryl_model::CasItemId>,

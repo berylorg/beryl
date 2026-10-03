@@ -126,9 +126,15 @@ Report user-visible errors, recovery states, and completion attention signals wi
   receives a fresh system eligibility fact. Nondispatch alone never implies eligibility.
 - Volatile nondispatch becomes a final dismissible request-failure error. It offers no command,
   re-enable, retry, join, durable-stop claim, or terminal-turn claim.
+- Proven request nonadmission likewise becomes a dismissible request-failure error without a
+  terminal or retry claim. Any later stop availability requires fresh system eligibility.
 - Exact interrupted terminal completion becomes a dismissible informational record. Final
   authority loss or unknown-terminal convergence becomes a dismissible warning with the bounded
   known outcome.
+- If exact terminal completion wins the interruption race, feedback names its actual result:
+  successful completion is informational and failed completion is an error. Neither is described as
+  interrupted merely because a stop was requested. Missing backend error detail does not erase
+  this exact outcome.
 - Stop-feedback title and detail are derived from exact stop state, not from the presence of an
   error payload. An interrupted turn with no backend error payload therefore still receives the
   exact stop-completion feedback record when notice fallback is required, while it remains
