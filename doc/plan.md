@@ -89,18 +89,28 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 717: Mount Selected Runtime Unavailability Presentation (finished)
+# Phase 718: Qualify Running-Session Recovery Mounting Prerequisites (finished)
 
-Mounted actual typed selected-runtime failure through a weak published reader, the existing
-awaited status loop and sole notice arbiter, preserving original attempt/binding and unknown-state
-retention. Retry and complete recovery remain gated; unrelated native prompts do not suppress it.
-Canonical locked metadata, app/executable checks, 72 focused regressions and independent semantic
-review passed; see [qualification](failures/executable-bootstrap.md#selected-runtime-notice-qualification).
+Reconciled reusable graph/interrupted-Exit evidence with the missing ordinary running-home route
+and separate runtime Retry requirements. Independent review accepted the source-backed readiness
+and identified the app's cancelled-Exit-only custody contract as the next authority prerequisite.
+Recovery gates remain unchanged; no new runtime qualification is claimed. See
+[readiness](failures/executable-bootstrap.md#running-session-recovery-mounting-readiness).
 
-# Phase 718: Qualify Running-Session Recovery Mounting Prerequisites (pending)
+# Phase 719: Establish Ordinary Running-Home Recovery Custody Authority (pending)
 
-Identify the remaining complete-graph publication and supervisor prerequisites for runtime Retry
-and same-home running-session recovery from the accepted contracts and rework tracker. Preserve
-the current unavailable presentation and command gates. Produce bounded source-backed readiness
-evidence and derive the next implementation slice before activating recovery; component protocols
-alone cannot accept complete running-session recovery.
+Resolve the app-owned ordinary-session custody prerequisite under the existing
+[home recovery](features/beryl-home/design.md#recovery-boundary) and
+[same-home composition](systems/backend-runtime/design.md#same-home-recovery-composition) contracts.
+Specify ordinary home-attempt identity, preserved complete native window/session/resident custody,
+fresh-candidate validation of unchanged Running session and claims, resident flight/attachment and
+coherent reopening in the owning app lifecycle and composer supplements. Reconcile their current
+cancelled-Exit-only contracts while preserving original Exit/close outcome and reconciliation custody;
+do not manufacture a lifecycle request or an Exit-to-Running resume for an already Running session.
+
+Identify exact consumer and observable evidence for failure without an Exit request, duplicate/stale
+attempts, selected/threadless multiwindow preservation, candidate failure/cancellation and serialization
+with close/Exit. Independently review ownership, source correspondence, persistence and lifecycle
+readiness, reconcile the documentation index, then derive the bounded production mounting phase using
+accepted graph implementations. This authority boundary activates no recovery and accepts no runtime
+qualification; healthy-home runtime Retry and conditional terminal repair remain gated.

@@ -635,3 +635,99 @@ is removed after final hash/reparse checks. Process-local toolchain, stack and W
 are restored. Successful fixtures closed normally; no failed-fixture cleanup is outstanding.
 Runtime Retry activation, complete running-session recovery and the broader unavailable-state
 checkpoint remain open. No manifest, dependency or repair policy changed.
+
+## Running-Session Recovery Mounting Readiness
+
+Source inspection on 2026-10-03 at `3d4324f4` distinguishes healthy-home runtime Retry from
+replacement of a failed home. The controlling contracts are
+[backend recovery](../features/backend-runtime-recovery/design.md),
+[persistent store failure and recovery](../features/beryl-home/design.md#persistent-store-failure-during-a-session),
+[same-home composition](../systems/backend-runtime/design.md#same-home-recovery-composition) and
+[app replacement](../../crates/beryl-app/doc/design-shell-lifecycle.md#same-home-replacement-contribution).
+This readiness record supplies evidence and sequencing, not new recovery authority.
+
+Complete graph construction is present. `ProcessServiceOwner::retire_failed_service_graph`
+in `app_services/recovery_retirement.rs` fences the process, retires CAS and handoff work,
+retires Activity/marker/theme, closes attention and retains the failed home. Its
+`recover_retired_service_home` uses that retained owner's `recover_same_home`; failed reopening
+returns original custody. `prepare_recovery_service_graph` in `app_services/recovery_graph.rs`
+reacquires candidate State/Syndic, creates fresh sessions and attention, prepares CAS and managed
+sessions, prepares handoff after convergence, and prepares marker/Activity/theme. The app lifecycle
+contract separately orders retained Activity enrollment and parent nondispatch settlement before
+CAS convergence. No missing component factory warrants another implementation phase.
+
+`publish_recovery_service_graph` in `app_services/recovery_graph/publication.rs` checks retired
+custody, exact process/candidate identity and different generations before storage/CAS publication
+and installation of all prepared members. `reopen_recovery_admission` is separate. Existing
+interrupted-Exit drivers attach residents and validate their original session before publication;
+these guards cannot be bypassed by calling the graph publisher alone.
+
+Reuse the accepted [complete initial graph publication and retirement](target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement),
+[automatic interrupted-Exit verification](automatic-exit-recovery.md#verification),
+[ordinary-command integration](ordinary-close-recovery.md#ordinary-command-integration-acceptance)
+and [executable bootstrap](#bootstrap-acceptance). Those records cover real graph construction,
+joined retirement, exact reconciliation, retry, duplicate/stale requests, partial multiwindow
+cleanup, resident joining and publication cancellation, with independent review and canonical
+or isolated locked qualification as stated in each record. An initial proposal to repeat complete
+graph qualification was withdrawn after checking this evidence: no concrete uncovered guarantee
+justified another qualification-only phase. Historical unchecked summary wording is not proof
+that handoff coordination or graph factories are absent. It also cannot accept a new failure route.
+
+The remaining production gap is ordinary running-home failure admission. Semantic references
+identify `retire_interrupted_exit_graph_with` as the source caller of graph retirement and
+`publish_interrupted_exit_services_with` as the source caller of replacement publication.
+`start_reported_exit_recovery` in `running_owner/shutdown_session/recovery/supervisor.rs` requires
+an active exact `RunningExitRequest` and matching retained interrupted-Exit custody; its source
+caller is `running_owner/exit_notice.rs::report_exit_failure`. Bootstrap starts the ordinary
+`RunningProcessOwner`, whose recovery slots serve that interrupted-Exit route. Failed ordinary
+close contributes its own preserved-window custody. This inspection found no independent
+normal-running failed-home admission and supervisor path. Manufacturing an Exit request would
+not establish the missing boundary.
+
+The intended production slice mounts that ordinary failure route in the existing process owner:
+exact failed-generation admission and coalescing, preserved complete native window/session and
+resident custody, bounded shared retry/progress, complete retirement and fresh construction,
+attachment and serialized publication, then coherent interaction release. Reuse accepted graph
+implementations and preserve interrupted-Exit outcome custody. Qualification must cover failure
+without an Exit request, duplicate/stale failure and completion, multiwindow preservation,
+candidate failure/cancellation, retained lock/reconciliation/proof custody and close/Exit races.
+Component evidence remains reusable; it cannot replace evidence for this newly mounted route.
+
+Independent readiness review found an app authority prerequisite before that implementation.
+`design-shell-lifecycle.md`'s Failed-Home Resident Recovery requires complete-window capture under
+an exact cancelled request; its interrupted-Exit attachment, appearance, bindings and publication
+contracts retain original session custody. `design-catalog-and-composer.md` tags resident preparation
+flights by a cancelled Exit request. The generic system home-attempt contract does not define the
+app's corresponding capture, unchanged Running-session validation and attachment authority when
+there is no Exit or close request. Reusing accepted graph implementations therefore does not by
+itself make the new resident route architecture-ready.
+
+The derived next boundary establishes those ordinary home-attempt and resident/session custody
+contracts in the owning app supplements, preserves the existing Exit/close outcome distinctions,
+and independently checks their lifecycle and persistence readiness before deriving implementation.
+It must not manufacture an Exit request, silently relabel its capability, or perform an
+Exit-to-Running resume for a session that remained Running. No new product recovery choice is
+selected by this readiness record; the existing feature already requires automatic same-home
+recovery. A material unresolved architectural choice must be resolved before code is scheduled.
+
+Healthy-home runtime Retry remains a separate product boundary. The only source occurrence of
+`ScheduledExecutionSessions::retry_runtime_session` is its definition in
+`cas_projection/process_sessions/preparation.rs`; callers found elsewhere are tests. Its
+`PreparationContext::launch_spec_for/read_launch_spec` validates exact durable thread execution,
+runtime, root and configured path; `RuntimeInterestOwner::authorize_retry` checks exact
+runtime/service/attempt, completed cleanup and duplicate exclusion before recording that target.
+This is admission evidence,
+not selected-binding usability. The published notice reader returns only `Unknown` or typed
+`Unavailable`; absence of failure or runtime Ready cannot prove that the required exact runtime,
+root, thread source and foreground projection are usable. Future Retry mounting needs exact
+selection/publication-fenced command access, pending coalescing and a separately accepted success
+result before removing the notice. It must neither retire a healthy home nor replay uncertain input.
+
+This phase changed documentation only. Bounded semantic navigation, exact source-call searches,
+authority checks and review establish readiness; no new runtime or race qualification is claimed.
+Runtime Retry, ordinary running-home recovery activation, the broader unavailable-state checkpoint
+and conditional terminal repair remain gated.
+
+Independent completion review accepted the corrected readiness boundary and authority-only successor
+with no remaining blockers. Scoped diff checks passed; no Cargo verification was needed for this
+documentation-only change. Existing runtime evidence is reused only within its recorded boundaries.
