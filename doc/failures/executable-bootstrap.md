@@ -446,3 +446,66 @@ match working and canonical trees. Process-local toolchain, test stack and Error
 Bounded evidence remains in `.tmp/parent-completion-sound-evidence`. The two exactly logged failed
 fixture homes are absent. Audible hardware playback was not qualified; device failure remains
 best effort under the accepted audio-lane contract. Optional lifecycle sounds remain unconfigured.
+
+## Deferred Repair And Recovery Presentation Readiness
+
+Inspection on 2026-10-03 at source commit `9498618b` against backend-recovery design/GUI,
+Notifications, status-line and app authority established two different missing inputs. This is
+readiness evidence; it does not accept
+recovery product mounting, new Retry authority or a repair source.
+
+The production selected-operation reader in
+`cas_projection/service/stop_worker/selected_operation.rs` already distinguishes proven-terminal
+repair-required state, explicit incomplete convergence and unknown terminal. Its accepted weak
+publication reaches the status strip. Those observations do not establish runtime failure or
+authorize history injection. Phase 465's pinned source remains unavailable; explicit-incomplete
+finalization and the thread's successor gate remain independent of presentation.
+
+Actual runtime failure is available through `ScheduledExecutionSessions::runtime_failure` in
+`cas_projection/process_sessions/preparation.rs` and `RuntimeInterestOwner::failure_snapshot` in
+`cas_projection/runtime_interest/owner.rs`. `RuntimeFailureSnapshot` retains runtime, service
+generation, attempt, typed failure and retry readiness. No failure snapshot is returned for a
+closed owner or a runtime without an actual unavailable state. Its retry-ready flag reflects worker
+and cleanup completion and absence of another retry; it is not a selected-thread command permit.
+`retry_runtime_session` additionally validates the exact thread/binding launch specification;
+`RuntimeInterestOwner::authorize_retry` checks original service/runtime/attempt, unavailable state,
+worker retirement, cleanup and duplicate admission before retaining the exact target.
+
+`PublishedMainWindowServices` in `app_services/window_services.rs` currently publishes creation,
+restoration activation and exact-stop access, but no selected-runtime failure reader. A runtime
+notice therefore needs a bounded weak publication adapter which reads the authoritative selected
+binding off GPUI, correlates its runtime with the original failure attempt, and revalidates home,
+service, window, selection and source revisions before applying results. Missing publication,
+unavailable reads or a stale binding must remain unknown/unavailable observations; they cannot
+invent backend failure, certify health, select a different target or authorize Retry. The owning
+backend-recovery feature makes the notice ineligible for unaffected selections, isolated background
+or capture failures, and a blocking condition already represented by the native-lineage prompt.
+Notifications remains the sole notice arbiter. Full running-session replacement and recovery
+product gates in Checkpoint 5 are unchanged.
+
+The nearer corrective boundary is the native-lineage prompt's disabled explanation. Its existing
+`NativeLineageRecoveryKey` carries home/service incarnation, target thread and route sequence;
+`NativeLineageRecoverySnapshot` additionally preserves source thread and binding revision. The
+coordinator's `validate_native_lineage_recovery_in_flight` validates the exact native decision and
+then the complete selected recovery prefix. Typed errors distinguish stale or missing authority,
+missing model context, incomplete or unsupported history/media and representation budgets. The
+ordinary scheduler's `next_turn/worker/execution.rs` currently reduces that result with `is_ok()`;
+the next-turn and recovered-pending parking paths pass only `recovery_available: bool`. Ready and
+failed route snapshots consequently lose the actual denial, and
+`main_window/conversation_composer_mount/native_lineage/prompt.rs` combines unsafe history and
+repair-pending into one generic explanation.
+
+Preserve a bounded typed denial from that existing validation through the exact parked route and
+its prompt, without retaining backend/storage error payloads or changing validation, admission or
+history policy. Incomplete history remains ineligible where the current complete-prefix validator
+rejects it; unavailable repair does not permit injection. Loading, command execution, disposal,
+stale routes and publication retain their own closer disabled reasons. Command execution must
+still repeat exact validation; presentation is never mutation authority. This correction is
+derivable from the existing backend-recovery GUI's closest-explanation requirement and the app's
+typed, bounded, generation-fenced adapter contract.
+
+Completion review directly checked the cited producer, publication, route and consumer definitions
+against those owning contracts. No source, tests, manifests, runtime resources or recovery commands
+changed, so no Cargo verification was required. The investigation worker supplied initial findings
+before a model-capacity failure; the root completed and validated the source inspection. The
+Checkpoint 4 mounting item remains open.

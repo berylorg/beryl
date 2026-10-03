@@ -509,6 +509,9 @@
 - [x] Mounted and independently accepted exact live parent completion sound with current settings,
   known attention OR facts and process-owned native focus/monitor lifetime;
   [canonical qualification](../../failures/executable-bootstrap.md#parent-completion-sound-qualification).
+- [x] Established deferred repair/recovery presentation readiness: selected repair states already
+  publish, native-lineage denial loses its exact reason, and selected-runtime notice publication
+  remains absent; [readiness evidence](../../failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
 - [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
   capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

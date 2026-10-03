@@ -89,19 +89,34 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 714: Mount Exact Parent Completion Sound Eligibility (finished)
+# Phase 715: Establish Deferred Repair And Recovery Mount Readiness (finished)
 
-Accepted the exact live parent one-shot, current preferences/attention OR evaluation and process-owned
-native focus/monitor lifetime. Canonical locked metadata, combined app/executable checks, 60 passing
-cases and independent source/lifecycle/effect review passed; see
-[qualification](failures/executable-bootstrap.md#parent-completion-sound-qualification).
-History and status restoration do not replay sounds; optional lifecycle sounds remain unconfigured.
+Accepted source/consumer readiness inspection and contract review; see
+[evidence](failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
+Exact repair states already publish. Native-lineage denial loses its closest explanation, and
+selected-runtime notice publication is absent. No recovery action or repair source was enabled.
 
-# Phase 715: Establish Deferred Repair And Recovery Mount Readiness (pending)
+# Phase 716: Mount Exact Native-Lineage Recovery Disabled Reasons (pending)
 
-Inspect the next Checkpoint 4 unavailable-state contribution against the owning backend-recovery,
-Notifications, status and app contracts. Establish exact published availability, selected-target
-identity and closest disabled-reason prerequisites before planning its implementation boundary.
-This phase accepts bounded readiness evidence, not recovery or repair product mounting. Keep the
-unavailable pinned repair decision and complete-stack recovery gates intact; missing UI adapters
-alone must not fabricate backend failure, enable Retry or select another history route.
+Preserve bounded typed denial from the existing exact recovery preflight through ordinary and
+recovered-pending route parking, command failure and the production native-lineage prompt. Replace
+the boolean-only history availability with a closest supported explanation while preserving the
+original route key, source binding revision, validation and command admission. The observable
+outcome is a visible disabled `Recover from Syndic history` command naming its actual blocking
+condition, without enabling a previously ineligible path or changing Retry semantics.
+
+Keep loading, pending, disposal, stale-route and publication explanations closer than retained
+history denial. Do not retain raw error payloads, fabricate runtime failure, replay input, reopen
+conditional repair or loosen complete-prefix requirements. Verify real preflight denial mapping,
+route transitions, bounded retention and stale selection/service rejection through the mounted
+consumer. Run canonical locked metadata, app/executable checks and focused native-lineage/composer
+regressions; independently review exact identity, admission preservation and visible explanations.
+
+# Phase 717: Mount Selected Runtime Unavailability Presentation (pending)
+
+Derive the exact selected-runtime notice contribution from actual typed runtime failure through a
+bounded weak published reader and the sole Notifications arbiter. Preserve original failure,
+binding and selection identity, closest unavailable explanations, unaffected local workflows and
+native-lineage prompt exclusion. Establish owning publication prerequisites before implementation;
+missing adapters never fabricate failure. Keep Retry activation and complete running-session
+recovery behind their existing product gates; this boundary accepts unavailable presentation only.
