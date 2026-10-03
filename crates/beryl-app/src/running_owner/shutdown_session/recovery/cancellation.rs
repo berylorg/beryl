@@ -41,7 +41,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) async fn test_settle_automatic_exit_cancellation(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -50,7 +50,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn settle_automatic_interrupted_exit_cancellation(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -117,7 +117,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn dispose_cancelled_interrupted_exit_preparation(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {

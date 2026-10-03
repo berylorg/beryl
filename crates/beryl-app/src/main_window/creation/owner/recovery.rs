@@ -24,6 +24,26 @@ impl PreparedCreationRebind {
 }
 
 impl MainWindowCreationOwner {
+    pub(crate) fn fence_running_home_recovery(
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        let Some(global) = app.try_global::<CreationProcessOwner>() else {
+            return Ok(true);
+        };
+        let owner = global._owner.clone();
+        owner.update(app, |owner, cx| {
+            if owner.services.store.home_id() != home || owner.generation != generation {
+                return Err("creation capture belongs to another home or generation".into());
+            }
+            if !owner.fenced {
+                owner.fence(cx);
+            }
+            Ok(owner.entries.is_empty())
+        })
+    }
+
     pub(crate) fn validate_recovered_process(
         home: &beryl_home_store::HomeServiceReference,
         app: &App,

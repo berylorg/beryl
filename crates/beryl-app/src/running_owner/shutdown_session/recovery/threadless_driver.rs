@@ -9,7 +9,7 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     pub(super) fn interrupted_exit_threadless_appearance(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Entity<GpuiAppearanceWindowSet>, String> {
         let _driver = self.reserve_interrupted_exit_driver(request)?;
         self.interrupted_exit
@@ -22,7 +22,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_interrupted_exit_threadless(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         at: SyndicTimestamp,
@@ -101,7 +101,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_retired_interrupted_exit_threadless(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         at: SyndicTimestamp,
@@ -128,7 +128,7 @@ impl RunningProcessOwner {
 
     async fn prepare_retired_interrupted_exit_threadless_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         at: SyndicTimestamp,
@@ -212,7 +212,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn complete_prepared_interrupted_exit_threadless(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         cancellation: CommandCancellation,
@@ -235,7 +235,7 @@ impl RunningProcessOwner {
 
     async fn complete_prepared_interrupted_exit_threadless_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         cancellation: CommandCancellation,
@@ -319,7 +319,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn continue_interrupted_exit_threadless(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired_home: beryl_model::BerylHomeId,
         retired: HomeGeneration,
         generation: HomeGeneration,

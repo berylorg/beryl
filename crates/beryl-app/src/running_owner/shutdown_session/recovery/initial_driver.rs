@@ -8,7 +8,7 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     async fn recover_resident_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -65,7 +65,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_prepared_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -152,7 +152,7 @@ impl RunningProcessOwner {
 
     async fn recover_published_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -197,7 +197,7 @@ impl RunningProcessOwner {
 
     fn retained_interrupted_exit_appearance(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: &CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>, String> {
@@ -227,7 +227,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         configure: impl FnMut(
@@ -304,7 +304,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_retired_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
         failed: impl FnMut(RecoveryPreparationFailure),

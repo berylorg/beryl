@@ -9,7 +9,7 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     pub(crate) fn interrupted_exit_composer_adapters(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         home: beryl_model::BerylHomeId,
         generation: HomeGeneration,
         requirement: beryl_home_store::TurnStartAdmissionRequirement,
@@ -29,7 +29,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn take_interrupted_exit_preparation_failure(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
     ) -> Result<RecoveryServicePreparationError, String> {
         self.return_interrupted_exit_preparation_home(request, generation)?;
@@ -44,7 +44,7 @@ impl RunningProcessOwner {
 
     pub(super) fn return_interrupted_exit_preparation_home(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
@@ -91,7 +91,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn prepare_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -153,7 +153,7 @@ impl RunningProcessOwner {
         let retained = owner.clone();
         let worker_cancellation = cancellation.clone();
         let work = app.background_executor().spawn(async move {
-            let mut original = original;
+            let original = original;
             let mut candidate = candidate;
             let settled = match original
                 .revalidate_candidate(&mut candidate.candidate, &candidate.session)
@@ -225,7 +225,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn cancel_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -264,6 +264,9 @@ impl RunningProcessOwner {
         };
         let retained = owner.clone();
         let work = app.background_executor().spawn(async move {
+            let mut services = services;
+            let mut prepared = prepared;
+            services.retain_cancelled_failed_residents(&mut prepared);
             let failure = prepared.cancel();
             (services, original, failure)
         });
@@ -282,7 +285,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_services_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         match self

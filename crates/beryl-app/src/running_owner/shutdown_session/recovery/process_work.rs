@@ -5,7 +5,7 @@ use settlement::{CandidateSettlement, CandidateSettlementError};
 impl RunningProcessOwner {
     pub(crate) fn settle_interrupted_exit_process_work(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -22,7 +22,7 @@ impl RunningProcessOwner {
 
     fn settle_interrupted_exit_process_work_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -98,7 +98,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_settle_interrupted_exit_process_work(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,

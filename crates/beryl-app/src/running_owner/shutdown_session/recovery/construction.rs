@@ -6,7 +6,7 @@ use settlement::CandidateSettlement;
 impl RunningProcessOwner {
     pub(crate) fn settle_constructed_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -63,7 +63,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn abort_constructed_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -121,7 +121,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn construct_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cancellation: CommandCancellation,
         app: &mut App,
@@ -212,7 +212,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_construction_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         match self
@@ -232,7 +232,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_reopen_deadline(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Option<std::time::Instant>, String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();

@@ -23,7 +23,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn complete_interrupted_exit(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
     ) -> Result<bool, String> {
         let wake = {
@@ -49,14 +49,7 @@ impl RunningProcessOwner {
             let mut publication = publication
                 .try_borrow_mut()
                 .map_err(|_| "Interrupted Exit publication is busy")?;
-            let drafts = owner
-                .shutdown
-                .as_ref()
-                .unwrap()
-                .drafts
-                .as_ref()
-                .unwrap()
-                .clone();
+            let drafts = owner.recovery_drafts()?;
             let windows = owner
                 .process
                 .windows
@@ -115,6 +108,16 @@ impl RunningProcessOwner {
                     })
                     .expect("prepared recovery window remains live during synchronous completion");
             }
+            for (handle, focus) in &owner.interrupted_exit.as_ref().unwrap().focus {
+                handle
+                    .update(app, |_, window, _| focus.focus(window))
+                    .expect("captured recovered focus remains owned by the surviving shell");
+            }
+            if request.lifecycle().is_none() {
+                if let Some(observed) = &mut owner.observed_home_failure {
+                    observed.focus.clear();
+                }
+            }
             let start = publication
                 .take()
                 .expect("validated recovery publication")
@@ -126,11 +129,13 @@ impl RunningProcessOwner {
                 .process
                 .commands
                 .set_gate(RunningExitGate::HomeUnavailable, false);
-            let wake = owner
-                .process
-                .commands
-                .finish_exit_deferred_wake(request)
-                .expect("validated cancelled Exit remains active during synchronous completion");
+            let wake = request.lifecycle().and_then(|request| {
+                owner
+                    .process
+                    .commands
+                    .finish_exit_deferred_wake(request)
+                    .expect("validated cancelled Exit remains active during synchronous completion")
+            });
             assert!(
                 start.release(),
                 "published recovery workers retain their start gate"

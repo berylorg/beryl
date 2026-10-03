@@ -73,6 +73,9 @@ impl RestoredWindowPreparationAttempt {
 }
 
 impl ThreadlessWindowSource {
+    pub(in crate::main_window) fn recovery_window(&self) -> &SessionWindowRecord {
+        &self.window
+    }
     #[cfg(target_os = "windows")]
     pub(in crate::main_window) fn native_validation(
         &self,

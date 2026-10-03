@@ -21,15 +21,28 @@ impl SelectedWindowRecovery {
     ) -> Result<(), String> {
         for entry in &mut self.windows {
             if entry.preparation.is_some() {
-                match RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
-                    owner,
-                    &mut entry.preparation,
-                    cx,
-                )
-                .await?
+                if owner
+                    .recovery_owner()?
+                    .borrow()
+                    .failed_resident_preparation(entry.preparation.as_ref().unwrap())?
                 {
-                    Ok(source) => drop(source),
-                    Err((retired, _)) => entry.retirement = Some(retired),
+                    RunningProcessOwner::cancel_and_drain_failed_resident(
+                        owner,
+                        &mut entry.preparation,
+                        cx,
+                    )
+                    .await?;
+                } else {
+                    match RunningProcessOwner::cancel_and_drain_interrupted_exit_resident(
+                        owner,
+                        &mut entry.preparation,
+                        cx,
+                    )
+                    .await?
+                    {
+                        Ok(source) => drop(source),
+                        Err((retired, _)) => entry.retirement = Some(retired),
+                    }
                 }
             }
             if let Some((close, _)) = entry.attached {
@@ -75,7 +88,7 @@ impl SelectedWindowRecovery {
 impl RunningProcessOwner {
     pub(crate) fn retain_interrupted_exit_selected_windows(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &App,
         configure: impl FnMut(
             WindowHandle<MainWindowShellRoot>,
@@ -104,7 +117,7 @@ impl RunningProcessOwner {
 
     fn interrupted_exit_selected_windows(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Rc<RefCell<SelectedWindowRecovery>>, String> {
         let _driver = self.reserve_interrupted_exit_driver(request)?;
         self.interrupted_exit
@@ -117,7 +130,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_interrupted_exit_selected_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
@@ -158,7 +171,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_retired_interrupted_exit_selected_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
@@ -203,7 +216,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn complete_prepared_interrupted_exit_selected_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -244,7 +257,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn continue_interrupted_exit_selected_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         cancellation: CommandCancellation,
@@ -279,7 +292,7 @@ impl RunningProcessOwner {
 
     pub(super) fn interrupted_exit_selected_appearance(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Entity<GpuiAppearanceWindowSet>, String> {
         self.interrupted_exit_selected_windows(request)?
             .try_borrow()

@@ -257,6 +257,9 @@ pub struct RestoredWindowComposer {
 }
 
 impl RestoredWindowComposer {
+    pub(in crate::main_window) fn recovery_window(&self) -> &SessionWindowRecord {
+        &self.source.window
+    }
     pub(in crate::main_window) fn release_recovery_service(
         &mut self,
         expected: &Arc<MainWindowConversationComposerService>,

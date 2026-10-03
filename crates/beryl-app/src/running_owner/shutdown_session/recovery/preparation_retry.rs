@@ -17,7 +17,7 @@ pub(crate) enum RecoveryPreparationFailure {
 impl RunningProcessOwner {
     pub(crate) async fn retry_interrupted_exit_preparation(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -44,7 +44,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn retire_and_retry_interrupted_exit_preparation(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -79,7 +79,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn retry_interrupted_exit_preparation_attempts(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -163,7 +163,7 @@ impl RunningProcessOwner {
 
     fn hand_off_interrupted_exit_resume_failures(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: &CommandCancellation,
         failed: &mut impl FnMut(RecoveryPreparationFailure),
     ) -> Result<(), String> {

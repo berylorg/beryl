@@ -12,6 +12,9 @@ impl RunningShutdownSession {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
+        if let Self::UnchangedRunning(running) = self {
+            return running.revalidate(candidate, session);
+        }
         if let Self::RemovedWindow(close) = self {
             return close.revalidate_candidate(candidate, session);
         }
@@ -42,6 +45,9 @@ impl RunningShutdownSession {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
+        if let Self::UnchangedRunning(running) = self {
+            return running.converge(candidate, session);
+        }
         if let Self::RemovedWindow(close) = self {
             return close.converge_candidate(candidate, session);
         }

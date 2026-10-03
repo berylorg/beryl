@@ -37,7 +37,7 @@ impl ResidentWindowConfiguration {
     pub(super) fn prepare(
         retained: Rc<RefCell<Self>>,
         owner: &Rc<RefCell<RunningProcessOwner>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         window: WindowHandle<MainWindowShellRoot>,
         generation: HomeGeneration,
         retirement: &mut Option<MainWindowComposerRetiredClose>,

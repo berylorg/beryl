@@ -59,7 +59,7 @@ impl ResidentRecoveryWindow {
 impl RunningProcessOwner {
     pub(crate) fn interrupted_exit_resident_windows(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &App,
         mut configure: impl FnMut(
             WindowHandle<MainWindowShellRoot>,
@@ -89,7 +89,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn recover_interrupted_exit_resident_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
         configuration: AppServiceConfiguration,
@@ -161,7 +161,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn prepare_retired_interrupted_exit_resident_windows_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
         configuration: AppServiceConfiguration,
@@ -234,7 +234,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn complete_prepared_interrupted_exit_resident_windows_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
         configuration: AppServiceConfiguration,
@@ -313,7 +313,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_and_complete_interrupted_exit_resident_windows(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],
@@ -379,7 +379,7 @@ impl RunningProcessOwner {
 
     async fn prepare_and_complete_interrupted_exit_resident_windows_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         windows: &mut [ResidentRecoveryWindow],

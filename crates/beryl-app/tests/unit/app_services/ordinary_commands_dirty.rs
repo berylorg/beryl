@@ -34,6 +34,8 @@ fn run_dirty_failure(toolbar_exit: bool) {
                             input.is_enabled()
                                 && input.is_quiescent()
                                 && input.is_surface_current_and_interactive()
+                                && !composer.test_has_active_flight()
+                                && !composer.test_has_pending_realizer()
                         })
                         .unwrap();
                     if ready {

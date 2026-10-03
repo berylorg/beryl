@@ -8,7 +8,7 @@ use gpui_text_input::RangePrepublicationCurrent;
 impl RunningProcessOwner {
     pub(crate) fn attach_interrupted_exit_resident(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         key: &ResidentPreparationKey,
         root: &mut MainWindowShellRoot,
         adapters: &mut Option<PreparedComposerRecoveryAdapters>,
@@ -23,14 +23,20 @@ impl RunningProcessOwner {
         ),
         String,
     > {
-        if !self.process.commands.is_active(request) {
+        if !self.active_recovery_identity(&request.identity()) {
             return Err("Interrupted Exit request changed".into());
         }
-        let drafts = self
-            .shutdown
+        #[cfg(test)]
+        if self
+            .interrupted_exit
             .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?;
+            .is_some_and(|recovery| recovery.ordinary)
+            && self.reject_ordinary_recovery_attachment_after == Some(0)
+        {
+            self.reject_ordinary_recovery_attachment_after = None;
+            return Err("preserved ordinary resident attachment was refused".into());
+        }
+        let drafts = self.recovery_drafts()?;
         let mut drafts = drafts
             .try_borrow_mut()
             .map_err(|_| "Interrupted Exit drafts are busy")?;
@@ -108,6 +114,12 @@ impl RunningProcessOwner {
         captured.2 = close;
         *slot = Some(CandidateSettlement::Services(Ok(graph)));
         recovery.resident.take();
+        #[cfg(test)]
+        if recovery.ordinary {
+            if let Some(remaining) = &mut self.reject_ordinary_recovery_attachment_after {
+                *remaining = remaining.saturating_sub(1);
+            }
+        }
         Ok((close, record))
     }
 }

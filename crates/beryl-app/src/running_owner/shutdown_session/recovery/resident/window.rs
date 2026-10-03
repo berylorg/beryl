@@ -5,7 +5,7 @@ use gpui::WindowHandle;
 impl RunningProcessOwner {
     pub(crate) fn prepare_interrupted_exit_window_resident(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         window: WindowHandle<MainWindowShellRoot>,
         generation: beryl_home_store::HomeGeneration,
         retired: &mut Option<MainWindowComposerRetiredClose>,
@@ -55,12 +55,9 @@ impl RunningProcessOwner {
             (mount, resident, close)
         };
         let capture = {
-            let mut retained = owner.borrow_mut();
+            let retained = owner.borrow();
             retained
-                .shutdown
-                .as_mut()
-                .and_then(|attempt| attempt.drafts.as_ref())
-                .ok_or("failed resident draft set is unavailable")?
+                .recovery_drafts()?
                 .borrow_mut()
                 .take_failed_capture(window)?
         };
@@ -88,13 +85,8 @@ impl RunningProcessOwner {
                 Ok(key) => Ok(key),
                 Err((capture, error)) => {
                     owner
-                        .borrow_mut()
-                        .shutdown
-                        .as_mut()
-                        .unwrap()
-                        .drafts
-                        .as_ref()
-                        .unwrap()
+                        .borrow()
+                        .recovery_drafts()?
                         .borrow_mut()
                         .return_failed_capture(window, capture);
                     Err(error)

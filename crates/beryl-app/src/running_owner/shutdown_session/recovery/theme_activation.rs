@@ -4,7 +4,7 @@ use beryl_home_store::CommandCancellation;
 impl RunningProcessOwner {
     pub(crate) fn activate_interrupted_exit_theme(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         app: &mut App,
@@ -24,7 +24,7 @@ impl RunningProcessOwner {
 
     fn activate_interrupted_exit_theme_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         app: &mut App,
@@ -76,7 +76,7 @@ impl RunningProcessOwner {
             *activation_slot.borrow_mut() = Some(result);
             {
                 let owner = retained.borrow();
-                if !owner.process.commands.is_active_identity(&identity)
+                if !owner.active_recovery_identity(&identity)
                     || !owner
                         .interrupted_exit
                         .as_ref()
@@ -95,7 +95,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_theme_activation_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         self.interrupted_exit_publication_result(request)?;
         self.interrupted_exit
@@ -111,7 +111,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_activate_interrupted_exit_theme(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         app: &mut App,

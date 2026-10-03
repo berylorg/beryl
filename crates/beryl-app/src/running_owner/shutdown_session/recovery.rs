@@ -7,7 +7,10 @@ mod completion;
 mod construction;
 mod disposal;
 mod driver;
+mod identity;
 mod initial_driver;
+mod ordinary;
+pub(crate) use identity::RecoveryIdentity;
 mod supervisor;
 pub(in crate::running_owner) use supervisor::AutomaticInterruptedExitRecovery;
 pub(crate) use supervisor::InterruptedExitRecoveryOutcome;
@@ -54,6 +57,12 @@ impl RecoveryOwnerAccess for std::rc::Weak<RefCell<RunningProcessOwner>> {
 
 pub(in crate::running_owner) struct InterruptedExitRecovery {
     request: Rc<()>,
+    ordinary: bool,
+    drafts: Option<Rc<RefCell<super::super::shutdown_drafts::RunningShutdownDrafts>>>,
+    focus: Vec<(
+        gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+        gpui::FocusHandle,
+    )>,
     session: Rc<RefCell<Option<RunningShutdownSession>>>,
     previous_resume: Rc<RefCell<Option<crate::exit_session::ResumeSessionOutcome>>>,
     settlement: Rc<RefCell<Option<settlement::CandidateSettlement>>>,
@@ -90,6 +99,9 @@ impl RunningProcessOwner {
         }
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
+            ordinary: false,
+            drafts: None,
+            focus: Vec::new(),
             session: Rc::new(RefCell::new(None)),
             previous_resume: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(None)),

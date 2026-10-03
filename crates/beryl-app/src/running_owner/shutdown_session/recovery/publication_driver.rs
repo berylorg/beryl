@@ -7,7 +7,7 @@ use std::time::Duration;
 impl RunningProcessOwner {
     pub(crate) async fn attach_and_complete_interrupted_exit_threadless(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired_home: beryl_model::BerylHomeId,
         retired: HomeGeneration,
         generation: HomeGeneration,
@@ -45,7 +45,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn publish_and_complete_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
@@ -70,7 +70,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn publish_and_complete_interrupted_exit_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
@@ -128,7 +128,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn activate_and_complete_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -149,7 +149,7 @@ impl RunningProcessOwner {
 
     async fn activate_and_complete_interrupted_exit_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -178,7 +178,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn bind_and_complete_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -193,7 +193,7 @@ impl RunningProcessOwner {
 
     async fn bind_and_complete_interrupted_exit_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -213,7 +213,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn await_interrupted_exit_completion(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -226,7 +226,7 @@ impl RunningProcessOwner {
 
     async fn await_interrupted_exit_completion_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {

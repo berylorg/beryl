@@ -89,7 +89,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_retain_resident_recovery(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         captured: (
             AnyWindowHandle,
             gpui::EntityId,
@@ -98,9 +98,16 @@ impl RunningProcessOwner {
         graph: PreparedRecoveryServiceGraph,
     ) {
         assert!(self.interrupted_exit.is_none());
-        assert!(self.process.commands.is_active(request));
+        assert!(
+            request
+                .lifecycle()
+                .is_some_and(|request| self.process.commands.is_active(request))
+        );
         self.interrupted_exit = Some(InterruptedExitRecovery {
             request: request.identity(),
+            ordinary: false,
+            drafts: None,
+            focus: Vec::new(),
             session: Rc::new(RefCell::new(Some(RunningShutdownSession::Unwound))),
             previous_resume: Rc::new(RefCell::new(None)),
             settlement: Rc::new(RefCell::new(Some(CandidateSettlement::Services(Ok(graph))))),
@@ -153,7 +160,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn prepare_interrupted_exit_resident(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         resident: &Entity<MainWindowConversationComposer>,
         close: MainWindowConversationComposerCloseTicket,
         window: AnyWindowHandle,
@@ -356,10 +363,7 @@ impl RunningProcessOwner {
                     flight.resident.entity_id(),
                     flight.close,
                 ))
-                && retained
-                    .process
-                    .commands
-                    .is_active_identity(&flight.request);
+                && retained.active_recovery_identity(&flight.request);
             let flight = retained
                 .interrupted_exit
                 .as_mut()
@@ -459,7 +463,7 @@ impl RunningProcessOwner {
             .ok_or("No resident preparation")?;
         if !Rc::ptr_eq(&flight.key.0, &key.0)
             || !Rc::ptr_eq(&recovery.request, &flight.request)
-            || !self.process.commands.is_active_identity(&flight.request)
+            || !self.active_recovery_identity(&flight.request)
         {
             return Err("Resident preparation request changed".into());
         }

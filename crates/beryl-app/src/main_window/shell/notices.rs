@@ -10,6 +10,7 @@ use gpui::Focusable;
 
 mod composer;
 mod home_warning;
+mod recovery;
 mod runtime;
 mod stop_feedback;
 #[cfg(feature = "test-faults")]
@@ -17,6 +18,7 @@ pub use home_warning::BestEffortHomeWarningTimer;
 pub(crate) use home_warning::publish_home_open_notice_classification;
 #[cfg(feature = "test-faults")]
 pub use home_warning::test_publish_home_open_notice_classification;
+pub(crate) use recovery::MainWindowHomeRecoveryNoticeState;
 
 #[derive(Clone)]
 pub struct MainWindowNoticeIngress {
@@ -143,6 +145,7 @@ pub(super) struct MainWindowShellNotices {
     composer: composer::ComposerNoticeContribution,
     stop_feedback: stop_feedback::StopFeedbackNoticeContribution,
     runtime: runtime::RuntimeNoticeContribution,
+    recovery: recovery::HomeRecoveryNoticeContribution,
     window_id: beryl_model::WindowId,
     pub(super) widget: Entity<MainWindowNoticeWidget>,
     home: beryl_state::ThemeHomeIdentity,
@@ -187,6 +190,7 @@ impl MainWindowShellNotices {
             composer: composer::ComposerNoticeContribution::default(),
             stop_feedback: stop_feedback::StopFeedbackNoticeContribution::default(),
             runtime: runtime::RuntimeNoticeContribution::default(),
+            recovery: recovery::HomeRecoveryNoticeContribution::default(),
             window_id: controller.window_id(),
             home: appearance.prepared().home(),
             publication,
@@ -207,9 +211,37 @@ impl MainWindowShellNotices {
         let current = self.publication.snapshot();
         current.active && current.current.prepared().home() == self.home
     }
+
+    fn recovery_display_current(&self) -> bool {
+        self.inert
+            && self
+                .recovery
+                .state
+                .is_some_and(|state| state != MainWindowHomeRecoveryNoticeState::Recovered)
+            && self.publication.snapshot().current.prepared().home() == self.home
+    }
 }
 
 impl MainWindowShellRoot {
+    pub(crate) fn capture_running_recovery_focus(
+        &self,
+        window: &Window,
+        app: &App,
+    ) -> Option<gpui::FocusHandle> {
+        let input = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount())
+            .and_then(|mount| mount.read(app).contribution())
+            .map(|composer| composer.read(app).gpui_input())
+            .map(|input| input.read(app).focus_handle(app));
+        input.filter(|focus| focus.is_focused(window)).or_else(|| {
+            self.shell_focus
+                .is_focused(window)
+                .then(|| self.shell_focus.clone())
+        })
+    }
+
     pub(super) fn replace_recovered_notices(
         &mut self,
         publication: Arc<GpuiAppearancePublicationTarget>,
@@ -390,13 +422,15 @@ impl MainWindowShellRoot {
         if self.notices.retired {
             return;
         }
-        if !self.notices.scope_current() {
+        if !self.notices.scope_current() && !self.notices.recovery_display_current() {
             self.retire_notices(window, cx);
             return;
         }
-        self.sync_composer_notice(cx);
-        self.sync_stop_feedback_notice();
-        self.sync_runtime_notice(cx);
+        if self.notices.scope_current() {
+            self.sync_composer_notice(cx);
+            self.sync_stop_feedback_notice();
+            self.sync_runtime_notice(cx);
+        }
         self.sync_home_warning_timer(window, cx);
         self.refresh_notice_safe_focus(cx);
         let viewport = window.viewport_size();

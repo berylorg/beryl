@@ -88,13 +88,40 @@ impl MainWindowFailedResidentCandidateSource {
         self.retained.recovery_known_commit()
     }
 
-    pub(in crate::main_window) fn into_resources(
+    pub(crate) fn into_resources(
         self,
     ) -> (
         Arc<MainWindowConversationComposerService>,
         MainWindowFailedComposerRetirement,
     ) {
         (self.service, self.retained)
+    }
+
+    pub(crate) async fn dispose_cancelled_service(
+        self,
+        executor: gpui::BackgroundExecutor,
+    ) -> MainWindowFailedComposerRetirement {
+        loop {
+            self.service.drive_native_lineage_cleanup_sources();
+            let drained = self
+                .service
+                .native_lineage_sources
+                .lock()
+                .map(|sources| sources.is_empty())
+                .unwrap_or(false);
+            if drained
+                && !self
+                    .service
+                    .native_lineage_driver_started
+                    .load(std::sync::atomic::Ordering::Acquire)
+            {
+                break;
+            }
+            executor.timer(std::time::Duration::from_millis(50)).await;
+        }
+        let (service, retained) = self.into_resources();
+        drop(service);
+        retained
     }
 
     fn validate_source(&self, access: &HomeCandidateRecoveryAccess<'_>) -> Result<(), String> {

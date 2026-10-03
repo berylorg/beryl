@@ -10,7 +10,7 @@ pub(super) enum ResumeRetry {
 impl RunningProcessOwner {
     pub(super) fn carried_interrupted_exit_resume_retry(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Option<ResumeRetry>, String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
@@ -40,7 +40,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn retry_interrupted_exit_resume(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -55,7 +55,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn retry_interrupted_exit_resume_reconciliation(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -70,7 +70,7 @@ impl RunningProcessOwner {
 
     pub(super) fn retry_interrupted_exit_resume_pass(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         action: ResumeRetry,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -163,7 +163,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn take_previous_interrupted_exit_resume(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<ResumeSessionOutcome, String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
@@ -179,7 +179,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn take_previous_interrupted_exit_resume_reconciliation(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<beryl_home_store::ReconciliationFailure, String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();

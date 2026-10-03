@@ -141,6 +141,7 @@ pub struct RuntimeBackedWindowAcquisition {
     target: RememberedTarget,
     placement: WindowPlacement,
     disposition: RuntimeBackedWindowAcquisitionDisposition,
+    window_revision: beryl_state::RecordRevision,
     fallback_thread_id: SyndicThreadId,
     fallback_draft_id: SyndicDraftId,
     fallback_execution: ExecutionBinding,
@@ -148,6 +149,9 @@ pub struct RuntimeBackedWindowAcquisition {
 }
 
 impl RuntimeBackedWindowAcquisition {
+    pub(crate) fn window_revision(&self) -> beryl_state::RecordRevision {
+        self.window_revision
+    }
     #[must_use]
     pub const fn window_id(&self) -> WindowId {
         self.window_id
@@ -695,6 +699,7 @@ impl RuntimeBackedWindowAcquisitionService {
                                             target: facts.target(),
                                             placement: facts.placement().clone(),
                                             disposition,
+                                            window_revision: facts.window_revision(),
                                             fallback_thread_id: request.fallback_thread_id,
                                             fallback_draft_id: request.fallback_draft_id,
                                             fallback_execution: request.fallback_execution.clone(),
@@ -992,6 +997,7 @@ impl RuntimeBackedWindowAcquisitionService {
             target,
             placement: placement.clone(),
             disposition,
+            window_revision: beryl_state::RecordRevision::INITIAL,
             fallback_thread_id: request.fallback_thread_id,
             fallback_draft_id: request.fallback_draft_id,
             fallback_execution: request.fallback_execution.clone(),

@@ -5,7 +5,7 @@ use settlement::{CandidateSettlement, CandidateSettlementError};
 impl RunningProcessOwner {
     pub(crate) async fn dispose_and_take_interrupted_exit_candidate_failure(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cx: &mut gpui::AsyncApp,
     ) -> Result<CandidateSettlementError, String> {
@@ -18,7 +18,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn dispose_interrupted_exit_candidate_failure(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cx: &mut gpui::AsyncApp,
     ) -> Result<(), String> {
@@ -42,7 +42,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn take_interrupted_exit_candidate_failure(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<CandidateSettlementError, String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
@@ -64,7 +64,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn dispose_failed_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -76,7 +76,7 @@ impl RunningProcessOwner {
 
     pub(super) fn dispose_settled_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cancelled: bool,
         app: &mut App,

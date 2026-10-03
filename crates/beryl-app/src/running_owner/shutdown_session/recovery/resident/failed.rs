@@ -4,7 +4,7 @@ use crate::main_window::{MainWindowFailedResidentCapture, MainWindowFailedReside
 impl RunningProcessOwner {
     pub(super) fn prepare_failed_interrupted_exit_resident(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         resident: &Entity<MainWindowConversationComposer>,
         close: MainWindowConversationComposerCloseTicket,
         window: AnyWindowHandle,

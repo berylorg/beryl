@@ -12,7 +12,7 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     pub(crate) async fn prepare_and_attach_interrupted_exit_resident_window(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
         window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -56,7 +56,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn prepare_and_attach_interrupted_exit_resident_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
         window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -99,7 +99,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn attach_and_retain_interrupted_exit_resident_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         preparation: &mut Option<resident::ResidentPreparationKey>,
         admit: impl FnOnce(&mut App) -> Result<resident::ResidentPreparationKey, String>,
         window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -124,9 +124,7 @@ impl RunningProcessOwner {
                 if !owner
                     .recovery_owner()?
                     .borrow()
-                    .process
-                    .commands
-                    .is_active(request)
+                    .active_recovery_identity(&request.identity())
                 {
                     return Err("Interrupted Exit request changed".to_string());
                 }
@@ -157,7 +155,7 @@ impl RunningProcessOwner {
                     let progress = {
                         let retained_owner = owner.recovery_owner()?;
                         let retained = retained_owner.borrow();
-                        if !retained.process.commands.is_active(request) {
+                        if !retained.active_recovery_identity(&request.identity()) {
                             return Err("Interrupted Exit request changed".into());
                         }
                         retained.interrupted_exit_resident_result(&key)?
@@ -211,7 +209,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn attach_interrupted_exit_threadless_window(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired_home: beryl_model::BerylHomeId,
         retired_generation: HomeGeneration,
         window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -238,7 +236,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn attach_interrupted_exit_threadless_pass(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired_home: beryl_model::BerylHomeId,
         retired_generation: HomeGeneration,
         window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -296,7 +294,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_interrupted_exit_service_graph(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -355,7 +353,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn retire_interrupted_exit_for_preparation(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,
@@ -415,7 +413,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn retire_and_prepare_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -447,7 +445,7 @@ impl RunningProcessOwner {
     }
     pub(super) async fn dispose_returned_interrupted_exit_failure(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
@@ -475,7 +473,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn construct_and_settle_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         cancellation: CommandCancellation,
         cx: &mut AsyncApp,

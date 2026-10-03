@@ -560,7 +560,7 @@
 - [x] Gate: independently accepted unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation. This does not accept complete-stack publication or running-window recovery.
 - [x] Reconciled accepted complete graph and interrupted-Exit evidence against the remaining ordinary running-home supervisor and runtime Retry gaps; [readiness](../../failures/executable-bootstrap.md#running-session-recovery-mounting-readiness).
 - [x] Established ordinary Running-session recovery custody in the app lifecycle and composer supplements with independent readiness review; [evidence](../../failures/executable-bootstrap.md#ordinary-running-home-recovery-custody-readiness).
-- [ ] Mount and verify ordinary running-home failure recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication without an Exit request.
+- [x] Accepted ordinary running-home recovery through complete old-stack disposal, fresh same-home convergence and atomic publication with preserved windows and no Exit request; [qualification](../../failures/ordinary-running-home-recovery.md#mounted-qualification).
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
 

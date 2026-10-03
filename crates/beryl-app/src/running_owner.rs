@@ -32,6 +32,7 @@ mod ordinary_close_session;
 mod ordinary_commands;
 mod progress;
 mod shutdown_drafts;
+mod unchanged_running;
 mod unremoved_windows;
 #[cfg(test)]
 pub(crate) use shutdown_drafts::RunningShutdownDrafts;
@@ -88,6 +89,9 @@ pub(crate) struct RunningProcessOwner {
     #[cfg(test)]
     before_native_close_restoration: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
     exit_availability: Option<gpui::Task<()>>,
+    observed_home_failure: Option<exit_availability::ObservedHomeFailure>,
+    #[cfg(test)]
+    exit_wait_stop: Option<futures_channel::oneshot::Sender<futures_channel::oneshot::Sender<()>>>,
     interrupted_exit: Option<shutdown_session::InterruptedExitRecovery>,
     automatic_recovery: Option<shutdown_session::AutomaticInterruptedExitRecovery>,
     final_teardown: Option<final_teardown::FinalTeardown>,
@@ -100,6 +104,8 @@ pub(crate) struct RunningProcessOwner {
     cancel_recovery_after_publication: bool,
     #[cfg(test)]
     cancel_recovery_after_resident_admission: bool,
+    #[cfg(test)]
+    reject_ordinary_recovery_attachment_after: Option<usize>,
     #[cfg(test)]
     exit_waiting_passes: usize,
     #[cfg(test)]
@@ -252,6 +258,9 @@ impl RunningProcessOwner {
             #[cfg(test)]
             before_native_close_restoration: None,
             exit_availability: None,
+            observed_home_failure: None,
+            #[cfg(test)]
+            exit_wait_stop: None,
             interrupted_exit: None,
             automatic_recovery: None,
             final_teardown: None,
@@ -264,6 +273,8 @@ impl RunningProcessOwner {
             cancel_recovery_after_publication: false,
             #[cfg(test)]
             cancel_recovery_after_resident_admission: false,
+            #[cfg(test)]
+            reject_ordinary_recovery_attachment_after: None,
             #[cfg(test)]
             exit_waiting_passes: 0,
             #[cfg(test)]

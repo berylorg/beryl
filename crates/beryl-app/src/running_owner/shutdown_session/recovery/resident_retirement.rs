@@ -3,7 +3,7 @@ use super::*;
 impl RunningProcessOwner {
     pub(crate) fn retire_interrupted_exit_residents(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
     ) -> Result<bool, String> {
         let recovery = self
@@ -11,7 +11,7 @@ impl RunningProcessOwner {
             .as_ref()
             .ok_or("No reported failed Exit")?;
         if !Rc::ptr_eq(&recovery.request, &request.identity())
-            || !self.process.commands.is_active(request)
+            || !self.active_recovery_identity(&request.identity())
         {
             return Err("Interrupted Exit request changed".into());
         }
@@ -22,26 +22,26 @@ impl RunningProcessOwner {
         {
             return Err("Interrupted Exit retirement custody is unavailable".into());
         }
-        let attempt = self
-            .shutdown
-            .as_ref()
-            .ok_or("No retained shutdown attempt")?;
-        if !attempt.work_ready
-            || !matches!(attempt.session, Some(RunningShutdownSession::RecoveryOwned))
-        {
-            return Err("Interrupted Exit has not retained session-publication custody".into());
+        if !recovery.ordinary {
+            let attempt = self
+                .shutdown
+                .as_ref()
+                .ok_or("No retained shutdown attempt")?;
+            if !attempt.work_ready
+                || !matches!(attempt.session, Some(RunningShutdownSession::RecoveryOwned))
+            {
+                return Err("Interrupted Exit has not retained session-publication custody".into());
+            }
         }
-        let drafts = attempt
-            .drafts
-            .as_ref()
-            .ok_or("No retained shutdown drafts")?;
+        let drafts = self.recovery_drafts()?;
         let mut drafts = drafts
             .try_borrow_mut()
             .map_err(|_| "Shutdown drafts are being updated")?;
+        drafts.require_complete_capture()?;
         if drafts.recovery_residents() != recovery.residents {
             return Err("Interrupted Exit draft set changed or is not ready".into());
         }
-        if drafts.has_failed_residents() {
+        if recovery.ordinary || drafts.has_failed_residents() {
             let services = self
                 .process
                 .services

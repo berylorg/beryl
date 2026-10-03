@@ -15,6 +15,12 @@ pub(in crate::running_owner) struct AutomaticInterruptedExitRecovery {
     cancellation: CommandCancellation,
     outcome: Rc<RefCell<InterruptedExitRecoveryOutcome>>,
     failure: Rc<RefCell<Option<RecoveryPreparationFailure>>>,
+    ordinary_notices: Option<(
+        Vec<gpui::WindowHandle<crate::main_window::MainWindowShellRoot>>,
+        crate::main_window::NoticeConditionId,
+        crate::main_window::NoticeConditionId,
+        beryl_home_store::HomeGeneration,
+    )>,
     _task: Task<()>,
 }
 
@@ -49,6 +55,41 @@ impl RunningProcessOwner {
                 return;
             }
         }
+        Self::start_recovery_task(owner, request.retain_for_recovery(), app);
+    }
+
+    pub(super) fn start_recovery_task(
+        owner: &Rc<RefCell<Self>>,
+        request: impl RecoveryIdentity + 'static,
+        app: &mut App,
+    ) {
+        let ordinary_notices = request.lifecycle().is_none().then(|| {
+            let retained = owner.borrow();
+            let generation = retained
+                .process
+                .services
+                .as_ref()
+                .and_then(|services| services.graph())
+                .and_then(|graph| graph.home().health().generation())
+                .expect("captured failed home generation remains current");
+            (
+                retained
+                    .process
+                    .windows
+                    .shells()
+                    .iter()
+                    .map(|shell| shell.window())
+                    .collect(),
+                retained
+                    .observed_home_failure
+                    .as_ref()
+                    .filter(|failure| failure.generation == generation)
+                    .map(|failure| failure.condition.clone())
+                    .unwrap_or_default(),
+                crate::main_window::NoticeConditionId::new(),
+                generation,
+            )
+        });
         let configured = (|| -> Result<_, String> {
             let retained = owner.borrow();
             let mut configured = Vec::new();
@@ -92,7 +133,6 @@ impl RunningProcessOwner {
         let retained_failure = failure.clone();
         let task_cancellation = cancellation.clone();
         let identity = request.identity();
-        let request = request.retain_for_recovery();
         let task = app.spawn(async move |cx| {
             let retired = configured.as_ref().ok().map(|(_, generation)| *generation);
             let result = async {
@@ -102,9 +142,11 @@ impl RunningProcessOwner {
                     .map_err(|_| "Recovery clock is before the Unix epoch")?;
                 let millis =
                     u64::try_from(now.as_millis()).map_err(|_| "Recovery timestamp overflowed")?;
-                weak.recovery_owner()?
-                    .borrow_mut()
-                    .retain_interrupted_exit_session(&request)?;
+                if let Some(lifecycle) = request.lifecycle() {
+                    weak.recovery_owner()?
+                        .borrow_mut()
+                        .retain_interrupted_exit_session(lifecycle)?;
+                }
                 Self::recover_interrupted_exit(
                     &weak,
                     &request,
@@ -151,8 +193,63 @@ impl RunningProcessOwner {
             cancellation,
             outcome,
             failure,
+            ordinary_notices,
             _task: task,
         });
+    }
+
+    pub(in crate::running_owner) fn project_running_home_recovery_notices(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+    ) {
+        use crate::main_window::MainWindowHomeRecoveryNoticeState as State;
+        let projection = {
+            let retained = owner.borrow();
+            let Some(recovery) = &retained.automatic_recovery else {
+                return;
+            };
+            let Some((windows, failed, recovered, generation)) = &recovery.ordinary_notices else {
+                return;
+            };
+            if retained
+                .observed_home_failure
+                .as_ref()
+                .is_some_and(|failure| failure.generation != *generation)
+            {
+                return;
+            }
+            let state = match &*recovery.outcome.borrow() {
+                InterruptedExitRecoveryOutcome::Running if recovery.failure.borrow().is_some() => {
+                    State::Retrying
+                }
+                InterruptedExitRecoveryOutcome::Running => State::Recovering,
+                InterruptedExitRecoveryOutcome::Completed => State::Recovered,
+                InterruptedExitRecoveryOutcome::Cancelled => State::Cancelled,
+                InterruptedExitRecoveryOutcome::Unavailable(_) => State::Unavailable,
+            };
+            (
+                windows.clone(),
+                if state == State::Recovered {
+                    recovered.clone()
+                } else {
+                    failed.clone()
+                },
+                state,
+            )
+        };
+        for window in projection.0 {
+            let _ = window.update(app, |root, window, cx| {
+                root.project_running_home_recovery_notice(&projection.1, projection.2, window, cx);
+            });
+        }
+    }
+
+    pub(in crate::running_owner) fn ordinary_recovery_observed_generation(
+        &self,
+    ) -> Option<beryl_home_store::HomeGeneration> {
+        self.automatic_recovery
+            .as_ref()
+            .and_then(|recovery| recovery.ordinary_notices.as_ref().map(|notice| notice.3))
     }
 
     #[cfg(test)]

@@ -77,6 +77,19 @@ impl FailedResidentSource {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn retain_cancelled_failed_residents(
+        &mut self,
+        graph: &mut super::recovery_graph::PreparedRecoveryServiceGraph,
+    ) {
+        assert!(graph.failed_residents.iter().all(|source| {
+            !self
+                .failed_residents
+                .iter()
+                .any(|retained| retained.window == source.window)
+        }));
+        self.failed_residents.append(&mut graph.failed_residents);
+    }
+
     pub(crate) fn capture_failed_markers(&mut self) -> Result<(), String> {
         if self.failed_markers.is_some() {
             return Ok(());
@@ -307,6 +320,19 @@ impl ProcessServiceOwner {
 }
 
 impl super::recovery_graph::PreparedRecoveryServiceGraph {
+    pub(crate) fn return_failed_resident_source(
+        &mut self,
+        retired: MainWindowFailedComposerRetirement,
+    ) {
+        let source = self
+            .failed_residents
+            .iter_mut()
+            .find(|source| source.window == retired.selection().window_id())
+            .expect("cancelled failed resident retains its exact graph source");
+        assert!(source.retired.is_none());
+        source.retired = Some(retired);
+    }
+
     pub(crate) fn failed_resident_source(
         &mut self,
         window: beryl_model::WindowId,

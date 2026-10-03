@@ -6,7 +6,7 @@ use crate::{
 impl RunningProcessOwner {
     pub(crate) fn prepare_interrupted_exit_threadless_window(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired_home: beryl_model::BerylHomeId,
         retired_generation: beryl_home_store::HomeGeneration,
         window: beryl_model::WindowId,
@@ -47,7 +47,7 @@ impl RunningProcessOwner {
             *slot.borrow_mut() = Some(settlement::CandidateSettlement::Services(Ok(graph)));
             {
                 let owner = retained.borrow();
-                if !owner.process.commands.is_active_identity(&identity)
+                if !owner.active_recovery_identity(&identity)
                     || !owner
                         .interrupted_exit
                         .as_ref()
@@ -63,7 +63,7 @@ impl RunningProcessOwner {
     }
     pub(crate) fn attach_interrupted_exit_threadless(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         root: &mut MainWindowShellRoot,
         source: &mut Option<ThreadlessRecoveryWindow>,
         window: &gpui::Window,
@@ -91,11 +91,7 @@ impl RunningProcessOwner {
             return Err("Threadless recovery candidate identity changed".into());
         }
         drop(slot);
-        let drafts = self
-            .shutdown
-            .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?;
+        let drafts = self.recovery_drafts()?;
         let mut drafts = drafts
             .try_borrow_mut()
             .map_err(|_| "Interrupted Exit drafts are busy")?;

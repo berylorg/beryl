@@ -357,6 +357,20 @@ pub struct MainWindowShellController {
 }
 
 impl MainWindowShellController {
+    pub(crate) fn recovery_window_revision(&self) -> Result<beryl_state::RecordRevision, String> {
+        match &self.content {
+            ShellContent::Acquired { custody, .. } => Ok(custody.acquisition.window_revision()),
+            ShellContent::Restored { custody, .. } => {
+                Ok(custody.composer.recovery_window().revision())
+            }
+            ShellContent::Threadless { source, .. } => Ok(source.recovery_window().revision()),
+            ShellContent::Recovered { window, .. } => Ok(window.revision()),
+            ShellContent::RecoveredThreadless { source, .. } => Ok(source.window().revision()),
+            ShellContent::Retired { .. } => {
+                Err("retired shell has no unchanged Running window".into())
+            }
+        }
+    }
     pub fn acquisition(&self) -> Option<&RuntimeBackedWindowAcquisition> {
         match &self.content {
             ShellContent::Acquired { custody, .. } => Some(&custody.acquisition),

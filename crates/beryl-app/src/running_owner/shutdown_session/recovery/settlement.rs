@@ -41,7 +41,7 @@ pub(crate) enum CandidateSettlementError {
 impl RunningProcessOwner {
     pub(crate) fn settle_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         candidate: &mut Option<InterruptedExitCandidate>,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -58,7 +58,7 @@ impl RunningProcessOwner {
 
     fn settle_interrupted_exit_candidate_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         candidate: &mut Option<InterruptedExitCandidate>,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -71,7 +71,7 @@ impl RunningProcessOwner {
                 .as_ref()
                 .ok_or("No reported failed Exit")?;
             if !Rc::ptr_eq(&recovery.request, &request.identity())
-                || !owner.process.commands.is_active(request)
+                || !owner.active_recovery_identity(&request.identity())
             {
                 return Err("Interrupted Exit request changed".into());
             }
@@ -112,7 +112,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn revalidate_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
     ) -> Result<(), String> {
@@ -121,7 +121,7 @@ impl RunningProcessOwner {
 
     fn revalidate_interrupted_exit_candidate_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_validate: impl FnOnce(&mut InterruptedExitCandidate) + Send + 'static,
@@ -223,7 +223,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_revalidate_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
         before_validate: impl FnOnce(&mut InterruptedExitCandidate) + Send + 'static,
@@ -239,14 +239,14 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_candidate_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         let recovery = self
             .interrupted_exit
             .as_ref()
             .ok_or("No reported failed Exit")?;
         if !Rc::ptr_eq(&recovery.request, &request.identity())
-            || !self.process.commands.is_active(request)
+            || !self.active_recovery_identity(&request.identity())
         {
             return Err("Interrupted Exit request changed".into());
         }
@@ -260,7 +260,10 @@ impl RunningProcessOwner {
     }
 
     #[cfg(test)]
-    pub(crate) fn test_replace_interrupted_exit_request(&mut self, request: &RunningExitRequest) {
+    pub(crate) fn test_replace_interrupted_exit_request(
+        &mut self,
+        request: &impl RecoveryIdentity,
+    ) {
         self.interrupted_exit.as_mut().unwrap().request = request.identity();
     }
 
@@ -283,7 +286,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_settle_interrupted_exit_candidate(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         candidate: &mut Option<InterruptedExitCandidate>,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,

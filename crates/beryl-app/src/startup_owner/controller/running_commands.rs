@@ -210,6 +210,36 @@ impl RunningExitCommands {
         Ok(())
     }
 
+    pub(crate) fn bind_recovered_running_home(
+        &self,
+        home: beryl_home_store::HomeServiceReference,
+    ) -> Result<(), String> {
+        let mut state = self.0.0.borrow_mut();
+        if state.active_exit.is_some() || !state.exit_gates.home_unavailable {
+            return Err("Recovered Running home requires fenced lifecycle admission".into());
+        }
+        let (previous, generation) = state
+            .exit_gates
+            .home
+            .as_ref()
+            .ok_or("Running home is not bound")?;
+        let health = home.health();
+        if previous.home_id() != home.home_id()
+            || generation.is_none()
+            || health.state() != beryl_home_store::HomeHealthState::Healthy
+            || health.generation().is_none()
+            || health.generation() == *generation
+        {
+            return Err("Recovered Running home requires a healthy same-home replacement".into());
+        }
+        state.exit_gates.home = Some((home, health.generation()));
+        Ok(())
+    }
+
+    pub(crate) fn lifecycle_admitted(&self) -> bool {
+        self.0.0.borrow().active_exit.is_some()
+    }
+
     pub(super) fn new(commands: StartupCommands) -> Self {
         assert!(matches!(commands.0.borrow().stage, Stage::Running));
         Self(commands)

@@ -72,6 +72,13 @@ mod startup_owner {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/app_services/startup_owner.rs"
     ));
+
+    mod ordinary_running_home {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/unit/app_services/ordinary_running_home.rs"
+        ));
+    }
 }
 
 pub(super) fn fixture() -> (
@@ -125,7 +132,13 @@ pub(super) fn configuration() -> AppServiceConfiguration {
             Duration::from_secs(1),
             OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), Duration::from_secs(1)),
         ),
-        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
+        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+            beryl_model::AdmittedHostPath::from_admitted(
+                beryl_model::PathFlavor::Windows,
+                r"C:\tokens",
+            )
+            .unwrap(),
+        ),
         handoff: HandoffScanLimits::try_from(HandoffScanConfiguration {
             handoff_recovery_page_items: 1,
             handoff_recovery_page_encoded_bytes: beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,

@@ -4,7 +4,7 @@ use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet}
 impl RunningProcessOwner {
     pub(crate) fn bind_interrupted_exit_process(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<(), String> {
@@ -19,7 +19,11 @@ impl RunningProcessOwner {
             .home()
             .service_reference();
         crate::main_window::MainWindowCreationOwner::validate_recovered_process(&home, app)?;
-        self.process.commands.bind_recovered_home(request, home)?;
+        if let Some(request) = request.lifecycle() {
+            self.process.commands.bind_recovered_home(request, home)?;
+        } else {
+            self.process.commands.bind_recovered_running_home(home)?;
+        }
         if self.ordinary_commands_mounted {
             for shell in self.process.windows.shells() {
                 let window = shell.window();
@@ -43,7 +47,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_appearance(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>, String> {
         self.interrupted_exit_services_result(request)?;
         let settlement = self.interrupted_exit.as_ref().unwrap().settlement.borrow();
@@ -55,15 +59,12 @@ impl RunningProcessOwner {
 
     pub(crate) fn release_interrupted_exit_drafts(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<bool, String> {
         self.validate_interrupted_exit_bindings(request, appearance, app)?;
-        self.shutdown
-            .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?
+        self.recovery_drafts()?
             .try_borrow()
             .map_err(|_| "Interrupted Exit drafts are busy")?
             .release_recovered_drafts(&self.process.windows, appearance, app)
@@ -71,7 +72,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn release_interrupted_exit_mounts(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<bool, String> {
@@ -80,10 +81,7 @@ impl RunningProcessOwner {
         if self.process.appearance != *appearance {
             return Err("Interrupted Exit process bindings are not installed".into());
         }
-        self.shutdown
-            .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?
+        self.recovery_drafts()?
             .try_borrow()
             .map_err(|_| "Interrupted Exit drafts are busy")?
             .release_recovered_mounts(&self.process.windows, appearance, app)
@@ -91,7 +89,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn validate_interrupted_exit_bindings(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
     ) -> Result<(), String> {
@@ -134,11 +132,7 @@ impl RunningProcessOwner {
             return Err("Recovery appearance differs from the prepared graph".into());
         }
         drop(settlement);
-        let drafts = self
-            .shutdown
-            .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?;
+        let drafts = self.recovery_drafts()?;
         drafts
             .try_borrow()
             .map_err(|_| "Interrupted Exit drafts are busy")?
@@ -152,7 +146,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn bind_interrupted_exit_appearance(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
@@ -181,11 +175,7 @@ impl RunningProcessOwner {
             return Err("Recovery appearance differs from the prepared graph".into());
         }
         drop(settlement);
-        let drafts = self
-            .shutdown
-            .as_ref()
-            .and_then(|attempt| attempt.drafts.as_ref())
-            .ok_or("Interrupted Exit drafts are unavailable")?;
+        let drafts = self.recovery_drafts()?;
         let drafts = drafts
             .try_borrow_mut()
             .map_err(|_| "Interrupted Exit drafts are busy")?;

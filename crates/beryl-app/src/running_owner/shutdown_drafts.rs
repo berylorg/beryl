@@ -34,6 +34,28 @@ pub(crate) struct RunningShutdownDrafts {
 }
 
 impl RunningShutdownDrafts {
+    pub(super) fn empty_recovery() -> Self {
+        Self {
+            windows: Vec::new(),
+            driving: false,
+            prepared: true,
+            releasing: false,
+            released: false,
+            ready: false,
+            detached_preparing: false,
+            detached_prepared: false,
+        }
+    }
+
+    pub(super) fn require_complete_capture(&self) -> Result<(), String> {
+        if self.windows.is_empty() {
+            return Err("home recovery has no captured windows".into());
+        }
+        for (_, draft) in &self.windows {
+            draft.as_ref().map_err(Clone::clone)?;
+        }
+        Ok(())
+    }
     pub(super) fn add_recovery_window(
         &mut self,
         window: WindowHandle<MainWindowShellRoot>,

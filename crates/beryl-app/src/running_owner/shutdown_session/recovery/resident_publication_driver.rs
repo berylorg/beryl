@@ -14,7 +14,7 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     pub(crate) async fn recover_interrupted_exit_resident_window(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         window: WindowHandle<MainWindowShellRoot>,
         configuration: AppServiceConfiguration,
@@ -159,7 +159,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_and_complete_interrupted_exit_resident_window(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         retired: HomeGeneration,
         generation: HomeGeneration,
         preparation: &mut Option<resident::ResidentPreparationKey>,

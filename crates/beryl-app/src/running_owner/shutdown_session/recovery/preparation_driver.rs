@@ -8,9 +8,9 @@ use syndic_storage::SyndicTimestamp;
 impl RunningProcessOwner {
     pub(super) fn reserve_interrupted_exit_driver(
         &mut self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<Rc<()>, String> {
-        if !self.process.commands.is_active(request) {
+        if !self.active_recovery_identity(&request.identity()) {
             return Err("Interrupted Exit request changed".into());
         }
         let recovery = self
@@ -30,7 +30,7 @@ impl RunningProcessOwner {
 
     pub(crate) async fn prepare_retired_interrupted_exit(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
@@ -59,7 +59,7 @@ impl RunningProcessOwner {
 
     pub(super) fn validate_interrupted_exit_preparation(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
@@ -89,7 +89,7 @@ impl RunningProcessOwner {
 
     pub(super) async fn prepare_interrupted_exit_attempt(
         owner: &impl RecoveryOwnerAccess,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,

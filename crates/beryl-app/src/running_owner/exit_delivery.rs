@@ -66,15 +66,85 @@ impl RunningProcessOwner {
             }
             owner.waiting_for_exit = true;
         }
+        #[cfg(test)]
+        let (stop, mut stop_receiver) = futures_channel::oneshot::channel();
+        #[cfg(test)]
+        {
+            owner.borrow_mut().exit_wait_stop = Some(stop);
+        }
         let retained = owner.clone();
         app.spawn(async move |cx| {
-            let request =
-                std::future::poll_fn(|cx| retained.borrow_mut().process.commands.poll_exit(cx))
-                    .await;
+            #[cfg(test)]
+            let mut stopped = None;
+            let request = std::future::poll_fn(|cx| {
+                #[cfg(test)]
+                if let std::task::Poll::Ready(Ok(acknowledged)) =
+                    std::future::Future::poll(std::pin::Pin::new(&mut stop_receiver), cx)
+                {
+                    stopped = Some(acknowledged);
+                    return std::task::Poll::Ready(None);
+                }
+                retained
+                    .borrow_mut()
+                    .process
+                    .commands
+                    .poll_exit(cx)
+                    .map(Some)
+            })
+            .await;
             retained.borrow_mut().waiting_for_exit = false;
-            let _ = cx.update(|app| completed(&retained, request, app));
+            #[cfg(test)]
+            {
+                retained.borrow_mut().exit_wait_stop = None;
+            }
+            if let Some(request) = request {
+                let _ = cx.update(|app| completed(&retained, request, app));
+            } else {
+                drop(completed);
+                drop(retained);
+                #[cfg(test)]
+                if let Some(acknowledged) = stopped {
+                    let _ = acknowledged.send(());
+                }
+            }
         })
         .detach();
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_stop_running_observers(
+        owner: &Rc<RefCell<Self>>,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<(), String> {
+        let stop = cx
+            .update(|_| {
+                let mut retained = owner.borrow_mut();
+                if retained.observing_initial_work
+                    || retained.confirmation.is_some()
+                    || retained.progress.is_some()
+                    || retained.process.services.is_none()
+                    || retained.process.commands.lifecycle_admitted()
+                    || retained
+                        .automatic_recovery_outcome()
+                        .is_some_and(|outcome| {
+                            matches!(*outcome, super::InterruptedExitRecoveryOutcome::Running)
+                        })
+                {
+                    return Err("running observer stop requires settled owner work".to_string());
+                }
+                retained.exit_availability.take();
+                Ok(retained.exit_wait_stop.take())
+            })
+            .map_err(|e| e.to_string())??;
+        if let Some(stop) = stop {
+            let (acknowledged, completed) = futures_channel::oneshot::channel();
+            stop.send(acknowledged)
+                .map_err(|_| "running command wait stop is unavailable")?;
+            completed
+                .await
+                .map_err(|_| "running command wait stop did not settle")?;
+        }
         Ok(())
     }
 

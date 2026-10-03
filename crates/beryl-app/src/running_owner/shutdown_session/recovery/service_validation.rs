@@ -5,7 +5,7 @@ use settlement::CandidateSettlement;
 impl RunningProcessOwner {
     pub(crate) fn revalidate_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         home: beryl_model::BerylHomeId,
         generation: HomeGeneration,
         cancellation: CommandCancellation,
@@ -65,7 +65,7 @@ impl RunningProcessOwner {
             *settlement_slot.borrow_mut() = Some(CandidateSettlement::Services(Ok(graph)));
             {
                 let owner = retained.borrow();
-                if !owner.process.commands.is_active_identity(&identity)
+                if !owner.active_recovery_identity(&identity)
                     || !owner
                         .interrupted_exit
                         .as_ref()

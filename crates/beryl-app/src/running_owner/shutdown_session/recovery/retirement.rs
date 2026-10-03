@@ -9,7 +9,7 @@ pub(super) enum GraphRetirement {
 impl RunningProcessOwner {
     pub(crate) fn retire_interrupted_exit_graph(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -19,7 +19,7 @@ impl RunningProcessOwner {
 
     fn retire_interrupted_exit_graph_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,
@@ -32,7 +32,7 @@ impl RunningProcessOwner {
                 .as_ref()
                 .ok_or("No reported failed Exit")?;
             if !Rc::ptr_eq(&recovery.request, &request.identity())
-                || !owner.process.commands.is_active(request)
+                || !owner.active_recovery_identity(&request.identity())
             {
                 return Err("Interrupted Exit request changed".into());
             }
@@ -85,14 +85,14 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_graph_retirement_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         let recovery = self
             .interrupted_exit
             .as_ref()
             .ok_or("No reported failed Exit")?;
         if !Rc::ptr_eq(&recovery.request, &request.identity())
-            || !self.process.commands.is_active(request)
+            || !self.active_recovery_identity(&request.identity())
         {
             return Err("Interrupted Exit request changed".into());
         }
@@ -105,7 +105,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_retire_interrupted_exit_graph(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         generation: HomeGeneration,
         app: &mut App,
         completed: impl FnOnce(&Rc<RefCell<Self>>, &mut App) + 'static,

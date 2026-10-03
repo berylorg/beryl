@@ -5,7 +5,7 @@ use settlement::CandidateSettlement;
 impl RunningProcessOwner {
     pub(crate) fn publish_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         expected: HomeGeneration,
         generation: HomeGeneration,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
@@ -57,7 +57,7 @@ impl RunningProcessOwner {
 
     fn publish_interrupted_exit_services_with(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         expected: HomeGeneration,
         generation: HomeGeneration,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,
@@ -156,7 +156,7 @@ impl RunningProcessOwner {
             *publication_slot.borrow_mut() = Some(result);
             {
                 let owner = retained.borrow();
-                if !owner.process.commands.is_active_identity(&identity)
+                if !owner.active_recovery_identity(&identity)
                     || !owner
                         .interrupted_exit
                         .as_ref()
@@ -175,7 +175,7 @@ impl RunningProcessOwner {
 
     pub(crate) fn interrupted_exit_publication_result(
         &self,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
         self.interrupted_exit
@@ -193,7 +193,7 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_publish_interrupted_exit_services(
         owner: &Rc<RefCell<Self>>,
-        request: &RunningExitRequest,
+        request: &impl RecoveryIdentity,
         expected: HomeGeneration,
         generation: HomeGeneration,
         appearance: &gpui::Entity<crate::theme_runtime::GpuiAppearanceWindowSet>,

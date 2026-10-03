@@ -89,30 +89,22 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 719: Establish Ordinary Running-Home Recovery Custody Authority (finished)
+# Phase 720: Mount Ordinary Running-Home Recovery (finished)
 
-Established ordinary home-attempt, preserved window/resident and unchanged Running-session custody
-in the app lifecycle and composer supplements, preserving distinct interrupted Exit/close outcomes.
-Independent semantic/source review and documentation checks passed; Phase720 is architecture-ready.
-No recovery activation or runtime qualification is claimed. See
-[readiness](failures/executable-bootstrap.md#ordinary-running-home-recovery-custody-readiness).
+Mounted ordinary failed-home recovery without an Exit request, preserving the complete native,
+resident and unchanged Running-session set through fresh same-home graph publication and reopening.
+All twelve ordinary cases have passing evidence, the combined affected suite passed 165/165, and
+locked app/executable all-target checks and independent custody review passed. See
+[qualification and lessons](failures/ordinary-running-home-recovery.md).
 
-# Phase 720: Mount Ordinary Running-Home Recovery (pending)
+# Phase 721: Establish Healthy-Home Runtime Retry Usability Authority (pending)
 
-Mount the actual failed-home observation in `RunningProcessOwner` under the
-[ordinary custody contract](../crates/beryl-app/doc/design-shell-lifecycle.md#ordinary-running-home-recovery-ownership).
-Admit and coalesce the exact failed generation without an Exit request, capture the complete
-preserved window/session/resident set, and drive the existing supervisor's bounded shared retries.
-Use complete graph retirement, retained same-home reopening, fresh Running-session/claim validation,
-retained process and resident outcome settlement, convergence, checked resident/threadless attachment,
-appearance rebinding and serialized whole-graph publication before coherent reopening. Replace
-request-specific private mechanics where necessary while preserving distinct interrupted Exit/close
-custody; do not manufacture requests, repeat uncertain writes or resume an already Running session.
-
-Qualify the production failure entry through recovery with selected and threadless native windows,
-unsaved edits/history/selection/placement, duplicate/stale attempts, candidate failure/cancellation,
-partial attachment, retained lock/reconciliation/proof custody and close/Exit races. Reuse unchanged
-accepted graph evidence within its recorded limits, and run focused plus combined lifecycle checks
-with independent persistence/source/custody review. Completion requires the newly mounted ordinary
-route to recover the complete graph and preserved windows without a lifecycle request. Healthy-home
-runtime Retry, conditional terminal repair and other rework checkpoints remain separate.
+Resolve the selected-runtime Retry consumer contract identified by
+[mounting readiness](failures/executable-bootstrap.md#running-session-recovery-mounting-readiness)
+under [backend recovery](features/backend-runtime-recovery/design.md). Establish the app/service
+ownership of exact selection and publication admission, pending coalescing, failure feedback and
+positive usability evidence for the same runtime/root/thread source and foreground projection.
+Runtime Ready or an absent failure does not prove selected-binding usability. Preserve the healthy
+home, unrelated local workflows and uncertain input outcomes. Independently review source-backed
+authority readiness before deriving the bounded production Retry mounting phase; this boundary
+does not activate Retry or authorize a new recovery path.
