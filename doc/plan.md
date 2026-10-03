@@ -89,27 +89,32 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 722: Mount Healthy-Home Selected Runtime Retry (finished)
+# Phase 723: Establish Running Threads Mounting Readiness (finished)
 
-Mounted exact selected-runtime Retry with no-input source planning, retained projection usability
-and bounded notice feedback through the existing process owners. Draft/history/focus, stale
-authority, cancellation and unrelated-runtime continuity are qualified. Affected app and storage
-tests, locked app/executable checks and independent completion review passed; see
-[qualification and fixture lessons](failures/executable-bootstrap.md#runtime-retry-qualification-boundaries).
+Accepted the [source-backed readiness map](audits/running-threads/readiness.md) and derived mounted
+interaction boundary. Command/picker, occupancy/flush/attachment and attention consumer gaps are
+explicit; independent review found no unresolved material design choice or blocking finding.
+Documentation links and diff checks passed. Production mounting remains pending.
 
-# Phase 723: Establish Running Threads Mounting Readiness (pending)
+# Phase 724: Mount Running Threads And Exact Activation (pending)
 
-Derive the next bounded mount from the rework tracker's remaining live detach/reattach and Running
-threads item. Produce a source-backed readiness and gap map for the concrete main-window command,
-count and picker under [conversation-thread behavior](features/conversation-threads/design.md#running-threads),
-[GUI composition](features/conversation-threads/gui.md#running-threads-command),
-[process projection and custody](systems/cas-live-syndic-transcript/design.md#request-custody-and-running-thread-projection)
-and [Notifications attention ownership](features/notifications/design.md#main-conversation-notices).
-Trace exact current-row activation, existing-window reveal, unviewed live attachment through ordinary
-draft/session flush, attention acknowledgement, generation replacement and bounded source/rendering
-limits to their production consumers. Check preservation of execution and input custody, coherent
-failure presentation and absence of automatic focus or dispatch effects.
+Mount the [Running threads command and collection-only picker](features/conversation-threads/gui.md#running-threads-command)
+in every main window, with generation-qualified bounded process pages, count/attention facts,
+source search and canonical fixed-height virtualization. Follow the
+[readiness map](audits/running-threads/readiness.md) for missing consumers. Include exact current-row
+activation, existing-window reveal and unviewed live attachment through ordinary durable draft/session
+flush and atomic claim publication under [conversation-thread behavior](features/conversation-threads/design.md#running-threads)
+and [app shell ownership](../crates/beryl-app/doc/design-shell-lifecycle.md#process-service-graph-and-windows).
+Bounded attachment uses the single canonical host through the
+[transcript shell boundary](systems/transcript-presentation/shell-boundary.md).
+Compose process-owned lifecycle attention destination routing and exact displayed-token acknowledgement
+under [Notifications](features/notifications/design.md#main-conversation-notices).
 
-Acceptance is independent review of the bounded readiness evidence and derived implementation
-boundary. Route missing or contradictory material contracts to their owning authority before
-planning implementation; this diagnosis authorizes no production mounting or new architecture.
+Acceptance drives actual shell commands and row callbacks across current, elsewhere-open and
+unviewed running threads. Qualify failed/indeterminate flush, occupancy races, stale tokens/pages,
+query failure, generation replacement, cancellation, duplicate activation, terminal-history and
+attention-only membership, bounded source/resident/rendered state and focus through reordering.
+Observe exact live execution/input/request custody and absence of new dispatch, CAS load, hidden
+window, automatic focus or extra capture consumer. Include owned subscription/worker disposal,
+affected locked checks and behavioral tests, and independent lifecycle/persistence/effect review.
+Complete transcript and other toolbar contributions remain their separate rework boundaries.

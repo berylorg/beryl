@@ -422,6 +422,7 @@
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
   with process-owned lifecycle attention independent of the originating window.
+- [x] Accepted the source-backed [Running threads mounting readiness](../../audits/running-threads/readiness.md) and independently reviewed implementation boundary.
 - [x] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window
   and Exit confirmation, serialized close designation, and durable restore-mode integration.
   The service component is accepted with 18 focused and 81 affected regressions; native mounting
