@@ -32,6 +32,11 @@ impl super::stop_worker::ExactStopRead {
                 }
                 ExactSoftStopAvailability::Eligible(ExactSoftStopEligibility {
                     inner: Arc::new(EligibilityRecord {
+                        origin: self.operation_origin(
+                            target.thread_id(),
+                            target.turn_id(),
+                            target.turn_kind(),
+                        ),
                         owner: Arc::downgrade(&self.stop_coordinator),
                         target,
                         proof,
@@ -79,6 +84,7 @@ impl super::stop_worker::ExactStopRead {
         let (feedback, primary) =
             self.stop_coordinator
                 .reserve_feedback(&token.target, &proof, token.epoch)?;
+        feedback.associate_origin(token.origin.clone());
         *consumed = Some(Arc::downgrade(&feedback.inner));
         drop(consumed);
         if !primary {

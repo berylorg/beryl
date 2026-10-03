@@ -607,6 +607,15 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Eligibility is a revocable observation, not reserved dispatch authority. Consuming it revalidates
   the exact service incarnation, foreground target and operation fence at the existing stop
   admission cut; a successor is never selected in its place.
+- Selected-thread status is a bounded typed observation of exact parent state and opaque operation
+  origin, separate from eligibility. The origin is comparable within its exact home/service
+  incarnation, remains stable while that operation stops, and differs for every successor ordinary
+  or provider operation. It grants no mutation authority and cannot be constructed from GUI values.
+  The service owns feedback-to-origin association. Reads use coherent accepted storage and live
+  target facts off the GUI thread; drift fails closed. Ordinary working requires exact live
+  authority, while durable compaction status may exist before an eligible foreground target.
+  Terminal/recovery state and authority loss cannot retain an active popup anchor, even when the
+  same thread remains selected; feedback remains associated with its original request.
 - Before a GUI request can cause admission or dispatch, it reserves a bounded feedback record.
   Capacity refusal has no stop effect. The request returns the same opaque consumer handle once
   processing has begun, including when dispatch or admission is uncertain; an error cannot erase

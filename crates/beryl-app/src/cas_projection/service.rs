@@ -93,6 +93,7 @@ pub(crate) use shutdown_settlement::{
 mod stop_feedback;
 mod stop_worker;
 pub use stop_worker::ExactStopWorker;
+pub use stop_worker::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
 mod stop_work;
 mod work_facts;
 mod work_sources;

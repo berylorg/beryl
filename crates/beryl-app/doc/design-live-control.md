@@ -73,6 +73,35 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   Publication loss may reject entry or invalidate an eligibility observation, but cannot replace
   feedback returned after request processing begins with a rejection. Preserve that opaque handle
   and fence its visible application separately; publication loss grants no retry or successor access.
+- The same weak worker supplies a bounded selected-thread status observation containing the exact
+  typed last parent state, a comparable opaque operation origin when known, and exact stop
+  eligibility. Storage and live-owner observations remain off GPUI. A coherent observation uses
+  accepted typed turn, turn-state, input-gate and active-target facts; drift or unavailable authority
+  fails closed rather than combining facts from successive operations. Ordinary `working` requires
+  exact live authority; durable compaction state may precede availability of stop eligibility.
+  Gate-selected compaction remains visibly `compacting` through final settlement, including when
+  its provider turn already has a proven terminal outcome. That terminal fact independently makes
+  its exact popup anchor inactive; a workflow label cannot keep terminal stop controls available.
+  After compaction settlement, the ordinary committed parent owns the last-turn readout again.
+- Operation origins are service-owned observations, not command capabilities or visible backend
+  identifiers. Their equality includes the home/service incarnation, thread and exact ordinary or
+  provider operation. An origin remains stable through stop admission and feedback convergence,
+  changes for a successor, and grants no admission, join or retry authority. The service associates
+  each feedback handle with its originating operation so consumers can compare it with the current
+  observation without reconstructing a target or proof.
+- A window retains only its latest status observation and bounded exact request feedback. It
+  revalidates selection, publication and service identity before applying worker results. Popup
+  feedback requires the same still-active operation origin; terminal state, replacement, drift or
+  authority loss closes that anchor while retaining required feedback for the Notifications
+  contributor. Disposal releases presentation ownership without changing execution. View counts
+  remain unknown unless their separate exact history and viewport facts are available; status
+  observation never loads history or submits backend work to fill them.
+- Each window awaits at most one status read at a time and retains at most 72 exact feedback
+  handles, including its current popup and pending Notifications handoffs. Retention exhaustion
+  disables new request admission before any stop effect; required waiting or resolved feedback is
+  not evicted to make room. This presentation budget grants no additional service or execution
+  capacity. A disposed view releases its observation task and presentation handles without
+  cancelling an admitted request.
 
 ## Compaction And Continuation
 

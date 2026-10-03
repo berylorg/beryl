@@ -12,6 +12,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            status_controls: status_controls::ExactStatusControls::new(cx),
             startup_interaction: None,
             shutdown_interaction_gated: false,
             exit_disabled_reason: None,
@@ -133,6 +134,7 @@ impl MainWindowShellRoot {
 
 impl Render for MainWindowShellRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_status_controls(window, cx);
         self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
@@ -158,6 +160,8 @@ impl Render for MainWindowShellRoot {
         let command = (self.creation.is_some() || controller.is_threadless())
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
+        let status = status_controls::render_strip(self, cx);
+        let stop_menu = status_controls::render_menu(self, window, cx);
         let input_panel = composer.map(|composer| {
             div()
                 .id("main-window-user-input-panel")
@@ -213,13 +217,8 @@ impl Render for MainWindowShellRoot {
                     )
                     .children(input_panel),
             )
-            .child(
-                div()
-                    .id("main-window-status-line")
-                    .h(px(0.))
-                    .flex_none()
-                    .bg(appearance.status),
-            )
+            .child(status)
+            .children(stop_menu)
             .child(self.notices.widget.clone())
             .into_any_element()
     }

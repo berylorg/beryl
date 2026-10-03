@@ -60,6 +60,7 @@ mod runtime_interest;
 mod runtime_work;
 mod scheduled_ordinary;
 mod service;
+pub use service::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
 mod service_config;
 mod service_registry;
 mod service_supervisor;
@@ -187,8 +188,8 @@ pub(crate) use service::recovery_preparation::{
 };
 pub(crate) use service::recovery_retirement::{CasRetirementDisposalFailure, CasRetirementFailure};
 pub use service::{
-    CasProjectionCoordinator, DiscussionResolutionOutcome, ExactStopWorker, LiveHomeCommand, ProcessWorkCursor,
-    ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
+    CasProjectionCoordinator, DiscussionResolutionOutcome, ExactStopWorker, LiveHomeCommand,
+    ProcessWorkCursor, ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
     ProcessWorkPageLimits, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
     ScopedDiscussionResolutionOutcome, SubmissionExecutionWake,

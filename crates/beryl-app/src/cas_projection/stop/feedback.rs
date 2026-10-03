@@ -57,6 +57,24 @@ impl PartialEq for ExactStopFeedback {
 impl Eq for ExactStopFeedback {}
 
 impl ExactStopFeedback {
+    pub fn operation_origin(&self) -> Option<crate::cas_projection::ExactOperationOrigin> {
+        self.inner
+            .origin
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    pub(in crate::cas_projection) fn associate_origin(
+        &self,
+        origin: crate::cas_projection::ExactOperationOrigin,
+    ) {
+        let mut current = self.inner.origin.lock().unwrap_or_else(|p| p.into_inner());
+        if current.is_none() {
+            *current = Some(origin);
+        }
+    }
+
     pub fn snapshot(&self) -> ExactStopFeedbackSnapshot {
         *self.inner.latest.lock().unwrap_or_else(|p| p.into_inner())
     }
@@ -79,7 +97,31 @@ pub struct ExactSoftStopEligibility {
     pub(in crate::cas_projection) inner: Arc<EligibilityRecord>,
 }
 
+impl ExactSoftStopEligibility {
+    pub fn operation_origin(&self) -> crate::cas_projection::ExactOperationOrigin {
+        self.inner.origin.clone()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_projected_feedback(
+        &self,
+        state: ExactStopFeedbackState,
+    ) -> Result<ExactStopFeedback, ExactStopRequestError> {
+        let owner = self
+            .inner
+            .owner
+            .upgrade()
+            .ok_or(ExactStopRequestError::Revoked)?;
+        let (feedback, _) =
+            owner.reserve_feedback(&self.inner.target, &self.inner.proof, self.inner.epoch)?;
+        feedback.associate_origin(self.inner.origin.clone());
+        feedback.inner.update(state, None);
+        Ok(feedback)
+    }
+}
+
 pub(in crate::cas_projection) struct EligibilityRecord {
+    pub(in crate::cas_projection) origin: crate::cas_projection::ExactOperationOrigin,
     pub(in crate::cas_projection) owner: Weak<StopCoordinator>,
     pub(in crate::cas_projection) target: StopOperationTarget,
     pub(in crate::cas_projection) proof: StopTargetProof,
@@ -97,6 +139,7 @@ pub enum ExactStopRequestError {
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct FeedbackRecord {
+    origin: Mutex<Option<crate::cas_projection::ExactOperationOrigin>>,
     target: StopOperationTarget,
     proof: StopTargetProof,
     latest: Mutex<ExactStopFeedbackSnapshot>,
@@ -207,6 +250,7 @@ impl StopCoordinator {
             .checked_add(1)
             .ok_or(ExactStopRequestError::Revoked)?;
         let inner = Arc::new(FeedbackRecord {
+            origin: Mutex::new(None),
             target: target.clone(),
             proof: proof.clone(),
             latest: Mutex::new(ExactStopFeedbackSnapshot {

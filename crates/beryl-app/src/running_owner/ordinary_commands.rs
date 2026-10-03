@@ -15,6 +15,14 @@ struct MountedRunningOwner(std::rc::Weak<RefCell<RunningProcessOwner>>);
 impl gpui::Global for MountedRunningOwner {}
 
 impl RunningProcessOwner {
+    pub(crate) fn status_stop_worker(
+        &self,
+    ) -> Option<crate::app_services::PublishedExactStopWorker> {
+        self.process
+            .services
+            .as_ref()?
+            .published_exact_stop_worker()
+    }
     #[cfg(test)]
     pub(crate) fn test_order_shells_by_descending_window_id(&mut self, app: &App) {
         self.process
@@ -90,9 +98,13 @@ impl RunningProcessOwner {
             }
             retained.process.commands.window_command(id)
         };
+        let stop_worker = owner.borrow().status_stop_worker();
         if window
             .update(app, |root, window, cx| {
-                root.mount_running_command(command, window, cx)
+                root.mount_running_command(command, window, cx);
+                if let Some(worker) = stop_worker {
+                    root.mount_exact_status_worker(worker, window, cx);
+                }
             })
             .is_err()
         {
@@ -146,10 +158,14 @@ impl RunningProcessOwner {
         if commands.is_empty() {
             return Err("ordinary commands require published windows".into());
         }
+        let stop_worker = owner.borrow().status_stop_worker();
         for (window, command) in commands {
             window
                 .update(app, |root, window, cx| {
-                    root.mount_running_command(command, window, cx)
+                    root.mount_running_command(command, window, cx);
+                    if let Some(worker) = &stop_worker {
+                        root.mount_exact_status_worker(worker.clone(), window, cx);
+                    }
                 })
                 .map_err(|e| e.to_string())?;
         }

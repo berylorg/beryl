@@ -31,9 +31,69 @@ pub(crate) struct PublishedMainWindowServices {
 pub(crate) struct PublishedExactStopWorker {
     worker: crate::cas_projection::ExactStopWorker,
     lifetime: Weak<()>,
+    session: Option<beryl_state::SessionState>,
 }
 
 impl PublishedExactStopWorker {
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn for_test(
+        worker: crate::cas_projection::ExactStopWorker,
+        lifetime: Weak<()>,
+        session: beryl_state::SessionState,
+    ) -> Self {
+        Self {
+            worker,
+            lifetime,
+            session: Some(session),
+        }
+    }
+    pub(crate) fn selected_operation_snapshot(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> crate::cas_projection::ExactSelectedOperationSnapshot {
+        if !self.selection_current(selection) {
+            return crate::cas_projection::ExactSelectedOperationSnapshot::unavailable();
+        }
+        let snapshot = self
+            .worker
+            .selected_operation_snapshot(selection.claim().thread_id());
+        if self.selection_current(selection) {
+            snapshot
+        } else {
+            crate::cas_projection::ExactSelectedOperationSnapshot::unavailable()
+        }
+    }
+
+    fn selection_current(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        let identity = self.worker_identity();
+        self.publication_current()
+            && selection.binding().home_id() == identity.0
+            && selection.binding().home_generation() == identity.1
+            && self.session.as_ref().is_some_and(|session| {
+                self.worker.window_selection_current(
+                    session,
+                    selection.window_id(),
+                    selection.claim(),
+                )
+            })
+    }
+
+    pub(crate) fn request_selected_soft_stop(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+        eligibility: &crate::cas_projection::ExactSoftStopEligibility,
+    ) -> Result<
+        crate::cas_projection::ExactStopFeedback,
+        crate::cas_projection::ExactStopRequestError,
+    > {
+        if !self.selection_current(selection) {
+            return Err(crate::cas_projection::ExactStopRequestError::Revoked);
+        }
+        self.request_exact_soft_stop(eligibility)
+    }
     pub(crate) fn publication_current(&self) -> bool {
         self.lifetime.upgrade().is_some()
     }
@@ -101,7 +161,12 @@ pub(crate) fn request_published_exact_soft_stop_for_test(
     eligibility: &crate::cas_projection::ExactSoftStopEligibility,
 ) -> Result<crate::cas_projection::ExactStopFeedback, crate::cas_projection::ExactStopRequestError>
 {
-    PublishedExactStopWorker { worker, lifetime }.request_exact_soft_stop(eligibility)
+    PublishedExactStopWorker {
+        worker,
+        lifetime,
+        session: None,
+    }
+    .request_exact_soft_stop(eligibility)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -117,6 +182,14 @@ pub(crate) enum CloseConfirmationPreparationError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn published_exact_stop_worker(&self) -> Option<PublishedExactStopWorker> {
+        let graph = self.graph()?;
+        Some(PublishedExactStopWorker {
+            worker: graph.cas().exact_stop_worker(),
+            lifetime: Arc::downgrade(graph.restore_lifetime.as_ref()?),
+            session: Some(graph.state().session()),
+        })
+    }
     pub(crate) fn admit_ordinary_close(
         &self,
         members: &[WindowId],
@@ -215,6 +288,7 @@ impl ProcessServiceOwner {
             exact_stop: PublishedExactStopWorker {
                 worker: graph.cas().exact_stop_worker(),
                 lifetime: lifetime.clone(),
+                session: Some(graph.state().session()),
             },
             lifetime,
             restored_activation: inputs.restored_activation_source,

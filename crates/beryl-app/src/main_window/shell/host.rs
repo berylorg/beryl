@@ -16,6 +16,7 @@ mod restored;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
+mod status_controls;
 pub use shutdown_draft::{
     MainWindowShutdownDraft, MainWindowShutdownDraftAdvance, MainWindowShutdownDraftRelease,
 };
@@ -608,6 +609,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    status_controls: status_controls::ExactStatusControls,
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,
     exit_disabled_reason: Option<&'static str>,

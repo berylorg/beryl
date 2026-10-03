@@ -496,7 +496,10 @@
   inventory; [evidence](../../failures/executable-bootstrap.md#exact-stop-feedback-admission-evidence).
 - [x] Accepted generation-bound exact-stop worker access through published window services without
   retaining graph or execution resources; [canonical and review evidence](../../failures/executable-bootstrap.md#exact-stop-worker-access-readiness).
-  Status controls and notice fallback remain separate mounts.
+- [x] Mounted and independently accepted the production exact status strip and Soft stop popup,
+  with coherent typed observations, opaque operation origins, bounded feedback and window/selection
+  fences; [canonical mounted evidence](../../failures/executable-bootstrap.md#exact-status-mount-qualification).
+  Notice fallback remains the next separate mount; other status operations remain deferred.
 - [ ] Implement exact soft-stop feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

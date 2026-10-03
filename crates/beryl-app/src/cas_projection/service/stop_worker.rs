@@ -1,5 +1,10 @@
 use std::sync::Weak;
 
+mod selected_operation;
+pub use selected_operation::{
+    ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot,
+};
+
 use super::commands::PreparedStop;
 use super::*;
 use crate::cas_projection::{
@@ -57,6 +62,41 @@ impl ProjectionConnectionService {
 }
 
 impl ExactStopWorker {
+    pub(crate) fn window_selection_current(
+        &self,
+        session: &beryl_state::SessionState,
+        window: beryl_model::WindowId,
+        selection: beryl_state::WindowClaimSelection,
+    ) -> bool {
+        let Some(read) = self.read() else {
+            return false;
+        };
+        let Some(home) = read.home.as_deref() else {
+            return false;
+        };
+        session
+            .window_claim_catalog_source(home, window)
+            .ok()
+            .and_then(|source| source.claim())
+            .is_some_and(|claim| {
+                claim.window_id() == window
+                    && claim.thread_id() == selection.thread_id()
+                    && claim.generation() == selection.generation()
+                    && claim.revision() == selection.revision()
+            })
+    }
+
+    pub fn selected_operation_snapshot(
+        &self,
+        thread: SyndicThreadId,
+    ) -> ExactSelectedOperationSnapshot {
+        let Ok(_command) = self.command_authorizer.authorize() else {
+            return ExactSelectedOperationSnapshot::unavailable();
+        };
+        self.read()
+            .and_then(|read| read.selected_operation_snapshot(thread))
+            .unwrap_or_else(ExactSelectedOperationSnapshot::unavailable)
+    }
     pub fn home_id(&self) -> BerylHomeId {
         self.home_id
     }

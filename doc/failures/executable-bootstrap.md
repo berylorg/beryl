@@ -208,3 +208,88 @@ The isolated canonical checkout was removed after exact path and reparse checks;
 or test process remains. Failed fixtures omitted home paths, so any residue remains unidentified
 and was not swept. No dependency, manifest, lockfile or production worker-stack change was made.
 Status controls and notice fallback remain separate mounts.
+
+## Exact Status Readout Readiness
+
+Production mount inspection after worker-access acceptance on 2026-10-03 found a second missing
+input: the exact-stop worker exposes opaque eligibility and bounded request feedback, but no exact
+parent-state readout or comparable operation origin. `ResidentTranscriptStatusFacts` in
+`shell/syndic_transcript/status_facts.rs` describes presentation/history availability and initializes
+View counts as unknown. `shell/turn_view_status.rs` consumes legacy conversation-shell turn state
+and string-based cancellable targets; the production main-window composer exposes only editor
+selection and submission status. None is the required live selected-operation projection.
+
+The worker's unavailable reasons cannot distinguish ordinary work, compaction, active work without
+eligibility and terminal state. Eligibility object equality cannot establish same-operation origin:
+the service mints a new internal eligibility record on each read. Feedback snapshot and record
+equality do not compare its origin with the current selected operation. Thread selection alone
+cannot prevent a waiting record or popup from moving to a same-thread successor.
+
+Recommended correction: expose a bounded service-owned status readout
+and opaque comparable origin/feedback association through the weak published worker. Use accepted
+typed storage turn, turn-state, input-gate and active-CAS primitives off the GUI thread. Preserve
+origin through stopping and change it for successor operations; do not expose target/proof
+construction or let the GUI infer association from visible IDs. Keep this supporting projection
+inside the production status mount's acceptance so qualification includes the actual controls.
+Phase 711 stopped at this readiness boundary; no GUI code, tests or runtime resources were created
+during inspection. Operator subsequently authorized continuation on 2026-10-03. The CAS-live and
+app live-control authorities now define this bounded projection within the mounted-control
+acceptance, including coherent reads, stable operation origins and feedback association.
+
+## Exact Status Mount Qualification
+
+Independent review of the in-progress production mount on 2026-10-03 identified three invalid
+assumptions. Provider terminal lifecycle must not become an ordinary `ok`, `error` or `interrupted`
+label while its compaction gate still awaits settlement. A durable `compacting` readout also does
+not prove a still-live popup anchor: terminal, unknown-terminal and lost-live-proof observations
+must close that anchor independently. Finally, the window's Exit, ordinary-close and startup
+mutation gates must visibly disable and reject the new command, even though process shutdown may
+still permit existing-work interruption through its own service boundary. The production changes
+now separate workflow display, exact operation activity, eligibility and window mutation gates.
+Proof drift between the initial and final reads invalidates the complete observation.
+
+Initial mounted fixture runs failed before qualifying the controls: the fixture omitted its
+initialized session header, used an acquisition timestamp beyond its submission clock, and drew
+the window from inside a root entity update, causing reentrant GPUI updates. Correct the fixture
+chronology and session setup, draw through `App::update_window`, and require real mounted lifecycle
+evidence before acceptance. Failed run `a7092fcb-ea99-417d-8d09-5f47b3026089` cancelled its second case
+after shell acquisition failed; subsequent bounded runs retain separate logs in
+`.tmp/exact-status-controls-evidence`. Exact logged fixture homes were verified absent; unlogged
+residue cannot be identified by timing and remains untouched.
+
+The fixture also submitted before GPUI realized the initial composer, leaving its mounted claim
+invalid despite a correct direct service `working` observation. Realize the composer before
+submission; do not weaken selection validation to accommodate fixture order. Actual pointer
+activation exposed parent-shell mouse-down focus transfer, so the pointer-only anchor suppresses
+that transfer and the popup returns focus to the valid prior control. The first two mounted cases
+passed in run `45d370a4-fc2d-49f9-8ba5-e1da38fee890`; final qualification also covers the broader lifecycle.
+
+Review also caught a stale request completion writing `RequestInProgress` into the new selection's
+snapshot. Retain its original feedback independently, but fence visible state changes with the
+captured generation, authoritative selection and publication/service identity. Reserve pending
+admission across selection changes so concurrent callbacks cannot exceed presentation retention.
+The same-thread successor case also requires origin changes to advance the observation generation
+and request completion to compare its captured origin before changing presentation. Thread claim
+and service identity alone do not distinguish that successor. Real successor fixtures must use a
+submission clock later than the capture's wall-clock terminal timestamp and disjoint identity
+counters; earlier timestamps correctly fail admission instead of establishing the race test.
+
+Final acceptance: canonical locked metadata and combined `beryl-app`/`beryl` all-target checks
+passed with test-faults enabled. Canonical serial bounded run
+`4aa6c845-38a9-44a7-aade-8990a57c0a62` passed **88/88** in 239.921 seconds, including seven actual
+mounted cases and the 81 accepted service/window cases. Final local mounted run
+`af5042d9-2a9b-4349-9e72-3f95e669b961` passed **7/7** after scoped formatting. Cases cover actual
+pointer/keyboard activation, duplicate suppression, focus return, waiting-to-interrupted feedback,
+window mutation gates, claim/publication loss, replacement and same-thread successor fences,
+compaction through settlement, fresh durable eligibility, volatile retry refusal and retention
+capacity. Nondispatch and capacity host fixtures use service-minted typed feedback; actual effects
+remain qualified by real mounted dispatch and accepted service evidence.
+
+Independent complete-boundary review accepted the final source and evidence with no blocking
+findings. All 16 source/test SHA256 hashes independently matched root and canonical files; root
+rechecked them before removing the exact canonical checkout. Evidence remains bounded in
+`.tmp/exact-status-controls-evidence`, including `source-hashes.csv`, `canonical-check.log` and
+`canonical-nextest.log`. All 15 exactly logged failed fixture homes are absent; no task-owned
+Cargo/native-test process or isolated checkout remains. No software, dependency, manifest,
+lockfile or production worker-stack change was introduced. Notifications mounting remains a
+separate acceptance boundary.
