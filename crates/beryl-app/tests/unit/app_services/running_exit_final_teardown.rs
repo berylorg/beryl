@@ -65,8 +65,15 @@ fn run(selected_count: u8, failure: Failure) {
             let StartupCompletion::Running(running) = result else { panic!("startup failed") };
             let invoking = running.windows.window_ids()[0];
             let window = running.windows.shells()[0].window();
+            let existing_settings = (failure == Failure::None && selected_count == 0).then(|| settings_window(app));
                     let owner = RunningProcessOwner::test_start_unmounted(running, app);
             let audio_ingress = owner.borrow().test_process().notification_audio.ingress();
+            {
+                let owner = owner.borrow();
+                let process = owner.test_process();
+                let sink = owner.test_services().graph().unwrap().cas().live_command_authorizer().parent_sound_sink().unwrap();
+                assert!(sink.test_bound_to(&process.parent_sound, &audio_ingress));
+            }
             if failure == Failure::Service {
                 owner.borrow_mut().test_services_mut().test_fail_shutdown_completion();
             }
@@ -80,11 +87,34 @@ fn run(selected_count: u8, failure: Failure) {
                         assert!(owner.borrow().test_process().windows.shells().is_empty());
                         assert!(owner.borrow().test_services().graph().is_none());
                         assert!(owner.borrow().test_process().notification_audio.is_finished());
+                        assert!(owner.borrow().test_process().parent_sound.is_finished());
                         assert_eq!(audio_ingress.offer(crate::notification_audio::SoundKind::EndTurn,
                             std::path::Path::new("C:\\notification-sounds\\late.wav")), crate::notification_audio::Admission::Closed);
                         completed.set(true);
                     }).unwrap();
-                command.request_exit();
+                app.spawn(async move |cx| {
+                    let existing_settings = existing_settings.unwrap();
+                    existing_settings.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 1, cx).await;
+                    let other = cx.update(|app| app.open_window(gpui::WindowOptions::default(), |_, cx| cx.new(|_| OtherWindow))).unwrap().unwrap();
+                    other.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 2, cx).await;
+                    existing_settings.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 1, cx).await;
+                    other.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 2, cx).await;
+                    let new_settings = cx.update(settings_window).unwrap();
+                    new_settings.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 1, cx).await;
+                    other.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 2, cx).await;
+                    window.update(cx, |_, window, _| window.activate_window()).unwrap();
+                    wait_focus(&owner, 1, cx).await;
+                    existing_settings.update(cx, |_, window, _| window.remove_window()).unwrap();
+                    new_settings.update(cx, |_, window, _| window.remove_window()).unwrap();
+                    other.update(cx, |_, window, _| window.remove_window()).unwrap();
+                    command.request_exit();
+                }).detach();
                 return;
             }
             app.spawn(async move |cx| {
@@ -144,6 +174,7 @@ fn run(selected_count: u8, failure: Failure) {
                     assert!(RunningProcessOwner::finish_ready_exit(&owner, request, app, move |owner, result, app| {
                         assert!(!owner.borrow().test_services_on_worker());
                         assert!(owner.borrow().test_process().notification_audio.is_finished());
+                        assert!(owner.borrow().test_process().parent_sound.is_finished());
                         assert!(audio_ingress.is_closed());
                         assert!(audio_ingress.same_lane(&owner.borrow().test_process().notification_audio.ingress()));
                         if failure == Failure::None {
@@ -267,6 +298,54 @@ fn run(selected_count: u8, failure: Failure) {
     });
     assert!(finished.get());
     assert_reopens(&directory);
+}
+
+fn settings_window(
+    app: &mut gpui::App,
+) -> gpui::WindowHandle<gpui_settings_window::SettingsWindowView> {
+    use gpui_settings_window::*;
+    open_settings_window(
+        app,
+        SettingsWindowModel::new(vec![SettingsSection::new("sound-test", "Sound")]).unwrap(),
+        SettingsWindowOptions::new("Sound focus test"),
+        SettingsWindowOpenDisposition::Visible {
+            focus_requested: false,
+        },
+    )
+    .unwrap()
+    .window_handle()
+}
+
+struct OtherWindow;
+impl gpui::Render for OtherWindow {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        _: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        gpui::div()
+    }
+}
+
+async fn wait_focus(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    expected: u8,
+    cx: &mut gpui::AsyncApp,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let focus = owner.borrow().test_process().parent_sound.test_focus();
+        if focus == expected {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "native focus remained {focus}, expected {expected}"
+        );
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
 }
 
 #[path = "running_detached_source_preparation.rs"]

@@ -119,6 +119,7 @@ impl EventRouter {
                     start_dispatched,
                     activation_durable,
                     pending_activation: pending_activation.clone(),
+                    sound_attempted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     compaction,
                     dynamic_tool_responses: std::collections::HashMap::new(),
                     sender: Some(sender),

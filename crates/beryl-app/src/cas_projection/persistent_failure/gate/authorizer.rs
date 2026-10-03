@@ -1,5 +1,18 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    #[cfg(target_os = "windows")]
+    pub(crate) fn parent_sound_sink(
+        &self,
+    ) -> Option<crate::parent_completion_sound::ParentSoundSink> {
+        self.inner.parent_sound.try_lock().ok()?.clone()
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn bind_parent_sound(&self, sink: crate::parent_completion_sound::ParentSoundSink) {
+        if let Ok(mut current) = self.inner.parent_sound.lock() {
+            *current = Some(sink);
+        }
+    }
     pub(in crate::cas_projection) fn prepare_process_closing(
         &self,
     ) -> Result<
@@ -15,7 +28,7 @@ impl LiveCommandAuthorizer {
         self.try_hold_work_open().map(drop)
     }
 
-    pub(in crate::cas_projection) fn try_hold_work_open(
+    pub(crate) fn try_hold_work_open(
         &self,
     ) -> Result<impl Sized + '_, crate::cas_projection::runtime_work::RuntimeWorkError> {
         use crate::cas_projection::runtime_work::RuntimeWorkError;

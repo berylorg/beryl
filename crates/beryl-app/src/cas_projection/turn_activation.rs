@@ -17,6 +17,7 @@ pub struct PendingTurnActivation {
     state_revision: TurnStateRevision,
     snapshot_id: SyndicExecutionSnapshotId,
     observed_at: SyndicTimestamp,
+    sound_kind: Option<syndic_storage::TurnKind>,
 }
 
 impl PendingTurnActivation {
@@ -40,7 +41,20 @@ impl PendingTurnActivation {
             state_revision,
             snapshot_id,
             observed_at,
+            sound_kind: None,
         }
+    }
+
+    pub(in crate::cas_projection) fn with_sound_kind(
+        mut self,
+        kind: syndic_storage::TurnKind,
+    ) -> Self {
+        self.sound_kind = Some(kind);
+        self
+    }
+
+    pub(in crate::cas_projection) const fn sound_kind(&self) -> Option<syndic_storage::TurnKind> {
+        self.sound_kind
     }
 
     /// Returns the durable Syndic thread owning this activation.

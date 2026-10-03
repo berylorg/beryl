@@ -392,3 +392,57 @@ performed; generated silence-tail mechanics and exact CPAL stream teardown were 
 [dependency evidence](../memory/crates.io/rodio/0.22.2/bounded-wav-and-owned-playback.md).
 Completion/attention producers remain separate and no automatic sound trigger is mounted yet.
 Bounded logs and eleven source/test hashes remain in `.tmp/notification-audio-evidence`.
+
+## Parent Completion Sound Provenance And Attention Lifetime
+
+Initial producer review on 2026-10-03 invalidated deriving sound kind from a publication permit's
+optional durable activation. Normal nonempty turns can consume activation before their terminal
+event, so that field cannot preserve admitted source provenance. Carry the original pending turn
+kind independently in every exact permit while sharing the target's one-shot attempt flag.
+Terminal history convergence and repeated selected-status facts remain excluded producers.
+
+Main-window activation alone also cannot maintain process focus: switching directly from another
+application to Settings may not produce a main-window callback or render. Observe canonical
+Settings view creation and native activation, including preexisting views, and publish only
+sendable scalar focus facts to source workers.
+
+Native monitor review identified stale-window-handle posting during destruction, a failed-stop-post
+join hang, and competing raw-context release on failed window creation. Stop must be worker-owned
+and observable before native queue creation; native callback context must have one owner through
+creation failure and destruction. Final irreversible teardown transfers and drains that worker off
+GPUI alongside the audio lane. Keep service admission validation and the final bounded metadata
+offer within one admission guard; reads and terminal publication retain their existing lock cuts.
+
+Native focus qualification must present the canonical Settings window visibly before requesting
+activation. Activating its hidden preparation window did not supply OS focus and caused the test's
+assertion to panic across a native callback. Windows reported generic `0xc0000409`; the logged
+assertion and non-unwinding panic, rather than that generic text, identify the failure. Duplicate
+terminal qualification likewise waits for observable source retirement after the driver's first
+terminal result instead of racing the handoff or relying on a fixed delay.
+
+## Parent Completion Sound Qualification
+
+Accepted the exact live parent producer on 2026-10-03. Successful typed Complete, Interrupted and
+Failed publication reaches one process-owned metadata lane using current settings and known
+attention OR facts. Turn-kind provenance survives activation publication; user and discussion
+parents qualify while continuation, compaction and maintenance do not. An exact target consumes
+one attempt even when preferences, attention or admission exclude playback. History convergence,
+repair and status restoration do not replay attempts; source and service retirement fence offers.
+
+Local run `6504d2ec-1593-4d47-b818-6fc0ef5b8a78` passed 12/12; the final actual graph/owner binding
+assertion passed in `8d9d5b26-2379-4a09-a5da-931659d901c0`. Canonical locked metadata and combined
+app/executable all-target checks passed without local overrides. Final serial canonical run
+`03c111a1-1cee-47a3-bc81-9dbe212ca200` passed 60/60 in 217.744 seconds: ten producer/monitor cases,
+four final-teardown cases, actual resident recovery and forty-five ordinary terminal/history
+regressions. Final source-authority and replacement-home assertions passed in that canonical run.
+
+Native qualification exercised canonical Settings created before and after process ownership,
+deactivation and main-window reactivation, stop before initialization, creation rejection with
+balanced context ownership, and joined monitor release before quit. The actual published graph
+uses the same process attention facts and audio ingress. Independent source, privilege, lifecycle
+and effect review found no remaining blocking findings; all twenty-one frozen source/test hashes
+match working and canonical trees. Process-local toolchain, test stack and ErrorMode were restored.
+
+Bounded evidence remains in `.tmp/parent-completion-sound-evidence`. The two exactly logged failed
+fixture homes are absent. Audible hardware playback was not qualified; device failure remains
+best effort under the accepted audio-lane contract. Optional lifecycle sounds remain unconfigured.

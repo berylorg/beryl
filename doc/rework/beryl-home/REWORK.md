@@ -506,8 +506,11 @@
 - [x] Implemented and independently accepted bounded process notification-audio ownership and
   final teardown drainage, preserving one open lane across actual recovery;
   [canonical qualification](../../failures/executable-bootstrap.md#notification-audio-qualification).
-- [ ] Mount exact parent completion/attention sound producers and explicit fail-closed repair and recovery
-  unavailable states without pretending deferred capabilities are mounted.
+- [x] Mounted and independently accepted exact live parent completion sound with current settings,
+  known attention OR facts and process-owned native focus/monitor lifetime;
+  [canonical qualification](../../failures/executable-bootstrap.md#parent-completion-sound-qualification).
+- [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
+  capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent

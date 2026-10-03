@@ -147,6 +147,7 @@ impl RunningProcessOwner {
             let (services, original, prepared, result) = work.await;
             let mut delivered = result.as_ref().map(|_| ()).map_err(Clone::clone);
             retained.borrow_mut().process.services = Some(services);
+            retained.borrow().bind_parent_sound();
             *session_slot.borrow_mut() = Some(original);
             *settlement_slot.borrow_mut() = Some(match prepared {
                 Some(graph) => CandidateSettlement::Services(Ok(graph)),

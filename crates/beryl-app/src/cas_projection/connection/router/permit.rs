@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use beryl_model::{CasLoadedSessionGeneration, CasThreadId, CasTurnId, SyndicThreadId};
 
@@ -20,6 +23,8 @@ pub(in crate::cas_projection) struct SourcePublicationPermit {
     loaded_generation: CasLoadedSessionGeneration,
     home_generation: u64,
     activation: Option<crate::cas_projection::PendingTurnActivation>,
+    sound_attempted: Arc<AtomicBool>,
+    sound_kind: Option<syndic_storage::TurnKind>,
     compaction: Option<crate::cas_projection::context_compaction::ContextCompactionTargetAuthority>,
     command: Option<crate::cas_projection::LiveCommandPermit>,
     finished: bool,
@@ -36,6 +41,14 @@ pub(in crate::cas_projection) struct SourcePublicationPostCommit {
 }
 
 impl SourcePublicationPermit {
+    pub(in crate::cas_projection) fn take_parent_sound_attempt(
+        &self,
+    ) -> Option<syndic_storage::TurnKind> {
+        if self.sound_attempted.swap(true, Ordering::AcqRel) {
+            return None;
+        }
+        self.sound_kind
+    }
     pub(in crate::cas_projection) fn stop_feedback_binding(
         &self,
     ) -> (u64, u64, CasLoadedSessionGeneration) {
@@ -271,6 +284,8 @@ struct SourcePublicationAdmission {
     loaded_generation: CasLoadedSessionGeneration,
     home_generation: u64,
     activation: Option<crate::cas_projection::PendingTurnActivation>,
+    sound_attempted: Arc<AtomicBool>,
+    sound_kind: Option<syndic_storage::TurnKind>,
     compaction: Option<crate::cas_projection::context_compaction::ContextCompactionTargetAuthority>,
 }
 
@@ -355,6 +370,11 @@ fn admit_source_publication_locked(
         loaded_generation: target.loaded_generation,
         home_generation: target.home_generation,
         activation,
+        sound_attempted: Arc::clone(&target.sound_attempted),
+        sound_kind: target
+            .pending_activation
+            .as_ref()
+            .and_then(|activation| activation.sound_kind()),
         compaction: target.compaction,
     };
     advance_revision(state);
@@ -449,6 +469,8 @@ impl EventRouter {
             loaded_generation: admission.loaded_generation,
             home_generation: admission.home_generation,
             activation: admission.activation,
+            sound_attempted: admission.sound_attempted,
+            sound_kind: admission.sound_kind,
             compaction: admission.compaction,
             command: Some(command),
             finished: false,

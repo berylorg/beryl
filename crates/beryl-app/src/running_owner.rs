@@ -108,6 +108,7 @@ pub(crate) struct RunningProcessOwner {
 
 pub(crate) struct RunningProcess {
     pub(crate) notification_audio: crate::notification_audio::NotificationAudioLane,
+    pub(crate) parent_sound: crate::parent_completion_sound::ParentCompletionSoundOwner,
     configuration: AppServiceConfiguration,
     services: Option<ProcessServiceOwner>,
     pub(crate) windows: PublishedMainWindowRestoreSet,
@@ -117,6 +118,22 @@ pub(crate) struct RunningProcess {
 }
 
 impl RunningProcessOwner {
+    pub(crate) fn bind_parent_sound(&self) {
+        if let Some(graph) = self
+            .process
+            .services
+            .as_ref()
+            .and_then(|services| services.graph())
+        {
+            graph
+                .cas()
+                .bind_parent_sound(self.process.parent_sound.sink(
+                    self.process.notification_audio.ingress(),
+                    graph.state().settings(),
+                    graph.cas().service_generation(),
+                ));
+        }
+    }
     pub(crate) fn diagnostic_window_facts(&self, app: &App) -> serde_json::Value {
         let active = app.active_window();
         let mut ids = Vec::new();
@@ -210,6 +227,7 @@ impl RunningProcessOwner {
         let owner = Rc::new(RefCell::new(Self {
             process: RunningProcess {
                 notification_audio: crate::notification_audio::NotificationAudioLane::new(),
+                parent_sound: crate::parent_completion_sound::ParentCompletionSoundOwner::new(app),
                 configuration: process.configuration,
                 services: Some(process.services),
                 windows: process.windows,
@@ -256,6 +274,7 @@ impl RunningProcessOwner {
                 StartupCleanup::Settled
             },
         }));
+        owner.borrow().bind_parent_sound();
         Self::observe_exit_availability(&owner, app);
         if let Some(mut surface) = surface {
             let retained = owner.clone();

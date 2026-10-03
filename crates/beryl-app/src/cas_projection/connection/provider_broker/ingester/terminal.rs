@@ -193,6 +193,20 @@ impl Ingester {
         }
         self.stop_coordinator
             .feedback_published_terminal(&permit, status.outcome());
+        if let Some(kind) = permit.take_parent_sound_attempt() {
+            #[cfg(target_os = "windows")]
+            if !self.authority.is_retired() {
+                if let Some(sink) = self.commands.parent_sound_sink() {
+                    sink.notify(&self.home, home_generation, &self.commands, kind, || {
+                        !self.authority.is_retired()
+                    });
+                } else {
+                    tracing::warn!("parent completion sound adapter unavailable");
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = kind;
+        }
         self.stop_coordinator
             .terminal_consumed(target.thread_id(), target.turn_id());
         self.finish_normal_terminal_permit(permit, ProvenTerminalOutcome::new(status, observed_at))

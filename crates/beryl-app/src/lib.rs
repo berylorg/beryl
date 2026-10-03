@@ -180,27 +180,27 @@
 mod branch_discussion_dynamic_tools;
 #[cfg(test)]
 extern crate self as beryl_app;
-pub mod cas_projection;
+
+#[cfg(all(test, feature = "test-faults"))]
+const EXECUTION_ROOT: &str = r"C:\work\beryl";
 mod activity_service;
 mod app_services;
 #[cfg(target_os = "windows")]
 pub mod bootstrap;
+pub mod cas_projection;
 #[cfg(target_os = "windows")]
 mod diagnostic_child_protocol;
 #[cfg(target_os = "windows")]
 mod diagnostic_child_target;
 
-#[cfg(all(test, feature = "test-faults"))]
-#[path = "../../syndic-storage/tests/support/mod.rs"]
-mod support;
 pub mod catalog_projection;
 pub mod composer_host;
 pub mod composer_marker_seal;
 pub mod conversation_tools;
 pub mod crash_reporting;
 pub mod discussion_creation;
-pub mod discussion_settlement;
 pub mod discussion_handoff_limits;
+pub mod discussion_settlement;
 mod dynamic_tool_namespace;
 mod exit_session;
 pub mod input_admission;
@@ -208,15 +208,20 @@ pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;
 pub mod main_window;
 mod notice_limits;
-pub mod process_admission;
-pub mod runtime_activity_enrollment;
-pub mod startup_surface;
-#[cfg(target_os = "windows")]
-mod startup_owner;
-#[cfg(target_os = "windows")]
-mod running_owner;
 #[cfg(target_os = "windows")]
 mod notification_audio;
+#[cfg(target_os = "windows")]
+mod parent_completion_sound;
+pub mod process_admission;
+#[cfg(target_os = "windows")]
+mod running_owner;
+pub mod runtime_activity_enrollment;
+#[cfg(target_os = "windows")]
+mod startup_owner;
+pub mod startup_surface;
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../syndic-storage/tests/support/mod.rs"]
+mod support;
 pub mod theme_runtime;
 pub mod window_acquisition;
 

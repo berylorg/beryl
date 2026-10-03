@@ -18,6 +18,10 @@ pub(super) enum PreparedStop {
 }
 
 impl ProjectionConnectionService {
+    #[cfg(target_os = "windows")]
+    pub(crate) fn bind_parent_sound(&self, sink: crate::parent_completion_sound::ParentSoundSink) {
+        self.command_authorizer.bind_parent_sound(sink);
+    }
     pub(crate) fn try_reopen_shutdown_admission(
         &self,
         fence: &crate::process_admission::ProcessAdmissionFence,
@@ -272,7 +276,7 @@ impl ProjectionConnectionService {
     /// Draft, input-admission, catalog, and other store-dependent workers must retain one scoped
     /// permit through their complete preparation, execution, and publication boundary.
     #[must_use]
-    pub(in crate::cas_projection) fn live_command_authorizer(&self) -> LiveCommandAuthorizer {
+    pub(crate) fn live_command_authorizer(&self) -> LiveCommandAuthorizer {
         self.command_authorizer.clone()
     }
 

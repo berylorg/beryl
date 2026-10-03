@@ -76,6 +76,32 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   Cancellation is checked before and after synchronous regular-file calls and between bounded
   acquisition/decode blocks. Final drain awaits an in-flight OS call and worker release off GPUI;
   this contract does not promise a bounded shutdown wall time or preemptible synchronous file I/O.
+- Ordinary sound eligibility is a source-owned one-shot attempt for an exact live home/service,
+  thread and turn incarnation, after successful direct typed parent `TurnEnded` publication.
+  Carry the admitted source's pending `TurnKind` through activation: ordinary user turns and
+  generated discussion parent handoffs are eligible classes; lifecycle continuation, provider
+  operations and maintenance are excluded. Complete, Interrupted and Failed live outcomes qualify;
+  uncertain completion, driver errors and activation cancellation back to pending do not.
+  History convergence, repair, restored rows and selected-status observations cannot emit this
+  attempt. Mark the attempt once even when eligibility, settings access or audio admission fails;
+  no historical deduplication set, replay queue or notification retry is retained.
+  A live source completing before the running-process adapter is bound consumes a diagnosed
+  unavailable-adapter attempt; later process handoff does not replay it.
+- The source adapter reads current bounded `EndTurnSound` settings off GPUI and revalidates its
+  original home/service authority before offering metadata directly to the process audio ingress.
+  Run it outside storage/runtime publication locks and never await WAV playback or gate terminal
+  history convergence on sound. Final metadata admission holds only the original service's
+  admission guard so service retirement cannot interleave between validation and offer; settings
+  and attention reads precede that guard. The adapter retains no execution capability or GUI handle.
+  A future local failed-terminal publisher must use the same exact once-only cut after its
+  authoritative terminal publication, rather than treating nondispatch as terminal failure.
+- The running process owns one desktop-attention monitor and sendable latest attention/focus
+  facts. Main and Settings native focus updates originate on GPUI; source workers consume only
+  those scalar facts and the monitor's idle/lock/lid/display snapshot. Known active triggers use
+  the Notifications OR policy; unknown/unsupported facts do not trigger or suppress another
+  known active fact. Service/window publication replacement preserves this process custody.
+  Irreversible final teardown closes the adapter/monitor and drains its worker off GPUI alongside
+  the audio lane. No additional event queue or worker-local GUI ownership is introduced.
 
 ## Settings And Themes
 

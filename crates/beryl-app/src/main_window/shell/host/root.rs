@@ -33,6 +33,11 @@ impl MainWindowShellRoot {
             home_warning_startup: None,
         };
         root.subscribe_notices(window, cx);
+        #[cfg(target_os = "windows")]
+        cx.observe_window_activation(window, |_, _, cx| {
+            crate::parent_completion_sound::refresh_focus(cx)
+        })
+        .detach();
         root
     }
 
@@ -134,6 +139,8 @@ impl MainWindowShellRoot {
 
 impl Render for MainWindowShellRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(target_os = "windows")]
+        crate::parent_completion_sound::refresh_focus(cx);
         self.sync_status_controls(window, cx);
         self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {

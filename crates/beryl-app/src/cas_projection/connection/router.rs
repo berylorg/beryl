@@ -513,6 +513,7 @@ struct TargetEntry {
     start_dispatched: bool,
     activation_durable: bool,
     pending_activation: Option<PendingTurnActivation>,
+    sound_attempted: Arc<AtomicBool>,
     compaction: Option<crate::cas_projection::context_compaction::ContextCompactionTargetAuthority>,
     dynamic_tool_responses:
         HashMap<DynamicToolCallId, Arc<dynamic_tool::DynamicToolResponseAdmission>>,

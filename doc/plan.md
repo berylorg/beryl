@@ -89,18 +89,19 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 713: Own The Bounded Process Notification Audio Lane (finished)
+# Phase 714: Mount Exact Parent Completion Sound Eligibility (finished)
 
-Accepted the single running-process audio lane with finite WAV/resource bounds, latest waiting
-replacement and off-GPUI final drainage. Canonical metadata, combined app/executable checks,
-25 passing cases and independent lifecycle/effect review passed; see
-[qualification](failures/executable-bootstrap.md#notification-audio-qualification).
-Automatic completion/attention producers remain the next separate boundary.
+Accepted the exact live parent one-shot, current preferences/attention OR evaluation and process-owned
+native focus/monitor lifetime. Canonical locked metadata, combined app/executable checks, 60 passing
+cases and independent source/lifecycle/effect review passed; see
+[qualification](failures/executable-bootstrap.md#parent-completion-sound-qualification).
+History and status restoration do not replay sounds; optional lifecycle sounds remain unconfigured.
 
-# Phase 714: Mount Exact Parent Completion Sound Eligibility (pending)
+# Phase 715: Establish Deferred Repair And Recovery Mount Readiness (pending)
 
-Connect exact source-owned ordinary parent terminal events and desktop attention facts to the
-accepted process lane, consuming current configured sound without replaying restored/status facts.
-Qualify deduplication, attention OR semantics, settings changes and lifecycle exclusions on the
-production owner. Establish the exact event/attention adapter prerequisites in their owning authority
-before activation; keep optional lifecycle sounds absent until separately configured by Beryl policy.
+Inspect the next Checkpoint 4 unavailable-state contribution against the owning backend-recovery,
+Notifications, status and app contracts. Establish exact published availability, selected-target
+identity and closest disabled-reason prerequisites before planning its implementation boundary.
+This phase accepts bounded readiness evidence, not recovery or repair product mounting. Keep the
+unavailable pinned repair decision and complete-stack recovery gates intact; missing UI adapters
+alone must not fabricate backend failure, enable Retry or select another history route.

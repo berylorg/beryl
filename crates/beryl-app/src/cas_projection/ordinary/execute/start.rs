@@ -191,7 +191,8 @@ pub(super) fn execute_in_flight(
         })?,
         snapshot_id,
         started_at,
-    );
+    )
+    .with_sound_kind(pending.turn_kind);
     let target = match projection.into_pending_live_event_target(activation) {
         Ok(target) => target,
         Err(error) => return Err(activation_failure(error.into())),

@@ -37,6 +37,7 @@ enum ServerScenario {
     AdmissionOnlyControlledClose,
     UnsubscribeFailure,
     Terminal,
+    ParentTerminal(&'static str, bool),
     RecoveryTerminal(Vec<Value>),
     ResumeTerminal(Box<str>),
     GeneratedTerminal {
@@ -112,6 +113,14 @@ impl NormalTerminalServer {
 
     pub fn spawn() -> Self {
         Self::spawn_scenario(ServerScenario::Terminal)
+    }
+
+    pub fn spawn_parent_terminal(status: &'static str) -> Self {
+        Self::spawn_scenario(ServerScenario::ParentTerminal(status, false))
+    }
+
+    pub fn spawn_duplicate_parent_terminal() -> Self {
+        Self::spawn_scenario(ServerScenario::ParentTerminal("completed", true))
     }
 
     pub fn spawn_recovery_terminal(expected_items: Vec<Value>) -> Self {
@@ -375,6 +384,25 @@ fn run_server(
             complete_projection(&mut socket);
             events.send(ServerEvent::ProjectionReady).unwrap();
             complete_ordinary_turn(&mut socket, CAS_THREAD_ID);
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::ParentTerminal(status, duplicate) => {
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
+            let mut terminal: Value = serde_json::from_str(&terminal_wire()).unwrap();
+            terminal["params"]["turn"]["status"] = json!(status);
+            if status == "failed" {
+                terminal["params"]["turn"]["error"] = json!({"message":"expected failed terminal", "codexErrorInfo":null, "additionalDetails":null});
+            }
+            send_json(&mut socket, &terminal.to_string());
+            if duplicate {
+                assert!(matches!(
+                    commands.recv_timeout(TIMEOUT).unwrap(),
+                    ServerCommand::ReleaseStopTerminal
+                ));
+                send_json(&mut socket, &terminal.to_string());
+            }
             read_until_close(&mut socket).unwrap();
         }
         ServerScenario::RecoveryTerminal(expected_items) => {
