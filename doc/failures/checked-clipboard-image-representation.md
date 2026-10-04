@@ -24,6 +24,6 @@ inferred from allocator size alone. The controlling contract is the
 Qualify nonaligned payloads and padded allocations, missing/malformed companion data,
 individual and total bounds, and partial publication failure. The existing deterministic
 checks do not substitute for native qualification. The correction passed independent review and
-all 23 deterministic cases; [native qualification](../audits/composer-marker-feedback/checked-native-clipboard.md)
-remains blocked on safely preservable clipboard preparation after the earlier access denial
-cleared. No Beryl GUI was launched.
+all 20 current deterministic cases; [native qualification](../audits/composer-marker-feedback/checked-native-clipboard.md)
+remains pending an Administrator-terminal run of the private-station harness. The Operator's
+working clipboard is excluded from further qualification. No Beryl GUI was launched.

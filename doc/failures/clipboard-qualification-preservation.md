@@ -2,18 +2,26 @@
 
 Scope: isolated GPUI native clipboard test harness.
 
-An initial harness captured the original clipboard sequence but checked ownership only
-before final restoration. Independent review found that a foreign replacement between
-preparation and the first write, or between subsequent writes, could be overwritten and
-then replaced by the stale backup. A final restoration fence cannot protect earlier writes.
+The original shared harness checked sequence only before final restoration. A foreign replacement
+before any earlier write could be overwritten, so that final fence did not protect the Operator's
+clipboard. Adding a sequence check before every mutation corrected that gap but still assumed the
+writer's held sequence would remain valid after closing the clipboard.
 
-The corrected harness retains the original sequence and checks expected sequence under
-native ownership before every clear and publication, including raw restoration. Unknown or
-foreign sequence permanently invalidates mutation eligibility. Three deterministic cases
-exercise the same helper used by the native harness, covering first-write replacement,
-later replacement and restoration, and ownership for each publication. Native execution
-is now attempted after image representation resolution. Earlier access denial cleared; the
-harness correctly refuses the current `CF_BITMAP` original before mutation pending Operator
-plain-text clipboard preparation. Independent review accepted the
-correction and focused verification passed all 16 deterministic cases (nextest run
-`c577f550-2573-426f-beba-890257a1ce37`); the native test remained ignored.
+Native run `7abb29ed-4a41-4bad-b0aa-8749e34aa006` observed read sequence 2518 versus publication
+sequence 2515 and refused stale restoration. A subsequent content-free trace observed close-time
+sequence 2522 becoming 2525 and format count three becoming six. Windows format synthesis is
+consistent with this evidence, but owner equality cannot exclude foreign additions that retain the
+previous owner. Adopting the changed sequence would weaken preservation. The Operator actively uses
+the clipboard, so its contents cannot serve as a stable qualification fixture.
+
+The accepted test correction creates its own unique window station and desktop before any clipboard
+operation. It never acquires or modifies the Operator clipboard. Cleanup destroys its message-only
+owner window, restores and verifies exact borrowed process/thread bindings, and closes only owned
+handles. The obsolete shared restoration helper and its three cases were removed. Independent
+review, focused compilation and all 20 current deterministic cases pass; native acceptance remains
+pending named-station creation from an Administrator terminal.
+
+Retain native sequence semantics in the
+[research note](../memory/topic/windows-clipboard-qualification/native-sequence-and-private-station.md).
+The [qualification evidence](../audits/composer-marker-feedback/checked-native-clipboard.md) owns
+the current resume command and remaining acceptance gates.

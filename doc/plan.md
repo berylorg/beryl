@@ -120,13 +120,16 @@ do not publish its source revision or update Beryl dependency pins. The separate
 accepted and included in the focused verification below. Native qualification and canonical
 dependency composition remain required before acceptance and publication.
 
-Current milestone: the approved image correction passed independent review and all 23 focused
-deterministic cases. The earlier `OpenClipboard` access denial cleared during read-only diagnosis.
-Native preparation now refuses the current clipboard's `CF_BITMAP` native handle before mutation.
+Current milestone: the approved image correction passed independent review and focused
+deterministic verification. The earlier `OpenClipboard` access denial cleared during read-only diagnosis.
 See [qualification evidence and resume command](audits/composer-marker-feedback/checked-native-clipboard.md).
-Operator must copy short plain text so the harness can preserve and restore the original before
-native qualification. Complete that gate before publishing source or aligning canonical dependency
-pins. No Beryl GUI was launched.
+The Operator actively uses the clipboard; no further qualification may acquire or modify it.
+The shared test was replaced with a create-only private window station/desktop. Independent review,
+locked metadata, focused Cargo check and all 20 current deterministic cases pass; analyzer restart succeeded.
+Native execution remains blocked on named-station creation permission in the unelevated agent
+process. The reviewed command in the evidence runs only the private case from an Administrator
+terminal, with no clipboard preparation. Complete that native gate before publishing source or
+aligning canonical dependency pins. No Beryl GUI was launched.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 
