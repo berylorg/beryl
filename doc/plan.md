@@ -97,3 +97,22 @@ claim commit, then completes durable disposal and widget release. The 61 affecte
 across focused runs; pinned-dependency locked library validation and independent lifecycle,
 persistence and effect review pass. [Evidence and corrections](failures/running-thread-selection-publication.md#accepted-mounted-boundary)
 retain verification and cleanup results. Complete transcript and other toolbar mounts remain separate.
+
+# Phase 725: Establish Marker Failure Feedback Mounting Readiness (pending)
+
+Diagnose the next bounded [Checkpoint 4 slice](rework/beryl-home/REWORK.md#checkpoint-4-build-the-multi-window-shell-and-navigation):
+marker-operation size refusal, temporary shared-capacity refusal and storage-failure feedback in
+the mounted composer. Trace the [composer behavior and acceptance rules](features/composer/design.md),
+[composer GUI](features/composer/gui.md), canonical widget contracts and
+[app exact-edit boundary](../crates/beryl-app/doc/design-catalog-and-composer.md) through their actual
+source, widget and shell consumers. Credit accepted marker/editor primitives and existing evidence;
+identify missing visible consumers, exact refusal/reconciliation custody, stale-selection handling
+and owned-resource release without inferring a marker-count limit or splitting an edit.
+
+Acceptance is a source-backed readiness record identifying the concrete entry points, remaining
+gaps and a derivable bounded implementation boundary. It must map evidence for unchanged draft,
+markers, caret, selection and history on determinate refusal, retained ambiguous outcomes, cut
+undo after later paste refusal, representative large drafts and bounded residency. Perform the
+required semantic completion review and documentation checks. This diagnosis authorizes no
+production implementation, dependency change or native GUI launch; unresolved material decisions
+must return to their owning design authority before implementation is planned.
