@@ -98,7 +98,7 @@ passed. Evidence distinguishes test overrides and restored capacity from product
 and actual storage restrictions. No production or dependency changes were required. Clipboard
 mounting and the complete tracker item remain open.
 
-# Phase 727: Establish Mounted Clipboard Admission Readiness (pending)
+# Phase 727: Establish Mounted Clipboard Admission Readiness (wip)
 
 Trace the propagated paste command and clipboard-limit event into their required visible consumers,
 private marker representation, exact cut provenance and bounded image/rich-paste admission APIs.
@@ -106,3 +106,17 @@ Diagnose captured insertion, cancellation, stale selection, token eligibility an
 under the composer and image-asset design authorities. Acceptance is source-backed readiness for
 the actual cut, later refused paste and usable undo workflow; production implementation is not
 authorized until every material boundary is derivable from its owning authority.
+
+The [source assessment](audits/composer-marker-feedback/clipboard-readiness.md) records the
+usable provenance, evidence/replay, cut authentication and asset primitives. Readiness is blocked:
+the native clipboard API cannot acknowledge complete writes or bound reads before allocation;
+private-token custody/eligibility and foreign draft-only marker reuse remain undecided; the
+captured paste source and cancellation lifecycle need explicit ownership. The propagated paste
+and clipboard-limit events have no downstream production consumers. No production changes,
+dependency changes or native GUI launch were made.
+
+Before production work can be scheduled, reconcile the composer, image-system, app and owned
+GPUI package authorities for those boundaries. Preserve the accepted fixed marker profile and
+opaque outcome custody. Do not select token expiry, foreign-source treatment or a clipboard
+workaround in the plan. Resume readiness review after the owning decisions are resolved; actual
+mounted cut, refused paste and usable undo remain unaccepted.

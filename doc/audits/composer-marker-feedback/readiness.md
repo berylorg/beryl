@@ -126,6 +126,9 @@ documented boundary; it does not claim a new test run or certify every later sou
 
 ## Missing Clipboard Consumer
 
+The subsequent [clipboard readiness assessment](clipboard-readiness.md) traces the actual native
+and private-source boundaries and records the authority gaps that prevent production mounting.
+
 [`construction.rs`](../../../crates/beryl-app/src/main_window/conversation_composer_owner/construction.rs)
 routes copy/cut to the owned bounded clipboard workflow, but emits `RichPastePropagated` for
 paste. [`conversation_composer_mount.rs`](../../../crates/beryl-app/src/main_window/conversation_composer_mount.rs)
