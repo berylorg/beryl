@@ -50,21 +50,45 @@ pub fn mount_with_preparation(
     + Send
     + 'static,
 ) -> Mounted {
+    mount_with_preparation_timeout(cx, seed, std::time::Duration::from_secs(20), prepare)
+}
+
+pub fn mount_with_preparation_timeout(
+    cx: &mut TestAppContext,
+    seed: u8,
+    timeout: std::time::Duration,
+    prepare: impl FnOnce(
+        &Fixture,
+        &Arc<MainWindowCreationServices>,
+        Arc<AppearanceGeneration>,
+    ) -> MainWindowShellPrepared
+    + Send
+    + 'static,
+) -> Mounted {
     cx.update(gpui_text_input::ensure_text_input_bindings);
-    let (fixture, services, mut coordinator, appearance, prepared) = home_support::join(
-        home_support::worker(move || {
-            let fixture = Fixture::new(seed);
-            let (services, initial_appearance) = creation_support::services(&fixture);
-            let coordinator = AppearanceCoordinator::new(
-                AppearanceCoordinatorConfig::new(NonZeroUsize::new(256).unwrap()),
-                initial_appearance.prepared().clone(),
-            );
-            let appearance = coordinator.current();
-            let prepared = prepare(&fixture, &services, appearance.clone());
-            (fixture, services, coordinator, appearance, prepared)
-        }),
-        cx,
-    );
+    let worker = home_support::worker(move || {
+        let fixture = Fixture::new(seed);
+        eprintln!("notice fixture: {}", fixture.directory.path().display());
+        let (services, initial_appearance) = creation_support::services(&fixture);
+        let coordinator = AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(256).unwrap()),
+            initial_appearance.prepared().clone(),
+        );
+        let appearance = coordinator.current();
+        let prepared = prepare(&fixture, &services, appearance.clone());
+        (fixture, services, coordinator, appearance, prepared)
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    while !worker.is_finished() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "notice preparation exceeded {timeout:?}"
+        );
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let (fixture, services, mut coordinator, appearance, prepared) = worker.join().unwrap();
+    eprintln!("notice fixture: shell prepared");
     let appearance_owner = cx.update(|app| {
         GpuiAppearanceWindowSet::new(appearance, NonZeroUsize::new(256).unwrap(), app)
     });
@@ -86,8 +110,10 @@ pub fn mount_with_preparation(
             GpuiMainWindowShellHost::new(app, appearance_owner.clone()).construct_hidden(prepared)
         })
         .unwrap_or_else(|_| panic!("source hidden shell"));
+    eprintln!("notice fixture: hidden shell constructed");
     cx.update(|app| shell.attach_creation(owner.clone(), app));
     drive_until(cx, |cx| cx.update(|app| shell.ready_to_publish(app)));
+    eprintln!("notice fixture: ready to publish");
     cx.update(|app| shell.publish(app).unwrap());
     let window = shell.window();
     cx.update(|app| shell.release_published_handle(app))

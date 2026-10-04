@@ -12,6 +12,10 @@ mod home_support;
 mod home_warning;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[path = "notice_mount/large_draft_feedback.rs"]
+mod large_draft_feedback;
+#[path = "mounted_composer_scale/support.rs"]
+mod large_draft_support;
 #[path = "notice_mount/lifecycle_attention.rs"]
 mod lifecycle_attention;
 #[path = "notice_mount/mutation_completion.rs"]

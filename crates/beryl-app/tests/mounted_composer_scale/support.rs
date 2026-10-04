@@ -95,27 +95,19 @@ pub fn create_third_target(
 }
 
 pub fn seed_large_published_draft(fixture: &fixture::Fixture, thread: beryl_model::SyndicThreadId) {
-    let current = fixture
-        .storage
-        .current_draft(
-            &fixture.store,
-            thread,
-            SyndicPointReadLimit::new(65_536).unwrap(),
-        )
+    seed_large_published_draft_store(&fixture.storage, &fixture.store, thread);
+}
+
+pub fn seed_large_published_draft_store(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    thread: beryl_model::SyndicThreadId,
+) {
+    let session = seed_large_candidate_draft(storage, store, thread);
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
         .unwrap()
         .unwrap();
-    let mut session = open_session(fixture.storage.clone(), &fixture.store, &current);
-    for chunk in 0..LARGE_CHUNK_COUNT {
-        let offset = (chunk * LARGE_CHUNK_BYTES) as u64;
-        session = append_chunk(
-            fixture.storage.clone(),
-            &fixture.store,
-            &session,
-            (chunk + 1) as u8,
-            offset,
-            large_chunk(chunk),
-        );
-    }
     let request = DraftEditorCandidatePublicationRequestV1::new(
         selector(&current),
         session.session_id(),
@@ -125,10 +117,9 @@ pub fn seed_large_published_draft(fixture: &fixture::Fixture, thread: beryl_mode
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(1_000),
     );
-    let capture = fixture
-        .storage
+    let capture = storage
         .capture_draft_editor_candidate_publication_source(
-            &fixture.store,
+            store,
             DraftEditorCandidatePublicationSourceCaptureRequestV1::new(
                 request.selector(),
                 syndic_storage::DraftEditorCandidateActivationBindingV1::new(
@@ -145,24 +136,43 @@ pub fn seed_large_published_draft(fixture: &fixture::Fixture, thread: beryl_mode
             ),
         )
         .unwrap();
-    let prepared = fixture
-        .storage
-        .prepare_draft_editor_candidate_publication(&fixture.store, capture, request.evidence())
+    let prepared = storage
+        .prepare_draft_editor_candidate_publication(store, capture, request.evidence())
         .unwrap();
     let outcome = execute(
-        &fixture.store,
-        fixture.storage.publish_draft_editor_candidate(
-            fixture.storage.revision(&fixture.store).unwrap(),
-            prepared.clone(),
-        ),
+        store,
+        storage.publish_draft_editor_candidate(storage.revision(store).unwrap(), prepared.clone()),
     );
     assert!(matches!(
-        fixture
-            .storage
-            .reconcile_draft_editor_candidate_publication(&fixture.store, &prepared, outcome,)
+        storage
+            .reconcile_draft_editor_candidate_publication(store, &prepared, outcome,)
             .unwrap(),
         DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
+}
+
+pub fn seed_large_candidate_draft(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    thread: beryl_model::SyndicThreadId,
+) -> DraftEditorCandidateSessionV1 {
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+        .unwrap()
+        .unwrap();
+    let mut session = open_session(storage.clone(), store, &current);
+    for chunk in 0..LARGE_CHUNK_COUNT {
+        let offset = (chunk * LARGE_CHUNK_BYTES) as u64;
+        session = append_chunk(
+            storage.clone(),
+            store,
+            &session,
+            (chunk + 1) as u8,
+            offset,
+            large_chunk(chunk),
+        );
+    }
+    session
 }
 
 pub fn assert_tail_byte(
@@ -276,7 +286,10 @@ pub fn assert_same_anchor_marker_order(
                 marker.marker_id(),
                 SyndicDraftMarkerId::from_bytes(marker_object_id(seen).to_be_bytes())
             );
-            assert_eq!(marker.label(), ImageLabelOrdinal::new((seen + 1) as u64).unwrap());
+            assert_eq!(
+                marker.label(),
+                ImageLabelOrdinal::new((seen + 1) as u64).unwrap()
+            );
             assert_eq!(marker.asset_id(), asset);
             seen += 1;
         }

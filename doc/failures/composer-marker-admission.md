@@ -185,3 +185,34 @@ production app check without default features in 172 seconds. The latter peaked 
 guarded commitment and reaped all children. Scoped completion review passed; semantic navigation
 restarted only after successful validation, and a subsequent symbol query passed. The publication
 boundary is accepted independently of deferred process-provider composition.
+
+## Large Draft Mounted Refusal Fixture
+
+Qualification on 2026-10-04 invalidated extending the five-byte notice fixture by issuing
+96 independent host edits. Preparation exceeded its small-fixture deadline, and a logged
+size-only run was stopped after 231 seconds. Reuse the established paged candidate seed instead
+of accumulating separate host history before mounting. Publishing that seed before fresh shell
+construction also invalidated acquisition's pristine durable-draft fingerprint; retain the
+unpublished candidate and activate its exact existing session/open-operation identity.
+
+The small activation fixture's page and geometry settings did not establish large-draft mounting.
+Using the accepted scale fixture's bounded text and geometry allowances reached the editor,
+existing marker and backward tail selection. The inline-marker command intentionally rejects a
+nonempty text selection: it inserts at a caret or replaces one selected marker. Use a backward
+tail-marker selection, while retaining another marker outside the viewport at the origin, to exercise
+its actual production command. Wait for an interactive, semantically settled editor between
+commands. Repeated refusal helpers
+must await a distinct feedback operation key, rather than accepting the predecessor's notice.
+These are fixture corrections; production contracts and admission profiles remain unchanged.
+
+The injected zero-head capacity override also rejects a later markerless readiness head because
+the override applies to every ready page flight. Browsing and all four refusal cycles succeeded,
+but text-edit adoption could not be expected while that test-only capacity remained disabled.
+Restore the capacity fixture's production allowance before qualifying healthy editing/history;
+retain the size override and actual storage health restrictions. This does not prove real concurrent
+reservation release or establish a production-profile violation.
+
+The corrected [qualification](../audits/composer-marker-feedback/qualification.md) passed all four
+large-draft refusal cases, existing notice regressions and the shared EOF-scale witness, with
+independent review accepting the 31-case evidence union and unaffected-case reuse. The final
+capacity case includes healthy editing/history only after restoring its injected allowance.

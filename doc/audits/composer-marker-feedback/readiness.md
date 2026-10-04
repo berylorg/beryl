@@ -169,3 +169,10 @@ Independent source-backed semantic review passed without blocking findings. Root
 reviewed distinction between feedback-token removal and owner/mount subscription replacement.
 Local link targets, heading spacing and scoped Git whitespace checks passed. No new runtime test
 claim is made; the tracker item remains open pending the qualification and clipboard boundaries.
+
+## Subsequent Qualification
+
+The [large-draft qualification](qualification.md) completes the coupled direct-marker refusal
+witness with focused virtual mounted tests and independent review. Its evidence separates test
+overrides, actual storage faults and reused production classification. The missing clipboard
+consumer and complete tracker acceptance remain pending.

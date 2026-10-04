@@ -28,10 +28,31 @@ pub(super) fn configured_mount(
     limits: DraftMarkerAdmissionLimitsV1,
     configure: impl FnOnce(&mut SyndicComposerHost) + Send + 'static,
 ) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
+    configured_seed_mount(cx, seed, limits, false, configure)
+}
+
+pub(super) fn configured_large_mount(
+    cx: &mut gpui::TestAppContext,
+    seed: u8,
+    limits: DraftMarkerAdmissionLimitsV1,
+) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
+    configured_seed_mount(cx, seed, limits, true, |_| {})
+}
+
+fn configured_seed_mount(
+    cx: &mut gpui::TestAppContext,
+    seed: u8,
+    limits: DraftMarkerAdmissionLimitsV1,
+    large: bool,
+    configure: impl FnOnce(&mut SyndicComposerHost) + Send + 'static,
+) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
     let retained = Arc::new(std::sync::Mutex::new(None));
     let captured = retained.clone();
-    let mounted =
-        support::mount_with_preparation(cx, seed, move |fixture, services, appearance| {
+    let mounted = support::mount_with_preparation_timeout(
+        cx,
+        seed,
+        std::time::Duration::from_secs(if large { 180 } else { 20 }),
+        move |fixture, services, appearance| {
             let acquisition = fixture.acquire(seed.wrapping_add(1));
             let mut host = SyndicComposerHost::new(fixture.storage.clone());
             assert!(matches!(
@@ -49,35 +70,50 @@ pub(super) fn configured_mount(
                 .unwrap(),
                 ComposerHostActivationOutcome::Activated { .. }
             ));
-            let binding = host.binding().unwrap();
-            mutation_support::commit_text(
-                &mut host,
-                &fixture.store,
-                binding,
-                2000,
-                0,
-                0,
-                "draft",
-                5,
-                1,
-            );
-            host.dispose_composer_service(&fixture.store).unwrap();
+            if large {
+                host.dispose_composer_service(&fixture.store).unwrap();
+                large_draft_support::seed_large_candidate_draft(
+                    &fixture.storage,
+                    &fixture.store,
+                    acquisition.thread_id(),
+                );
+            } else {
+                let binding = host.binding().unwrap();
+                mutation_support::commit_text(
+                    &mut host,
+                    &fixture.store,
+                    binding,
+                    2000,
+                    0,
+                    0,
+                    "draft",
+                    5,
+                    1,
+                );
+                host.dispose_composer_service(&fixture.store).unwrap();
+            }
             let mut host = SyndicComposerHost::new(fixture.storage.clone());
-            assert!(matches!(
-                host.test_activate(
+            let activation = host
+                .test_activate(
                     &fixture.store,
                     composer_support::activation_with_marker_proof(
                         acquisition.thread_id(),
-                        seed.wrapping_add(2),
-                        seed.wrapping_add(3),
+                        if large { 197 } else { seed.wrapping_add(2) },
+                        if large { 198 } else { seed.wrapping_add(3) },
                         1,
-                        5
+                        if large {
+                            large_draft_support::LARGE_DRAFT_BYTES
+                        } else {
+                            5
+                        },
                     ),
                     &CommandCancellation::new(),
                 )
-                .unwrap(),
-                ComposerHostActivationOutcome::Activated { .. }
-            ));
+                .unwrap();
+            assert!(
+                matches!(activation, ComposerHostActivationOutcome::Activated { .. }),
+                "large seeded activation: {activation:?}"
+            );
             host.test_set_mutation_admission_retained_limits(limits);
             configure(&mut host);
             let slot = MainWindowComposerSlot::new(
@@ -99,7 +135,37 @@ pub(super) fn configured_mount(
                 MainWindowShellPreparationRequest::new(
                     acquisition,
                     service,
-                    Box::new(config),
+                    Box::new(move |selection| {
+                        if !large {
+                            return config(selection);
+                        }
+                        let mut widget = composer_support::widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        );
+                        widget.layout.limits.segment_bytes = 4096;
+                        widget.geometry_limits = gpui_text_input::ExactGeometryLimits::new(
+                            49_152,
+                            16,
+                            4 * 1024 * 1024,
+                            65_536,
+                        )
+                        .unwrap();
+                        widget.segmentation_limits =
+                            gpui_text_input::SegmentationLimits::new(49_152, 4096).unwrap();
+                        widget.limits = gpui_text_input::RangeTextInputLimits::new(
+                            8 * 1024 * 1024,
+                            131_072,
+                            64,
+                            gpui::px(64.),
+                            49_152,
+                            49_152,
+                            gpui::px(16.),
+                        )
+                        .unwrap();
+                        MainWindowConversationComposerConfig::new(selection, widget)
+                            .map_err(|error| error.to_string())
+                    }),
                     services.marker_seals.clone(),
                     MainWindowComposerSubmissionRequestSource::new(
                         beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
@@ -116,7 +182,8 @@ pub(super) fn configured_mount(
                     panic!("reserve limited composer shell: {error:?}")
                 }
             })
-        });
+        },
+    );
     let service = retained.lock().unwrap().take().unwrap();
     (mounted, service)
 }
@@ -213,7 +280,28 @@ pub(super) fn asset(mounted: &support::Mounted, cx: &mut gpui::TestAppContext) -
     )
 }
 
-fn insert(
+pub(super) fn insert(
+    mounted: &support::Mounted,
+    composer: &Entity<MainWindowConversationComposer>,
+    asset: AssetId,
+    object: u64,
+    cx: &mut gpui::TestAppContext,
+) {
+    let previous = composer.read_with(cx, |composer, _| {
+        composer.mutation_feedback().map(|feedback| feedback.key)
+    });
+    request_marker(mounted, composer, asset, object, cx);
+    support::drive_until(cx, |cx| {
+        composer.read_with(cx, |composer, _| {
+            composer
+                .mutation_feedback()
+                .is_some_and(|feedback| Some(feedback.key) != previous)
+        })
+    });
+    support::draw(cx);
+}
+
+pub(super) fn request_marker(
     mounted: &support::Mounted,
     composer: &Entity<MainWindowConversationComposer>,
     asset: AssetId,
@@ -237,21 +325,17 @@ fn insert(
             })
         })
         .unwrap();
-    support::drive_until(cx, |cx| {
-        composer.read_with(cx, |composer, _| composer.mutation_feedback().is_some())
-    });
-    support::draw(cx);
 }
 
 #[derive(Debug, PartialEq)]
-struct EditorState {
-    selection: MainWindowComposerSelectionIdentity,
-    caret_and_selection: RangeSourceSelection,
-    history: RangeHistoryFrontier,
+pub(super) struct EditorState {
+    pub(super) selection: MainWindowComposerSelectionIdentity,
+    pub(super) caret_and_selection: RangeSourceSelection,
+    pub(super) history: RangeHistoryFrontier,
     markers: usize,
 }
 
-fn editor_state(
+pub(super) fn editor_state(
     composer: &Entity<MainWindowConversationComposer>,
     cx: &gpui::TestAppContext,
 ) -> EditorState {

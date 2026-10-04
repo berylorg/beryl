@@ -89,28 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 725: Establish Marker Failure Feedback Mounting Readiness (finished)
+# Phase 726: Qualify Mounted Marker Refusal Preservation (finished)
 
-Accepted [source-backed readiness](audits/composer-marker-feedback/readiness.md) with independent
-semantic review and documentation checks. Typed refusal feedback is already mounted; combined
-large-draft refusal qualification and the actual clipboard paste consumer remain missing.
-The record maps preservation, ambiguity, stale identity and release evidence without accepting
-the whole tracker item. No production code, dependency or native GUI changes were made.
-
-# Phase 726: Qualify Mounted Marker Refusal Preservation (pending)
-
-Qualify the existing refusal-to-Notifications path on a representative range-backed large draft,
-using the [readiness evidence](audits/composer-marker-feedback/readiness.md#derivable-next-boundary)
-and [composer acceptance rules](features/composer/design.md#engineering-rigor). Exercise operation
-size, temporary shared-capacity and storage failure through exact owner dispatch; compare immutable
-draft/root, history, markers, caret and directed selection, and preserve exact ambiguous custody.
-Distinguish production fixed-profile source evidence from test-only transport limits. After
-determinate refusal, prove nonresident browsing and smaller edit/history commands where healthy;
-respect actual storage failure gates. Repeated refusal, dismissal and owner retirement must retain
-bounded editor/service resources and release settled custody. Use focused nextest virtual mounted
-checks and independent semantic review, reusing unchanged accepted component evidence. Correct only
-bounded violations of the existing contract; material scope growth returns to readiness review.
-This phase does not accept clipboard mounting or close the complete marker-feedback tracker item.
+Accepted [large-draft qualification](audits/composer-marker-feedback/qualification.md) with 31
+successful focused cases and independent semantic review. Mounted direct-marker refusals preserve
+exact draft/history/selection and bounded custody; healthy edit/undo/redo and retirement release
+passed. Evidence distinguishes test overrides and restored capacity from production classification
+and actual storage restrictions. No production or dependency changes were required. Clipboard
+mounting and the complete tracker item remain open.
 
 # Phase 727: Establish Mounted Clipboard Admission Readiness (pending)
 
