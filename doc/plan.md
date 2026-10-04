@@ -110,15 +110,22 @@ The native implementation is owned in the GPUI fork under its root plan; Beryl r
 consumer/integration owner. Use the existing LLVM, one-job, no-normal-debug and nonincremental
 verification envelope. Do not launch native Beryl. Preserve unrelated source and widget-spec work.
 
-Blocked on 2026-10-04: independent review found that Windows native image allocation may
+Resolved on 2026-10-04: independent review found that Windows native image allocation may
 exceed encoded payload length. The attempted exact-size requirement refuses supported images;
-the [representation proposal](failures/checked-clipboard-image-representation.md) needs Operator
-resolution before production changes or native qualification. Preserve the unaccepted fork work;
+the Operator approved the [private companion correction](failures/checked-clipboard-image-representation.md).
+Implement the fork-owned contract and qualify padded/nonaligned payloads, malformed companion,
+complete companion publication and allocation limits. Preserve the unaccepted fork work;
 do not publish its source revision or update Beryl dependency pins. The separate
-[test preservation correction](failures/clipboard-qualification-preservation.md) proceeds under
-the Operator's test-functionality exception. Independent review accepted that correction and focused
-verification passed all 16 deterministic cases, including its three preservation controls; native
-qualification remains unexecuted. Source review still blocks acceptance on image representation.
+[test preservation correction](failures/clipboard-qualification-preservation.md) is independently
+accepted and included in the focused verification below. Native qualification and canonical
+dependency composition remain required before acceptance and publication.
+
+Current milestone: the approved image correction passed independent review and all 23 focused
+deterministic cases. Native qualification is blocked by this execution session's `OpenClipboard`
+access denial (Win32 error 5) before mutation; a separate read-only probe confirmed denial.
+See [qualification evidence and resume command](audits/composer-marker-feedback/checked-native-clipboard.md).
+Resume native qualification in a Windows session with clipboard access before publishing source
+or aligning canonical dependency pins. No Beryl GUI was launched.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 

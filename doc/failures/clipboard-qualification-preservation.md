@@ -12,6 +12,7 @@ native ownership before every clear and publication, including raw restoration. 
 foreign sequence permanently invalidates mutation eligibility. Three deterministic cases
 exercise the same helper used by the native harness, covering first-write replacement,
 later replacement and restoration, and ownership for each publication. Native execution
-remains withheld pending image representation resolution. Independent review accepted the
+is now attempted after image representation resolution, but blocked by execution-session access
+denial before mutation. Independent review accepted the
 correction and focused verification passed all 16 deterministic cases (nextest run
 `c577f550-2573-426f-beba-890257a1ce37`); the native test remained ignored.
