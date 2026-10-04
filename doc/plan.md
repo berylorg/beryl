@@ -120,16 +120,21 @@ do not publish its source revision or update Beryl dependency pins. The separate
 accepted and included in the focused verification below. Native qualification and canonical
 dependency composition remain required before acceptance and publication.
 
-Current milestone: the approved image correction passed independent review and focused
-deterministic verification. The earlier `OpenClipboard` access denial cleared during read-only diagnosis.
-See [qualification evidence and resume command](audits/composer-marker-feedback/checked-native-clipboard.md).
-The Operator actively uses the clipboard; no further qualification may acquire or modify it.
-The shared test was replaced with a create-only private window station/desktop. Independent review,
-locked metadata, focused Cargo check and all 20 current deterministic cases pass; analyzer restart succeeded.
-Native execution remains blocked on named-station creation permission in the unelevated agent
-process. The reviewed command in the evidence runs only the private case from an Administrator
-terminal, with no clipboard preparation. Complete that native gate before publishing source or
-aligning canonical dependency pins. No Beryl GUI was launched.
+Current milestone: independent review, locked metadata, focused compilation, 20 deterministic cases
+and private native qualification pass. Operator-authorized inline sudo supplied named-station
+creation privileges; no Operator clipboard acquisition occurred. Accepted GPUI source is published
+as `edd4928c5be424630da49f872e00dafbf94cf0b2`; canonical scrollbar metadata/all-target check passed and
+alignment is published as `b9e591820b61fc788f148bca1f6f80b6341a692c`. Text-input canonical locked
+metadata/all-target checks passed; its manifest/lockfile remain unaccepted working material.
+Settings-window and Beryl pins remain unchanged.
+
+Blocked on 2026-10-04: required Serena language-server restart timed out after 120 seconds following
+the successful scrollbar checks. Stop implementation; restore the Serena service and obtain a
+successful restart before relying on the changed Cargo model. The already-started text-input check
+finished successfully; all exact temporary checkouts are removed. Resume canonical text-input,
+settings-window and Beryl alignment after the tool gate clears. See
+[qualification evidence](audits/composer-marker-feedback/checked-native-clipboard.md). The Operator's
+actively used clipboard remains excluded from further qualification. No Beryl GUI was launched.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 

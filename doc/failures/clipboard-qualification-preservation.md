@@ -18,8 +18,8 @@ The accepted test correction creates its own unique window station and desktop b
 operation. It never acquires or modifies the Operator clipboard. Cleanup destroys its message-only
 owner window, restores and verifies exact borrowed process/thread bindings, and closes only owned
 handles. The obsolete shared restoration helper and its three cases were removed. Independent
-review, focused compilation and all 20 current deterministic cases pass; native acceptance remains
-pending named-station creation from an Administrator terminal.
+review, focused compilation and all 20 current deterministic cases pass. Operator-authorized inline
+sudo qualified the private native case, including binding restoration and owned-handle cleanup.
 
 Retain native sequence semantics in the
 [research note](../memory/topic/windows-clipboard-qualification/native-sequence-and-private-station.md).

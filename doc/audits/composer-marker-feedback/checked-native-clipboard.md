@@ -1,8 +1,8 @@
 # Checked Native Clipboard Qualification
 
-Status on 2026-10-04: implementation, focused compilation, deterministic verification and independent
-semantic review complete. Native acceptance and canonical dependency publication remain pending the
-private-station run from an Administrator terminal. The controlling reusable boundary is the
+Status on 2026-10-04: implementation, focused compilation, deterministic verification, private native
+qualification and independent semantic review complete. Canonical dependency alignment is paused at
+the required Serena restart gate. The controlling reusable boundary is the
 [fork design](../../../../zed-fork/doc/design.md#checked-windows-clipboard-boundary).
 
 # Implemented Boundary
@@ -53,23 +53,33 @@ writes. The stale-restoration guard refused rather than overwrite a changed clip
 [research note](../../memory/topic/windows-clipboard-qualification/native-sequence-and-private-station.md)
 and [preservation lesson](../../failures/clipboard-qualification-preservation.md) retain the evidence.
 
-# Resume Gate
+# Native Acceptance And Canonical Alignment
 
-The current unelevated process cannot create a named station (Win32 error 5); unnamed create-only
+The unelevated process could not create a named station (Win32 error 5); unnamed create-only
 creation refuses an already-existing logon-derived station (error 183). Neither preflight created
 handles or changed bindings. Do not reuse that unrelated station. Microsoft requires Administrators
 group membership for explicit station naming; this is a test-fixture prerequisite.
 
-In an Administrator PowerShell terminal, run:
+Operator authorized inline sudo. Run 82175bb6-af02-4b75-9b6f-245cff7d74bc passed the sole native
+case in 0.016 seconds, including exact binding restoration and owned-handle cleanup. The successful
+command ran from the fork:
 
 ```powershell
-Set-Location 'C:\Users\user\p\berylorg\zed-fork'
-cargo +stable --config .cargo/local.toml --config ../beryl/.tmp/checked-clipboard-qualification/build.toml nextest run --locked -p gpui --no-default-features --test checked_clipboard_native --run-ignored only --test-threads 1 -E 'test(native_ownership_format_publication_on_private_window_station)'
+sudo --inline cargo +stable --config .cargo/local.toml --config ../beryl/.tmp/checked-clipboard-qualification/build.toml nextest run --locked -p gpui --no-default-features --test checked_clipboard_native --run-ignored only --test-threads 1 -E 'test(native_ownership_format_publication_on_private_window_station)'
 ```
 
-Report the final nextest summary and any test diagnostics. The command uses the qualified one-job
-LLVM/no-debug/nonincremental envelope and runs only the private native case. Operator clipboard
-preparation is unnecessary. After native success, publish the accepted fork source revision, align
-scrollbar, text-input and settings-window pins in order, and qualify locked Beryl canonical
-app/executable composition without local overrides. Until those gates pass, source remains
-unaccepted working material and Beryl dependency pins remain unchanged.
+The command uses the qualified one-job LLVM/no-debug/nonincremental envelope and runs only the
+private native case. No Operator clipboard preparation or acquisition occurred. Accepted source
+is published as fork revision `edd4928c5be424630da49f872e00dafbf94cf0b2`. Align scrollbar, text-input
+and settings-window pins in order, then qualify locked Beryl canonical app/executable composition
+without local overrides before completing Phase 728.
+
+Canonical scrollbar locked metadata/all-target checks passed; published revision is
+`b9e591820b61fc788f148bca1f6f80b6341a692c`. Its lockfile changed only the eleven fork-owned package
+source revisions. The required Serena restart then timed out after 120 seconds. Repository
+instructions require stopping on this failure. No semantic navigation used the changed Cargo model.
+The already-started text-input canonical locked metadata/all-target check also passed; its
+manifest/lockfile remain unaccepted working material, with only twelve affected Git source changes.
+All four exactly owned temporary checkouts were removed after absolute-path/reparse checks.
+Settings-window and Beryl pins remain unchanged. Restore Serena and obtain a
+successful restart before continuing alignment or relying on semantic results.
