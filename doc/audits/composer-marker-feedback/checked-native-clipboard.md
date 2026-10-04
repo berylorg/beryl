@@ -1,7 +1,8 @@
 # Checked Native Clipboard Qualification
 
 Status on 2026-10-04: implementation and independent semantic review complete; native acceptance
-and canonical dependency publication remain blocked. The controlling reusable boundary is the
+and canonical dependency publication remain blocked on safely preservable clipboard preparation.
+The controlling reusable boundary is the
 [fork design](../../../../zed-fork/doc/design.md#checked-windows-clipboard-boundary).
 
 # Implemented Boundary
@@ -35,12 +36,27 @@ text with metadata and all four supported image formats at payload lengths 1, 3,
 diagnostic run `2748cf87-998c-4dad-984e-c9ea3a25d8ef` failed at `native.open` during preparation:
 Win32 error 5, access denied. No clipboard read or mutation followed. A separate content-free,
 read-only `OpenClipboard(NULL)` probe from the execution session also returned access denied;
-`GetOpenClipboardWindow` reported no holder. Do not interpret this as successful native qualification
-or add production retries. No Beryl GUI was launched.
+`GetOpenClipboardWindow` returned zero, which does not exclude a clipboard holder using no owner
+window. Do not interpret this as successful native qualification or add production retries.
+No Beryl GUI was launched.
+
+Further read-only diagnosis established configured full access, an unrestricted process token,
+`WinSta0\\Default`, no clipboard restriction in the current job, and clipboard access granted on
+the current window-station handle. Beryl's managed-process job configures only kill-on-close.
+These observations do not establish sandboxing as the cause of the earlier denial.
+
+The same `OpenClipboard(NULL)` probe subsequently succeeded and closed cleanly from the agent's
+session. The native test then reached preparation in run
+`32e78a64-e619-4ac3-b7d6-4762c4b86c16` but returned `Unsupported` before mutation. Content-free
+format enumeration identified `CF_BITMAP` (format 2), a native handle excluded by the harness's
+memory-only preservation policy. Current clipboard content must be Operator-replaced with plain
+text before retrying qualification. The earlier access denial is consistent with transient
+contention; its exact holder or cause remains unidentified.
 
 # Resume Gate
 
-Run the native target from an interactive Windows execution session with clipboard access:
+Operator should first copy a short plain-text value. Agent-session clipboard access has recovered;
+rerun the native target only with a safely preservable original clipboard:
 
 ```text
 cargo +stable --config .cargo/local.toml --config ../beryl/.tmp/checked-clipboard-qualification/build.toml nextest run --locked -p gpui --no-default-features --test checked_clipboard_native --run-ignored only --test-threads 1

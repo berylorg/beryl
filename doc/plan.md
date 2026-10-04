@@ -121,11 +121,12 @@ accepted and included in the focused verification below. Native qualification an
 dependency composition remain required before acceptance and publication.
 
 Current milestone: the approved image correction passed independent review and all 23 focused
-deterministic cases. Native qualification is blocked by this execution session's `OpenClipboard`
-access denial (Win32 error 5) before mutation; a separate read-only probe confirmed denial.
+deterministic cases. The earlier `OpenClipboard` access denial cleared during read-only diagnosis.
+Native preparation now refuses the current clipboard's `CF_BITMAP` native handle before mutation.
 See [qualification evidence and resume command](audits/composer-marker-feedback/checked-native-clipboard.md).
-Resume native qualification in a Windows session with clipboard access before publishing source
-or aligning canonical dependency pins. No Beryl GUI was launched.
+Operator must copy short plain text so the harness can preserve and restore the original before
+native qualification. Complete that gate before publishing source or aligning canonical dependency
+pins. No Beryl GUI was launched.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 

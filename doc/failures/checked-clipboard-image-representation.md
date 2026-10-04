@@ -25,4 +25,5 @@ Qualify nonaligned payloads and padded allocations, missing/malformed companion 
 individual and total bounds, and partial publication failure. The existing deterministic
 checks do not substitute for native qualification. The correction passed independent review and
 all 23 deterministic cases; [native qualification](../audits/composer-marker-feedback/checked-native-clipboard.md)
-is blocked by execution-session clipboard access denial before mutation. No Beryl GUI was launched.
+remains blocked on safely preservable clipboard preparation after the earlier access denial
+cleared. No Beryl GUI was launched.
