@@ -97,7 +97,7 @@ compact private-source expiry, foreign allocation, atomic origin admission fenci
 and streaming sidecar ownership are defined. Missing production APIs and actual clipboard workflow
 qualification remain the implementation boundaries below. No native Beryl was launched.
 
-# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (pending)
+# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (wip)
 
 Implement the owning GPUI checked Windows read/write boundary for the composer consumer. Preserve
 caller byte ceilings before allocation, complete text/metadata acknowledgement, exact snapshot
@@ -105,6 +105,20 @@ sequence and typed unsupported/native failure. Qualify native ownership and form
 an isolated harness, injected write/read/close failures, exact-fit/one-over and malformed inputs;
 independently review unsafe memory, complete acknowledgement and bounded release. Publish the
 accepted fork revision and qualify Beryl's canonical dependency composition before consuming it.
+
+The native implementation is owned in the GPUI fork under its root plan; Beryl remains the
+consumer/integration owner. Use the existing LLVM, one-job, no-normal-debug and nonincremental
+verification envelope. Do not launch native Beryl. Preserve unrelated source and widget-spec work.
+
+Blocked on 2026-10-04: independent review found that Windows native image allocation may
+exceed encoded payload length. The attempted exact-size requirement refuses supported images;
+the [representation proposal](failures/checked-clipboard-image-representation.md) needs Operator
+resolution before production changes or native qualification. Preserve the unaccepted fork work;
+do not publish its source revision or update Beryl dependency pins. The separate
+[test preservation correction](failures/clipboard-qualification-preservation.md) proceeds under
+the Operator's test-functionality exception. Independent review accepted that correction and focused
+verification passed all 16 deterministic cases, including its three preservation controls; native
+qualification remains unexecuted. Source review still blocks acceptance on image representation.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 
