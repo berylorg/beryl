@@ -264,6 +264,8 @@
   publication, diagnostic activation, and repair/recovery outcome authority.
 - [ ] Implement and verify marker-operation size refusal, shared-capacity refusal, and storage-failure
   feedback while preserving large drafts, bounded residency, and atomic edit outcomes.
+  [Readiness evidence](../../audits/composer-marker-feedback/readiness.md) credits existing mounted
+  feedback; combined large-draft refusal and actual clipboard paste qualification remain open.
 - [x] Established and verified bounded process main-window reservations with exact release and independent acquisition/abandonment flight custody.
 - [x] Established bounded selected-editor preparation before native construction, exact stale-selection rejection, and canonical first-presentable readiness with supported configuration verification.
 - [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.
