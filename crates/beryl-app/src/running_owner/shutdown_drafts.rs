@@ -71,15 +71,16 @@ impl RunningShutdownDrafts {
                 return;
             }
             entry.1 = window
-                .update(app, |root, _, cx| root.begin_failed_shutdown_draft(cx))
+                .update(app, |root, window, cx| {
+                    root.begin_failed_shutdown_draft(window, cx)
+                })
                 .map_err(|e| e.to_string())
                 .and_then(|r| r);
             return;
         }
         let draft = window
             .update(app, |root, window, cx| {
-                let _ = window;
-                root.begin_failed_shutdown_draft(cx)
+                root.begin_failed_shutdown_draft(window, cx)
             })
             .map_err(|e| e.to_string())
             .and_then(|r| r);

@@ -17,6 +17,12 @@ use gpui::{App, Application};
 mod diagnostic;
 mod inputs;
 
+pub(crate) fn thread_activation_request(
+    thread: beryl_model::SyndicThreadId,
+) -> Result<(crate::composer_host::ComposerHostActivationRequest, syndic_storage::DraftPieceOperationIdV1), String> {
+    inputs::activation(thread)
+}
+
 pub use crate::startup_owner::StartupHomeOpen as HomeOpenOutcome;
 pub type HomeOpener = Arc<dyn Fn(&Path, CommandCancellation) -> HomeOpenOutcome + Send + Sync>;
 

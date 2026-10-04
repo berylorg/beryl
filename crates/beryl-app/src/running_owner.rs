@@ -30,7 +30,9 @@ mod initial_observation;
 mod observation;
 mod ordinary_close_session;
 mod ordinary_commands;
+mod running_threads_commands;
 mod progress;
+mod running_threads_attention;
 mod shutdown_drafts;
 mod unchanged_running;
 mod unremoved_windows;
@@ -89,6 +91,8 @@ pub(crate) struct RunningProcessOwner {
     #[cfg(test)]
     before_native_close_restoration: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
     exit_availability: Option<gpui::Task<()>>,
+    attention_task: Option<gpui::Task<()>>,
+    attention_routes: running_threads_attention::RunningThreadsAttentionRoutes,
     observed_home_failure: Option<exit_availability::ObservedHomeFailure>,
     #[cfg(test)]
     exit_wait_stop: Option<futures_channel::oneshot::Sender<futures_channel::oneshot::Sender<()>>>,
@@ -258,6 +262,8 @@ impl RunningProcessOwner {
             #[cfg(test)]
             before_native_close_restoration: None,
             exit_availability: None,
+            attention_task: None,
+            attention_routes: running_threads_attention::RunningThreadsAttentionRoutes::default(),
             observed_home_failure: None,
             #[cfg(test)]
             exit_wait_stop: None,
@@ -287,6 +293,7 @@ impl RunningProcessOwner {
         }));
         owner.borrow().bind_parent_sound();
         Self::observe_exit_availability(&owner, app);
+        Self::observe_lifecycle_attention(&owner, app);
         if let Some(mut surface) = surface {
             let retained = owner.clone();
             app.spawn(async move |cx| {

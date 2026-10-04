@@ -5,7 +5,7 @@ use beryl_home_store::{
 
 use crate::{
     ExactThreadCatalogSummary, PreparedThreadCatalogSummaryReplacement, SyndicMutationError,
-    ThreadCatalogSummaryRecord, ThreadCatalogTitleSource,
+    ThreadCatalogSummaryPreparation, ThreadCatalogSummaryRecord, ThreadCatalogTitleSource,
     codec::{
         HistorySummariesFamily, ThreadAttributesFamily, ThreadCatalogSummariesCodec,
         ThreadCatalogSummariesFamily, ThreadExecutionsFamily, ThreadsFamily,
@@ -24,6 +24,45 @@ struct ValidateCurrentThreadCatalogSummary {
 }
 
 impl SyndicStorage {
+    pub fn validate_thread_catalog_summary_pair(
+        &self,
+        first: ExactThreadCatalogSummary,
+        second: Option<ExactThreadCatalogSummary>,
+    ) -> Result<ValidationContribution, SyndicMutationError> {
+        if second.as_ref().is_some_and(|other| {
+            other.source_revision != first.source_revision
+                || other.summary.thread_id() == first.summary.thread_id()
+        }) {
+            return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+        }
+        Ok(self.handle.validation(
+            first.source_revision,
+            ValidateThreadCatalogSummaryPair { first, second },
+        ))
+    }
+
+    pub fn publish_thread_catalog_summary_pair(
+        &self,
+        first: ThreadCatalogSummaryPreparation,
+        second: Option<ThreadCatalogSummaryPreparation>,
+    ) -> Result<MutationContribution, SyndicMutationError> {
+        let revision = source_revision(&first);
+        if second.as_ref().is_some_and(|other| {
+            source_revision(other) != revision || summary_id(other) == summary_id(&first)
+        }) {
+            return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+        }
+        if std::iter::once(&first)
+            .chain(second.as_ref())
+            .all(|source| matches!(source, ThreadCatalogSummaryPreparation::ExactCurrent(_)))
+        {
+            return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+        }
+        Ok(self
+            .handle
+            .contribution(revision, PublishThreadCatalogSummaryPair { first, second }))
+    }
+
     /// Seals the opaque prepared semantic successor under its exact stable source revision.
     #[must_use]
     pub fn rebuild_thread_catalog_summary(
@@ -46,6 +85,101 @@ impl SyndicStorage {
             exact.source_revision,
             ValidateCurrentThreadCatalogSummary { exact },
         )
+    }
+}
+
+struct PublishThreadCatalogSummaryPair {
+    first: ThreadCatalogSummaryPreparation,
+    second: Option<ThreadCatalogSummaryPreparation>,
+}
+
+struct ValidateThreadCatalogSummaryPair {
+    first: ExactThreadCatalogSummary,
+    second: Option<ExactThreadCatalogSummary>,
+}
+
+impl DomainValidator<SyndicDomain> for ValidateThreadCatalogSummaryPair {
+    type Error = SyndicMutationError;
+    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        for exact in std::iter::once(&self.first).chain(self.second.as_ref()) {
+            ValidateCurrentThreadCatalogSummary {
+                exact: exact.clone(),
+            }
+            .validate(reader)?;
+        }
+        Ok(())
+    }
+}
+
+fn source_revision(source: &ThreadCatalogSummaryPreparation) -> beryl_model::DomainRevision {
+    match source {
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact.source_revision,
+        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => prepared.source_revision,
+    }
+}
+
+fn summary_id(source: &ThreadCatalogSummaryPreparation) -> beryl_model::SyndicThreadId {
+    match source {
+        ThreadCatalogSummaryPreparation::ExactCurrent(exact) => exact.summary.thread_id(),
+        ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => {
+            prepared.replacement.thread_id()
+        }
+    }
+}
+
+impl DomainMutation<SyndicDomain> for PublishThreadCatalogSummaryPair {
+    type Error = SyndicMutationError;
+    type Prepared = Self;
+
+    fn prepare(self, reader: &DomainReader<'_, SyndicDomain>) -> Result<Self, Self::Error> {
+        for source in std::iter::once(&self.first).chain(self.second.as_ref()) {
+            match source {
+                ThreadCatalogSummaryPreparation::ExactCurrent(exact) => {
+                    ValidateCurrentThreadCatalogSummary {
+                        exact: exact.clone(),
+                    }
+                    .validate(reader)?;
+                }
+                ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => {
+                    validate_prepared(reader, prepared)?
+                }
+            }
+        }
+        Ok(self)
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        let count = std::iter::once(&self.first)
+            .chain(self.second.as_ref())
+            .filter(|source| {
+                matches!(
+                    source,
+                    ThreadCatalogSummaryPreparation::PreparedReplacement(_)
+                )
+            })
+            .count();
+        if count > 0 {
+            reservation.reserve_records::<ThreadCatalogSummariesCodec>(count)?;
+        }
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        for source in std::iter::once(prepared.first).chain(prepared.second) {
+            if let ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) = source {
+                mutations.put::<ThreadCatalogSummariesCodec>(
+                    &prepared.replacement.thread_id(),
+                    &prepared.replacement,
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 

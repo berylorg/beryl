@@ -82,6 +82,10 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowShutdownDraft, String> {
+        if self.running_threads.pending_activation.is_some() {
+            return Err("a running thread selection is still settling".into());
+        }
+        self.suspend_running_thread_reads(window, cx);
         let composer = match self.shutdown_draft_mount(cx)? {
             Some(mount) => {
                 let editor = mount
@@ -113,6 +117,12 @@ impl MainWindowShellRoot {
         if draft.root != cx.entity_id() {
             return Err("shutdown draft belongs to another shell".into());
         }
+        if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
+        {
+            return Ok(MainWindowShutdownDraftAdvance::Resident(
+                MainWindowConversationComposerCloseAdvance::Preparing,
+            ));
+        }
         match (self.shutdown_draft_mount(cx)?, &draft.composer) {
             (None, None) => Ok(MainWindowShutdownDraftAdvance::Threadless),
             (Some(current), Some((mount, editor, ticket)))
@@ -140,6 +150,10 @@ impl MainWindowShellRoot {
     ) -> Result<MainWindowShutdownDraftRelease, String> {
         if draft.root != cx.entity_id() {
             return Err("shutdown draft belongs to another shell".into());
+        }
+        if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
+        {
+            return Ok(MainWindowShutdownDraftRelease::Pending);
         }
         match (self.shutdown_draft_mount(cx)?, &draft.composer) {
             (None, None) => Ok(MainWindowShutdownDraftRelease::Released),

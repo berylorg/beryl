@@ -10,6 +10,8 @@ use syndic_storage::ThreadCatalogSummaryPreparation;
 
 mod durable;
 mod live;
+mod query;
+pub use query::ProcessWorkReader;
 mod required;
 pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
@@ -161,8 +163,6 @@ fn check_cancelled(cancellation: &ProjectionCancellationToken) -> Result<(), Pro
         Ok(())
     }
 }
-
-type LiveMap = BTreeMap<SyndicThreadId, LiveFacts>;
 
 #[cfg(all(test, feature = "test-faults"))]
 mod tests {

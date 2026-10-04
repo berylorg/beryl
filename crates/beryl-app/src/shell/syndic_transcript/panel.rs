@@ -2,10 +2,10 @@ use std::ops::Range;
 
 use gpui::{
     Action, AnyElement, App, Context, FocusHandle, Focusable, MouseButton, Render, SharedString,
-    Window, div, prelude::*, px,
+    Window, canvas, div, prelude::*, px,
 };
 
-use super::super::OpenTranscriptContextMenu;
+gpui::actions!(syndic_transcript, [OpenTranscriptContextMenu]);
 use super::{
     DemandFact, DemandFactKind, LocalPresentationReason, ManualTranscriptScrollCommand,
     PreparedTranscriptActivation, RealizedFrameRecord, RealizedFrameRequest, RealizedFrameWindow,
@@ -19,14 +19,13 @@ use super::{
     ResidentTranscriptQuotePayload, ResidentTranscriptQuoteTarget, ResidentTranscriptSelection,
     ResidentTranscriptSnapshot, ResidentTranscriptStatusFacts, ResourceId, ResourceKind,
     ResourceMetadata, SyndicTranscriptDiagnosticSnapshot, SyndicTranscriptHost,
-    TranscriptActivationOutcome, TranscriptActivationSeed, TranscriptActivationSource,
-    TranscriptCommandResult, realized_resident_selectable_record_ids,
+    TranscriptActivationOutcome, TranscriptActivationPlacement, TranscriptActivationSeed,
+    TranscriptActivationSource, TranscriptCommandResult, realized_resident_selectable_record_ids,
     resident_context_menu_command_for_realized_record_id, resident_context_menu_frame_loss,
     resident_media_action_command_for_realized_record_id, resident_media_action_frame_loss,
     resident_quote_command_for_realized_record_ids, resident_quote_frame_loss,
     resident_selection_command_for_realized_record_ids, resident_selection_frame_loss,
 };
-use crate::diagnostic_dynamic_tools::TranscriptFrameMetricsSnapshot;
 
 pub(crate) const SYNDIC_TRANSCRIPT_KEY_CONTEXT: &str = "SyndicTranscriptPanel";
 const SYNDIC_TRANSCRIPT_OVERSCAN_RATIO: f32 = 0.5;
@@ -49,8 +48,28 @@ impl SyndicTranscriptPanel {
         }
     }
 
-    pub(crate) fn snapshot(&self) -> ResidentTranscriptSnapshot {
-        self.host.snapshot()
+    pub(crate) fn snapshot(&self) -> std::sync::Arc<ResidentTranscriptSnapshot> {
+        self.host.shared_snapshot()
+    }
+
+    pub(crate) fn lifetime(&self) -> std::sync::Weak<()> {
+        self.host.lifetime()
+    }
+
+    pub(crate) fn refresh_placement(&self) -> TranscriptActivationPlacement {
+        self.host.refresh_placement()
+    }
+
+    pub(crate) fn publish_coherent_activation(
+        &mut self,
+        prepared: PreparedTranscriptActivation,
+    ) -> TranscriptActivationOutcome {
+        self.host.publish_coherent_activation(prepared)
+    }
+
+    pub(crate) fn retire(&mut self) {
+        self.host.retire();
+        self.last_frame_window = None;
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {
@@ -59,10 +78,6 @@ impl SyndicTranscriptPanel {
 
     pub(crate) fn diagnostic_snapshot(&self) -> SyndicTranscriptDiagnosticSnapshot {
         self.host.diagnostic_snapshot()
-    }
-
-    pub(crate) fn frame_metrics_snapshot(&self) -> TranscriptFrameMetricsSnapshot {
-        self.host.frame_metrics_snapshot()
     }
 
     pub(crate) fn begin_activation(
@@ -94,7 +109,7 @@ impl SyndicTranscriptPanel {
         delta_px: f32,
         cx: &mut Context<Self>,
     ) -> RealizedFrameWindow {
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         let window = self.manual_scroll(ManualTranscriptScrollCommand::new(
             viewport_height_px,
             viewport_height_px * SYNDIC_TRANSCRIPT_OVERSCAN_RATIO,
@@ -183,7 +198,7 @@ impl SyndicTranscriptPanel {
                 ResidentSelectionUnavailable::NoRealizedFrame,
             );
         };
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         match resident_selection_command_for_realized_record_ids(
             &snapshot,
             frame_window,
@@ -217,7 +232,7 @@ impl SyndicTranscriptPanel {
                 ResidentSelectionUnavailable::NoRealizedFrame,
             );
         };
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         match resident_quote_command_for_realized_record_ids(&snapshot, frame_window, record_ids) {
             Ok(command) => self.host.apply_resident_quote_target(command),
             Err(error) => {
@@ -247,7 +262,7 @@ impl SyndicTranscriptPanel {
                 ResidentContextMenuUnavailable::NoRealizedFrame,
             );
         };
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         match resident_context_menu_command_for_realized_record_id(
             &snapshot,
             frame_window,
@@ -290,7 +305,7 @@ impl SyndicTranscriptPanel {
                 ResidentMediaActionUnavailable::NoRealizedFrame,
             );
         };
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         match resident_media_action_command_for_realized_record_id(
             &snapshot,
             frame_window,
@@ -314,7 +329,7 @@ impl SyndicTranscriptPanel {
     }
 
     fn remember_realized_frame(&mut self, window: RealizedFrameWindow) -> RealizedFrameWindow {
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
         self.reconcile_resident_selection_with_frame(&snapshot, &window);
         self.reconcile_resident_quote_target_with_frame(&snapshot, &window);
         self.reconcile_resident_context_menu_target_with_frame(&snapshot, &window);
@@ -375,11 +390,39 @@ impl Focusable for SyndicTranscriptPanel {
 }
 
 impl Render for SyndicTranscriptPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let viewport_size = window.viewport_size();
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let panel = cx.entity();
+        canvas(
+            move |bounds, window, cx| {
+                if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
+                    return None;
+                }
+                let mut content = panel.update(cx, |panel, cx| {
+                    panel.render_measured(bounds.size, cx).into_any_element()
+                });
+                content.layout_as_root(bounds.size.map(gpui::AvailableSpace::Definite), window, cx);
+                content.prepaint_at(bounds.origin, window, cx);
+                Some(content)
+            },
+            |_, content, window, cx| {
+                if let Some(mut content) = content {
+                    content.paint(window, cx);
+                }
+            },
+        )
+        .size_full()
+    }
+}
+
+impl SyndicTranscriptPanel {
+    fn render_measured(
+        &mut self,
+        viewport_size: gpui::Size<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
         let viewport_width_px = f32::from(viewport_size.width);
         let viewport_height_px = f32::from(viewport_size.height);
-        let snapshot = self.host.snapshot();
+        let snapshot = self.host.shared_snapshot();
 
         self.host.push_demand_fact(DemandFact::new(
             snapshot.presentation_revision,
@@ -403,15 +446,35 @@ impl Render for SyndicTranscriptPanel {
         self.reconcile_resident_media_action_target_with_frame(&snapshot, &frame_window);
         let selected_record_ids =
             render_selected_record_ids(&snapshot, &frame_window, self.host.resident_selection());
+        let source_message = if snapshot.records.is_empty() {
+            match &snapshot.state {
+                super::ResidentTranscriptSnapshotState::Unavailable { reason } => {
+                    Some(reason.clone())
+                }
+                super::ResidentTranscriptSnapshotState::Incomplete { detail, .. } => Some(
+                    detail
+                        .clone()
+                        .unwrap_or_else(|| "Earlier messages are unavailable.".to_owned()),
+                ),
+                _ => None,
+            }
+        } else {
+            None
+        };
         self.last_frame_window = Some(frame_window.clone());
 
         div()
             .relative()
-            .size_full()
+            .w(viewport_size.width)
+            .h(viewport_size.height)
             .min_h(px(0.0))
             .overflow_hidden()
             .key_context(SYNDIC_TRANSCRIPT_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
+            .children(
+                source_message
+                    .map(|message| div().px_4().py_2().text_sm().opacity(0.72).child(message)),
+            )
             .child(render_frame_window(
                 &snapshot,
                 &frame_window,
@@ -419,6 +482,14 @@ impl Render for SyndicTranscriptPanel {
                 cx,
             ))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/syndic_transcript_panel.rs"
+    ));
 }
 
 fn render_frame_window(
@@ -465,6 +536,7 @@ fn render_realized_record(
 ) -> AnyElement {
     let context_record_id = record.id.clone();
     div()
+        .debug_selector(|| format!("syndic-transcript-record:{}", record.id.0))
         .id(SharedString::from(format!(
             "syndic-transcript-record:{}",
             record.id.0
@@ -544,7 +616,7 @@ fn render_record_content(
             .text_sm()
             .line_height(px(20.0))
             .whitespace_normal()
-            .child(text.clone())
+            .child(SharedString::from(text.clone()))
             .into_any_element(),
         ResidentPresentationRecordKind::ResourceReference {
             resource_id,
@@ -692,10 +764,12 @@ fn render_resource_reference(
     snapshot: &ResidentTranscriptSnapshot,
     resource_id: &ResourceId,
     resource_kind: &ResourceKind,
-    label: &Option<String>,
+    label: &Option<std::sync::Arc<str>>,
 ) -> AnyElement {
     let metadata = snapshot.resources.metadata_for(resource_id);
-    let title = label.clone().unwrap_or_else(|| resource_id.0.clone());
+    let title = label
+        .clone()
+        .unwrap_or_else(|| resource_id.0.clone().into());
     let mut shell = div()
         .w_full()
         .min_w(px(0.0))
@@ -716,7 +790,7 @@ fn render_resource_reference(
                 .line_height(px(20.0))
                 .whitespace_nowrap()
                 .truncate()
-                .child(title),
+                .child(gpui::SharedString::from(title)),
         );
 
     shell = if let Some(metadata) = metadata {

@@ -30,9 +30,13 @@ use crate::catalog_projection::{
 
 mod abandonment;
 mod close_admission;
+mod selection_admission;
 
 pub use abandonment::*;
 pub(crate) use close_admission::*;
+#[cfg(feature = "test-faults")]
+pub use selection_admission::WindowSelectionAdmissionTestProbe;
+pub(crate) use selection_admission::*;
 
 const CATALOG_PAGE_ITEMS: usize = 16;
 const CATALOG_PAGE_BYTES: usize = CATALOG_PAGE_ITEMS * CATALOG_MAX_STORED_RECENCY_BYTES;
@@ -205,6 +209,8 @@ impl RuntimeBackedWindowAcquisition {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeBackedWindowAcquisitionNotCommitted {
+    #[error("window lifecycle mutation is already admitted")]
+    MutationInProgress,
     #[error("another acquisition already owns this window identity")]
     DuplicateWindowIdentity,
     #[error("the bounded acquisition-flight capacity is full")]
@@ -422,6 +428,7 @@ pub struct RuntimeBackedWindowProcessRegistry {
 pub enum RuntimeBackedWindowMainWindowReservationError {
     ProcessAdmission(crate::process_admission::ProcessAdmissionError),
     CloseInProgress,
+    SelectionInProgress,
     DuplicateWindowIdentity,
     Capacity,
 }
@@ -463,6 +470,9 @@ impl RuntimeBackedWindowProcessRegistry {
                     .flights
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if registry.selection_owner.is_some() {
+                    return Err(RuntimeBackedWindowMainWindowReservationError::SelectionInProgress);
+                }
                 if registry.close_owner.is_some() {
                     return Err(RuntimeBackedWindowMainWindowReservationError::CloseInProgress);
                 }
@@ -493,6 +503,19 @@ impl RuntimeBackedWindowProcessRegistry {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .main_window_reservations
             .len()
+    }
+
+    pub(crate) fn try_main_window_occupancy(&self) -> Option<usize> {
+        self.flights
+            .try_lock()
+            .ok()
+            .map(|registry| registry.main_window_reservations.len())
+    }
+
+    pub(crate) fn selection_pending(&self) -> bool {
+        self.flights
+            .try_lock()
+            .map_or(true, |registry| registry.selection_owner.is_some())
     }
 }
 
@@ -1317,6 +1340,7 @@ struct AcquisitionFlights {
     main_window_reservations: HashSet<WindowId>,
     membership_revision: Arc<()>,
     close_owner: Option<Arc<()>>,
+    selection_owner: Option<Arc<()>>,
 }
 
 struct AcquisitionFlight {
@@ -1342,6 +1366,9 @@ impl AcquisitionFlight {
             let mut registry = flights
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if registry.selection_owner.is_some() || registry.close_owner.is_some() {
+                return Err(RuntimeBackedWindowAcquisitionNotCommitted::MutationInProgress);
+            }
             if registry.active.contains(&window_id) {
                 return Err(RuntimeBackedWindowAcquisitionNotCommitted::DuplicateWindowIdentity);
             }

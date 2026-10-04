@@ -101,6 +101,35 @@ impl Default for ProcessAdmissionGate {
 }
 
 impl ProcessAdmissionGate {
+    pub(crate) fn try_reserve_with<T, E>(
+        &self,
+        admit: impl FnOnce() -> Result<T, E>,
+    ) -> Option<Result<Result<(ProcessAdmissionReservation, T), E>, ProcessAdmissionError>> {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(std::sync::TryLockError::WouldBlock) => return None,
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Some(Err(ProcessAdmissionError::Unavailable));
+            }
+        };
+        if state.fenced {
+            return Some(Err(ProcessAdmissionError::Fenced));
+        }
+        let Some(admissions) = state.admissions.checked_add(1) else {
+            return Some(Err(ProcessAdmissionError::Unavailable));
+        };
+        match admit() {
+            Ok(value) => {
+                state.admissions = admissions;
+                Some(Ok(Ok((
+                    ProcessAdmissionReservation { gate: self.clone() },
+                    value,
+                ))))
+            }
+            Err(error) => Some(Ok(Err(error))),
+        }
+    }
+
     pub(crate) fn try_admit<T>(&self, admit: impl FnOnce() -> T) -> Option<T> {
         let state = self.inner.try_lock().ok()?;
         if state.fenced {

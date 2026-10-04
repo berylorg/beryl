@@ -1,11 +1,3 @@
-use crate::{
-    diagnostic_dynamic_tools::{
-        MediaEventSnapshot, TranscriptFrameMetricsSnapshot, VisibleMediaSnapshot,
-    },
-    gui_control_dynamic_tools::MarkdownCacheUiState,
-    memory_diagnostics::RetainedStateSnapshot,
-};
-
 use super::{
     DemandFactSinkSnapshot, ResidentCoreSnapshot, ResidentPresentationRecordKind,
     ResidentTranscriptSnapshot,
@@ -15,9 +7,6 @@ use super::{
 pub(crate) struct SyndicTranscriptDiagnosticSnapshot {
     pub(crate) resident_data: ResidentDataDiagnostics,
     pub(crate) frame: ResidentFrameDiagnostics,
-    pub(crate) visible_media: VisibleMediaSnapshot,
-    pub(crate) media_events: MediaEventSnapshot,
-    pub(crate) transcript_frame_metrics: TranscriptFrameMetricsSnapshot,
     pub(crate) demand_facts: DemandFactSinkSnapshot,
 }
 
@@ -26,9 +15,6 @@ impl SyndicTranscriptDiagnosticSnapshot {
         Self {
             resident_data: ResidentDataDiagnostics::default(),
             frame: ResidentFrameDiagnostics::default(),
-            visible_media: VisibleMediaSnapshot::default(),
-            media_events: empty_media_events(),
-            transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
             demand_facts: DemandFactSinkSnapshot::default(),
         }
     }
@@ -105,12 +91,6 @@ impl SyndicTranscriptDiagnosticSnapshot {
             ..Self::empty()
         }
     }
-
-    pub(crate) fn markdown_cache_ui_state(&self) -> MarkdownCacheUiState {
-        MarkdownCacheUiState::default()
-    }
-
-    pub(crate) fn add_retained_counts(&self, _retained_state: &mut RetainedStateSnapshot) {}
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -149,13 +129,4 @@ pub(crate) struct ResidentFrameDiagnostics {
     pub(crate) overscan_record_count: usize,
     pub(crate) scroll_mode: &'static str,
     pub(crate) anchor_record: Option<String>,
-}
-
-fn empty_media_events() -> MediaEventSnapshot {
-    MediaEventSnapshot {
-        events: Vec::new(),
-        event_count: 0,
-        truncated: false,
-        next_sequence: 0,
-    }
 }

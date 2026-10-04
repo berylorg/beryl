@@ -6,41 +6,53 @@ use crate::cas_projection::{
     ConnectionWorkRecord, ControlWorkPageLimits, ScheduledSessionWorkPageLimits,
     ScheduledSessionWorkState, StopDispatchWorkState, StopWorkRecord,
 };
+use std::collections::BTreeMap;
 
 impl ProcessWorkInventory<'_> {
-    pub(super) fn live_facts(
-        &self,
-        revision: &ProcessWorkRevision,
-        cancellation: &ProjectionCancellationToken,
-    ) -> Result<LiveMap, ProcessWorkError> {
-        let mut facts = self
-            .service
-            .live_facts(self.sessions, &revision.work, cancellation)?;
-        for record in self.attention.work_snapshot(&revision.attention)?.records() {
-            if record.home_id() == self.service.home_id {
-                facts
-                    .entry(record.thread_id())
-                    .or_default()
-                    .attention
-                    .push(record.clone());
+    pub(super) fn live_facts<'a>(
+        &'a self,
+        revision: &'a ProcessWorkRevision,
+        cancellation: &'a ProjectionCancellationToken,
+    ) -> Result<LiveSource<'a>, ProcessWorkError> {
+        Ok(LiveSource::new(move |after| {
+            let mut prefix = LivePrefix::new(after);
+            self.service.visit_live_facts(
+                self.sessions,
+                &revision.work,
+                cancellation,
+                |thread, work| {
+                    prefix.add(thread, work, None);
+                },
+            )?;
+            for record in self.attention.work_snapshot(&revision.attention)?.records() {
+                check_cancelled(cancellation)?;
+                if record.home_id() == self.service.home_id {
+                    prefix.add(
+                        record.thread_id(),
+                        ProcessWorkFacts::default(),
+                        Some(record.clone()),
+                    );
+                }
             }
-        }
-        Ok(facts)
+            Ok(prefix.finish())
+        }))
     }
 }
 
 impl ProcessWorkRead {
-    pub(super) fn live_facts(
-        &self,
-        sessions: &ScheduledExecutionSessions,
-        revision: &RequiredWorkRevision,
-        cancellation: &ProjectionCancellationToken,
-    ) -> Result<LiveMap, ProcessWorkError> {
-        let mut facts = LiveMap::new();
-        self.visit_live_facts(sessions, revision, cancellation, |thread, work| {
-            add(&mut facts, thread, work);
-        })?;
-        Ok(facts)
+    pub(super) fn live_facts<'a>(
+        &'a self,
+        sessions: &'a ScheduledExecutionSessions,
+        revision: &'a RequiredWorkRevision,
+        cancellation: &'a ProjectionCancellationToken,
+    ) -> Result<LiveSource<'a>, ProcessWorkError> {
+        Ok(LiveSource::new(move |after| {
+            let mut prefix = LivePrefix::new(after);
+            self.visit_live_facts(sessions, revision, cancellation, |thread, work| {
+                prefix.add(thread, work, None);
+            })?;
+            Ok(prefix.finish())
+        }))
     }
 
     pub(super) fn visit_live_facts(
@@ -162,8 +174,94 @@ impl ProcessWorkRead {
     }
 }
 
-fn add(facts: &mut LiveMap, thread_id: SyndicThreadId, work: ProcessWorkFacts) {
-    if work != ProcessWorkFacts::default() {
-        facts.entry(thread_id).or_default().work.merge(work);
+type LiveEntry = (SyndicThreadId, LiveFacts);
+type LivePage = (Vec<LiveEntry>, Option<SyndicThreadId>);
+
+pub(super) struct LiveSource<'a> {
+    read: Box<dyn FnMut(Option<SyndicThreadId>) -> Result<LivePage, ProcessWorkError> + 'a>,
+    page: std::vec::IntoIter<LiveEntry>,
+    cursor: Option<SyndicThreadId>,
+    next: Option<LiveEntry>,
+    finished: bool,
+}
+
+impl<'a> LiveSource<'a> {
+    fn new(
+        read: impl FnMut(Option<SyndicThreadId>) -> Result<LivePage, ProcessWorkError> + 'a,
+    ) -> Self {
+        Self {
+            read: Box::new(read),
+            page: Vec::new().into_iter(),
+            cursor: None,
+            next: None,
+            finished: false,
+        }
+    }
+
+    pub(super) fn peek(&mut self) -> Result<Option<SyndicThreadId>, ProcessWorkError> {
+        while self.next.is_none() {
+            self.next = self.page.next();
+            if self.next.is_some() || self.finished {
+                break;
+            }
+            let (records, cursor) = (self.read)(self.cursor.take())?;
+            self.page = records.into_iter();
+            self.finished = cursor.is_none();
+            self.cursor = cursor;
+        }
+        Ok(self.next.as_ref().map(|(id, _)| *id))
+    }
+
+    pub(super) fn take(&mut self) -> Option<LiveEntry> {
+        self.next.take()
+    }
+}
+
+struct LivePrefix {
+    after: Option<SyndicThreadId>,
+    records: BTreeMap<SyndicThreadId, LiveFacts>,
+    omitted: bool,
+}
+
+impl LivePrefix {
+    fn new(after: Option<SyndicThreadId>) -> Self {
+        Self {
+            after,
+            records: BTreeMap::new(),
+            omitted: false,
+        }
+    }
+
+    fn add(
+        &mut self,
+        thread: SyndicThreadId,
+        work: ProcessWorkFacts,
+        attention: Option<LifecycleAttentionRecord>,
+    ) {
+        if self.after.is_some_and(|after| thread <= after)
+            || (work == ProcessWorkFacts::default() && attention.is_none())
+        {
+            return;
+        }
+        let row = self.records.entry(thread).or_default();
+        row.work.merge(work);
+        if let Some(attention) = attention {
+            row.attention.push(attention);
+        }
+        if self.records.len() > 256 {
+            self.records.pop_last();
+            self.omitted = true;
+        }
+    }
+
+    fn finish(self) -> LivePage {
+        let cursor = self.omitted.then(|| {
+            *self
+                .records
+                .last_key_value()
+                .expect("a nonfinal prefix has rows")
+                .0
+        });
+        (self.records.into_iter().collect(), cursor)
     }
 }

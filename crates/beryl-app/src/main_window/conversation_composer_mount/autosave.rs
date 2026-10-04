@@ -24,6 +24,56 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn claim_autosave_settings(
+        &self,
+    ) -> Option<(u64, ComposerHostAutosaveInterval)> {
+        self.autosave.settings
+    }
+
+    pub(in crate::main_window) fn claim_flush_resources(
+        &self,
+    ) -> Result<
+        (
+            beryl_state::AssetState,
+            crate::composer_marker_seal::DraftMarkerSealService,
+        ),
+        String,
+    > {
+        Ok(self.autosave.adapters()?.clone())
+    }
+
+    pub(in crate::main_window) fn finalize_claim_autosave(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        prepared: crate::main_window::MainWindowComposerClaimAutosave,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self
+            .contribution
+            .as_ref()
+            .map(|composer| composer.read(cx).selection_identity())
+            != Some(selection)
+        {
+            return Err("composer claim autosave presentation is stale".to_owned());
+        }
+        self.autosave.suspend()?;
+        self.autosave.fenced = false;
+        match prepared {
+            crate::main_window::MainWindowComposerClaimAutosave::Idle => {
+                self.autosave.state = AutosaveState::Idle;
+                Ok(())
+            }
+            crate::main_window::MainWindowComposerClaimAutosave::Timer(timer) => {
+                self.schedule_autosave_timer(selection, timer, window, cx)
+            }
+            crate::main_window::MainWindowComposerClaimAutosave::Publishing(ticket) => {
+                self.autosave.state = AutosaveState::Publishing { selection, ticket };
+                self.schedule_claim_autosave_source_advance(window, cx)
+            }
+        }
+    }
+
     pub(in crate::main_window::conversation_composer_mount) fn prepare_recovered_autosave(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,
@@ -169,7 +219,7 @@ impl MainWindowConversationComposerMount {
         self.schedule_autosave_timer(selection, timer, window, cx)
     }
 
-    fn schedule_autosave_timer(
+    pub(super) fn schedule_autosave_timer(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,
         timer: ComposerHostAutosaveTimer,
@@ -296,7 +346,7 @@ impl MainWindowConversationComposerMount {
         }
     }
 
-    fn schedule_autosave_advance(
+    pub(super) fn schedule_autosave_advance(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -316,6 +366,17 @@ impl MainWindowConversationComposerMount {
             self.autosave.state = AutosaveState::Ready { selection, ticket };
             return self.drive_autosave_ready(selection, ticket, window, cx);
         }
+        self.schedule_claim_autosave_source_advance(window, cx)
+    }
+
+    fn schedule_claim_autosave_source_advance(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let AutosaveState::Publishing { selection, ticket } = self.autosave.state else {
+            return Ok(());
+        };
         let generation = self.autosave.generation;
         let service = self.bound_service()?.clone();
         let worker = self

@@ -71,7 +71,7 @@ fn text_projection(view_id: &TranscriptViewId, position: u64, name: &str) -> Pro
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
         payload: ProjectionPayload::Text {
-            text: format!("text-{name}"),
+            text: format!("text-{name}").into(),
         },
         provenance: provenance(
             view_id,
@@ -98,7 +98,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id: resource_id.clone(),
             resource_kind: ResourceKind::Image,
-            label: Some(format!("image-{name}")),
+            label: Some(format!("image-{name}").into()),
         },
         provenance: provenance(
             view_id,
@@ -256,7 +256,7 @@ fn presentation_texts(snapshot: &ResidentCoreSnapshot) -> Vec<&str> {
         .records
         .iter()
         .filter_map(|record| match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_str()),
+            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_ref()),
             _ => None,
         })
         .collect()
@@ -270,7 +270,9 @@ fn presentation_record_id_by_text(
         .records
         .into_iter()
         .find_map(|record| match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } if text == expected_text => {
+            ResidentPresentationRecordKind::TextChunk { text, .. }
+                if text.as_ref() == expected_text =>
+            {
                 Some(record.id)
             }
             _ => None,

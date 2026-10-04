@@ -10,6 +10,8 @@ use beryl_model::{DomainRevision, SyndicThreadId};
 
 #[path = "catalog/acquisition.rs"]
 mod acquisition;
+#[path = "catalog/claim_replacement.rs"]
+mod claim_replacement;
 #[path = "catalog/codec.rs"]
 mod codec;
 #[path = "catalog/error.rs"]
@@ -35,6 +37,7 @@ pub use acquisition::{
     CatalogCurrentPage, CatalogCurrentRow, CatalogCurrentRowError, CatalogCurrentScan,
     CatalogWindowClaim,
 };
+pub use claim_replacement::{CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement};
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
 pub use initial::{

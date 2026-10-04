@@ -50,7 +50,7 @@ fn text_projection(view_id: &TranscriptViewId, position: u64, name: &str) -> Pro
         revision: REVISION,
         kind: ProjectionRecordKind::TextChunk,
         payload: ProjectionPayload::Text {
-            text: format!("text-{name}"),
+            text: format!("text-{name}").into(),
         },
         provenance: provenance(view_id, position, &projection_id),
     }
@@ -84,7 +84,7 @@ fn presentation_texts(snapshot: &ResidentCoreSnapshot) -> Vec<&str> {
         .records
         .iter()
         .filter_map(|record| match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_str()),
+            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_ref()),
             _ => None,
         })
         .collect()
@@ -96,6 +96,68 @@ fn activation_seed(view_id: TranscriptViewId) -> TranscriptActivationSeed {
         TranscriptActivationSource::Test,
         TranscriptActivationPlacement::Tail,
     )
+}
+
+#[test]
+fn immutable_publication_shares_authored_bytes_across_viewport_updates() {
+    use std::sync::Arc;
+    let view = view_id("shared-content");
+    let authored: Arc<str> = "a resident authored chunk".into();
+    let mut projection = text_projection(&view, 1, "shared");
+    projection.payload = ProjectionPayload::Text {
+        text: Arc::clone(&authored),
+    };
+    let mut core = ResidentTranscriptCore::empty();
+    core.apply_prepared_activation(
+        PreparedTranscriptActivation {
+            view_id: Some(view.clone()),
+            placement: TranscriptActivationPlacement::Tail,
+            view_page_response: Some(TranscriptProviderResponseKind::ViewPage(
+                TranscriptViewPage {
+                    view_id: view.clone(),
+                    revision: REVISION,
+                    history_state: TranscriptProviderHistoryState::Complete,
+                    records: vec![view_record(&view, 1, "shared")],
+                    previous_cursor: None,
+                    next_cursor: None,
+                    at_start: true,
+                    at_end: true,
+                },
+            )),
+            projection_records_response: Some(TranscriptProviderResponseKind::ProjectionRecords(
+                ProjectionRecordSet {
+                    view_id: view,
+                    revision: REVISION,
+                    records: vec![projection],
+                    rejections: Vec::new(),
+                },
+            )),
+        },
+        TranscriptActivationSource::RunningThread,
+    );
+    let first = core.shared_presentation_snapshot();
+    assert!(Arc::ptr_eq(&first, &core.shared_presentation_snapshot()));
+    let revision = first.presentation_revision;
+    core.push_demand_fact(DemandFact {
+        presentation_revision: revision,
+        kind: DemandFactKind::VisibleRange { range: 0..1 },
+    });
+    let moved = core.shared_presentation_snapshot();
+    assert_eq!(moved.visible_range, Some(0..1));
+    assert_eq!(first.visible_range, None);
+    for snapshot in [&first, &moved] {
+        match &snapshot.records[0].kind {
+            ResidentPresentationRecordKind::TextChunk { text, .. } => {
+                assert!(Arc::ptr_eq(text, &authored))
+            }
+            _ => panic!("authored text must remain resident"),
+        }
+    }
+    core.push_demand_fact(DemandFact {
+        presentation_revision: revision,
+        kind: DemandFactKind::VisibleRange { range: 0..1 },
+    });
+    assert!(Arc::ptr_eq(&moved, &core.shared_presentation_snapshot()));
 }
 
 #[test]

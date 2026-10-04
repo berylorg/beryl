@@ -24,11 +24,13 @@ mod close;
 mod failed_resident;
 mod flush;
 mod retirement;
+mod selection_save;
 mod service;
 mod settlement;
 
 pub use failed_resident::ComposerHostFailedResident;
 pub use retirement::ComposerHostRetiredClose;
+pub(crate) use selection_save::ComposerHostSelectionSave;
 
 use settlement::{
     PublicationStep, error_failure, publication_failure, recoverable_error, stale_callback_error,

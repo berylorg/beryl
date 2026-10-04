@@ -241,12 +241,6 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if self.route != MainWindowConversationComposerRoute::Pending(receipt) {
-            return Err("pending composer promotion route was stale".to_owned());
-        }
-        if self.selection != selection {
-            return Err("pending composer promotion selection was stale".to_owned());
-        }
         if self
             .service
             .as_ref()
@@ -254,6 +248,34 @@ impl MainWindowConversationComposer {
             != Some(selection)
         {
             return Err("pending composer promotion service selection was stale".to_owned());
+        }
+        self.promote_pending_resident(receipt, selection, window, cx)
+    }
+
+    pub(in crate::main_window) fn promote_claim_pending(
+        &mut self,
+        publication: &MainWindowComposerClaimPublication,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if !self.claim_pending_promotion_ready(publication, cx) {
+            return Err("pending composer publication presentation was stale".to_owned());
+        }
+        self.promote_pending_resident(publication.receipt(), publication.selection(), window, cx)
+    }
+
+    fn promote_pending_resident(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.route != MainWindowConversationComposerRoute::Pending(receipt) {
+            return Err("pending composer promotion route was stale".to_owned());
+        }
+        if self.selection != selection {
+            return Err("pending composer promotion selection was stale".to_owned());
         }
         if !self.pending_surface_ready(cx) {
             return Err("pending composer promotion surface was stale".to_owned());
@@ -290,6 +312,29 @@ impl MainWindowConversationComposer {
                 )
             })
             .map_err(|_| "composer input rebind was rejected".to_owned())
+    }
+
+    pub(in crate::main_window) fn restore_claim_prior_selection(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.route != MainWindowConversationComposerRoute::Selected
+            || !matches!(
+                self.phase,
+                MainWindowConversationComposerPhase::Live
+                    | MainWindowConversationComposerPhase::Fencing
+            )
+            || self.window_close.is_some()
+            || self.selection.window_id() != selection.window_id()
+            || self.selection.claim() != selection.claim()
+        {
+            return Err("composer claim prior presentation is unavailable".to_owned());
+        }
+        if self.selection == selection {
+            return Ok(());
+        }
+        self.synchronize_lifecycle_selection(self.selection, selection, cx)
     }
 
     pub fn release_widget(
@@ -339,6 +384,29 @@ impl MainWindowConversationComposer {
         )
     }
 
+    pub(in crate::main_window) fn claim_pending_promotion_ready(
+        &self,
+        publication: &MainWindowComposerClaimPublication,
+        cx: &App,
+    ) -> bool {
+        self.route == MainWindowConversationComposerRoute::Pending(publication.receipt())
+            && self.selection == publication.selection()
+            && self
+                .service
+                .as_ref()
+                .is_some_and(|service| publication.matches_service(service))
+            && self.pending_surface_ready(cx)
+    }
+
+    pub(in crate::main_window) fn claim_realizer_detach_ready(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+    ) -> bool {
+        self.pending_realizer.as_ref().is_none_or(|realizer| {
+            realizer.lifetime.upgrade().is_none() || realizer.receipt == receipt
+        })
+    }
+
     pub(super) fn release_widget_with(
         &mut self,
         window: &mut Window,
@@ -347,12 +415,68 @@ impl MainWindowConversationComposer {
             Vec<gpui_text_input::RangeTextInputRequest>,
         ) -> Result<MainWindowComposerWidgetRelease, String>,
     ) -> Result<MainWindowComposerWidgetRelease, String> {
+        if let MainWindowConversationComposerPhase::Released(release) = self.phase {
+            return Ok(release);
+        }
+        let requests = self.capture_claim_widget_requests(window, cx)?;
+        match settle(requests) {
+            Ok(release) => {
+                self.phase = MainWindowConversationComposerPhase::Released(release);
+                Ok(release)
+            }
+            Err(error) => {
+                self.phase = MainWindowConversationComposerPhase::ReleaseFailed;
+                self.last_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub(in crate::main_window) fn capture_claim_widget_release(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowComposerClaimWidgetWork, String> {
+        if let MainWindowConversationComposerPhase::Released(release) = self.phase {
+            return Ok(MainWindowComposerClaimWidgetWork::Released(release));
+        }
+        let requests = self.capture_claim_widget_requests(window, cx)?;
+        Ok(MainWindowComposerClaimWidgetWork::Requests {
+            selection: self.selection,
+            requests,
+        })
+    }
+
+    pub(in crate::main_window) fn accept_claim_widget_release(
+        &mut self,
+        release: MainWindowComposerWidgetRelease,
+    ) -> Result<(), String> {
+        if self.selection != release.selection()
+            || !matches!(
+                self.phase,
+                MainWindowConversationComposerPhase::Releasing
+                    | MainWindowConversationComposerPhase::Released(_)
+            )
+        {
+            return Err("composer widget release completion was stale".to_owned());
+        }
+        self.phase = MainWindowConversationComposerPhase::Released(release);
+        Ok(())
+    }
+
+    fn capture_claim_widget_requests(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Vec<gpui_text_input::RangeTextInputRequest>, String> {
         match self.phase {
             MainWindowConversationComposerPhase::RecoveryFenced
             | MainWindowConversationComposerPhase::Detached => {
                 return Err("conversation composer is retained for recovery".to_owned());
             }
-            MainWindowConversationComposerPhase::Released(release) => return Ok(release),
+            MainWindowConversationComposerPhase::Released(_) => {
+                return Err("composer widget was already released".to_owned());
+            }
             MainWindowConversationComposerPhase::Fencing => {}
             MainWindowConversationComposerPhase::Live => {
                 return Err("conversation composer widget must be fenced before release".to_owned());
@@ -382,20 +506,9 @@ impl MainWindowConversationComposer {
         self.image_surface_attachment = None;
         self.image_surfaces.clear();
         self.admitted_positions = None;
-        let requests = self
+        Ok(self
             .input
-            .update(cx, |input, input_cx| input.dispose(window, input_cx));
-        match settle(requests) {
-            Ok(release) => {
-                self.phase = MainWindowConversationComposerPhase::Released(release);
-                Ok(release)
-            }
-            Err(error) => {
-                self.phase = MainWindowConversationComposerPhase::ReleaseFailed;
-                self.last_error = Some(error.clone());
-                Err(error)
-            }
-        }
+            .update(cx, |input, input_cx| input.dispose(window, input_cx)))
     }
 
     pub(in crate::main_window) fn is_live(&self) -> bool {
@@ -539,5 +652,24 @@ impl MainWindowConversationComposer {
         });
         self.schedule_pump(window, cx);
         Ok(())
+    }
+
+    pub(in crate::main_window) fn resume_retired_claim_prior(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.route != MainWindowConversationComposerRoute::Selected
+            || self.window_close.is_some()
+        {
+            return Err("composer claim prior presentation is unavailable".to_owned());
+        }
+        match self.phase {
+            MainWindowConversationComposerPhase::Live => Ok(()),
+            MainWindowConversationComposerPhase::Fencing => {
+                self.resume_after_widget_release_fence(window, cx)
+            }
+            _ => Err("composer claim prior widget cannot resume".to_owned()),
+        }
     }
 }

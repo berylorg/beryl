@@ -75,7 +75,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id: resource_id.clone(),
             resource_kind: kind,
-            label: Some("resident resource".to_string()),
+            label: Some("resident resource".into()),
         },
         provenance: provenance(&view_id, &projection_id, &resource_id, Some(0..16)),
     }
@@ -370,7 +370,7 @@ fn resource_range_demand_is_bounded_and_admitted() {
     assert_eq!(snapshot.resident.resource_slices[0].range, 0..5);
     assert_eq!(
         snapshot.resident.resource_slices[0].bytes,
-        b"01234".to_vec()
+        std::sync::Arc::<[u8]>::from(b"01234".as_slice())
     );
     assert_eq!(snapshot.presentation.resources.metadata.len(), 1);
     assert_eq!(snapshot.presentation.resources.slices.len(), 1);
@@ -653,7 +653,7 @@ fn resource_slice_retention_stays_under_policy_byte_budget() {
     assert_eq!(snapshot.resident.resource_slices[0].range, 6..12);
     assert_eq!(
         snapshot.resident.resource_slices[0].bytes,
-        b"ghijkl".to_vec()
+        std::sync::Arc::<[u8]>::from(b"ghijkl".as_slice())
     );
 }
 

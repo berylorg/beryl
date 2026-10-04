@@ -7,6 +7,11 @@ use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 
 use crate::{LifecycleYieldOutcome, notice_limits::NOTICE_RECORD_CAPACITY};
 
+mod routing;
+pub use routing::{
+    LifecycleAttentionRouteChange, LifecycleAttentionRouteDiagnostics, LifecycleAttentionRouter,
+    LifecycleAttentionWindow,
+};
 mod work;
 pub use work::{
     LifecycleAttentionWorkError, LifecycleAttentionWorkRevision, LifecycleAttentionWorkSnapshot,
@@ -193,6 +198,14 @@ impl ProcessLifecycleAttentionPool {
 
     pub fn snapshot(&self) -> Vec<LifecycleAttentionRecord> {
         self.lock().records.clone()
+    }
+
+    pub fn try_snapshot(&self) -> Option<Vec<LifecycleAttentionRecord>> {
+        let state = self.state.try_lock().ok()?;
+        if self.owner.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        Some(state.records.clone())
     }
 
     pub fn diagnostics(&self) -> LifecycleAttentionDiagnostics {

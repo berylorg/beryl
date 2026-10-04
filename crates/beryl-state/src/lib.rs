@@ -164,16 +164,17 @@ pub use runtime_root::{
     RuntimeRecord, RuntimeRegistration, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError,
     RuntimeRootMutationError, RuntimeRootState, SetRootAvailability, SetRuntimeAvailability,
 };
+pub use catalog::{CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement};
 pub use session::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
     ExitWindowPlacement, InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit,
-    MinimalSessionBootstrap, PublishExitSession, RememberedTarget, RemoveSessionWindow,
+    MinimalSessionBootstrap, PreparedWindowClaimReplacement, PublishExitSession, RememberedTarget, RemoveSessionWindow,
     ReplaceWindowClaim, ResumeSessionAfterExit, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
     SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
     SessionWindowRecord, SessionWindowReference, SessionWindowRemovalEvidence,
     SessionWindowRemovalState, ThreadClaimCatalogSource, ThreadClaimCatalogSourceError,
     ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement, WindowClaimCatalogSource,
-    WindowClaimSelection,
+    WindowClaimSelection, WindowClaimReplacementPreparation, WindowClaimReplacementState,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,

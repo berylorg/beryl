@@ -132,6 +132,7 @@ impl RunningProcessOwner {
         {
             let mut owner = owner.borrow_mut();
             owner.exit_availability.take();
+            owner.retire_lifecycle_attention_routing(app);
             owner.process.notification_audio.close();
             owner.process.parent_sound.close();
             owner.final_teardown = Some(FinalTeardown {

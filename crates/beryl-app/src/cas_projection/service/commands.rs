@@ -271,6 +271,10 @@ impl ProjectionConnectionService {
         self.service_generation
     }
 
+    pub(crate) fn home_mutation_observer(&self) -> beryl_home_store::HomeMutationObserver {
+        self.mutation_observer.clone()
+    }
+
     /// Supplies the process shell with the same master gate used by projection workers.
     ///
     /// Draft, input-admission, catalog, and other store-dependent workers must retain one scoped

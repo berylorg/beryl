@@ -169,6 +169,16 @@ pub struct ReplaceWindowClaim {
 }
 
 impl ReplaceWindowClaim {
+    pub(crate) fn planned_records(
+        &self,
+        header: SessionHeader,
+        window: SessionWindowRecord,
+        old_claim: Option<ThreadClaimRecord>,
+    ) -> Result<(SessionHeader, SessionWindowRecord, ThreadClaimRecord), SessionMutationError> {
+        let plan = build_replace_plan(self, header, window, old_claim)?;
+        Ok((plan.header, plan.window, plan.claim))
+    }
+
     #[must_use]
     pub const fn new(
         expected_session_revision: SessionRevision,
@@ -287,6 +297,15 @@ fn prepare_replace(
             window_id: claim.window_id,
         });
     }
+    build_replace_plan(command, header, window, old_claim)
+}
+
+fn build_replace_plan(
+    command: &ReplaceWindowClaim,
+    header: SessionHeader,
+    window: SessionWindowRecord,
+    old_claim: Option<ThreadClaimRecord>,
+) -> Result<ReplacePlan, SessionMutationError> {
     let next_claim_revision = match old_claim {
         Some(claim) => claim.revision.checked_next()?,
         None => initial_claim_revision(),

@@ -55,7 +55,7 @@ fn presentation_record(
         id: record_id(name),
         kind: ResidentPresentationRecordKind::TextChunk {
             narrative_kind: TranscriptNarrativeKind::AssistantCommentary,
-            text: format!("text-{name}"),
+            text: format!("text-{name}").into(),
         },
         provenance: ResidentRecordProvenance {
             source: ResidentRecordSource::Syndic(SyndicSourceProvenance {

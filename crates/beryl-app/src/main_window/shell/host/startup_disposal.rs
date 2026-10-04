@@ -89,7 +89,7 @@ impl MainWindowShell {
                 matches!(
                     controller.content,
                     ShellContent::Retired { .. }
-                        | ShellContent::Recovered { .. }
+                        | ShellContent::Selected { .. }
                         | ShellContent::RecoveredThreadless { .. }
                 )
             })
@@ -240,7 +240,7 @@ impl MainWindowShell {
                             Some(controller) => {
                                 let retirement = match controller.content {
                                     ShellContent::Retired { .. }
-                                    | ShellContent::Recovered { .. }
+                                    | ShellContent::Selected { .. }
                                     | ShellContent::RecoveredThreadless { .. } => unreachable!(
                                         "running recovery cannot enter startup disposal"
                                     ),

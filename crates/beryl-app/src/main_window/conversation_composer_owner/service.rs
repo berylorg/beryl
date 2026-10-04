@@ -24,6 +24,8 @@ use crate::main_window::MainWindowComposerSlot;
 
 mod candidate_source;
 mod candidate_worker;
+mod claim_publication;
+pub(in crate::main_window) use claim_publication::*;
 mod close;
 mod close_cleanup;
 mod failed_candidate_source;

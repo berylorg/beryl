@@ -40,6 +40,12 @@ mod recovery;
 mod render;
 mod selected_preparation;
 mod service;
+pub(in crate::main_window) use service::{
+    MainWindowComposerClaimAdvance, MainWindowComposerClaimAutosave,
+    MainWindowComposerClaimCompletion, MainWindowComposerClaimPublication,
+    MainWindowComposerClaimWidgetWork,
+    MainWindowComposerClaimPreparedPresentation,
+};
 mod shutdown;
 mod startup;
 mod surviving_native_close;

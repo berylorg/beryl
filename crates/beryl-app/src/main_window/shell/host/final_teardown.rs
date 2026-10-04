@@ -45,6 +45,7 @@ impl MainWindowShell {
     ) -> Result<Pin<Box<gpui::WindowsNativeWindowDestroyed>>, String> {
         let root = self.root.read(app);
         if !self.published
+            || !root.running_thread_reads_drained()
             || root.startup_interaction_gated()
             || !(root.shutdown_interaction_gated || root.ordinary_close_interaction_gated)
             || !root.controller.as_ref().is_some_and(|controller| {

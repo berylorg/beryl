@@ -40,7 +40,7 @@ fn provenance(
 
 fn text_projection(
     id: ProjectionRecordId,
-    text: impl Into<String>,
+    text: impl Into<std::sync::Arc<str>>,
     provenance: SyndicSourceProvenance,
 ) -> ProjectionRecord {
     ProjectionRecord {
@@ -66,7 +66,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id,
             resource_kind,
-            label: label.map(str::to_string),
+            label: label.map(std::sync::Arc::from),
         },
         provenance,
     }
@@ -224,7 +224,7 @@ fn projection_records_preserve_request_order_revision_and_provenance() {
         ProjectionPayload::ResourceReference {
             resource_id: image_resource_id,
             resource_kind: ResourceKind::GeneratedImage,
-            label: Some("generated image".to_string()),
+            label: Some("generated image".into()),
         }
     );
 }

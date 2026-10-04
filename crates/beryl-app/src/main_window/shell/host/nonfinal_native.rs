@@ -35,6 +35,7 @@ impl MainWindowShell {
     ) -> Result<gpui::WindowsNativeWindowDestructionCompleted, String> {
         let root = self.root.read(app);
         if !self.published
+            || !root.running_thread_reads_drained()
             || !root.ordinary_close_interaction_gated
             || !root.shutdown_interaction_gated
             || root.startup_interaction_gated()
@@ -189,7 +190,7 @@ impl MainWindowShellRoot {
             match &mut controller.content {
                 ShellContent::Acquired { selection, .. }
                 | ShellContent::Restored { selection, .. } => *selection = fresh.selection(),
-                ShellContent::Recovered {
+                ShellContent::Selected {
                     window, selection, ..
                 } => {
                     *selection = fresh.selection();

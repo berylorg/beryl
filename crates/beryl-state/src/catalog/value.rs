@@ -335,6 +335,19 @@ pub struct CatalogSearchFields {
 }
 
 impl CatalogSearchFields {
+    pub fn matches(&self, query: &super::CatalogNormalizedQuery) -> bool {
+        let query = query.as_str();
+        query.is_empty()
+            || [
+                self.title(),
+                self.environment_label(),
+                self.configured_executable_path(),
+                self.full_root_path(),
+            ]
+            .into_iter()
+            .any(|field| field.contains(query))
+    }
+
     pub(super) fn from_visible(
         title: &CatalogResolvedTitle,
         execution: &CatalogExecutionSummary,

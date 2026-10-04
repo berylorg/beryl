@@ -10,8 +10,10 @@ use gpui::Focusable;
 
 mod composer;
 mod home_warning;
+mod lifecycle_attention;
 mod recovery;
 mod runtime;
+mod running_threads;
 mod stop_feedback;
 #[cfg(feature = "test-faults")]
 pub use home_warning::BestEffortHomeWarningTimer;
@@ -144,6 +146,7 @@ pub(super) struct MainWindowShellNotices {
     arbiter: MainWindowNoticeArbiter,
     composer: composer::ComposerNoticeContribution,
     stop_feedback: stop_feedback::StopFeedbackNoticeContribution,
+    lifecycle_attention: lifecycle_attention::LifecycleAttentionNoticeContribution,
     runtime: runtime::RuntimeNoticeContribution,
     recovery: recovery::HomeRecoveryNoticeContribution,
     window_id: beryl_model::WindowId,
@@ -192,6 +195,8 @@ impl MainWindowShellNotices {
             arbiter: MainWindowNoticeArbiter::new(controller.window_id()),
             composer: composer::ComposerNoticeContribution::default(),
             stop_feedback: stop_feedback::StopFeedbackNoticeContribution::default(),
+            lifecycle_attention: lifecycle_attention::LifecycleAttentionNoticeContribution::default(
+            ),
             runtime: runtime::RuntimeNoticeContribution::default(),
             recovery: recovery::HomeRecoveryNoticeContribution::default(),
             window_id: controller.window_id(),
@@ -344,6 +349,8 @@ impl MainWindowShellRoot {
         self.notices.subscription = None;
         self.notices.composer = composer::ComposerNoticeContribution::default();
         self.notices.stop_feedback = stop_feedback::StopFeedbackNoticeContribution::default();
+        self.notices.lifecycle_attention =
+            lifecycle_attention::LifecycleAttentionNoticeContribution::default();
         self.notices.runtime = runtime::RuntimeNoticeContribution::default();
         self.notices.arbiter.dispose();
         self.notices.projected = None;
@@ -388,6 +395,7 @@ impl MainWindowShellRoot {
                     .dismiss(&token)
                     .map_err(Rejection::Notice)?;
                 self.acknowledge_stop_notice(&token);
+                self.acknowledge_lifecycle_attention_notice(&token);
                 self.sync_notices(window, cx);
             }
             MainWindowNoticeWidgetEvent::Command { token, command } => {

@@ -96,6 +96,19 @@ impl MainWindowConversationComposerMount {
         residency_bound: MainWindowComposerResidencyBound,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if self.contribution.is_none() {
+            self.suspended_native_lineage_release(receipt.expected_prior())?;
+        }
+        self.attach_resident_pending_presentation(receipt, pending, residency_bound, cx)
+    }
+
+    pub(super) fn attach_resident_pending_presentation(
+        &mut self,
+        receipt: MainWindowComposerActivationReceipt,
+        pending: Entity<MainWindowConversationComposer>,
+        residency_bound: MainWindowComposerResidencyBound,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
         if self.pending_presentation.is_some() {
             return Err("pending composer presentation is already attached".to_owned());
         }
@@ -104,7 +117,7 @@ impl MainWindowConversationComposerMount {
                 composer.attach_pending_realizer(receipt, &pending, composer_cx)
             })?)
         } else {
-            self.suspended_native_lineage_release(receipt.expected_prior())?;
+            self.resident_suspended_native_lineage_release(receipt.expected_prior())?;
             None
         };
         self.pending_presentation = Some(MainWindowConversationComposerPendingPresentation {

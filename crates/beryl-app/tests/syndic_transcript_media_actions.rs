@@ -84,7 +84,7 @@ fn resource_projection_with_provenance(
         payload: ProjectionPayload::ResourceReference {
             resource_id,
             resource_kind: kind,
-            label: Some("resident media".to_string()),
+            label: Some("resident media".into()),
         },
         provenance,
     }

@@ -464,7 +464,7 @@ fn run_with_settlement(
             let controller = root.controller().unwrap();
             assert_eq!(controller.window_id(), record.window_id());
             assert_eq!(controller.placement(), record.placement());
-            let ShellContent::Recovered {
+            let ShellContent::Selected {
                 window: installed,
                 selection: selected,
                 ..

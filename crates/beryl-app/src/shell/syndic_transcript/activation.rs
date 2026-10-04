@@ -43,6 +43,7 @@ pub(crate) enum TranscriptActivationSource {
     BackendReopen,
     StartupRestore,
     NewThread,
+    RunningThread,
     Test,
 }
 

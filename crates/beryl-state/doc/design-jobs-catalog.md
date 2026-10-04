@@ -126,6 +126,18 @@ durable job records and transitions plus compact catalog schema, normalization, 
   byte cost, and fail rather than represent an incomplete collection as complete; stale rows rebuild
   before correctness-sensitive mutation.
 
+## Exact catalog claim replacement
+
+`CatalogClaimReplacementRow` prepares an opaque target row from its exact existing row or proven
+absence, source revisions and canonical bounded facts. State derives its expectation and successor
+revision. `PublishCatalogClaimReplacement::from_planned_rows` joins the target and optional
+predecessor into one Catalog-domain contribution and returns an opaque complete-row outcome audit.
+The fixed pair authenticates primary/recency agreement, replaces old index keys and publishes new
+copies atomically; the app composes exact Session, Syndic and RuntimeRoot sources in the same Home
+command. The audit compares whole expected rows, including their State-owned revisions. It grants
+no view publication or command replay authority. Query search uses `CatalogSearchFields::matches`
+with the same canonical normalization as durable catalog keys.
+
 ## Initial catalog publication
 
 - Initial publication prepares an opaque home-bound witness containing one validated current row

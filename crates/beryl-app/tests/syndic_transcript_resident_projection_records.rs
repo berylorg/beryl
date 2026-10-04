@@ -40,7 +40,7 @@ fn provenance(
 
 fn text_projection(
     id: ProjectionRecordId,
-    text: impl Into<String>,
+    text: impl Into<std::sync::Arc<str>>,
     provenance: SyndicSourceProvenance,
 ) -> ProjectionRecord {
     ProjectionRecord {
@@ -66,7 +66,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id,
             resource_kind,
-            label: label.map(str::to_string),
+            label: label.map(std::sync::Arc::from),
         },
         provenance,
     }
@@ -138,7 +138,7 @@ fn presentation_texts(snapshot: &ResidentCoreSnapshot) -> Vec<&str> {
         .records
         .iter()
         .filter_map(|record| match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_str()),
+            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.as_ref()),
             _ => None,
         })
         .collect()
@@ -242,7 +242,7 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
         text_record.kind,
         ResidentPresentationRecordKind::TextChunk {
             narrative_kind: TranscriptNarrativeKind::AssistantFinalAnswer,
-            text: "assistant text chunk".to_string()
+            text: "assistant text chunk".into()
         }
     );
     assert_eq!(
@@ -262,7 +262,7 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
         ResidentPresentationRecordKind::ResourceReference {
             resource_id: image_resource_id,
             resource_kind: ResourceKind::GeneratedImage,
-            label: Some("generated image".to_string())
+            label: Some("generated image".into())
         }
     );
     assert_eq!(
@@ -537,7 +537,7 @@ fn markdown_like_projection_text_is_not_parsed_by_beryl_presentation() {
     assert_eq!(snapshot.presentation.record_count(), 1);
     match &snapshot.presentation.records[0].kind {
         ResidentPresentationRecordKind::TextChunk { text, .. } => {
-            assert_eq!(text, markdown_like_text);
+            assert_eq!(text.as_ref(), markdown_like_text);
         }
         other => panic!("markdown-like text should stay a text chunk, got {other:?}"),
     }

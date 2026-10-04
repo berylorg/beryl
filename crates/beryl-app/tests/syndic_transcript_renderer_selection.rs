@@ -58,7 +58,7 @@ fn text_record(
         id: record_id(name),
         kind: ResidentPresentationRecordKind::TextChunk {
             narrative_kind: TranscriptNarrativeKind::AssistantCommentary,
-            text: format!("text-{name}"),
+            text: format!("text-{name}").into(),
         },
         provenance: ResidentRecordProvenance {
             source: ResidentRecordSource::Syndic(source_provenance(
@@ -88,7 +88,7 @@ fn resource_record(
         kind: ResidentPresentationRecordKind::ResourceReference {
             resource_id: resource_id.clone(),
             resource_kind,
-            label: Some(format!("resource-{name}")),
+            label: Some(format!("resource-{name}").into()),
         },
         provenance: ResidentRecordProvenance {
             source: ResidentRecordSource::Syndic(resource_source_provenance(

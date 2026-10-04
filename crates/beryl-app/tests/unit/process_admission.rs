@@ -280,3 +280,47 @@ fn fence_waits_until_an_atomic_admission_has_published() {
         closing.join().unwrap().reopen_if(true).unwrap();
     });
 }
+
+#[test]
+fn shell_capacity_and_selection_gates_return_while_claim_commit_is_held() {
+    let registry = RuntimeBackedWindowProcessRegistry::new(ProcessAdmissionGate::new());
+    let id = WindowId::from_bytes([31; 16]);
+    let resident = registry.reserve_main_window(id).unwrap();
+    let lease = registry.admit_selection(&[id], id).unwrap();
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let (observed_tx, observed_rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let admitted = &lease;
+        let commit = scope.spawn(move || {
+            admitted.admit_commit(|| {
+                entered_tx.send(()).unwrap();
+                release_rx
+                    .recv_timeout(std::time::Duration::from_secs(3))
+                    .unwrap();
+            })
+        });
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+        let registry = &registry;
+        let read = scope.spawn(move || {
+            observed_tx
+                .send((
+                    registry.try_main_window_occupancy(),
+                    registry.selection_pending(),
+                ))
+                .unwrap();
+        });
+        let observed = observed_rx.recv_timeout(std::time::Duration::from_secs(1));
+        release_tx.send(()).unwrap();
+        commit.join().unwrap().unwrap();
+        read.join().unwrap();
+        assert_eq!(observed.unwrap(), (None, true));
+    });
+    assert_eq!(registry.try_main_window_occupancy(), Some(1));
+    assert!(registry.selection_pending());
+    drop(lease);
+    assert!(!registry.selection_pending());
+    drop(resident);
+}

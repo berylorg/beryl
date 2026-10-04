@@ -15,6 +15,11 @@ struct MountedRunningOwner(std::rc::Weak<RefCell<RunningProcessOwner>>);
 impl gpui::Global for MountedRunningOwner {}
 
 impl RunningProcessOwner {
+    pub(crate) fn running_threads_reader(
+        &self,
+    ) -> Option<crate::app_services::PublishedRunningThreadsReader> {
+        self.process.services.as_ref()?.running_threads_reader()
+    }
     pub(crate) fn status_stop_worker(
         &self,
     ) -> Option<crate::app_services::PublishedExactStopWorker> {

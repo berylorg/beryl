@@ -42,6 +42,26 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Settings, busy-home, and home-failure windows are distinct top-level controllers and never receive
   main-window claims or restore records.
 
+## Running-Thread Selection Contribution
+
+The published graph exposes a narrow weak process-work reader with revision-bound searchable pages,
+exact logical positions and separate total and attention counts. A shell retains bounded pages and
+its own request identities; it owns no execution session or aggregate process catalog. Source scans
+and transcript preparation run on tracked workers. Close suspends these reads and awaits their
+actual resource release before retiring Home access; cancellation preserves the last coherent view.
+
+One process selection lease authenticates the invoking published window and exact published member
+set against window acquisition and close admission. It remains retained through indeterminate claim
+replacement and final view publication. The app joins State's opaque Session/Catalog replacement and
+Syndic's fixed summary pair with runtime/root validation, using one participant per domain. Existing
+window reveal revalidates the exact active claim and surviving shell without creating a window.
+
+After coherent attachment, the selected shell retains the source-owned Session window record,
+composer selection and existing native reservation. Settled startup construction custody releases
+its duplicate composer service reference; later selection does not retain an obsolete acquisition
+as current authority. Lifecycle attention routing uses those cached coherent view identities and
+acknowledges only the exact displayed token after successful activation or notice dismissal.
+
 ## Startup Failure Presentation
 
 `startup_surface::StartupSurface::open_busy` and `open_failure` mount the dedicated windows from

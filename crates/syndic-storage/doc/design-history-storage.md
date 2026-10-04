@@ -26,6 +26,15 @@ Independent records prevent unrelated changes from fencing one another:
   usage revision.
 - Thread catalog summary is a compact rebuildable query value derived from current durable facts.
 
+The source-owned catalog summary pair operations admit exactly one target and at most one distinct
+predecessor under a shared Syndic-domain revision. `publish_thread_catalog_summary_pair` contributes
+one mutation when either opaque preparation requires replacement; exact members remain validation
+assertions inside that participant. `validate_thread_catalog_summary_pair` supplies one validation
+participant when both preparations are exact. They reuse ordinary summary source guards and retain
+at most two summary reconciliation records. No caller may combine separate same-domain participants
+or compute replacement summary revisions. These operations grant no transcript publication,
+execution, loading or input capability.
+
 A discussion-context envelope is immutable, bounded, and keyed by its context-owner identity. It
 retains exact selected UTF-8, source thread and turn provenance, and SHA-256 over those exact bytes.
 The constructor observes no clock. Draft validation proves its immutable source and branch binding

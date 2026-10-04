@@ -105,6 +105,7 @@ pub(crate) enum TranscriptProviderHistoryReason {
     StorageFailure,
     UnknownTerminalState,
     ProjectionStale,
+    PresentationCapacity,
     ResourceMissing,
     Other(String),
 }
@@ -136,6 +137,7 @@ pub(crate) enum TranscriptNarrativeKind {
     UserMedia,
     AssistantCommentary,
     AssistantFinalAnswer,
+    AssistantText,
     AssistantGeneratedMedia,
 }
 
@@ -175,12 +177,12 @@ pub(crate) enum ProjectionRecordKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPayload {
     Text {
-        text: String,
+        text: std::sync::Arc<str>,
     },
     ResourceReference {
         resource_id: ResourceId,
         resource_kind: ResourceKind,
-        label: Option<String>,
+        label: Option<std::sync::Arc<str>>,
     },
 }
 

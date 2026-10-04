@@ -601,12 +601,24 @@ impl MainWindowConversationComposerMount {
         if self.contribution.is_some() {
             return Ok(None);
         }
+        if self.selected_identity() != Some(selection) {
+            return Err("suspended composer release does not match the selected host".to_owned());
+        }
+        self.resident_suspended_native_lineage_release(selection)
+    }
+
+    pub(super) fn resident_suspended_native_lineage_release(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<Option<MainWindowComposerWidgetRelease>, String> {
+        if self.contribution.is_some() {
+            return Ok(None);
+        }
         self.native_lineage_widget_release
             .filter(|release| {
                 self.native_lineage_prompt_published
                     && self.native_lineage_snapshot.is_some()
                     && self.native_lineage_selection == Some(release.selection())
-                    && self.selected_identity() == Some(selection)
                     && Self::native_lineage_successor_is_exact(release.selection(), selection)
             })
             .ok_or_else(|| {
@@ -622,6 +634,24 @@ impl MainWindowConversationComposerMount {
         let Some(release) = self.suspended_native_lineage_release(selection)? else {
             return Ok(());
         };
+        self.synchronize_suspended_resident(selection, release)
+    }
+
+    pub(super) fn synchronize_resident_suspended_selection(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        let Some(release) = self.resident_suspended_native_lineage_release(selection)? else {
+            return Ok(());
+        };
+        self.synchronize_suspended_resident(selection, release)
+    }
+
+    fn synchronize_suspended_resident(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        release: MainWindowComposerWidgetRelease,
+    ) -> Result<(), String> {
         if self.native_lineage_selection == Some(selection) {
             return Ok(());
         }

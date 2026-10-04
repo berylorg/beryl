@@ -89,7 +89,7 @@ impl PreparedWindowAppearance for PreparedRecoveryAppearance {
                     return Err(reject);
                 }
                 let (home, generation) = match &controller.content {
-                    ShellContent::Recovered { selection, .. } => (
+                    ShellContent::Selected { selection, .. } => (
                         selection.binding().home_id(),
                         selection.binding().home_generation(),
                     ),

@@ -20,6 +20,24 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Range-Backed Composer Host
 
+- Running-thread claim activation separates worker-side source preparation, predecessor draft-save
+  qualification and source publication from GUI editor fencing, widget-release capture and promotion.
+  Prepared presentation and final publication are sealed to the exact composer service and receipt.
+  No source getter or storage operation runs inside the final GUI publication cut. Claim replacement
+  precedes predecessor disposal and widget release only after the predecessor save is known
+  satisfied. The canonical composer owns a selection-specific saved-checkpoint boundary over the
+  ordinary immutable-candidate/frontier publication protocol. It authenticates the exact current
+  durable draft and settled publication while retaining the prior host's active binding, candidate,
+  history and fenced editor; it does not report ordinary ThreadSwitch disposal as complete.
+  The saved proof is bound to the exact host, flush attempt and selection receipt. Failed save,
+  cancelled selection or a known uncommitted claim retires only the target and permits the same
+  prior editor to resume after exact settlement. Indeterminate save or claim retains both editor
+  and operation custody and excludes competing selection until exact reconciliation.
+  Once the claim is known committed, canonical predecessor disposal and widget release complete
+  before coherent target promotion. Their failures retain the committed target and predecessor
+  cleanup custody; they never roll back the claim or resume the old editor. Ordinary close,
+  submission and ordinary ThreadSwitch completion retain their own existing semantics.
+
 - Marker sealing consumes the single injected home-generation service owned by the
   [process service graph](design-shell-lifecycle.md#process-service-graph-and-windows); a host or
   window never constructs independent flight capacity.

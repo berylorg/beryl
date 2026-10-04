@@ -115,7 +115,7 @@ impl MainWindowShellRoot {
         ) {
             (ShellContent::RecoveredThreadless { .. }, None, None) => Ok(()),
             (
-                ShellContent::Recovered { selection, .. },
+                ShellContent::Selected { selection, .. },
                 Some(mount),
                 Some((expected, editor, close)),
             ) if mount == expected && close.selection() == *selection => {

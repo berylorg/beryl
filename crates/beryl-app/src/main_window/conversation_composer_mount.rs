@@ -33,10 +33,11 @@ mod native_disposal;
 mod native_lineage;
 mod pending_presentation;
 mod submission;
-mod worker;
+pub(in crate::main_window) mod worker;
 
 use pending_presentation::MainWindowConversationComposerPendingPresentation;
 mod realization;
+mod running_threads;
 
 pub use autosave::*;
 pub use close::{

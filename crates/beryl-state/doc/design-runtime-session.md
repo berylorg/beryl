@@ -27,6 +27,16 @@ runtime/root, session/window, and thread-claim durable state.
 
 ## Session and windows
 
+`SessionState::prepare_window_claim_replacement` authenticates the bounded Running header, exact
+invoking window, paired predecessor and target occupancy. It returns current selection, an exact
+claim elsewhere, or an opaque replacement prepared through the ordinary replacement rules.
+State derives the future window, claim, header and revisions. Its contribution revalidates the
+original Session-domain revision and exact source records, permitting unrelated Home-domain
+changes from unpublished composer preparation and ordinary draft flush. Its outcome classification
+distinguishes the exact original, exact committed replacement and collision; no result alone grants
+execution dispatch, view publication or replay. Elsewhere occupancy also authenticates the
+target's referenced window and remembered runtime/root binding.
+
 - The `beryl-session` domain owns one active header, restorable main-window records, and claims
   keyed both by window and by Syndic thread. One home has at most 256 restorable main windows. The
   V1 header is fixed-capacity; each V1 window record is fixed-size with canonical tagged padding

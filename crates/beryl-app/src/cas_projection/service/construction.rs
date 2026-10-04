@@ -66,6 +66,54 @@ impl ProjectionConnectionService {
         )
     }
 
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn new_borrowed_for_test(
+        process: crate::process_admission::ProcessAdmissionGate,
+        home: &HomeStore,
+        storage: SyndicStorage,
+        config: ProjectionServiceConfig,
+        scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Result<Self, ProjectionCoordinatorError> {
+        let health = home.health();
+        if health.state() != HomeHealthState::Healthy {
+            return Err(ProjectionCoordinatorError::HomeNotHealthy {
+                state: health.state(),
+                generation: health.generation(),
+            });
+        }
+        let Some(home_generation) = health.generation() else {
+            return Err(ProjectionCoordinatorError::HealthyHomeGenerationMissing);
+        };
+        let recovery = super::super::accepted_delivery_recovery::recover_startup(
+            &home,
+            home.home_id(),
+            home_generation,
+            &storage,
+        )?;
+        let storage_revision = storage
+            .revision(&home)
+            .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
+        let health = home.health();
+        if health.state() != HomeHealthState::Healthy {
+            return Err(ProjectionCoordinatorError::HomeNotHealthy {
+                state: health.state(),
+                generation: health.generation(),
+            });
+        }
+        Self::construct(
+            process,
+            Arc::new(home.service_reference()),
+            home_generation,
+            None,
+            storage,
+            config,
+            scheduled_ordinary_provider,
+            InitialStartGate::ready(),
+            storage_revision,
+            recovery,
+        )
+    }
+
     pub(super) fn construct(
         process: crate::process_admission::ProcessAdmissionGate,
         home: Arc<HomeServiceReference>,

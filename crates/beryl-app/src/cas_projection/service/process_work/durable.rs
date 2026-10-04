@@ -67,7 +67,7 @@ impl ProcessWorkInventory<'_> {
     pub(super) fn scan_threads(
         &self,
         revision: &ProcessWorkRevision,
-        live: LiveMap,
+        live: super::live::LiveSource<'_>,
         cancellation: &ProjectionCancellationToken,
         visit: impl FnMut(SyndicThreadId, LiveFacts) -> Result<(), ProcessWorkError>,
     ) -> Result<(), ProcessWorkError> {
@@ -80,7 +80,7 @@ impl ProcessWorkRead {
     pub(super) fn scan_work_threads(
         &self,
         revision: &RequiredWorkRevision,
-        live: LiveMap,
+        mut live: super::live::LiveSource<'_>,
         flight_revision: Option<u64>,
         cancellation: &ProjectionCancellationToken,
         mut visit: impl FnMut(SyndicThreadId, LiveFacts) -> Result<(), ProcessWorkError>,
@@ -179,7 +179,6 @@ impl ProcessWorkRead {
                 next,
             ))
         });
-        let mut live = live.into_iter().peekable();
         loop {
             check_cancelled(cancellation)?;
             let thread_id = [
@@ -187,7 +186,7 @@ impl ProcessWorkRead {
                 next.peek()?,
                 ready.peek()?,
                 flights.peek()?,
-                live.peek().map(|(id, _)| *id),
+                live.peek()?,
             ]
             .into_iter()
             .flatten()
@@ -195,8 +194,8 @@ impl ProcessWorkRead {
             let Some(thread_id) = thread_id else {
                 break;
             };
-            let mut facts = if live.peek().is_some_and(|(id, _)| *id == thread_id) {
-                live.next().expect("peek selected this live entry").1
+            let mut facts = if live.peek()? == Some(thread_id) {
+                live.take().expect("peek selected this live entry").1
             } else {
                 LiveFacts::default()
             };

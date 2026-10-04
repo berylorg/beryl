@@ -95,7 +95,7 @@ impl MainWindowShellRoot {
         let ShellContent::Retired { reservation, .. } = &mut controller.content else {
             unreachable!()
         };
-        controller.content = ShellContent::Recovered {
+        controller.content = ShellContent::Selected {
             window: record,
             selection,
             reservation: reservation.take().unwrap(),
@@ -231,7 +231,7 @@ impl MainWindowShellRoot {
         let ShellContent::Retired { reservation, .. } = &mut controller.content else {
             unreachable!()
         };
-        controller.content = ShellContent::Recovered {
+        controller.content = ShellContent::Selected {
             window: record,
             selection,
             reservation: reservation.take().unwrap(),
@@ -245,7 +245,7 @@ impl MainWindowShellRoot {
 impl MainWindowShellController {
     pub(super) fn validate_recovered_appearance(&self) -> Result<(), String> {
         let identity = match &self.content {
-            ShellContent::Recovered { selection, .. } => Some((
+            ShellContent::Selected { selection, .. } => Some((
                 selection.binding().home_id(),
                 selection.binding().home_generation(),
             )),

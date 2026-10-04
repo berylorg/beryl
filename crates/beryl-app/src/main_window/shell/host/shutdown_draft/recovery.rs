@@ -9,7 +9,9 @@ pub(in crate::main_window::shell::host) enum ResidentRetirement {
 }
 
 impl MainWindowShellController {
-    pub(super) fn retire_construction(&mut self) -> Result<(), String> {
+    pub(in crate::main_window::shell::host) fn retire_construction(
+        &mut self,
+    ) -> Result<(), String> {
         match &self.content {
             ShellContent::Retired { .. } => return Ok(()),
             ShellContent::Acquired { custody, .. } => {
@@ -23,7 +25,7 @@ impl MainWindowShellController {
                 custody.composer.validate_recovery_retirement()?;
             }
             ShellContent::Threadless { .. }
-            | ShellContent::Recovered { .. }
+            | ShellContent::Selected { .. }
             | ShellContent::RecoveredThreadless { .. } => {}
         }
         let retired = ShellContent::Retired {
@@ -36,7 +38,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => custody.reservation,
             ShellContent::Restored { custody, .. } => custody.reservation,
             ShellContent::Threadless { reservation, .. } => reservation,
-            ShellContent::Recovered { reservation, .. } => reservation,
+            ShellContent::Selected { reservation, .. } => reservation,
             ShellContent::RecoveredThreadless { reservation, .. } => reservation,
             ShellContent::Retired { .. } => unreachable!(),
         };
@@ -55,10 +57,15 @@ impl MainWindowShellController {
 impl MainWindowShellRoot {
     pub(crate) fn begin_failed_shutdown_draft(
         &mut self,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowShutdownDraft, String> {
         if !self.shutdown_interaction_gated || self.startup_interaction_gated() {
             return Err("failed shutdown capture requires exact running shell gate".into());
+        }
+        self.suspend_running_thread_reads(window, cx);
+        if self.running_threads.pending_activation.is_some() {
+            return Err("running thread selection custody prevents failed-home capture".into());
         }
         let controller = self
             .controller
@@ -122,6 +129,10 @@ impl MainWindowShellRoot {
         {
             return Err("failed shutdown draft lost its exact gated shell".into());
         }
+        if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
+        {
+            return Ok(false);
+        }
         let Some(failed) = draft.failed.as_mut() else {
             return self.retire_shutdown_draft(draft, cx);
         };
@@ -181,7 +192,7 @@ impl MainWindowShellRoot {
             ShellContent::Restored { custody, .. } => {
                 custody.composer.release_recovery_service(service)?
             }
-            ShellContent::Recovered { .. } => {}
+            ShellContent::Selected { .. } => {}
             _ => return Err("failed selected construction custody changed".into()),
         }
         let resources = *failed.resources.take().unwrap();
@@ -211,6 +222,10 @@ impl MainWindowShellRoot {
             || self.startup_interaction_gated()
         {
             return Err("resident retirement lost its exact gated shell".into());
+        }
+        if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
+        {
+            return Ok(false);
         }
         let controller = self
             .controller
@@ -259,7 +274,7 @@ impl MainWindowShellRoot {
                     ShellContent::Restored { custody, .. } => {
                         custody.composer.release_recovery_service(service)?;
                     }
-                    ShellContent::Recovered { .. } => {}
+                    ShellContent::Selected { .. } => {}
                     ShellContent::Threadless { .. }
                     | ShellContent::RecoveredThreadless { .. }
                     | ShellContent::Retired { .. } => {

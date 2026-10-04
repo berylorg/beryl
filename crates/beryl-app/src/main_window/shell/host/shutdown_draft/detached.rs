@@ -87,7 +87,7 @@ impl MainWindowShellRoot {
             ShellContent::Restored { custody, .. } => {
                 custody.composer.validate_service_retirement(&service)
             }
-            ShellContent::Recovered { .. } => Ok(()),
+            ShellContent::Selected { .. } => Ok(()),
             _ => Err("selected shutdown construction custody changed".into()),
         }
     }
@@ -140,7 +140,7 @@ impl MainWindowShellRoot {
                 ShellContent::Restored { custody, .. } => {
                     custody.composer.release_recovery_service(service)?
                 }
-                ShellContent::Recovered { .. } => {}
+                ShellContent::Selected { .. } => {}
                 _ => return Err("final construction custody changed".into()),
             }
             let Some(recovery::ResidentRetirement::Detached(resources)) = draft.retirement.take()
@@ -162,10 +162,13 @@ impl MainWindowShellRoot {
     }
 
     pub(crate) fn drain_detached_shutdown_reads(&mut self, cx: &mut Context<Self>) -> bool {
-        self.controller
-            .as_ref()
-            .and_then(|controller| controller.composer_mount.clone())
-            .is_none_or(|mount| mount.update(cx, |mount, cx| mount.drain_detached_reads(cx)))
+        self.running_thread_reads_drained()
+            && self.release_suspended_running_thread_sources()
+            && self
+                .controller
+                .as_ref()
+                .and_then(|controller| controller.composer_mount.clone())
+                .is_none_or(|mount| mount.update(cx, |mount, cx| mount.drain_detached_reads(cx)))
     }
 
     pub(crate) fn resume_detached_shutdown_reads(

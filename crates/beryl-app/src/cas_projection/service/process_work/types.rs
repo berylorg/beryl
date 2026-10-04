@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 
-use beryl_model::{ExecutionBinding, SyndicThreadId};
+use beryl_model::{ExecutionBinding, HomeRevision, SyndicThreadId};
+use beryl_state::{CatalogFacts, CatalogNormalizedQuery, ThreadClaimRecord};
 use syndic_storage::{SyndicReadError, SyndicTimestamp, ThreadCatalogTitle};
 use thiserror::Error;
 
@@ -104,6 +105,86 @@ pub struct ProcessWorkPage {
     pub(super) next_cursor: Option<ProcessWorkCursor>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessWorkQueryRevision {
+    pub(super) work: ProcessWorkRevision,
+    pub(super) home: HomeRevision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessWorkQueryRecord {
+    pub thread_id: SyndicThreadId,
+    pub catalog: CatalogFacts,
+    pub claim: Option<ThreadClaimRecord>,
+    pub facts: ProcessWorkFacts,
+    pub attention: Vec<LifecycleAttentionRecord>,
+}
+
+impl ProcessWorkQueryRecord {
+    pub(super) fn key(&self) -> SortKey {
+        (
+            Reverse(SyndicTimestamp::from_unix_millis(
+                self.catalog.last_activity_at().get(),
+            )),
+            self.thread_id,
+        )
+    }
+
+    pub fn bytes(&self) -> usize {
+        let execution = self.catalog.execution();
+        let search = self.catalog.search();
+        std::mem::size_of::<Self>()
+            + self.catalog.title().text().map_or(0, str::len)
+            + execution.environment_label().len()
+            + execution.configured_executable_path().as_str().len()
+            + execution.full_root_path().as_str().len()
+            + search.title().len()
+            + search.environment_label().len()
+            + search.configured_executable_path().len()
+            + search.full_root_path().len()
+            + self.attention.len() * std::mem::size_of::<LifecycleAttentionRecord>()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessWorkQueryPage {
+    pub(super) revision: ProcessWorkQueryRevision,
+    pub(super) query: CatalogNormalizedQuery,
+    pub(super) logical_start: u64,
+    pub(super) total_threads: u64,
+    pub(super) matched_threads: u64,
+    pub(super) attention_threads: u64,
+    pub(super) records: Vec<ProcessWorkQueryRecord>,
+    pub(super) bytes: usize,
+}
+
+impl ProcessWorkQueryPage {
+    pub fn revision(&self) -> &ProcessWorkQueryRevision {
+        &self.revision
+    }
+    pub fn query(&self) -> &CatalogNormalizedQuery {
+        &self.query
+    }
+    pub const fn logical_start(&self) -> u64 {
+        self.logical_start
+    }
+    pub const fn total_threads(&self) -> u64 {
+        self.total_threads
+    }
+    pub const fn matched_threads(&self) -> u64 {
+        self.matched_threads
+    }
+    pub const fn attention_threads(&self) -> u64 {
+        self.attention_threads
+    }
+    pub fn records(&self) -> &[ProcessWorkQueryRecord] {
+        &self.records
+    }
+    pub const fn bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
 impl ProcessWorkPage {
     pub fn revision(&self) -> &ProcessWorkRevision {
         &self.revision
@@ -124,6 +205,10 @@ impl ProcessWorkPage {
 
 #[derive(Debug, Error)]
 pub enum ProcessWorkError {
+    #[error(transparent)]
+    StateRead(#[from] beryl_home_store::ReadError),
+    #[error(transparent)]
+    CatalogProjection(#[from] crate::catalog_projection::CatalogProjectionBuildError),
     #[error(transparent)]
     Projection(#[from] ProjectionCoordinatorError),
     #[error(transparent)]

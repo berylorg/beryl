@@ -37,6 +37,7 @@ pub(crate) struct RealizedFrameScrollController {
     scroll_mode: RealizedFrameScrollMode,
     pending_tail_placement: bool,
     previous_snapshot_record_ids: Vec<ResidentPresentationRecordId>,
+    viewport_height_px: Option<f32>,
 }
 
 impl RealizedFrameScrollController {
@@ -117,6 +118,12 @@ impl RealizedFrameScrollController {
         if request.manual_delta_px != 0.0 {
             self.detach_live_tail_following();
         }
+        if self.viewport_height_px != Some(request.viewport_height_px)
+            && self.scroll_mode == RealizedFrameScrollMode::LiveTailFollowing
+        {
+            self.pending_tail_placement = true;
+        }
+        self.viewport_height_px = Some(request.viewport_height_px);
         self.prepare_for_snapshot(snapshot);
 
         let window = if snapshot.records.is_empty() {

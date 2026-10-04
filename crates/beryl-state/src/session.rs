@@ -12,6 +12,7 @@ use crate::RecordRevision;
 mod acquisition;
 mod bootstrap;
 mod catalog_source;
+mod claim_replacement;
 mod codec;
 mod error;
 mod mutation;
@@ -25,6 +26,7 @@ pub(crate) use acquisition::{SessionAbandonmentSource, SessionAcquisitionSource}
 pub use catalog_source::{
     ThreadClaimCatalogSource, ThreadClaimCatalogSourceError, WindowClaimCatalogSource,
 };
+pub use claim_replacement::{PreparedWindowClaimReplacement, WindowClaimReplacementPreparation, WindowClaimReplacementState};
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,

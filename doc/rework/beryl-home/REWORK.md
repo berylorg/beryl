@@ -420,8 +420,7 @@
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.
-- [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
-  with process-owned lifecycle attention independent of the originating window.
+- [x] Accepted [live detach/reattach and the bounded Running threads picker](../../failures/running-thread-selection-publication.md#accepted-mounted-boundary), with process-owned lifecycle attention independent of the originating window.
 - [x] Accepted the source-backed [Running threads mounting readiness](../../audits/running-threads/readiness.md) and independently reviewed implementation boundary.
 - [x] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window
   and Exit confirmation, serialized close designation, and durable restore-mode integration.

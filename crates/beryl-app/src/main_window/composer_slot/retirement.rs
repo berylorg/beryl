@@ -62,6 +62,9 @@ impl MainWindowComposerSlot {
         if matches!(
             self.pending.as_ref().unwrap().stage,
             PendingStage::Publishing(_)
+                | PendingStage::SelectionSaving(_)
+                | PendingStage::SelectionSaved(_)
+                | PendingStage::SelectionDisposing(_)
                 | PendingStage::AwaitingWidgetRelease
                 | PendingStage::Finalizing
         ) {

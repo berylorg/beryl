@@ -68,7 +68,7 @@ fn text_projection(
     view_id: &TranscriptViewId,
     position: u64,
     projection_id: ProjectionRecordId,
-    text: impl Into<String>,
+    text: impl Into<std::sync::Arc<str>>,
 ) -> ProjectionRecord {
     ProjectionRecord {
         id: projection_id.clone(),
@@ -100,7 +100,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id: resource_id.clone(),
             resource_kind: kind,
-            label: Some("resident resource".to_string()),
+            label: Some("resident resource".into()),
         },
         provenance: provenance(
             view_id,
@@ -241,7 +241,7 @@ fn presentation_texts(records: &[&ResidentPresentationRecord]) -> Vec<String> {
     records
         .iter()
         .filter_map(|record| match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.clone()),
+            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.to_string()),
             _ => None,
         })
         .collect()

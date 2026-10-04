@@ -147,13 +147,15 @@ impl MainWindowCreationOwner {
         {
             return Some("New Window is waiting for window creation and durable state.");
         }
-        if self
+        let Some(occupancy) = self
             .services
             .acquisition
             .process_registry()
-            .main_window_occupancy()
-            >= beryl_state::MAX_RESTORABLE_WINDOWS
-        {
+            .try_main_window_occupancy()
+        else {
+            return Some("New Window is waiting for window creation and durable state.");
+        };
+        if occupancy >= beryl_state::MAX_RESTORABLE_WINDOWS {
             return Some("All 256 main-window slots are in use.");
         }
         None

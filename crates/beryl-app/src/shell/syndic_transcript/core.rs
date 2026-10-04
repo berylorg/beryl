@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{cell::RefCell, ops::Range, sync::Arc};
 
 use super::{
     activation::{
@@ -51,6 +51,7 @@ pub(crate) struct ResidentTranscriptCore {
     policy: ResidentTranscriptPolicy,
     resident: ResidentSyndicDataSnapshot,
     presentation: ResidentPresentationSnapshot,
+    shared_presentation: RefCell<Option<Arc<ResidentPresentationSnapshot>>>,
     demand_facts: DemandFactSink,
     provider_requests: ProviderRequestBook,
     generation: ResidentGeneration,
@@ -135,6 +136,7 @@ impl ResidentTranscriptCore {
             policy,
             resident: ResidentSyndicDataSnapshot::default(),
             presentation: ResidentTranscriptSnapshot::empty(),
+            shared_presentation: RefCell::new(None),
             provider_requests: ProviderRequestBook::default(),
             generation: ResidentGeneration::default(),
             active_selection: None,
@@ -164,6 +166,23 @@ impl ResidentTranscriptCore {
         snapshot
     }
 
+    pub(crate) fn shared_presentation_snapshot(&self) -> Arc<ResidentPresentationSnapshot> {
+        let mut cached = self.shared_presentation.borrow_mut();
+        Arc::clone(cached.get_or_insert_with(|| Arc::new(self.presentation_snapshot())))
+    }
+
+    pub(crate) fn empty_successor(&self) -> Self {
+        let mut successor = Self::new(self.policy);
+        successor.generation = self.generation;
+        successor.presentation.activation_revision = self.presentation.activation_revision;
+        successor.presentation.presentation_revision = self.presentation.presentation_revision;
+        successor
+    }
+
+    pub(crate) fn selected_view_id(&self) -> Option<&TranscriptViewId> {
+        self.resident.view_id.as_ref()
+    }
+
     pub(crate) fn demand_fact_snapshot(&self) -> DemandFactSinkSnapshot {
         self.demand_facts.snapshot()
     }
@@ -189,10 +208,16 @@ impl ResidentTranscriptCore {
             }
             DemandFactKind::VisibleRange { range } => {
                 self.resident.visible_range = self.bounded_presentation_range(range);
+                if self.presentation.visible_range != self.resident.visible_range {
+                    self.shared_presentation.get_mut().take();
+                }
                 self.presentation.visible_range = self.resident.visible_range.clone();
             }
             DemandFactKind::OverscanRange { range } => {
                 self.resident.overscan_range = self.bounded_presentation_range(range);
+                if self.presentation.realized_range != self.resident.overscan_range {
+                    self.shared_presentation.get_mut().take();
+                }
                 self.presentation.realized_range = self.resident.overscan_range.clone();
             }
             DemandFactKind::ActiveSelectionPin { record_id } => {
@@ -661,6 +686,7 @@ impl ResidentTranscriptCore {
         &mut self,
         response: TranscriptProviderResponse,
     ) -> ResidentProviderResponseEffect {
+        self.shared_presentation.get_mut().take();
         let request_id = response.request_id;
         match response.kind {
             TranscriptProviderResponseKind::ViewPage(page) => {
@@ -741,6 +767,7 @@ impl ResidentTranscriptCore {
     }
 
     pub(crate) fn bump_generation(&mut self) -> ResidentGeneration {
+        self.shared_presentation.get_mut().take();
         self.generation = ResidentGeneration(self.generation.0.saturating_add(1));
         self.generation
     }
@@ -775,6 +802,7 @@ impl ResidentTranscriptCore {
     }
 
     pub(crate) fn release_obsolete_resident_data(&mut self) -> usize {
+        self.shared_presentation.get_mut().take();
         if self.resident.obsolete_ranges.is_empty() {
             return 0;
         }
@@ -2330,7 +2358,7 @@ impl ResidentTranscriptCore {
             revision: range.revision,
             kind: range.kind,
             range: admitted_range,
-            bytes,
+            bytes: bytes.into(),
             complete,
         }
     }

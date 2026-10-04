@@ -48,7 +48,7 @@ impl MainWindowShell {
                 }
                 match &controller.content {
                     ShellContent::Retired { .. }
-                    | ShellContent::Recovered { .. }
+                    | ShellContent::Selected { .. }
                     | ShellContent::RecoveredThreadless { .. } => {
                         Err("retired shell cannot enter startup".into())
                     }

@@ -4,7 +4,9 @@ use syndic_storage::{
     PreparedDraftEditorCandidateSessionAbandonFreshV1,
 };
 
-use crate::composer_host::{ComposerHostFlushTicket, SyndicComposerHost};
+use crate::composer_host::{
+    ComposerHostFlushTicket, ComposerHostSelectionSave, SyndicComposerHost,
+};
 
 use super::MainWindowComposerDispatcher;
 use super::{MainWindowComposerActivationReceipt, MainWindowComposerSelectionIdentity};
@@ -21,6 +23,9 @@ pub(super) struct SelectedComposer {
 pub(super) enum PendingStage {
     Ready,
     Publishing(ComposerHostFlushTicket),
+    SelectionSaving(ComposerHostFlushTicket),
+    SelectionSaved(ComposerHostSelectionSave),
+    SelectionDisposing(ComposerHostFlushTicket),
     AwaitingWidgetRelease,
     Finalizing,
     Retiring,

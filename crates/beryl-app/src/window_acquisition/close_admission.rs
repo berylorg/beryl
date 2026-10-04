@@ -101,7 +101,7 @@ impl RuntimeBackedWindowProcessRegistry {
                     .flights
                     .lock()
                     .map_err(|_| WindowCloseAdmissionError::Unavailable)?;
-                if registry.close_owner.is_some() {
+                if registry.close_owner.is_some() || registry.selection_owner.is_some() {
                     return Err(WindowCloseAdmissionError::Busy);
                 }
                 if !Arc::ptr_eq(&registry.membership_revision, &snapshot.revision) {
@@ -129,7 +129,7 @@ impl RuntimeBackedWindowProcessRegistry {
                     .flights
                     .lock()
                     .map_err(|_| WindowCloseAdmissionError::Unavailable)?;
-                if registry.close_owner.is_some() {
+                if registry.close_owner.is_some() || registry.selection_owner.is_some() {
                     return Err(WindowCloseAdmissionError::Busy);
                 }
                 if registry.main_window_reservations != members {
@@ -157,7 +157,7 @@ impl RuntimeBackedWindowProcessRegistry {
                     .flights
                     .lock()
                     .map_err(|_| WindowCloseAdmissionError::Unavailable)?;
-                if registry.close_owner.is_some() {
+                if registry.close_owner.is_some() || registry.selection_owner.is_some() {
                     return Err(WindowCloseAdmissionError::Busy);
                 }
                 if !Arc::ptr_eq(&registry.membership_revision, &snapshot.revision) {

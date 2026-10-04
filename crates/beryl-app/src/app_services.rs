@@ -34,6 +34,8 @@ mod failed_retirement;
 mod initial_disposal;
 mod preparation;
 mod published;
+mod running_threads;
+pub(crate) use running_threads::PublishedRunningThreadsReader;
 pub(crate) mod recovery_composer;
 mod recovery_failed_residents;
 pub(crate) mod recovery_graph;

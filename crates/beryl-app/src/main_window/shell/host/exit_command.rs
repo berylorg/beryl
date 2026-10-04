@@ -5,6 +5,21 @@ use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, AnyView, InteractiveElement, StatefulInteractiveElement};
 
 impl MainWindowShellRoot {
+    pub(super) fn running_selection_interaction_gated(&self, app: &App) -> bool {
+        if self.running_threads.pending_activation.is_some() {
+            return true;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(owner) = crate::running_owner::RunningProcessOwner::mounted_owner(app)
+            .and_then(|owner| owner.upgrade())
+        {
+            return owner
+                .try_borrow()
+                .map_or(true, |owner| owner.running_selection_pending());
+        }
+        let _ = app;
+        false
+    }
     pub(crate) fn mount_running_command(
         &mut self,
         command: crate::startup_owner::RunningWindowExit,
@@ -17,6 +32,7 @@ impl MainWindowShellRoot {
             let admitted = root.upgrade().is_some_and(|root| {
                 let root = root.read(app);
                 !root.startup_interaction_gated()
+                    && !root.running_selection_interaction_gated(app)
                     && !root.shutdown_interaction_gated
                     && !root.ordinary_close_interaction_gated
                     && command.disabled_reason().is_none()
@@ -30,7 +46,8 @@ impl MainWindowShellRoot {
     }
 
     fn exit_enabled(&self) -> bool {
-        !self.startup_interaction_gated()
+        self.running_threads.pending_activation.is_none()
+            && !self.startup_interaction_gated()
             && !self.shutdown_interaction_gated
             && !self.ordinary_close_interaction_gated
             && self
@@ -95,6 +112,9 @@ impl MainWindowShellRoot {
                 "Quit Anyway",
                 "Quit Beryl immediately; cleanup is incomplete.",
             );
+        }
+        if self.running_threads.pending_activation.is_some() {
+            return ("Exit", "A running thread is being opened in this window.");
         }
         if self.ordinary_close_interaction_gated {
             (
@@ -166,7 +186,7 @@ pub(super) fn render(
     let blocked = root.blocked_shutdown.is_some();
     #[cfg(not(target_os = "windows"))]
     let blocked = false;
-    let enabled = blocked || root.exit_enabled();
+    let enabled = blocked || (root.exit_enabled() && !root.running_selection_interaction_gated(cx));
     let hover = color("button.secondary.hover", Property::Background, 0xeef2f7);
     let hover_border = color("button.secondary.hover", Property::Border, 0x94a3b8);
     let hover_foreground = color("button.secondary.hover", Property::Foreground, 0x1f2937);
@@ -211,7 +231,9 @@ pub(super) fn render(
                         let _ = root.request_blocked_quit(cx);
                         return;
                     }
-                    root.request_running_exit();
+                    if !root.running_selection_interaction_gated(cx) {
+                        root.request_running_exit();
+                    }
                 }))
                 .on_key_down(cx.listener(|root, event: &gpui::KeyDownEvent, _, cx| {
                     if event.keystroke.key == "enter" || event.keystroke.key == "space" {
@@ -221,7 +243,9 @@ pub(super) fn render(
                             cx.stop_propagation();
                             return;
                         }
-                        root.request_running_exit();
+                        if !root.running_selection_interaction_gated(cx) {
+                            root.request_running_exit();
+                        }
                         cx.stop_propagation();
                     }
                 }))
@@ -302,6 +326,13 @@ impl Render for ExitTooltip {
         let generation = controller.appearance();
         let color = |role, property, fallback| theme_color(generation, role, property, fallback);
         let font = theme_font(generation, "tooltip.text", 12., 400.);
+        let text = if root.exit_presentation().0 == "Exit"
+            && root.running_selection_interaction_gated(cx)
+        {
+            "A running thread selection is waiting for durable state."
+        } else {
+            root.exit_presentation().1
+        };
         div()
             .id("main-window-exit-tooltip")
             .debug_selector(|| "main-window-exit-tooltip".to_owned())
@@ -317,7 +348,7 @@ impl Render for ExitTooltip {
             .text_size(px(font.size))
             .font_weight(gpui::FontWeight(font.weight))
             .when_some(font.family, |tooltip, family| tooltip.font_family(family))
-            .child(root.exit_presentation().1)
+            .child(text)
             .into_any_element()
     }
 }

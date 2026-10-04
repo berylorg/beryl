@@ -13,6 +13,8 @@ mod nonfinal_native;
 mod pre_native_close;
 mod recovery;
 mod restored;
+mod running_selection;
+mod running_threads;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
@@ -42,7 +44,7 @@ enum ShellContent {
         source: crate::app_services::recovery_threadless::ThreadlessRecoveryWindow,
         reservation: RuntimeBackedWindowMainWindowReservation,
     },
-    Recovered {
+    Selected {
         window: beryl_state::SessionWindowRecord,
         selection: crate::main_window::MainWindowComposerSelectionIdentity,
         reservation: RuntimeBackedWindowMainWindowReservation,
@@ -201,7 +203,7 @@ impl GpuiMainWindowShellHost<'_> {
         {
             let (window_id, saved, required) = match &prepared.content {
                 ShellContent::Retired { .. }
-                | ShellContent::Recovered { .. }
+                | ShellContent::Selected { .. }
                 | ShellContent::RecoveredThreadless { .. } => {
                     unreachable!("running recovery shells cannot be allocated")
                 }
@@ -364,7 +366,7 @@ impl MainWindowShellController {
                 Ok(custody.composer.recovery_window().revision())
             }
             ShellContent::Threadless { source, .. } => Ok(source.recovery_window().revision()),
-            ShellContent::Recovered { window, .. } => Ok(window.revision()),
+            ShellContent::Selected { window, .. } => Ok(window.revision()),
             ShellContent::RecoveredThreadless { source, .. } => Ok(source.window().revision()),
             ShellContent::Retired { .. } => {
                 Err("retired shell has no unchanged Running window".into())
@@ -376,7 +378,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => Some(&custody.acquisition),
             ShellContent::Threadless { .. }
             | ShellContent::Restored { .. }
-            | ShellContent::Recovered { .. }
+            | ShellContent::Selected { .. }
             | ShellContent::RecoveredThreadless { .. }
             | ShellContent::Retired { .. } => None,
         }
@@ -396,7 +398,7 @@ impl MainWindowShellController {
 
     pub fn placement(&self) -> &beryl_model::WindowPlacement {
         match &self.content {
-            ShellContent::Recovered { window, .. } => window.placement(),
+            ShellContent::Selected { window, .. } => window.placement(),
             ShellContent::RecoveredThreadless { source, .. } => source.window().placement(),
             ShellContent::Retired { placement, .. } => placement,
             ShellContent::Acquired { custody, .. } => custody.acquisition.placement(),
@@ -411,7 +413,7 @@ impl MainWindowShellController {
     #[must_use]
     pub fn window_id(&self) -> beryl_model::WindowId {
         match &self.content {
-            ShellContent::Recovered { window, .. } => window.window_id(),
+            ShellContent::Selected { window, .. } => window.window_id(),
             ShellContent::RecoveredThreadless { source, .. } => source.window().window_id(),
             ShellContent::Retired { window_id, .. } => *window_id,
             ShellContent::Acquired { custody, .. } => custody.window_id(),
@@ -436,7 +438,7 @@ impl MainWindowShellController {
             ShellContent::Acquired { custody, .. } => custody,
             ShellContent::Threadless { .. }
             | ShellContent::Restored { .. }
-            | ShellContent::Recovered { .. }
+            | ShellContent::Selected { .. }
             | ShellContent::RecoveredThreadless { .. }
             | ShellContent::Retired { .. } => {
                 unreachable!("only acquired shells have acquisition abandonment")
@@ -524,7 +526,7 @@ impl MainWindowShell {
                             && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
                             && match &controller.content {
                                 ShellContent::Retired { .. }
-                                | ShellContent::Recovered { .. }
+                                | ShellContent::Selected { .. }
                                 | ShellContent::RecoveredThreadless { .. } => false,
                                 ShellContent::Threadless { source, .. } => {
                                     source.validate_lifetime().is_ok()
@@ -623,6 +625,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    running_threads: running_threads::RunningThreadsContribution,
     status_controls: status_controls::ExactStatusControls,
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,

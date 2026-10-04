@@ -105,9 +105,7 @@ fn text_projection(
         id: projection_id.clone(),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text {
-            text: text.to_string(),
-        },
+        payload: ProjectionPayload::Text { text: text.into() },
         provenance: provenance(view_id, position, &projection_id, copy_source_range),
     }
 }
@@ -121,9 +119,7 @@ fn text_projection_with_provenance(
         id: projection_id(name),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text {
-            text: text.to_string(),
-        },
+        payload: ProjectionPayload::Text { text: text.into() },
         provenance,
     }
 }
@@ -143,7 +139,7 @@ fn resource_projection(
         payload: ProjectionPayload::ResourceReference {
             resource_id: resource_id.clone(),
             resource_kind,
-            label: Some("resident resource".to_string()),
+            label: Some("resident resource".into()),
         },
         provenance: resource_provenance(view_id, position, &projection_id, &resource_id),
     }
@@ -405,7 +401,9 @@ fn record_id_for_text(
         .records
         .into_iter()
         .find_map(|record| match record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } if text == expected_text => {
+            ResidentPresentationRecordKind::TextChunk { text, .. }
+                if text.as_ref() == expected_text =>
+            {
                 Some(record.id)
             }
             _ => None,
@@ -418,7 +416,7 @@ fn text_records(core: &ResidentTranscriptCore) -> Vec<String> {
         .records
         .into_iter()
         .filter_map(|record| match record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text),
+            ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.to_string()),
             _ => None,
         })
         .collect()

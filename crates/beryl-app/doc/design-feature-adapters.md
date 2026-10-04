@@ -36,6 +36,15 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 
 ## Activity, Status, Notices, And Audio
 
+- Running-thread attachment consumes a worker-prepared canonical transcript seed from a bounded
+  source provider. The provider validates exact Syndic history authority, tail range and placement,
+  shares immutable snapshot payloads and retains only one prepared attachment. Its final election
+  uses the graph's existing Home mutation observer and nonblocking coherent-Home admission.
+  Attachment may show an exact local unavailable fallback for missing/stale projection or a source
+  record exceeding presentation admission; refresh failure preserves the coherent resident snapshot.
+  Neither attachment nor refresh loads CAS history, dispatches work or registers a second capture
+  consumer. This narrow source provider does not move storage access into the GUI transcript adapter.
+
 - Activity and status adapters expose stable revision-bound pages and statically bounded facts.
   They materialize no complete activity history, backend bucket map, raw command, CAS history, or
   provider aggregate.

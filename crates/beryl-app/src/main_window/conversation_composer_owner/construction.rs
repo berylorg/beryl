@@ -88,6 +88,32 @@ impl MainWindowConversationComposer {
         ))
     }
 
+    pub(in crate::main_window) fn new_claim_pending(
+        config: MainWindowConversationComposerConfig,
+        service: Arc<MainWindowConversationComposerService>,
+        prepared: MainWindowComposerClaimPreparedPresentation,
+        clipboard_writer: ComposerClipboardWriter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        if !prepared.matches_service(&service) || config.selection() != prepared.selection() {
+            return Err("pending conversation composer source proof is stale".to_owned());
+        }
+        let residency_bound = config.residency_bound()?;
+        let receipt = prepared.receipt();
+        Ok(Self::construct(
+            config,
+            service,
+            clipboard_writer,
+            MainWindowConversationComposerRoute::Pending(receipt),
+            prepared.into_seeds(),
+            residency_bound,
+            None,
+            window,
+            cx,
+        ))
+    }
+
     pub(in crate::main_window) fn new_restored(
         config: MainWindowConversationComposerConfig,
         service: Arc<MainWindowConversationComposerService>,

@@ -59,7 +59,7 @@ pub(crate) struct ResidentResourceSlice {
     pub(crate) revision: ProviderRevision,
     pub(crate) kind: ResourceKind,
     pub(crate) range: Range<u64>,
-    pub(crate) bytes: Vec<u8>,
+    pub(crate) bytes: std::sync::Arc<[u8]>,
     pub(crate) complete: bool,
 }
 
@@ -94,12 +94,12 @@ pub(crate) struct ResidentPresentationRecordId(pub(crate) String);
 pub(crate) enum ResidentPresentationRecordKind {
     TextChunk {
         narrative_kind: TranscriptNarrativeKind,
-        text: String,
+        text: std::sync::Arc<str>,
     },
     ResourceReference {
         resource_id: ResourceId,
         resource_kind: ResourceKind,
-        label: Option<String>,
+        label: Option<std::sync::Arc<str>>,
     },
     LocalUiFallback {
         reason: LocalPresentationReason,

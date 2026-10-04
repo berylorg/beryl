@@ -13,6 +13,7 @@ mod placement;
 #[cfg(target_os = "windows")]
 mod placement_capture;
 mod restoration;
+pub(crate) mod running_threads;
 mod shell;
 
 pub use composer_slot::*;

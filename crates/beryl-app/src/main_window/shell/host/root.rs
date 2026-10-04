@@ -12,6 +12,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            running_threads: running_threads::RunningThreadsContribution::new(cx),
             status_controls: status_controls::ExactStatusControls::new(cx),
             startup_interaction: None,
             shutdown_interaction_gated: false,
@@ -54,7 +55,12 @@ impl MainWindowShellRoot {
             .map(|(selection, _)| selection.claim().thread_id())
     }
 
-    pub(in crate::main_window) fn creation_target(
+    pub(crate) fn coherent_viewed_thread(&self, app: &App) -> Option<beryl_model::SyndicThreadId> {
+        self.cached_running_selection(app)
+            .map(|(selection, _)| selection.claim().thread_id())
+    }
+
+    pub(in crate::main_window::shell::host) fn cached_running_selection(
         &self,
         app: &App,
     ) -> Option<(
@@ -63,7 +69,42 @@ impl MainWindowShellRoot {
     )> {
         let controller = self.controller.as_ref()?;
         let (selection, target) = match &controller.content {
-            ShellContent::Recovered {
+            ShellContent::Selected {
+                window, selection, ..
+            } => (*selection, window.remembered_target()?),
+            ShellContent::Acquired { custody, selection } => {
+                (*selection, custody.acquisition.target())
+            }
+            ShellContent::Restored { custody, selection } => {
+                (*selection, custody.composer.target())
+            }
+            _ => return None,
+        };
+        let composer = controller
+            .composer_mount
+            .as_ref()?
+            .read(app)
+            .contribution()?;
+        let current = composer.read(app).selection_identity();
+        (composer.read(app).is_live()
+            && current.window_id() == selection.window_id()
+            && current.claim() == selection.claim())
+        .then_some((current, target))
+    }
+
+    pub(in crate::main_window) fn creation_target(
+        &self,
+        app: &App,
+    ) -> Option<(
+        crate::main_window::MainWindowComposerSelectionIdentity,
+        beryl_state::RememberedTarget,
+    )> {
+        if self.running_selection_interaction_gated(app) {
+            return None;
+        }
+        let controller = self.controller.as_ref()?;
+        let (selection, target) = match &controller.content {
+            ShellContent::Selected {
                 window, selection, ..
             } => (*selection, window.remembered_target()?),
             ShellContent::Acquired { custody, selection } => {
@@ -83,6 +124,9 @@ impl MainWindowShellRoot {
     }
 
     pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {
+        if self.running_selection_interaction_gated(app) {
+            return Some("A running thread is being opened in this window.".into());
+        }
         if self.ordinary_close_interaction_gated {
             return Some("This window is waiting for its draft and durable close state.".into());
         }
@@ -142,6 +186,7 @@ impl Render for MainWindowShellRoot {
         #[cfg(target_os = "windows")]
         crate::parent_completion_sound::refresh_focus(cx);
         self.sync_status_controls(window, cx);
+        self.sync_running_threads(window, cx);
         self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
@@ -167,6 +212,8 @@ impl Render for MainWindowShellRoot {
         let command = (self.creation.is_some() || controller.is_threadless())
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
+        let running = running_threads::render_command(self, window, cx);
+        let running_picker = running_threads::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
         let input_panel = composer.map(|composer| {
@@ -205,6 +252,7 @@ impl Render for MainWindowShellRoot {
                     .px(px(12.))
                     .flex_none()
                     .bg(appearance.toolbar)
+                    .child(running)
                     .children(command)
                     .child(exit),
             )
@@ -220,12 +268,18 @@ impl Render for MainWindowShellRoot {
                             .id("main-window-transcript-region")
                             .debug_selector(|| "main-window-transcript-region".to_owned())
                             .flex_1()
-                            .min_h_0(),
+                            .min_h_0()
+                            .children(
+                                self.running_threads
+                                    .transcript_claim
+                                    .map(|_| self.running_threads.transcript.clone()),
+                            ),
                     )
                     .children(input_panel),
             )
             .child(status)
             .children(stop_menu)
+            .children(running_picker)
             .child(self.notices.widget.clone())
             .into_any_element()
     }

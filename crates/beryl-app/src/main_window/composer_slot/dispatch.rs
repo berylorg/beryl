@@ -149,6 +149,9 @@ impl MainWindowComposerSlot {
                     pending.stage,
                     super::PendingStage::Ready
                         | super::PendingStage::Publishing(_)
+                        | super::PendingStage::SelectionSaving(_)
+                        | super::PendingStage::SelectionSaved(_)
+                        | super::PendingStage::SelectionDisposing(_)
                         | super::PendingStage::AwaitingWidgetRelease
                 ) && pending.host.binding().is_some_and(|binding| {
                     pending.dispatcher.binding == binding
@@ -230,6 +233,17 @@ impl MainWindowComposerSlot {
         marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
         cancellation: &CommandCancellation,
     ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| !matches!(pending.stage, super::PendingStage::Ready))
+            && matches!(
+                request,
+                RangeTextInputRequest::MutationBegin(_) | RangeTextInputRequest::HistoryIntent(_)
+            )
+        {
+            return Err(MainWindowComposerDispatchError::PendingInteractionRejected);
+        }
         let authenticated = self
             .marker_authority
             .authenticate(store, selection, &request, marker_metadata)

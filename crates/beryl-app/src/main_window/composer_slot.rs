@@ -22,6 +22,7 @@ mod lifecycle;
 mod model;
 pub(in crate::main_window) mod native_lineage;
 mod retirement;
+mod selection_save;
 mod state;
 mod submission;
 
@@ -57,6 +58,64 @@ pub struct MainWindowComposerSlot {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn abort_claim_publication_before_release(
+        &mut self,
+        store: &HomeStore,
+        receipt: MainWindowComposerActivationReceipt,
+        expected: MainWindowComposerSelectionIdentity,
+    ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
+        self.ensure_receipt(receipt)?;
+        if self.selected_identity() != Some(expected)
+            || !same_selected_host(Some(expected), receipt.expected_prior)
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        let pending = self.pending.as_mut().unwrap();
+        match pending.stage {
+            PendingStage::SelectionSaved(saved) => {
+                if pending
+                    .host
+                    .fresh_abandonment_request(pending.retirement_operation_id)
+                    .is_none()
+                {
+                    return Err(MainWindowComposerSlotError::TargetNotFresh);
+                }
+                self.selected
+                    .as_mut()
+                    .unwrap()
+                    .host
+                    .release_selection_save(store, saved)?;
+                pending.stage = PendingStage::Retiring;
+            }
+            PendingStage::AwaitingWidgetRelease => {
+                if pending
+                    .host
+                    .fresh_abandonment_request(pending.retirement_operation_id)
+                    .is_none()
+                {
+                    return Err(MainWindowComposerSlotError::TargetNotFresh);
+                }
+                pending.stage = PendingStage::Retiring;
+            }
+            PendingStage::Retiring | PendingStage::Reconciliation => {}
+            _ => return Err(MainWindowComposerSlotError::TargetNotReady),
+        }
+        self.retire_pending(store, receipt)
+    }
+
+    pub(in crate::main_window) fn claim_publication_is_current(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        !self.disposed
+            && self.disposal_stage.is_none()
+            && self.window_close.is_none()
+            && self.submission_successor.is_none()
+            && self.native_lineage_suspension.is_none()
+            && self.pending.is_none()
+            && self.selected_identity() == Some(selection)
+    }
+
     #[cfg(feature = "test-faults")]
     pub(in crate::main_window) fn test_native_lineage_disposal_state(
         &self,
@@ -194,24 +253,52 @@ impl MainWindowComposerSlot {
         Self::validate_widget_release_remainder(selection, requests)
     }
 
+    pub(in crate::main_window) fn release_claim_widget_work(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+        selection: MainWindowComposerSelectionIdentity,
+        requests: &[gpui_text_input::RangeTextInputRequest],
+    ) -> Result<MainWindowComposerWidgetRelease, MainWindowComposerSlotError> {
+        if self.disposed
+            || self.selected_identity() != Some(selection)
+            || !self.pending.as_ref().is_some_and(|pending| {
+                pending.receipt == receipt && matches!(pending.stage, PendingStage::Finalizing)
+            })
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        if requests
+            .iter()
+            .any(|request| !Self::widget_release_request_is_settled(request))
+        {
+            return Err(MainWindowComposerSlotError::WidgetReleaseIncomplete);
+        }
+        Ok(MainWindowComposerWidgetRelease::new(selection))
+    }
+
     fn validate_widget_release_remainder(
         selection: MainWindowComposerSelectionIdentity,
         requests: impl IntoIterator<Item = gpui_text_input::RangeTextInputRequest>,
     ) -> Result<MainWindowComposerWidgetRelease, MainWindowComposerSlotError> {
-        if requests.into_iter().any(|request| {
-            !matches!(
-                request,
-                gpui_text_input::RangeTextInputRequest::CancelPage(_)
-                    | gpui_text_input::RangeTextInputRequest::ReleasePage(_)
-                    | gpui_text_input::RangeTextInputRequest::CancelObjectPage(_)
-                    | gpui_text_input::RangeTextInputRequest::ReleaseObjectPage(_)
-                    | gpui_text_input::RangeTextInputRequest::CancelClipboardProvenancePage(_)
-                    | gpui_text_input::RangeTextInputRequest::CancelClipboardWrite(_)
-            )
-        }) {
+        if requests
+            .into_iter()
+            .any(|request| !Self::widget_release_request_is_settled(&request))
+        {
             return Err(MainWindowComposerSlotError::WidgetReleaseIncomplete);
         }
         Ok(MainWindowComposerWidgetRelease::new(selection))
+    }
+
+    fn widget_release_request_is_settled(request: &gpui_text_input::RangeTextInputRequest) -> bool {
+        matches!(
+            request,
+            gpui_text_input::RangeTextInputRequest::CancelPage(_)
+                | gpui_text_input::RangeTextInputRequest::ReleasePage(_)
+                | gpui_text_input::RangeTextInputRequest::CancelObjectPage(_)
+                | gpui_text_input::RangeTextInputRequest::ReleaseObjectPage(_)
+                | gpui_text_input::RangeTextInputRequest::CancelClipboardProvenancePage(_)
+                | gpui_text_input::RangeTextInputRequest::CancelClipboardWrite(_)
+        )
     }
 
     pub fn selected_host(&self) -> Option<&SyndicComposerHost> {
@@ -259,7 +346,9 @@ impl MainWindowComposerSlot {
     pub fn pending_status(&self) -> Option<MainWindowComposerPendingStatus> {
         self.pending.as_ref().map(|pending| match pending.stage {
             PendingStage::Ready => MainWindowComposerPendingStatus::Ready,
-            PendingStage::Publishing(ticket) => {
+            PendingStage::Publishing(ticket)
+            | PendingStage::SelectionSaving(ticket)
+            | PendingStage::SelectionDisposing(ticket) => {
                 let state = self
                     .selected
                     .as_ref()
@@ -267,7 +356,9 @@ impl MainWindowComposerSlot {
                     .unwrap_or(ComposerHostFlushState::DisposalRequired);
                 MainWindowComposerPendingStatus::Publishing(state)
             }
-            PendingStage::AwaitingWidgetRelease | PendingStage::Finalizing => {
+            PendingStage::AwaitingWidgetRelease
+            | PendingStage::Finalizing
+            | PendingStage::SelectionSaved(_) => {
                 MainWindowComposerPendingStatus::WidgetReleaseRequired
             }
             PendingStage::Retiring => MainWindowComposerPendingStatus::RetirementPending,
@@ -462,7 +553,7 @@ impl MainWindowComposerSlot {
         let drifted_pending = self
             .pending
             .as_ref()
-            .filter(|pending| matches!(pending.stage, PendingStage::Publishing(ticket) if ticket == flush))
+            .filter(|pending| matches!(pending.stage, PendingStage::Publishing(ticket) | PendingStage::SelectionSaving(ticket) if ticket == flush))
             .map(|pending| pending.receipt)
             .is_some_and(|receipt| {
                 !self
@@ -477,7 +568,7 @@ impl MainWindowComposerSlot {
         } else {
             cancellation
         };
-        self.capture_selected_flush_publication(
+        let captured = self.capture_selected_flush_publication(
             store,
             selection,
             flush,
@@ -487,7 +578,16 @@ impl MainWindowComposerSlot {
             marker_authority,
             published_at,
             cancellation,
-        )
+        )?;
+        if matches!(
+            captured,
+            crate::composer_host::ComposerHostFlushCapture::Unsatisfied(_)
+        ) && let Some(pending) = self.pending.as_mut()
+            && matches!(pending.stage, PendingStage::SelectionSaving(ticket) if ticket == flush)
+        {
+            pending.stage = PendingStage::Retiring;
+        }
+        Ok(captured)
     }
 
     pub fn publish_preflight(

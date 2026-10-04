@@ -89,32 +89,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 723: Establish Running Threads Mounting Readiness (finished)
+# Phase 724: Mount Running Threads And Exact Activation (finished)
 
-Accepted the [source-backed readiness map](audits/running-threads/readiness.md) and derived mounted
-interaction boundary. Command/picker, occupancy/flush/attachment and attention consumer gaps are
-explicit; independent review found no unresolved material design choice or blocking finding.
-Documentation links and diff checks passed. Production mounting remains pending.
-
-# Phase 724: Mount Running Threads And Exact Activation (pending)
-
-Mount the [Running threads command and collection-only picker](features/conversation-threads/gui.md#running-threads-command)
-in every main window, with generation-qualified bounded process pages, count/attention facts,
-source search and canonical fixed-height virtualization. Follow the
-[readiness map](audits/running-threads/readiness.md) for missing consumers. Include exact current-row
-activation, existing-window reveal and unviewed live attachment through ordinary durable draft/session
-flush and atomic claim publication under [conversation-thread behavior](features/conversation-threads/design.md#running-threads)
-and [app shell ownership](../crates/beryl-app/doc/design-shell-lifecycle.md#process-service-graph-and-windows).
-Bounded attachment uses the single canonical host through the
-[transcript shell boundary](systems/transcript-presentation/shell-boundary.md).
-Compose process-owned lifecycle attention destination routing and exact displayed-token acknowledgement
-under [Notifications](features/notifications/design.md#main-conversation-notices).
-
-Acceptance drives actual shell commands and row callbacks across current, elsewhere-open and
-unviewed running threads. Qualify failed/indeterminate flush, occupancy races, stale tokens/pages,
-query failure, generation replacement, cancellation, duplicate activation, terminal-history and
-attention-only membership, bounded source/resident/rendered state and focus through reordering.
-Observe exact live execution/input/request custody and absence of new dispatch, CAS load, hidden
-window, automatic focus or extra capture consumer. Include owned subscription/worker disposal,
-affected locked checks and behavioral tests, and independent lifecycle/persistence/effect review.
-Complete transcript and other toolbar contributions remain their separate rework boundaries.
+Accepted the mounted command/picker, exact Current/Elsewhere/Unviewed activation and process-owned
+attention routing. Canonical saved-checkpoint qualification preserves the prior editor until known
+claim commit, then completes durable disposal and widget release. The 61 affected cases qualified
+across focused runs; pinned-dependency locked library validation and independent lifecycle,
+persistence and effect review pass. [Evidence and corrections](failures/running-thread-selection-publication.md#accepted-mounted-boundary)
+retain verification and cleanup results. Complete transcript and other toolbar mounts remain separate.

@@ -12,6 +12,8 @@ mod home_support;
 mod home_warning;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[path = "notice_mount/lifecycle_attention.rs"]
+mod lifecycle_attention;
 #[path = "notice_mount/mutation_completion.rs"]
 mod mutation_completion;
 #[path = "syndic_composer_history/support.rs"]

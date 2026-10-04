@@ -98,7 +98,6 @@ impl ProcessWorkRead {
     ) -> Result<Vec<RequiredSessionWork>, ProcessWorkError> {
         check_cancelled(cancellation)?;
         let revision = self.required_work_revision(sessions)?;
-        let mut live = self.live_facts(sessions, &revision, cancellation)?;
         let home = self.home.as_deref().ok_or(ProcessWorkError::Closed)?;
         let mut cursor = None;
         let mut records = Vec::new();
@@ -127,7 +126,12 @@ impl ProcessWorkRead {
                     .ok_or(syndic_storage::SyndicReadError::Invariant(
                         "admitted session has no input gate",
                     ))?;
-                let mut facts = live.remove(&row.thread_id()).unwrap_or_default().work;
+                let mut facts = ProcessWorkFacts::default();
+                self.visit_live_facts(sessions, &revision, cancellation, |thread, work| {
+                    if thread == row.thread_id() {
+                        facts.merge(work);
+                    }
+                })?;
                 facts.merge(gate_work_facts(gate.state()));
                 records.push(RequiredSessionWork {
                     thread_id: row.thread_id(),

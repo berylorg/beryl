@@ -198,11 +198,15 @@ impl MainWindowShellRoot {
         let expected = match &controller.content {
             ShellContent::Acquired { selection, .. }
             | ShellContent::Restored { selection, .. }
-            | ShellContent::Recovered { selection, .. } => selection,
+            | ShellContent::Selected { selection, .. } => selection,
             _ => return None,
         };
         let mount = controller.composer_mount.as_ref()?.read(app);
-        let selection = mount.selected_identity()?;
+        let selection = if self.running_threads.pending_activation.is_some() {
+            mount.contribution()?.read(app).selection_identity()
+        } else {
+            mount.selected_identity()?
+        };
         if selection.window_id() != expected.window_id() || selection.claim() != expected.claim() {
             return None;
         }

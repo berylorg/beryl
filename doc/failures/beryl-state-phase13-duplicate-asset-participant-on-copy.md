@@ -24,3 +24,14 @@ is still `NoEffect` and cannot masquerade as a mutation-only command.
 
 Marker-free commands continue to use the separate plural validation-only participant because they
 perform no Asset mutation at all.
+
+## Running Thread Claim Replacement
+
+The same single-domain rule applies to Running threads activation. Separate target and predecessor
+Catalog row mutations, or repeated RuntimeRoot/Syndic validation participants, cannot be assembled
+into one Home command: `HomeCommand::add` and `add_validation` reject `DuplicateDomain`.
+The bounded correction is one State-owned Catalog claim replacement operation for the target and
+optional predecessor, derived from exact sources under the same Home revision. Domain validations
+must likewise join their fixed pair inside their owning participant. The ordinary draft flush
+remains before that atomic Session/Catalog command; widget release remains after known commitment.
+Qualification remains in the active [Running threads phase](../plan.md).
