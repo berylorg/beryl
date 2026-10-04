@@ -89,34 +89,42 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 726: Qualify Mounted Marker Refusal Preservation (finished)
+# Phase 727: Establish Mounted Clipboard Admission Readiness (finished)
 
-Accepted [large-draft qualification](audits/composer-marker-feedback/qualification.md) with 31
-successful focused cases and independent semantic review. Mounted direct-marker refusals preserve
-exact draft/history/selection and bounded custody; healthy edit/undo/redo and retirement release
-passed. Evidence distinguishes test overrides and restored capacity from production classification
-and actual storage restrictions. No production or dependency changes were required. Clipboard
-mounting and the complete tracker item remain open.
+Accepted the Operator-approved [authority resolution](audits/composer-marker-feedback/clipboard-readiness.md#subsequent-authority-resolution)
+with independent architecture review and documentation checks. Native acknowledgement/read bounds,
+compact private-source expiry, foreign allocation, atomic origin admission fencing, captured paste
+and streaming sidecar ownership are defined. Missing production APIs and actual clipboard workflow
+qualification remain the implementation boundaries below. No native Beryl was launched.
 
-# Phase 727: Establish Mounted Clipboard Admission Readiness (wip)
+# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (pending)
 
-Trace the propagated paste command and clipboard-limit event into their required visible consumers,
-private marker representation, exact cut provenance and bounded image/rich-paste admission APIs.
-Diagnose captured insertion, cancellation, stale selection, token eligibility and resource custody
-under the composer and image-asset design authorities. Acceptance is source-backed readiness for
-the actual cut, later refused paste and usable undo workflow; production implementation is not
-authorized until every material boundary is derivable from its owning authority.
+Implement the owning GPUI checked Windows read/write boundary for the composer consumer. Preserve
+caller byte ceilings before allocation, complete text/metadata acknowledgement, exact snapshot
+sequence and typed unsupported/native failure. Qualify native ownership and format publication in
+an isolated harness, injected write/read/close failures, exact-fit/one-over and malformed inputs;
+independently review unsafe memory, complete acknowledgement and bounded release. Publish the
+accepted fork revision and qualify Beryl's canonical dependency composition before consuming it.
 
-The [source assessment](audits/composer-marker-feedback/clipboard-readiness.md) records the
-usable provenance, evidence/replay, cut authentication and asset primitives. Readiness is blocked:
-the native clipboard API cannot acknowledge complete writes or bound reads before allocation;
-private-token custody/eligibility and foreign draft-only marker reuse remain undecided; the
-captured paste source and cancellation lifecycle need explicit ownership. The propagated paste
-and clipboard-limit events have no downstream production consumers. No production changes,
-dependency changes or native GUI launch were made.
+# Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 
-Before production work can be scheduled, reconcile the composer, image-system, app and owned
-GPUI package authorities for those boundaries. Preserve the accepted fixed marker profile and
-opaque outcome custody. Do not select token expiry, foreign-source treatment or a clipboard
-workaround in the plan. Resume readiness review after the owning decisions are resolved; actual
-mounted cut, refused paste and usable undo remain unaccepted.
+Mount the one process-owned compact private source through bounded streamed provenance and checked
+native copy/cut. Authenticate local/foreign candidate and exact cut sources through Syndic-derived
+assignment; qualify token publication/promotion, expiry, clipboard failure, no deletion before
+acknowledgement, exact one-step cut history and capacity/stale/disposal release. Complete independent
+semantic review. This boundary does not accept mounted paste merely by exposing source selectors.
+
+# Phase 730: Mount Captured Atomic Composer Paste (pending)
+
+Consume paste and clipboard-limit events with exact Notifications feedback and captured pending
+ownership. Implement bounded text/image/private acquisition, streaming sidecar admission and one
+general host mutation with evidence/replay, cancellation and settlement. Qualify actual mounted
+paste, local/foreign identity, stale selection, ordinary refusal and ambiguity, one-step undo/redo
+and resource release; independently review the complete consequential boundary.
+
+# Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (pending)
+
+Qualify actual mounted cut, later size/capacity/storage-refused paste and usable cut undo on large
+drafts, with exact nonresident marker/selection/history preservation, eligibility and bounded
+repeated-operation/disposal custody. Credit prior direct-marker evidence only within its unchanged
+scope; accept the complete tracker item only after the clipboard workflow and independent review pass.

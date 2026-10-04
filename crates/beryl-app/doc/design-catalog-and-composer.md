@@ -141,6 +141,42 @@ governed by [design.md](design.md). It does not independently declare engineerin
   original edit fragments. A known committed result remains distinguishable from later cleanup or
   availability failure.
 
+## Clipboard Operation Ownership
+
+- The app process exposes the single home-generation private clipboard source owner defined by
+  the [image system](../../../doc/systems/image-assets/design.md#private-composer-clipboard-sources).
+  Composer copy/cut uses the widget's bounded streamed provenance and compact final closure;
+  source retention is only an immutable root/range descriptor. Final native write uses the
+  [GPUI checked boundary](../../../../zed-fork/doc/design.md#checked-windows-clipboard-boundary).
+  Only complete acknowledged text/metadata success authorizes deletion. Clipboard
+  failure and contiguous-limit outcomes contribute exact dismissible Notifications records.
+- The selected composer consumes propagated Paste by capturing the current exact binding, caret
+  and directed selection into one operation before acquiring source/proofs. It owns the visible
+  pending gate, bounded platform snapshot or private root replay, endpoint requests, evidence and
+  staging producer, and Escape handling. The mount forwards only selection-qualified commands;
+  shell ownership never substitutes a later caret or another editor for that captured intent.
+- The host operation lease and exact endpoint proofs enter one general `begin_host_mutation`
+  protocol for text, image or rich selection replacement. Bounded evidence pages carry source
+  selectors; Syndic returns final labels and targets. A sequence of direct marker insertions is
+  not one paste. Proposal pages release at their acknowledged frontier; immutable acquisition
+  bytes, when required, remain charged once through both passes and release at terminal settlement.
+- Exact copy completion publishes the token; cut settlement promotes or rejects its source through
+  the same process owner before origin-transition expiry is applied. Token unavailability during
+  cut settlement cannot authorize another paste. Retired or stale GUI completions update no
+  replacement editor, and notices do not release source or durable outcome custody.
+- Before private-source begin submission the process owner grants that exact captured operation
+  only while its source remains live; invalidation and this grant are serialized. The host transports
+  Syndic's compact validation-only origin fence in the destination begin command. A queued foreign
+  begin rejects an intervening origin adoption/disposal atomically; proven begin keeps its immutable
+  replay source despite later token expiry. Platform replacement after immutable source capture
+  changes no captured bytes and never retargets the operation to a new clipboard value.
+- Detached read-only copy writes only capped fallback text through the acknowledged native API.
+  It creates no private token and owns no live editor provenance after home closure.
+- Qualification includes true write failure before deletion, complete metadata failure, bounded
+  read admission, source expiry, foreign allocation, stale destination, cancellation before/after
+  durable begin, typed refusal, ambiguity, one-step history and resource release. Native boundary
+  tests may use an isolated clipboard backend/harness without launching Beryl.
+
 ## History, Publication, And Submission
 
 - Syndic owns durable edit-history roots and frontiers. The app exposes only exact undo/redo

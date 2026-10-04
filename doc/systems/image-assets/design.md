@@ -48,6 +48,89 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   sealed-set proof and rechecks exact manifest agreement. A bare set identity, or a different proof
   that merely names the same set, cannot select durable reference data.
 
+## Private Composer Clipboard Sources
+
+- The process service graph owns one non-durable private clipboard source for the current home
+  generation. A window contributes copy/cut intent but owns no token registry. One preparation or
+  final-write operation may occupy that owner at a time; competing requests fail with bounded
+  capacity feedback rather than queueing retained selections. A new platform write attempt
+  invalidates the preceding token before it can change the clipboard.
+- The token contains only a non-reused process/operation identity. Its private source descriptor
+  contains exact home generation, origin thread/draft/session/candidate/root, directed range,
+  compact provenance closure and complete fallback-text identity. It retains no marker collection,
+  image bytes, inverse content or second contiguous clipboard value. It is not a durable asset
+  owner, is never restored after restart, and neither pins history beyond its configured retention
+  policy nor keeps a retired editor or home alive.
+- Source content is replayed from the originating immutable paged root and selected logical range.
+  The widget's streamed provenance pages are validated and discarded at their exact acknowledged
+  frontier; the final closure binds source ordering, fallback spans, counts and complete text.
+  The app retains bounded current pages and compact cursors/closures only. Replay must reproduce
+  that closure and reject unavailable or changed source authority. Zero-width marker count never
+  becomes a resident vector or a token-count-derived logical selection limit.
+- Publish a copy token only after acknowledged writing of the complete capped text and token
+  metadata. Its source is the exact still-live copied candidate. Cut first writes that same
+  representation, then performs one exact deletion. During deletion admission/settlement the token
+  is unavailable for paste. Proven noncommit restores copied-candidate eligibility; exact adopted
+  cut success promotes the descriptor to the committed settlement and successor while retaining
+  the selected predecessor range as content source. Ambiguity keeps it unavailable under the cut
+  outcome owner's custody, without claiming either source authoritative.
+- Any other adopted origin transition, including undo/redo, expires the token. Session retirement,
+  source-history eviction, home-generation replacement, process shutdown and platform clipboard
+  replacement also expire it. A failed/refused/pre-admission-cancelled destination paste consumes
+  no token and changes no source eligibility. A successful same-origin paste is an adopted origin
+  transition and expires it. Foreign success may leave it eligible while the origin remains exact.
+- Reading token metadata is not authorization. Validate the exact active owner identity, complete
+  fallback-text identity, live source generation and current clipboard snapshot before admission;
+  malformed, absent-owner, stale or foreign-home Beryl metadata rejects private paste. A native
+  text hash alone supplies none of these proofs. Token expiry releases its descriptor immediately;
+  already admitted destination work retains only its ordinary exact mutation source/custody.
+- Syndic authenticates candidate or committed-cut provenance for every marker, including foreign
+  destinations, and alone derives label preservation or allocation. Beryl-state supplies ordinary
+  admitted-asset evidence only for actual fresh image clipboard bytes. Private marker reuse does
+  not become a fabricated accepted origin or a fresh-asset fallback.
+
+## Captured Clipboard Paste
+
+- The selected app composer operation owns one immutable source snapshot, exact destination
+  binding, caret and directed replacement range, endpoint proof requests and one replayable host
+  operation. It gates draft mutation and submission before asynchronous acquisition or proof work.
+  Plain text, image bytes and private rich content all use this owner and one logical edit.
+- Before retaining platform demand, reserve the existing paste queue entry. Platform text,
+  metadata and encoded image acquisition has an explicit positive contiguous byte limit and uses
+  GPUI's checked clipboard boundary; representation size is checked before allocation while the
+  native snapshot is held. Unsupported or non-preflightable representations fail before mutation.
+  Immutable platform bytes remain within that allowance; private rich sources use bounded root
+  replay rather than accumulating text/object proposals.
+- Image admission parses bounded headers and streams pages through content-addressed sidecar
+  construction off the GUI thread before committed Asset metadata can feed fresh-marker readiness.
+  Source, sidecar work and metadata outcome retain their exact operation/generation. Pre-admission
+  cancellation cancels and drains admitted workers; it does not publish a marker or delete an inert
+  sidecar. An already committed asset without an adopted marker remains inert for future collection.
+- Escape may cancel until durable draft admission. After that boundary cancellation does not infer
+  noncommit or release outcome custody; exact success, proven noncommit or terminal unavailability
+  uses ordinary mutation settlement. Owner retirement and home replacement cancel pre-admission
+  work and drain workers; admitted work transfers to the existing service outcome owner until its
+  exact drain/reconciliation boundary, even after its GUI presentation ends.
+- Before draft admission revalidate source eligibility and captured destination identity and
+  positions. Never retarget a completion to the current selection. Evidence and staging replay
+  the same immutable source with matching closures. Success adopts the entire successor once and
+  one history step; refusal restores the prior writable surface without losing successful cut undo.
+  Ambiguity retains captured intent/evidence and keeps dependent actions unavailable.
+- Private-source draft admission includes a Syndic-owned validation-only origin fence in the same
+  HomeCommand as destination MutationBegin. The compact expectation is the exact origin
+  draft/session, candidate generation/root and, for cut, committed settlement key/successor.
+  It checks that origin session is still active and latest at the command's coherent admission
+  snapshot, including for foreign destinations. Earlier page or assignment validation is not that
+  fence. The fence is bound to the captured source and exact destination/readiness operation;
+  it changes no source record, source selector, assignment group or durable edit payload.
+- The process source owner serializes token invalidation and begin submission: a retired owner
+  grants no new pre-begin activation, and a queued command still performs its durable origin check.
+  Origin disposal/adoption and destination begin therefore have an exact storage order. Once begin
+  is proven admitted, later origin or clipboard expiry releases the token but cannot revoke the
+  operation's immutable replay source or outcome custody. Exact committed replay/reconciliation
+  authenticates the ordinary operation settlement, not the now-mutable origin head. No new durable
+  clipboard record or token-restoration path is introduced.
+
 ## Physical Byte Storage
 
 - One Beryl home owns one content-addressed image sidecar namespace shared by every thread and reference in that home.

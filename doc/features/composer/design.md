@@ -285,13 +285,24 @@ confusing current drafts with submitted transcript history or image identity.
 - While Beryl's private clipboard representation remains eligible, pasting it in the same
   conversation creates another reference to the same image with the same label. A stale
   representation that no longer identifies that label and image is rejected before draft mutation.
+- Private marker content is eligible only while its originating editor session remains live and
+  at the copied candidate or exact committed cut successor. A successful cut promotes its copied
+  content to that successor; another adopted origin edit, undo, redo, session retirement, home
+  replacement or clipboard replacement expires it. Expiry reports that the attachment clipboard
+  content is no longer available and changes no draft; it never silently pastes marker fallback
+  text. Ordinary text without Beryl metadata still pastes normally.
 - Cutting and then pasting a marker is the user-visible way to move that image reference inside the draft.
 - Cut and a later paste are separate operations. A successful cut retains its ordinary undo step;
   refusal of the later paste changes no further draft state, preserves the eligible clipboard
   representation, and neither reverses the cut automatically nor loses its undo authority.
 - Pasting the private marker representation into another conversation allocates that conversation's
-  own label, subject to the visible readiness outcomes above.
-- Clipboard text that merely looks like `[Image A]` without valid Beryl metadata always pastes as ordinary text.
+  own label from the authenticated originating image, subject to source eligibility and the visible
+  readiness outcomes above. The origin may remain live in another conversation window; switching
+  away and retiring its editor does not extend clipboard eligibility.
+- Copy or cut failure reports the clipboard failure and performs no deletion. Success requires the
+  complete text and private metadata representation to have been written. A platform failure may
+  have changed clipboard contents, but no partial write is reported as successful.
+- Clipboard text that merely looks like `[Image A]` without Beryl metadata always pastes as ordinary text.
 
 ## Submission And Queuing
 

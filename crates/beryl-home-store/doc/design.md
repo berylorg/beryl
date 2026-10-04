@@ -77,6 +77,23 @@ No supplement owns cross-package behavior outside its role or declares a separat
   terminals. Production builds expose none of those seams and no alternate engine, virtual
   filesystem, raw storage access, compatibility path, or retry behavior.
 
+## Bounded Streaming Sidecar Admission
+
+The public sidecar boundary accepts an exact declared byte length, positive operation byte limit,
+positive working-page ceiling and a cancellable replayable reader. It incrementally writes and
+hashes bounded pages away from the GUI thread, rejects premature EOF or trailing bytes, and checks
+cancellation between pages and before terminal publication admission. The reader owns no home
+state; generation-qualified store admission owns staged-file and outcome custody. A complete byte
+slice may use this same boundary but is not a requirement to flatten a streamed source.
+
+Existing-content reuse compares bounded pages against a restarted identical source after exact
+length/digest verification; differing bytes remain a collision invariant failure. Write, file and
+directory flush, rename and token ordering remain the ordinary sidecar contract. Success returns
+one generation-qualified admitted token only after complete durable publication. Cancellation or
+failure returns no token, closes source/file handles and may leave inert temporary or final bytes;
+it does not delete a final sidecar or report metadata admission. Once final publication is admitted,
+later cancellation drains its exact result rather than assuming the write did not occur.
+
 # Engineering Rigor
 
 Profile: `production-application/v2`

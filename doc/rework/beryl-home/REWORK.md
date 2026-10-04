@@ -268,8 +268,8 @@
   mounted direct-marker refusal path with bounded preservation and custody checks. Actual clipboard
   paste qualification remains open; [readiness evidence](../../audits/composer-marker-feedback/readiness.md)
   records its missing consumer. The [clipboard assessment](../../audits/composer-marker-feedback/clipboard-readiness.md)
-  identifies native acknowledgement/read bounds and private-token/source lifecycle decisions that
-  must be reconciled before production clipboard mounting.
+  records the accepted native boundary and private-token/source authority resolution. Native API,
+  copy/cut, mounted paste and full large-draft clipboard qualification remain pending implementation.
 - [x] Established and verified bounded process main-window reservations with exact release and independent acquisition/abandonment flight custody.
 - [x] Established bounded selected-editor preparation before native construction, exact stale-selection rejection, and canonical first-presentable readiness with supported configuration verification.
 - [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.

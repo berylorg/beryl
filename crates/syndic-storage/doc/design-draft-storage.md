@@ -137,6 +137,19 @@ disposition rejects allocating sources; allocation-permitted disposition support
 without relabeling destination occurrences. Dedicated bounded source-order and target-id trees
 retain exact derived groups, evidence, targets, and assignment progress. Fresh occurrences group
 only by complete AssetId within that operation; all final labels are allocated inside Syndic.
+Candidate/cut selectors may originate in a different live conversation. Source proof still validates
+the exact latest origin candidate or committed cut successor, and derives foreign allocation from
+the authenticated origin thread and label. It never accepts caller-selected treatment or fabricated
+accepted provenance. Local preservation and foreign allocation share the ordinary selector shape,
+source-only proof and exact operation replay; destination changes do not extend source lifetime.
+Private clipboard begin accepts an opaque validation-only source-fence contribution, qualified to
+the exact captured origin and destination readiness/operation. It point-validates active/latest
+origin candidate authority and exact cut settlement closure in the same HomeCommand as destination
+MutationBegin. It cannot alter or substitute the proof's selectors or assignments, writes no source
+record and introduces no durable format field. Already committed begin replay/reconciliation uses
+the exact ordinary immutable settlement; it does not rerun the historical mutable-origin gate.
+The origin check is consumed inside Syndic's sole mutation participant; it is not a second
+same-domain HomeCommand participant.
 The [V7 byte contract](design-schema-v7.md#draft-marker-label-readiness-byte-contract) owns page
 correlation bytes; its admission-family contract owns durable group encoding and replay closure.
 

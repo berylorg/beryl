@@ -407,7 +407,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   checked ordinal exhaustion, or retained-resource refusal is an ordinary unavailable result and
   creates no usable proof.
 - Every nonempty evidence page has exactly one homogeneous proof shape. A candidate/cut-only page contains
-  only same-conversation candidate or cut associations and uses a source-only HomeStore proof
+  only authenticated candidate or cut associations, local or foreign, and uses a source-only HomeStore proof
   composition. An accepted-only page contains only local or inherited accepted associations and
   uses one typed Syndic source role to validate immutable origin authority plus one typed Beryl-
   state witness role to validate the proof-gated sealed-set label-first entry and exact `AssetId`.
@@ -476,12 +476,26 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Syndic derives a closed per-occurrence assignment group while authenticating the selector.
   Candidate/cut sources in the destination thread and accepted sources addressed through that
   thread use `PreserveLabel(label)`, including inherited accepted origins. Accepted sources
-  addressed through another thread use `AllocateLabel(source thread, label)`. Fresh sources use
+  addressed through another thread and candidate/cut sources originating in another thread use
+  `AllocateLabel(source thread, label)`. Foreign candidate/cut proof authenticates the same exact
+  live origin session/candidate or committed cut settlement and latest successor as local reuse;
+  changing the destination never weakens source eligibility. Its derived assignment group is
+  revalidated on the coherent proof snapshot. It supplies no fabricated accepted origin and
+  requires no Asset witness because the exact originating marker already authenticates its AssetId.
+  Fresh sources use
   `FreshAsset(AssetId)`. Reuse-only operations permit only preservation; allocation-permitted
   operations permit all three groups while preserving every authenticated destination label.
   A caller supplies no treatment, group, fresh label, or authority to override this derivation.
   Foreign accepted sources requesting inherited preservation must be addressed through the
   destination's existing lineage lookup; no destination-wide origin or asset scan discovers reuse.
+- A private clipboard source adds one validation-only origin expectation to destination
+  MutationBegin: exact live origin draft/session/candidate/root and, for cut, its exact committed
+  settlement/successor. Syndic binds that expectation to the captured source and destination
+  operation/readiness proof and validates the latest active origin in the same coherent command
+  admission as destination staging custody. This is independent of earlier per-page and assignment
+  proof checks. It writes no source state or clipboard record and changes no persisted selector,
+  group or edit payload. Exact already-admitted operation replay uses its ordinary immutable
+  settlement and never requires the origin to remain latest after admission.
 - The package owns dedicated durable admission-head, authenticated-node, and replay-receipt
   families whose natural owner is the exact `(draft, editor session, operation)`. They are distinct
   from the long-lived candidate marker-identity index. One tagged source-order staging tree is keyed

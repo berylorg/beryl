@@ -111,3 +111,28 @@ pin agreement and semantic completion review. No Cargo test or native clipboard 
 Independent semantic review accepted the investigation evidence with no blocking inaccuracies;
 the public metadata method name was corrected to `AssetState::publish_metadata`. Six changed
 Markdown files passed local-link and header-spacing checks. Production readiness remains blocked.
+
+## Subsequent Authority Resolution
+
+Operator approved the recommended clipboard decisions on 2026-10-04. The owning composer,
+image-system, app, Syndic and GPUI authorities now define acknowledged native writes and reads
+bounded before allocation; one process-owned compact source with exact live-candidate/cut-successor
+eligibility and expiry; authenticated foreign candidate/cut label allocation; and one captured
+paste owner using ordinary evidence/replay and exact settlement. Home-store authority defines the
+bounded streaming sidecar prerequisite. The original source assessment remains historical evidence:
+those APIs are implementation work, not capabilities already present at its baseline.
+
+The source descriptor replays from existing immutable paged roots and retains only a compact
+provenance closure, avoiding a new clipboard database or marker-sized resident collection. A cut
+temporarily makes its token unavailable and promotes it only after exact adopted success. Refused
+destination paste retains eligibility, while later origin adoption or retirement expires it.
+Native read/write, eligible copy/cut, mounted paste and full large-draft qualification remain
+separate acceptance boundaries in the root plan.
+
+Independent architecture review accepted the resolved boundary after adding an exact origin fence
+inside Syndic's sole destination mutation participant. The command validates the still-active latest
+origin atomically with destination admission; later expiry cannot revoke admitted replay, and
+already-admitted reconciliation uses ordinary immutable settlement. The fence changes no durable
+format. The malformed/stale-metadata versus absent-metadata distinction is explicit. No material
+architecture choice remains for the planned slice; production capabilities and workflow acceptance
+remain pending. The GPUI fork's existing `production-application/v1` review requirement was retained.
