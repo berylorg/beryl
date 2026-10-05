@@ -89,21 +89,39 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (finished)
+# Phase 732: Establish Runtime And Root Creation Mounting Readiness (finished)
 
-Accepted mounted large-draft cut followed by size/capacity/storage-refused private paste, exact
-nonresident marker and history preservation, healthy cut Undo/source expiry and bounded disposal.
-Three final clipboard cases and seven unchanged affected regressions passed; final canonical locked
-app/executable all-target check and independent consequential review passed with five matching
-input hashes. See [qualification evidence](audits/composer-marker-feedback/large-draft-clipboard.md).
-No production behavior changed, no Operator clipboard access or native application launch occurred.
+Accepted source-backed mapping of the missing main-shell runtime/root consumers, available native
+picker and managed admission APIs, and the complete first-runtime atomicity prerequisite.
+Independent factual/planning review passed; no production or native GUI qualification is claimed.
+See [readiness evidence](audits/runtime-root-creation-readiness.md). Admission, setup mounting and
+ordinary New Thread confirmation remain the separate boundaries below.
 
-# Phase 732: Establish Runtime And Root Creation Mounting Readiness (pending)
+# Phase 733: Implement Atomic Runtime And Root Admission (pending)
 
-Consume the remaining restoration/onboarding tracker slice for Add runtime, Add root and first-runtime
-activation. Map the actual main-shell consumers and accepted native-picker, validation, atomic
-runtime/home-root, thread acquisition, error/reconciliation and retirement capabilities against
-[conversation-thread authority](features/conversation-threads/design.md#runtime-and-root-configuration)
-and the State runtime/session contract. Produce a bounded source-backed readiness record and derive
-the next concrete mounting boundary. Resolve any material missing authority before implementation;
-this evidence phase grants no new product behavior or native GUI/Operator clipboard qualification.
+Implement the app-owned selected-path admission capability for the future New Thread controller,
+derived from [runtime/root authority](features/conversation-threads/design.md#runtime-and-root-configuration),
+[backend release admission](systems/backend-runtime/design.md#runtime-ownership) and
+[atomic onboarding](systems/beryl-home-storage/design.md#thread-claims-and-empty-thread-acquisition).
+Validate exact Host/WSL executable/directory and home facts off the GUI and storage writer; prove
+the managed foreground release/profile/configuration before registry admission. Resolve canonical
+duplicates without partial rows. Compose the first runtime, home root, Syndic thread/draft, catalog,
+existing threadless window claim and session fallback in one revision-checked HomeCommand; later
+runtime/root admission preserves selection. Retain original reconciliation and process/session/token
+cleanup custody through cancellation, ambiguous outcomes and retirement. Verify injected bounded
+filesystem/backend seams, duplicate/stale/foreign refusals, commit/noncommit/Unavailable and complete
+closure/disposal; require focused checks and independent consequential review. No native GUI launch.
+
+# Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
+
+Consume accepted admission through the main-shell New Thread secondary segment and shared bounded
+thread/root picker. Mount Add runtime/Add root, coherent runtime/root pages, exact pending/error and
+reconciliation presentation, and attach the first selected conversation to the existing initial
+window. Qualify cancellation, duplicate suppression, retained scope/selection/focus, retirement and
+same-shell first-runtime publication. Preserve existing Running threads and lifecycle behavior.
+
+# Phase 735: Mount New Thread Root Confirmation (pending)
+
+Complete ordinary New Thread scope/search, pending root selection and Confirm through accepted
+pristine reuse/create and existing-window activation. Verify exact remembered-target updates,
+cancellation/noncommit preservation, reconciliation and bounded picker behavior.

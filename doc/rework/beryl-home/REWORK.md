@@ -435,6 +435,9 @@
   healthy and failed-home resident recovery and fresh activation after cancellation; [evidence](../../failures/ordinary-close-recovery.md#ordinary-command-integration-acceptance).
 - [ ] Implement restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
+  Runtime/root creation source readiness is recorded in
+  [readiness evidence](../../audits/runtime-root-creation-readiness.md); atomic admission and
+  main-shell setup/first-conversation mounting remain unaccepted.
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).
   Ordinary command and complete recovery mounting remain separate.
