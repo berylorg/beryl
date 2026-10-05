@@ -75,11 +75,21 @@ and settings-window pins in order, then qualify locked Beryl canonical app/execu
 without local overrides before completing Phase 728.
 
 Canonical scrollbar locked metadata/all-target checks passed; published revision is
-`b9e591820b61fc788f148bca1f6f80b6341a692c`. Its lockfile changed only the eleven fork-owned package
-source revisions. The required Serena restart then timed out after 120 seconds. Repository
-instructions require stopping on this failure. No semantic navigation used the changed Cargo model.
-The already-started text-input canonical locked metadata/all-target check also passed; its
-manifest/lockfile remain unaccepted working material, with only twelve affected Git source changes.
-All four exactly owned temporary checkouts were removed after absolute-path/reparse checks.
-Settings-window and Beryl pins remain unchanged. Restore Serena and obtain a
-successful restart before continuing alignment or relying on semantic results.
+`b9e591820b61fc788f148bca1f6f80b6341a692c`. Its lockfile changed only eleven fork-owned package
+source revisions. Text-input canonical metadata/all-target checks and independent review passed;
+its twelve Git source changes are published as `7f645bf2837072633d613fd47694898af5b218fc`.
+
+Settings-window canonical locked metadata/all-target compilation and independent semantic review
+passed on 2026-10-05. Its three manifest pins and thirteen lockfile Git source changes match the
+accepted revisions above, preserving features, versions and dependency edges. The exact refreshed
+manifest/lockfile remain unpublished working material. Logs `settings-update.log`,
+`settings-metadata.json` and `settings-check.log` remain in the bounded qualification evidence root.
+
+Required Serena restarts timed out after 120 seconds on 2026-10-04 and the first retry on
+2026-10-05. After Operator manually restarted the process, initial instructions responded and the
+first language-server restart returned OK. The later required restart after settings compilation
+again timed out after 120 seconds. Repository instructions require stopping; no semantic navigation
+relied on the changed Cargo model after failure. Restore Serena and obtain a successful restart
+before publishing settings alignment or continuing Beryl canonical checks. Root Beryl pins remain
+unchanged, and canonical Beryl Cargo has not run. Exactly owned settings and Beryl checkouts were
+removed after absolute-path/reparse checks; no owned Cargo/native process remains.

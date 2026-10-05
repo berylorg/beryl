@@ -125,17 +125,19 @@ and private native qualification pass. Operator-authorized inline sudo supplied 
 creation privileges; no Operator clipboard acquisition occurred. Accepted GPUI source is published
 as `edd4928c5be424630da49f872e00dafbf94cf0b2`; canonical scrollbar metadata/all-target check passed and
 alignment is published as `b9e591820b61fc788f148bca1f6f80b6341a692c`. Text-input canonical locked
-metadata/all-target checks passed; its manifest/lockfile remain unaccepted working material.
-Settings-window and Beryl pins remain unchanged.
+metadata/all-target checks and independent review passed; alignment is published as
+`7f645bf2837072633d613fd47694898af5b218fc`. Settings-window canonical locked metadata/all-target
+checks and independent review passed; its manifest/lockfile remain working material. Beryl pins
+remain unchanged; canonical app/executable checks have not run.
 
-Blocked on 2026-10-04: required Serena language-server restart timed out after 120 seconds following
-the successful scrollbar checks. Operator-requested retry on 2026-10-05 also timed out after
-120 seconds. Stop implementation; restore the Serena service and obtain a
-successful restart before relying on the changed Cargo model. The already-started text-input check
-finished successfully; all exact temporary checkouts are removed. Resume canonical text-input,
-settings-window and Beryl alignment after the tool gate clears. See
-[qualification evidence](audits/composer-marker-feedback/checked-native-clipboard.md). The Operator's
-actively used clipboard remains excluded from further qualification. No Beryl GUI was launched.
+Blocked on 2026-10-05: after Operator manually restarted Serena, the first language-server restart
+returned OK. The required restart after settings compilation timed out after 120 seconds. Stop
+implementation; restore Serena and obtain a successful restart before relying on the changed
+Cargo model or publishing settings alignment. Both exact temporary checkouts are removed. Resume
+settings publication and Beryl canonical app/executable checks after the tool gate clears.
+Preserve prior exact deterministic/native evidence; the Operator's actively used clipboard remains
+excluded from qualification. See
+[qualification evidence](audits/composer-marker-feedback/checked-native-clipboard.md).
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 
