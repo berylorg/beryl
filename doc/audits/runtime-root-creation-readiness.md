@@ -109,6 +109,13 @@ No conflicting product or ownership authority was found. Filesystem admission me
 composition still need implementation; this record does not qualify them by naming existing APIs.
 The broad restoration/onboarding tracker item remains open.
 
+Implementation follow-up on 2026-10-06 found an ownership prerequisite this inspection did not
+establish: exact WSL path/home probing needs a supervised filesystem helper, while the backend's
+public contract currently covers app-server processes and its reusable supervisor is private.
+The proposed fixed helper therefore needs owning authority before implementation proceeds.
+See [admission failure evidence](../failures/runtime-root-admission.md); the earlier readiness
+review does not accept that added process boundary.
+
 ## Completion Review
 
 Independent source and planning review accepted this record and the derived admission, setup

@@ -97,7 +97,7 @@ Independent factual/planning review passed; no production or native GUI qualific
 See [readiness evidence](audits/runtime-root-creation-readiness.md). Admission, setup mounting and
 ordinary New Thread confirmation remain the separate boundaries below.
 
-# Phase 733: Implement Atomic Runtime And Root Admission (pending)
+# Phase 733: Implement Atomic Runtime And Root Admission (wip)
 
 Implement the app-owned selected-path admission capability for the future New Thread controller,
 derived from [runtime/root authority](features/conversation-threads/design.md#runtime-and-root-configuration),
@@ -111,6 +111,16 @@ runtime/root admission preserves selection. Retain original reconciliation and p
 cleanup custody through cancellation, ambiguous outcomes and retirement. Verify injected bounded
 filesystem/backend seams, duplicate/stale/foreign refusals, commit/noncommit/Unavailable and complete
 closure/disposal; require focused checks and independent consequential review. No native GUI launch.
+
+Active milestone: establish the selected-path service and the single-command first-runtime
+transition for the existing threadless window. The future New Thread controller is its consumer;
+completion requires qualified durable outcomes and joined validation cleanup, before GUI mounting.
+
+Blocked on 2026-10-06: exact WSL path/home observation needs a supervised filesystem helper, but
+the backend's public authority currently owns app-server processes only and its reusable
+supervisor is private. Settle the narrow helper ownership and cleanup contract in the owning
+backend/system authority before resuming; see [failure evidence](failures/runtime-root-admission.md).
+Unaccepted drafts are retained outside production source. No implementation acceptance is claimed.
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
 
