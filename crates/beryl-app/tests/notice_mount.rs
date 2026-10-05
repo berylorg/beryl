@@ -14,6 +14,8 @@ mod home_support;
 mod home_warning;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[path = "notice_mount/large_draft_clipboard.rs"]
+mod large_draft_clipboard;
 #[path = "notice_mount/large_draft_feedback.rs"]
 mod large_draft_feedback;
 #[path = "mounted_composer_scale/support.rs"]

@@ -28,7 +28,7 @@ pub(super) fn configured_mount(
     limits: DraftMarkerAdmissionLimitsV1,
     configure: impl FnOnce(&mut SyndicComposerHost) + Send + 'static,
 ) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
-    configured_seed_mount(cx, seed, limits, false, configure)
+    configured_seed_mount(cx, seed, limits, false, None, configure)
 }
 
 pub(super) fn configured_large_mount(
@@ -36,7 +36,24 @@ pub(super) fn configured_large_mount(
     seed: u8,
     limits: DraftMarkerAdmissionLimitsV1,
 ) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
-    configured_seed_mount(cx, seed, limits, true, |_| {})
+    configured_seed_mount(cx, seed, limits, true, None, |_| {})
+}
+
+pub(super) fn configured_large_clipboard_mount(
+    cx: &mut gpui::TestAppContext,
+    seed: u8,
+    limits: DraftMarkerAdmissionLimitsV1,
+    clipboard_bytes: usize,
+    mutation_page_bytes: usize,
+) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
+    configured_seed_mount(
+        cx,
+        seed,
+        limits,
+        true,
+        Some((clipboard_bytes, mutation_page_bytes)),
+        |_| {},
+    )
 }
 
 fn configured_seed_mount(
@@ -44,6 +61,7 @@ fn configured_seed_mount(
     seed: u8,
     limits: DraftMarkerAdmissionLimitsV1,
     large: bool,
+    clipboard_profile: Option<(usize, usize)>,
     configure: impl FnOnce(&mut SyndicComposerHost) + Send + 'static,
 ) -> (support::Mounted, Arc<MainWindowConversationComposerService>) {
     let retained = Arc::new(std::sync::Mutex::new(None));
@@ -163,6 +181,16 @@ fn configured_seed_mount(
                             gpui::px(16.),
                         )
                         .unwrap();
+                        if let Some((clipboard_bytes, mutation_page_bytes)) = clipboard_profile {
+                            widget.clipboard_limits = gpui_text_input::ClipboardLimits::new(
+                                clipboard_bytes,
+                                mutation_page_bytes as u64,
+                            )
+                            .unwrap();
+                            widget.mutation_limits =
+                                gpui_text_input::MutationLimits::new(64, mutation_page_bytes)
+                                    .unwrap();
+                        }
                         MainWindowConversationComposerConfig::new(selection, widget)
                             .map_err(|error| error.to_string())
                     }),

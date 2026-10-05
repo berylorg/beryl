@@ -89,18 +89,21 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 730: Mount Captured Atomic Composer Paste (finished)
+# Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (finished)
 
-Accepted exact captured text/image/private paste, bounded sidecars and provenance replay, atomic
-origin admission, cancellation/settlement, typed Notices, one-step history and resource release.
-Canonical locked app/executable all-target checks, 60 distinct app cases, 32 sidecar cases and
-24 widget cases passed, with 49 canonical input hashes matched and independent consequential
-review accepted. See [qualification evidence](audits/composer-marker-feedback/captured-paste.md).
-No Operator clipboard access occurred. Large-draft clipboard refusal qualification remains below.
+Accepted mounted large-draft cut followed by size/capacity/storage-refused private paste, exact
+nonresident marker and history preservation, healthy cut Undo/source expiry and bounded disposal.
+Three final clipboard cases and seven unchanged affected regressions passed; final canonical locked
+app/executable all-target check and independent consequential review passed with five matching
+input hashes. See [qualification evidence](audits/composer-marker-feedback/large-draft-clipboard.md).
+No production behavior changed, no Operator clipboard access or native application launch occurred.
 
-# Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (pending)
+# Phase 732: Establish Runtime And Root Creation Mounting Readiness (pending)
 
-Qualify actual mounted cut, later size/capacity/storage-refused paste and usable cut undo on large
-drafts, with exact nonresident marker/selection/history preservation, eligibility and bounded
-repeated-operation/disposal custody. Credit prior direct-marker evidence only within its unchanged
-scope; accept the complete tracker item only after the clipboard workflow and independent review pass.
+Consume the remaining restoration/onboarding tracker slice for Add runtime, Add root and first-runtime
+activation. Map the actual main-shell consumers and accepted native-picker, validation, atomic
+runtime/home-root, thread acquisition, error/reconciliation and retirement capabilities against
+[conversation-thread authority](features/conversation-threads/design.md#runtime-and-root-configuration)
+and the State runtime/session contract. Produce a bounded source-backed readiness record and derive
+the next concrete mounting boundary. Resolve any material missing authority before implementation;
+this evidence phase grants no new product behavior or native GUI/Operator clipboard qualification.

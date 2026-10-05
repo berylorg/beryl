@@ -266,8 +266,9 @@
   with exact history, source fencing and bounded custody; [large-draft marker evidence](../../audits/composer-marker-feedback/qualification.md),
   [copy/cut evidence](../../audits/composer-marker-feedback/private-copy-cut.md) and
   [paste evidence](../../audits/composer-marker-feedback/captured-paste.md).
-- [ ] Qualify actual large-draft clipboard size, capacity and storage refusal with exact draft,
-  selection, cut history, source eligibility and bounded repeated-operation/disposal custody.
+- [x] Accepted actual large-draft clipboard size, capacity and storage refusal with exact draft,
+  selection, cut history, healthy source eligibility and bounded repeated-operation/disposal custody;
+  [clipboard workflow evidence](../../audits/composer-marker-feedback/large-draft-clipboard.md).
 - [x] Established and verified bounded process main-window reservations with exact release and independent acquisition/abandonment flight custody.
 - [x] Established bounded selected-editor preparation before native construction, exact stale-selection rejection, and canonical first-presentable readiness with supported configuration verification.
 - [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.
