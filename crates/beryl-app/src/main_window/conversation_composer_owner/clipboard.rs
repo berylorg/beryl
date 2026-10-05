@@ -20,6 +20,8 @@ use crate::main_window::{
 
 pub(super) mod collection;
 mod paging;
+pub(super) mod paste;
+pub(super) mod resources;
 pub(super) mod source;
 
 pub(super) use collection::{ActivePropagatedClipboard, PropagatedClipboardAction};

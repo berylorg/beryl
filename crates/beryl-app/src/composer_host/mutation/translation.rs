@@ -187,7 +187,11 @@ fn translate_proposal_page(
                 text,
             } => {
                 let (item_start, item_end, continuing) = if !envelope_applied {
-                    (start, end, false)
+                    (
+                        start,
+                        end,
+                        start == end && !text.is_empty() && last_range == Some((start, end)),
+                    )
                 } else {
                     let (last_start, last_end) =
                         last_range.ok_or(ComposerHostError::MutationMalformed)?;

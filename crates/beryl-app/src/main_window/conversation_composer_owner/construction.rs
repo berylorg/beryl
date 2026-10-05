@@ -219,6 +219,9 @@ impl MainWindowConversationComposer {
             activation_seeds,
             clipboard_writer: Some(clipboard_writer),
             checked_clipboard_writer: None,
+            checked_clipboard_reader: None,
+            paste_queue: private_clipboard_owner.paste_queue(),
+            paste: None,
             private_clipboard_owner,
             private_clipboard_preparation: None,
             clipboard_operation: clipboard::collection::next_operation(),
@@ -506,12 +509,7 @@ impl MainWindowConversationComposer {
                     this.begin_propagated_clipboard(ClipboardKind::Cut, window, cx)
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Paste) => {
-                    if this.mutation_gated() {
-                        return;
-                    }
-                    cx.emit(MainWindowConversationComposerEvent::RichPastePropagated {
-                        selection: this.selection,
-                    });
+                    this.begin_captured_paste(window, cx);
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Enter) => {
                     if this.mutation_gated() {

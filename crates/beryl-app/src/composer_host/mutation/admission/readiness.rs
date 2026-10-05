@@ -289,11 +289,22 @@ impl SyndicComposerHost {
                     });
                     return Ok(AdmissionStep::More);
                 }
-                match self.storage.prepare_draft_mutation_staging_marker_begin(
-                    admission.storage_begin,
-                    &admission.session,
-                    proof,
-                ) {
+                let prepared = match admission.private_origin.as_ref() {
+                    Some(origin) => self
+                        .storage
+                        .prepare_draft_mutation_staging_private_marker_begin(
+                            admission.storage_begin,
+                            &admission.session,
+                            proof,
+                            origin.source,
+                        ),
+                    None => self.storage.prepare_draft_mutation_staging_marker_begin(
+                        admission.storage_begin,
+                        &admission.session,
+                        proof,
+                    ),
+                };
+                match prepared {
                     Ok(prepared) => admission.prepared_begin = Some(prepared),
                     Err(error) => {
                         admission.fail(ComposerHostMutationAdmissionFailure::Staging(error))

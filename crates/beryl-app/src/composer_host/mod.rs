@@ -4,6 +4,7 @@ mod history;
 mod lifecycle;
 mod model;
 mod mutation;
+pub(crate) mod paste_image;
 mod publication;
 mod request;
 mod submission;
@@ -25,6 +26,7 @@ pub use mutation::{
     ComposerHostImageMarkerMetadata, ComposerHostMutationAdmissionFailure,
     ComposerHostMutationBuildDiagnostics, ComposerHostMutationEvidenceOutcome,
     ComposerHostMutationEvidenceRequest, ComposerHostMutationOutcome, ComposerHostMutationStatus,
+    ComposerHostPrivatePasteActivation, ComposerHostPrivatePasteOrigin,
     ComposerHostRetainedMutationIntent,
 };
 pub use publication::*;

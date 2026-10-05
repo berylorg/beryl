@@ -423,7 +423,8 @@ use translation::canonical_position;
 
 pub use admission::{
     ComposerHostMutationAdmissionFailure, ComposerHostMutationEvidenceOutcome,
-    ComposerHostMutationEvidenceRequest,
+    ComposerHostMutationEvidenceRequest, ComposerHostPrivatePasteActivation,
+    ComposerHostPrivatePasteOrigin,
 };
 pub use outcome::ComposerHostMutationBuildDiagnostics;
 

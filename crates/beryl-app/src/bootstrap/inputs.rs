@@ -52,10 +52,14 @@ pub(super) fn identity() -> Result<[u8; 16], BootstrapError> {
 fn token_directory() -> Result<crate::cas_projection::RuntimeTokenDirectory, BootstrapError> {
     let path = std::fs::canonicalize(std::env::temp_dir())
         .map_err(|error| BootstrapError::Inputs(format!("temporary directory: {error}")))?;
-    let path = path.to_str().ok_or_else(|| BootstrapError::Inputs("temporary directory is not Unicode".into()))?;
+    let path = path
+        .to_str()
+        .ok_or_else(|| BootstrapError::Inputs("temporary directory is not Unicode".into()))?;
     let host = beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, path)
         .map_err(|error| BootstrapError::Inputs(error.to_string()))?;
-    Ok(crate::cas_projection::RuntimeTokenDirectory::from_admitted(host))
+    Ok(crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+        host,
+    ))
 }
 
 pub(super) fn placement() -> WindowPlacement {
@@ -73,6 +77,8 @@ pub(super) fn services() -> Result<AppServiceConfiguration, BootstrapError> {
         BootstrapError::Inputs(format!("{error:?}"))
     }
     Ok(AppServiceConfiguration {
+        paste_resources: crate::main_window::MainWindowComposerPasteResources::new(1, 4096)
+            .map_err(configuration)?,
         projection: ProjectionServiceConfig::try_new(
             64,
             16,
@@ -136,7 +142,8 @@ pub(super) fn windows() -> MainWindowServiceInputs {
                 SyndicTimestamp::from_unix_millis(
                     u64::try_from(at.as_millis()).map_err(|e| e.to_string())?,
                 ),
-                DraftEditHistoryPolicyV1::new(8 * 1024 * 1024, 1).ok_or("draft history policy is unavailable")?,
+                DraftEditHistoryPolicyV1::new(8 * 1024 * 1024, 1)
+                    .ok_or("draft history policy is unavailable")?,
             )
             .map_err(|e| format!("{e:?}"))
         }),

@@ -366,6 +366,7 @@ impl MainWindowConversationComposer {
                 if let Err(error) = this.finish(route, result, window, cx) {
                     this.last_error = Some(error);
                 }
+                this.sync_mutation_gate(cx);
                 if dispatch_settled {
                     this.pending_dispatch = None;
                 }
@@ -693,9 +694,9 @@ impl MainWindowConversationComposer {
             self.selection = proof.selection;
             self.image_surfaces.selection_changed(self.selection);
             self.admitted_positions = Some(proof.positions);
-            self.input
-                .update(cx, |input, cx| {
-                    input.settle_committed_mutation(
+            self.input.update(cx, |input, cx| {
+                input
+                    .settle_committed_mutation(
                         key,
                         proof.binding,
                         proof.positions,
@@ -703,12 +704,17 @@ impl MainWindowConversationComposer {
                         &proof.objects,
                         window,
                         cx,
-                    )?;
-                    input.set_history_frontier(input.history_frontier(), history_frontier)
-                })
-                .map_err(|_| "composer history frontier was rejected".to_owned())?;
+                    )
+                    .map_err(|error| {
+                        format!("composer committed mutation settlement was rejected: {error}")
+                    })?;
+                input
+                    .set_history_frontier(input.history_frontier(), history_frontier)
+                    .map_err(|error| format!("composer history frontier was rejected: {error}"))
+            })?;
             self.private_clipboard_owner
                 .adopted(previous, self.selection, cut);
+            self.clear_captured_paste(key, cx);
             if self.pending_marker_removal == Some(key) {
                 self.pending_marker_removal = None;
                 self.image_surface_attachment = None;
@@ -744,6 +750,7 @@ impl MainWindowConversationComposer {
         {
             self.clear_mutation_evidence(*key);
             self.clear_propagated_cut(*key);
+            self.clear_captured_paste(*key, cx);
             return self.finish_marker_removal_noncommit(*key, window, cx);
         }
         let input = self.input.clone();
@@ -760,10 +767,12 @@ impl MainWindowConversationComposer {
                 input
                     .update(cx, |input, cx| input.accept_mutation_preflight(key, cx))
                     .map_err(|_| "composer mutation preflight was rejected".to_owned())?;
-                self.submit_propagated_cut_page(key, cx)
+                self.submit_propagated_cut_page(key, cx)?;
+                self.submit_captured_paste_page(key, cx)
             }
             MainWindowComposerDispatchOutcome::MutationPage { key, .. } => {
-                self.submit_propagated_cut_page(key, cx)
+                self.submit_propagated_cut_page(key, cx)?;
+                self.submit_captured_paste_page(key, cx)
             }
             MainWindowComposerDispatchOutcome::Released => Ok(()),
             MainWindowComposerDispatchOutcome::MutationInputFinished(key) => input
@@ -775,21 +784,25 @@ impl MainWindowConversationComposer {
                 }
                 ComposerHostMutationOutcome::Rejected => {
                     self.clear_propagated_cut(key);
+                    self.clear_captured_paste(key, cx);
                     settle_mutation(&input, key, MutationOutcome::Rejected, window, cx)?;
                     self.finish_marker_removal_noncommit(key, window, cx)
                 }
                 ComposerHostMutationOutcome::Conflict => {
                     self.clear_propagated_cut(key);
+                    self.clear_captured_paste(key, cx);
                     settle_mutation(&input, key, MutationOutcome::Conflict, window, cx)?;
                     self.finish_marker_removal_noncommit(key, window, cx)
                 }
                 ComposerHostMutationOutcome::Cancelled => {
                     self.clear_propagated_cut(key);
+                    self.clear_captured_paste(key, cx);
                     settle_mutation(&input, key, MutationOutcome::Cancelled, window, cx)?;
                     self.finish_marker_removal_noncommit(key, window, cx)
                 }
                 ComposerHostMutationOutcome::Error => {
                     self.clear_propagated_cut(key);
+                    self.clear_captured_paste(key, cx);
                     settle_mutation(&input, key, MutationOutcome::Error, window, cx)?;
                     self.finish_marker_removal_noncommit(key, window, cx)
                 }

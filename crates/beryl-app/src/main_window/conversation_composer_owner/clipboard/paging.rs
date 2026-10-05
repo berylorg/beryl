@@ -163,7 +163,7 @@ pub(super) const fn cursor_after_gap(position: SourcePosition) -> Option<ObjectC
     }
 }
 
-fn object_follows_start(cursor: ObjectCursor, start: SourcePosition) -> bool {
+pub(super) fn object_follows_start(cursor: ObjectCursor, start: SourcePosition) -> bool {
     match cursor.anchor().cmp(&start.byte_offset) {
         std::cmp::Ordering::Greater => true,
         std::cmp::Ordering::Less => false,
@@ -179,7 +179,7 @@ fn object_follows_start(cursor: ObjectCursor, start: SourcePosition) -> bool {
     }
 }
 
-fn object_precedes_end(cursor: ObjectCursor, end: SourcePosition) -> bool {
+pub(super) fn object_precedes_end(cursor: ObjectCursor, end: SourcePosition) -> bool {
     match cursor.anchor().cmp(&end.byte_offset) {
         std::cmp::Ordering::Less => true,
         std::cmp::Ordering::Greater => false,

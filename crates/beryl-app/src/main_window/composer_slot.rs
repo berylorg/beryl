@@ -58,6 +58,10 @@ pub struct MainWindowComposerSlot {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn clipboard_storage(&self) -> SyndicStorage {
+        self.storage.clone()
+    }
+
     pub(in crate::main_window) fn abort_claim_publication_before_release(
         &mut self,
         store: &HomeStore,

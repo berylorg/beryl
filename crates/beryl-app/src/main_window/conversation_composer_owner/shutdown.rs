@@ -20,6 +20,15 @@ impl MainWindowConversationComposer {
             || self.shutdown_interaction_gated
             || self.window_close.is_some()
             || self.failed_resident.is_some()
+            || self.paste.is_some()
+            || self.mutation_feedback().is_some_and(|feedback| {
+                matches!(
+                    feedback.kind,
+                    MainWindowComposerMutationFeedbackKind::Unavailable
+                        | MainWindowComposerMutationFeedbackKind::AdmittedWorkUnavailable
+                        | MainWindowComposerMutationFeedbackKind::CommittedUnavailable
+                )
+            })
     }
 
     pub(super) fn sync_mutation_gate(&self, cx: &mut Context<Self>) {

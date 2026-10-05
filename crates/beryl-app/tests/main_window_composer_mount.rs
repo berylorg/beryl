@@ -34,7 +34,7 @@ use beryl_app::{
         MainWindowComposerSubmissionRequestSource, MainWindowConversationComposerAutosavePhase,
         MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
         MainWindowConversationComposerMountDisposalAdvance,
-        MainWindowConversationComposerMountEvent, MainWindowConversationComposerMountFlushStart,
+        MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
         MainWindowNativeLineagePromptCommandPresentation,
     },
@@ -1781,27 +1781,45 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     let pasted_selection = service.selected_identity().unwrap();
     assert_ne!(pasted_selection, selection);
 
+    let reads = Arc::new(Mutex::new(0usize));
+    let observed_reads = reads.clone();
+    contribution.update(cx, |composer, _| {
+        composer.test_set_checked_clipboard_reader(Box::new(move |_, _| {
+            *observed_reads.lock().unwrap() += 1;
+            Ok(gpui::CheckedClipboardSnapshot {
+                item: gpui::ClipboardItem::new_string("mounted paste".into()),
+                sequence: 1,
+            })
+        }));
+    });
+
     cx.simulate_keystrokes("ctrl-v");
-    drive(cx, 4);
+    drive(cx, 128);
+    assert_eq!(*reads.lock().unwrap(), 1);
+    assert!(events.lock().unwrap().is_empty());
+    let adopted_paste = service.selected_identity().unwrap();
+    assert_ne!(adopted_paste, pasted_selection);
     assert_eq!(
-        events.lock().unwrap().as_slice(),
-        &[
-            MainWindowConversationComposerMountEvent::RichPastePropagated {
-                selection: pasted_selection,
-            }
-        ]
+        adopted_paste
+            .binding()
+            .logical_extent()
+            .logical_utf8_bytes(),
+        pasted_selection
+            .binding()
+            .logical_extent()
+            .logical_utf8_bytes()
+            + 13
     );
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.selected_identity()),
+        Some(adopted_paste)
+    );
+    assert!(!contribution.read_with(cx, |composer, _| composer.paste_pending()));
 
     cx.simulate_keystrokes("enter");
     drive(cx, 4);
-    assert_eq!(
-        events.lock().unwrap().as_slice(),
-        &[
-            MainWindowConversationComposerMountEvent::RichPastePropagated {
-                selection: pasted_selection,
-            }
-        ]
-    );
+    assert!(events.lock().unwrap().is_empty());
+    assert_eq!(*reads.lock().unwrap(), 1);
 }
 
 #[gpui::test]

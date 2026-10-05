@@ -14,6 +14,7 @@ use crate::{
 mod io;
 mod operations;
 mod platform;
+mod streaming;
 
 use io::*;
 
@@ -261,6 +262,15 @@ pub enum SidecarStage {
 /// Why sidecar admission or verification did not produce a retained token.
 #[derive(Debug, Error)]
 pub enum SidecarError {
+    #[error("sidecar source admission was cancelled")]
+    Cancelled,
+    #[error("sidecar source has {actual} bytes, expected exactly {declared}")]
+    LengthMismatch { declared: u64, actual: u64 },
+    #[error("sidecar source failed: {source}")]
+    Source {
+        #[source]
+        source: std::io::Error,
+    },
     /// The process-wide state gate is not accepting sidecar work.
     #[error(transparent)]
     HealthGate(#[from] HealthGateError),

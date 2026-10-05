@@ -10,6 +10,8 @@ impl SyndicComposerHost {
         assets: &AssetState,
         begin: MutationBeginRequest,
         pass: MutationPass,
+        private_origin: Option<ComposerHostPrivatePasteOrigin>,
+        cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationEvidenceOutcome, ComposerHostError> {
         if self.lifecycle.freezes_admission() || self.submission_pending() {
             return Err(ComposerHostError::LifecycleBlocked);
@@ -86,6 +88,8 @@ impl SyndicComposerHost {
                 binding,
                 begin,
                 pass,
+                private_origin,
+                cancellation: cancellation.clone(),
                 storage_begin,
                 session,
                 assets: assets.clone(),
@@ -146,13 +150,46 @@ impl SyndicComposerHost {
                 }
             }
         }
-        admission.begin_attempted = true;
-        match self.run_staging_command(store, &prepared, None)? {
+        let result = if let Some(origin) = admission.private_origin.as_ref() {
+            let mut result = None;
+            origin.activation.activate(key, &mut || {
+                if result.is_none() {
+                    admission.begin_attempted = true;
+                    result = Some(self.run_staging_command(
+                        store,
+                        &prepared,
+                        Some(&admission.cancellation),
+                    ));
+                }
+            });
+            match result {
+                Some(result) => result?,
+                None => {
+                    admission.fail(ComposerHostMutationAdmissionFailure::Conflict);
+                    return self.cancel_mutation_admission(store, admission);
+                }
+            }
+        } else {
+            admission.begin_attempted = true;
+            self.run_staging_command(store, &prepared, Some(&admission.cancellation))?
+        };
+        match result {
             StagingCommandResult::Target => {
                 self.adopt_evidenced_begin(admission, &prepared)?;
                 Ok(ComposerHostMutationEvidenceOutcome::Began(key))
             }
-            StagingCommandResult::Source => Ok(ComposerHostMutationEvidenceOutcome::Pending(key)),
+            StagingCommandResult::Source => {
+                admission.begin_attempted = false;
+                if let Some(origin) = admission.private_origin.as_ref()
+                    && !self
+                        .storage
+                        .draft_private_clipboard_source_is_current(store, origin.source)?
+                {
+                    admission.fail(ComposerHostMutationAdmissionFailure::Conflict);
+                    return self.cancel_mutation_admission(store, admission);
+                }
+                Ok(ComposerHostMutationEvidenceOutcome::Pending(key))
+            }
             StagingCommandResult::Terminal => Err(ComposerHostError::MutationUnavailable),
         }
     }

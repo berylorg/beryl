@@ -262,14 +262,12 @@
   rebind the composer through the bounded compact restoration seed without retaining whole values.
 - [x] Reconciled and independently accepted growable-content limits, compact repair-media
   publication, diagnostic activation, and repair/recovery outcome authority.
-- [ ] Implement and verify marker-operation size refusal, shared-capacity refusal, and storage-failure
-  feedback while preserving large drafts, bounded residency, and atomic edit outcomes.
-  [Large-draft qualification](../../audits/composer-marker-feedback/qualification.md) accepts the
-  mounted direct-marker refusal path with bounded preservation and custody checks. Actual clipboard
-  paste qualification remains open; [readiness evidence](../../audits/composer-marker-feedback/readiness.md)
-  records its missing consumer. The [clipboard assessment](../../audits/composer-marker-feedback/clipboard-readiness.md)
-  records the accepted native boundary and private-token/source authority resolution. Native API,
-  copy/cut, mounted paste and full large-draft clipboard qualification remain pending implementation.
+- [x] Accepted mounted direct-marker refusal, checked private copy/cut and captured atomic paste,
+  with exact history, source fencing and bounded custody; [large-draft marker evidence](../../audits/composer-marker-feedback/qualification.md),
+  [copy/cut evidence](../../audits/composer-marker-feedback/private-copy-cut.md) and
+  [paste evidence](../../audits/composer-marker-feedback/captured-paste.md).
+- [ ] Qualify actual large-draft clipboard size, capacity and storage refusal with exact draft,
+  selection, cut history, source eligibility and bounded repeated-operation/disposal custody.
 - [x] Established and verified bounded process main-window reservations with exact release and independent acquisition/abandonment flight custody.
 - [x] Established bounded selected-editor preparation before native construction, exact stale-selection rejection, and canonical first-presentable readiness with supported configuration verification.
 - [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.

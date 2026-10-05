@@ -1,6 +1,4 @@
-use std::{io, io::Write, path::Path};
-
-use sha2::{Digest, Sha256};
+use std::{io, num::NonZeroUsize, path::Path};
 
 use super::*;
 
@@ -28,42 +26,14 @@ impl HomeStore {
             maximum: limit.get(),
             actual: u64::MAX,
         })?;
-        ensure_bound(actual, limit)?;
-        let admission = self.health.admit_generation(self.admitted_generation)?;
-        let generation = match self.generation.read() {
-            Ok(generation) => generation,
-            Err(_) => {
-                admission.fail(FailureSeverity::Structural);
-                return Err(SidecarError::GenerationPoisoned);
-            }
-        };
-        let generation_state = match generation.as_ref() {
-            Some(generation) => generation,
-            None => {
-                admission.fail(FailureSeverity::Structural);
-                return Err(SidecarError::GenerationPoisoned);
-            }
-        };
-        let digest = SidecarDigest(Sha256::digest(bytes).into());
-        let address = SidecarAddress::new(namespace, digest, actual);
-        let result = self.admit_sidecar_inner(
-            &address,
-            bytes,
-            generation_state.instance_id,
-            admission.generation(),
-        );
-        match result {
-            Ok(sidecar) => {
-                admission.confirm_database(&generation_state.database, |source| {
-                    storage(SidecarStage::ConfirmHealth, source)
-                })?;
-                Ok(sidecar)
-            }
-            Err(error) => {
-                admission.fail(sidecar_failure_severity(&error));
-                Err(error)
-            }
-        }
+        self.admit_sidecar_stream(
+            namespace,
+            actual,
+            limit,
+            NonZeroUsize::new(COPY_BUFFER_BYTES).expect("copy page is positive"),
+            || Ok(io::Cursor::new(bytes)),
+            || false,
+        )
     }
 
     /// Verifies one referenced sidecar at the current path.
@@ -104,74 +74,6 @@ impl HomeStore {
         }
     }
 
-    fn admit_sidecar_inner(
-        &self,
-        address: &SidecarAddress,
-        bytes: &[u8],
-        store: StoreInstanceId,
-        generation: HomeGeneration,
-    ) -> Result<AdmittedSidecar, SidecarError> {
-        let directories = retain_sidecar_directories(
-            self.canonical_path(),
-            address,
-            &self.faults,
-            self.durability_tier(),
-            true,
-            true,
-        )?;
-        let final_path = final_path(directories.shard_path(), address);
-        match open_and_verify_final(
-            &self.faults,
-            &directories,
-            address,
-            Some(bytes),
-            self.durability_tier(),
-            true,
-        ) {
-            Ok(()) => {
-                return Ok(AdmittedSidecar {
-                    address: address.clone(),
-                    path: final_path,
-                    store,
-                    generation,
-                });
-            }
-            Err(SidecarError::Missing) => {}
-            Err(source) => return Err(source),
-        }
-
-        let temporary = temporary_path(directories.shard_path())?;
-        self.faults
-            .check(FaultPoint::BeforeSidecarWrite)
-            .map_err(|source| storage(SidecarStage::WriteTemporary, source))?;
-        let mut file = platform::create_temporary(&temporary)
-            .map_err(|source| storage(SidecarStage::CreateTemporary, source))?;
-        file.write_all(bytes)
-            .map_err(|source| storage(SidecarStage::WriteTemporary, source))?;
-        self.faults
-            .check(FaultPoint::BeforeSidecarFileSync)
-            .map_err(|source| storage(SidecarStage::FlushTemporary, source))?;
-        file.sync_all()
-            .map_err(|source| storage(SidecarStage::FlushTemporary, source))?;
-        drop(file);
-
-        self.publish_or_reuse(&temporary, &final_path)?;
-        open_and_verify_final(
-            &self.faults,
-            &directories,
-            address,
-            Some(bytes),
-            self.durability_tier(),
-            true,
-        )?;
-        Ok(AdmittedSidecar {
-            address: address.clone(),
-            path: final_path,
-            store,
-            generation,
-        })
-    }
-
     fn verify_sidecar_inner(
         &self,
         address: &SidecarAddress,
@@ -201,7 +103,11 @@ impl HomeStore {
         })
     }
 
-    fn publish_or_reuse(&self, temporary: &Path, final_path: &Path) -> Result<(), SidecarError> {
+    pub(super) fn publish_or_reuse(
+        &self,
+        temporary: &Path,
+        final_path: &Path,
+    ) -> Result<(), SidecarError> {
         self.faults
             .check(FaultPoint::BeforeSidecarRename)
             .map_err(|source| storage(SidecarStage::RenameFinal, source))?;

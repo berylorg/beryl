@@ -222,6 +222,10 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_cut_preparation_gate: Mutex<Option<CutPreparationTestGate>>,
     #[cfg(feature = "test-faults")]
+    test_paste_staging_gate: Mutex<Option<CutPreparationTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_paste_asset_completion_gate: Mutex<Option<CutPreparationTestGate>>,
+    #[cfg(feature = "test-faults")]
     test_pending_completion_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
     test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
@@ -348,6 +352,10 @@ impl MainWindowConversationComposerService {
             test_successor_proof_fault: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_cut_preparation_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_paste_staging_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_paste_asset_completion_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_completion_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
@@ -882,6 +890,50 @@ impl MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     pub(super) fn take_test_cut_preparation_gate(&self) -> Option<CutPreparationTestGate> {
         self.test_cut_preparation_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_paste_staging(&self) -> MainWindowComposerCutPreparationTestRelease {
+        let state = Arc::new(Mutex::new(CutPreparationTestGateState {
+            released: false,
+            waker: None,
+        }));
+        assert!(
+            self.test_paste_staging_gate
+                .lock()
+                .unwrap()
+                .replace(CutPreparationTestGate(state.clone()))
+                .is_none()
+        );
+        MainWindowComposerCutPreparationTestRelease(state)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_paste_staging_gate(&self) -> Option<CutPreparationTestGate> {
+        self.test_paste_staging_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_paste_asset_completion(
+        &self,
+    ) -> MainWindowComposerCutPreparationTestRelease {
+        let state = Arc::new(Mutex::new(CutPreparationTestGateState {
+            released: false,
+            waker: None,
+        }));
+        assert!(
+            self.test_paste_asset_completion_gate
+                .lock()
+                .unwrap()
+                .replace(CutPreparationTestGate(state.clone()))
+                .is_none()
+        );
+        MainWindowComposerCutPreparationTestRelease(state)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_paste_asset_completion_gate(&self) -> Option<CutPreparationTestGate> {
+        self.test_paste_asset_completion_gate.lock().ok()?.take()
     }
 
     #[cfg(feature = "test-faults")]

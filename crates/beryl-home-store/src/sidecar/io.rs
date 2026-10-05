@@ -23,6 +23,19 @@ impl SidecarDirectoryChain {
     pub(super) fn shard_path(&self) -> &Path {
         &self.shard_path
     }
+
+    pub(super) fn flush_final(
+        &self,
+        faults: &FaultController,
+        durability_tier: HomeDurabilityTier,
+    ) -> Result<(), SidecarError> {
+        flush_directory(
+            faults,
+            FaultPoint::BeforeSidecarFinalDirectorySync,
+            &self.shard,
+            durability_tier,
+        )
+    }
 }
 
 pub(super) fn retain_sidecar_directories(
@@ -156,7 +169,7 @@ fn map_directory_open_error(source: platform::OpenObjectError) -> SidecarError {
     }
 }
 
-fn map_final_open_error(source: platform::OpenObjectError) -> SidecarError {
+pub(super) fn map_final_open_error(source: platform::OpenObjectError) -> SidecarError {
     match source {
         platform::OpenObjectError::InvalidLayout => SidecarError::InvalidLayout,
         platform::OpenObjectError::Io(source) if source.kind() == io::ErrorKind::NotFound => {
@@ -247,6 +260,9 @@ pub(super) fn storage(
 
 pub(super) fn sidecar_failure_severity(error: &SidecarError) -> FailureSeverity {
     match error {
+        SidecarError::Cancelled
+        | SidecarError::LengthMismatch { .. }
+        | SidecarError::Source { .. } => FailureSeverity::Structural,
         SidecarError::HealthGate(_)
         | SidecarError::BoundExceeded { .. }
         | SidecarError::Storage { .. } => FailureSeverity::Structural,

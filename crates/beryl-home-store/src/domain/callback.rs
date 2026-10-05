@@ -57,7 +57,10 @@ pub(crate) fn callback_failure_severity(source: &DomainCallbackSource) -> Option
             }
         }
         DomainCallbackSource::Read(ReadError::HealthGate(_))
-        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_)) => None,
+        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_))
+        | DomainCallbackSource::Sidecar(SidecarError::Cancelled)
+        | DomainCallbackSource::Sidecar(SidecarError::Source { .. })
+        | DomainCallbackSource::Sidecar(SidecarError::LengthMismatch { .. }) => None,
         DomainCallbackSource::Read(_)
         | DomainCallbackSource::Sidecar(SidecarError::GenerationPoisoned)
         | DomainCallbackSource::Sidecar(SidecarError::BoundExceeded { .. })
@@ -85,7 +88,10 @@ pub(crate) fn reconciliation_callback_failure_severity(
             }
         }
         DomainCallbackSource::Read(ReadError::HealthGate(_))
-        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_)) => None,
+        | DomainCallbackSource::Sidecar(SidecarError::HealthGate(_))
+        | DomainCallbackSource::Sidecar(SidecarError::Cancelled)
+        | DomainCallbackSource::Sidecar(SidecarError::Source { .. })
+        | DomainCallbackSource::Sidecar(SidecarError::LengthMismatch { .. }) => None,
         DomainCallbackSource::Read(_)
         | DomainCallbackSource::Sidecar(SidecarError::GenerationPoisoned)
         | DomainCallbackSource::Sidecar(SidecarError::BoundExceeded { .. })

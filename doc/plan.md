@@ -89,24 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 729: Implement Eligible Private Composer Copy And Cut (finished)
+# Phase 730: Mount Captured Atomic Composer Paste (finished)
 
-Accepted process-owned compact sources, checked copy/cut acknowledgement, exact cut promotion
-and history, authenticated Syndic assignment and fencing, expiry, recovery custody and bounded
-stale/disposal release. Canonical locked app/executable all-target checks passed; 49 Syndic and
-29 app cases passed, with independent semantic review and all 56 source/test paths matched to
-the canonical checkout. See [qualification evidence](audits/composer-marker-feedback/private-copy-cut.md).
-No Operator clipboard access or native Beryl launch occurred. Mounted paste remains below.
-
-# Phase 730: Mount Captured Atomic Composer Paste (pending)
-
-Consume paste and clipboard-limit events with exact Notifications feedback and captured pending
-ownership. Implement bounded text/image/private acquisition, streaming sidecar admission and one
-general host mutation with evidence/replay, cancellation and settlement. Qualify actual mounted
-paste, local/foreign identity, stale selection, ordinary refusal and ambiguity, one-step undo/redo
-and resource release; independently review the complete consequential boundary.
-Qualify external clipboard replacement observation, exact current-snapshot/token/text correlation
-and stale observation release together with acquisition; source selectors alone grant no paste.
+Accepted exact captured text/image/private paste, bounded sidecars and provenance replay, atomic
+origin admission, cancellation/settlement, typed Notices, one-step history and resource release.
+Canonical locked app/executable all-target checks, 60 distinct app cases, 32 sidecar cases and
+24 widget cases passed, with 49 canonical input hashes matched and independent consequential
+review accepted. See [qualification evidence](audits/composer-marker-feedback/captured-paste.md).
+No Operator clipboard access occurred. Large-draft clipboard refusal qualification remains below.
 
 # Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (pending)
 

@@ -12,6 +12,9 @@ mod refusal;
 #[path = "composer_marker_evidence/flights.rs"]
 mod flights;
 
+#[path = "composer_marker_evidence/private_origin.rs"]
+mod private_origin;
+
 use beryl_app::composer_host::{
     ComposerHostError, ComposerHostImageMarkerMetadata, ComposerHostMutationAdmissionFailure,
     ComposerHostMutationEvidenceOutcome, ComposerHostMutationEvidenceRequest,

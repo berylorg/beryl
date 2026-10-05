@@ -85,6 +85,17 @@ pub type ComposerClipboardWriter =
 pub type ComposerCheckedClipboardWriter =
     Box<dyn FnMut(&str, Option<&str>, &mut App) -> ClipboardWriteOutcome + 'static>;
 
+pub type ComposerCheckedClipboardReader = Box<
+    dyn FnMut(
+            gpui::ClipboardLimits,
+            &mut App,
+        ) -> Result<gpui::CheckedClipboardSnapshot, gpui::ClipboardError>
+        + 'static,
+>;
+
+pub use clipboard::resources::{
+    MainWindowComposerPasteResourceError, MainWindowComposerPasteResources,
+};
 pub use clipboard::source::{
     MainWindowPrivateClipboardDescriptor, MainWindowPrivateClipboardOwner,
 };
@@ -112,6 +123,8 @@ pub enum MainWindowComposerClipboardFeedbackKind {
     Failed,
     TooLarge,
     CapacityUnavailable,
+    Unavailable,
+    StorageUnavailable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,6 +132,7 @@ pub struct MainWindowComposerClipboardFeedback {
     pub selection: MainWindowComposerSelectionIdentity,
     pub operation: gpui_text_input::ClipboardId,
     pub kind: MainWindowComposerClipboardFeedbackKind,
+    pub paste: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -126,9 +140,6 @@ pub enum MainWindowConversationComposerEvent {
     SelectionAdvanced {
         previous: MainWindowComposerSelectionIdentity,
         current: MainWindowComposerSelectionIdentity,
-    },
-    RichPastePropagated {
-        selection: MainWindowComposerSelectionIdentity,
     },
     ClipboardLimitExceeded {
         selection: MainWindowComposerSelectionIdentity,
@@ -182,6 +193,9 @@ pub struct MainWindowConversationComposer {
     activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
     clipboard_writer: Option<ComposerClipboardWriter>,
     checked_clipboard_writer: Option<ComposerCheckedClipboardWriter>,
+    checked_clipboard_reader: Option<ComposerCheckedClipboardReader>,
+    paste_queue: clipboard::resources::ComposerPasteQueue,
+    paste: Option<clipboard::paste::CapturedComposerPaste>,
     private_clipboard_owner: MainWindowPrivateClipboardOwner,
     private_clipboard_preparation: Option<clipboard::source::PrivateClipboardPreparation>,
     clipboard_operation: gpui_text_input::ClipboardId,
@@ -232,6 +246,9 @@ impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversatio
 
 impl Drop for MainWindowConversationComposer {
     fn drop(&mut self) {
+        if let Some(paste) = self.paste.as_ref() {
+            paste.cancellation.cancel();
+        }
         self.private_clipboard_owner.expire_origin(self.selection);
         if let Some(clipboard) = self.propagated_clipboard.as_ref() {
             clipboard.cancel();
@@ -296,6 +313,7 @@ impl MainWindowConversationComposer {
             selection: self.selection,
             operation: self.clipboard_operation,
             kind,
+            paste: false,
         });
         cx.notify();
     }
@@ -779,6 +797,11 @@ impl MainWindowConversationComposer {
                             closure: write
                                 .provenance()
                                 .expect("private write carries provenance"),
+                            provenance_limits: gpui_text_input::ClipboardProvenanceLimits::new(
+                                32,
+                                64 * 1024,
+                            )
+                            .expect("bounded composer clipboard provenance capacity"),
                             source: syndic_storage::DraftPrivateClipboardSourceV1::from_candidate(
                                 candidate.draft_id(),
                                 candidate.session_id(),

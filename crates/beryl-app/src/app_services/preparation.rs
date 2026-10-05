@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(super) struct PreparedAppServices {
+    paste_resources: crate::main_window::MainWindowComposerPasteResources,
     process: ProcessAdmissionGate,
     cas: Option<PreparedCasServices>,
     marker: Option<PreparedMarkerServices>,
@@ -47,6 +48,7 @@ impl PreparedAppServices {
     ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
+            paste_resources: configuration.paste_resources,
             process: owner.process.clone(),
             cas: None,
             marker: None,
@@ -176,7 +178,10 @@ impl PreparedAppServices {
             .expect("prepared CAS")
             .into_published_parts();
         let graph = PublishedAppServices {
-            private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner::new(),
+            private_clipboard:
+                crate::main_window::MainWindowPrivateClipboardOwner::with_paste_resources(
+                    self.paste_resources,
+                ),
             restore_lifetime: Some(Arc::new(())),
             process: self.process.clone(),
             shutdown: None,

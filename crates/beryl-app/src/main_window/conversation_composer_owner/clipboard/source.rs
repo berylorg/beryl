@@ -12,7 +12,7 @@ use super::super::{MainWindowComposerSelectionIdentity, MainWindowConversationCo
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
-pub struct MainWindowPrivateClipboardOwner(Arc<Mutex<State>>);
+pub struct MainWindowPrivateClipboardOwner(Arc<Mutex<State>>, super::resources::ComposerPasteQueue);
 
 impl Global for MainWindowPrivateClipboardOwner {}
 
@@ -44,6 +44,7 @@ pub struct MainWindowPrivateClipboardDescriptor {
     pub content_origin: MainWindowComposerSelectionIdentity,
     pub selection: RangeSourceSelection,
     pub closure: ClipboardProvenanceClosure,
+    pub provenance_limits: gpui_text_input::ClipboardProvenanceLimits,
     pub source: DraftPrivateClipboardSourceV1,
 }
 
@@ -59,17 +60,81 @@ impl Default for MainWindowPrivateClipboardOwner {
 }
 
 impl MainWindowPrivateClipboardOwner {
+    pub(in super::super) fn observation_token(&self) -> Option<String> {
+        let state = self.0.lock().ok()?;
+        let source = state.source.as_ref()?;
+        Some(token(state.identity, source.operation))
+    }
+
+    pub(in super::super) fn capture_paste(
+        &self,
+        metadata: &str,
+    ) -> Option<(
+        MainWindowPrivateClipboardDescriptor,
+        syndic_storage::SyndicStorage,
+    )> {
+        let descriptor = self.descriptor(metadata)?;
+        let service = {
+            let state = self.0.lock().ok()?;
+            let source = state.source.as_ref()?;
+            if state.retired
+                || source.descriptor != descriptor
+                || metadata != token(state.identity, source.operation)
+                || !matches!(source.status, Status::Eligible)
+            {
+                return None;
+            }
+            source.service.upgrade()?
+        };
+        let storage = service.slot.lock().ok()?.clipboard_storage();
+        Some((descriptor, storage))
+    }
+
+    pub(in super::super) fn paste_origin(
+        &self,
+        metadata: String,
+        descriptor: MainWindowPrivateClipboardDescriptor,
+        key: MutationKey,
+        cancellation: beryl_home_store::CommandCancellation,
+    ) -> crate::composer_host::ComposerHostPrivatePasteOrigin {
+        crate::composer_host::ComposerHostPrivatePasteOrigin::new(
+            descriptor.source,
+            Arc::new(PrivatePasteActivation {
+                owner: self.clone(),
+                metadata,
+                descriptor,
+                key,
+                cancellation,
+            }),
+        )
+    }
     pub fn new() -> Self {
+        Self::with_paste_resources(super::resources::MainWindowComposerPasteResources::default())
+    }
+
+    pub fn with_paste_resources(
+        resources: super::resources::MainWindowComposerPasteResources,
+    ) -> Self {
         let identity = NEXT_OWNER
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .expect("private clipboard owner identity exhausted");
-        Self(Arc::new(Mutex::new(State {
-            retired: false,
-            identity,
-            next_operation: 1,
-            preparing: None,
-            source: None,
-        })))
+        Self(
+            Arc::new(Mutex::new(State {
+                retired: false,
+                identity,
+                next_operation: 1,
+                preparing: None,
+                source: None,
+            })),
+            super::resources::ComposerPasteQueue::new(resources),
+        )
+    }
+
+    pub(in super::super) fn paste_queue(&self) -> super::resources::ComposerPasteQueue {
+        self.1.clone()
+    }
+    pub fn paste_resources(&self) -> super::resources::MainWindowComposerPasteResources {
+        self.1.resources()
     }
 
     pub fn install(&self, app: &mut App) {
@@ -96,6 +161,7 @@ impl MainWindowPrivateClipboardOwner {
     }
 
     pub fn retire(&self) {
+        self.1.retire();
         if let Ok(mut state) = self.0.lock() {
             state.retired = true;
             state.source = None;
@@ -274,6 +340,36 @@ impl MainWindowPrivateClipboardOwner {
         } else {
             source.descriptor.origin = successor;
         }
+    }
+}
+
+struct PrivatePasteActivation {
+    owner: MainWindowPrivateClipboardOwner,
+    metadata: String,
+    descriptor: MainWindowPrivateClipboardDescriptor,
+    key: MutationKey,
+    cancellation: beryl_home_store::CommandCancellation,
+}
+
+impl crate::composer_host::ComposerHostPrivatePasteActivation for PrivatePasteActivation {
+    fn activate(&self, key: MutationKey, submit: &mut dyn FnMut()) -> bool {
+        let Ok(state) = self.owner.0.lock() else {
+            return false;
+        };
+        let Some(source) = state.source.as_ref() else {
+            return false;
+        };
+        if state.retired
+            || self.cancellation.is_cancelled()
+            || key != self.key
+            || source.descriptor != self.descriptor
+            || self.metadata != token(state.identity, source.operation)
+            || !matches!(source.status, Status::Eligible)
+        {
+            return false;
+        }
+        submit();
+        true
     }
 }
 

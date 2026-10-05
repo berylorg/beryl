@@ -235,7 +235,14 @@ impl Render for MainWindowConversationComposer {
         });
         div()
             .id(("conversation-composer-root", cx.entity_id()))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" && this.paste_pending() {
+                    this.cancel_captured_paste(cx);
+                    cx.stop_propagation();
+                }
+            }))
             .relative()
+            .when(self.paste_pending(), |root| root.opacity(0.55))
             .size_full()
             .when(selected, |root| {
                 root.debug_selector(|| "conversation-composer-root".to_owned())

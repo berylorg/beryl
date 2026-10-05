@@ -199,6 +199,7 @@ impl MainWindowConversationComposer {
         }
         owner.install(cx);
         self.recovery_config.private_clipboard_owner = Some(owner.clone());
+        self.paste_queue = owner.paste_queue();
         self.private_clipboard_owner = owner;
     }
 

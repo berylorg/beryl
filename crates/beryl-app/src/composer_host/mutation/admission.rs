@@ -22,10 +22,38 @@ mod terminal;
 const MAX_ADMISSION_TRANSITIONS: usize = 16;
 const MAX_READINESS_ASSOCIATIONS: usize = 32;
 
+pub trait ComposerHostPrivatePasteActivation: Send + Sync {
+    fn activate(&self, key: MutationKey, submit: &mut dyn FnMut()) -> bool;
+}
+
+#[derive(Clone)]
+pub struct ComposerHostPrivatePasteOrigin {
+    source: syndic_storage::DraftPrivateClipboardSourceV1,
+    activation: Arc<dyn ComposerHostPrivatePasteActivation>,
+}
+
+impl ComposerHostPrivatePasteOrigin {
+    pub fn new(
+        source: syndic_storage::DraftPrivateClipboardSourceV1,
+        activation: Arc<dyn ComposerHostPrivatePasteActivation>,
+    ) -> Self {
+        Self { source, activation }
+    }
+
+    pub const fn source(&self) -> syndic_storage::DraftPrivateClipboardSourceV1 {
+        self.source
+    }
+}
+
 pub enum ComposerHostMutationEvidenceRequest {
     Begin {
         begin: MutationBeginRequest,
         pass: MutationPass,
+    },
+    BeginPrivate {
+        begin: MutationBeginRequest,
+        pass: MutationPass,
+        origin: ComposerHostPrivatePasteOrigin,
     },
     Page {
         pass: MutationPass,
@@ -43,7 +71,7 @@ pub enum ComposerHostMutationEvidenceRequest {
 impl ComposerHostMutationEvidenceRequest {
     pub const fn key(&self) -> MutationKey {
         match self {
-            Self::Begin { begin, .. } => begin.proposal().key(),
+            Self::Begin { begin, .. } | Self::BeginPrivate { begin, .. } => begin.proposal().key(),
             Self::Page { pass, .. } | Self::Finish { pass, .. } => pass.key(),
             Self::Advance(key) | Self::Cancel(key) => *key,
         }
@@ -104,6 +132,8 @@ pub(in crate::composer_host) struct ComposerHostMutationAdmission {
     pub(super) binding: ComposerHostBinding,
     pub(super) begin: MutationBeginRequest,
     pass: MutationPass,
+    private_origin: Option<ComposerHostPrivatePasteOrigin>,
+    cancellation: CommandCancellation,
     storage_begin: DraftMutationBeginV1,
     session: DraftEditorCandidateSessionV1,
     assets: AssetState,
@@ -207,15 +237,47 @@ impl SyndicComposerHost {
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationEvidenceOutcome, ComposerHostError> {
         let key = request.key();
-        if let ComposerHostMutationEvidenceRequest::Begin { begin, pass } = request {
-            if cancellation.is_cancelled() {
-                return Ok(ComposerHostMutationEvidenceOutcome::Refused {
-                    key,
-                    failure: Arc::new(ComposerHostMutationAdmissionFailure::Cancelled),
-                });
+        let request = match request {
+            ComposerHostMutationEvidenceRequest::Begin { begin, pass } => {
+                if cancellation.is_cancelled() {
+                    return Ok(ComposerHostMutationEvidenceOutcome::Refused {
+                        key,
+                        failure: Arc::new(ComposerHostMutationAdmissionFailure::Cancelled),
+                    });
+                }
+                return self.begin_mutation_evidence(
+                    store,
+                    binding,
+                    assets,
+                    begin,
+                    pass,
+                    None,
+                    cancellation,
+                );
             }
-            return self.begin_mutation_evidence(store, binding, assets, begin, pass);
-        }
+            ComposerHostMutationEvidenceRequest::BeginPrivate {
+                begin,
+                pass,
+                origin,
+            } => {
+                if cancellation.is_cancelled() {
+                    return Ok(ComposerHostMutationEvidenceOutcome::Refused {
+                        key,
+                        failure: Arc::new(ComposerHostMutationAdmissionFailure::Cancelled),
+                    });
+                }
+                return self.begin_mutation_evidence(
+                    store,
+                    binding,
+                    assets,
+                    begin,
+                    pass,
+                    Some(origin),
+                    cancellation,
+                );
+            }
+            request => request,
+        };
         let pending = self
             .pending_mutation
             .take()
@@ -293,7 +355,8 @@ impl SyndicComposerHost {
                 }
                 ComposerHostMutationEvidenceRequest::Advance(_)
                 | ComposerHostMutationEvidenceRequest::Cancel(_) => {}
-                ComposerHostMutationEvidenceRequest::Begin { .. } => unreachable!(),
+                ComposerHostMutationEvidenceRequest::Begin { .. }
+                | ComposerHostMutationEvidenceRequest::BeginPrivate { .. } => unreachable!(),
             }
             self.drive_mutation_admission(store, &mut admission)
         })();

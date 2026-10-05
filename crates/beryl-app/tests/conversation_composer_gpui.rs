@@ -10,6 +10,9 @@ mod support;
 #[path = "conversation_composer_gpui/private_clipboard.rs"]
 mod private_clipboard;
 
+#[path = "conversation_composer_gpui/captured_paste.rs"]
+mod captured_paste;
+
 use std::{
     num::NonZeroU64,
     sync::{

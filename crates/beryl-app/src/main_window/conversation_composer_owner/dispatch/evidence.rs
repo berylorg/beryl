@@ -16,6 +16,14 @@ pub(in crate::main_window::conversation_composer_owner) struct ActiveComposerMut
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window::conversation_composer_owner) fn mutation_admission_unavailable(
+        &self,
+    ) -> bool {
+        self.mutation_evidence
+            .as_ref()
+            .is_some_and(|evidence| evidence.terminally_unavailable)
+    }
+
     pub(super) fn intercept_mutation_evidence(
         &mut self,
         request: &RangeTextInputRequest,
@@ -48,14 +56,22 @@ impl MainWindowConversationComposer {
                     cancelled: false,
                     terminally_unavailable: false,
                 });
-                self.dispatch_mutation_evidence(
-                    ComposerHostMutationEvidenceRequest::Begin {
-                        begin: *begin,
-                        pass,
-                    },
-                    window,
-                    cx,
-                )?;
+                let request = self
+                    .paste
+                    .as_ref()
+                    .and_then(|paste| paste.origin.clone())
+                    .map_or(
+                        ComposerHostMutationEvidenceRequest::Begin {
+                            begin: *begin,
+                            pass,
+                        },
+                        |origin| ComposerHostMutationEvidenceRequest::BeginPrivate {
+                            begin: *begin,
+                            pass,
+                            origin,
+                        },
+                    );
+                self.dispatch_mutation_evidence(request, window, cx)?;
                 Ok(true)
             }
             RangeTextInputRequest::CancelMutation(cancel)
@@ -97,7 +113,22 @@ impl MainWindowConversationComposer {
                 )?;
                 return Ok(true);
             }
-            let input = if let Some(cut) = self
+            let input = if let Some(paste) = self
+                .paste
+                .as_mut()
+                .and_then(|paste| paste.producer.as_mut())
+                .filter(|producer| producer.key() == pass.key())
+            {
+                if paste.needs_page() {
+                    self.dispatch_paste_page(window, cx)?;
+                    return Ok(true);
+                }
+                let input = paste
+                    .next_input()?
+                    .ok_or_else(|| "captured paste producer returned no evidence".to_owned())?;
+                self.pending_marker_metadata = Some((pass.key(), paste.metadata()));
+                input
+            } else if let Some(cut) = self
                 .propagated_cut
                 .as_mut()
                 .filter(|cut| cut.key() == pass.key())
@@ -164,6 +195,21 @@ impl MainWindowConversationComposer {
             self.dispatch_mutation_evidence(request, window, cx)?;
             return Ok(true);
         }
+        if let Some(paste) = self
+            .paste
+            .as_ref()
+            .and_then(|paste| paste.producer.as_ref())
+            .filter(|producer| producer.is_staging())
+        {
+            if paste.needs_page() {
+                self.dispatch_paste_page(window, cx)?;
+            } else {
+                let key = paste.key();
+                self.submit_captured_paste_page(key, cx)?;
+                self.schedule_pump(window, cx);
+            }
+            return Ok(true);
+        }
         if let Some(cut) = self.propagated_cut.as_mut().filter(|cut| cut.is_staging()) {
             if let Some(request) = cut.next_page_request() {
                 self.dispatch_cut_evidence_read(request, window, cx)?;
@@ -186,6 +232,11 @@ impl MainWindowConversationComposer {
         let (flight, service) = self.begin_flight()?;
         let selection = self.selection;
         let route = self.route;
+        let cancellation = self
+            .paste
+            .as_ref()
+            .map(|paste| paste.cancellation.clone())
+            .unwrap_or_else(CommandCancellation::new);
         let task = cx.background_executor().spawn(async move {
             let mut slot = service.slot.lock().map_err(|_| {
                 MainWindowConversationComposerTaskError::exact(
@@ -205,7 +256,7 @@ impl MainWindowConversationComposer {
                     &service.store,
                     selection,
                     request,
-                    &CommandCancellation::new(),
+                    &cancellation,
                 )
                 .map_err(|error| {
                     MainWindowConversationComposerTaskError::exact(
@@ -326,6 +377,9 @@ impl MainWindowConversationComposer {
                 }
             }
             ComposerHostMutationEvidenceOutcome::Began(key) => {
+                if let Some(paste) = self.paste.as_mut().filter(|paste| paste.key == Some(key)) {
+                    paste.admitted = true;
+                }
                 let accepted = self
                     .input
                     .update(cx, |input, cx| input.accept_mutation_preflight(key, cx));
@@ -342,6 +396,14 @@ impl MainWindowConversationComposer {
                     .map_err(|error| format!("composer mutation restart was rejected: {error}"))?;
                 if let Some(cut) = self.propagated_cut.as_mut().filter(|cut| cut.key() == key) {
                     cut.restart(pass)?;
+                }
+                if let Some(paste) = self
+                    .paste
+                    .as_mut()
+                    .and_then(|paste| paste.producer.as_mut())
+                    .filter(|producer| producer.key() == key)
+                {
+                    paste.restart(pass)?;
                 }
                 self.input
                     .update(cx, |input, cx| input.acknowledge_mutation_restart(pass, cx))
@@ -362,7 +424,10 @@ impl MainWindowConversationComposer {
                     return Err(format!("composer evidence refusal was rejected: {error}"));
                 }
                 self.clear_propagated_cut(key);
-                self.record_mutation_feedback(key, &failure, false, cx);
+                self.clear_captured_paste(key, cx);
+                if !cancelled {
+                    self.record_mutation_feedback(key, &failure, false, cx);
+                }
                 self.last_mutation_admission_failure = Some(failure);
                 self.finish_marker_removal_noncommit(key, window, cx)?;
                 cx.notify();
@@ -428,6 +493,7 @@ impl MainWindowConversationComposer {
             key,
             kind,
         });
+        self.sync_mutation_gate(cx);
         cx.notify();
     }
 

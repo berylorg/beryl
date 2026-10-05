@@ -119,6 +119,8 @@ fn owner(candidate: &HomeOpenPublication) -> ProcessServiceOwner {
 pub(super) fn configuration() -> AppServiceConfiguration {
     let one = NonZeroUsize::new(1).unwrap();
     AppServiceConfiguration {
+        paste_resources: crate::main_window::MainWindowComposerPasteResources::new(1, 4096)
+            .unwrap(),
         projection: ProjectionServiceConfig::try_new(
             8,
             4,

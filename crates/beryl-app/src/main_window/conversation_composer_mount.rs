@@ -82,9 +82,6 @@ pub enum MainWindowConversationComposerMountEvent {
     ClipboardLimitExceeded {
         selection: MainWindowComposerSelectionIdentity,
     },
-    RichPastePropagated {
-        selection: MainWindowComposerSelectionIdentity,
-    },
 }
 
 #[derive(Debug)]
@@ -1050,15 +1047,6 @@ impl MainWindowConversationComposerMount {
                         {
                             this.autosave.record_error(error);
                         }
-                    }
-                    super::MainWindowConversationComposerEvent::RichPastePropagated {
-                        selection,
-                    } if this.selected_identity() == Some(selection) => {
-                        cx.emit(
-                            MainWindowConversationComposerMountEvent::RichPastePropagated {
-                                selection,
-                            },
-                        );
                     }
                     super::MainWindowConversationComposerEvent::ClipboardLimitExceeded {
                         selection,

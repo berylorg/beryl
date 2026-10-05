@@ -59,6 +59,7 @@ pub(crate) use window_services::{
 
 #[derive(Clone)]
 pub(crate) struct AppServiceConfiguration {
+    pub(crate) paste_resources: crate::main_window::MainWindowComposerPasteResources,
     pub(crate) projection: ProjectionServiceConfig,
     pub(crate) runtime_interest: RuntimeInterestConfig,
     pub(crate) session_policy: ScheduledOrdinaryRequestPolicy,

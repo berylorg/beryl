@@ -86,7 +86,11 @@ impl ProcessServiceOwner {
             .map_err(|error| reject(error.to_string()))?;
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
-            private_clipboard: Some(crate::main_window::MainWindowPrivateClipboardOwner::new()),
+            private_clipboard: Some(
+                crate::main_window::MainWindowPrivateClipboardOwner::with_paste_resources(
+                    configuration.paste_resources,
+                ),
+            ),
             failed_residents: Vec::new(),
             process: self.process.clone(),
             services: None,

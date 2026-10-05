@@ -502,6 +502,7 @@ impl MainWindowConversationComposer {
             clipboard.cancel();
         }
         self.propagated_cut = None;
+        self.paste = None;
         self.pending_marker_metadata = None;
         self.mutation_evidence = None;
         self.pending_marker_removal = None;
@@ -537,6 +538,7 @@ impl MainWindowConversationComposer {
                 return Err("conversation composer is retained for recovery".to_owned());
             }
             MainWindowConversationComposerPhase::Live => {
+                self.cancel_captured_paste(cx);
                 self.phase = MainWindowConversationComposerPhase::Fencing;
                 self.private_clipboard_owner.expire_origin(self.selection);
                 self.private_clipboard_preparation = None;

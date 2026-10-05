@@ -44,6 +44,25 @@ impl ComposerFeedbackSource {
     fn text(self) -> (&'static str, &'static str) {
         match self {
             Self::Mutation(feedback) => feedback_text(feedback.kind),
+            Self::Clipboard(feedback) if feedback.paste => match feedback.kind {
+                MainWindowComposerClipboardFeedbackKind::TooLarge => (
+                    "Clipboard content is too large",
+                    "Copy a smaller selection. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::CapacityUnavailable => (
+                    "Paste capacity is temporarily unavailable",
+                    "Try again after the other paste finishes. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::StorageUnavailable => (
+                    "Paste storage failed",
+                    "The image could not be stored. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::Failed
+                | MainWindowComposerClipboardFeedbackKind::Unavailable => (
+                    "Clipboard content is unavailable",
+                    "The clipboard content could not be pasted. Your draft is unchanged.",
+                ),
+            },
             Self::Clipboard(feedback) => match feedback.kind {
                 MainWindowComposerClipboardFeedbackKind::Failed => (
                     "Clipboard write failed",
@@ -56,6 +75,11 @@ impl ComposerFeedbackSource {
                 MainWindowComposerClipboardFeedbackKind::CapacityUnavailable => (
                     "Clipboard capacity is temporarily unavailable",
                     "Try again after the other clipboard operation finishes. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::Unavailable
+                | MainWindowComposerClipboardFeedbackKind::StorageUnavailable => (
+                    "Clipboard content is unavailable",
+                    "The clipboard content could not be pasted. Your draft is unchanged.",
                 ),
             },
         }
