@@ -37,7 +37,9 @@ are never closed. Explicit cleanup failures return typed errors. Panic cleanup r
 `SetThreadDesktop` requires no existing windows/hooks on the changing thread; desktop and station
 handles cannot be closed while they remain current. The harness keeps the checked reader's own
 sequence fence and immutable-value checks; a writer's pre-close sequence is not a lifetime fence.
-Native qualification of this replacement was pending when this investigation was recorded.
+Subsequent Operator-authorized inline sudo qualification passed the private native case on
+2026-10-04 (run `82175bb6-af02-4b75-9b6f-245cff7d74bc`), including exact binding restoration and
+owned-handle cleanup. The accepted evidence is linked in the qualification audit.
 
 # Sources
 

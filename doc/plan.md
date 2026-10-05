@@ -89,55 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 727: Establish Mounted Clipboard Admission Readiness (finished)
+# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (finished)
 
-Accepted the Operator-approved [authority resolution](audits/composer-marker-feedback/clipboard-readiness.md#subsequent-authority-resolution)
-with independent architecture review and documentation checks. Native acknowledgement/read bounds,
-compact private-source expiry, foreign allocation, atomic origin admission fencing, captured paste
-and streaming sidecar ownership are defined. Missing production APIs and actual clipboard workflow
-qualification remain the implementation boundaries below. No native Beryl was launched.
-
-# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (wip)
-
-Implement the owning GPUI checked Windows read/write boundary for the composer consumer. Preserve
-caller byte ceilings before allocation, complete text/metadata acknowledgement, exact snapshot
-sequence and typed unsupported/native failure. Qualify native ownership and format publication in
-an isolated harness, injected write/read/close failures, exact-fit/one-over and malformed inputs;
-independently review unsafe memory, complete acknowledgement and bounded release. Publish the
-accepted fork revision and qualify Beryl's canonical dependency composition before consuming it.
-
-The native implementation is owned in the GPUI fork under its root plan; Beryl remains the
-consumer/integration owner. Use the existing LLVM, one-job, no-normal-debug and nonincremental
-verification envelope. Do not launch native Beryl. Preserve unrelated source and widget-spec work.
-
-Resolved on 2026-10-04: independent review found that Windows native image allocation may
-exceed encoded payload length. The attempted exact-size requirement refuses supported images;
-the Operator approved the [private companion correction](failures/checked-clipboard-image-representation.md).
-Implement the fork-owned contract and qualify padded/nonaligned payloads, malformed companion,
-complete companion publication and allocation limits. Preserve the unaccepted fork work;
-do not publish its source revision or update Beryl dependency pins. The separate
-[test preservation correction](failures/clipboard-qualification-preservation.md) is independently
-accepted and included in the focused verification below. Native qualification and canonical
-dependency composition remain required before acceptance and publication.
-
-Current milestone: independent review, locked metadata, focused compilation, 20 deterministic cases
-and private native qualification pass. Operator-authorized inline sudo supplied named-station
-creation privileges; no Operator clipboard acquisition occurred. Accepted GPUI source is published
-as `edd4928c5be424630da49f872e00dafbf94cf0b2`; canonical scrollbar metadata/all-target check passed and
-alignment is published as `b9e591820b61fc788f148bca1f6f80b6341a692c`. Text-input canonical locked
-metadata/all-target checks and independent review passed; alignment is published as
-`7f645bf2837072633d613fd47694898af5b218fc`. Settings-window canonical locked metadata/all-target
-checks and independent review passed; its manifest/lockfile remain working material. Beryl pins
-remain unchanged; canonical app/executable checks have not run.
-
-Blocked on 2026-10-05: after Operator manually restarted Serena, the first language-server restart
-returned OK. The required restart after settings compilation timed out after 120 seconds. Stop
-implementation; restore Serena and obtain a successful restart before relying on the changed
-Cargo model or publishing settings alignment. Both exact temporary checkouts are removed. Resume
-settings publication and Beryl canonical app/executable checks after the tool gate clears.
-Preserve prior exact deterministic/native evidence; the Operator's actively used clipboard remains
-excluded from qualification. See
+Accepted the checked Windows GPUI boundary with independent source/dependency review, 20
+focused deterministic cases and private-station native qualification. Published all four aligned
+fork/widget revisions; Beryl's canonical locked app/executable all-target check, including fault-test
+features, passed with one GPUI identity. Required Serena restart succeeded. See
 [qualification evidence](audits/composer-marker-feedback/checked-native-clipboard.md).
+The Operator clipboard was excluded, and no Beryl GUI was launched. Composer workflows remain below.
 
 # Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
 

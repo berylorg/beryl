@@ -1,8 +1,8 @@
 # Checked Native Clipboard Qualification
 
-Status on 2026-10-04: implementation, focused compilation, deterministic verification, private native
-qualification and independent semantic review complete. Canonical dependency alignment is paused at
-the required Serena restart gate. The controlling reusable boundary is the
+Status on 2026-10-05: accepted. Implementation, focused deterministic/native qualification,
+independent semantic review and canonical Beryl dependency composition passed. The controlling
+reusable boundary is the
 [fork design](../../../../zed-fork/doc/design.md#checked-windows-clipboard-boundary).
 
 # Implemented Boundary
@@ -69,27 +69,32 @@ sudo --inline cargo +stable --config .cargo/local.toml --config ../beryl/.tmp/ch
 ```
 
 The command uses the qualified one-job LLVM/no-debug/nonincremental envelope and runs only the
-private native case. No Operator clipboard preparation or acquisition occurred. Accepted source
-is published as fork revision `edd4928c5be424630da49f872e00dafbf94cf0b2`. Align scrollbar, text-input
-and settings-window pins in order, then qualify locked Beryl canonical app/executable composition
-without local overrides before completing Phase 728.
+private native case. No Operator clipboard preparation or acquisition occurred.
 
-Canonical scrollbar locked metadata/all-target checks passed; published revision is
-`b9e591820b61fc788f148bca1f6f80b6341a692c`. Its lockfile changed only eleven fork-owned package
-source revisions. Text-input canonical metadata/all-target checks and independent review passed;
-its twelve Git source changes are published as `7f645bf2837072633d613fd47694898af5b218fc`.
+# Canonical Dependency Acceptance
 
-Settings-window canonical locked metadata/all-target compilation and independent semantic review
-passed on 2026-10-05. Its three manifest pins and thirteen lockfile Git source changes match the
-accepted revisions above, preserving features, versions and dependency edges. The exact refreshed
-manifest/lockfile remain unpublished working material. Logs `settings-update.log`,
-`settings-metadata.json` and `settings-check.log` remain in the bounded qualification evidence root.
+Accepted published revisions:
 
-Required Serena restarts timed out after 120 seconds on 2026-10-04 and the first retry on
-2026-10-05. After Operator manually restarted the process, initial instructions responded and the
-first language-server restart returned OK. The later required restart after settings compilation
-again timed out after 120 seconds. Repository instructions require stopping; no semantic navigation
-relied on the changed Cargo model after failure. Restore Serena and obtain a successful restart
-before publishing settings alignment or continuing Beryl canonical checks. Root Beryl pins remain
-unchanged, and canonical Beryl Cargo has not run. Exactly owned settings and Beryl checkouts were
-removed after absolute-path/reparse checks; no owned Cargo/native process remains.
+- GPUI: `edd4928c5be424630da49f872e00dafbf94cf0b2`.
+- Scrollbar: `b9e591820b61fc788f148bca1f6f80b6341a692c`.
+- Text input: `7f645bf2837072633d613fd47694898af5b218fc`.
+- Settings window: `c76c3a5f8c34f9c668545fa636dabe621c0b0899`.
+
+Each widget's canonical locked metadata/all-target check and independent dependency review passed
+without ignored local overrides. Beryl's isolated canonical checkout resolved all eight workspace
+members, then passed the combined locked app/executable all-target check with
+`beryl-app/test-faults,beryl/test-faults` in 6m 07s. The four manifest pins and fourteen matching Git
+lockfile sources are the entire dependency diff; versions, features, dependency edges and checksums
+remain unchanged. Final review found one shared GPUI identity and no findings. Reviewed canonical
+lock SHA256 `A3A5C55E82C0810E0CC4A3101C211BF27F793A1D7A4CEF8DBFC2F3C959CF1848` exactly matches
+Beryl's copied lockfile. Existing test-support and dependency warnings do not indicate check failure.
+
+The required Serena restart succeeded after the final canonical checks. Earlier 120-second restart
+timeouts paused publication, and Operator's manual restart restored progress; no semantic navigation
+used a changed model after a failed restart. All exact owned canonical checkouts are removed after
+absolute-path and nested reparse checks. Bounded logs/build configuration remain under
+`.tmp/checked-clipboard-qualification`; shared build caches are retained. No owned Cargo/native
+process remains, and no Beryl GUI was launched.
+
+This accepts root plan Phase 728's reusable native boundary and dependency composition. Mounted
+composer copy/cut/paste and large-draft refusal preservation remain separate pending phases.
