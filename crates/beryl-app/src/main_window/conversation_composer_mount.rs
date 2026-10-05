@@ -294,6 +294,7 @@ impl MainWindowConversationComposerMount {
             window,
             cx,
         )?;
+        contribution.update(cx, |composer, _| composer.enable_checked_clipboard_writer());
         let mut this = Self::complete(
             service,
             configurator,
@@ -349,6 +350,7 @@ impl MainWindowConversationComposerMount {
                 cx,
             )
             .map_err(|error| (error, None))?;
+        contribution.update(cx, |composer, _| composer.enable_checked_clipboard_writer());
         let mount = cx.new(|mount_cx| {
             Self::complete(
                 service,

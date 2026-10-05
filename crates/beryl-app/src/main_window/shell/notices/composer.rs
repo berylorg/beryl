@@ -1,5 +1,6 @@
 use super::*;
 use crate::main_window::{
+    MainWindowComposerClipboardFeedback, MainWindowComposerClipboardFeedbackKind,
     MainWindowComposerMutationFeedback, MainWindowComposerMutationFeedbackKind,
     MainWindowConversationComposer, NoticeConditionId, NoticeDismissal, NoticeKind, NoticeVariant,
 };
@@ -14,11 +15,51 @@ pub(super) struct ComposerNoticeContribution {
 }
 
 struct ComposerNoticeFeedback {
-    source: MainWindowComposerMutationFeedback,
+    source: ComposerFeedbackSource,
     condition: NoticeConditionId,
     token: Option<NoticeRecordToken>,
     attempted: bool,
     last_arbiter_change: Option<(usize, u64, u64, u64, u64, u64)>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ComposerFeedbackSource {
+    Mutation(MainWindowComposerMutationFeedback),
+    Clipboard(MainWindowComposerClipboardFeedback),
+}
+
+impl ComposerFeedbackSource {
+    fn persistent(self) -> bool {
+        matches!(
+            self,
+            Self::Mutation(MainWindowComposerMutationFeedback {
+                kind: MainWindowComposerMutationFeedbackKind::Unavailable
+                    | MainWindowComposerMutationFeedbackKind::AdmittedWorkUnavailable
+                    | MainWindowComposerMutationFeedbackKind::CommittedUnavailable,
+                ..
+            })
+        )
+    }
+
+    fn text(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Mutation(feedback) => feedback_text(feedback.kind),
+            Self::Clipboard(feedback) => match feedback.kind {
+                MainWindowComposerClipboardFeedbackKind::Failed => (
+                    "Clipboard write failed",
+                    "The complete selection could not be copied. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::TooLarge => (
+                    "Selection is too large for the clipboard",
+                    "Copy a smaller selection. Your draft is unchanged.",
+                ),
+                MainWindowComposerClipboardFeedbackKind::CapacityUnavailable => (
+                    "Clipboard capacity is temporarily unavailable",
+                    "Try again after the other clipboard operation finishes. Your draft is unchanged.",
+                ),
+            },
+        }
+    }
 }
 
 impl MainWindowShellRoot {
@@ -51,7 +92,20 @@ impl MainWindowShellRoot {
                 .as_ref()
                 .map(|owner| cx.observe(owner, |_, _, cx| cx.notify()));
         }
-        let source = owner.and_then(|owner| owner.read(cx).mutation_feedback());
+        let source = owner.and_then(|owner| {
+            let composer = owner.read(cx);
+            let mutation = composer
+                .mutation_feedback()
+                .map(ComposerFeedbackSource::Mutation);
+            if mutation.is_some_and(ComposerFeedbackSource::persistent) {
+                mutation
+            } else {
+                composer
+                    .clipboard_feedback()
+                    .map(ComposerFeedbackSource::Clipboard)
+                    .or(mutation)
+            }
+        });
         if self
             .notices
             .composer
@@ -72,12 +126,7 @@ impl MainWindowShellRoot {
         let Some(feedback) = self.notices.composer.feedback.as_mut() else {
             return;
         };
-        let persistent = matches!(
-            feedback.source.kind,
-            MainWindowComposerMutationFeedbackKind::Unavailable
-                | MainWindowComposerMutationFeedbackKind::AdmittedWorkUnavailable
-                | MainWindowComposerMutationFeedbackKind::CommittedUnavailable
-        );
+        let persistent = feedback.source.persistent();
         if feedback
             .token
             .as_ref()
@@ -92,7 +141,7 @@ impl MainWindowShellRoot {
         if feedback.last_arbiter_change == Some(change) {
             return;
         }
-        let (title, detail) = feedback_text(feedback.source.kind);
+        let (title, detail) = feedback.source.text();
         let record = NoticeRecord {
             window_id: self.notices.window_id,
             condition: feedback.condition.clone(),

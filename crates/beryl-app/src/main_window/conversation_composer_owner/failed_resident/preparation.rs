@@ -406,6 +406,11 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
         resident.service = Some(service.clone());
         resident.clipboard_writer =
             Some(MainWindowConversationComposer::production_clipboard_writer());
+        resident.private_clipboard_owner = service
+            .private_clipboard_owner()
+            .unwrap_or_else(|| MainWindowPrivateClipboardOwner::for_app(cx));
+        service.set_private_clipboard_owner(resident.private_clipboard_owner.clone());
+        resident.enable_checked_clipboard_writer();
         resident.failed_resident = Some(FailedResidentFence {
             ticket,
             capture_taken: true,

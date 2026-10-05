@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) struct PreparedComposerRecoveryAdapters {
+    private_clipboard: Option<crate::main_window::MainWindowPrivateClipboardOwner>,
     home: BerylHomeId,
     generation: HomeGeneration,
     assets: AssetState,
@@ -34,6 +35,7 @@ impl PreparedComposerRecoveryAdapters {
         requirement: TurnStartAdmissionRequirement,
     ) -> Self {
         Self {
+            private_clipboard: None,
             home: candidate.home_id(),
             generation: candidate.generation(),
             assets,
@@ -48,6 +50,20 @@ impl PreparedComposerRecoveryAdapters {
 
     pub(crate) fn matches(&self, home: BerylHomeId, generation: HomeGeneration) -> bool {
         self.home == home && self.generation == generation
+    }
+
+    pub(super) fn with_private_clipboard_owner(
+        mut self,
+        owner: crate::main_window::MainWindowPrivateClipboardOwner,
+    ) -> Self {
+        self.private_clipboard = Some(owner);
+        self
+    }
+
+    pub(crate) fn private_clipboard_owner(
+        &self,
+    ) -> Option<crate::main_window::MainWindowPrivateClipboardOwner> {
+        self.private_clipboard.clone()
     }
 
     pub(crate) fn into_parts(

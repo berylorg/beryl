@@ -565,6 +565,7 @@ impl MainWindowConversationComposer {
                 {
                     return Ok(());
                 }
+                self.clipboard_feedback = None;
                 self.mutation_feedback = Some(super::MainWindowComposerMutationFeedback {
                     selection: initiating_selection,
                     key,
@@ -600,6 +601,7 @@ impl MainWindowConversationComposer {
                             | ComposerHostError::MutationAdmittedWorkUnavailable
                             | ComposerHostError::MutationCommittedUnavailable),
                         ) => {
+                            self.clipboard_feedback = None;
                             self.mutation_feedback = Some(
                                 super::MainWindowComposerMutationFeedback {
                                     selection,
@@ -664,6 +666,21 @@ impl MainWindowConversationComposer {
         }
         if let Some((key, proof)) = result.proof {
             self.clear_mutation_evidence(key);
+            let cut = if self
+                .propagated_cut
+                .as_ref()
+                .is_some_and(|cut| cut.key() == key)
+            {
+                match &result.outcome {
+                    MainWindowComposerDispatchOutcome::Mutation {
+                        outcome: ComposerHostMutationOutcome::Committed { settlement, .. },
+                        ..
+                    } => Some((key, *settlement)),
+                    _ => None,
+                }
+            } else {
+                None
+            };
             if self
                 .propagated_cut
                 .as_ref()
@@ -690,6 +707,8 @@ impl MainWindowConversationComposer {
                     input.set_history_frontier(input.history_frontier(), history_frontier)
                 })
                 .map_err(|_| "composer history frontier was rejected".to_owned())?;
+            self.private_clipboard_owner
+                .adopted(previous, self.selection, cut);
             if self.pending_marker_removal == Some(key) {
                 self.pending_marker_removal = None;
                 self.image_surface_attachment = None;
@@ -783,6 +802,8 @@ impl MainWindowConversationComposer {
                     .map_err(|_| "composer history settlement was rejected".to_owned())?;
                 let previous = self.selection;
                 self.selection = result.settled_selection;
+                self.private_clipboard_owner
+                    .adopted(previous, self.selection, None);
                 self.image_surfaces.selection_changed(self.selection);
                 if previous != self.selection {
                     cx.emit(
@@ -796,7 +817,14 @@ impl MainWindowConversationComposer {
             }
             MainWindowComposerDispatchOutcome::ClipboardWrite(write) => {
                 let key = write.key();
+                self.clipboard_operation = key.id();
                 let outcome = self.write_clipboard(write.text(), cx);
+                if outcome == gpui_text_input::ClipboardWriteOutcome::Failed {
+                    self.report_clipboard_feedback(
+                        super::MainWindowComposerClipboardFeedbackKind::Failed,
+                        cx,
+                    );
+                }
                 input
                     .update(cx, |input, cx| {
                         input.settle_clipboard_write(key, outcome, cx)
@@ -856,6 +884,8 @@ impl MainWindowConversationComposer {
     }
 
     fn clear_propagated_cut(&mut self, key: gpui_text_input::MutationKey) {
+        self.private_clipboard_owner
+            .noncommit(self.selection, Some(key));
         self.clear_mutation_evidence(key);
         if self
             .propagated_cut

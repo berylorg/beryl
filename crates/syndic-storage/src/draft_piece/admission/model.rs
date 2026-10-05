@@ -426,7 +426,11 @@ impl DraftMarkerAdmissionEvidenceV1 {
     ) -> Result<(), DraftMarkerAdmissionSchemaErrorV1> {
         let bytes = self.as_bytes();
         let valid_shape = match (bytes.first(), group) {
-            (Some(0), DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(_)) => {
+            (
+                Some(0),
+                DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(_)
+                | DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(_, _),
+            ) => {
                 matches!((bytes.get(1), bytes.len()), (Some(0), 434) | (Some(1), 450))
             }
             (

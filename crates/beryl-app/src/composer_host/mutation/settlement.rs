@@ -88,7 +88,11 @@ impl SyndicComposerHost {
                     self.pending.clear();
                     self.lifecycle.adopted(binding, became_dirty);
                 }
-                ComposerHostMutationOutcome::Committed { binding, positions }
+                ComposerHostMutationOutcome::Committed {
+                    binding,
+                    positions,
+                    settlement: settlement.key(),
+                }
             }
             DraftPieceSettlementOutcomeV1::Rejected(_) => ComposerHostMutationOutcome::Rejected,
             DraftPieceSettlementOutcomeV1::Conflict { .. } => ComposerHostMutationOutcome::Conflict,

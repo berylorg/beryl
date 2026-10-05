@@ -176,6 +176,7 @@ impl PreparedAppServices {
             .expect("prepared CAS")
             .into_published_parts();
         let graph = PublishedAppServices {
+            private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner::new(),
             restore_lifetime: Some(Arc::new(())),
             process: self.process.clone(),
             shutdown: None,

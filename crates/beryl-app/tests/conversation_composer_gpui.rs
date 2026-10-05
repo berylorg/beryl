@@ -7,6 +7,9 @@ mod publication_support;
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
+#[path = "conversation_composer_gpui/private_clipboard.rs"]
+mod private_clipboard;
+
 use std::{
     num::NonZeroU64,
     sync::{
@@ -1057,9 +1060,28 @@ fn insert_marker_at_text_end(
     operation: u64,
     asset: AssetId,
 ) -> beryl_app::composer_host::ComposerHostBinding {
+    insert_marker_at(
+        host,
+        store,
+        assets,
+        binding,
+        operation,
+        asset,
+        binding.range_binding().extent().byte_len(),
+    )
+}
+
+fn insert_marker_at(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    assets: &AssetState,
+    binding: beryl_app::composer_host::ComposerHostBinding,
+    operation: u64,
+    asset: AssetId,
+    offset: u64,
+) -> beryl_app::composer_host::ComposerHostBinding {
     let object = InlineObjectId::new(0x1001);
     let order = InlineObjectOrder::new(1);
-    let offset = binding.range_binding().extent().byte_len();
     let point = SourcePosition::new(ByteOffset::new(offset), InlineObjectGap::NoObjects);
     let after = SourcePosition::new(
         ByteOffset::new(offset),

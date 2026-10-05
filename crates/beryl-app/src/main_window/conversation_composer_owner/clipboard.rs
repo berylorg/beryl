@@ -18,8 +18,9 @@ use crate::main_window::{
     MainWindowComposerSuccessorProof, MainWindowComposerSuccessorProofLimits,
 };
 
-mod collection;
+pub(super) mod collection;
 mod paging;
+pub(super) mod source;
 
 pub(super) use collection::{ActivePropagatedClipboard, PropagatedClipboardAction};
 use paging::{cursor_after_gap, deletion_caret, deletion_extent, read_cut_page};

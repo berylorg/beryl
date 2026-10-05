@@ -204,6 +204,7 @@ impl Future for PendingCompletionTestGate {
 }
 
 pub struct MainWindowConversationComposerService {
+    private_clipboard_owner: Mutex<Option<super::MainWindowPrivateClipboardOwner>>,
     pub(super) store: Arc<HomeServiceReference>,
     pub(super) slot: Mutex<Box<MainWindowComposerSlot>>,
     window_close: Mutex<Option<crate::main_window::MainWindowConversationComposerCloseTicket>>,
@@ -328,6 +329,7 @@ impl MainWindowConversationComposerService {
 
     fn from_boxed_slot(store: HomeServiceReference, slot: Box<MainWindowComposerSlot>) -> Self {
         Self {
+            private_clipboard_owner: Mutex::new(None),
             store: Arc::new(store),
             slot: Mutex::new(slot),
             window_close: Mutex::new(None),
@@ -379,6 +381,16 @@ impl MainWindowConversationComposerService {
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
         self.slot.lock().ok()?.selected_identity()
+    }
+
+    pub fn set_private_clipboard_owner(&self, owner: super::MainWindowPrivateClipboardOwner) {
+        if let Ok(mut current) = self.private_clipboard_owner.lock() {
+            *current = Some(owner);
+        }
+    }
+
+    pub fn private_clipboard_owner(&self) -> Option<super::MainWindowPrivateClipboardOwner> {
+        self.private_clipboard_owner.lock().ok()?.clone()
     }
 
     #[cfg(feature = "test-faults")]

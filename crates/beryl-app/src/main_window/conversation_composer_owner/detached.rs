@@ -149,6 +149,7 @@ impl MainWindowConversationComposer {
         let request = match request {
             RangeTextInputRequest::ClipboardWrite(write) => {
                 let key = write.key();
+                self.clipboard_operation = key.id();
                 let binding = self.selection.binding().range_binding();
                 let outcome =
                     if key.binding() == binding.binding() && key.revision() == binding.revision() {
@@ -156,6 +157,12 @@ impl MainWindowConversationComposer {
                     } else {
                         gpui_text_input::ClipboardWriteOutcome::Failed
                     };
+                if outcome == gpui_text_input::ClipboardWriteOutcome::Failed {
+                    self.report_clipboard_feedback(
+                        super::MainWindowComposerClipboardFeedbackKind::Failed,
+                        cx,
+                    );
+                }
                 if self
                     .input
                     .update(cx, |input, cx| {

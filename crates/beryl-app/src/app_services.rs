@@ -159,6 +159,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner,
     restore_lifetime: Option<Arc<()>>,
     process: ProcessAdmissionGate,
     shutdown: Option<crate::cas_projection::ShutdownAttemptId>,
@@ -284,6 +285,7 @@ impl Drop for PublishedAppServices {
 
 impl PublishedAppServices {
     fn join_components(&mut self) {
+        self.private_clipboard.retire();
         drop(self.restore_lifetime.take());
         let _ = self.process.fence();
         drop(self.handoff.take());

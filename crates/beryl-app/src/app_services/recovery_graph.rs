@@ -13,6 +13,7 @@ use crate::{
 use beryl_home_store::{HomeGeneration, HomeRecoveryCandidate};
 
 pub(crate) struct PreparedRecoveryServiceGraph {
+    private_clipboard: Option<crate::main_window::MainWindowPrivateClipboardOwner>,
     pub(super) failed_residents: Vec<super::recovery_failed_residents::FailedResidentSource>,
     process: ProcessAdmissionGate,
     pub(super) services: Option<PreparedRecoveryAppServices>,
@@ -85,6 +86,7 @@ impl ProcessServiceOwner {
             .map_err(|error| reject(error.to_string()))?;
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
+            private_clipboard: Some(crate::main_window::MainWindowPrivateClipboardOwner::new()),
             failed_residents: Vec::new(),
             process: self.process.clone(),
             services: None,
@@ -267,6 +269,14 @@ impl PreparedRecoveryServiceGraph {
             .as_mut()
             .expect("prepared recovery services")
             .composer_recovery_adapters(home, generation, self.state.assets(), requirement)
+            .map(|adapters| {
+                adapters.with_private_clipboard_owner(
+                    self.private_clipboard
+                        .as_ref()
+                        .expect("prepared clipboard owner")
+                        .clone(),
+                )
+            })
     }
 
     pub(crate) fn cancel(mut self) -> RecoveryAppServicePreparationFailure {
@@ -279,6 +289,9 @@ impl PreparedRecoveryServiceGraph {
 
 impl Drop for PreparedRecoveryServiceGraph {
     fn drop(&mut self) {
+        if let Some(private_clipboard) = self.private_clipboard.take() {
+            private_clipboard.retire();
+        }
         drop(self.services.take());
         if let Some(attention) = self.attention.take() {
             attention.close();

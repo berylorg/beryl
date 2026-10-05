@@ -188,6 +188,7 @@ impl ProcessServiceOwner {
         });
         let retirement = self.recovery_retirement.as_mut().unwrap();
         let graph = retirement.graph.as_mut().unwrap();
+        graph.private_clipboard.retire();
         drop(graph.restore_lifetime.take());
         let cas = graph.cas.take().expect("complete graph CAS");
         let generation = cas.service_generation();

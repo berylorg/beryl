@@ -60,6 +60,7 @@ impl From<SyndicReadError> for DraftMutationStagingErrorV1 {
 
 #[derive(Clone)]
 pub struct PreparedDraftMutationStagingCommandV1 {
+    private_source_fence: Option<DraftPrivateClipboardSourceFenceV1>,
     source_head: Option<DraftMutationStagingHeadV1>,
     target_head: DraftMutationStagingHeadV1,
     source_session: DraftEditorCandidateSessionV1,
@@ -291,6 +292,8 @@ pub(in crate::draft_piece) struct StageDurableWindowMutation {
 mod acquisition;
 mod digest;
 mod integrity;
+mod private_source;
+pub use private_source::{DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1};
 mod marker_resolution;
 mod mutations;
 mod prepare_batch;

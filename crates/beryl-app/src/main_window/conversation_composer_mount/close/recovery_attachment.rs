@@ -266,6 +266,12 @@ impl MainWindowConversationComposerMount {
         let (candidate, service, fresh_close) = resident.update(cx, |resident, cx| {
             preparation.adopt_resident(resident, close, current, window, cx)
         })?;
+        if let Some(owner) = adapters.as_ref().unwrap().private_clipboard_owner() {
+            service.set_private_clipboard_owner(owner.clone());
+            resident.update(cx, |composer, cx| {
+                composer.attach_private_clipboard_owner(owner, cx)
+            });
+        }
         let (assets, marker, submission, native) = adapters.take().unwrap().into_parts();
         *publication_slot = Some((assets, marker));
         *submission_slot = Some(submission);

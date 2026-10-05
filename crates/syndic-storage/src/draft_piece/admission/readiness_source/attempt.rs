@@ -267,13 +267,14 @@ impl SyndicStorage {
                 _ => {
                     let (source_thread, occurrence) =
                         resolve_preflight(self, store, association.selector)?;
-                    if source_thread != destination.thread_id() {
-                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
-                    }
                     entries.push(CanonicalEntry {
                         target_marker_id: association.target_marker_id,
                         selector: association.selector,
-                        group: crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(occurrence.label()),
+                        group: if source_thread == destination.thread_id() {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(occurrence.label())
+                        } else {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(source_thread, occurrence.label())
+                        },
                         asset_id: occurrence.asset_id(),
                         accepted_origin: None,
                     });

@@ -55,6 +55,7 @@ impl MainWindowConversationComposerMount {
             )
             .expect("validated pending composer contribution")
         });
+        pending.update(cx, |composer, _| composer.enable_checked_clipboard_writer());
         self.attach_resident_pending_presentation(receipt, pending, bound, cx)?;
         self.admit_claim_target(receipt, selection, cx)
     }

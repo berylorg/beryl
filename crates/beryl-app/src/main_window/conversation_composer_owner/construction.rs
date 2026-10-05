@@ -163,6 +163,13 @@ impl MainWindowConversationComposer {
         let selection = config.selection();
         let proof_limits = config.successor_proof_limits();
         let clipboard_limits = config.clipboard_limits();
+        let private_clipboard_owner = config
+            .private_clipboard_owner
+            .clone()
+            .or_else(|| service.private_clipboard_owner())
+            .unwrap_or_else(|| MainWindowPrivateClipboardOwner::for_app(cx));
+        service.set_private_clipboard_owner(private_clipboard_owner.clone());
+        private_clipboard_owner.install(cx);
         let mutation_limits = config.mutation_limits();
         let prepublication_adoption = prepublication.is_some();
         let input = if let Some((environment, candidate, current)) = prepublication {
@@ -211,6 +218,11 @@ impl MainWindowConversationComposer {
             residency_bound,
             activation_seeds,
             clipboard_writer: Some(clipboard_writer),
+            checked_clipboard_writer: None,
+            private_clipboard_owner,
+            private_clipboard_preparation: None,
+            clipboard_operation: clipboard::collection::next_operation(),
+            clipboard_feedback: None,
             proof_limits,
             clipboard_limits,
             mutation_limits,

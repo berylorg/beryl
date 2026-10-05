@@ -220,6 +220,8 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
         )
         .unwrap();
     let graph = owner.graph_mut().unwrap();
+    let private_clipboard = graph.private_clipboard.clone();
+    assert!(!private_clipboard.is_retired());
     let restore_attempt = graph.restored_window_attempt().unwrap();
     assert!(restore_attempt.validate_lifetime().is_ok());
     assert_eq!(graph.home().home_id(), home_id);
@@ -250,6 +252,7 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
     rejected.rejected_candidate.unwrap().close().unwrap();
     close(&mut owner);
     assert!(restore_attempt.validate_lifetime().is_err());
+    assert!(private_clipboard.is_retired());
     assert!(owner.graph().is_none());
     assert_eq!(themes.diagnostics().active_subscriptions(), 0);
     assert_reopens(&directory);
@@ -343,7 +346,10 @@ fn dropping_published_graph_joins_services_before_releasing_home() {
         )
         .unwrap();
     let marker = owner.graph().unwrap().marker();
+    let private_clipboard = owner.graph().unwrap().private_clipboard.clone();
+    assert!(!private_clipboard.is_retired());
     drop(owner.graph.take());
+    assert!(private_clipboard.is_retired());
     assert_eq!(marker.diagnostics().current_flights(), 0);
     assert_eq!(themes.diagnostics().active_subscriptions(), 0);
     assert_eq!(owner.enrollments.pending_count(), 0);

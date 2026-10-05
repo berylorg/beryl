@@ -12,6 +12,7 @@ use syndic_storage::{
 
 #[derive(Clone)]
 pub struct MainWindowConversationComposerConfig {
+    pub(super) private_clipboard_owner: Option<super::MainWindowPrivateClipboardOwner>,
     selection: MainWindowComposerSelectionIdentity,
     widget: RangeTextInputConfig,
 }
@@ -313,7 +314,11 @@ impl MainWindowConversationComposerConfig {
         {
             return Err(MainWindowConversationComposerConfigError::InvalidRealizationBudget);
         }
-        Ok(Self { selection, widget })
+        Ok(Self {
+            selection,
+            widget,
+            private_clipboard_owner: None,
+        })
     }
 
     pub const fn selection(&self) -> MainWindowComposerSelectionIdentity {
@@ -335,6 +340,14 @@ impl MainWindowConversationComposerConfig {
 
     pub(super) const fn clipboard_limits(&self) -> gpui_text_input::ClipboardLimits {
         self.widget.clipboard_limits
+    }
+
+    pub(crate) fn with_private_clipboard_owner(
+        mut self,
+        owner: super::MainWindowPrivateClipboardOwner,
+    ) -> Self {
+        self.private_clipboard_owner = Some(owner);
+        self
     }
 
     pub(super) const fn mutation_limits(&self) -> gpui_text_input::MutationLimits {

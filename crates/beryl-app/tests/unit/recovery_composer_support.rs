@@ -22,6 +22,7 @@ pub(crate) fn adapters(candidate: &mut HomeRecoveryCandidate) -> PreparedCompose
     )
     .unwrap();
     PreparedComposerRecoveryAdapters {
+        private_clipboard: None,
         home: candidate.home_id(),
         generation: candidate.generation(),
         assets,

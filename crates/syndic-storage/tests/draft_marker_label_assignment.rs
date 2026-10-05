@@ -7,6 +7,9 @@ use std::num::NonZeroU64;
 #[path = "draft_marker_label_assignment/refusal.rs"]
 mod refusal;
 
+#[path = "draft_marker_label_assignment/private_source.rs"]
+mod private_source;
+
 use sha2::{Digest, Sha256};
 use syndic_storage::{
     DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionLimitsV1,
@@ -484,10 +487,7 @@ fn eof_then_assign(
             .compose_proof(attempt.take_command().unwrap())
             .unwrap();
         let flight = attempt.into_submission_flight(store, receipt).unwrap();
-        assert!(matches!(
-            storage.submit_draft_marker_label_readiness_page(store, flight),
-            syndic_storage::DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Advanced { .. }
-        ));
+        assert_readiness_advanced(storage.submit_draft_marker_label_readiness_page(store, flight));
     }
 
     for command in 1..=association_count {
@@ -586,4 +586,32 @@ fn assigned_label(
         })
         .unwrap()
         .assigned_label()
+}
+
+fn assert_readiness_advanced(
+    outcome: syndic_storage::DraftMarkerLabelReadinessPageSubmissionOutcomeV1,
+) {
+    use syndic_storage::DraftMarkerLabelReadinessPageSubmissionOutcomeV1 as Outcome;
+    match outcome {
+        Outcome::Advanced {
+            later_failure: None,
+            ..
+        } => {}
+        Outcome::Advanced { later_failure, .. } => {
+            panic!("readiness advanced with later failure: {later_failure:?}")
+        }
+        Outcome::Refused(reason) => panic!("readiness submission refused: {reason:?}"),
+        Outcome::StorageError(error) => panic!("readiness submission storage error: {error:?}"),
+        Outcome::CommittedUnavailable {
+            reason,
+            later_failure,
+            ..
+        } => {
+            panic!("readiness committed unavailable: {reason:?}, later failure: {later_failure:?}")
+        }
+        Outcome::Replayed => panic!("readiness submission unexpectedly replayed"),
+        Outcome::Retryable => panic!("readiness submission unexpectedly retryable"),
+        Outcome::Collision => panic!("readiness submission identity collision"),
+        Outcome::ReconciliationPending(_) => panic!("readiness submission awaiting reconciliation"),
+    }
 }

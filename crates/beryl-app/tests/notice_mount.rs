@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "notice_mount/clipboard_feedback.rs"]
+mod clipboard_feedback;
 #[path = "notice_mount/composer_feedback.rs"]
 mod composer_feedback;
 #[path = "pending_composer_activation/support.rs"]

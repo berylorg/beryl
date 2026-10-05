@@ -41,6 +41,10 @@ impl ProcessServiceOwner {
             .publish()
             .map_err(|error| error.to_string())?;
         self.graph = Some(PublishedAppServices {
+            private_clipboard: graph
+                .private_clipboard
+                .take()
+                .expect("prepared clipboard owner"),
             restore_lifetime: Some(Arc::new(())),
             process: self.process.clone(),
             shutdown: None,

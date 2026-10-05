@@ -360,6 +360,15 @@ impl ProcessServiceOwner {
             .graph()
             .ok_or("creation service graph is unavailable")?;
         let store = Arc::new(graph.home().service_reference());
+        let private_clipboard = graph.private_clipboard.clone();
+        let configurator_source: MainWindowCreationConfiguratorSource = Arc::new(move || {
+            let mut configure = configurator_source();
+            let private_clipboard = private_clipboard.clone();
+            Box::new(move |selection| {
+                configure(selection)
+                    .map(|config| config.with_private_clipboard_owner(private_clipboard.clone()))
+            })
+        });
         let creation = Arc::new(MainWindowCreationServices {
             acquisition: RuntimeBackedWindowAcquisitionService::new(
                 &self.windows,

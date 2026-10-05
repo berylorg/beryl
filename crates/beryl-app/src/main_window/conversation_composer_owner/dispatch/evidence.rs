@@ -422,6 +422,7 @@ impl MainWindowConversationComposer {
                 _ => Kind::Refused,
             }
         };
+        self.clipboard_feedback = None;
         self.mutation_feedback = Some(super::super::MainWindowComposerMutationFeedback {
             selection: self.selection,
             key,

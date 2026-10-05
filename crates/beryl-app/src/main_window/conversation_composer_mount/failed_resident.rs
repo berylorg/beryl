@@ -148,6 +148,12 @@ impl MainWindowConversationComposerMount {
         let (graph, service, adoption, fresh) = resident.update(cx, |resident, cx| {
             preparation.adopt_failed_recovery(resident, close, current, window, cx)
         })?;
+        if let Some(owner) = adapters.as_ref().unwrap().private_clipboard_owner() {
+            service.set_private_clipboard_owner(owner.clone());
+            resident.update(cx, |composer, cx| {
+                composer.attach_private_clipboard_owner(owner, cx)
+            });
+        }
         let (assets, marker, submission_source, native) = adapters.take().unwrap().into_parts();
         *publication = Some((assets, marker));
         *submission = Some(submission_source);

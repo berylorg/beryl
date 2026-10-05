@@ -495,6 +495,8 @@ impl MainWindowConversationComposer {
             );
         }
         self.phase = MainWindowConversationComposerPhase::Releasing;
+        self.private_clipboard_owner.expire_origin(self.selection);
+        self.private_clipboard_preparation = None;
         self.scheduled = false;
         if let Some(clipboard) = self.propagated_clipboard.take() {
             clipboard.cancel();
@@ -536,6 +538,8 @@ impl MainWindowConversationComposer {
             }
             MainWindowConversationComposerPhase::Live => {
                 self.phase = MainWindowConversationComposerPhase::Fencing;
+                self.private_clipboard_owner.expire_origin(self.selection);
+                self.private_clipboard_preparation = None;
                 self.release_fence_requires_restoration = false;
                 if let Some(clipboard) = self.propagated_clipboard.take() {
                     clipboard.cancel();

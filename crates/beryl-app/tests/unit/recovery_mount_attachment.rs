@@ -164,6 +164,7 @@ fn run(cx: &mut TestAppContext, scenario: Scenario) {
     )
     .unwrap();
     let mut adapters = Some(PreparedComposerRecoveryAdapters {
+        private_clipboard: None,
         home: candidate.home_id(),
         generation: candidate.generation(),
         assets: state.assets(),

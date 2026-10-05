@@ -38,7 +38,13 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
                 runtime_roots: state.runtime_roots(),
                 assets: state.assets(),
                 policy: configuration.session_policy.clone(),
-                token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
+                token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+                    beryl_model::AdmittedHostPath::from_admitted(
+                        beryl_model::PathFlavor::Windows,
+                        r"C:\tokens",
+                    )
+                    .unwrap(),
+                ),
             },
             &attention,
             &ProjectionCancellationToken::new(),
@@ -62,6 +68,7 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
     )
     .unwrap();
     PreparedRecoveryServiceGraph {
+        private_clipboard: Some(crate::main_window::MainWindowPrivateClipboardOwner::new()),
         failed_residents: Vec::new(),
         recovered_window: None,
         process: owner.process.clone(),

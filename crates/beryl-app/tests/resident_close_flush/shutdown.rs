@@ -18,6 +18,19 @@ fn exercise(cx: &mut TestAppContext, close_first: bool) {
         .read_with(cx, |mount, _| mount.contribution())
         .unwrap();
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    composer.update(cx, |composer, _| {
+        composer.test_set_checked_clipboard_writer(Box::new(|text, metadata, app| {
+            let item = match metadata {
+                Some(metadata) => gpui::ClipboardItem::new_string_with_metadata(
+                    text.to_owned(),
+                    metadata.to_owned(),
+                ),
+                None => gpui::ClipboardItem::new_string(text.to_owned()),
+            };
+            app.write_to_clipboard(item);
+            gpui_text_input::ClipboardWriteOutcome::Written
+        }));
+    });
     let text = (0..40)
         .map(|line| format!("line {line}: resident text admitted before shutdown\n"))
         .collect::<String>();

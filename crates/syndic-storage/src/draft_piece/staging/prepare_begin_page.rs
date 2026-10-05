@@ -104,6 +104,7 @@ impl SyndicStorage {
             .with_active_operation(staging_custody(begin, begin_digest, receipt_ref))
             .ok_or(DraftMutationStagingErrorV1::Invalid)?;
         Ok(PreparedDraftMutationStagingCommandV1 {
+            private_source_fence: None,
             source_head: None,
             target_head,
             source_session: session.clone(),

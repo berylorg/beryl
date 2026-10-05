@@ -212,6 +212,7 @@ impl MainWindowConversationComposerMount {
             )
             .expect("prechecked prepublication composer adoption")
         });
+        restored.update(cx, |composer, _| composer.enable_checked_clipboard_writer());
         self.bound_service()?
             .complete_native_lineage_restoration(selection)?;
         self.native_lineage_widget_release = None;

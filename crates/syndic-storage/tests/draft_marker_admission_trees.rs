@@ -373,3 +373,80 @@ fn checked_charge_primitives_enforce_aggregate_and_command_envelopes() {
         Err(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
     );
 }
+
+#[test]
+fn candidate_and_cut_evidence_accept_derived_allocation_and_reject_mismatched_groups() {
+    let source_asset = asset(40);
+    let source_label = label(7);
+    let key = DraftMarkerAdmissionNodeKeyV1::new(
+        owner(),
+        DraftMarkerAdmissionNodeKindV1::Leaf,
+        DraftMarkerAdmissionNodeIdV1::from_bytes([41; 16]),
+    );
+    for (selector_tag, length) in [(0, 434), (1, 450)] {
+        let mut bytes = vec![0; length];
+        bytes[1] = selector_tag;
+        bytes[length - 49..length - 41].copy_from_slice(&source_label.get().to_le_bytes());
+        bytes[length - 41] = source_asset.version() as u8;
+        bytes[length - 40..length - 8].copy_from_slice(&source_asset.digest());
+        bytes[length - 8..].copy_from_slice(&source_asset.length().get().to_le_bytes());
+        let evidence = DraftMarkerAdmissionEvidenceV1::new(bytes.clone()).unwrap();
+        for group in [
+            DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(source_label),
+            DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                SyndicThreadId::from_bytes([42; 16]),
+                source_label,
+            ),
+        ] {
+            let node = DraftMarkerAdmissionNodeV1::source_leaf(
+                key,
+                DraftMarkerAdmissionSourceKeyV1::new(
+                    group,
+                    SyndicDraftMarkerId::from_bytes([43; 16]),
+                ),
+                evidence.clone(),
+                source_asset,
+            )
+            .unwrap();
+            assert!(draft_marker_admission_codec_accepts(
+                DraftMarkerAdmissionCodecFixtureV1::Node(node)
+            ));
+        }
+        for group in [
+            DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(source_asset),
+            DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                SyndicThreadId::from_bytes([42; 16]),
+                label(8),
+            ),
+        ] {
+            assert_eq!(
+                DraftMarkerAdmissionNodeV1::source_leaf(
+                    key,
+                    DraftMarkerAdmissionSourceKeyV1::new(
+                        group,
+                        SyndicDraftMarkerId::from_bytes([43; 16])
+                    ),
+                    evidence.clone(),
+                    source_asset
+                ),
+                Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree)
+            );
+        }
+        bytes[1] = 2;
+        assert_eq!(
+            DraftMarkerAdmissionNodeV1::source_leaf(
+                key,
+                DraftMarkerAdmissionSourceKeyV1::new(
+                    DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                        SyndicThreadId::from_bytes([42; 16]),
+                        source_label
+                    ),
+                    SyndicDraftMarkerId::from_bytes([43; 16])
+                ),
+                DraftMarkerAdmissionEvidenceV1::new(bytes).unwrap(),
+                source_asset
+            ),
+            Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree)
+        );
+    }
+}

@@ -28,6 +28,8 @@ fn retired_home_construction_preserves_failed_custody_and_returns_private_candid
             .reserve_main_window(WindowId::from_bytes([153; 16]))
             .unwrap();
         let graph = owner.graph().unwrap();
+        let private_clipboard = graph.private_clipboard.clone();
+        assert!(!private_clipboard.is_retired());
         let expected = graph.home().health().generation().unwrap();
         let home_id = graph.home().home_id();
         owner.process.fence().unwrap();
@@ -40,6 +42,7 @@ fn retired_home_construction_preserves_failed_custody_and_returns_private_candid
         let original = graph.home().pending_reconciliations().pop().unwrap();
         fail(&owner, &faults);
         owner.retire_failed_service_graph(expected).unwrap();
+        assert!(private_clipboard.is_retired());
         if let Some(fault) = fault {
             faults.fail_next(fault);
             let error = owner.recover_retired_service_home(expected).unwrap_err();

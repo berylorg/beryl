@@ -161,6 +161,10 @@ impl MainWindowConversationComposer {
     }
 
     pub(super) fn write_clipboard(&mut self, text: &str, cx: &mut App) -> ClipboardWriteOutcome {
+        self.private_clipboard_owner.invalidate();
+        if let Some(writer) = self.checked_clipboard_writer.as_mut() {
+            return writer(text, None, cx);
+        }
         match self.clipboard_writer.as_mut() {
             Some(writer) => writer(text, cx),
             None => ClipboardWriteOutcome::Failed,
@@ -174,6 +178,33 @@ impl MainWindowConversationComposer {
             MainWindowConversationComposerPhase::Live
         ));
         self.clipboard_writer = Some(writer);
+        self.checked_clipboard_writer = None;
+    }
+
+    pub fn enable_checked_clipboard_writer(&mut self) {
+        self.checked_clipboard_writer = Some(Self::production_checked_clipboard_writer(
+            self.clipboard_limits,
+        ));
+    }
+
+    pub(crate) fn attach_private_clipboard_owner(
+        &mut self,
+        owner: MainWindowPrivateClipboardOwner,
+        cx: &mut Context<Self>,
+    ) {
+        self.private_clipboard_owner.expire_origin(self.selection);
+        self.private_clipboard_preparation = None;
+        if let Some(service) = self.service.as_ref() {
+            service.set_private_clipboard_owner(owner.clone());
+        }
+        owner.install(cx);
+        self.recovery_config.private_clipboard_owner = Some(owner.clone());
+        self.private_clipboard_owner = owner;
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_set_checked_clipboard_writer(&mut self, writer: ComposerCheckedClipboardWriter) {
+        self.checked_clipboard_writer = Some(writer);
     }
 
     pub(super) fn bound_service(

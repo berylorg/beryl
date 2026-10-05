@@ -46,6 +46,7 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             None => None,
         };
         if stored_head.as_ref() == p.source_head.as_ref() {
+            private_source::validate_private_source_fence(reader, p, begin_work.as_ref())?;
             if stored_receipt.is_some() {
                 return Err(SyndicMutationError::IdentityCollision);
             }

@@ -99,6 +99,7 @@ pub enum ComposerHostMutationOutcome {
     Committed {
         binding: ComposerHostBinding,
         positions: MutationPositions,
+        settlement: syndic_storage::DraftPieceSettlementKeyV1,
     },
     Rejected,
     Conflict,

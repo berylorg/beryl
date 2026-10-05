@@ -27,6 +27,7 @@ impl ProcessServiceOwner {
         }
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("admitted failed graph");
+        graph.private_clipboard.retire();
         let home_generation = graph
             .home()
             .health()

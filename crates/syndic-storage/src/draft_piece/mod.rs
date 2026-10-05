@@ -49,6 +49,7 @@ pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };
 pub use staging::{
+    DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1,
     DraftMutationStagingErrorV1, DraftPieceDurableBuildWindowLimitsV1,
     PreparedDraftMutationStagingBatchV1, PreparedDraftMutationStagingCommandV1,
     PreparedDraftMutationTransferV1, PreparedDraftPieceStagingWindowV1,

@@ -2,6 +2,18 @@ use beryl_home_store::CommandCancellation;
 
 use super::*;
 
+pub(in super::super) fn next_operation() -> ClipboardId {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    ClipboardId::new(
+        NEXT.fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |n| n.checked_add(1),
+        )
+        .expect("composer clipboard operation identity exhausted"),
+    )
+}
+
 pub(in super::super) enum PropagatedClipboardAction {
     Request(RangeTextInputRequest),
     Write(ClipboardWriteRequest),
@@ -10,6 +22,7 @@ pub(in super::super) enum PropagatedClipboardAction {
 }
 
 pub(in super::super) struct ActivePropagatedClipboard {
+    kind: ClipboardKind,
     coordinator: RangeClipboardCoordinator,
     progress: ClipboardProgress,
     next_request_id: u64,
@@ -22,10 +35,8 @@ impl ActivePropagatedClipboard {
         selected_range: RangeSourceSelection,
         kind: ClipboardKind,
         limits: ClipboardLimits,
+        operation: ClipboardId,
     ) -> Result<Self, String> {
-        if limits.provenance() != gpui_text_input::ClipboardProvenancePolicy::Omit {
-            return Err("composer clipboard provenance is not enabled in this phase".to_owned());
-        }
         let mut coordinator = RangeClipboardCoordinator::new_composite(
             selection.binding().range_binding(),
             gpui_text_input::PresentationGeneration::new(
@@ -36,19 +47,19 @@ impl ActivePropagatedClipboard {
         )
         .map_err(|_| "composer clipboard coordinator construction failed".to_owned())?;
         let progress = coordinator
-            .begin_selection(
-                ClipboardId::new(1),
-                kind,
-                selected_range.anchor,
-                selected_range.head,
-            )
+            .begin_selection(operation, kind, selected_range.anchor, selected_range.head)
             .map_err(|_| "composer clipboard selection was rejected".to_owned())?;
         Ok(Self {
+            kind,
             coordinator,
             progress,
             next_request_id: 1,
             cancellation: CommandCancellation::new(),
         })
+    }
+
+    pub(in super::super) const fn kind(&self) -> ClipboardKind {
+        self.kind
     }
 
     pub(in super::super) fn cancellation(&self) -> CommandCancellation {
@@ -87,10 +98,24 @@ impl ActivePropagatedClipboard {
                     RangeTextInputRequest::ObjectPage(request),
                 ))
             }
-            ClipboardProgress::ProvenancePage(page) => {
-                let _ = self.coordinator.cancel(page.key().clipboard());
-                self.progress = ClipboardProgress::Terminal(ClipboardCompletion::Cancelled);
-                Err("composer clipboard provenance arrived before rich paste is enabled".to_owned())
+            ClipboardProgress::ProvenancePage(_) => {
+                let ClipboardProgress::ProvenancePage(page) = std::mem::replace(
+                    &mut self.progress,
+                    ClipboardProgress::Terminal(ClipboardCompletion::Cancelled),
+                ) else {
+                    unreachable!("clipboard progress was observed as provenance")
+                };
+                let prepared =
+                    self.coordinator
+                        .acknowledge_provenance_page(page)
+                        .map_err(|_| {
+                            "composer clipboard provenance frontier was rejected".to_owned()
+                        })?;
+                let commit = self.coordinator.commit_prepared(prepared).map_err(|_| {
+                    "composer clipboard provenance acknowledgement failed".to_owned()
+                })?;
+                self.progress = self.finish_prepared(commit)?;
+                self.next_action()
             }
             ClipboardProgress::Write(_) => {
                 let ClipboardProgress::Write(write) = std::mem::replace(

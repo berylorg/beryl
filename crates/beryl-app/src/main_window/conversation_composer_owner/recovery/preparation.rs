@@ -289,6 +289,11 @@ impl<C: Send + 'static> MainWindowComposerRecoveryPreparation<C> {
         resident.selection = selection;
         resident.service = Some(service.clone());
         resident.clipboard_writer = Some(clipboard_writer);
+        resident.private_clipboard_owner = service
+            .private_clipboard_owner()
+            .unwrap_or_else(|| MainWindowPrivateClipboardOwner::for_app(cx));
+        service.set_private_clipboard_owner(resident.private_clipboard_owner.clone());
+        resident.enable_checked_clipboard_writer();
         resident.window_close = Some(fresh_close);
         resident.recovery_snapshot = None;
         resident.admitted_positions = None;

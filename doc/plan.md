@@ -89,22 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 728: Implement Checked Native Clipboard Acquisition And Acknowledgement (finished)
+# Phase 729: Implement Eligible Private Composer Copy And Cut (finished)
 
-Accepted the checked Windows GPUI boundary with independent source/dependency review, 20
-focused deterministic cases and private-station native qualification. Published all four aligned
-fork/widget revisions; Beryl's canonical locked app/executable all-target check, including fault-test
-features, passed with one GPUI identity. Required Serena restart succeeded. See
-[qualification evidence](audits/composer-marker-feedback/checked-native-clipboard.md).
-The Operator clipboard was excluded, and no Beryl GUI was launched. Composer workflows remain below.
-
-# Phase 729: Implement Eligible Private Composer Copy And Cut (pending)
-
-Mount the one process-owned compact private source through bounded streamed provenance and checked
-native copy/cut. Authenticate local/foreign candidate and exact cut sources through Syndic-derived
-assignment; qualify token publication/promotion, expiry, clipboard failure, no deletion before
-acknowledgement, exact one-step cut history and capacity/stale/disposal release. Complete independent
-semantic review. This boundary does not accept mounted paste merely by exposing source selectors.
+Accepted process-owned compact sources, checked copy/cut acknowledgement, exact cut promotion
+and history, authenticated Syndic assignment and fencing, expiry, recovery custody and bounded
+stale/disposal release. Canonical locked app/executable all-target checks passed; 49 Syndic and
+29 app cases passed, with independent semantic review and all 56 source/test paths matched to
+the canonical checkout. See [qualification evidence](audits/composer-marker-feedback/private-copy-cut.md).
+No Operator clipboard access or native Beryl launch occurred. Mounted paste remains below.
 
 # Phase 730: Mount Captured Atomic Composer Paste (pending)
 
@@ -113,6 +105,8 @@ ownership. Implement bounded text/image/private acquisition, streaming sidecar a
 general host mutation with evidence/replay, cancellation and settlement. Qualify actual mounted
 paste, local/foreign identity, stale selection, ordinary refusal and ambiguity, one-step undo/redo
 and resource release; independently review the complete consequential boundary.
+Qualify external clipboard replacement observation, exact current-snapshot/token/text correlation
+and stale observation release together with acquisition; source selectors alone grant no paste.
 
 # Phase 731: Qualify Large-Draft Clipboard Refusal Preservation (pending)
 

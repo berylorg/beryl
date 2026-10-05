@@ -262,6 +262,10 @@ impl SyndicStorage {
                     | DraftMutationStagingLifecycleV1::Conflict
                     | DraftMutationStagingLifecycleV1::Error
             ) || admitted_writer_is_current_generation(self, &prepared.target_head);
+        let writer_progress_allowed = writer_progress_allowed
+            && prepared.private_source_fence.as_ref().is_none_or(|fence| {
+                fence.home_generation == self.home_generation.get()
+            });
         self.handle.contribution(
             expected_domain_revision,
             StagingMutation {

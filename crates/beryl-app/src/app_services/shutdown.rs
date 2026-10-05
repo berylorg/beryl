@@ -220,6 +220,7 @@ impl ProcessServiceOwner {
     fn consume_shutdown_graph(&mut self) -> Result<(), AppServiceCloseError> {
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("ready graph");
+        graph.private_clipboard.retire();
         let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();
         drop(graph.handoff.take());
         if let Some(activity) = graph.activity.take() {

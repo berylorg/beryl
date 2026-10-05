@@ -108,8 +108,17 @@ impl ProofDomain for SyndicDomain {
                         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
                     }
                     let (thread, occurrence) = resolve_snapshot(reader, entry.selector)?;
-                    if thread != destination.thread_id()
-                        || entry.group != crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(occurrence.label())
+                    if entry.group
+                        != if thread == destination.thread_id() {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+                                occurrence.label(),
+                            )
+                        } else {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                                thread,
+                                occurrence.label(),
+                            )
+                        }
                         || occurrence.asset_id() != entry.asset_id
                     {
                         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);

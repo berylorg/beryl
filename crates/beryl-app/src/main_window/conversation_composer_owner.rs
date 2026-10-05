@@ -42,9 +42,8 @@ mod selected_preparation;
 mod service;
 pub(in crate::main_window) use service::{
     MainWindowComposerClaimAdvance, MainWindowComposerClaimAutosave,
-    MainWindowComposerClaimCompletion, MainWindowComposerClaimPublication,
-    MainWindowComposerClaimWidgetWork,
-    MainWindowComposerClaimPreparedPresentation,
+    MainWindowComposerClaimCompletion, MainWindowComposerClaimPreparedPresentation,
+    MainWindowComposerClaimPublication, MainWindowComposerClaimWidgetWork,
 };
 mod shutdown;
 mod startup;
@@ -83,6 +82,13 @@ pub use service::{
 pub type ComposerClipboardWriter =
     Box<dyn FnMut(&str, &mut App) -> ClipboardWriteOutcome + 'static>;
 
+pub type ComposerCheckedClipboardWriter =
+    Box<dyn FnMut(&str, Option<&str>, &mut App) -> ClipboardWriteOutcome + 'static>;
+
+pub use clipboard::source::{
+    MainWindowPrivateClipboardDescriptor, MainWindowPrivateClipboardOwner,
+};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MainWindowComposerMutationFeedbackKind {
     OperationTooLarge,
@@ -99,6 +105,20 @@ pub struct MainWindowComposerMutationFeedback {
     pub selection: MainWindowComposerSelectionIdentity,
     pub key: gpui_text_input::MutationKey,
     pub kind: MainWindowComposerMutationFeedbackKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowComposerClipboardFeedbackKind {
+    Failed,
+    TooLarge,
+    CapacityUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerClipboardFeedback {
+    pub selection: MainWindowComposerSelectionIdentity,
+    pub operation: gpui_text_input::ClipboardId,
+    pub kind: MainWindowComposerClipboardFeedbackKind,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -161,6 +181,11 @@ pub struct MainWindowConversationComposer {
     residency_bound: MainWindowComposerResidencyBound,
     activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
     clipboard_writer: Option<ComposerClipboardWriter>,
+    checked_clipboard_writer: Option<ComposerCheckedClipboardWriter>,
+    private_clipboard_owner: MainWindowPrivateClipboardOwner,
+    private_clipboard_preparation: Option<clipboard::source::PrivateClipboardPreparation>,
+    clipboard_operation: gpui_text_input::ClipboardId,
+    clipboard_feedback: Option<MainWindowComposerClipboardFeedback>,
     proof_limits: super::MainWindowComposerSuccessorProofLimits,
     clipboard_limits: ClipboardLimits,
     mutation_limits: MutationLimits,
@@ -205,6 +230,15 @@ pub struct MainWindowConversationComposer {
 
 impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversationComposer {}
 
+impl Drop for MainWindowConversationComposer {
+    fn drop(&mut self) {
+        self.private_clipboard_owner.expire_origin(self.selection);
+        if let Some(clipboard) = self.propagated_clipboard.as_ref() {
+            clipboard.cancel();
+        }
+    }
+}
+
 impl MainWindowConversationComposer {
     pub(crate) fn interrupted_exit_configurator(
         &mut self,
@@ -237,6 +271,33 @@ impl MainWindowConversationComposer {
                         | MainWindowConversationComposerPhase::Fencing
                 )
         })
+    }
+
+    pub fn clipboard_feedback(&self) -> Option<MainWindowComposerClipboardFeedback> {
+        self.clipboard_feedback
+    }
+
+    fn report_clipboard_feedback(
+        &mut self,
+        kind: MainWindowComposerClipboardFeedbackKind,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.mutation_feedback.is_some_and(|feedback| {
+            matches!(
+                feedback.kind,
+                MainWindowComposerMutationFeedbackKind::Unavailable
+                    | MainWindowComposerMutationFeedbackKind::AdmittedWorkUnavailable
+                    | MainWindowComposerMutationFeedbackKind::CommittedUnavailable
+            )
+        }) {
+            self.mutation_feedback = None;
+        }
+        self.clipboard_feedback = Some(MainWindowComposerClipboardFeedback {
+            selection: self.selection,
+            operation: self.clipboard_operation,
+            kind,
+        });
+        cx.notify();
     }
 
     pub fn last_error(&self) -> Option<&str> {
@@ -460,10 +521,51 @@ impl MainWindowConversationComposer {
     }
 
     pub fn production_clipboard_writer() -> ComposerClipboardWriter {
-        Box::new(|text, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
-            ClipboardWriteOutcome::Written
+        Box::new(|text, cx| Self::checked_write(text, None, 64 * 1024, cx))
+    }
+
+    pub fn production_checked_clipboard_writer(
+        limits: ClipboardLimits,
+    ) -> ComposerCheckedClipboardWriter {
+        Box::new(move |text, metadata, cx| {
+            Self::checked_write(text, metadata, limits.max_bytes(), cx)
         })
+    }
+
+    fn checked_write(
+        text: &str,
+        metadata: Option<&str>,
+        max_bytes: usize,
+        cx: &mut App,
+    ) -> ClipboardWriteOutcome {
+        let Some(text_bytes) = max_bytes
+            .checked_add(1)
+            .and_then(|bytes| bytes.checked_mul(2))
+        else {
+            return ClipboardWriteOutcome::Failed;
+        };
+        let metadata_bytes = 1024;
+        let Some(total_bytes) = text_bytes.checked_add(metadata_bytes + 8) else {
+            return ClipboardWriteOutcome::Failed;
+        };
+        let item = match metadata {
+            Some(metadata) => {
+                ClipboardItem::new_string_with_metadata(text.to_owned(), metadata.to_owned())
+            }
+            None => ClipboardItem::new_string(text.to_owned()),
+        };
+        match cx.write_to_clipboard_checked(
+            &item,
+            gpui::ClipboardLimits {
+                total_bytes,
+                text_bytes,
+                metadata_bytes,
+                image_bytes: 1,
+            },
+        ) {
+            Ok(()) => ClipboardWriteOutcome::Written,
+            Err(_) => ClipboardWriteOutcome::Failed,
+        }
     }
 
     fn begin_propagated_clipboard(
@@ -488,13 +590,37 @@ impl MainWindowConversationComposer {
             self.last_error = Some("propagated clipboard has no coherent selection".to_owned());
             return;
         };
+        let mut limits = self
+            .clipboard_limits
+            .with_provenance(gpui_text_input::ClipboardProvenancePolicy::Omit);
+        self.clipboard_operation = clipboard::collection::next_operation();
+        self.clipboard_feedback = None;
+        if self.detached.is_none() {
+            match self.private_clipboard_owner.prepare() {
+                Ok(preparation) => self.private_clipboard_preparation = Some(preparation),
+                Err(_) => {
+                    self.report_clipboard_feedback(
+                        MainWindowComposerClipboardFeedbackKind::CapacityUnavailable,
+                        cx,
+                    );
+                    return;
+                }
+            }
+        }
+        if self.detached.is_none() && self.checked_clipboard_writer.is_some() {
+            limits = limits.with_provenance(gpui_text_input::ClipboardProvenancePolicy::Stream(
+                gpui_text_input::ClipboardProvenanceLimits::new(32, 64 * 1024)
+                    .expect("bounded composer clipboard provenance capacity"),
+            ));
+        }
         self.input
             .update(cx, |input, cx| input.set_enabled(false, cx));
         match clipboard::ActivePropagatedClipboard::new(
             self.selection,
             selected_range,
             kind,
-            self.clipboard_limits,
+            limits,
+            self.clipboard_operation,
         ) {
             Ok(clipboard) => {
                 self.propagated_clipboard = Some(clipboard);
@@ -543,12 +669,17 @@ impl MainWindowConversationComposer {
                     }
                 };
                 let selection = self.selection;
+                let clipboard_operation = self.clipboard_operation;
                 let cancellation = self
                     .propagated_clipboard
                     .as_ref()
                     .expect("clipboard scan remains active")
                     .cancellation();
                 let task = cx.background_executor().spawn(async move {
+                    #[cfg(feature = "test-faults")]
+                    if let Some(gate) = service.take_test_selected_page_dispatch_gate() {
+                        gate.await;
+                    }
                     let mut slot = service
                         .slot
                         .lock()
@@ -569,6 +700,11 @@ impl MainWindowConversationComposer {
                             return;
                         }
                         if !this.is_live() {
+                            if this.clipboard_operation == clipboard_operation {
+                                this.finish_propagated_clipboard_without_cut(cx);
+                                this.private_clipboard_owner
+                                    .expire_operation(clipboard_operation);
+                            }
                             this.schedule_pump(window, cx);
                             return;
                         }
@@ -580,6 +716,11 @@ impl MainWindowConversationComposer {
                                 .and_then(|service| service.selected_identity())
                                 != Some(selection)
                         {
+                            if this.clipboard_operation == clipboard_operation {
+                                this.finish_propagated_clipboard_without_cut(cx);
+                                this.private_clipboard_owner
+                                    .expire_operation(clipboard_operation);
+                            }
                             return;
                         }
                         match result.and_then(|outcome| {
@@ -600,7 +741,71 @@ impl MainWindowConversationComposer {
             }
             clipboard::PropagatedClipboardAction::Write(write) => {
                 let key = write.key();
-                let outcome = self.write_clipboard(write.text(), cx);
+                let private = self.private_clipboard_preparation.is_some()
+                    && write
+                        .provenance()
+                        .is_some_and(|closure| closure.item_count() != 0);
+                let metadata = match self.private_clipboard_preparation.as_ref() {
+                    Some(preparation) => match preparation.begin_write() {
+                        Ok(metadata) => Some(metadata),
+                        Err(error) => {
+                            self.finish_propagated_clipboard_without_cut(cx);
+                            self.last_error = Some(error);
+                            return;
+                        }
+                    },
+                    None => None,
+                };
+                let outcome = if let Some(writer) = self.checked_clipboard_writer.as_mut() {
+                    writer(write.text(), metadata.as_deref().filter(|_| private), cx)
+                } else {
+                    self.write_clipboard(write.text(), cx)
+                };
+                if outcome == ClipboardWriteOutcome::Written && private {
+                    let result = (|| {
+                        let service = self
+                            .service
+                            .as_ref()
+                            .ok_or("private clipboard origin retired")?;
+                        if service.selected_identity() != Some(self.selection) {
+                            return Err("private clipboard origin changed".to_owned());
+                        }
+                        let candidate = self.selection.binding().candidate();
+                        let descriptor = MainWindowPrivateClipboardDescriptor {
+                            clipboard_key: key,
+                            origin: self.selection,
+                            content_origin: self.selection,
+                            selection: selected_range,
+                            closure: write
+                                .provenance()
+                                .expect("private write carries provenance"),
+                            source: syndic_storage::DraftPrivateClipboardSourceV1::from_candidate(
+                                candidate.draft_id(),
+                                candidate.session_id(),
+                                candidate.candidate_generation(),
+                                candidate.root(),
+                            )
+                            .ok_or("private clipboard candidate source is malformed")?,
+                        };
+                        self.private_clipboard_preparation
+                            .as_ref()
+                            .expect("private preparation remains")
+                            .publish(
+                                service,
+                                descriptor,
+                                self.propagated_clipboard
+                                    .as_ref()
+                                    .expect("active clipboard")
+                                    .kind()
+                                    == ClipboardKind::Cut,
+                            )
+                    })();
+                    if let Err(error) = result {
+                        self.finish_propagated_clipboard_without_cut(cx);
+                        self.last_error = Some(error);
+                        return;
+                    }
+                }
                 let completion = self
                     .propagated_clipboard
                     .as_mut()
@@ -619,6 +824,7 @@ impl MainWindowConversationComposer {
                             }
                         };
                         self.propagated_clipboard = None;
+                        self.private_clipboard_preparation = None;
                         if deletion.selection() != expected {
                             self.input.update(cx, |input, cx| {
                                 input.set_enabled(!self.startup_interaction_gated, cx)
@@ -629,10 +835,15 @@ impl MainWindowConversationComposer {
                         }
                         self.begin_cut_after_write(deletion, window, cx);
                     }
-                    ClipboardCompletion::Copied
-                    | ClipboardCompletion::WriteFailed
-                    | ClipboardCompletion::Cancelled => {
+                    ClipboardCompletion::Copied | ClipboardCompletion::Cancelled => {
                         self.finish_propagated_clipboard_without_cut(cx)
+                    }
+                    ClipboardCompletion::WriteFailed => {
+                        self.finish_propagated_clipboard_without_cut(cx);
+                        self.report_clipboard_feedback(
+                            MainWindowComposerClipboardFeedbackKind::Failed,
+                            cx,
+                        );
                     }
                     _ => {
                         self.finish_propagated_clipboard_without_cut(cx);
@@ -643,6 +854,10 @@ impl MainWindowConversationComposer {
             }
             clipboard::PropagatedClipboardAction::ContiguousLimitExceeded => {
                 self.finish_propagated_clipboard_without_cut(cx);
+                self.report_clipboard_feedback(
+                    MainWindowComposerClipboardFeedbackKind::TooLarge,
+                    cx,
+                );
                 cx.emit(
                     MainWindowConversationComposerEvent::ClipboardLimitExceeded {
                         selection: self.selection,
@@ -656,6 +871,8 @@ impl MainWindowConversationComposer {
     }
 
     fn finish_propagated_clipboard_without_cut(&mut self, cx: &mut Context<Self>) {
+        self.private_clipboard_owner.noncommit(self.selection, None);
+        self.private_clipboard_preparation = None;
         if let Some(clipboard) = self.propagated_clipboard.take() {
             clipboard.cancel();
         }
@@ -678,11 +895,13 @@ impl MainWindowConversationComposer {
         let (flight, service) = match self.begin_flight() {
             Ok(flight) => flight,
             Err(error) => {
+                self.private_clipboard_owner.noncommit(self.selection, None);
                 self.last_error = Some(error);
                 return;
             }
         };
         let selection = self.selection;
+        let clipboard_operation = self.clipboard_operation;
         let proof_limits = self.proof_limits;
         let mutation_limits = self.mutation_limits;
         let task = cx.background_executor().spawn(async move {
@@ -705,6 +924,8 @@ impl MainWindowConversationComposer {
                     return;
                 }
                 if !this.is_live() {
+                    this.private_clipboard_owner
+                        .expire_operation(clipboard_operation);
                     this.schedule_pump(window, cx);
                     return;
                 }
@@ -715,6 +936,8 @@ impl MainWindowConversationComposer {
                         .and_then(|service| service.selected_identity())
                         != Some(selection)
                 {
+                    this.private_clipboard_owner
+                        .expire_operation(clipboard_operation);
                     return;
                 }
                 this.input.update(cx, |input, cx| {
@@ -724,8 +947,15 @@ impl MainWindowConversationComposer {
                     this.input
                         .update(cx, |input, input_cx| prepared.begin(input, input_cx))
                 }) {
-                    Ok(active) => this.propagated_cut = Some(active),
-                    Err(error) => this.last_error = Some(error),
+                    Ok(active) => {
+                        this.private_clipboard_owner
+                            .bind_cut(this.selection, active.key());
+                        this.propagated_cut = Some(active);
+                    }
+                    Err(error) => {
+                        this.private_clipboard_owner.noncommit(this.selection, None);
+                        this.last_error = Some(error);
+                    }
                 }
                 this.schedule_pump(window, cx);
             });
