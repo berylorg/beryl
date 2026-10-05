@@ -129,7 +129,8 @@ metadata/all-target checks passed; its manifest/lockfile remain unaccepted worki
 Settings-window and Beryl pins remain unchanged.
 
 Blocked on 2026-10-04: required Serena language-server restart timed out after 120 seconds following
-the successful scrollbar checks. Stop implementation; restore the Serena service and obtain a
+the successful scrollbar checks. Operator-requested retry on 2026-10-05 also timed out after
+120 seconds. Stop implementation; restore the Serena service and obtain a
 successful restart before relying on the changed Cargo model. The already-started text-input check
 finished successfully; all exact temporary checkouts are removed. Resume canonical text-input,
 settings-window and Beryl alignment after the tool gate clears. See
