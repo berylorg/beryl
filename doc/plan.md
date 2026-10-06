@@ -128,7 +128,18 @@ original-leader request/ack protocol avoids that signal hazard, but leader exit 
 No qualifying ownership-safe mechanism has been established. Preserve the existing `wsl.exe`
 launch path; resolve the backend-owned supervision proof and its supported environment before
 resuming implementation. A narrow native Linux companion is the recommended design investigation,
-with explicit build/deployment and kernel requirements; none is approved, built or installed.
+with explicit build/deployment and kernel requirements. The Operator approved this investigation
+on 2026-10-07; no production companion is built or installed.
+
+Investigation established a source-backed private-PID-namespace cleanup candidate and successful
+creation probes, recorded in [supervisor feasibility evidence](memory/topic/wsl-process-supervision/namespace-supervisor-feasibility.md).
+The proposed account-preserving bootstrap needs Linux root privileges; the unprivileged probe
+changed supplementary-group visibility, and unchanged execution identity remains unqualified.
+This material launch privilege/process-view choice requires Operator
+selection and owning design updates before implementation. Artifact trust/build/deployment,
+bounded proof transport and the Windows interoperability ownership envelope also remain unresolved.
+No native descendant cleanup or companion implementation is qualified. Continue with this concrete
+design decision, not restoration of the archived draft or software installation.
 
 The full unaccepted draft is retained at `.tmp/runtime-root-admission-resumed-draft` under a 2 MiB
 limit; production source and manifests are restored. Atomic/validation/owner and selected backend
