@@ -68,6 +68,34 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 - The managed-process owner mints production connectors tied to the exact process, runtime, executable, mode, and working directory. Caller-supplied endpoints, bearer values, labels, or detached reports cannot manufacture admission authority.
 - CAS alone applies working-directory-dependent instructions, skills, sandbox, configuration, and policy. Beryl neither reads nor emulates them.
 
+## Native WSL Supervision Privileges And Proof
+
+- Native WSL supervision uses a Beryl-owned Linux companion through the exact configured
+  distribution's `wsl.exe` root launch. Elevated execution is limited to Beryl-owned supervision
+  mechanics; it does not select root as the CAS workload account.
+- The workload preserves the normal launch account's UID, primary and supplementary groups,
+  home, execution root and required environment. Credentials are established before executing
+  the selected CLI, shell/profile code or fixed filesystem observation. The root bootstrap's
+  environment cannot substitute for the normal account's facts.
+- The companion owns a private PID namespace without a new user namespace, with a dedicated init
+  and a private mount namespace containing namespace-correct proc. Mount propagation is private;
+  this lifetime boundary supplies no new filesystem/network restriction or CAS policy engine.
+- The supervisor retains a pidfd for the original namespace init before workload execution is
+  released. Destructive disposal uses that original capability, never a subsequently resolved
+  numeric PID or process-group ID. Exact init reaping proves removal of namespace members;
+  successful signalling, deadline expiry or Windows-wrapper exit does not supply that proof.
+- Privileged companion code belongs to the trusted Beryl release. Runtime launch does not compile,
+  download or install it, accept an arbitrary companion path, or expose a privileged command
+  listener. Missing or untrusted artifacts cannot authorize elevated execution.
+- Namespace closure proves only its Linux membership. It cannot establish closure of Windows
+  interoperability processes or Linux work created outside the namespace by a service. A Windows
+  job proves only its own membership. Neither proof alone or in combination manufactures ownership
+  of work created by shared services. The full managed-process disposal requirement remains in
+  force; unproved disposal retains its original owner and replacement fence.
+- Supervision does not disable the selected environment's interoperability or terminate a shared
+  WSL service or distribution to obtain cleanup. Cross-OS ownership requires its own qualifying
+  evidence rather than an implicit narrowing of the managed-process lifecycle contract.
+
 ## Backend Lifecycle
 
 - `beryl-backend` supervises every launched Host or WSL process tree and explicitly terminates it

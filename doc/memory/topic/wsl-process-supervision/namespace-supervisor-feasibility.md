@@ -32,7 +32,12 @@ The recommended candidate uses a minimal privileged namespace bootstrap and laun
 the actual workload with the original account credentials. This introduces a material
 privilege and process-view choice that must be selected by the Operator and recorded
 in backend system/package authority before implementation. The agreed investigation
-does not silently authorize that choice. Local Linux compilation is also unavailable
+does not silently authorize that choice. The Operator subsequently approved the root supervisor
+boundary on 2026-10-07; its selected contract is now in the
+[backend runtime system](../../../systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
+This research proposal does not replace that authority. The
+[cross-OS follow-up](interop-ownership-boundary.md) identified the remaining lifecycle-envelope
+blocker; root approval does not resolve service-created work ownership. Local Linux compilation is also unavailable
 in the inspected environment; artifact build and deployment remain a readiness gate.
 
 ## Proposed Ownership And Launch Contract

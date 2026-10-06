@@ -83,7 +83,8 @@ The recommended next step is an explicitly designed narrow Linux-side supervisio
 the existing exact-distribution `wsl.exe` path, stable original identity and typed no-start,
 termination and permission-failure evidence. Its artifact/deployment requirements and supported
 kernel primitives need owning authority before implementation. A pidfd alone does not prove
-whole-group or descendant closure. No new native companion is approved, built or installed.
+whole-group or descendant closure. The Operator approved investigation and then the privileged
+supervisor/bootstrap boundary on 2026-10-07; no companion is built, installed or qualified.
 
 Implementation paused under the Operator's technical-plan-failure rule. All 25 touched tracked
 source/manifest paths were restored and all 18 new source files moved into the verified archive.
@@ -94,3 +95,20 @@ Phase 733 remains unaccepted and blocked on the supervision proof mechanism.
 Independent review accepted this documentation-only blocker handoff with no blocking findings and
 verified all 43 retained snapshots against their SHA-256/size inventory. The complete archive is
 556,231 bytes. This accepts the record and safe pause, not the implementation or proposed companion.
+
+## Cross-OS Ownership Outside The Namespace
+
+The privileged namespace candidate establishes a Linux closure mechanism, not ownership of every
+process causally started through WSL interoperability. Investigation of Microsoft WSL 2.6.1 source
+found service-created interop hosts and root-process channel-loss termination that exempts GUI
+applications and is not a tree closure proof. A Windows job covers only its members; it cannot
+cover a new Linux process created by the WSL service after a managed command invokes Windows
+`wsl.exe`. Beryl's existing Windows job is applied only to Host launches, not the WSL wrapper.
+See [exact source and ownership evidence](../memory/topic/wsl-process-supervision/interop-ownership-boundary.md).
+
+Do not accept namespace-init reaping plus wrapper exit as the complete existing cross-OS lifecycle
+guarantee. Preserve the approved root privilege boundary, original cleanup custody and replacement
+fence, but pause before implementation until either a cross-OS ownership mechanism is qualified or
+the Operator explicitly selects an envelope excluding service-created work. Disabling interop or
+terminating the shared distribution is not an authorized correction. This is source-backed evidence;
+no native interop cleanup test or companion implementation is accepted.

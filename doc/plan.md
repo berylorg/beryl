@@ -131,15 +131,25 @@ resuming implementation. A narrow native Linux companion is the recommended desi
 with explicit build/deployment and kernel requirements. The Operator approved this investigation
 on 2026-10-07; no production companion is built or installed.
 
-Investigation established a source-backed private-PID-namespace cleanup candidate and successful
-creation probes, recorded in [supervisor feasibility evidence](memory/topic/wsl-process-supervision/namespace-supervisor-feasibility.md).
-The proposed account-preserving bootstrap needs Linux root privileges; the unprivileged probe
-changed supplementary-group visibility, and unchanged execution identity remains unqualified.
-This material launch privilege/process-view choice requires Operator
-selection and owning design updates before implementation. Artifact trust/build/deployment,
-bounded proof transport and the Windows interoperability ownership envelope also remain unresolved.
-No native descendant cleanup or companion implementation is qualified. Continue with this concrete
-design decision, not restoration of the archived draft or software installation.
+On 2026-10-07 the Operator approved the root supervisor/bootstrap with CAS retaining its normal
+account. The selected privilege and namespace proof boundary is now in
+[system authority](systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
+Namespace creation probes and source-backed Linux teardown feasibility remain evidence only;
+see [supervisor investigation](memory/topic/wsl-process-supervision/namespace-supervisor-feasibility.md).
+
+Still blocked: [cross-OS ownership investigation](memory/topic/wsl-process-supervision/interop-ownership-boundary.md)
+shows that namespace closure plus a Windows job does not prove disposal of work created by the
+WSL service outside those boundaries. For example, a managed Linux command can invoke Windows
+`wsl.exe`, which starts a new Linux process outside the original namespace. Root-bootstrap approval
+does not authorize dropping this part of the current lifecycle guarantee. The bounded proposal is
+to own CAS and Linux descendants in its original namespace, plus the exact Windows launcher/job
+members, while leaving service-created interop work outside the cleanup guarantee and preserving
+interoperability. This narrower contract needs Operator selection; otherwise a qualified cross-OS
+ownership mechanism is required. Never kill shared WSL services or silently disable interoperability.
+
+Artifact build/deployment and bounded proof transport still require owning decisions and checks
+after that envelope is resolved. No companion is built, installed or qualified. Do not restore the
+archived draft or create an implementation prerequisite phase before architecture readiness.
 
 The full unaccepted draft is retained at `.tmp/runtime-root-admission-resumed-draft` under a 2 MiB
 limit; production source and manifests are restored. Atomic/validation/owner and selected backend

@@ -22,12 +22,14 @@ fallible post-spawn setup. Explicit cleanup is bounded and retryable on that sam
 reader join retains the original reader rather than reporting complete disposal. Consumers must
 retain this failure capability and fence replacement until cleanup completes.
 
-WSL supervision must retain authority over the original Linux group through disposal. A saved
+WSL supervision must retain authority over the original Linux workload through disposal. A saved
 numeric PID or process-group ID is not durable incarnation proof and must not authorize a later
 destructive signal after the original identity can have expired. Leader exit alone does not prove
 whole-group closure. Absence must be distinguished from observation or permission failure; an
 unproved boundary remains unavailable with original cleanup custody. The exact qualifying
-mechanism and supported Linux environment remain a design-readiness prerequisite.
+mechanism and supported Linux environment must satisfy the system's
+[native WSL privilege and proof contract](../../../doc/systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
+Namespace and Windows-job closure do not authorize unproved service-mediated cross-OS disposal.
 
 ## Fixed WSL Filesystem Observation
 
@@ -42,7 +44,7 @@ mechanism and supported Linux environment remain a design-readiness prerequisite
   observation verify a readable, traversable directory in the same distribution.
 - Observation accepts a nonzero timeout of at most 30 seconds and cancellation. Success means
   complete validated output from the exact helper, not a live process or app-server admission.
-  Explicit bounded shutdown joins the exact Linux process group, Windows launcher and reader on
+  Explicit bounded shutdown joins the exact Linux supervision boundary, Windows launcher and reader on
   success, failure, cancellation and timeout. Failed shutdown retains its original owner for
   disposal; dropping a capability never grants a replacement probe or guessed cleanup success.
 - These temporary helpers carry no backend bearer token, session, runtime-interest lease or
