@@ -42,6 +42,24 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Settings, busy-home, and home-failure windows are distinct top-level controllers and never receive
   main-window claims or restore records.
 
+## Runtime And Root Admission Contribution
+
+The selected-path service runs filesystem/backend validation on tracked workers and retains an
+exact home-generation and invoking-window source. Canonical duplicates resolve before a second
+managed runtime launch. Its process selection lease excludes overlapping selection, acquisition
+and close through validation, durable reconciliation and coherent publication. A failed validation
+with unsettled helper/process cleanup retains that exact owner and lease in the service; cancellation
+or dropping the returned error cannot admit another probe. Retirement cancels and joins active
+validation and settles retained cleanup before reporting completion.
+
+For the first runtime, the service composes the admitted registry/home-root facts with Syndic
+thread/draft creation, initial catalog claim and replacement of the sole exact threadless window
+claim/session in one revision-checked HomeCommand. Later runtime/root admission preserves selection.
+The committed capability retains publication custody; indeterminate outcomes retain the original
+operation's targeted reconciliation. Exact old restores the initiating command, exact new permits
+coherent publication, and collision/successor becomes terminal Unavailable with retained intent.
+The New Thread controller owns visible pending, cancellation, error and Unavailable presentation.
+
 ## Running-Thread Selection Contribution
 
 The published graph exposes a narrow weak process-work reader with revision-bound searchable pages,

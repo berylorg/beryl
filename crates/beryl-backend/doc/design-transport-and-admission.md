@@ -16,6 +16,40 @@ This supplement is normative only for its bounded backend transport-and-admissio
 - The managed server is the sole production connector constructor. It retains opaque per-launch provenance for exact runtime identity, process generation, executable paths, runtime mode, and working directory, and binds every session to that launch. Feature-gated test construction is not admission authority.
 - Process lifetime is separate from client-session lifetime: closing a client never ends its managed server. Windows supervision covers the process tree; WSL has a Beryl-owned Linux cleanup boundary independent of the host `wsl.exe` wrapper. Shutdown is explicit, bounded, idempotent, and releases launch material only after its supervision boundary is released; it is never turn control or terminal evidence.
 
+Managed server launch failures return the original typed error together with any unsettled
+authentication, process and reader cleanup owner. Resource construction retains custody before
+fallible post-spawn setup. Explicit cleanup is bounded and retryable on that same owner; a failed
+reader join retains the original reader rather than reporting complete disposal. Consumers must
+retain this failure capability and fence replacement until cleanup completes.
+
+WSL supervision must retain authority over the original Linux group through disposal. A saved
+numeric PID or process-group ID is not durable incarnation proof and must not authorize a later
+destructive signal after the original identity can have expired. Leader exit alone does not prove
+whole-group closure. Absence must be distinguished from observation or permission failure; an
+unproved boundary remains unavailable with original cleanup custody. The exact qualifying
+mechanism and supported Linux environment remain a design-readiness prerequisite.
+
+## Fixed WSL Filesystem Observation
+
+- The managed WSL path probe takes one exact distribution and a closed executable, directory or
+  user-home operation. Selected paths are absolute distribution-native POSIX paths. It runs only
+  the fixed observation program through the existing supervised `wsl.exe` launch boundary; no
+  caller-supplied script, shell fragment, environment override or command is accepted.
+- Results contain one canonical absolute native path of at most 4,096 UTF-8 bytes. The response
+  protocol has a fixed tag and exact terminator; oversized, non-UTF-8, malformed or extra output
+  fails closed. The reader retains at most 8,192 bytes, and stderr cannot block the helper on an
+  undrained pipe. Executable observation verifies a readable executable file; directory and home
+  observation verify a readable, traversable directory in the same distribution.
+- Observation accepts a nonzero timeout of at most 30 seconds and cancellation. Success means
+  complete validated output from the exact helper, not a live process or app-server admission.
+  Explicit bounded shutdown joins the exact Linux process group, Windows launcher and reader on
+  success, failure, cancellation and timeout. Failed shutdown retains its original owner for
+  disposal; dropping a capability never grants a replacement probe or guessed cleanup success.
+- These temporary helpers carry no backend bearer token, session, runtime-interest lease or
+  release-admission provenance. Their observation facts cannot substitute for the production
+  foreground release/profile/configuration proof. No helper targets another configured runtime
+  process or an accepted turn.
+
 ## Release Admission and Session Profiles
 
 - Every production launch supplies, in one atomic `SessionFlags` table override, `features.multi_agent_v2.enabled = true` and `features.multi_agent_v2.expose_spawn_agent_model_overrides = true`. A later scalar override, defaults, or command construction does not prove either fact.

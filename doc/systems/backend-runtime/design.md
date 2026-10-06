@@ -22,6 +22,17 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 - `beryl-app` owns process-wide runtime interest, launch and retirement orchestration, and the one
   single-flight same-home recovery supervisor. `beryl-backend` owns construction, process-tree
   supervision, bounded lifecycle termination, and disposal of each managed app-server process.
+- Runtime/root admission also uses the existing exact `wsl.exe` launch and Linux process-tree
+  supervision boundary for fixed filesystem observations. `beryl-app` owns selected-path and
+  environment admission; `beryl-backend` owns construction, bounded observation and joined disposal
+  of these temporary helpers. The helper accepts only executable, directory or user-home
+  observation in one exact distribution; it exposes no arbitrary command execution, CAS session,
+  release proof or durable authority. Canonical paths are bounded typed facts, not launch admission.
+- Filesystem observations run off the GUI and storage writer. Cancellation, timeout, malformed
+  output and failure retain exact process/reader cleanup custody until joined disposal. Admission
+  cannot publish a runtime/root or repeat a probe while the previous helper remains unsettled.
+  Helper cleanup cannot affect an existing runtime process or its accepted work. A missing utility
+  yields failure without installation, alternate distribution or guessed path/home substitution.
 - One configured runtime is identified by one canonical Codex CLI executable path plus its Host or exact WSL distribution. Runtime identity is not inferred from `PATH` or from an environment label alone.
 - Runtime admission is complete only when one production foreground session proves all four
   release-admission parts: opaque provenance from the exact Beryl-managed launch; an initialize

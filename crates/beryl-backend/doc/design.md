@@ -22,6 +22,11 @@ These four supplements are part of this package design. Each is authoritative on
 ## Package Boundary
 
 - `beryl-backend` constructs and supervises Beryl-owned app-server processes; authenticates and bounds sessions; and converts the pinned protocol into typed, bounded operations and ordered observations.
+- It also supplies the fixed WSL filesystem-observation helper required by
+  [runtime admission](../../../doc/systems/backend-runtime/design.md#runtime-ownership), reusing
+  the existing `wsl.exe` and Linux process-tree supervision boundary. This narrow pre-admission
+  capability owns temporary helper lifetime; application path/environment and registry decisions
+  remain outside the package.
 - It supplies normalized live observations to the [CAS-live Syndic transcript system](../../../doc/systems/cas-live-syndic-transcript/design.md) under the [bounded-resource system](../../../doc/systems/bounded-resource-dataflow/design.md). It neither commits Syndic data nor chooses capture, projection, repair, delivery, retry, stop, or compaction policy.
 - The [conversation-threads feature](../../../doc/features/conversation-threads/design.md) owns Beryl thread activation, catalog, title, runtime, and root behavior. The [Syndic conversation-history system](../../../doc/systems/syndic-conversation-history/design.md) owns canonical history, repair selection, and durable conversation state.
 - Public inputs, results, capabilities, and observations carry the exact relevant runtime, managed process, session, request, CAS thread, turn, item, source, revision, and generation identity. A stale or ambiguous fact is unavailable, rejected, lost, or completion-unknown; it is never rebound by coincidence.

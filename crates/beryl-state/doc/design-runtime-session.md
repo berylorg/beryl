@@ -24,6 +24,11 @@ runtime/root, session/window, and thread-claim durable state.
 - Every mutation requires the exact record, home, and domain revisions. A catalog join reads one
   exact runtime/root pair and validates its records and root-id index again in the serialized
   command before another domain publishes its projection.
+- `CreateRuntimeWithHomeRoot::initial_catalog_source` exposes the exact future initial records
+  from that validated creation contribution, for a first-runtime catalog join in the same command.
+  They are planned facts rather than a persisted-source proof and must accompany runtime/home
+  creation. `PreparedWindowClaimReplacement::catalog_claim` derives the future catalog claim from
+  its opaque Session replacement; the app joins it with that exact replacement contribution.
 
 ## Session and windows
 

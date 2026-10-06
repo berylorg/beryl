@@ -116,6 +116,17 @@ The proposed fixed helper therefore needs owning authority before implementation
 See [admission failure evidence](../failures/runtime-root-admission.md); the earlier readiness
 review does not accept that added process boundary.
 
+The Operator subsequently instructed continuation through the existing `wsl.exe` path. The owning
+backend/system authority now specifies that fixed helper and its cleanup contract. The readiness
+gap is resolved; implementation and behavioral qualification remain phase 733 work.
+
+Further implementation review found that the reusable supervisor's saved numeric Linux group ID
+does not preserve incarnation authority through delayed cleanup. The ownership assignment remains
+resolved, but exact Linux signalling and whole-group completion proof are a separate readiness
+prerequisite. See [the current blocker](../failures/runtime-root-admission.md#exact-linux-group-ownership).
+The unaccepted draft was archived and production source restored; this readiness record does not
+accept the draft or a new Linux-side supervisor artifact.
+
 ## Completion Review
 
 Independent source and planning review accepted this record and the derived admission, setup

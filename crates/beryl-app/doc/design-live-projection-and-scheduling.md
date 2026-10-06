@@ -15,6 +15,18 @@ topology and typed execution surfaces.
 - Admitted execution sessions hold required runtime interest separately from view interest.
   Process-owned work can preserve or acquire that exact demand without a mounted thread view;
   catalog queries and mere durable thread existence create none.
+- Failed launch or runtime disposal retains the original concrete cleanup owner in its existing
+  runtime slot, separately from finite failure presentation. Incomplete cleanup blocks replacement.
+  Coordinated shutdown retries disposal off the owner lock and preserves failed slots and their
+  acquisition custody until exact disposal succeeds; it never clears them merely because a worker
+  exited or a shutdown attempt returned.
+- Consuming service close and failed-generation retirement transfer incomplete runtime cleanup
+  into their typed failure capability. The process service owner retains the same cleanup
+  capability independently of the returned error. Terminal close retries that exact owner before
+  releasing its retained home; incomplete cleanup cannot become successful close or recovery.
+  An owned-home close failure remains in that same capability, rather than being lost when an
+  error is dropped. Custody is bounded to the original runtime owner and its original owning home.
+  This capability grants disposal only and never restores execution or service publication.
 - Every validated connection has one non-GPUI driver, one ordered ingester, one non-cloneable sink,
   one bounded router, and one capacity-one broker with one acknowledgement slot and at most one
   current bounded operation. Only the driver polls and sends serialized provider requests.

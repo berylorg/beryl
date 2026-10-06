@@ -116,11 +116,26 @@ Active milestone: establish the selected-path service and the single-command fir
 transition for the existing threadless window. The future New Thread controller is its consumer;
 completion requires qualified durable outcomes and joined validation cleanup, before GUI mounting.
 
-Blocked on 2026-10-06: exact WSL path/home observation needs a supervised filesystem helper, but
-the backend's public authority currently owns app-server processes only and its reusable
-supervisor is private. Settle the narrow helper ownership and cleanup contract in the owning
-backend/system authority before resuming; see [failure evidence](failures/runtime-root-admission.md).
-Unaccepted drafts are retained outside production source. No implementation acceptance is claimed.
+The Operator resolved the WSL helper ownership prerequisite on 2026-10-06: continue through the
+existing supervised `wsl.exe` path. Backend/system authority now specifies the fixed filesystem
+observation helper, with app-owned path admission. Resume the unaccepted draft under that contract;
+see [failure evidence](failures/runtime-root-admission.md). No implementation acceptance is claimed.
+
+Blocked on 2026-10-06: the existing supervisor signals a saved numeric Linux process-group ID;
+after the original group exits, delayed disposal can target a reused unrelated group. A proposed
+original-leader request/ack protocol avoids that signal hazard, but leader exit and shell
+`kill -0` do not establish trustworthy whole-group termination under permission failures.
+No qualifying ownership-safe mechanism has been established. Preserve the existing `wsl.exe`
+launch path; resolve the backend-owned supervision proof and its supported environment before
+resuming implementation. A narrow native Linux companion is the recommended design investigation,
+with explicit build/deployment and kernel requirements; none is approved, built or installed.
+
+The full unaccepted draft is retained at `.tmp/runtime-root-admission-resumed-draft` under a 2 MiB
+limit; production source and manifests are restored. Atomic/validation/owner and selected backend
+test subsets passed before later unqualified corrections. Outer consuming close/recovery custody,
+token clearing and its terminal retry consumer still require complete verification and review.
+See the [failure record](failures/runtime-root-admission.md#exact-linux-group-ownership) for precise
+evidence, retained draft ownership and prerequisites. This phase has no acceptance claim.
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
 
