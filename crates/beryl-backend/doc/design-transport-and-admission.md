@@ -29,7 +29,9 @@ whole-group closure. Absence must be distinguished from observation or permissio
 unproved boundary remains unavailable with original cleanup custody. The exact qualifying
 mechanism and supported Linux environment must satisfy the system's
 [native WSL privilege and proof contract](../../../doc/systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
-Namespace and Windows-job closure do not authorize unproved service-mediated cross-OS disposal.
+Its selected WSL ownership envelope excludes service-created outside work. The
+[native WSL supplement](design-wsl-supervision.md) owns companion orchestration and joined
+disposal within that envelope. No unproved closure of an owned companion or namespace is accepted.
 
 ## Fixed WSL Filesystem Observation
 

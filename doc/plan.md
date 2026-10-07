@@ -97,7 +97,47 @@ Independent factual/planning review passed; no production or native GUI qualific
 See [readiness evidence](audits/runtime-root-creation-readiness.md). Admission, setup mounting and
 ordinary New Thread confirmation remain the separate boundaries below.
 
-# Phase 733: Implement Atomic Runtime And Root Admission (wip)
+# Phase 736: Implement And Qualify Native WSL Supervision (wip)
+
+This prerequisite is necessary before atomic admission: selected-path validation and managed CAS
+launch cannot publish or retire safely until their exact Linux owners have qualified joined disposal.
+Implement the selected [system boundary](systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof),
+[companion artifact and codec](../crates/beryl-wsl-supervisor/doc/design.md) and
+[backend orchestration](../crates/beryl-backend/doc/design-wsl-supervision.md). The Operator approved
+root-only supervision mechanics with the normal CAS account, namespace-owned cleanup and preserved
+interoperability; outside service-created work may outlive runtime retirement.
+
+Add the focused companion package and shared closed codec, construct the ordinary retained context
+broker and root namespace owner, replace numeric-group disposal in existing managed WSL launch,
+and supply fixed filesystem observations through the same ownership boundary. Wire the immutable
+artifact descriptor and build-bound digest from executable composition. Preserve complete original
+process/authentication/reader failure custody through the existing production disposal consumers.
+The acceptance boundary is usable managed WSL launch/observation and joined owned disposal, not a
+standalone callable helper or simulated closure. Atomic registry/onboarding remains Phase 733.
+
+Verify malformed/stale control, bounds, partial startup, credential/chdir/exec failure, ordinary and
+abnormal exit, detached/double-forked/nested Linux descendants, exact account/groups/environment
+and session lifetime, broker/supervisor/init/channel death, deadline expiry, retry on the original
+owner, joined readers/launchers/tokens and an unrelated surviving process. Qualify interoperability
+without waiting for or killing excluded service-created work. Require focused locked Cargo checks,
+native Linux nextest evidence and independent privilege/lifecycle/integration review. Follow locked
+metadata and focused-check gates before refreshing the Cargo analyzer model. No native Beryl GUI
+or Operator clipboard access.
+
+Active milestone: establish the bundled static artifact and native qualification inputs for the
+existing backend managed-launch consumer. Build the Linux target with the existing Windows Rust
+toolchain and its bundled LLVM linker, archive target tests with nextest, and run target-only tests
+through a native Linux nextest binary in the exact WSL distribution. Use canonical workspace cwd,
+one heavy Cargo command, bounded evidence and a private native test scope; no runtime installation.
+
+Tooling blocker on 2026-10-07: the installed Windows Rust toolchain has only its MSVC standard
+library target, and Ubuntu reports no native cargo-nextest. The concrete prerequisite is the
+`x86_64-unknown-linux-musl` Rust target on Windows and native Linux cargo-nextest 0.9.129 in Ubuntu.
+No absent compiler/runner was invoked or software installed. Operator installation is required
+under AGENTS.md. Do not start manifest/source reconstruction before this native qualification path
+is available. Architecture review and tooling evidence do not accept implementation behavior.
+
+# Phase 733: Implement Atomic Runtime And Root Admission (pending)
 
 Implement the app-owned selected-path admission capability for the future New Thread controller,
 derived from [runtime/root authority](features/conversation-threads/design.md#runtime-and-root-configuration),
@@ -112,7 +152,7 @@ cleanup custody through cancellation, ambiguous outcomes and retirement. Verify 
 filesystem/backend seams, duplicate/stale/foreign refusals, commit/noncommit/Unavailable and complete
 closure/disposal; require focused checks and independent consequential review. No native GUI launch.
 
-Active milestone: establish the selected-path service and the single-command first-runtime
+Resume after accepted Phase 736: establish the selected-path service and the single-command first-runtime
 transition for the existing threadless window. The future New Thread controller is its consumer;
 completion requires qualified durable outcomes and joined validation cleanup, before GUI mounting.
 
@@ -137,19 +177,11 @@ account. The selected privilege and namespace proof boundary is now in
 Namespace creation probes and source-backed Linux teardown feasibility remain evidence only;
 see [supervisor investigation](memory/topic/wsl-process-supervision/namespace-supervisor-feasibility.md).
 
-Still blocked: [cross-OS ownership investigation](memory/topic/wsl-process-supervision/interop-ownership-boundary.md)
-shows that namespace closure plus a Windows job does not prove disposal of work created by the
-WSL service outside those boundaries. For example, a managed Linux command can invoke Windows
-`wsl.exe`, which starts a new Linux process outside the original namespace. Root-bootstrap approval
-does not authorize dropping this part of the current lifecycle guarantee. The bounded proposal is
-to own CAS and Linux descendants in its original namespace, plus the exact Windows launcher/job
-members, while leaving service-created interop work outside the cleanup guarantee and preserving
-interoperability. This narrower contract needs Operator selection; otherwise a qualified cross-OS
-ownership mechanism is required. Never kill shared WSL services or silently disable interoperability.
-
-Artifact build/deployment and bounded proof transport still require owning decisions and checks
-after that envelope is resolved. No companion is built, installed or qualified. Do not restore the
-archived draft or create an implementation prerequisite phase before architecture readiness.
+The Operator subsequently selected namespace-owned cleanup with interoperability preserved and
+outside service-created work allowed to survive. The cross-OS decision blocker is resolved in
+system authority; [investigation evidence](memory/topic/wsl-process-supervision/interop-ownership-boundary.md)
+retains why namespace proof does not cover outside work. Phase 736 owns the selected artifact,
+context, protocol and native disposal prerequisite. No companion is yet built or qualified.
 
 The full unaccepted draft is retained at `.tmp/runtime-root-admission-resumed-draft` under a 2 MiB
 limit; production source and manifests are restored. Atomic/validation/owner and selected backend

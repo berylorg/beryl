@@ -90,15 +90,43 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 - Namespace closure proves only its Linux membership. It cannot establish closure of Windows
   interoperability processes or Linux work created outside the namespace by a service. A Windows
   job proves only its own membership. Neither proof alone or in combination manufactures ownership
-  of work created by shared services. The full managed-process disposal requirement remains in
-  force; unproved disposal retains its original owner and replacement fence.
+  of work created by shared services. For WSL, managed cleanup covers CAS and every member of its
+  original private Linux namespace, the explicitly owned companion roles and the exact Windows
+  launchers. Service-created Windows applications and Linux processes outside that namespace are
+  external work and may outlive retirement. Their survival does not make this owned boundary's
+  proven disposal incomplete. Host process-tree ownership is unchanged.
 - Supervision does not disable the selected environment's interoperability or terminate a shared
-  WSL service or distribution to obtain cleanup. Cross-OS ownership requires its own qualifying
-  evidence rather than an implicit narrowing of the managed-process lifecycle contract.
+  WSL service or distribution to obtain cleanup. Unproved disposal within the owned boundary
+  retains its original owner and replacement fence; no outside process is adopted by enumeration.
+
+## Native WSL Composition And Distribution
+
+- [`beryl-wsl-supervisor`](../../../crates/beryl-wsl-supervisor/doc/design.md) owns the Linux
+  companion and its bounded control codec. `beryl-backend` owns launch/protocol orchestration,
+  original cleanup custody and filesystem observations; `beryl` supplies the immutable artifact
+  descriptor. Application admission, runtime interest, CAS policy and durable authority stay with
+  their existing owners.
+- The supported companion artifact is a static `x86_64-unknown-linux-musl` executable, named
+  `beryl-wsl-supervisor-linux-x86_64` beside the Windows desktop executable. The desktop build
+  embeds the exact artifact SHA-256 and protocol version; composition accepts only that sibling
+  artifact in the trusted Beryl release directory. It retains an opened host file that denies
+  write/delete sharing while launches can use the artifact, checks the embedded digest, and uses
+  its canonical drive-backed path in the exact distribution. Untrusted replacement, missing or
+  mismatched bytes, unsupported architecture or mapping failure makes WSL unavailable. There is
+  no runtime build/download/install or arbitrary runtime-selected companion path.
+- Source builds without the companion descriptor can run Host runtimes and expose WSL as
+  unavailable; they cannot qualify WSL acceptance. Build the Linux artifact before a bundled
+  desktop build. Release identity, digest generation and artifact pairing are build-owned Rust
+  work, not a mutable runtime manifest. The trusted Operator account and release directory are
+  the artifact trust boundary; this is not protection against a malicious trusted account.
+- Native qualification uses the selected static Linux artifact and integration-test binaries in
+  the exact WSL2 distribution. Tests must prove identity/environment preservation, namespace
+  teardown, all companion/launcher/reader joins and unrelated-process preservation. Windows-only
+  simulations or successful cross-compilation cannot replace native lifecycle evidence.
 
 ## Backend Lifecycle
 
-- `beryl-backend` supervises every launched Host or WSL process tree and explicitly terminates it
+- `beryl-backend` supervises each managed Host process tree or the WSL owned boundary above and explicitly terminates it
   when `beryl-app` retirement orchestration releases the final runtime requirement or final
   shutdown reaches managed-runtime disposal after the CAS-live graceful execution and durable
   window/session barriers. Starting shutdown is not authority to terminate still-unsettled turns.

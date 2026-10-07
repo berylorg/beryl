@@ -37,8 +37,9 @@ boundary on 2026-10-07; its selected contract is now in the
 [backend runtime system](../../../systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
 This research proposal does not replace that authority. The
 [cross-OS follow-up](interop-ownership-boundary.md) identified the remaining lifecycle-envelope
-blocker; root approval does not resolve service-created work ownership. Local Linux compilation is also unavailable
-in the inspected environment; artifact build and deployment remain a readiness gate.
+limit; the Operator separately selected namespace-owned cleanup with outside service-created work
+allowed to survive. The selected package, context and artifact contracts now live in owning design
+authority. Local build/runner tooling still requires preparation; no implementation is accepted.
 
 ## Proposed Ownership And Launch Contract
 

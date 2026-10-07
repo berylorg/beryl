@@ -112,3 +112,13 @@ fence, but pause before implementation until either a cross-OS ownership mechani
 the Operator explicitly selects an envelope excluding service-created work. Disabling interop or
 terminating the shared distribution is not an authorized correction. This is source-backed evidence;
 no native interop cleanup test or companion implementation is accepted.
+
+The Operator resolved this choice on 2026-10-07: guarantee CAS and owned Linux namespace cleanup,
+preserve interoperability and permit outside service-created work to outlive runtime retirement.
+System/backend authority now reflects that bounded guarantee. The ordinary-context investigation
+also rejects reconstructing the effective account from registry UID plus passwd data: cached WSL
+default-user configuration and systemd sessions can differ. The selected retained ordinary context
+broker captures actual credentials/environment without that reconstruction; see
+[account evidence](../memory/topic/wsl-process-supervision/ordinary-context-custody.md).
+Native implementation and qualification remain required, with tooling preparation recorded in
+Phase 736. The archived atomic-admission draft remains unaccepted.

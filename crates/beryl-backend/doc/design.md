@@ -13,11 +13,14 @@ Own Beryl's bounded, authenticated integration boundary with one pinned `codex a
 ## Documentation Set
 
 - [Transport and admission](design-transport-and-admission.md) is normative for managed launch and supervision, authenticated WebSocket transport, release/schema admission, session profiles, request identity, common bounds and errors, and dispatch evidence.
+- [Native WSL supervision](design-wsl-supervision.md) is normative for companion orchestration,
+  context custody, control states, original Linux ownership and joined WSL disposal. Read it with
+  transport and admission for managed WSL launches or fixed filesystem observations.
 - [Thread operations](design-thread-operations.md) is normative for bounded thread, configuration, model, and streamed-input operations, correlation, and the private repair adapter.
 - [Live control](design-live-control.md) is normative for interruption, compaction, steering, approvals, exact-session authorization, response capabilities, and normalized outcomes.
 - [Provider stream](design-provider-stream.md) is normative for incremental ingress, typed provider and control normalization, ordering, backpressure, dynamic tools, generated media, and polling outcomes.
 
-These four supplements are part of this package design. Each is authoritative only for its stated backend role, is governed by this entry point, and cannot redefine feature behavior, system policy, or dependency internals.
+These five supplements are part of this package design. Each is authoritative only for its stated backend role, is governed by this entry point, and cannot redefine feature behavior, system policy, or dependency internals.
 
 ## Package Boundary
 
@@ -53,4 +56,4 @@ Modifiers:
 - `privileged-access/v1`
 - `external-side-effects/v2`
 
-This rigor declaration governs this entry point and all four normative supplements. The privileged authenticated boundary and external effect transition require independent semantic review. Loss of authorization, exact dispatch outcome, secret handling, effect custody, or a bounded input/result contract is blocking.
+This rigor declaration governs this entry point and all five normative supplements. The privileged authenticated boundary and external effect transition require independent semantic review. Loss of authorization, exact dispatch outcome, secret handling, effect custody, or a bounded input/result contract is blocking.

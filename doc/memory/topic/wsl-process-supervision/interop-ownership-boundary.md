@@ -10,8 +10,11 @@ This is a distinct ownership investigation, not acceptance of a narrower contrac
 Private PID namespace closure and a Windows job each prove only their exact membership.
 Their combination does not establish ownership of all work initiated through shared WSL
 services. The namespace candidate remains useful for Linux descendants, but implementation
-is blocked on the supported lifecycle envelope. The Operator's privilege approval does
-not itself approve excluding cross-OS/service-created work from retirement.
+required a supported lifecycle-envelope decision. The Operator explicitly selected namespace-owned
+cleanup with interoperability preserved and outside service-created work allowed to survive on
+2026-10-07. That target now belongs to the
+[backend runtime system](../../../systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
+The source-backed membership limit remains valid; it no longer blocks the selected envelope.
 
 Microsoft WSL source selects an interop server using the environment socket or a parent
 search. The WSL service can launch a distribution-level interop host. Windows interop
@@ -34,8 +37,8 @@ The bounded proposal is to define managed ownership as CAS and Linux descendants
 the original namespace, together with explicitly owned Windows launcher/job members.
 Windows programs and new Linux processes created through services outside those domains
 would remain external effects and may outlive retirement. Interoperability stays enabled.
-This would narrow the current broad guarantee, so it remains a proposal for Operator
-selection in `doc/plan.md`; owning authority must change before implementation if selected.
+The Operator selected this narrower guarantee; owning authority and the implementation plan now
+reflect it. This note preserves evidence rather than independently defining that contract.
 
 Otherwise, an additional cross-OS original-owner mechanism must be qualified. No such
 mechanism has been established here. No claim that all possible mechanisms are impossible
