@@ -134,6 +134,14 @@ against those accepted APIs. The archive itself and the separate admission bound
 
 ## Completion Review
 
+On 2026-10-07 setup mounting exposed a separate first-editor recovery prerequisite. Ordinary
+`InitialComposerCandidate` cleanup cannot prepare/classify fresh-session abandonment through
+borrowed private recovery access after Home fails. The accepted admission capability is unaffected,
+but this record does not establish complete first-conversation mounting readiness. See
+[the source-backed blocker and recommended correction](../failures/runtime-setup-first-editor-recovery.md).
+The unaccepted mounting draft was preserved and removed from production source; no GUI or Cargo
+qualification ran for it.
+
 On 2026-10-07 [atomic admission qualification](runtime-root-admission-qualification.md) accepted
 the selected-path capability and single-command first-runtime transition, including both explicit
 launch forms and original cleanup/reconciliation/publication custody. This replaces the earlier

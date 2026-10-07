@@ -99,13 +99,37 @@ publication fences remain retained. See
 [qualification evidence](audits/runtime-root-admission-qualification.md). Native setup and ordinary
 New Thread confirmation remain the mounting boundaries below.
 
-# Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
+# Phase 734: Mount Runtime And Root Setup And First Conversation Activation (wip)
 
 Consume accepted admission through the main-shell New Thread secondary segment and shared bounded
 thread/root picker. Mount Add runtime/Add root, coherent runtime/root pages, exact pending/error and
 reconciliation presentation, and attach the first selected conversation to the existing initial
 window. Qualify cancellation, duplicate suppression, retained scope/selection/focus, retirement and
 same-shell first-runtime publication. Preserve existing Running threads and lifecycle behavior.
+
+Production entry is the existing main-shell New Thread secondary segment. Extend the accepted
+shared picker with independently bounded runtime and root pages, typed setup commands and retained
+focus; compose admission from the active home graph and retire its original work with that graph.
+Use platform-native file/folder prompts and retain the selected executable form. Publish an exact
+first-runtime receipt by preparing and attaching the selected conversation in the same shell,
+without reacquiring the held selection lease or allocating another native window.
+
+Verify both launch-form choices, picker cancellation, duplicate suppression, coherent page refresh,
+scope/search/selection preservation, noncommit, pending reconciliation, terminal Unavailable and
+retirement. Focused model/controller and GPUI tests, locked compile checks and independent review
+must qualify the complete mount; a helper-only implementation does not finish this phase.
+
+Resumed on 2026-10-07: accepted admission is unchanged. Shared picker variant implementation and
+production graph/first-conversation attachment readiness are being inspected before shell mounting.
+
+Blocked on 2026-10-07: first-conversation construction opens an unpublished fresh editor, but its
+original cleanup can only prepare/classify abandonment through ordinary Home access. Failed Home
+cannot supply that access during private same-home recovery. Retaining the owner indefinitely
+would prevent recovery completion; dropping it would lose cleanup custody. See
+[first-editor recovery evidence and recommended correction](failures/runtime-setup-first-editor-recovery.md).
+The unaccepted mounting draft is preserved locally and excluded from production source. Establish
+the narrow owning storage/app recovery capability before resuming this phase; no compatibility
+attachment or replacement editor over unsettled custody is authorized.
 
 # Phase 735: Mount New Thread Root Confirmation (pending)
 
