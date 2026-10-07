@@ -42,6 +42,7 @@ pub fn open_home(
         RuntimeId::from_bytes([seed; 16]),
         host_path(r"C:\Program Files\Codex\codex.exe"),
         RuntimeMode::host(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(RuntimeMode::host(), r"C:\Program Files\Codex\codex.exe"),
         UnixMillis::new(1),
         AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2)).unwrap(),

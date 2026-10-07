@@ -76,6 +76,7 @@ impl Fixture {
             runtime_id,
             host_path(r"C:\Program Files\Codex\codex.exe"),
             mode.clone(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
             native_path(mode, r"C:\Program Files\Codex\codex.exe"),
             UnixMillis::new(1),
             AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2))

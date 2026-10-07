@@ -102,6 +102,7 @@ fn unbundled_wsl_launch_refuses_before_authentication_or_process_creation() {
         )
         .unwrap(),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native("/usr/bin/codex"),
         native("/work"),
         AdmittedHostPath::from_admitted(

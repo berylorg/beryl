@@ -33,7 +33,7 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 ## Product Vocabulary
 
-- A `runtime` is one configured absolute path to a Codex CLI executable together with the Host or exact WSL environment Beryl derives from that path.
+- A `runtime` is one configured absolute path to a Codex App Server or Codex CLI executable, its explicit launch form, and the Host or exact WSL environment Beryl derives from that path.
 - A `root` is one configured execution directory inside one runtime.
 - A `thread` is a durable Syndic conversation thread bound to one runtime and root for execution.
 - Product copy uses `root` consistently. It does not use `target` as an interchangeable visible synonym for root.
@@ -79,8 +79,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 - The New Thread secondary segment is the main-shell entry point for adding or selecting runtimes and roots for new-thread creation.
 - A new Beryl home has no configured runtimes by default.
-- `Add runtime` opens the platform-native file-open picker. On Windows this is the native Windows file picker, and the user selects one Codex CLI executable rather than completing a Beryl-owned form.
-- Beryl derives Host versus one exact WSL distribution from the selected executable path. A path outside a supported Host or WSL filesystem, a non-file path, an inaccessible executable, an incompatible Codex CLI, or a path whose environment cannot be derived is rejected without creating a runtime.
+- `Add runtime` offers `Codex App Server binary` and `Codex CLI binary`; either choice opens the platform-native file-open picker for that executable form. On Windows this is the native Windows file picker. The choice is retained through picker completion, validation and registration without a separate Beryl-owned form.
+- Both executable forms provide the same Codex App Server contract. Beryl retains the explicit launch form with the runtime; it does not guess from a filename or switch forms after a failed launch. Selecting the wrong form is an ordinary validation failure with no runtime created.
+- Beryl derives Host versus one exact WSL distribution from the selected executable path. A path outside a supported Host or WSL filesystem, a non-file path, an inaccessible executable, an incompatible Codex App Server, or a path whose environment cannot be derived is rejected without creating a runtime.
 - Selecting an already configured canonical executable path resolves to that existing runtime instead of adding a duplicate runtime.
 - `Add root` opens the platform-native directory picker for the exact runtime row that invoked it. On Windows this is the native Windows folder picker; a selected directory must resolve inside that runtime's derived Host or WSL environment.
 - After the user chooses a runtime executable or root directory, the invoking command remains

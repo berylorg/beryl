@@ -4,7 +4,9 @@ use beryl_home_store::{
     MutationContribution, PointReadLimit, ReadError, ReconciliationReader, RecordFamily,
     StorageDomain,
 };
-use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeMode, RuntimeNativePath};
+use beryl_model::{
+    AdmittedHostPath, RootId, RuntimeId, RuntimeLaunchForm, RuntimeMode, RuntimeNativePath,
+};
 
 use crate::{AvailabilitySnapshot, RecordRevision, StatePage, UnixMillis};
 
@@ -98,6 +100,7 @@ pub struct RuntimeRegistration {
     runtime_id: RuntimeId,
     canonical_executable: AdmittedHostPath,
     mode: RuntimeMode,
+    launch_form: RuntimeLaunchForm,
     runtime_native_executable: RuntimeNativePath,
     environment_label: Box<str>,
     created_at: UnixMillis,
@@ -110,6 +113,7 @@ impl RuntimeRegistration {
         runtime_id: RuntimeId,
         canonical_executable: AdmittedHostPath,
         mode: RuntimeMode,
+        launch_form: RuntimeLaunchForm,
         runtime_native_executable: RuntimeNativePath,
         created_at: UnixMillis,
         availability: AvailabilitySnapshot,
@@ -125,6 +129,7 @@ impl RuntimeRegistration {
             runtime_id,
             canonical_executable,
             mode,
+            launch_form,
             runtime_native_executable,
             environment_label,
             created_at,
@@ -135,6 +140,11 @@ impl RuntimeRegistration {
     #[must_use]
     pub const fn runtime_id(&self) -> RuntimeId {
         self.runtime_id
+    }
+
+    #[must_use]
+    pub const fn launch_form(&self) -> RuntimeLaunchForm {
+        self.launch_form
     }
 }
 
@@ -178,6 +188,7 @@ pub struct RuntimeRecord {
     runtime_id: RuntimeId,
     canonical_executable: AdmittedHostPath,
     mode: RuntimeMode,
+    launch_form: RuntimeLaunchForm,
     runtime_native_executable: RuntimeNativePath,
     environment_label: Box<str>,
     created_at: UnixMillis,
@@ -191,6 +202,7 @@ impl RuntimeRecord {
             runtime_id: registration.runtime_id,
             canonical_executable: registration.canonical_executable.clone(),
             mode: registration.mode.clone(),
+            launch_form: registration.launch_form,
             runtime_native_executable: registration.runtime_native_executable.clone(),
             environment_label: registration.environment_label.clone(),
             created_at: registration.created_at,
@@ -212,6 +224,11 @@ impl RuntimeRecord {
     #[must_use]
     pub const fn mode(&self) -> &RuntimeMode {
         &self.mode
+    }
+
+    #[must_use]
+    pub const fn launch_form(&self) -> RuntimeLaunchForm {
+        self.launch_form
     }
 
     #[must_use]

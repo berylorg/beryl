@@ -1,5 +1,5 @@
 use beryl_home_store::{RecordCodec, RecordVersion};
-use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeNativePath};
+use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeLaunchForm, RuntimeNativePath};
 
 use crate::encoding::{
     CodecError, Decoder, Encoder, decode_root_id, decode_runtime_id, encode_root_id,
@@ -73,7 +73,7 @@ impl RecordCodec<RuntimeRootDomain> for RuntimeRecordCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "runtimes";
-    const VERSION: RecordVersion = RecordVersion::new(1);
+    const VERSION: RecordVersion = RecordVersion::new(2);
     const MAX_KEY_BYTES: usize = 16;
     const MAX_VALUE_BYTES: usize = super::RUNTIME_RECORD_LIMIT;
 
@@ -90,6 +90,10 @@ impl RecordCodec<RuntimeRootDomain> for RuntimeRecordCodec {
         encoder.fixed(value.runtime_id.as_bytes());
         encoder.host_path(&value.canonical_executable);
         encoder.runtime_mode(&value.mode);
+        encoder.u8(match value.launch_form {
+            RuntimeLaunchForm::StandaloneAppServer => 0,
+            RuntimeLaunchForm::CodexCli => 1,
+        });
         encoder.runtime_path(&value.runtime_native_executable);
         encoder.text(&value.environment_label);
         encoder.u64(value.created_at.get());
@@ -103,6 +107,11 @@ impl RecordCodec<RuntimeRootDomain> for RuntimeRecordCodec {
         let runtime_id = RuntimeId::from_bytes(decoder.fixed()?);
         let canonical_executable = decoder.host_path()?;
         let mode = decoder.runtime_mode()?;
+        let launch_form = match decoder.u8()? {
+            0 => RuntimeLaunchForm::StandaloneAppServer,
+            1 => RuntimeLaunchForm::CodexCli,
+            _ => return Err(invariant("unknown runtime launch form")),
+        };
         let runtime_native_executable = decoder.runtime_path()?;
         let environment_label: Box<str> = decoder.text("runtime environment label")?.into();
         let created_at = crate::UnixMillis::new(decoder.u64()?);
@@ -123,6 +132,7 @@ impl RecordCodec<RuntimeRootDomain> for RuntimeRecordCodec {
             runtime_id,
             canonical_executable,
             mode,
+            launch_form,
             runtime_native_executable,
             environment_label,
             created_at,

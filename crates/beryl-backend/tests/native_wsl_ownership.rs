@@ -74,6 +74,7 @@ impl NativeContext {
             RuntimeId::from_bytes([0x62; 16]),
             host_path(&self.workload_host),
             mode.clone(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
             native(&self.workload_linux),
             native("/"),
             host_path(token_directory.to_str().unwrap()),

@@ -1,7 +1,7 @@
 use crate::WslSupervisorArtifact;
 use std::{path::PathBuf, sync::Arc};
 
-use beryl_model::{AdmittedHostPath, RuntimeId, RuntimeMode, RuntimeNativePath};
+use beryl_model::{AdmittedHostPath, RuntimeId, RuntimeLaunchForm, RuntimeMode, RuntimeNativePath};
 use thiserror::Error;
 
 const LOOPBACK_WS_HOST: &str = "127.0.0.1";
@@ -39,6 +39,7 @@ pub struct ManagedBackendLaunchSpec {
     runtime_id: RuntimeId,
     canonical_executable: AdmittedHostPath,
     runtime_mode: RuntimeMode,
+    launch_form: RuntimeLaunchForm,
     runtime_native_executable: RuntimeNativePath,
     working_directory: RuntimeNativePath,
     host_token_directory: AdmittedHostPath,
@@ -53,10 +54,12 @@ pub struct BackendWebSocketEndpoint {
 }
 
 impl ManagedBackendLaunchSpec {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         runtime_id: RuntimeId,
         canonical_executable: AdmittedHostPath,
         runtime_mode: RuntimeMode,
+        launch_form: RuntimeLaunchForm,
         runtime_native_executable: RuntimeNativePath,
         working_directory: RuntimeNativePath,
         host_token_directory: AdmittedHostPath,
@@ -80,6 +83,7 @@ impl ManagedBackendLaunchSpec {
             runtime_id,
             canonical_executable,
             runtime_mode,
+            launch_form,
             runtime_native_executable,
             working_directory,
             host_token_directory,
@@ -98,6 +102,10 @@ impl ManagedBackendLaunchSpec {
 
     pub fn runtime_mode(&self) -> &RuntimeMode {
         &self.runtime_mode
+    }
+
+    pub const fn launch_form(&self) -> RuntimeLaunchForm {
+        self.launch_form
     }
 
     pub fn runtime_native_executable(&self) -> &RuntimeNativePath {
@@ -130,8 +138,7 @@ impl ManagedBackendLaunchSpec {
         runtime_token_file_path: &str,
         token_sha256: &str,
     ) -> Result<BackendCommandLine, BackendCommandLineError> {
-        let codex_args =
-            managed_websocket_codex_args(endpoint, runtime_token_file_path, token_sha256);
+        let codex_args = self.server_arguments(endpoint, runtime_token_file_path, token_sha256);
         match &self.runtime_mode {
             RuntimeMode::Host => Ok(BackendCommandLine::new(
                 self.canonical_executable.as_str(),
@@ -171,13 +178,13 @@ impl ManagedBackendLaunchSpec {
         self.wsl_supervisor_artifact.clone()
     }
 
-    pub(crate) fn server_arguments(
+    pub fn server_arguments(
         &self,
         endpoint: &BackendWebSocketEndpoint,
         token_path: &str,
         digest: &str,
     ) -> Vec<String> {
-        managed_websocket_codex_args(endpoint, token_path, digest)
+        managed_websocket_server_args(self.launch_form, endpoint, token_path, digest)
     }
 }
 impl BackendWebSocketEndpoint {
@@ -205,13 +212,13 @@ impl BackendWebSocketEndpoint {
     }
 }
 
-fn managed_websocket_codex_args(
+fn managed_websocket_server_args(
+    launch_form: RuntimeLaunchForm,
     endpoint: &BackendWebSocketEndpoint,
     runtime_token_file_path: &str,
     token_sha256: &str,
 ) -> Vec<String> {
-    vec![
-        "app-server".to_string(),
+    let mut arguments = vec![
         "--strict-config".to_string(),
         "-c".to_string(),
         MULTI_AGENT_V2_OVERRIDE.to_string(),
@@ -223,7 +230,11 @@ fn managed_websocket_codex_args(
         runtime_token_file_path.to_string(),
         "--ws-token-sha256".to_string(),
         token_sha256.to_string(),
-    ]
+    ];
+    if launch_form == RuntimeLaunchForm::CodexCli {
+        arguments.insert(0, "app-server".to_string());
+    }
+    arguments
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

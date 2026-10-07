@@ -4,6 +4,25 @@ use beryl_model::{
 };
 
 #[test]
+fn runtime_launch_forms_are_closed_and_require_explicit_serialized_identity() {
+    use beryl_model::RuntimeLaunchForm;
+
+    for form in [
+        RuntimeLaunchForm::StandaloneAppServer,
+        RuntimeLaunchForm::CodexCli,
+    ] {
+        let encoded = serde_json::to_string(&form).unwrap();
+        assert_eq!(
+            serde_json::from_str::<RuntimeLaunchForm>(&encoded).unwrap(),
+            form
+        );
+    }
+    for invalid in ["null", "0", "\"Unknown\"", "\"Host\"", "{}"] {
+        assert!(serde_json::from_str::<RuntimeLaunchForm>(invalid).is_err());
+    }
+}
+
+#[test]
 fn runtime_modes_preserve_exact_validated_wsl_identity() {
     let mode = RuntimeMode::wsl("Ubuntu-24.04").unwrap();
 

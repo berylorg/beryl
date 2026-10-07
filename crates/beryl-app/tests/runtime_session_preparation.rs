@@ -90,6 +90,22 @@ fn fixture_with_runtime_capacity(
     ScheduledExecutionSessions,
     Arc<ProcessLifecycleAttentionPool>,
 ) {
+    fixture_with_launch_form(
+        capacity,
+        runtime_capacity,
+        beryl_model::RuntimeLaunchForm::CodexCli,
+    )
+}
+
+fn fixture_with_launch_form(
+    capacity: u64,
+    runtime_capacity: std::num::NonZeroUsize,
+    launch_form: beryl_model::RuntimeLaunchForm,
+) -> (
+    Fixture,
+    ScheduledExecutionSessions,
+    Arc<ProcessLifecycleAttentionPool>,
+) {
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     let fixture = Fixture::with_capacities(Box::new(provider), capacity, runtime_capacity);
     let live = fixture.service().live_home_command().unwrap();
@@ -99,6 +115,7 @@ fn fixture_with_runtime_capacity(
         RuntimeId::from_bytes([99; 16]),
         host(&executable),
         RuntimeMode::Host,
+        launch_form,
         native(&executable),
         UnixMillis::new(1),
         AvailabilitySnapshot::unknown(),

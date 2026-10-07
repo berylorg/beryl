@@ -518,6 +518,7 @@ fn stop_runtime(
         binding.runtime_id(),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\runtime\codex.exe").unwrap(),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(r"C:\runtime\codex.exe"),
         native(r"C:\syndic-test-root-history"),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),

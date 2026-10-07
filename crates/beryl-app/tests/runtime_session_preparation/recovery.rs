@@ -3,6 +3,60 @@ use beryl_app::cas_projection::{
     ProjectionCancellationToken, RuntimeFailureSnapshot, RuntimeInterestKind,
 };
 
+#[test]
+fn ordinary_and_same_home_recovery_preserve_both_explicit_launch_forms() {
+    use beryl_model::RuntimeLaunchForm;
+
+    for launch_form in [
+        RuntimeLaunchForm::StandaloneAppServer,
+        RuntimeLaunchForm::CodexCli,
+    ] {
+        let (mut fixture, sessions, _attention) =
+            fixture_with_launch_form(10, std::num::NonZeroUsize::new(1).unwrap(), launch_form);
+        let lease = checkout(&fixture, 1);
+        let expected = format!("{launch_form:?}");
+        let evidence: serde_json::Value = serde_json::from_slice(
+            &fs::read(fixture.root(1).join("runtime-launch-form.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(evidence["launch_form"], expected);
+        drop(lease);
+        close(&mut fixture, &sessions);
+
+        let (mut fixture, sessions, _attention) =
+            fixture_with_launch_form(10, std::num::NonZeroUsize::new(1).unwrap(), launch_form);
+        let (window, claim) = runtime_notice::select(&fixture);
+        fs::write(fixture.root(1).join("fixture-mode"), "reject-config").unwrap();
+        begin(&fixture, 1);
+        wait_until(|| {
+            sessions
+                .runtime_failure(binding(&fixture, 1).runtime_id())
+                .is_some_and(|failure| failure.retry_ready())
+        });
+        let failure = sessions
+            .runtime_failure(binding(&fixture, 1).runtime_id())
+            .unwrap();
+        fs::remove_file(fixture.root(1).join("runtime-launch-form.json")).unwrap();
+        fs::write(fixture.root(1).join("fixture-mode"), "projection-lifetime").unwrap();
+        let proof = recover_with_idle_election_paused(
+            &fixture,
+            &sessions,
+            window,
+            claim,
+            failure,
+            &binding(&fixture, 1),
+        );
+        let evidence: serde_json::Value = serde_json::from_slice(
+            &fs::read(fixture.root(1).join("runtime-launch-form.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(evidence["launch_form"], expected);
+        let worker = fixture.service().selected_runtime_retry_worker(&sessions);
+        assert!(worker.usability_current(&fixture.state.session(), &proof));
+        close(&mut fixture, &sessions);
+    }
+}
+
 fn failed_idle(
     fixture: &Fixture,
     sessions: &ScheduledExecutionSessions,
@@ -428,6 +482,7 @@ fn failed_retained_unsubscribe_preserves_input_and_independent_runtime_admission
         runtime_id,
         host(&executable),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(&executable),
         UnixMillis::new(1),
         AvailabilitySnapshot::unknown(),
@@ -491,6 +546,7 @@ fn failed_retained_unsubscribe_preserves_input_and_independent_runtime_admission
                 runtime_id,
                 host(&executable),
                 RuntimeMode::Host,
+                beryl_model::RuntimeLaunchForm::CodexCli,
                 native(&executable),
                 native(&root_path),
                 host(&tokens),

@@ -88,6 +88,7 @@ impl PreparationContext {
             runtime.runtime_id(),
             runtime.canonical_executable().clone(),
             runtime.mode().clone(),
+            runtime.launch_form(),
             runtime.runtime_native_executable().clone(),
             root.canonical_path().clone(),
             self.config.token_directory.host().clone(),

@@ -40,6 +40,7 @@ pub fn host_runtime(
         RuntimeId::from_bytes([runtime_byte; 16]),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, executable).unwrap(),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         RuntimeNativePath::from_admitted(mode.clone(), PathFlavor::Windows, executable).unwrap(),
         UnixMillis::new(10),
         AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(11)).unwrap(),
@@ -69,6 +70,7 @@ pub fn wsl_runtime(
         RuntimeId::from_bytes([runtime_byte; 16]),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, executable_host).unwrap(),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         RuntimeNativePath::from_admitted(mode.clone(), PathFlavor::Posix, executable_native)
             .unwrap(),
         UnixMillis::new(20),

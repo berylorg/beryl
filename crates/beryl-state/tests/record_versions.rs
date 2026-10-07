@@ -97,7 +97,10 @@ v2_codec!(
 
 macro_rules! passthrough_codec {
     ($codec:ident, $family:literal, $max_key:expr, $max_value:expr) => {
-        impl RecordCodec<RuntimeV2Probe> for $codec {
+        passthrough_codec!(RuntimeV2Probe, $codec, $family, $max_key, $max_value);
+    };
+    ($domain:ident, $codec:ident, $family:literal, $max_key:expr, $max_value:expr) => {
+        impl RecordCodec<$domain> for $codec {
             type Key = Vec<u8>;
             type Value = Vec<u8>;
             type Error = ProbeCodecError;
@@ -239,4 +242,176 @@ fn assert_version_error(source: ReadError) {
             ..
         } if supported == RecordVersion::new(2)
     ));
+}
+
+struct MalformedRuntimeProbe;
+struct MalformedRuntimeRecord;
+
+impl StorageDomain for MalformedRuntimeProbe {
+    const NAME: &'static str = "beryl-runtime-root";
+    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
+    const FAMILIES: &'static [RecordFamily<Self>] = &[
+        RecordFamily::new::<MalformedRuntimeRecord>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<ExecutableIndexBytes>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<RootRecordBytes>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<RootIdIndexBytes>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<RootPathIndexBytes>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<HomeRootIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    ];
+    type ValidationError = std::convert::Infallible;
+    type RuntimeAttachment = ();
+    type RuntimeAttachmentError = std::convert::Infallible;
+
+    fn create_runtime_attachment(
+        _reader: &beryl_home_store::DomainRegistrationReader<'_, Self>,
+    ) -> Result<(), Self::RuntimeAttachmentError> {
+        Ok(())
+    }
+
+    fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+}
+
+impl RecordCodec<MalformedRuntimeProbe> for MalformedRuntimeRecord {
+    type Key = RuntimeId;
+    type Value = Vec<u8>;
+    type Error = ProbeCodecError;
+    const FAMILY: &'static str = "runtimes";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 16;
+    const MAX_VALUE_BYTES: usize = 128 * 1024;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        Ok(key.as_bytes().to_vec())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        decode_id(encoded).map(RuntimeId::from_bytes)
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        Ok(value.clone())
+    }
+
+    fn decode_value(_encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        Err(ProbeCodecError)
+    }
+}
+
+passthrough_codec!(
+    MalformedRuntimeProbe,
+    ExecutableIndexBytes,
+    "runtime-executable-index",
+    u16::MAX as usize,
+    16
+);
+passthrough_codec!(
+    MalformedRuntimeProbe,
+    RootRecordBytes,
+    "roots",
+    32,
+    132 * 1024
+);
+passthrough_codec!(
+    MalformedRuntimeProbe,
+    RootIdIndexBytes,
+    "root-id-index",
+    16,
+    16
+);
+passthrough_codec!(
+    MalformedRuntimeProbe,
+    RootPathIndexBytes,
+    "root-path-index",
+    u16::MAX as usize,
+    16
+);
+passthrough_codec!(
+    MalformedRuntimeProbe,
+    HomeRootIndexBytes,
+    "runtime-home-root-index",
+    16,
+    16
+);
+
+#[test]
+fn runtime_launch_form_rejects_unknown_missing_and_legacy_record_tags() {
+    for (version, tag) in [(2_u32, Some(2_u8)), (2, Some(255)), (2, None), (1, Some(1))] {
+        let directory = tempdir().unwrap();
+        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        let probe = candidate
+            .register_domain::<MalformedRuntimeProbe>()
+            .unwrap();
+        let store = candidate
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<MalformedRuntimeProbe>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
+        let executable = r"C:\runtime\selected.exe";
+        let mut encoded = version.to_be_bytes().to_vec();
+        encoded.extend_from_slice(&[1; 16]);
+        encoded.push(0);
+        encoded.extend_from_slice(&(executable.len() as u32).to_be_bytes());
+        encoded.extend_from_slice(executable.as_bytes());
+        encoded.push(0);
+        if let Some(tag) = tag {
+            encoded.push(tag);
+            encoded.extend_from_slice(&[0, 0]);
+            encoded.extend_from_slice(&(executable.len() as u32).to_be_bytes());
+            encoded.extend_from_slice(executable.as_bytes());
+            encoded.extend_from_slice(&4_u32.to_be_bytes());
+            encoded.extend_from_slice(b"Host");
+            encoded.extend_from_slice(&1_u64.to_be_bytes());
+            encoded.extend_from_slice(&[0, 0]);
+            encoded.extend_from_slice(&1_u64.to_be_bytes());
+        }
+        store
+            .inject_persisted_corrupt_record::<MalformedRuntimeProbe, MalformedRuntimeRecord>(
+                &probe, &[1; 16], &encoded,
+            )
+            .unwrap();
+        store.close().unwrap();
+
+        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        let state = beryl_state::BerylState::register(&mut candidate).unwrap();
+        let reopened = candidate
+            .prepare_publication(beryl_state::BerylState::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
+        let error = state
+            .runtime_roots()
+            .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
+            .unwrap_err();
+        if version == 1 {
+            assert_version_error(error);
+        } else {
+            assert!(
+                matches!(error, ReadError::Codec { .. }),
+                "unexpected malformed-tag error: {error}"
+            );
+        }
+        reopened.close().unwrap();
+
+        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        assert!(beryl_state::BerylState::register_with_schema_validation(&mut candidate).is_err());
+        candidate.close().unwrap();
+    }
 }

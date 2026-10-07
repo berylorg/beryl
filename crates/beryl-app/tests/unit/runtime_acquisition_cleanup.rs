@@ -35,6 +35,7 @@ fn failed_runtime_cleanup_retains_acquisition_and_prevents_reopening() {
         runtime,
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\runtime\codex.exe").unwrap(),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(r"C:\runtime\codex.exe"),
         native(r"C:\work\beryl"),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),

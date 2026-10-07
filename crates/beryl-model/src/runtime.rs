@@ -159,6 +159,12 @@ pub enum RuntimeMode {
     Wsl(WslDistributionName),
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum RuntimeLaunchForm {
+    StandaloneAppServer,
+    CodexCli,
+}
+
 impl RuntimeMode {
     /// Constructs the host execution mode.
     #[must_use]

@@ -68,6 +68,7 @@ impl Fixture {
             binding.runtime_id(),
             executable,
             RuntimeMode::host(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
             RuntimeNativePath::from_admitted(
                 RuntimeMode::host(),
                 PathFlavor::Windows,

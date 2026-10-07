@@ -26,8 +26,9 @@ Provide shared pure-data identities and values used across Beryl packages withou
 
 ## Runtime And Root Values
 
-- `RuntimeId` is an opaque Beryl identity for one configured canonical Codex CLI executable.
+- `RuntimeId` is an opaque Beryl identity for one configured canonical Codex App Server launch executable.
 - `RuntimeMode` preserves the Host or exact WSL-distribution environment derived from that executable path.
+- `RuntimeLaunchForm` is the closed standalone Codex App Server or Codex CLI executable form, independent of Host/WSL mode. It carries no probe or executable-name inference.
 - Pure runtime values may carry canonical host-visible and runtime-native executable paths without probing them or deriving environment identity inside this crate.
 - `RootId` is an opaque configured-root identity owned by one runtime.
 - `ExecutionBinding` contains exact runtime identity, configured root identity, and canonical runtime-

@@ -11,7 +11,8 @@ use std::{
 };
 
 use beryl_model::{
-    AdmittedHostPath, CasProcessGeneration, RuntimeId, RuntimeMode, RuntimeNativePath,
+    AdmittedHostPath, CasProcessGeneration, RuntimeId, RuntimeLaunchForm, RuntimeMode,
+    RuntimeNativePath,
 };
 
 use crate::{
@@ -45,6 +46,7 @@ struct ManagedBackendLaunchIdentityInner {
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
     runtime_mode: RuntimeMode,
+    launch_form: RuntimeLaunchForm,
     canonical_executable: AdmittedHostPath,
     runtime_native_executable: RuntimeNativePath,
     working_directory: RuntimeNativePath,
@@ -59,6 +61,7 @@ impl ManagedBackendLaunchIdentity {
             runtime_id: launch_spec.runtime_id(),
             process_generation,
             runtime_mode: launch_spec.runtime_mode().clone(),
+            launch_form: launch_spec.launch_form(),
             canonical_executable: launch_spec.canonical_executable().clone(),
             runtime_native_executable: launch_spec.runtime_native_executable().clone(),
             working_directory: launch_spec.working_directory().clone(),
@@ -75,6 +78,10 @@ impl ManagedBackendLaunchIdentity {
 
     pub fn runtime_mode(&self) -> &RuntimeMode {
         &self.0.runtime_mode
+    }
+
+    pub fn launch_form(&self) -> RuntimeLaunchForm {
+        self.0.launch_form
     }
 
     pub fn canonical_executable(&self) -> &AdmittedHostPath {

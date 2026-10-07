@@ -8,9 +8,9 @@ runtime/root, session/window, and thread-claim durable state.
 - Exact runtime-record reads are also available through explicit candidate recovery access for
   service preparation. They retain ordinary point-read limits, decoding, exact home/generation
   qualification and confirmation, without opening ordinary admission or publishing the candidate.
-- A runtime records its stable id, canonical absolute Codex CLI executable identity, derived exact
+- A runtime records its stable id, canonical absolute Codex App Server launch executable identity, derived exact
   Host or WSL-distribution mode, runtime-native executable path, environment label, creation facts,
-  availability summary, and nonzero monotonic record revision. A root records its stable id,
+  explicit standalone-server or CLI launch form, availability summary, and nonzero monotonic record revision. The runtime codec requires a valid closed launch-form tag; missing or unknown tags are rejected rather than defaulted. A root records its stable id,
   runtime id, canonical runtime-native path, full path, non-removable fact, availability, activity,
   and revision.
 - One canonical executable identity has at most one runtime. Canonically equivalent roots under one

@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 736: Implement And Qualify Native WSL Supervision (finished)
+# Phase 737: Preserve Both Codex App Server Launch Forms (finished)
 
-Accepted the static companion, authenticated ordinary-account context, original namespace/pidfd
-closure, managed WSL launch and fixed observations, immutable desktop artifact pairing, and
-original disposal custody through application shutdown/recovery. Locked Windows/Linux checks and
-native qualification passed; independent review accepted the frozen implementation. Preserved
-Windows interoperability and excluded service-created work survival. See
-[qualification evidence](audits/native-wsl-supervision-qualification.md). CAS release admission
-and atomic runtime/root registration remain the boundary below.
+Accepted explicit standalone-server and CLI forms through durable records, supervised arguments,
+launch provenance and shared ordinary/recovery preparation. Both Host/WSL argument forms and 60
+distinct cases passed; the final locked five-package all-target check and independent review
+passed. Initialize admission remains `beryl/0.146.0`. See
+[qualification evidence](audits/cas-runtime-launch-forms.md). Atomic admission and visible mounting
+remain the separate boundaries below.
 
 # Phase 733: Implement Atomic Runtime And Root Admission (wip)
 
@@ -131,6 +130,26 @@ The full unaccepted draft remains at `.tmp/runtime-root-admission-resumed-draft`
 superseded backend supervision, manifests or lifecycle adapters. Prior draft tests are evidence
 only and do not accept the reconsidered source. See
 [failure evidence](failures/runtime-root-admission.md#exact-linux-group-ownership).
+
+The Operator resolved the initialize-token contradiction on 2026-10-07: CAS reports
+`<client_name>/<codex_version>`, hence `beryl/0.146.0` for the pinned release.
+The normative clauses are corrected and the existing validator remains unchanged. See the
+[pinned-source investigation](memory/github.com/openai/codex/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/initialize-user-agent-version.md)
+and [failure record](failures/cas-version-gate.md).
+
+The Operator selected both standalone Codex App Server and Codex CLI binaries. The preceding
+launch-form prerequisite establishes the shared persisted and supervised facts before admission
+resumes. Runtime validation requires the invoking command's explicit form; canonical duplicates
+retain their registered form. The future Add runtime menu supplies that form before its native
+picker. Do not infer executable form from a filename or retry alternate launches.
+
+Current app admission source is frozen, uncompiled and unaccepted in the main worktree;
+State primitives and existing State/backend admission tests passed only their focused checks.
+The app manifest's `Win32_System_IO` addition passed locked metadata but still needs the
+focused app check followed by a successful Serena restart before new-model semantic use.
+Resume by resolving the retained filesystem-worker cleanup findings, qualifying the frozen
+transaction/service tests and obtaining independent completion review. Preserve both current
+source and the earlier bounded draft; neither is accepted by the completed prerequisite.
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
 

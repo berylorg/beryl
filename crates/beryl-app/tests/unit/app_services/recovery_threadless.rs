@@ -279,6 +279,7 @@ fn threadless_recovery_rejects_configured_runtime_with_one_bounded_presence_read
         RuntimeId::from_bytes([u8::MAX; 16]),
         host_path(r"C:\Codex\codex.exe"),
         RuntimeMode::host(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(r"C:\Codex\codex.exe"),
         UnixMillis::new(1),
         AvailabilitySnapshot::unknown(),

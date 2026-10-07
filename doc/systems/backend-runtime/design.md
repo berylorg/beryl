@@ -1,6 +1,6 @@
 # Goals
 
-Define Beryl's internal backend runtime system for launching, connecting to, supervising, and recovering one pinned `codex app-server` release per configured runtime.
+Define Beryl's internal backend runtime system for launching, connecting to, supervising, and recovering one pinned Codex App Server release per configured runtime.
 
 Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authentication, policy, sandbox, and protocol boundaries while rebuilding failed runtime services from durable authority.
 
@@ -33,12 +33,14 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   cannot publish a runtime/root or repeat a probe while the previous helper remains unsettled.
   Helper cleanup cannot affect an existing runtime process or its accepted work. A missing utility
   yields failure without installation, alternate distribution or guessed path/home substitution.
-- One configured runtime is identified by one canonical Codex CLI executable path plus its Host or exact WSL distribution. Runtime identity is not inferred from `PATH` or from an environment label alone.
+- One configured runtime is identified by one canonical Codex App Server launch executable path plus its Host or exact WSL distribution. Runtime identity is not inferred from `PATH` or from an environment label alone.
 - Runtime admission is complete only when one production foreground session proves all four
   release-admission parts: opaque provenance from the exact Beryl-managed launch; an initialize
-  response user-agent product token matching exactly `codex-cli 0.146.0`; the immutable foreground
+  response leading user-agent product token matching exactly `beryl/0.146.0`; the immutable foreground
   profile selected before the first byte and initialized with every required notification enabled;
-  and exactly one effective `config/read` on that same initialized session.
+  and exactly one effective `config/read` on that same initialized session. The product is
+  `<client_name>/<codex_version>`: Beryl supplies the name and CAS supplies its compiled package
+  version, independently of caller `clientInfo.version`. The full TUI is not required for compatibility.
 - That sole admission `config/read` must prove
   `features.multi_agent_v2.enabled = true` and
   `features.multi_agent_v2.expose_spawn_agent_model_overrides = true`, with both dotted origins
@@ -49,7 +51,8 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 ## Launch And Listener Security
 
-- Host launch executes the exact configured CLI path with `app-server`; WSL launch uses the exact configured distribution, working directory, and runtime-native executable path.
+- Every runtime retains one explicit executable launch form: standalone Codex App Server or Codex CLI. Host launch executes the exact configured path; WSL launch uses the exact configured distribution, working directory, and runtime-native executable path. Standalone launch passes server arguments directly; CLI launch prepends exactly one `app-server` subcommand. Both use the same authenticated foreground release admission and supervision. No filename inference, alternate-form retry or TUI interaction is permitted.
+- The admitted launch form follows the exact runtime through registration, ordinary launch, restoration and same-home recovery. Managed-launch provenance includes the form, so detached proof for another form cannot authorize registration or execution. Canonical executable identity remains unique irrespective of form; selecting an already registered path resolves its existing record and retained form.
 - Every managed launch applies the exact pinned configuration required by Beryl as one atomic configuration override. Configuration mismatch makes the runtime unavailable; Beryl does not probe around it.
 - A managed app-server listens only on a Beryl-selected authenticated loopback WebSocket endpoint.
 - Beryl creates one high-entropy token per launch, stores it only in memory and a per-run local

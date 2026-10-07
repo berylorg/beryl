@@ -59,14 +59,14 @@ impl fmt::Display for FixtureCodecError {
 impl Error for FixtureCodecError {}
 
 macro_rules! byte_codec {
-    ($codec:ident, $family:literal, $max_key:expr, $max_value:expr) => {
+    ($codec:ident, $family:literal, $version:literal, $max_key:expr, $max_value:expr) => {
         impl RecordCodec<IncompleteRuntimeDomain> for $codec {
             type Key = Vec<u8>;
             type Value = Vec<u8>;
             type Error = FixtureCodecError;
 
             const FAMILY: &'static str = $family;
-            const VERSION: RecordVersion = RecordVersion::new(1);
+            const VERSION: RecordVersion = RecordVersion::new($version);
             const MAX_KEY_BYTES: usize = $max_key;
             const MAX_VALUE_BYTES: usize = $max_value;
 
@@ -89,17 +89,24 @@ macro_rules! byte_codec {
     };
 }
 
-byte_codec!(RuntimeBytes, "runtimes", 16, 132 * 1024);
+byte_codec!(RuntimeBytes, "runtimes", 2, 16, 132 * 1024);
 byte_codec!(
     ExecutableIndexBytes,
     "runtime-executable-index",
+    1,
     u16::MAX as usize,
     16
 );
-byte_codec!(RootBytes, "roots", 32, 132 * 1024);
-byte_codec!(RootIdIndexBytes, "root-id-index", 16, 16);
-byte_codec!(RootPathIndexBytes, "root-path-index", u16::MAX as usize, 16);
-byte_codec!(HomeRootIndexBytes, "runtime-home-root-index", 16, 16);
+byte_codec!(RootBytes, "roots", 1, 32, 132 * 1024);
+byte_codec!(RootIdIndexBytes, "root-id-index", 1, 16, 16);
+byte_codec!(
+    RootPathIndexBytes,
+    "root-path-index",
+    1,
+    u16::MAX as usize,
+    16
+);
+byte_codec!(HomeRootIndexBytes, "runtime-home-root-index", 1, 16, 16);
 
 struct SeedRuntimeWithoutHomeRoot {
     runtime_key: Vec<u8>,
@@ -259,6 +266,7 @@ fn runtime_record(runtime_id: RuntimeId, executable: &str) -> Vec<u8> {
     encoded.extend_from_slice(runtime_id.as_bytes());
     push_host_path(&mut encoded, executable);
     encoded.push(0); // Host runtime mode.
+    encoded.push(1);
     encoded.push(0); // Host runtime mode in the runtime-native path.
     encoded.push(0); // Windows path flavor.
     push_text(&mut encoded, executable);

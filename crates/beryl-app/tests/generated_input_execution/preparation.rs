@@ -170,6 +170,7 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
         binding.runtime_id(),
         host(&executable),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(&executable),
         UnixMillis::new(1),
         AvailabilitySnapshot::unknown(),

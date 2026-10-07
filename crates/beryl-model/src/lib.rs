@@ -87,8 +87,8 @@ pub use revision::{
     SessionRevision, ThreadRevision,
 };
 pub use runtime::{
-    AdmittedHostPath, ExecutionBinding, PathFlavor, RuntimeMode, RuntimeNativePath, ValueError,
-    WslDistributionName,
+    AdmittedHostPath, ExecutionBinding, PathFlavor, RuntimeLaunchForm, RuntimeMode,
+    RuntimeNativePath, ValueError, WslDistributionName,
 };
 pub use syndic::{
     CasConversationToolProfile, CasConversationToolProfileVersion, CasGenerationError,

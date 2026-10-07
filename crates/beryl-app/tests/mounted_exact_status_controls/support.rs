@@ -89,6 +89,7 @@ pub fn prepare_shell(
         execution.runtime_id(),
         host(r"C:\runtime\codex.exe"),
         RuntimeMode::host(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(r"C:\runtime\codex.exe"),
         UnixMillis::new(1),
         AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2)).unwrap(),

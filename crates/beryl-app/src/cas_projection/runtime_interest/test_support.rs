@@ -52,6 +52,7 @@ impl RuntimeInterestOwner {
             AdmittedHostPath::from_admitted(PathFlavor::Windows, &host_executable)
                 .expect("fixture executable path"),
             binding.root_path().mode().clone(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
             native(&native_executable),
             binding.root_path().clone(),
             AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\test-tokens")

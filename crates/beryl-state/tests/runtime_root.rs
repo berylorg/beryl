@@ -17,6 +17,128 @@ use tempfile::tempdir;
 use support::{contributor_source, create_host_runtime, execute, host_runtime, open, wsl_runtime};
 
 #[test]
+fn both_launch_forms_roundtrip_reopen_and_share_canonical_executable_uniqueness() {
+    use beryl_model::RuntimeLaunchForm;
+
+    let directory = tempdir().unwrap();
+    let (store, state) = open(directory.path());
+    let forms = [
+        RuntimeLaunchForm::StandaloneAppServer,
+        RuntimeLaunchForm::CodexCli,
+    ];
+    let mut expected = Vec::new();
+    for (index, (mode, launch_form)) in [RuntimeMode::Host, RuntimeMode::wsl("Ubuntu").unwrap()]
+        .into_iter()
+        .flat_map(|mode| forms.into_iter().map(move |form| (mode.clone(), form)))
+        .enumerate()
+    {
+        let id = (index + 1) as u8;
+        let host_executable = format!(r"C:\selected\runtime-{id}.exe");
+        let (flavor, native_executable, native_root) = match &mode {
+            RuntimeMode::Host => (
+                PathFlavor::Windows,
+                host_executable.clone(),
+                format!(r"C:\root-{id}"),
+            ),
+            RuntimeMode::Wsl(_) => (
+                PathFlavor::Posix,
+                format!("/bin/runtime-{id}"),
+                format!("/root-{id}"),
+            ),
+        };
+        let runtime_id = RuntimeId::from_bytes([id; 16]);
+        let canonical =
+            AdmittedHostPath::from_admitted(PathFlavor::Windows, &host_executable).unwrap();
+        let native =
+            RuntimeNativePath::from_admitted(mode.clone(), flavor, &native_executable).unwrap();
+        let registration = RuntimeRegistration::new(
+            runtime_id,
+            canonical.clone(),
+            mode.clone(),
+            launch_form,
+            native.clone(),
+            UnixMillis::new(1),
+            AvailabilitySnapshot::unknown(),
+        )
+        .unwrap();
+        assert_eq!(registration.launch_form(), launch_form);
+        let root = RootRegistration::new(
+            RootId::from_bytes([id; 16]),
+            RuntimeNativePath::from_admitted(mode.clone(), flavor, native_root).unwrap(),
+            AdmittedHostPath::from_admitted(PathFlavor::Windows, format!(r"C:\root-{id}")).unwrap(),
+            UnixMillis::new(1),
+            AvailabilitySnapshot::unknown(),
+        );
+        assert!(matches!(
+            execute(
+                &store,
+                state.runtime_roots().create_runtime_with_home_root(
+                    state.runtime_roots().revision(&store).unwrap(),
+                    CreateRuntimeWithHomeRoot::new(registration, root.clone()).unwrap()
+                )
+            ),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        let record = state
+            .runtime_roots()
+            .runtime(&store, runtime_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.launch_form(), launch_form);
+        expected.push(record);
+        let other_form = match launch_form {
+            RuntimeLaunchForm::StandaloneAppServer => RuntimeLaunchForm::CodexCli,
+            RuntimeLaunchForm::CodexCli => RuntimeLaunchForm::StandaloneAppServer,
+        };
+        let duplicate = RuntimeRegistration::new(
+            RuntimeId::from_bytes([id + 10; 16]),
+            canonical.clone(),
+            mode,
+            other_form,
+            native,
+            UnixMillis::new(1),
+            AvailabilitySnapshot::unknown(),
+        )
+        .unwrap();
+        assert!(matches!(
+            execute(
+                &store,
+                state.runtime_roots().create_runtime_with_home_root(
+                    state.runtime_roots().revision(&store).unwrap(),
+                    CreateRuntimeWithHomeRoot::new(duplicate, root).unwrap()
+                )
+            ),
+            CommandOutcome::NotCommitted { .. }
+        ));
+        assert_eq!(
+            state
+                .runtime_roots()
+                .runtime_by_executable(&store, &canonical)
+                .unwrap()
+                .unwrap()
+                .launch_form(),
+            launch_form
+        );
+    }
+    store.close().unwrap();
+    let (reopened, state) = open(directory.path());
+    for record in expected {
+        assert_eq!(
+            state
+                .runtime_roots()
+                .runtime(&reopened, record.runtime_id())
+                .unwrap()
+                .unwrap(),
+            record
+        );
+    }
+    reopened.close().unwrap();
+}
+
+#[test]
 fn runtime_and_non_removable_home_root_publish_atomically_and_reopen() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
@@ -274,6 +396,7 @@ fn host_and_wsl_paths_cannot_cross_runtime_boundaries() {
         RuntimeId::from_bytes([1; 16]),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\Codex\codex.exe").unwrap(),
         host_mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         RuntimeNativePath::from_admitted(host_mode, PathFlavor::Windows, r"C:\Codex\codex.exe")
             .unwrap(),
         UnixMillis::new(1),

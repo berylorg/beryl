@@ -45,6 +45,8 @@ bindings; diagnostic commands do not gain authority to bypass ordinary lifecycle
 
 ## Documentation Set
 
+- [Runtime and root admission](design-runtime-root-admission.md) is normative for selected-path
+  validation, atomic onboarding, outcome custody and capability retirement before shell mounting.
 - [Shell and lifecycle](design-shell-lifecycle.md) is normative for the process service graph,
   window controllers, startup and activation inputs, typed home integration, and the app-owned
   contribution to same-home replacement.
@@ -143,7 +145,7 @@ Modifiers:
 
 - `external-side-effects/v2`
 
-This rigor declaration governs this entry point and all six normative supplements. Supported-
+This rigor declaration governs this entry point and all linked normative supplements. Supported-
 envelope public contracts, exact external-effect custody, cancellation and replacement fences,
 bounded retained state, and explicit failure outcomes require concrete verification and semantic
 review; semantic loss is blocking.

@@ -18,7 +18,24 @@ mod paused_handoff;
 
 fn main() {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
-    assert_eq!(arguments.first().map(String::as_str), Some("app-server"));
+    let launch_form = match arguments.first().map(String::as_str) {
+        Some("app-server") => "CodexCli",
+        Some("--strict-config") => "StandaloneAppServer",
+        other => panic!("unexpected launch form arguments: {other:?}"),
+    };
+    let subcommand_count = arguments
+        .iter()
+        .filter(|argument| argument.as_str() == "app-server")
+        .count();
+    assert_eq!(subcommand_count, usize::from(launch_form == "CodexCli"));
+    fs::write(
+        "runtime-launch-form.json",
+        serde_json::to_vec(
+            &json!({ "launch_form": launch_form, "app_server_subcommands": subcommand_count }),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     assert!(
         arguments
             .iter()

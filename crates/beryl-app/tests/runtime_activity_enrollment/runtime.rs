@@ -37,6 +37,7 @@ fn acquire(f: &Fixture, owner: &RuntimeInterestTestHarness) -> Arc<RuntimeIntere
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\activity-test\codex.exe")
             .unwrap(),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(r"C:\activity-test\codex.exe"),
         binding.root_path().clone(),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\activity-test\tokens").unwrap(),

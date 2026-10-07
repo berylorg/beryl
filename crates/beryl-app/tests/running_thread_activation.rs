@@ -96,6 +96,7 @@ impl Fixture {
                         target.runtime_id(),
                         host(r"C:\Codex\codex.exe"),
                         RuntimeMode::host(),
+                        beryl_model::RuntimeLaunchForm::CodexCli,
                         native(r"C:\Codex\codex.exe"),
                         UnixMillis::new(1),
                         AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2))

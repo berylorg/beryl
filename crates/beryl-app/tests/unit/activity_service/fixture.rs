@@ -117,6 +117,7 @@ impl Fixture {
             AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\activity-test\codex.exe")
                 .unwrap(),
             RuntimeMode::Host,
+            beryl_model::RuntimeLaunchForm::CodexCli,
             native(r"C:\activity-test\codex.exe"),
             self.binding.root_path().clone(),
             AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\activity-test\tokens")

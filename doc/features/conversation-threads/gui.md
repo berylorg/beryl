@@ -103,7 +103,7 @@ The feature configures each runtime row with its Host or WSL environment label a
 
 These controls create or select runtimes and roots only. They do not expose thread metadata manipulation. The thread-root picker owns their vertical layout, bounded runtime viewport, focus preservation, and scrolling mechanics.
 
-`Add runtime` maps to the platform-native file-open dialog for selecting a Codex CLI executable. `Add root` maps to the platform-native directory dialog for the exact runtime row. These are OS-owned dialogs rather than nested Beryl forms or flyouts. The feature maps the pending and failure states defined in `design.md` to the invoking command and established per-window error alert.
+`Add runtime` presents the two executable-form choices defined in `design.md`, then maps the chosen form to the platform-native file-open dialog for selecting a Codex App Server or Codex CLI executable. `Add root` maps to the platform-native directory dialog for the exact runtime row. These are OS-owned dialogs rather than nested Beryl forms or flyouts. The feature maps the pending and failure states defined in `design.md` to the invoking command and established per-window error alert.
 
 The feature maps search results for the current collection to picker rows and maps the completed no-match result defined in `design.md` to the picker's empty state.
 

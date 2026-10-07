@@ -224,6 +224,7 @@ impl Fixture {
             runtime_id,
             AdmittedHostPath::from_admitted(PathFlavor::Windows, &executable).unwrap(),
             RuntimeMode::Host,
+            beryl_model::RuntimeLaunchForm::CodexCli,
             native(&executable),
             root_path.clone(),
             AdmittedHostPath::from_admitted(PathFlavor::Windows, &tokens).unwrap(),

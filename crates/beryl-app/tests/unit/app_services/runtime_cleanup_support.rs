@@ -21,6 +21,7 @@ pub(super) fn failed_runtime(
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\runtime-cleanup\codex.exe")
             .unwrap(),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(r"C:\runtime-cleanup\codex.exe"),
         directory.clone(),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),

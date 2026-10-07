@@ -6,6 +6,77 @@ use beryl_model::{AdmittedHostPath, PathFlavor, RuntimeId, RuntimeMode, RuntimeN
 
 const TOKEN_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+#[test]
+fn both_launch_forms_supply_exact_authenticated_server_arguments_in_host_and_wsl() {
+    use beryl_model::RuntimeLaunchForm;
+
+    for mode in [RuntimeMode::Host, RuntimeMode::wsl("Ubuntu").unwrap()] {
+        for launch_form in [
+            RuntimeLaunchForm::StandaloneAppServer,
+            RuntimeLaunchForm::CodexCli,
+        ] {
+            let (canonical, executable, root, tokens, flavor) = match &mode {
+                RuntimeMode::Host => (
+                    r"C:\selected\anything.exe",
+                    r"C:\selected\anything.exe",
+                    r"C:\root",
+                    r"C:\tokens",
+                    PathFlavor::Windows,
+                ),
+                RuntimeMode::Wsl(_) => (
+                    r"\\wsl.localhost\Ubuntu\bin\anything",
+                    "/bin/anything",
+                    "/root",
+                    "/tokens",
+                    PathFlavor::Posix,
+                ),
+            };
+            let spec = ManagedBackendLaunchSpec::new(
+                runtime_id(),
+                host_path(canonical),
+                mode.clone(),
+                launch_form,
+                native_path(mode.clone(), flavor, executable),
+                native_path(mode.clone(), flavor, root),
+                host_path(r"C:\tokens"),
+                native_path(mode.clone(), flavor, tokens),
+            )
+            .unwrap();
+            assert_eq!(spec.launch_form(), launch_form);
+            let endpoint = BackendWebSocketEndpoint::loopback(49152);
+            let token_path = format!("{tokens}/selected-token");
+            let arguments = spec.server_arguments(&endpoint, &token_path, TOKEN_DIGEST);
+            let mut expected: Vec<String> = [
+                "--strict-config",
+                "-c",
+                "features.multi_agent_v2={enabled=true,expose_spawn_agent_model_overrides=true}",
+                "--listen",
+                "ws://127.0.0.1:49152",
+                "--ws-auth",
+                "capability-token",
+                "--ws-token-file",
+                &token_path,
+                "--ws-token-sha256",
+                TOKEN_DIGEST,
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            if launch_form == RuntimeLaunchForm::CodexCli {
+                expected.insert(0, "app-server".into());
+            }
+            assert_eq!(arguments, expected);
+            if mode == RuntimeMode::Host {
+                let command = spec
+                    .command_line(&endpoint, &token_path, TOKEN_DIGEST)
+                    .unwrap();
+                assert_eq!(command.program(), canonical);
+                assert_eq!(command.args(), arguments);
+            }
+        }
+    }
+}
+
 fn runtime_id() -> RuntimeId {
     RuntimeId::from_bytes([7; 16])
 }
@@ -25,6 +96,7 @@ fn host_managed_launch_uses_exact_executable_and_atomic_native_spawn_config() {
         runtime_id(),
         host_path(r"C:\Codex\codex.exe"),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(mode.clone(), PathFlavor::Windows, r"C:\Codex\codex.exe"),
         native_path(mode.clone(), PathFlavor::Windows, r"C:\Work\beryl"),
         host_path(r"C:\Beryl\tokens"),
@@ -86,6 +158,7 @@ fn host_launch_rejects_disagreeing_executable_identities() {
         runtime_id(),
         host_path(r"C:\Codex\selected.exe"),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(mode.clone(), PathFlavor::Windows, r"C:\Codex\other.exe"),
         native_path(mode.clone(), PathFlavor::Windows, r"C:\Work\beryl"),
         host_path(r"C:\Beryl\tokens"),
@@ -106,6 +179,7 @@ fn wsl_managed_launch_uses_exact_distro_broker_and_immutable_artifact() {
         runtime_id(),
         host_path(r"\\wsl.localhost\Ubuntu-24.04\home\operator\bin\codex"),
         mode.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(mode.clone(), PathFlavor::Posix, "/home/operator/bin/codex"),
         native_path(mode.clone(), PathFlavor::Posix, "/work/beryl"),
         host_path(r"\\wsl.localhost\Ubuntu-24.04\tmp\beryl-token-files"),
@@ -160,6 +234,7 @@ fn launch_spec_rejects_cross_runtime_paths() {
         runtime_id(),
         host_path(r"C:\Codex\codex.exe"),
         host.clone(),
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native_path(wsl, PathFlavor::Posix, "/usr/bin/codex"),
         native_path(host.clone(), PathFlavor::Windows, r"C:\Work\beryl"),
         host_path(r"C:\Beryl\tokens"),
@@ -209,9 +284,14 @@ mod managed_launch_lifecycle {
 
     #[test]
     fn production_launch_redacts_token_cleans_material_and_exposes_identity() {
+        production_launch_identity(beryl_model::RuntimeLaunchForm::CodexCli);
+        production_launch_identity(beryl_model::RuntimeLaunchForm::StandaloneAppServer);
+    }
+
+    fn production_launch_identity(launch_form: beryl_model::RuntimeLaunchForm) {
         let token_directory =
             tempfile::tempdir().expect("task token directory should be creatable");
-        let launch = host_launch_spec(token_directory.path());
+        let launch = host_launch_spec(token_directory.path(), launch_form);
         let expected_runtime = launch.runtime_id();
         let expected_executable = launch.canonical_executable().clone();
         let mut server = ManagedBackendServer::launch(launch)
@@ -236,6 +316,7 @@ mod managed_launch_lifecycle {
             .expect("only a production managed server mints a production connector");
         assert_eq!(identity.runtime_id(), expected_runtime);
         assert_eq!(identity.canonical_executable(), &expected_executable);
+        assert_eq!(identity.launch_form(), launch_form);
         assert!(identity.process_generation().get() > 0);
 
         server
@@ -264,8 +345,11 @@ mod managed_launch_lifecycle {
     fn shutdown_cleans_token_before_reporting_stderr_join_failure() {
         let token_directory =
             tempfile::tempdir().expect("task token directory should be creatable");
-        let mut server = ManagedBackendServer::launch(host_launch_spec(token_directory.path()))
-            .expect("the exact Host test executable should form a managed child boundary");
+        let mut server = ManagedBackendServer::launch(host_launch_spec(
+            token_directory.path(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
+        ))
+        .expect("the exact Host test executable should form a managed child boundary");
         let token_file = single_token_file(token_directory.path());
         server.fail_next_stderr_join_for_lifecycle_test();
 
@@ -315,7 +399,10 @@ mod managed_launch_lifecycle {
             .expect("test endpoint should observe no release-admission request");
     }
 
-    fn host_launch_spec(token_directory: &Path) -> ManagedBackendLaunchSpec {
+    fn host_launch_spec(
+        token_directory: &Path,
+        launch_form: beryl_model::RuntimeLaunchForm,
+    ) -> ManagedBackendLaunchSpec {
         let executable = powershell_executable();
         let executable = executable
             .to_str()
@@ -332,6 +419,7 @@ mod managed_launch_lifecycle {
             RuntimeId::from_bytes([9; 16]),
             admitted_host_path(executable),
             mode.clone(),
+            launch_form,
             admitted_native_path(mode.clone(), executable),
             admitted_native_path(mode.clone(), &working_directory),
             admitted_host_path(token_directory),

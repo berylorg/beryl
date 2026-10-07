@@ -1,6 +1,6 @@
 # Goals
 
-Own Beryl's bounded, authenticated integration boundary with one pinned `codex app-server` release.
+Own Beryl's bounded, authenticated integration boundary with one pinned Codex App Server release.
 
 ## Non-goals
 
@@ -39,7 +39,7 @@ These five supplements are part of this package design. Each is authoritative on
 
 - The crate does not depend on `gpui`; shared Beryl identity and presentation values belong in `beryl-model`.
 - `bounded-json` supplies strict incremental recognition. This crate supplies fixed buffers and `beryl-stream` handoff and owns every CAS envelope, schema, route, correlation, and typed observation decision. It does not add another streamed-provider JSON recognizer; compact, statically bounded control decoding is not a provider fallback.
-- The pinned `codex-cli 0.146.0` generated schema and release source are the compatibility authority. Runtime traffic, diagnostics, response-shape tolerance, and probes never broaden it.
+- The pinned Codex App Server 0.146.0 generated schema and release source are the compatibility authority. The full Codex TUI is not a compatibility requirement. Runtime traffic, diagnostics, response-shape tolerance, and probes never broaden it.
 
 ## Cross-Cutting Guarantees
 

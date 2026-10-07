@@ -683,9 +683,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 ## Runtime And Root Registry
 
-- A runtime record has a stable Beryl id, one canonical absolute Codex CLI executable path, its derived Host or exact WSL-distribution mode, its exact runtime-native executable path, bounded availability facts, and a revision.
+- A runtime record has a stable Beryl id, one canonical absolute Codex App Server launch executable path, its derived Host or exact WSL-distribution mode, its exact runtime-native executable path, an explicit standalone-server or CLI launch form, bounded availability facts, and a revision. The record encoding requires a valid closed launch-form tag; omitted or unknown tags never silently choose a launch form.
 - Runtime and root ids are allocated by the admitting orchestration boundary before the short storage command begins. `beryl-state` validates and persists those already admitted identities; it does not probe filesystems, launch CAS, read a clock, or generate ids while holding writer admission.
-- Canonical executable identity is unique within one Beryl home. Selecting an already registered executable resolves to the existing runtime record rather than creating a duplicate.
+- Canonical executable identity is unique within one Beryl home. Selecting an already registered executable resolves to the existing runtime record and its retained launch form rather than creating a duplicate.
 - A configured-root record belongs to one runtime and stores its canonical runtime-native directory path, user-facing path, availability facts, non-removable flag, and revision.
 - Root admission requires the selected directory to resolve inside the owning runtime's derived Host or WSL environment; cross-environment paths are rejected rather than silently creating or selecting another runtime.
 - Runtime creation and creation of its non-removable user-home root are one revision-checked durable command. Neither record becomes visible alone.

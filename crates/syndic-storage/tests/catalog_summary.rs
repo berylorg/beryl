@@ -102,6 +102,7 @@ impl Fixture {
             runtime,
             admitted_host_path(r"C:\\Codex\\codex.exe"),
             mode.clone(),
+            beryl_model::RuntimeLaunchForm::CodexCli,
             runtime_path(mode.clone(), r"C:\\Codex\\codex.exe"),
             UnixMillis::new(1),
             AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2)).unwrap(),

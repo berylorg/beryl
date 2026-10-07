@@ -1,6 +1,12 @@
 # CAS Version Gate
 
-## Initialize UserAgent Is Not A Stable CLI Version Source
+## Initialize Product Uses The Client Name And CAS Build Version
+
+Current recurrence, 2026-10-07: atomic runtime/root admission found two normative clauses requiring literal `codex-cli 0.146.0`, although the existing validator correctly expects `beryl/0.146.0`. Exact pinned CAS source confirms that the leading product combines the client originator with CAS's compiled workspace version; caller `clientInfo.version` is only a later suffix. See the [pinned source investigation](../memory/github.com/openai/codex/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/initialize-user-agent-version.md).
+
+The Operator confirmed the initialize behavior and clarified that the requirement is Codex App Server, which can be supplied separately from the full TUI. The two normative wire-token clauses now require exact `beryl/0.146.0` and explain its compiled-version origin. The pinned release and existing validator remain correct. The Operator also selected both standalone-server and CLI executable registration. Launch authority now retains an explicit form: standalone server receives server flags directly, CLI receives the `app-server` subcommand. The former unconditional subcommand cannot support the standalone binary; see [pinned invocation evidence](../memory/github.com/openai/codex/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/standalone-server-invocation.md).
+
+## Original Invalidated Assumption
 
 During the CAS 0.137 single-contract migration, Phase 1 implemented the required-version gate by parsing a `codex-cli <major.minor.patch>` version from the app-server `initialize` response userAgent.
 

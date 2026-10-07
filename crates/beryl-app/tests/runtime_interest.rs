@@ -163,6 +163,7 @@ fn demand(runtime: u8, root: u8) -> (ManagedBackendLaunchSpec, ExecutionBinding)
         runtime_id,
         AdmittedHostPath::from_admitted(PathFlavor::Windows, &executable).unwrap(),
         RuntimeMode::Host,
+        beryl_model::RuntimeLaunchForm::CodexCli,
         native(&executable),
         directory.clone(),
         AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),
