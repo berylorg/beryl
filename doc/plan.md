@@ -127,6 +127,16 @@ before successor editor preparation/publication. Finish the missing shell comman
 consumers, shared-picker eligibility/restoration/retry and bounded GPUI qualification. No native
 Operator GUI/picker/backend launch is needed for the focused qualification.
 
+Blocked on 2026-10-07: accepted cleanup settles the original unpublished editor but cannot construct
+the successor behind private recovery access. Committed onboarding leaves durable Active selection
+while the surviving shell is still threadless; empty-window recovery rejects that selection, and
+resident recovery requires an absent predecessor. See the
+[complete correction recommendation](failures/runtime-setup-first-editor-recovery.md#recommended-complete-correction).
+Resolve the explicit committed-first recovery branch and its candidate editor/host preparation
+before resuming this mount. The newer 34-file `.tmp/runtime-setup-mount-resumed-draft` is hash-verified,
+bounded to 2 MiB, uncompiled and excluded from production; accepted `0c34dfd3` source is restored.
+Both archives remain review material. No mounting acceptance or new implementation phase is implied.
+
 # Phase 735: Mount New Thread Root Confirmation (pending)
 
 Complete ordinary New Thread scope/search, pending root selection and Confirm through accepted
