@@ -43,6 +43,14 @@ pub enum WindowClaimReplacementState {
 }
 
 impl PreparedWindowClaimReplacement {
+    pub fn catalog_claim(&self) -> crate::catalog::CatalogWindowClaim {
+        crate::catalog::CatalogWindowClaim::active(
+            self.claim.thread_id(),
+            self.claim.window_id(),
+            self.claim.revision(),
+        )
+    }
+
     pub fn future_selection(&self) -> WindowClaimSelection {
         self.claim.selection()
     }

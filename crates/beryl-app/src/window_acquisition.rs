@@ -1282,7 +1282,7 @@ fn validate_execution(
     Ok(())
 }
 
-fn project_unclaimed_facts(
+pub(crate) fn project_unclaimed_facts(
     summary: &ThreadCatalogSummaryRecord,
     source: &beryl_state::RuntimeRootCatalogSource,
 ) -> Result<CatalogFacts, CatalogProjectionBuildError> {

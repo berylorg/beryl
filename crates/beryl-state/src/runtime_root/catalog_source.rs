@@ -20,7 +20,7 @@ pub struct RuntimeRootCatalogSource {
 }
 
 impl RuntimeRootCatalogSource {
-    fn new(
+    pub(super) fn new(
         runtime: RuntimeRecord,
         root: RootRecord,
     ) -> Result<Self, RuntimeRootCatalogSourceError> {

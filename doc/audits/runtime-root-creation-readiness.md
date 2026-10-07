@@ -127,7 +127,18 @@ prerequisite. See [the current blocker](../failures/runtime-root-admission.md#ex
 The unaccepted draft was archived and production source restored; this readiness record does not
 accept the draft or a new Linux-side supervisor artifact.
 
+On 2026-10-07 [native supervision qualification](native-wsl-supervision-qualification.md) accepted
+the fixed observation and managed-launch ownership prerequisite, including original consuming
+shutdown/recovery custody. Admission can now reconsider the archived storage/validation work
+against those accepted APIs. The archive itself and the separate admission boundary remain unaccepted.
+
 ## Completion Review
+
+On 2026-10-07 [atomic admission qualification](runtime-root-admission-qualification.md) accepted
+the selected-path capability and single-command first-runtime transition, including both explicit
+launch forms and original cleanup/reconciliation/publication custody. This replaces the earlier
+component-only readiness gap; native setup and ordinary confirmation mounting remain separate
+consumers with their own qualification boundaries.
 
 Independent source and planning review accepted this record and the derived admission, setup
 mounting and ordinary confirmation boundaries on 2026-10-06, with no blocking findings. Exact

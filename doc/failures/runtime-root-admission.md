@@ -1,5 +1,13 @@
 # Runtime And Root Admission
 
+## Current Disposition
+
+Native supervision, explicit standalone-server/CLI launch forms and atomic runtime/root admission
+are accepted on 2026-10-07. See [admission qualification](../audits/runtime-root-admission-qualification.md).
+The historical blockers below do not authorize restoring obsolete supervision or retirement
+adapters. The 556,231-byte temporary draft is superseded by the accepted source and reclaimed;
+its size and earlier inventory evidence remain recorded here. Visible setup mounting is separate.
+
 ## WSL Probe Ownership Readiness
 
 On 2026-10-06, phase 733 exposed a prerequisite omitted from the
@@ -27,10 +35,10 @@ path/environment admission and defining fixed inputs, bounded output, cancellati
 joined cleanup custody. Resume implementation under that corrected authority; the helper and
 atomic admission still require their own behavioral qualification and independent review.
 
-The resumed unaccepted draft is retained locally at `.tmp/runtime-root-admission-resumed-draft`
+The resumed unaccepted draft was retained locally at `.tmp/runtime-root-admission-resumed-draft`
 (43 source/manifest files plus patch, path manifests, SHA-256 inventory and resumption note; under
-2 MiB). Root owns this exact scope until readiness is resolved and the draft is reconsidered or
-discarded. It is excluded from production source and version control. The superseded seven-file
+2 MiB). Root owned this exact scope until readiness was resolved and the draft reconsidered.
+It was excluded from production source and version control. The superseded seven-file
 archive was reclaimed after the complete replacement archive was verified.
 
 Independent source/authority review confirmed the gap and accepted this blocker record with no
@@ -120,8 +128,11 @@ also rejects reconstructing the effective account from registry UID plus passwd 
 default-user configuration and systemd sessions can differ. The selected retained ordinary context
 broker captures actual credentials/environment without that reconstruction; see
 [account evidence](../memory/topic/wsl-process-supervision/ordinary-context-custody.md).
-Native implementation and qualification remain required, with tooling preparation recorded in
-Phase 736. The archived atomic-admission draft remains unaccepted.
+Native implementation and qualification are accepted in
+[qualification evidence](../audits/native-wsl-supervision-qualification.md), including exact
+ordinary-account context and original consuming-close/recovery cleanup. Reconsider only the
+archived admission/storage work against these accepted APIs; its obsolete supervision and
+retirement adapters must not return. The archived atomic-admission draft remains unaccepted.
 
 ## Windows-Built Nextest Archive Paths
 
@@ -136,4 +147,5 @@ maps the exact canonical test binary into the explicitly selected WSL distributi
 integration test passed natively in Ubuntu through this route (run
 `68620697-78f9-4dc0-90ee-36df3679d536`). No Rust compiler or Cargo is required in WSL. The authorized
 standalone Linux nextest installation remains available, but is not required by this corrected
-test path. Native supervisor lifecycle and production consumer qualification remain outstanding.
+test path. The subsequent native supervisor and production-consumer qualification passed; see
+[the accepted evidence](../audits/native-wsl-supervision-qualification.md).

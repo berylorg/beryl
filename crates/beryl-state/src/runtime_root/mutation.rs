@@ -21,6 +21,14 @@ pub struct CreateRuntimeWithHomeRoot {
 }
 
 impl CreateRuntimeWithHomeRoot {
+    pub fn initial_catalog_source(&self) -> super::RuntimeRootCatalogSource {
+        super::RuntimeRootCatalogSource::new(
+            RuntimeRecord::initial(&self.runtime),
+            RootRecord::initial(self.runtime.runtime_id, &self.home_root, true),
+        )
+        .expect("runtime/home registration mode and identity were validated together")
+    }
+
     pub fn new(
         runtime: RuntimeRegistration,
         home_root: RootRegistration,
