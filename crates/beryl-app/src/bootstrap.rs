@@ -19,7 +19,13 @@ mod inputs;
 
 pub(crate) fn thread_activation_request(
     thread: beryl_model::SyndicThreadId,
-) -> Result<(crate::composer_host::ComposerHostActivationRequest, syndic_storage::DraftPieceOperationIdV1), String> {
+) -> Result<
+    (
+        crate::composer_host::ComposerHostActivationRequest,
+        syndic_storage::DraftPieceOperationIdV1,
+    ),
+    String,
+> {
     inputs::activation(thread)
 }
 
@@ -44,6 +50,14 @@ pub enum BootstrapError {
 }
 
 impl Configuration {
+    pub fn with_wsl_supervisor_artifact(
+        mut self,
+        artifact: Option<Arc<beryl_backend::WslSupervisorArtifact>>,
+    ) -> Self {
+        self.startup.services.wsl_supervisor_artifact = artifact;
+        self
+    }
+
     pub fn new(
         home: PathBuf,
         open: HomeOpener,

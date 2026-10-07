@@ -183,6 +183,7 @@ fn configure(
                     OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
                 ),
                 token_directory: RuntimeTokenDirectory::from_admitted(host(&tokens)),
+                wsl_supervisor_artifact: None,
             },
             &attention,
         )

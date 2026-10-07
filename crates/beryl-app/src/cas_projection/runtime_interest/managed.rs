@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use beryl_backend::ManagedBackendServer;
+use beryl_backend::{ManagedBackendLaunchFailure, ManagedBackendServer};
 
 use super::*;
 use crate::cas_projection::service_config::ProjectionWorkerPermitPair;
@@ -67,6 +67,7 @@ struct ManagedRuntime {
     session: Option<AdmittedProjectionSession>,
     app_resources: crate::cas_projection::service_registry::ProjectionRuntimeRetirement,
     retirement: Option<Result<(), RuntimeFailure>>,
+    admission_failure: Option<crate::cas_projection::ProjectionSessionAdmissionError>,
 }
 
 impl ManagedRuntime {
@@ -75,8 +76,12 @@ impl ManagedRuntime {
         admission: ProjectionAdmissionContext,
         workers: ProjectionWorkerPermitPair,
         timeout: Duration,
-    ) -> Result<Self, RuntimeFailure> {
-        let server = ManagedBackendServer::launch(spec).map_err(|_| RuntimeFailure::Launch)?;
+    ) -> Result<Self, RuntimeLaunchFailure> {
+        let server =
+            ManagedBackendServer::launch(spec).map_err(|failure| RuntimeLaunchFailure {
+                failure: RuntimeFailure::Launch,
+                cleanup: Some(Box::new(FailedManagedLaunch { failure })),
+            })?;
         let connector = server.client_connector();
         let identity = connector
             .launch_identity()
@@ -87,6 +92,7 @@ impl ManagedRuntime {
             server: Some(server),
             session: None,
             retirement: None,
+            admission_failure: None,
         };
         let session = match admission.admit_with_reserved_workers(
             &connector,
@@ -97,11 +103,12 @@ impl ManagedRuntime {
             workers,
         ) {
             Ok(session) => session,
-            Err(_) => {
-                return match runtime.retire() {
-                    Ok(()) => Err(RuntimeFailure::Admission),
-                    Err(failure) => Err(failure),
-                };
+            Err(error) => {
+                runtime.admission_failure = Some(error);
+                return Err(RuntimeLaunchFailure {
+                    failure: RuntimeFailure::Admission,
+                    cleanup: Some(Box::new(runtime)),
+                });
             }
         };
         runtime.session = Some(session);
@@ -145,8 +152,8 @@ impl RunningRuntime for ManagedRuntime {
     }
 
     fn retire(&mut self) -> Result<(), RuntimeFailure> {
-        if let Some(result) = self.retirement {
-            return result;
+        if self.retirement == Some(Ok(())) {
+            return Ok(());
         }
         let mut result = if self.app_resources.retire() {
             Ok(())
@@ -154,13 +161,36 @@ impl RunningRuntime for ManagedRuntime {
             Err(RuntimeFailure::AppRetirement)
         };
         drop(self.session.take());
-        if let Some(mut server) = self.server.take()
+        if let Some(server) = self.server.as_mut()
             && server.shutdown().is_err()
         {
             result = Err(RuntimeFailure::BackendDisposal);
         }
+        if result.is_ok() {
+            self.server = None;
+        }
         self.retirement = Some(result);
         result
+    }
+}
+
+struct FailedManagedLaunch {
+    failure: ManagedBackendLaunchFailure,
+}
+
+impl RunningRuntime for FailedManagedLaunch {
+    fn process_generation(&self) -> CasProcessGeneration {
+        panic!("failed launch cannot publish runtime readiness")
+    }
+
+    fn poll_health(&mut self) -> Result<(), RuntimeFailure> {
+        Err(RuntimeFailure::Launch)
+    }
+
+    fn retire(&mut self) -> Result<(), RuntimeFailure> {
+        self.failure
+            .shutdown()
+            .map_err(|_| RuntimeFailure::BackendDisposal)
     }
 }
 

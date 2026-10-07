@@ -129,6 +129,7 @@ impl ProcessServiceOwner {
                     assets: prepared.state.assets(),
                     policy: configuration.session_policy.clone(),
                     token_directory: configuration.token_directory.clone(),
+                    wsl_supervisor_artifact: configuration.wsl_supervisor_artifact.clone(),
                 },
                 prepared
                     .attention

@@ -30,6 +30,8 @@ pub(crate) enum AppServiceCloseError {
     Home,
     #[error("the home failed before ordinary shutdown completed")]
     PersistentFailure,
+    #[error("CAS close failed; its original service and error remain with the process owner")]
+    CasClosePending,
     #[error(transparent)]
     Admission(#[from] ProcessAdmissionError),
     #[error(transparent)]
@@ -206,6 +208,7 @@ impl ProcessServiceOwner {
         let graph = self
             .graph
             .as_ref()
+            .or(self.closing_graph.as_ref())
             .ok_or(AppServiceCloseError::Unavailable)?;
         if !graph.shutdown_ready {
             return Err(AppServiceCloseError::NotReady);
@@ -219,9 +222,19 @@ impl ProcessServiceOwner {
 
     fn consume_shutdown_graph(&mut self) -> Result<(), AppServiceCloseError> {
         self.attempt = InitialServiceAttemptState::Blocked;
-        let mut graph = self.graph.take().expect("ready graph");
+        let mut graph = self
+            .graph
+            .take()
+            .or_else(|| self.closing_graph.take())
+            .expect("ready or retained closing graph");
         graph.private_clipboard.retire();
-        let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();
+        let handoff = graph
+            .handoff
+            .as_mut()
+            .map_or(Ok(()), |handoff| handoff.shutdown());
+        if let Err(error) = handoff {
+            self.closing_handoff_error = Some(error);
+        }
         drop(graph.handoff.take());
         if let Some(activity) = graph.activity.take() {
             activity.retire();
@@ -233,16 +246,33 @@ impl ProcessServiceOwner {
         if let Some(mut theme) = graph.loaded_theme.take() {
             theme.retire();
         }
-        let closed = graph.cas.take().expect("graph CAS").close();
+        let close = match graph.cas.take() {
+            Some(cas) => cas.close(),
+            None => self
+                .failed_cas_close
+                .take()
+                .expect("retained graph CAS close custody")
+                .retry(),
+        };
+        let closed = match close {
+            Ok(outcome) => outcome,
+            Err(failure) => {
+                self.failed_cas_close = Some(failure);
+                self.closing_graph = Some(graph);
+                return Err(AppServiceCloseError::CasClosePending);
+            }
+        };
         graph.attention.close();
         let custody = self.require_settled_custody();
         let home = graph.home.take().expect("graph home").close();
         if let Err(error) = home {
             self.failed_close = Some(error);
         }
-        handoff?;
+        if let Some(error) = self.closing_handoff_error.take() {
+            return Err(error.into());
+        }
         custody?;
-        match closed? {
+        match closed {
             ProjectionConnectionServiceCloseOutcome::Closed => {}
             ProjectionConnectionServiceCloseOutcome::PersistentFailure(_) => {
                 return Err(AppServiceCloseError::PersistentFailure);

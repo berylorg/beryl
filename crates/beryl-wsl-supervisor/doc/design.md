@@ -19,8 +19,18 @@ static `x86_64-unknown-linux-musl` under the
 [system distribution contract](../../../doc/systems/backend-runtime/design.md#native-wsl-composition-and-distribution).
 Non-Linux invocation reports unsupported without starting work. Linux operation requires WSL2,
 x86-64, Linux 6.6 or later, root namespace construction, clone3/CLONE_PIDFD, pidfd signalling,
-waitid(P_PIDFD), private proc mounting and Unix FD passing. Unsupported primitives fail closed;
+waitid(P_PIDFD), private proc mounting, Unix FD passing, socket-peer pidfds and ptrace exec-event
+confirmation. Unsupported primitives fail closed;
 there is no numeric-ID disposal fallback.
+
+The development-only `wsl-test-runner` executable runs on Windows. Nextest supplies an exact
+Linux test binary and its arguments; the runner accepts an explicit distribution, validates and
+maps the canonical drive-backed binary path, preserves the working directory, and invokes the
+binary through `wsl.exe --exec` without a shell. It forwards output and exit status without
+compiling in WSL. An explicit `--root` test-runner option selects root only for tests of namespace
+mechanics; ordinary-context qualification still launches a separate default-account broker.
+Native tests own their private processes and cleanup; this launcher supplies
+no production supervision or cleanup proof.
 
 ## Ordinary Context Broker
 
@@ -31,12 +41,17 @@ CLI execution or filesystem observation. The broker remains alive until the supe
 is disposed, preserving the ordinary WSL user/session and interoperability context.
 
 The broker accepts one bounded initialization frame on its original stdin and creates one
-single-use abstract Unix socket named from its 256-bit launch nonce. It holds its own pidfd.
+single-use abstract Unix socket named from the SHA-256 of its 256-bit launch nonce, keeping the
+nonce out of the public socket name. It holds its own pidfd.
 The root supervisor connects rather than exposing a privileged listener. The broker accepts only
 a root peer with the matching nonce, sends its bounded context and original self pidfd using
 SCM_RIGHTS, and accepts no second connection. The context handshake accepts exactly one pidfd;
 unexpected, missing or truncated ancillary data is refused with every received FD closed. No socket
 file or context file is written.
+The broker sends context first to an authenticated root peer. Root verifies the original nonce,
+socket-peer credentials/groups and original peer pidfd against the transmitted context/capability
+before sending a nonce-bearing acknowledgement. A replacement socket cannot obtain the launch
+nonce from the root's first message or supply arbitrary workload credentials.
 Windows receives only bounded readiness/control facts; inherited environment values stay inside
 the Linux peer channel and are never diagnostics or public application values.
 
@@ -93,7 +108,9 @@ terminal release and excluded from logs; it does not transport Beryl's generated
 Events are readiness, workload-started, shutdown-pending, owned-namespace-closed,
 Linux-companions-closed and typed failure.
 A workload-started event requires positive credential/chdir/exec setup evidence; CLI stdout cannot
-forge it. Closed may carry one validated observation or workload exit status. Observation result
+forge it. The init confirms the exact child's ptrace exec event and detaches before publishing
+server startup; error-pipe EOF alone cannot prove exec after pre-exec child death. Fixed observations
+use their own positive setup confirmation. Closed may carry one validated observation or workload exit status. Observation result
 payloads remain at most 8,192 bytes under the backend transport contract. CAS stdout/stderr use
 separate drained pipes with bounded 4,096-byte diagnostic tails and truncation facts.
 

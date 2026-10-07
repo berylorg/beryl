@@ -47,10 +47,18 @@ fn recovery_app_services_remain_private_and_dispose_before_retry() {
                     config.runtime_interest.clone(),
                     owner.enrollments.clone(),
                     RuntimeSessionPreparationConfig {
+                        wsl_supervisor_artifact: None,
                         runtime_roots: state.runtime_roots(),
                         assets: state.assets(),
                         policy: config.session_policy.clone(),
-                        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
+                        token_directory:
+                            crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+                                beryl_model::AdmittedHostPath::from_admitted(
+                                    beryl_model::PathFlavor::Windows,
+                                    r"C:\tokens",
+                                )
+                                .unwrap(),
+                            ),
                     },
                     &attention,
                     &ProjectionCancellationToken::new(),

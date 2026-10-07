@@ -12,6 +12,18 @@ pub struct RuntimeInterestTestHarness {
 }
 
 impl RuntimeInterestOwner {
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn acquire_with_test_probe(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        probe: RuntimeInterestTestProbe,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        self.acquire(spec, binding, RuntimeInterestKind::RequiredWork, || {
+            Ok(Box::new(move || probe.launch()))
+        })
+    }
+
     pub(in crate::cas_projection) fn acquire_lifecycle_test_interest(
         &self,
         binding: ExecutionBinding,
@@ -166,6 +178,32 @@ impl RuntimeInterestTestHarness {
         let state = self.owner.shared.lock();
         (state.runtimes.len(), state.interest_count)
     }
+
+    pub fn failure_snapshot(&self, runtime_id: RuntimeId) -> Option<RuntimeFailureSnapshot> {
+        self.owner.failure_snapshot(runtime_id)
+    }
+
+    pub fn retry_failed(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        failure: RuntimeFailureSnapshot,
+        probe: RuntimeInterestTestProbe,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        let acquisition = crate::cas_projection::acquisition::ProjectionAcquisition::admit(
+            &self.gate.authorizer(),
+        )
+        .map_err(|_| RuntimeInterestError::Closed)?;
+        self.owner.acquire_with_retry(
+            spec,
+            binding,
+            RuntimeInterestKind::RequiredWork,
+            Some(failure),
+            false,
+            &acquisition,
+            || Ok(Box::new(move || probe.launch())),
+        )
+    }
 }
 
 impl RuntimeInterest {
@@ -207,6 +245,7 @@ struct ProbeState {
     launch_allowed: bool,
     retirement_allowed: bool,
     admission_failure: Option<RuntimeFailure>,
+    failed_launch_cleanup: bool,
     retirement_failure: Option<RuntimeFailure>,
     health_failure: Option<RuntimeFailure>,
 }
@@ -222,6 +261,7 @@ impl RuntimeInterestTestProbe {
                     launch_allowed: true,
                     retirement_allowed: true,
                     admission_failure: None,
+                    failed_launch_cleanup: false,
                     retirement_failure: None,
                     health_failure: None,
                 }),
@@ -243,6 +283,19 @@ impl RuntimeInterestTestProbe {
 
     pub fn fail_admission(&self, failure: RuntimeFailure) {
         self.shared.0.lock().unwrap().admission_failure = Some(failure);
+    }
+
+    pub fn fail_launch_with_cleanup(&self, failure: RuntimeFailure) {
+        let mut state = self.shared.0.lock().unwrap();
+        state.admission_failure = Some(failure);
+        state.failed_launch_cleanup = true;
+    }
+
+    pub fn complete_retirement(&self) {
+        let mut state = self.shared.0.lock().unwrap();
+        state.retirement_failure = None;
+        state.retirement_allowed = true;
+        self.shared.1.notify_all();
     }
 
     pub fn fail_retirement(&self, failure: RuntimeFailure) {
@@ -291,7 +344,7 @@ impl RuntimeInterestTestProbe {
         state.disposed != 0
     }
 
-    fn launch(self) -> Result<Box<dyn RunningRuntime>, RuntimeFailure> {
+    fn launch(self) -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> {
         let mut state = self.shared.0.lock().unwrap();
         state.launches += 1;
         self.shared.1.notify_all();
@@ -301,10 +354,18 @@ impl RuntimeInterestTestProbe {
             .wait_timeout_while(state, Duration::from_secs(5), |state| !state.launch_allowed)
             .unwrap();
         if !state.launch_allowed {
-            return Err(RuntimeFailure::Admission);
+            return Err(RuntimeFailure::Admission.into());
         }
         if let Some(failure) = state.admission_failure {
-            return Err(failure);
+            let cleanup = state.failed_launch_cleanup;
+            drop(state);
+            if cleanup {
+                return Err(RuntimeLaunchFailure {
+                    failure,
+                    cleanup: Some(Box::new(self)),
+                });
+            }
+            return Err(failure.into());
         }
         drop(state);
         Ok(Box::new(self))

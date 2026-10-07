@@ -12,12 +12,20 @@ pub(super) fn run(
     shared: Arc<RuntimeInterestShared>,
     runtime_id: RuntimeId,
     attempt: u64,
-    launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+    launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> + Send>,
     acquisition: crate::cas_projection::acquisition::ProjectionAcquisition,
 ) -> bool {
     let mut acquisition = Some(acquisition);
+    let mut runtime = None;
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        run_inner(&shared, runtime_id, attempt, launch, &mut acquisition)
+        run_inner(
+            &shared,
+            runtime_id,
+            attempt,
+            launch,
+            &mut acquisition,
+            &mut runtime,
+        )
     }));
     let (clean, failure) = match outcome {
         Ok(result) => result,
@@ -30,6 +38,7 @@ pub(super) fn run(
         && entry.attempt == attempt
     {
         entry.cleanup_complete = clean;
+        entry.failed_runtime = runtime.take();
         if !clean {
             entry.failed_acquisition = acquisition.take();
         }
@@ -54,26 +63,27 @@ fn run_inner(
     shared: &RuntimeInterestShared,
     runtime_id: RuntimeId,
     attempt: u64,
-    launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+    launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> + Send>,
     acquisition: &mut Option<crate::cas_projection::acquisition::ProjectionAcquisition>,
+    owner: &mut Option<Box<dyn RunningRuntime>>,
 ) -> (bool, Option<RuntimeFailure>) {
     if !wanted(shared, &shared.lock(), runtime_id, attempt) {
         return (true, None);
     }
-    let mut runtime = match launch() {
-        Ok(runtime) => runtime,
+    match launch() {
+        Ok(runtime) => *owner = Some(runtime),
         Err(failure) => {
-            return (
-                !matches!(
-                    failure,
-                    RuntimeFailure::BackendDisposal
-                        | RuntimeFailure::AppRetirement
-                        | RuntimeFailure::WorkerPanicked
-                ),
-                Some(failure),
-            );
+            *owner = failure.cleanup;
+            let clean = owner
+                .as_mut()
+                .map_or(true, |runtime| runtime.retire().is_ok());
+            if clean {
+                *owner = None;
+            }
+            return (clean, Some(failure.failure));
         }
-    };
+    }
+    let runtime = owner.as_mut().expect("launched runtime custody");
     let mut failure = runtime.poll_health().err();
     if failure.is_none() {
         let period =
@@ -138,8 +148,11 @@ fn run_inner(
         shared.changed.notify_all();
     }
     match runtime.retire() {
-        Ok(()) => (true, failure),
-        Err(retirement_failure) => (false, Some(retirement_failure)),
+        Ok(()) => {
+            *owner = None;
+            (true, failure)
+        }
+        Err(retirement_failure) => (false, failure.or(Some(retirement_failure))),
     }
 }
 

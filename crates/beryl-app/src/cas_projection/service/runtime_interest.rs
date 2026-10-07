@@ -7,6 +7,19 @@ use crate::cas_projection::runtime_interest::{
 };
 
 impl ProjectionConnectionService {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn acquire_runtime_probe_for_test(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        probe: crate::cas_projection::RuntimeInterestTestProbe,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        self.runtime_interest
+            .as_ref()
+            .ok_or(RuntimeInterestError::NotConfigured)?
+            .acquire_with_test_probe(spec, binding, probe)
+    }
+
     pub(crate) fn activity_read_source(
         &self,
     ) -> Option<crate::cas_projection::RuntimeActivityReadSource> {

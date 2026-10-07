@@ -17,6 +17,8 @@ impl ProcessServiceOwner {
         if self.graph.is_some()
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
+            || self.failed_cas_close.is_some()
+            || self.closing_graph.is_some()
             || !matches!(self.attempt, InitialServiceAttemptState::Blocked)
             || !graph.process.same_process(&self.process)
             || generation == expected

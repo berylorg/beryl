@@ -186,6 +186,7 @@ pub use scheduled_ordinary::{
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
     ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
 };
+pub use service::ProjectionConnectionServiceCloseFailure;
 #[cfg(any(test, feature = "test-faults"))]
 pub use service::SubmissionExecutionWakeTestProbe;
 pub(crate) use service::initial_preparation::{CasPreparationError, PreparedCasServices};
@@ -196,8 +197,8 @@ pub(crate) use service::recovery_retirement::{CasRetirementDisposalFailure, CasR
 pub use service::{
     CasProjectionCoordinator, DiscussionResolutionOutcome, ExactStopWorker, LiveHomeCommand,
     ProcessWorkCursor, ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
-    ProcessWorkReader, ProcessWorkQueryRevision, ProcessWorkQueryRecord, ProcessWorkQueryPage,
-    ProcessWorkPageLimits, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
+    ProcessWorkPageLimits, ProcessWorkQueryPage, ProcessWorkQueryRecord, ProcessWorkQueryRevision,
+    ProcessWorkReader, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
     ScopedDiscussionResolutionOutcome, SubmissionExecutionWake,
 };

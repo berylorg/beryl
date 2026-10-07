@@ -91,6 +91,7 @@ pub use runtime_failure::{RuntimeFailureReader, SelectedRuntimeFailureObservatio
 mod runtime_preparation;
 mod scheduling;
 mod shutdown;
+pub use shutdown::ProjectionConnectionServiceCloseFailure;
 mod shutdown_connections;
 mod shutdown_settlement;
 pub(crate) use shutdown_settlement::{
@@ -145,6 +146,9 @@ pub struct ProjectionConnectionService {
     runtime_interest: Option<Arc<super::runtime_interest::RuntimeInterestOwner>>,
     graceful_shutdown: Mutex<graceful_shutdown::ShutdownCoordinator>,
     settled: bool,
+    shutdown_started: bool,
+    close_retry_error: Option<ProjectionConnectionServiceCloseError>,
+    close_auxiliary_error: Option<ProjectionConnectionServiceCloseError>,
 }
 
 /// One scoped process-shell capability for the service-owned Beryl home.
@@ -183,6 +187,8 @@ impl LiveHomeCommand<'_> {
 
 #[derive(Debug, Error)]
 pub enum ProjectionConnectionServiceCloseError {
+    #[error("previous service disposal started but did not prove complete joined closure")]
+    ShutdownIncomplete,
     #[error("one or more managed runtimes failed joined retirement")]
     RuntimeRetirement,
     #[error("one or more projection connection workers failed during shutdown")]

@@ -84,7 +84,7 @@ impl PreparationContext {
             .token_directory
             .runtime_path(runtime.mode())
             .ok_or(TargetError::Configuration)?;
-        ManagedBackendLaunchSpec::new(
+        let spec = ManagedBackendLaunchSpec::new(
             runtime.runtime_id(),
             runtime.canonical_executable().clone(),
             runtime.mode().clone(),
@@ -93,6 +93,10 @@ impl PreparationContext {
             self.config.token_directory.host().clone(),
             runtime_token_directory,
         )
-        .map_err(|_| TargetError::Configuration)
+        .map_err(|_| TargetError::Configuration)?;
+        Ok(match self.config.wsl_supervisor_artifact.as_ref() {
+            Some(artifact) => spec.with_wsl_supervisor_artifact(Arc::clone(artifact)),
+            None => spec,
+        })
     }
 }

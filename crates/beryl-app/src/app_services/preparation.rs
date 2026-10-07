@@ -102,6 +102,7 @@ impl PreparedAppServices {
                         assets: prepared.state.assets(),
                         policy: configuration.session_policy,
                         token_directory: configuration.token_directory,
+                        wsl_supervisor_artifact: configuration.wsl_supervisor_artifact,
                     },
                     &prepared.attention,
                 )?

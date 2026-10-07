@@ -13,12 +13,17 @@ Provide the Beryl executable entry point and composition root.
 ## Composition Root
 
 - This crate owns the workspace's desktop executable. The separate
-  [`beryl-wsl-supervisor`](../../beryl-wsl-supervisor/doc/design.md) supplies only the Linux
-  companion artifact; it is not another desktop entry point.
+  [`beryl-wsl-supervisor`](../../beryl-wsl-supervisor/doc/design.md) supplies the Linux companion
+  and development target runner; neither is another desktop entry point.
 - This crate supplies the immutable native companion descriptor and build-bound artifact digest
   under the [backend runtime distribution contract](../../../doc/systems/backend-runtime/design.md#native-wsl-composition-and-distribution).
   A source build without that descriptor makes WSL unavailable rather than selecting a guessed
   artifact. Companion absence does not disable Host startup.
+- The Rust build consumes `BERYL_WSL_SUPERVISOR_ARTIFACT` only as an explicit build input. It
+  validates a static non-PIE Linux x86-64 ELF executable of at most 64 MiB and embeds its digest and
+  protocol version. Runtime composition opens only the fixed sibling artifact, validates those
+  bytes and canonical drive mapping, and retains its read pin denying write/delete sharing.
+  This build input is not a runtime path override.
 - This crate wires together `beryl-app`, `beryl-backend`, `beryl-home-store`, `beryl-model`, and the
   registered Beryl and Syndic storage domains.
 - This crate owns process entry, bootstrap logging setup, and top-level startup failure propagation.

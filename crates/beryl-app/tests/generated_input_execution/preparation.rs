@@ -232,6 +232,7 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
                     ),
                 ),
                 token_directory: RuntimeTokenDirectory::from_admitted(host(&tokens)),
+                wsl_supervisor_artifact: None,
             },
             &Arc::new(ProcessLifecycleAttentionPool::new()),
         )

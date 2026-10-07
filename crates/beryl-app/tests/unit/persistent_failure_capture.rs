@@ -183,7 +183,7 @@ fn historical_failed_connections_beyond_capacity_do_not_enter_retained_capture()
     assert_eq!(service.connections.lock().unwrap().len(), 10);
     assert!(matches!(
         service.close(),
-        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+        Err(ref failure) if matches!(failure.error(), ProjectionConnectionServiceCloseError::ConnectionShutdown)
     ));
     drop(session);
     drop(live);

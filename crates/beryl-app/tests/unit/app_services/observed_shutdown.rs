@@ -186,6 +186,69 @@ fn ready(owner: &mut ProcessServiceOwner) {
 }
 
 #[test]
+fn consuming_shutdown_retains_original_runtime_cleanup_and_home_until_retry() {
+    let (directory, mut owner) = running();
+    let home = owner.graph().unwrap().home().service_reference();
+    let (probe, interest) = super::runtime_cleanup_support::failed_runtime(&owner);
+    owner.begin_shutdown().unwrap();
+    ready(&mut owner);
+    assert!(matches!(
+        owner.finish_shutdown(),
+        Err(AppServiceFinalizationError::Consumed(
+            AppServiceCloseError::CasClosePending
+        ))
+    ));
+    assert!(owner.graph().is_none());
+    assert!(owner.closing_graph.is_some());
+    assert!(owner.failed_cas_close.is_some());
+    assert!(!owner.initial_attempt_is_settled());
+    assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    assert!(home.home_revision().is_ok());
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT
+        ))
+        .is_err()
+    );
+    let first_retirements = probe.counts().1;
+    assert!(first_retirements >= 2);
+    assert!(matches!(
+        owner.finish_shutdown(),
+        Err(AppServiceFinalizationError::Consumed(
+            AppServiceCloseError::CasClosePending
+        ))
+    ));
+    assert_eq!(probe.counts().0, 1);
+    assert_eq!(probe.counts().1, first_retirements + 1);
+    probe.complete_retirement();
+    owner.finish_shutdown().unwrap();
+    assert!(owner.closing_graph.is_none());
+    assert!(owner.failed_cas_close.is_none());
+    assert!(owner.initial_attempt_is_settled());
+    assert_eq!(probe.counts().0, 1);
+    assert_eq!(probe.counts().1, first_retirements + 2);
+    assert!(home.home_revision().is_err());
+    drop(interest);
+    let (candidate, state, syndic) = super::reopening::candidate_at(&directory);
+    owner
+        .open_initial(
+            candidate,
+            state,
+            syndic,
+            configuration(),
+            SyndicTimestamp::from_unix_millis(2),
+            CommandCancellation::new(),
+        )
+        .unwrap();
+    assert!(owner.graph().is_some());
+    owner.process.execution_permit().commit(|| ()).unwrap();
+    assert_eq!(probe.counts().0, 1);
+    close(&mut owner);
+    assert_reopens(&directory);
+}
+
+#[test]
 fn observed_shutdown_retires_restore_authority_and_duplicate_requests_preserve_readiness() {
     let (directory, mut owner) = running();
     let restore = owner.graph().unwrap().restored_window_attempt().unwrap();

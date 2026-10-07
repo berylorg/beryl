@@ -508,6 +508,45 @@ fn spawn_host_command(mut command: Command) -> LifecycleTestResult<TestSupervise
     command.stderr(Stdio::null());
 
     let child = command.spawn()?;
-    let process = SupervisedBackendProcess::new(child, "powershell.exe", true, None)?;
+    let mut process = SupervisedBackendProcess::new(child, "powershell.exe");
+    process.configure_host_tree()?;
     Ok(TestSupervisedBackendProcess { process })
+}
+#[derive(Debug, Default)]
+pub struct WslControlProgressForLifecycleTest {
+    progress: crate::wsl_supervision::progress::ControlProgress,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WslOwnedResourceCustodyForLifecycleTest {
+    pub pending_launcher_joins: usize,
+    pub retained_control_readers: usize,
+    pub retained_diagnostic_readers: usize,
+    pub retained_control_writers: usize,
+}
+
+impl WslControlProgressForLifecycleTest {
+    pub fn retire(
+        &mut self,
+        request: Result<(), crate::ManagedBackendError>,
+        receive: impl FnMut() -> Result<beryl_wsl_supervisor::Frame, crate::ManagedBackendError>,
+    ) -> Result<(), crate::ManagedBackendError> {
+        self.progress.retire(request, receive)
+    }
+
+    pub fn accept(
+        &mut self,
+        frame: beryl_wsl_supervisor::Frame,
+    ) -> Result<(), crate::ManagedBackendError> {
+        self.progress.accept(frame)
+    }
+    pub fn workload_started(&self) -> bool {
+        self.progress.workload_started
+    }
+    pub fn namespace_closed(&self) -> bool {
+        self.progress.namespace_closed.is_some()
+    }
+    pub fn companions_closed(&self) -> bool {
+        self.progress.companions_closed
+    }
 }

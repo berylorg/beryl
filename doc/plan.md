@@ -89,55 +89,17 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 732: Establish Runtime And Root Creation Mounting Readiness (finished)
+# Phase 736: Implement And Qualify Native WSL Supervision (finished)
 
-Accepted source-backed mapping of the missing main-shell runtime/root consumers, available native
-picker and managed admission APIs, and the complete first-runtime atomicity prerequisite.
-Independent factual/planning review passed; no production or native GUI qualification is claimed.
-See [readiness evidence](audits/runtime-root-creation-readiness.md). Admission, setup mounting and
-ordinary New Thread confirmation remain the separate boundaries below.
+Accepted the static companion, authenticated ordinary-account context, original namespace/pidfd
+closure, managed WSL launch and fixed observations, immutable desktop artifact pairing, and
+original disposal custody through application shutdown/recovery. Locked Windows/Linux checks and
+native qualification passed; independent review accepted the frozen implementation. Preserved
+Windows interoperability and excluded service-created work survival. See
+[qualification evidence](audits/native-wsl-supervision-qualification.md). CAS release admission
+and atomic runtime/root registration remain the boundary below.
 
-# Phase 736: Implement And Qualify Native WSL Supervision (wip)
-
-This prerequisite is necessary before atomic admission: selected-path validation and managed CAS
-launch cannot publish or retire safely until their exact Linux owners have qualified joined disposal.
-Implement the selected [system boundary](systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof),
-[companion artifact and codec](../crates/beryl-wsl-supervisor/doc/design.md) and
-[backend orchestration](../crates/beryl-backend/doc/design-wsl-supervision.md). The Operator approved
-root-only supervision mechanics with the normal CAS account, namespace-owned cleanup and preserved
-interoperability; outside service-created work may outlive runtime retirement.
-
-Add the focused companion package and shared closed codec, construct the ordinary retained context
-broker and root namespace owner, replace numeric-group disposal in existing managed WSL launch,
-and supply fixed filesystem observations through the same ownership boundary. Wire the immutable
-artifact descriptor and build-bound digest from executable composition. Preserve complete original
-process/authentication/reader failure custody through the existing production disposal consumers.
-The acceptance boundary is usable managed WSL launch/observation and joined owned disposal, not a
-standalone callable helper or simulated closure. Atomic registry/onboarding remains Phase 733.
-
-Verify malformed/stale control, bounds, partial startup, credential/chdir/exec failure, ordinary and
-abnormal exit, detached/double-forked/nested Linux descendants, exact account/groups/environment
-and session lifetime, broker/supervisor/init/channel death, deadline expiry, retry on the original
-owner, joined readers/launchers/tokens and an unrelated surviving process. Qualify interoperability
-without waiting for or killing excluded service-created work. Require focused locked Cargo checks,
-native Linux nextest evidence and independent privilege/lifecycle/integration review. Follow locked
-metadata and focused-check gates before refreshing the Cargo analyzer model. No native Beryl GUI
-or Operator clipboard access.
-
-Active milestone: establish the bundled static artifact and native qualification inputs for the
-existing backend managed-launch consumer. Build the Linux target with the existing Windows Rust
-toolchain and its bundled LLVM linker, archive target tests with nextest, and run target-only tests
-through a native Linux nextest binary in the exact WSL distribution. Use canonical workspace cwd,
-one heavy Cargo command, bounded evidence and a private native test scope; no runtime installation.
-
-Tooling blocker on 2026-10-07: the installed Windows Rust toolchain has only its MSVC standard
-library target, and Ubuntu reports no native cargo-nextest. The concrete prerequisite is the
-`x86_64-unknown-linux-musl` Rust target on Windows and native Linux cargo-nextest 0.9.129 in Ubuntu.
-No absent compiler/runner was invoked or software installed. Operator installation is required
-under AGENTS.md. Do not start manifest/source reconstruction before this native qualification path
-is available. Architecture review and tooling evidence do not accept implementation behavior.
-
-# Phase 733: Implement Atomic Runtime And Root Admission (pending)
+# Phase 733: Implement Atomic Runtime And Root Admission (wip)
 
 Implement the app-owned selected-path admission capability for the future New Thread controller,
 derived from [runtime/root authority](features/conversation-threads/design.md#runtime-and-root-configuration),
@@ -152,43 +114,23 @@ cleanup custody through cancellation, ambiguous outcomes and retirement. Verify 
 filesystem/backend seams, duplicate/stale/foreign refusals, commit/noncommit/Unavailable and complete
 closure/disposal; require focused checks and independent consequential review. No native GUI launch.
 
-Resume after accepted Phase 736: establish the selected-path service and the single-command first-runtime
-transition for the existing threadless window. The future New Thread controller is its consumer;
-completion requires qualified durable outcomes and joined validation cleanup, before GUI mounting.
+Active milestone: reconsider the retained unaccepted admission draft against the accepted native
+supervision and failure-custody APIs, then establish the selected-path service and single-command
+first-runtime transition for the existing threadless window. The future New Thread controller is
+its consumer; completion requires qualified durable outcomes and joined validation cleanup before
+GUI mounting. The source-backed [mounting readiness](audits/runtime-root-creation-readiness.md)
+remains the input for those separate consumers.
 
-The Operator resolved the WSL helper ownership prerequisite on 2026-10-06: continue through the
-existing supervised `wsl.exe` path. Backend/system authority now specifies the fixed filesystem
-observation helper, with app-owned path admission. Resume the unaccepted draft under that contract;
-see [failure evidence](failures/runtime-root-admission.md). No implementation acceptance is claimed.
+The former saved numeric Linux group and interoperability decision blockers are resolved by the
+accepted native supervision boundary. Use the fixed typed filesystem observations and immutable
+artifact descriptor; preserve ordinary-account execution and joined original cleanup. The accepted
+outer service-close/recovery corrections replace the draft's unverified disposal approach.
 
-Blocked on 2026-10-06: the existing supervisor signals a saved numeric Linux process-group ID;
-after the original group exits, delayed disposal can target a reused unrelated group. A proposed
-original-leader request/ack protocol avoids that signal hazard, but leader exit and shell
-`kill -0` do not establish trustworthy whole-group termination under permission failures.
-No qualifying ownership-safe mechanism has been established. Preserve the existing `wsl.exe`
-launch path; resolve the backend-owned supervision proof and its supported environment before
-resuming implementation. A narrow native Linux companion is the recommended design investigation,
-with explicit build/deployment and kernel requirements. The Operator approved this investigation
-on 2026-10-07; no production companion is built or installed.
-
-On 2026-10-07 the Operator approved the root supervisor/bootstrap with CAS retaining its normal
-account. The selected privilege and namespace proof boundary is now in
-[system authority](systems/backend-runtime/design.md#native-wsl-supervision-privileges-and-proof).
-Namespace creation probes and source-backed Linux teardown feasibility remain evidence only;
-see [supervisor investigation](memory/topic/wsl-process-supervision/namespace-supervisor-feasibility.md).
-
-The Operator subsequently selected namespace-owned cleanup with interoperability preserved and
-outside service-created work allowed to survive. The cross-OS decision blocker is resolved in
-system authority; [investigation evidence](memory/topic/wsl-process-supervision/interop-ownership-boundary.md)
-retains why namespace proof does not cover outside work. Phase 736 owns the selected artifact,
-context, protocol and native disposal prerequisite. No companion is yet built or qualified.
-
-The full unaccepted draft is retained at `.tmp/runtime-root-admission-resumed-draft` under a 2 MiB
-limit; production source and manifests are restored. Atomic/validation/owner and selected backend
-test subsets passed before later unqualified corrections. Outer consuming close/recovery custody,
-token clearing and its terminal retry consumer still require complete verification and review.
-See the [failure record](failures/runtime-root-admission.md#exact-linux-group-ownership) for precise
-evidence, retained draft ownership and prerequisites. This phase has no acceptance claim.
+The full unaccepted draft remains at `.tmp/runtime-root-admission-resumed-draft` (556,231 bytes;
+2 MiB limit). Reuse only admission/storage work consistent with current authority; do not restore
+superseded backend supervision, manifests or lifecycle adapters. Prior draft tests are evidence
+only and do not accept the reconsidered source. See
+[failure evidence](failures/runtime-root-admission.md#exact-linux-group-ownership).
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (pending)
 

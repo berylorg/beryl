@@ -1,16 +1,13 @@
 use std::{
     io,
-    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout},
     time::Duration,
 };
 
 use tracing::warn;
 use wait_timeout::ChildExt;
 
-use crate::{
-    ManagedBackendError,
-    command::{WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE, WslProcessGroupCleanup},
-};
+use crate::ManagedBackendError;
 
 const DROP_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -19,43 +16,25 @@ pub(crate) struct SupervisedBackendProcess {
     launch_label: String,
     child: Option<Child>,
     host_process_tree: HostProcessTree,
-    wsl_process_group: WslProcessGroup,
 }
 
 impl SupervisedBackendProcess {
-    pub(crate) fn new(
-        child: Child,
-        launch_label: impl Into<String>,
-        supervise_host_process_tree: bool,
-        wsl_process_group_cleanup: Option<WslProcessGroupCleanup>,
-    ) -> Result<Self, ManagedBackendError> {
-        let mut process = Self {
+    pub(crate) fn new(child: Child, launch_label: impl Into<String>) -> Self {
+        Self {
             launch_label: launch_label.into(),
             child: Some(child),
             host_process_tree: HostProcessTree::none(),
-            wsl_process_group: WslProcessGroup::new(wsl_process_group_cleanup),
-        };
-
-        if supervise_host_process_tree {
-            let child = process
-                .child
-                .as_ref()
-                .expect("new supervised process must own child during setup");
-            match HostProcessTree::create_for_child(child, &process.launch_label()) {
-                Ok(tree) => process.host_process_tree = tree,
-                Err(error) => {
-                    if let Some(mut child) = process.child.take() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                    return Err(error);
-                }
-            }
         }
-
-        Ok(process)
     }
 
+    pub(crate) fn configure_host_tree(&mut self) -> Result<(), ManagedBackendError> {
+        let child = self
+            .child
+            .as_ref()
+            .expect("process owns child during setup");
+        self.host_process_tree = HostProcessTree::create_for_child(child, &self.launch_label())?;
+        Ok(())
+    }
     pub(crate) fn process_id(&self) -> Option<u32> {
         self.child.as_ref().map(Child::id)
     }
@@ -128,29 +107,18 @@ impl SupervisedBackendProcess {
         kill_timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
         if self.child_already_exited(child)? {
-            return self.cleanup_runtime_boundary(kill_timeout);
+            return Ok(());
         }
 
         if self.wait_for_exit(child, grace_timeout)? {
-            return self.cleanup_runtime_boundary(kill_timeout);
+            return Ok(());
         }
-
-        let runtime_cleanup_error = match self.wsl_process_group.terminate(kill_timeout) {
-            Ok(true) => {
-                if self.wait_for_exit(child, kill_timeout)? {
-                    return Ok(());
-                }
-                None
-            }
-            Ok(false) => None,
-            Err(error) => Some(error),
-        };
 
         let direct_kill_result = match child.kill() {
             Ok(()) => Ok(()),
             Err(source) if source.kind() == io::ErrorKind::InvalidInput => {
                 if self.wait_for_exit(child, Duration::ZERO)? {
-                    return finish_runtime_cleanup(runtime_cleanup_error);
+                    return Ok(());
                 }
                 Err(self.terminate_error(source))
             }
@@ -158,17 +126,13 @@ impl SupervisedBackendProcess {
         };
 
         if direct_kill_result.is_ok() && self.wait_for_exit(child, kill_timeout)? {
-            return finish_runtime_cleanup(runtime_cleanup_error);
+            return Ok(());
         }
 
         if self.host_process_tree.terminate(&self.launch_label())?
             && self.wait_for_exit(child, kill_timeout)?
         {
-            return finish_runtime_cleanup(runtime_cleanup_error);
-        }
-
-        if let Some(error) = runtime_cleanup_error {
-            return Err(error);
+            return Ok(());
         }
 
         match direct_kill_result {
@@ -185,10 +149,6 @@ impl SupervisedBackendProcess {
             .try_wait()
             .map(|status| status.is_some())
             .map_err(|source| self.status_error(source))
-    }
-
-    fn cleanup_runtime_boundary(&self, kill_timeout: Duration) -> Result<(), ManagedBackendError> {
-        self.wsl_process_group.terminate(kill_timeout).map(|_| ())
     }
 
     fn wait_for_exit(
@@ -225,86 +185,6 @@ impl Drop for SupervisedBackendProcess {
     fn drop(&mut self) {
         if let Err(error) = self.shutdown(Duration::ZERO, DROP_KILL_TIMEOUT) {
             warn!(%error, "failed to drop supervised backend process");
-        }
-    }
-}
-
-fn finish_runtime_cleanup(
-    runtime_cleanup_error: Option<ManagedBackendError>,
-) -> Result<(), ManagedBackendError> {
-    match runtime_cleanup_error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
-}
-
-#[derive(Debug, Default)]
-struct WslProcessGroup {
-    cleanup: Option<WslProcessGroupCleanup>,
-}
-
-impl WslProcessGroup {
-    fn new(cleanup: Option<WslProcessGroupCleanup>) -> Self {
-        Self { cleanup }
-    }
-
-    fn terminate(&self, timeout: Duration) -> Result<bool, ManagedBackendError> {
-        let Some(cleanup) = &self.cleanup else {
-            return Ok(false);
-        };
-
-        let command_line = cleanup.shutdown_command_line()?;
-        let mut command = Command::new(command_line.program());
-        command.args(command_line.args());
-        command.stdin(Stdio::null());
-        command.stdout(Stdio::null());
-        command.stderr(Stdio::null());
-
-        let mut child =
-            command
-                .spawn()
-                .map_err(|source| ManagedBackendError::SpawnWslProcessGroupCleanup {
-                    distro_name: cleanup.distro_name().to_string(),
-                    source,
-                })?;
-        let status = wait_for_wsl_cleanup(&mut child, cleanup, timeout)?;
-
-        if status.success() {
-            Ok(true)
-        } else if status.code() == Some(WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE) {
-            Ok(false)
-        } else {
-            Err(ManagedBackendError::WslProcessGroupCleanupFailed {
-                distro_name: cleanup.distro_name().to_string(),
-                status,
-            })
-        }
-    }
-}
-
-fn wait_for_wsl_cleanup(
-    child: &mut Child,
-    cleanup: &WslProcessGroupCleanup,
-    timeout: Duration,
-) -> Result<ExitStatus, ManagedBackendError> {
-    match child.wait_timeout(timeout).map_err(|source| {
-        ManagedBackendError::QueryWslProcessGroupCleanupStatus {
-            distro_name: cleanup.distro_name().to_string(),
-            source,
-        }
-    })? {
-        Some(status) => Ok(status),
-        None => {
-            child.kill().map_err(|source| {
-                ManagedBackendError::TerminateWslProcessGroupCleanup {
-                    distro_name: cleanup.distro_name().to_string(),
-                    source,
-                }
-            })?;
-            Err(ManagedBackendError::WslProcessGroupCleanupTimeout {
-                distro_name: cleanup.distro_name().to_string(),
-                timeout,
-            })
         }
     }
 }

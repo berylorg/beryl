@@ -1005,15 +1005,17 @@ impl DeliveryFixture {
     pub(super) fn close_after_scheduler_failure(self, server: SteeringServer) {
         assert!(matches!(
             self.finish_close(server),
-            Err(ProjectionConnectionServiceCloseError::SchedulerShutdown)
+            Err(ref failure) if matches!(failure.error(), ProjectionConnectionServiceCloseError::SchedulerShutdown)
         ));
     }
 
     fn finish_close(
         self,
         server: SteeringServer,
-    ) -> Result<ProjectionConnectionServiceCloseOutcome, ProjectionConnectionServiceCloseError>
-    {
+    ) -> Result<
+        ProjectionConnectionServiceCloseOutcome,
+        crate::cas_projection::ProjectionConnectionServiceCloseFailure,
+    > {
         let Self {
             directory,
             process_admission: _,

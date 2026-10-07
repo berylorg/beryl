@@ -35,6 +35,7 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
             configuration.runtime_interest.clone(),
             owner.enrollments.clone(),
             RuntimeSessionPreparationConfig {
+                wsl_supervisor_artifact: None,
                 runtime_roots: state.runtime_roots(),
                 assets: state.assets(),
                 policy: configuration.session_policy.clone(),

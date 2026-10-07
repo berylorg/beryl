@@ -339,9 +339,25 @@ fn terminal_close_reports_an_unclean_ingester_receipt_after_full_detach() {
         service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
     });
 
+    let mut failure = service.close().unwrap_err();
+    for _ in 0..2 {
+        assert!(matches!(
+            failure.error(),
+            ProjectionConnectionServiceCloseError::ConnectionShutdown
+        ));
+        failure = failure
+            .retry()
+            .expect_err("failed ingester receipt cannot become positive joined closure on retry");
+    }
+    let (error, mut service_custody) = failure.into_parts();
     assert!(matches!(
-        service.close(),
-        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+        error,
+        ProjectionConnectionServiceCloseError::ConnectionShutdown
+    ));
+    assert!(!service_custody.settled);
+    assert!(matches!(
+        service_custody.close_inner(),
+        Err(ProjectionConnectionServiceCloseError::ShutdownIncomplete)
     ));
     assert!(retirement.is_retired());
     assert!(retirement.is_detached());
@@ -379,7 +395,7 @@ fn terminal_close_recovers_a_poisoned_ingester_handle_before_reporting_failure()
 
     assert!(matches!(
         service.close(),
-        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+        Err(ref failure) if matches!(failure.error(), ProjectionConnectionServiceCloseError::ConnectionShutdown)
     ));
     assert!(retirement.is_retired());
     assert!(retirement.is_detached());
@@ -448,7 +464,7 @@ fn persistent_failure_cut_preserves_detached_failed_join_and_disposes_later_conn
     }
     assert!(matches!(
         service.close(),
-        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+        Err(ref failure) if matches!(failure.error(), ProjectionConnectionServiceCloseError::ConnectionShutdown)
     ));
     assert!(later.is_detached());
     assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
@@ -475,7 +491,7 @@ fn persistent_failure_close_reports_invalid_registry_ownership_after_joining() {
         }
         assert!(matches!(
             service.close(),
-            Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+            Err(ref failure) if matches!(failure.error(), ProjectionConnectionServiceCloseError::ConnectionShutdown)
         ));
         assert!(connection.is_detached());
         assert_eq!(shutdowns.load(Ordering::SeqCst), 1);

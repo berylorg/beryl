@@ -20,6 +20,91 @@ use beryl_model::{
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[test]
+fn failed_launch_keeps_original_cleanup_through_repeated_owner_shutdown() {
+    let mut owner = harness(1, 2);
+    let launch = probe(595);
+    launch.fail_launch_with_cleanup(RuntimeFailure::Launch);
+    launch.fail_retirement(RuntimeFailure::BackendDisposal);
+    let (spec, binding) = demand(7, 7);
+    let interest = owner
+        .acquire(
+            spec.clone(),
+            binding.clone(),
+            RuntimeInterestKind::RequiredWork,
+            launch.clone(),
+        )
+        .unwrap();
+    assert_eq!(
+        interest.wait_for_change(RuntimeInterestStatus::Starting, TIMEOUT),
+        RuntimeInterestStatus::Unavailable(RuntimeFailure::Launch)
+    );
+    assert_eq!(
+        owner
+            .acquire(spec, binding, RuntimeInterestKind::RequiredWork, probe(596))
+            .unwrap_err(),
+        RuntimeInterestError::Unavailable(RuntimeFailure::Launch)
+    );
+    assert!(!owner.shutdown());
+    assert_eq!(owner.retained_counts(), (1, 1));
+    assert_eq!(launch.counts().0, 1);
+    launch.complete_retirement();
+    assert!(owner.shutdown());
+    assert_eq!(owner.retained_counts(), (0, 0));
+    assert_eq!(launch.counts().0, 1);
+    assert!(launch.counts().1 >= 2);
+    drop(interest);
+}
+
+#[test]
+fn failed_launch_retry_cannot_replace_original_owner_until_cleanup_succeeds() {
+    let mut owner = harness(1, 2);
+    let original = probe(597);
+    original.fail_launch_with_cleanup(RuntimeFailure::Launch);
+    original.fail_retirement(RuntimeFailure::BackendDisposal);
+    let successor = probe(598);
+    let (spec, binding) = demand(8, 8);
+    let interest = owner
+        .acquire(
+            spec.clone(),
+            binding.clone(),
+            RuntimeInterestKind::RequiredWork,
+            original.clone(),
+        )
+        .unwrap();
+    assert_eq!(
+        interest.wait_for_change(RuntimeInterestStatus::Starting, TIMEOUT),
+        RuntimeInterestStatus::Unavailable(RuntimeFailure::Launch)
+    );
+    let failure = owner.failure_snapshot(binding.runtime_id()).unwrap();
+    assert_eq!(
+        owner
+            .retry_failed(spec.clone(), binding.clone(), failure, successor.clone())
+            .unwrap_err(),
+        RuntimeInterestError::Retiring
+    );
+    assert_eq!(successor.counts().0, 0);
+    assert_eq!(original.counts().0, 1);
+    original.complete_retirement();
+    let deadline = Instant::now() + TIMEOUT;
+    let replacement = loop {
+        match owner.retry_failed(spec.clone(), binding.clone(), failure, successor.clone()) {
+            Ok(replacement) => break replacement,
+            Err(RuntimeInterestError::Retiring) if Instant::now() < deadline => thread::yield_now(),
+            Err(error) => panic!("same-owner cleanup did not allow replacement: {error}"),
+        }
+    };
+    assert_eq!(
+        ready(&replacement).process_generation(),
+        CasProcessGeneration::new(598).unwrap()
+    );
+    assert_eq!(original.counts().0, 1);
+    assert_eq!(successor.counts().0, 1);
+    drop(interest);
+    drop(replacement);
+    assert!(owner.shutdown());
+}
+
+#[test]
 fn session_publication_preserves_confirmed_loss_but_not_generation_retirement() {
     use beryl_app::cas_projection::RuntimeSessionAdmissionError;
     let mut owner = harness(1, 2);

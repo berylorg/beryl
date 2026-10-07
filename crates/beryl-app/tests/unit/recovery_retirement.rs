@@ -129,10 +129,23 @@ fn failed_connection_join_retains_only_terminal_disposal_custody() {
         ))
         .is_err()
     );
-    failure.close().unwrap();
+    let original_error = format!("{:?}", failure.error());
+    let terminal_failure = failure
+        .close()
+        .expect_err("failed connection join cannot prove terminal close");
+    assert!(format!("{terminal_failure:?}").contains(&original_error));
+    assert!(connection.is_detached());
+    assert!(
+        beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .is_err()
+    );
     drop(session);
     drop(connection);
     server.join();
+    drop(terminal_failure);
 }
 
 #[test]

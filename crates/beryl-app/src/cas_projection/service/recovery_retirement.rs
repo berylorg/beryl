@@ -19,12 +19,24 @@ pub(crate) enum CasRetirementFailure {
 pub(crate) struct CasRetirementDisposalFailure {
     error: CasRetirementError,
     home: Option<HomeStore>,
+    service: Option<Box<ProjectionConnectionService>>,
 }
 
-#[derive(Debug)]
 pub(crate) struct CasRetirementTerminalCloseFailure {
     _retirement: CasRetirementError,
-    _close: HomeCloseError,
+    _close: Option<HomeCloseError>,
+    _service: Option<Box<ProjectionConnectionService>>,
+    _home: Option<HomeStore>,
+}
+
+impl std::fmt::Debug for CasRetirementTerminalCloseFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CasRetirementTerminalCloseFailure")
+            .field("retirement", &self._retirement)
+            .field("close", &self._close)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -36,17 +48,53 @@ pub(crate) enum CasRetirementError {
 }
 
 impl CasRetirementDisposalFailure {
+    pub(crate) fn retry_disposal(&mut self) -> bool {
+        let Some(service) = self.service.as_mut() else {
+            return false;
+        };
+        if service.shutdown_started || service.close_retry_error.is_some() {
+            return false;
+        }
+        match service.close_inner() {
+            Ok(ProjectionConnectionServiceCloseOutcome::PersistentFailure(evidence))
+                if evidence.completion() == PersistentFailureCutCompletion::Finished =>
+            {
+                self.service = None;
+                true
+            }
+            Err(error) => {
+                if !matches!(
+                    error,
+                    ProjectionConnectionServiceCloseError::RuntimeRetirement
+                ) {
+                    service.close_retry_error = Some(error);
+                }
+                false
+            }
+            Ok(_) => false,
+        }
+    }
     pub(crate) fn error(&self) -> &CasRetirementError {
         &self.error
     }
 
     pub(crate) fn close(mut self) -> Result<(), CasRetirementTerminalCloseFailure> {
+        if self.service.is_some() && !self.retry_disposal() {
+            return Err(CasRetirementTerminalCloseFailure {
+                _retirement: self.error,
+                _close: None,
+                _service: self.service,
+                _home: self.home,
+            });
+        }
         self.home
             .take()
             .map_or(Ok(()), HomeStore::close)
             .map_err(|close| CasRetirementTerminalCloseFailure {
                 _retirement: self.error,
-                _close: close,
+                _close: Some(close),
+                _service: self.service,
+                _home: None,
             })
     }
 }
@@ -62,7 +110,11 @@ impl ProjectionConnectionService {
                 && health.generation() == Some(self.home_generation)
                 && health.state() == HomeHealthState::Failed
         });
-        if self.settled || expected != self.service_generation || !exact_failed_home {
+        if self.settled
+            || self.shutdown_started
+            || expected != self.service_generation
+            || !exact_failed_home
+        {
             return Err(CasRetirementFailure::Rejected(Box::new(self)));
         }
         if !matches!(
@@ -74,7 +126,6 @@ impl ProjectionConnectionService {
         }
         let home = self.owned_home.take();
         let outcome = self.close_inner();
-        drop(self);
         match outcome {
             Ok(ProjectionConnectionServiceCloseOutcome::PersistentFailure(evidence))
                 if evidence.completion() == PersistentFailureCutCompletion::Finished =>
@@ -88,6 +139,7 @@ impl ProjectionConnectionService {
                         Ok(_) => CasRetirementError::IncompleteCut,
                     },
                     home,
+                    service: Some(Box::new(self)),
                 },
             )),
         }

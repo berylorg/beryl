@@ -221,6 +221,9 @@ impl ProjectionConnectionService {
             runtime_interest: None,
             graceful_shutdown: Mutex::new(super::graceful_shutdown::ShutdownCoordinator::default()),
             settled: false,
+            shutdown_started: false,
+            close_retry_error: None,
+            close_auxiliary_error: None,
         };
         let construction = (|| {
             service.context_compaction = Some(

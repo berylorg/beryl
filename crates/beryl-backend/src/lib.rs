@@ -395,6 +395,7 @@ mod dynamic_tool;
 mod exact_interruption;
 mod foreground;
 mod incoming_json;
+mod launch_cleanup;
 mod managed_process;
 mod ordered_turn_stream;
 mod protocol;
@@ -407,6 +408,9 @@ mod thread_lineage;
 mod thread_metadata;
 mod turn;
 mod websocket_transport;
+mod wsl_artifact;
+mod wsl_observation;
+mod wsl_supervision;
 
 #[cfg(feature = "lifecycle-test-support")]
 #[doc(hidden)]
@@ -441,6 +445,7 @@ pub use exact_interruption::{
 };
 pub use foreground::{ForegroundSessionConfig, PreBindControlDiagnostics};
 pub use incoming_json::ForegroundIngressError;
+pub use launch_cleanup::{ManagedBackendLaunchCleanup, ManagedBackendLaunchFailure};
 pub use ordered_turn_stream::{
     ApprovalInterruption, ApprovalOperationCompletion, OrderedTurnStreamBindingError,
     OrderedTurnStreamCompletion, OrderedTurnStreamOperation, OrderedTurnStreamProgress,
@@ -504,4 +509,8 @@ pub use turn::{
     ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, TokenUsageBreakdown, TurnStartOptions,
     TurnStarted, TurnStatus, TurnSteerResponseWire, UnverifiedSteeringUserMessage,
     UserMessageEchoLifecycle,
+};
+pub use wsl_artifact::WslSupervisorArtifact;
+pub use wsl_observation::{
+    WslFilesystemObservation, WslFilesystemObservationFailure, WslFilesystemOperation,
 };

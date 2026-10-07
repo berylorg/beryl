@@ -10,6 +10,7 @@ use std::num::NonZeroUsize;
 
 fn session_config(state: &BerylState) -> RuntimeSessionPreparationConfig {
     RuntimeSessionPreparationConfig {
+        wsl_supervisor_artifact: None,
         runtime_roots: state.runtime_roots(),
         assets: state.assets(),
         policy: ScheduledOrdinaryRequestPolicy::new(
@@ -18,7 +19,13 @@ fn session_config(state: &BerylState) -> RuntimeSessionPreparationConfig {
             Duration::from_secs(1),
             OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), Duration::from_secs(1)),
         ),
-        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(beryl_model::AdmittedHostPath::from_admitted(beryl_model::PathFlavor::Windows, r"C:\tokens").unwrap()),
+        token_directory: crate::cas_projection::RuntimeTokenDirectory::from_admitted(
+            beryl_model::AdmittedHostPath::from_admitted(
+                beryl_model::PathFlavor::Windows,
+                r"C:\tokens",
+            )
+            .unwrap(),
+        ),
     }
 }
 

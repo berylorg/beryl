@@ -311,7 +311,7 @@ impl LiveHarness {
         self.session.take();
         self.server.take().unwrap().join();
         let (directory, service) = self.fixture.take().unwrap().into_service();
-        let error = match service.close() {
+        let error = match service.close().map_err(|failure| failure.into_parts().0) {
             Err(beryl_app::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(
                 error,
             )) => error,

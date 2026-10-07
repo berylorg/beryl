@@ -137,6 +137,13 @@ by the executable composition root.
 - Managed-session configuration retains one immutable admitted token-directory root. It resolves
   the runtime-native token path from the exact current runtime at launch, without a startup-only
   list of runtime identities or retained references to an earlier home generation.
+  It also retains the composition-supplied optional immutable WSL supervisor descriptor through
+  initial preparation and recovery; runtime records cannot substitute another artifact.
+- Failed launch or retirement retains the exact runtime's disposal-only owner. Explicit retry
+  settles that owner before a successor launch, and repeated shutdown cannot discard a failed
+  entry. Failed consuming service close retains the original service and partial graph privately;
+  that graph is no longer published for ordinary access. Normal close and recovery retry the same
+  cleanup custody and fence graph/home replacement until disposal is complete.
 - Candidate terminal-history convergence uses the ordinary item-freeze/finalize, item-projection,
   selected-transcript and gate-release algorithm through borrowed candidate access. Exact bounded
   metadata/page reads retain their surrounding confirmation checks, and current-domain commands

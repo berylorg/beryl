@@ -16,6 +16,8 @@ impl ProcessServiceOwner {
         if !matches!(self.attempt, InitialServiceAttemptState::Published(_))
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
+            || self.failed_cas_close.is_some()
+            || self.closing_graph.is_some()
             || self.windows.main_window_occupancy() != 0
         {
             return Err(AppServiceCloseError::NotReady);

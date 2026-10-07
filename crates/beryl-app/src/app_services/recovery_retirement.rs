@@ -164,6 +164,8 @@ impl ProcessServiceOwner {
             || !matches!(self.attempt, InitialServiceAttemptState::Published(_))
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
+            || self.failed_cas_close.is_some()
+            || self.closing_graph.is_some()
         {
             return Err(ServiceGraphRetirementError::Stale);
         }
@@ -240,6 +242,13 @@ impl ProcessServiceOwner {
             .as_mut()
             .filter(|retirement| retirement.generation == expected)
             .ok_or(ServiceGraphRetirementError::Stale)?;
+        if self
+            .failed_retirement
+            .as_mut()
+            .is_some_and(|failure| failure.retry_disposal())
+        {
+            self.failed_retirement = None;
+        }
         if retirement.graph.is_some()
             || retirement.home.is_none()
             || retirement.failure.is_some()

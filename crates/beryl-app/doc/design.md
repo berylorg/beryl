@@ -27,6 +27,18 @@ private publication candidate with its typed domains, Busy, or failure retaining
 close custody; it never publishes a partial graph. The private owners and their guarantees remain
 those in [Shell And Lifecycle](design-shell-lifecycle.md).
 
+Executable composition can attach one immutable optional native WSL supervisor descriptor through
+`Configuration::with_wsl_supervisor_artifact`. It is preserved through service preparation and
+recovery; absence makes managed WSL launch unavailable without disabling Host runtimes.
+
+Consuming projection-service close returns `ProjectionConnectionServiceCloseFailure` when
+disposal remains unsettled. That failure owns the original service and error. `retry` repeats
+supported runtime retirement on that same service before component teardown begins. Terminal
+connection, worker or home failures remain owned failures; retry cannot turn started or partial
+teardown into positive closure. A later component failure is retained alongside the original
+error and exposed as auxiliary failure custody. Transferring the parts transfers the same custody.
+Callers retain it until complete disposal and cannot publish a replacement over unresolved cleanup.
+
 The diagnostic endpoint keeps its bounded protocol and terminal channel-loss shutdown intent
 across that handoff. It reports supported lifecycle facts and explicit unavailable feature
 bindings; diagnostic commands do not gain authority to bypass ordinary lifecycle gates.

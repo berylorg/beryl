@@ -1,6 +1,7 @@
 #[cfg(target_os = "windows")]
 mod home_open;
 mod options;
+mod wsl_supervisor_artifact;
 
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
@@ -56,7 +57,8 @@ fn start(options: options::Configuration) -> Result<()> {
         options.home,
         Arc::new(home_open::open),
         options.diagnostic_target_stdio,
-    )?;
+    )?
+    .with_wsl_supervisor_artifact(wsl_supervisor_artifact::bundled());
     bootstrap::run(configuration)?;
     Ok(())
 }

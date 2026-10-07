@@ -122,3 +122,18 @@ broker captures actual credentials/environment without that reconstruction; see
 [account evidence](../memory/topic/wsl-process-supervision/ordinary-context-custody.md).
 Native implementation and qualification remain required, with tooling preparation recorded in
 Phase 736. The archived atomic-admission draft remains unaccepted.
+
+## Windows-Built Nextest Archive Paths
+
+The proposed Windows-build/native-Linux-nextest archive route was tested with nextest 0.9.129.
+Windows successfully cross-built a static musl integration-test binary. Ubuntu extracted the
+archive, but test listing attempted the original `C:\\...` executable path despite workspace
+remapping; it failed before executing any test. Cross-compilation support alone did not establish
+Windows-to-Linux archive path portability.
+
+The selected correction keeps nextest on Windows and supplies a thin Rust target runner that
+maps the exact canonical test binary into the explicitly selected WSL distribution. A bounded
+integration test passed natively in Ubuntu through this route (run
+`68620697-78f9-4dc0-90ee-36df3679d536`). No Rust compiler or Cargo is required in WSL. The authorized
+standalone Linux nextest installation remains available, but is not required by this corrected
+test path. Native supervisor lifecycle and production consumer qualification remain outstanding.

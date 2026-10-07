@@ -13,6 +13,8 @@ impl ProcessServiceOwner {
         self.graph.is_none()
             && self.failed_close.is_none()
             && self.failed_retirement.is_none()
+            && self.failed_cas_close.is_none()
+            && self.closing_graph.is_none()
             && matches!(
                 self.attempt,
                 InitialServiceAttemptState::Initial | InitialServiceAttemptState::Retired(_)
@@ -25,7 +27,12 @@ impl ProcessServiceOwner {
         &mut self,
         candidate: &HomeOpenPublication,
     ) -> Result<(), AppServiceOpenError> {
-        if self.graph.is_some() || self.failed_close.is_some() {
+        if self.graph.is_some()
+            || self.closing_graph.is_some()
+            || self.failed_close.is_some()
+            || self.failed_cas_close.is_some()
+            || self.failed_retirement.is_some()
+        {
             return Err(AppServiceOpenError::AlreadyInstalled);
         }
         if !matches!(

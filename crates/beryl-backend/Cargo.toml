@@ -8,6 +8,16 @@ version.workspace = true
 [features]
 lifecycle-test-support = []
 
+[[bin]]
+name = "wsl-owned-workload"
+path = "src/bin/wsl-owned-workload.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "native_wsl_ownership"
+path = "tests/native_wsl_ownership.rs"
+required-features = ["lifecycle-test-support"]
+
 [[test]]
 name = "managed_process_lifecycle"
 path = "tests/managed_process_lifecycle.rs"
@@ -57,12 +67,12 @@ required-features = ["lifecycle-test-support"]
 bounded-json.workspace = true
 beryl-model.workspace = true
 beryl-stream.workspace = true
+beryl-wsl-supervisor.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-shlex.workspace = true
 soketto.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -51,6 +51,8 @@ mod reopening {
 
 #[path = "app_services/observed_shutdown.rs"]
 mod observed_shutdown;
+#[path = "app_services/runtime_cleanup_support.rs"]
+mod runtime_cleanup_support;
 
 mod failed_retirement {
     include!(concat!(
@@ -119,6 +121,7 @@ fn owner(candidate: &HomeOpenPublication) -> ProcessServiceOwner {
 pub(super) fn configuration() -> AppServiceConfiguration {
     let one = NonZeroUsize::new(1).unwrap();
     AppServiceConfiguration {
+        wsl_supervisor_artifact: None,
         paste_resources: crate::main_window::MainWindowComposerPasteResources::new(1, 4096)
             .unwrap(),
         projection: ProjectionServiceConfig::try_new(

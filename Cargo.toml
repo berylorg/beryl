@@ -7,6 +7,7 @@ members = [
     "crates/beryl-model",
     "crates/beryl-state",
     "crates/beryl-stream",
+    "crates/beryl-wsl-supervisor",
     "crates/syndic-storage",
 ]
 resolver = "3"
@@ -40,6 +41,7 @@ beryl-home-store = { path = "crates/beryl-home-store" }
 beryl-model = { path = "crates/beryl-model" }
 beryl-state = { path = "crates/beryl-state" }
 beryl-stream = { path = "crates/beryl-stream" }
+beryl-wsl-supervisor = { path = "crates/beryl-wsl-supervisor" }
 syndic-storage = { path = "crates/syndic-storage" }
 clap = { version = "4.6.1", features = ["derive"] }
 fjall = { path = "../fjall-fork", version = "=3.1.6" }
@@ -53,6 +55,7 @@ gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev
 gpui_sum_tree = "0.2.2"
 image = "0.25.1"
 jsonc-parser = { version = "0.32.4", default-features = false }
+libc = "0.2.186"
 markdown = { version = "1.0.0", default-features = false }
 once_cell = "1.21.4"
 regex = "1.12.3"

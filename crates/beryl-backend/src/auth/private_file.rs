@@ -31,7 +31,22 @@ impl Drop for Descriptor {
     }
 }
 
-pub(super) fn create(path: &Path) -> io::Result<File> {
+#[derive(Debug)]
+pub(super) struct CreateFailure {
+    pub(super) source: io::Error,
+    pub(super) owned_empty_file: bool,
+}
+
+impl From<io::Error> for CreateFailure {
+    fn from(source: io::Error) -> Self {
+        Self {
+            source,
+            owned_empty_file: false,
+        }
+    }
+}
+
+pub(super) fn create(path: &Path) -> Result<File, CreateFailure> {
     let mut descriptor = Descriptor(PSECURITY_DESCRIPTOR::default());
     unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
@@ -83,10 +98,11 @@ pub(super) fn create(path: &Path) -> io::Result<File> {
     if let Err(error) = security {
         drop(file);
         return match std::fs::remove_file(path) {
-            Ok(()) => Err(error),
-            Err(cleanup) => Err(io::Error::other(format!(
-                "{error}; empty token file cleanup failed: {cleanup}"
-            ))),
+            Ok(()) => Err(error.into()),
+            Err(_) => Err(CreateFailure {
+                source: error,
+                owned_empty_file: true,
+            }),
         };
     }
     Ok(file)

@@ -1,26 +1,18 @@
-use std::path::PathBuf;
+use crate::WslSupervisorArtifact;
+use std::{path::PathBuf, sync::Arc};
 
 use beryl_model::{AdmittedHostPath, RuntimeId, RuntimeMode, RuntimeNativePath};
 use thiserror::Error;
 
 const LOOPBACK_WS_HOST: &str = "127.0.0.1";
 const WEBSOCKET_AUTH_MODE: &str = "capability-token";
-const WSL_RUNTIME_DIR_PREFIX: &str = "/tmp/beryl-codex-app-server";
-pub(crate) const WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE: i32 = 2;
-const FIELD_CODEX_ARG: &str = "codex app-server argument";
-const FIELD_WSL_INNER_COMMAND: &str = "WSL process-group inner shell command";
-const FIELD_WSL_PID_FILE_PATH: &str = "WSL process-group PID file path";
-const FIELD_WSL_RUNTIME_DIR: &str = "WSL runtime directory";
-
 pub(crate) const MULTI_AGENT_V2_OVERRIDE: &str =
     "features.multi_agent_v2={enabled=true,expose_spawn_agent_model_overrides=true}";
 
 #[derive(Debug, Error)]
-#[error("failed to quote {field} for POSIX shell command")]
+#[error("backend command is unavailable: {field}")]
 pub struct BackendCommandLineError {
     field: &'static str,
-    #[source]
-    source: shlex::QuoteError,
 }
 
 impl BackendCommandLineError {
@@ -39,11 +31,6 @@ pub enum ManagedBackendLaunchSpecError {
     WorkingDirectoryModeMismatch,
     #[error("the runtime token directory belongs to a different runtime mode")]
     TokenDirectoryModeMismatch,
-    #[error("failed to generate the private WSL process boundary")]
-    GenerateWslBoundary {
-        #[source]
-        source: getrandom::Error,
-    },
 }
 
 /// Validated exact-path inputs for one Beryl-owned CAS process.
@@ -56,55 +43,13 @@ pub struct ManagedBackendLaunchSpec {
     working_directory: RuntimeNativePath,
     host_token_directory: AdmittedHostPath,
     runtime_token_directory: RuntimeNativePath,
-    wsl_process_group_cleanup: Option<WslProcessGroupCleanup>,
+    wsl_supervisor_artifact: Option<Arc<WslSupervisorArtifact>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackendWebSocketEndpoint {
     host: String,
     port: u16,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WslProcessGroupCleanup {
-    distro_name: String,
-    runtime_directory: String,
-    pid_file_path: String,
-}
-
-impl WslProcessGroupCleanup {
-    pub(crate) fn new(distro_name: String) -> Result<Self, ManagedBackendLaunchSpecError> {
-        let runtime_directory = next_wsl_runtime_directory()?;
-        Ok(Self {
-            distro_name,
-            pid_file_path: format!("{runtime_directory}/process.pid"),
-            runtime_directory,
-        })
-    }
-
-    pub(crate) fn distro_name(&self) -> &str {
-        &self.distro_name
-    }
-
-    pub(crate) fn shutdown_command_line(
-        &self,
-    ) -> Result<BackendCommandLine, BackendCommandLineError> {
-        Ok(BackendCommandLine::new(
-            "wsl.exe",
-            vec![
-                "--distribution".to_string(),
-                self.distro_name.clone(),
-                "--exec".to_string(),
-                "/bin/bash".to_string(),
-                "-lc".to_string(),
-                wsl_process_group_shutdown_shell_command(
-                    &self.pid_file_path,
-                    &self.runtime_directory,
-                )?,
-            ],
-            None,
-        ))
-    }
 }
 
 impl ManagedBackendLaunchSpec {
@@ -131,13 +76,6 @@ impl ManagedBackendLaunchSpec {
         if runtime_token_directory.mode() != &runtime_mode {
             return Err(ManagedBackendLaunchSpecError::TokenDirectoryModeMismatch);
         }
-        let wsl_process_group_cleanup = match &runtime_mode {
-            RuntimeMode::Host => None,
-            RuntimeMode::Wsl(distribution) => Some(WslProcessGroupCleanup::new(
-                distribution.as_str().to_string(),
-            )?),
-        };
-
         Ok(Self {
             runtime_id,
             canonical_executable,
@@ -146,7 +84,7 @@ impl ManagedBackendLaunchSpec {
             working_directory,
             host_token_directory,
             runtime_token_directory,
-            wsl_process_group_cleanup,
+            wsl_supervisor_artifact: None,
         })
     }
 
@@ -201,25 +139,22 @@ impl ManagedBackendLaunchSpec {
                 Some(PathBuf::from(self.working_directory.as_str())),
             )),
             RuntimeMode::Wsl(distribution) => {
-                let cleanup = self
-                    .wsl_process_group_cleanup
-                    .as_ref()
-                    .expect("WSL launch specs own process-group cleanup");
+                let artifact =
+                    self.wsl_supervisor_artifact
+                        .as_ref()
+                        .ok_or(BackendCommandLineError {
+                            field: "WSL supervisor artifact",
+                        })?;
                 Ok(BackendCommandLine::new(
                     "wsl.exe",
                     vec![
-                        "--distribution".to_string(),
-                        distribution.as_str().to_string(),
-                        "--cd".to_string(),
-                        self.working_directory.as_str().to_string(),
-                        "--exec".to_string(),
-                        "/bin/bash".to_string(),
-                        "-lc".to_string(),
-                        managed_wsl_shell_command(
-                            self.runtime_native_executable.as_str(),
-                            &codex_args,
-                            cleanup,
-                        )?,
+                        "--distribution".into(),
+                        distribution.as_str().into(),
+                        "--cd".into(),
+                        self.working_directory.as_str().into(),
+                        "--exec".into(),
+                        artifact.linux_path().into(),
+                        "context-broker".into(),
                     ],
                     None,
                 ))
@@ -227,11 +162,24 @@ impl ManagedBackendLaunchSpec {
         }
     }
 
-    pub(crate) fn wsl_process_group_cleanup(&self) -> Option<WslProcessGroupCleanup> {
-        self.wsl_process_group_cleanup.clone()
+    pub fn with_wsl_supervisor_artifact(mut self, artifact: Arc<WslSupervisorArtifact>) -> Self {
+        self.wsl_supervisor_artifact = Some(artifact);
+        self
+    }
+
+    pub fn wsl_supervisor_artifact(&self) -> Option<Arc<WslSupervisorArtifact>> {
+        self.wsl_supervisor_artifact.clone()
+    }
+
+    pub(crate) fn server_arguments(
+        &self,
+        endpoint: &BackendWebSocketEndpoint,
+        token_path: &str,
+        digest: &str,
+    ) -> Vec<String> {
+        managed_websocket_codex_args(endpoint, token_path, digest)
     }
 }
-
 impl BackendWebSocketEndpoint {
     pub fn loopback(port: u16) -> Self {
         Self {
@@ -276,65 +224,6 @@ fn managed_websocket_codex_args(
         "--ws-token-sha256".to_string(),
         token_sha256.to_string(),
     ]
-}
-
-fn managed_wsl_shell_command(
-    runtime_native_executable: &str,
-    codex_args: &[String],
-    cleanup: &WslProcessGroupCleanup,
-) -> Result<String, BackendCommandLineError> {
-    let codex_command = codex_shell_command(runtime_native_executable, codex_args)?;
-    let pid_file_path = quote_posix_shell_field(FIELD_WSL_PID_FILE_PATH, &cleanup.pid_file_path)?;
-    let inner_command = format!(
-        "pid_file={}; printf '%s\\n' \"$$\" > \"$pid_file\" || exit 1; trap 'rm -f \"$pid_file\"' EXIT; {codex_command}; status=$?; rm -f \"$pid_file\"; exit \"$status\"",
-        pid_file_path
-    );
-    let runtime_dir = quote_posix_shell_field(FIELD_WSL_RUNTIME_DIR, &cleanup.runtime_directory)?;
-    let inner_command = quote_posix_shell_field(FIELD_WSL_INNER_COMMAND, &inner_command)?;
-
-    Ok(format!(
-        "umask 077; mkdir -m 700 {runtime_dir} || exit 1; {{ setsid /bin/bash -lc {inner_command} & child=$!; wait \"$child\"; status=$?; rmdir {runtime_dir} 2>/dev/null || true; exit \"$status\"; }}"
-    ))
-}
-
-fn codex_shell_command(
-    runtime_native_executable: &str,
-    args: &[String],
-) -> Result<String, BackendCommandLineError> {
-    let mut command = quote_posix_shell_field(FIELD_CODEX_ARG, runtime_native_executable)?;
-    for arg in args {
-        command.push(' ');
-        command.push_str(&quote_posix_shell_field(FIELD_CODEX_ARG, arg)?);
-    }
-    Ok(command)
-}
-
-fn wsl_process_group_shutdown_shell_command(
-    pid_file_path: &str,
-    runtime_directory: &str,
-) -> Result<String, BackendCommandLineError> {
-    let pid_file_path = quote_posix_shell_field(FIELD_WSL_PID_FILE_PATH, pid_file_path)?;
-    let runtime_directory = quote_posix_shell_field(FIELD_WSL_RUNTIME_DIR, runtime_directory)?;
-    Ok(format!(
-        "pid_file={}; runtime_dir={}; trap 'rm -f \"$pid_file\"; rmdir \"$runtime_dir\" 2>/dev/null || true' EXIT; for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do if [ -s \"$pid_file\" ]; then break; fi; sleep 0.05; done; pid=$(cat \"$pid_file\" 2>/dev/null) || exit {WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE}; case \"$pid\" in ''|0|*[!0-9]*) exit {WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE};; esac; kill -TERM -- -\"$pid\" 2>/dev/null || true; for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do if ! kill -0 -- -\"$pid\" 2>/dev/null; then exit 0; fi; sleep 0.05; done; kill -KILL -- -\"$pid\" 2>/dev/null || true; for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do if ! kill -0 -- -\"$pid\" 2>/dev/null; then exit 0; fi; sleep 0.05; done; exit 1",
-        pid_file_path, runtime_directory,
-    ))
-}
-
-fn quote_posix_shell_field(
-    field: &'static str,
-    value: &str,
-) -> Result<String, BackendCommandLineError> {
-    shlex::try_quote(value)
-        .map(std::borrow::Cow::into_owned)
-        .map_err(|source| BackendCommandLineError { field, source })
-}
-
-fn next_wsl_runtime_directory() -> Result<String, ManagedBackendLaunchSpecError> {
-    let mut nonce = [0_u8; 16];
-    getrandom::fill(&mut nonce)
-        .map_err(|source| ManagedBackendLaunchSpecError::GenerateWslBoundary { source })?;
-    Ok(format!("{WSL_RUNTIME_DIR_PREFIX}-{}", hex::encode(nonce)))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

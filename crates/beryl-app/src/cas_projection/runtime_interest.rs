@@ -327,6 +327,7 @@ struct RuntimeInterestState {
 }
 
 struct RuntimeEntry {
+    failed_runtime: Option<Box<dyn RunningRuntime>>,
     activity: Arc<Mutex<activity::RuntimeActivityState>>,
     failed_acquisition: Option<super::acquisition::ProjectionAcquisition>,
     spec: ManagedBackendLaunchSpec,
@@ -358,4 +359,18 @@ trait RunningRuntime: Send {
     fn process_generation(&self) -> CasProcessGeneration;
     fn poll_health(&mut self) -> Result<(), RuntimeFailure>;
     fn retire(&mut self) -> Result<(), RuntimeFailure>;
+}
+
+struct RuntimeLaunchFailure {
+    failure: RuntimeFailure,
+    cleanup: Option<Box<dyn RunningRuntime>>,
+}
+
+impl From<RuntimeFailure> for RuntimeLaunchFailure {
+    fn from(failure: RuntimeFailure) -> Self {
+        Self {
+            failure,
+            cleanup: None,
+        }
+    }
 }

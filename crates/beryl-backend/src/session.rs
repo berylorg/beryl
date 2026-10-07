@@ -90,6 +90,33 @@ pub struct ManagedBackendReleaseAdmission {
 
 #[derive(Debug, Error)]
 pub enum ManagedBackendError {
+    #[error("the bundled WSL supervisor artifact is unavailable")]
+    WslArtifactUnavailable,
+    #[error("WSL supervision protocol was unavailable or invalid")]
+    WslSupervisionUnavailable,
+    #[error("WSL supervision operation failed: {kind:?}, errno {errno:?}")]
+    WslSupervisionFailure {
+        kind: beryl_wsl_supervisor::FailureKind,
+        errno: Option<i32>,
+    },
+    #[error("WSL supervision operation exceeded its deadline")]
+    WslSupervisionTimeout,
+    #[error("WSL filesystem observation was cancelled")]
+    WslObservationCancelled,
+    #[error("invalid fixed WSL filesystem observation request or result")]
+    WslObservationInvalid,
+    #[error("failed to generate WSL supervision launch nonce")]
+    GenerateWslNonce {
+        #[source]
+        source: getrandom::Error,
+    },
+    #[error("WSL original companion channel or launcher failed")]
+    WslCompanionIo {
+        #[source]
+        source: io::Error,
+    },
+    #[error("WSL companion reader or writer failed to join")]
+    WslCompanionJoin,
     #[error("failed to build backend command line")]
     BuildCommandLine {
         #[from]
@@ -255,36 +282,6 @@ pub enum ManagedBackendError {
         launch: String,
         #[source]
         source: io::Error,
-    },
-    #[error("failed to spawn WSL process-group cleanup in distro {distro_name}")]
-    SpawnWslProcessGroupCleanup {
-        distro_name: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("failed to query WSL process-group cleanup status in distro {distro_name}")]
-    QueryWslProcessGroupCleanupStatus {
-        distro_name: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("failed to terminate WSL process-group cleanup in distro {distro_name}")]
-    TerminateWslProcessGroupCleanup {
-        distro_name: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("WSL process-group cleanup in distro {distro_name} did not finish within {timeout:?}")]
-    WslProcessGroupCleanupTimeout {
-        distro_name: String,
-        timeout: Duration,
-    },
-    #[error(
-        "WSL process-group cleanup in distro {distro_name} exited unsuccessfully with {status}"
-    )]
-    WslProcessGroupCleanupFailed {
-        distro_name: String,
-        status: std::process::ExitStatus,
     },
     #[error("backend transport closed while waiting for {method}")]
     TransportClosed { method: String },

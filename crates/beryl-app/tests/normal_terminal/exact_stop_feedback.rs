@@ -117,7 +117,7 @@ fn run_admission_failure(fault: Option<FaultPoint>) {
     if fault == Some(FaultPoint::AfterCommitBeforePersist) {
         assert!(matches!(
             close,
-            Err(beryl_app::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(_))
+            Err(ref failure) if matches!(failure.error(), beryl_app::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(_))
         ));
     } else {
         let _ = close.unwrap();

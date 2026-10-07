@@ -428,6 +428,52 @@ fn incomplete_recovery_retirement_retains_lock_without_reopening_authority() {
 }
 
 #[test]
+fn recovery_retirement_retries_original_runtime_cleanup_before_home_replacement() {
+    let (directory, mut owner, faults) = installed();
+    let expected = owner.graph().unwrap().home().health().generation().unwrap();
+    let (probe, interest) = super::runtime_cleanup_support::failed_runtime(&owner);
+    fail(&owner, &faults);
+    assert!(matches!(
+        owner.retire_failed_service_graph(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
+    assert!(owner.graph().is_none());
+    assert!(owner.failed_retirement.is_some());
+    assert!(!owner.initial_attempt_is_settled());
+    assert!(owner.process.execution_permit().commit(|| ()).is_err());
+    assert!(matches!(
+        owner.take_retired_service_home(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT
+        ))
+        .is_err()
+    );
+    let first_retirements = probe.counts().1;
+    assert!(first_retirements >= 2);
+    assert!(matches!(
+        owner.finish_service_graph_retirement(expected),
+        Err(ServiceGraphRetirementError::Incomplete)
+    ));
+    assert_eq!(probe.counts().0, 1);
+    assert_eq!(probe.counts().1, first_retirements + 1);
+    probe.complete_retirement();
+    owner.finish_service_graph_retirement(expected).unwrap();
+    assert!(owner.failed_retirement.is_none());
+    assert_eq!(probe.counts().0, 1);
+    assert_eq!(probe.counts().1, first_retirements + 2);
+    let candidate = owner.recover_retired_service_home(expected).unwrap();
+    assert_ne!(candidate.generation(), expected);
+    assert_eq!(probe.counts().0, 1);
+    candidate.abort().close().unwrap();
+    drop(interest);
+    assert_reopens(&directory);
+}
+
+#[test]
 fn recovery_retirement_waits_for_admitted_marker_drive_without_reopening_admission() {
     let (directory, mut owner, faults) = installed();
     let flight = super::recovery_support::marker_flight(&owner);

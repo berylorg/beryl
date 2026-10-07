@@ -106,7 +106,7 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   original cleanup custody and filesystem observations; `beryl` supplies the immutable artifact
   descriptor. Application admission, runtime interest, CAS policy and durable authority stay with
   their existing owners.
-- The supported companion artifact is a static `x86_64-unknown-linux-musl` executable, named
+- The supported companion artifact is a static non-PIE `x86_64-unknown-linux-musl` executable, named
   `beryl-wsl-supervisor-linux-x86_64` beside the Windows desktop executable. The desktop build
   embeds the exact artifact SHA-256 and protocol version; composition accepts only that sibling
   artifact in the trusted Beryl release directory. It retains an opened host file that denies

@@ -94,7 +94,7 @@ impl RuntimeInterestOwner {
         binding: ExecutionBinding,
         kind: RuntimeInterestKind,
         prepare: impl FnOnce() -> Result<
-            Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+            Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> + Send>,
             RuntimeInterestError,
         >,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
@@ -113,7 +113,7 @@ impl RuntimeInterestOwner {
         wake_on_release: bool,
         acquisition: &crate::cas_projection::acquisition::ProjectionAcquisition,
         prepare: impl FnOnce() -> Result<
-            Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+            Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> + Send>,
             RuntimeInterestError,
         >,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
@@ -130,6 +130,26 @@ impl RuntimeInterestOwner {
             .commands
             .authorize()
             .map_err(|_| RuntimeInterestError::Closed)?;
+        if let Some(snapshot) = retry {
+            {
+                let state = self.shared.lock();
+                let entry = state
+                    .runtimes
+                    .get(&snapshot.runtime_id)
+                    .ok_or(RuntimeInterestError::RetryMismatch)?;
+                if snapshot.runtime_id != spec.runtime_id()
+                    || snapshot.service_generation != self.shared.commands.service_generation()
+                    || snapshot.attempt != entry.attempt
+                    || !matches!(entry.status, RuntimeInterestStatus::Unavailable(_))
+                {
+                    return Err(RuntimeInterestError::RetryMismatch);
+                }
+                if !same_runtime_configuration(&entry.spec, &spec) {
+                    return Err(RuntimeInterestError::ConfigurationMismatch);
+                }
+            }
+            self.retry_retained_cleanup(Some(snapshot.runtime_id));
+        }
         let mut state = self.shared.lock();
         self.reap_finished(&mut state);
         if state.closed {
@@ -231,6 +251,7 @@ impl RuntimeInterestOwner {
                 state.runtimes.insert(
                     runtime_id,
                     RuntimeEntry {
+                        failed_runtime: None,
                         activity: Arc::clone(&activity),
                         spec,
                         attempt: interest,
@@ -313,7 +334,7 @@ impl RuntimeInterestOwner {
                     .expect("finished worker")
                     .join()
                     .unwrap_or(false);
-                entry.cleanup_complete = clean;
+                entry.cleanup_complete |= clean;
                 if !clean && !matches!(entry.status, RuntimeInterestStatus::Unavailable(_)) {
                     entry.status =
                         RuntimeInterestStatus::Unavailable(RuntimeFailure::WorkerPanicked);
@@ -344,7 +365,9 @@ impl RuntimeInterestOwner {
             service_generation: self.shared.commands.service_generation(),
             attempt: entry.attempt,
             failure,
-            retry_ready: entry.worker.is_none() && entry.cleanup_complete && entry.retry.is_none(),
+            retry_ready: entry.worker.is_none()
+                && (entry.cleanup_complete || entry.failed_runtime.is_some())
+                && entry.retry.is_none(),
         })
     }
 
@@ -366,7 +389,9 @@ impl RuntimeInterestOwner {
             service_generation: self.shared.commands.service_generation(),
             attempt: entry.attempt,
             failure,
-            retry_ready: entry.worker.is_none() && entry.cleanup_complete && entry.retry.is_none(),
+            retry_ready: entry.worker.is_none()
+                && (entry.cleanup_complete || entry.failed_runtime.is_some())
+                && entry.retry.is_none(),
         })
     }
 
@@ -385,16 +410,63 @@ impl RuntimeInterestOwner {
             self.shared.changed.notify_all();
             workers
         };
-        let mut clean = true;
         for worker in workers {
-            clean &= worker.join().unwrap_or(false);
+            let _ = worker.join();
         }
+        self.retry_retained_cleanup(None);
         let mut state = self.shared.lock();
-        clean &= state.runtimes.values().all(|entry| entry.cleanup_complete);
-        state.runtimes.clear();
-        state.interest_count = 0;
+        let clean = state.runtimes.values().all(|entry| entry.cleanup_complete);
+        if clean {
+            state.runtimes.clear();
+            state.interest_count = 0;
+        }
         self.shared.changed.notify_all();
         clean
+    }
+
+    pub(super) fn retry_retained_cleanup(&self, selected: Option<RuntimeId>) {
+        let owners = {
+            let mut state = self.shared.lock();
+            state
+                .runtimes
+                .iter_mut()
+                .filter_map(|(id, entry)| {
+                    if selected.is_some_and(|selected| selected != *id) {
+                        return None;
+                    }
+                    if entry
+                        .worker
+                        .as_ref()
+                        .is_some_and(|worker| !worker.is_finished())
+                    {
+                        return None;
+                    }
+                    entry
+                        .failed_runtime
+                        .take()
+                        .map(|owner| (*id, entry.attempt, owner))
+                })
+                .collect::<Vec<_>>()
+        };
+        for (id, attempt, mut owner) in owners {
+            let clean = owner.retire().is_ok();
+            let mut state = self.shared.lock();
+            let entry = state
+                .runtimes
+                .get_mut(&id)
+                .expect("retained cleanup fences runtime removal");
+            assert_eq!(
+                entry.attempt, attempt,
+                "retained cleanup fences runtime replacement"
+            );
+            if clean {
+                entry.cleanup_complete = true;
+                entry.failed_acquisition = None;
+            } else {
+                entry.failed_runtime = Some(owner);
+            }
+            self.shared.changed.notify_all();
+        }
     }
 
     pub(in crate::cas_projection) fn request_shutdown(&self) {
@@ -420,4 +492,5 @@ fn same_runtime_configuration(
         && left.runtime_native_executable() == right.runtime_native_executable()
         && left.host_token_directory() == right.host_token_directory()
         && left.runtime_token_directory() == right.runtime_token_directory()
+        && left.wsl_supervisor_artifact() == right.wsl_supervisor_artifact()
 }

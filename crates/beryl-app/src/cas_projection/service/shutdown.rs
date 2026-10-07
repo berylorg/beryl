@@ -1,5 +1,79 @@
 use super::*;
 
+pub struct ProjectionConnectionServiceCloseFailure {
+    error: ProjectionConnectionServiceCloseError,
+    service: Box<ProjectionConnectionService>,
+}
+
+impl std::fmt::Debug for ProjectionConnectionServiceCloseFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProjectionConnectionServiceCloseFailure")
+            .field("error", &self.error)
+            .field("retry_error", &self.service.close_retry_error)
+            .field("auxiliary_error", &self.service.close_auxiliary_error)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Display for ProjectionConnectionServiceCloseFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.error)
+    }
+}
+
+impl std::error::Error for ProjectionConnectionServiceCloseFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl ProjectionConnectionServiceCloseFailure {
+    pub fn error(&self) -> &ProjectionConnectionServiceCloseError {
+        &self.error
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        ProjectionConnectionServiceCloseError,
+        Box<ProjectionConnectionService>,
+    ) {
+        (self.error, self.service)
+    }
+
+    pub fn retry_error(&self) -> Option<&ProjectionConnectionServiceCloseError> {
+        self.service.close_retry_error.as_ref()
+    }
+
+    pub fn auxiliary_error(&self) -> Option<&ProjectionConnectionServiceCloseError> {
+        self.service.close_auxiliary_error.as_ref()
+    }
+
+    pub fn retry(mut self) -> Result<ProjectionConnectionServiceCloseOutcome, Self> {
+        if !matches!(
+            self.error,
+            ProjectionConnectionServiceCloseError::RuntimeRetirement
+        ) || self.service.shutdown_started
+            || self.service.close_retry_error.is_some()
+        {
+            return Err(self);
+        }
+        match self.service.close_inner() {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                if !matches!(
+                    error,
+                    ProjectionConnectionServiceCloseError::RuntimeRetirement
+                ) {
+                    self.service.close_retry_error = Some(error);
+                }
+                Err(self)
+            }
+        }
+    }
+}
+
 impl ProjectionConnectionService {
     /// Elects ordinary shutdown against the exact typed persistent-failure cut.
     ///
@@ -8,9 +82,15 @@ impl ProjectionConnectionService {
     /// authority and returns bounded, content-free evidence of the completed cut.
     pub fn close(
         mut self,
-    ) -> Result<ProjectionConnectionServiceCloseOutcome, ProjectionConnectionServiceCloseError>
+    ) -> Result<ProjectionConnectionServiceCloseOutcome, ProjectionConnectionServiceCloseFailure>
     {
-        self.close_inner()
+        match self.close_inner() {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => Err(ProjectionConnectionServiceCloseFailure {
+                error,
+                service: Box::new(self),
+            }),
+        }
     }
 
     pub(super) fn close_inner(
@@ -22,12 +102,19 @@ impl ProjectionConnectionService {
         if self.settled {
             return Ok(ProjectionConnectionServiceCloseOutcome::Closed);
         }
+        if self.shutdown_started {
+            return Err(ProjectionConnectionServiceCloseError::ShutdownIncomplete);
+        }
         let election = self.command_gate.close_for_shutdown();
         self.initial_start.cancel();
         let runtime_failed = self
             .runtime_interest
-            .take()
+            .as_ref()
             .is_some_and(|owner| !owner.shutdown());
+        if runtime_failed {
+            return Err(ProjectionConnectionServiceCloseError::RuntimeRetirement);
+        }
+        self.runtime_interest = None;
         let outcome = match election {
             MasterCommandGateCloseOwner::OrdinaryShutdown => {
                 self.ordinary_shutdown_inner()?;
@@ -40,9 +127,7 @@ impl ProjectionConnectionService {
                 ))
             }
         };
-        if runtime_failed {
-            return Err(ProjectionConnectionServiceCloseError::RuntimeRetirement);
-        }
+        self.settled = true;
         outcome
     }
 
@@ -50,7 +135,7 @@ impl ProjectionConnectionService {
         &mut self,
         failure_generation: super::super::PersistentFailureGeneration,
     ) -> Result<PersistentFailureTerminalEvidence, ProjectionConnectionServiceCloseError> {
-        self.settled = true;
+        self.shutdown_started = true;
         let persistent_failure = self
             .persistent_failure
             .take()
@@ -155,7 +240,7 @@ impl ProjectionConnectionService {
     }
 
     fn ordinary_shutdown_inner(&mut self) -> Result<(), ProjectionConnectionServiceCloseError> {
-        self.settled = true;
+        self.shutdown_started = true;
         let persistent_failure = self
             .persistent_failure
             .take()
@@ -231,9 +316,19 @@ impl ProjectionConnectionService {
                 Ok(())
             };
         };
-        let close_result = home
+        let mut close_result = home
             .close()
             .map_err(ProjectionConnectionServiceCloseError::HomeClose);
+        if connection_failed
+            || scheduler_failed
+            || provider_failed
+            || compaction_failed
+            || persistent_failure_failed
+            || drain_failed
+        {
+            self.close_auxiliary_error = close_result.err();
+            close_result = Ok(());
+        }
         if connection_failed {
             return Err(ProjectionConnectionServiceCloseError::ConnectionShutdown);
         }

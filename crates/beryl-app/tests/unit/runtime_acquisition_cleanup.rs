@@ -73,7 +73,7 @@ fn failed_runtime_cleanup_retains_acquisition_and_prevents_reopening() {
             assert!(!entry.cleanup_complete);
             assert_eq!(
                 entry.status,
-                RuntimeInterestStatus::Unavailable(RuntimeFailure::BackendDisposal)
+                RuntimeInterestStatus::Unavailable(RuntimeFailure::Admission)
             );
             break;
         }

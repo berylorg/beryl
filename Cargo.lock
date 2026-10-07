@@ -545,8 +545,10 @@ dependencies = [
  "beryl-home-store",
  "beryl-model",
  "beryl-state",
+ "beryl-wsl-supervisor",
  "clap",
  "serde_json",
+ "sha2",
  "syndic-storage",
  "tempfile",
  "tracing",
@@ -592,13 +594,13 @@ version = "0.1.0"
 dependencies = [
  "beryl-model",
  "beryl-stream",
+ "beryl-wsl-supervisor",
  "bounded-json",
  "getrandom 0.4.2",
  "hex",
  "serde",
  "serde_json",
  "sha2",
- "shlex",
  "soketto",
  "tempfile",
  "thiserror 2.0.18",
@@ -652,6 +654,14 @@ name = "beryl-stream"
 version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "beryl-wsl-supervisor"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "sha2",
 ]
 
 [[package]]

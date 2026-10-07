@@ -7,7 +7,7 @@ This supplement is normative only for its bounded backend transport-and-admissio
 
 - Host Windows executes the caller-validated absolute Codex CLI path directly with `app-server`; it never substitutes `PATH`. WSL uses `wsl.exe`, the caller-validated distribution and working directory, and the caller-validated runtime-native CLI path directly inside WSL.
 - Production uses only a Beryl-selected authenticated loopback WebSocket listener: host launch binds `ws://127.0.0.1:<port>` in the execution root; WSL binds in the selected distribution and uses the corresponding host-local loopback port. Production has no stdio, unauthenticated, or operator-managed transport.
-- One high-entropy bearer token per managed launch exists only in memory and a per-run local token file. The crate creates and removes that file and clears retained token material on every spawn, admission, cancellation, exit, and disposal path; cleanup is idempotent and completes before managed-process disposal. Tokens never appear in arguments, logs, diagnostics, or public values.
+- One high-entropy bearer token per managed launch exists only in memory and a per-run local token file. The crate creates and removes that file and clears retained token material on every spawn, admission, cancellation, exit, and disposal path. Cleanup is idempotent, retains material while an acquired supervision boundary remains live, and completes before joined managed disposal is accepted. Tokens never appear in arguments, logs, diagnostics, or public values.
 - Token files are created with private access before any secret bytes are written: Windows uses
   a protected owner-only DACL instead of inheriting temporary-directory read access; Unix creates
   the file with mode `0600`. Windows verifies persistent ACL support on the exact opened file
@@ -21,6 +21,8 @@ authentication, process and reader cleanup owner. Resource construction retains 
 fallible post-spawn setup. Explicit cleanup is bounded and retryable on that same owner; a failed
 reader join retains the original reader rather than reporting complete disposal. Consumers must
 retain this failure capability and fence replacement until cleanup completes.
+`ManagedBackendLaunchFailure` exposes that original error and retained cleanup; transferring its
+parts transfers custody, and repeated shutdown acts on the same owner rather than another launch.
 
 WSL supervision must retain authority over the original Linux workload through disposal. A saved
 numeric PID or process-group ID is not durable incarnation proof and must not authorize a later

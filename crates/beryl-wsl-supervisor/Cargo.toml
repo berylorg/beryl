@@ -1,0 +1,16 @@
+[package]
+name = "beryl-wsl-supervisor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+default-run = "beryl-wsl-supervisor"
+
+[[bin]]
+name = "wsl-test-runner"
+path = "src/bin/wsl-test-runner.rs"
+test = false
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+sha2.workspace = true

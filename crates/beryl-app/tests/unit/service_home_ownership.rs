@@ -191,7 +191,33 @@ fn pending_reconciliation_close_returns_owner_until_reconciliation_and_final_clo
         panic!("faulted mutation must retain reconciliation custody");
     };
     let handle = reconciliation.install_and_handle();
-    let error = service.close().unwrap_err();
+    let mut failure = service.close().unwrap_err();
+    for _ in 0..2 {
+        let crate::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(error) =
+            failure.error()
+        else {
+            panic!("pending reconciliation must retain the original home close error");
+        };
+        assert_eq!(error.pending_reconciliation_scopes(), Some(1));
+        failure = failure
+            .retry()
+            .expect_err("unsettled reconciliation cannot become successful close on retry");
+        assert!(retained.home_revision().is_ok());
+        assert!(
+            HomeOpenCandidate::open(HomeOpenOptions::new(
+                directory.path(),
+                HomeSchemaVersion::CURRENT
+            ))
+            .is_err()
+        );
+    }
+    let (error, mut service_custody) = failure.into_parts();
+    assert!(!service_custody.settled);
+    assert!(service_custody.shutdown_started);
+    assert!(matches!(
+        service_custody.close_inner(),
+        Err(crate::cas_projection::ProjectionConnectionServiceCloseError::ShutdownIncomplete)
+    ));
     let crate::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(error) = error
     else {
         panic!("pending reconciliation must retain the service-owned home");

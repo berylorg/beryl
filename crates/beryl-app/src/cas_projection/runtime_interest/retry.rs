@@ -43,7 +43,7 @@ impl RuntimeInterestOwner {
                 (entry.attempt == snapshot.attempt
                     && matches!(entry.status, RuntimeInterestStatus::Unavailable(_))
                     && entry.worker.is_none()
-                    && entry.cleanup_complete)
+                    && (entry.cleanup_complete || entry.failed_runtime.is_some()))
                     || (entry.recovered_from_attempt == Some(snapshot.attempt)
                         && matches!(
                             entry.status,
@@ -61,6 +61,7 @@ impl RuntimeInterestOwner {
         if !self.selected_retry_eligible(snapshot, &binding) {
             return Err(RuntimeInterestError::RetryMismatch);
         }
+        self.retry_retained_cleanup(Some(snapshot.runtime_id));
         {
             let state = self.shared.lock();
             if let Some(entry) = state.runtimes.get(&snapshot.runtime_id)

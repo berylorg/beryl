@@ -1,6 +1,6 @@
 use beryl_backend::{
     BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendLaunchSpec,
-    ManagedBackendLaunchSpecError, ManagedWebSocketError,
+    ManagedBackendLaunchSpecError, ManagedWebSocketError, WslSupervisorArtifact,
 };
 use beryl_model::{AdmittedHostPath, PathFlavor, RuntimeId, RuntimeMode, RuntimeNativePath};
 
@@ -100,7 +100,7 @@ fn host_launch_rejects_disagreeing_executable_identities() {
 }
 
 #[test]
-fn wsl_managed_launch_uses_exact_distro_native_executable_and_private_boundary() {
+fn wsl_managed_launch_uses_exact_distro_broker_and_immutable_artifact() {
     let mode = RuntimeMode::wsl("Ubuntu-24.04").unwrap();
     let launch = ManagedBackendLaunchSpec::new(
         runtime_id(),
@@ -111,7 +111,17 @@ fn wsl_managed_launch_uses_exact_distro_native_executable_and_private_boundary()
         host_path(r"\\wsl.localhost\Ubuntu-24.04\tmp\beryl-token-files"),
         native_path(mode, PathFlavor::Posix, "/tmp/beryl-token-files"),
     )
-    .unwrap();
+    .unwrap()
+    .with_wsl_supervisor_artifact(std::sync::Arc::new(
+        WslSupervisorArtifact::from_verified_release(
+            std::path::PathBuf::from(r"C:\Beryl\beryl-wsl-supervisor"),
+            "/mnt/c/Beryl/beryl-wsl-supervisor".into(),
+            [7; 32],
+            1,
+            std::sync::Arc::new(tempfile::tempfile().unwrap()),
+        )
+        .unwrap(),
+    ));
     let command = launch
         .command_line(
             &BackendWebSocketEndpoint::loopback(49153),
@@ -122,27 +132,24 @@ fn wsl_managed_launch_uses_exact_distro_native_executable_and_private_boundary()
 
     assert_eq!(command.program(), "wsl.exe");
     assert_eq!(
-        &command.args()[..7],
+        command.args(),
         [
             "--distribution",
             "Ubuntu-24.04",
             "--cd",
             "/work/beryl",
             "--exec",
-            "/bin/bash",
-            "-lc",
+            "/mnt/c/Beryl/beryl-wsl-supervisor",
+            "context-broker",
         ]
     );
-    let shell = &command.args()[7];
-    assert!(shell.starts_with("umask 077; mkdir -m 700 /tmp/beryl-codex-app-server-"));
-    assert!(shell.contains("setsid /bin/bash -lc"));
-    assert!(shell.contains("/home/operator/bin/codex app-server --strict-config"));
-    assert!(shell.contains(
-        "features.multi_agent_v2={enabled=true,expose_spawn_agent_model_overrides=true}"
-    ));
-    assert!(shell.contains("/tmp/beryl-token-files/token.txt"));
-    assert!(shell.contains(TOKEN_DIGEST));
-    assert!(!shell.contains(" codex app-server"));
+    assert!(!command.args().iter().any(|argument| argument == "--user"));
+    assert!(
+        !command
+            .args()
+            .iter()
+            .any(|argument| argument.contains(TOKEN_DIGEST))
+    );
 }
 
 #[test]

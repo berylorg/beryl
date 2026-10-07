@@ -16,17 +16,18 @@ use beryl_model::{
 
 use crate::{
     BackendWebSocketEndpoint, ForegroundSessionConfig, ManagedBackendError,
-    ManagedBackendLaunchSpec, ManagedBackendSession,
+    ManagedBackendLaunchCleanup, ManagedBackendLaunchFailure, ManagedBackendLaunchSpec,
+    ManagedBackendSession,
     auth::ManagedBackendAuthMaterial,
+    launch_cleanup::ManagedProcessOwner,
     managed_process::SupervisedBackendProcess,
     websocket_transport::{
         ForegroundWebSocketCandidate, ForegroundWebSocketTransport, RequestOnlyWebSocketCandidate,
         RequestOnlyWebSocketTransport,
     },
+    wsl_supervision::WslSupervision,
 };
 
-const SERVER_PROCESS_CLOSE_GRACE_TIMEOUT: Duration = Duration::ZERO;
-const MANAGED_PROCESS_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 static NEXT_PROCESS_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -94,12 +95,7 @@ impl ManagedBackendLaunchIdentity {
 pub struct ManagedBackendServer {
     launch_spec: ManagedBackendLaunchSpec,
     endpoint: BackendWebSocketEndpoint,
-    auth: ManagedBackendAuthMaterial,
-    process: SupervisedBackendProcess,
-    process_boundary_released: bool,
-    stderr_reader: Option<thread::JoinHandle<()>>,
-    #[cfg(feature = "lifecycle-test-support")]
-    fail_stderr_join_for_lifecycle_test: bool,
+    cleanup: ManagedBackendLaunchCleanup,
     provenance: ManagedLaunchProvenance,
 }
 
@@ -116,63 +112,100 @@ pub struct ManagedBackendClientConnector {
 }
 
 impl ManagedBackendServer {
-    pub fn launch(launch_spec: ManagedBackendLaunchSpec) -> Result<Self, ManagedBackendError> {
+    pub fn launch(
+        launch_spec: ManagedBackendLaunchSpec,
+    ) -> Result<Self, ManagedBackendLaunchFailure> {
+        if matches!(launch_spec.runtime_mode(), RuntimeMode::Wsl(_))
+            && launch_spec.wsl_supervisor_artifact().is_none()
+        {
+            return Err(ManagedBackendError::WslArtifactUnavailable.into());
+        }
         let endpoint = BackendWebSocketEndpoint::loopback(select_loopback_port()?);
         let auth = ManagedBackendAuthMaterial::generate(
             launch_spec.host_token_directory(),
             launch_spec.runtime_token_directory(),
         )?;
-        let command_line = launch_spec.command_line(
-            &endpoint,
-            auth.backend_token_file_path(),
-            auth.token_sha256(),
-        )?;
-        let mut command = Command::new(command_line.program());
-        command.args(command_line.args());
-        if let Some(cwd) = command_line.cwd() {
-            command.current_dir(cwd);
-        }
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-
-        let child = command
-            .spawn()
-            .map_err(|source| ManagedBackendError::Spawn {
-                program: command_line.program().to_string(),
-                source,
-            })?;
-        let supervise_host_process_tree =
-            matches!(launch_spec.runtime_mode(), beryl_model::RuntimeMode::Host);
-        let mut process = SupervisedBackendProcess::new(
-            child,
-            launch_spec.display_label(),
-            supervise_host_process_tree,
-            launch_spec.wsl_process_group_cleanup(),
-        )?;
-        let stderr = process
-            .take_stderr()
-            .ok_or(ManagedBackendError::MissingPipe {
-                stream_name: "stderr",
-            })?;
-        let stderr_reader = spawn_stderr_logger(stderr, launch_spec.display_label())?;
-        let process_generation = allocate_process_generation()?;
+        let mut cleanup = ManagedBackendLaunchCleanup::new(None, Some(auth));
+        let launched = (|| -> Result<_, ManagedBackendError> {
+            let auth = cleanup
+                .auth
+                .as_ref()
+                .expect("authentication custody installed");
+            match launch_spec.runtime_mode() {
+                RuntimeMode::Host => {
+                    let command_line = launch_spec.command_line(
+                        &endpoint,
+                        auth.backend_token_file_path(),
+                        auth.token_sha256(),
+                    )?;
+                    let mut command = Command::new(command_line.program());
+                    command.args(command_line.args());
+                    if let Some(cwd) = command_line.cwd() {
+                        command.current_dir(cwd);
+                    }
+                    command
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::piped());
+                    let child = command
+                        .spawn()
+                        .map_err(|source| ManagedBackendError::Spawn {
+                            program: command_line.program().to_string(),
+                            source,
+                        })?;
+                    cleanup.process = Some(ManagedProcessOwner::Host(
+                        SupervisedBackendProcess::new(child, launch_spec.display_label()),
+                    ));
+                    let Some(ManagedProcessOwner::Host(process)) = cleanup.process.as_mut() else {
+                        unreachable!()
+                    };
+                    process.configure_host_tree()?;
+                    let stderr = process
+                        .take_stderr()
+                        .ok_or(ManagedBackendError::MissingPipe {
+                            stream_name: "stderr",
+                        })?;
+                    cleanup.stderr_reader =
+                        Some(spawn_stderr_logger(stderr, launch_spec.display_label())?);
+                }
+                RuntimeMode::Wsl(distribution) => {
+                    let request = beryl_wsl_supervisor::Frame::LaunchServer {
+                        executable: launch_spec.runtime_native_executable().as_str().into(),
+                        execution_root: launch_spec.working_directory().as_str().into(),
+                        arguments: launch_spec.server_arguments(
+                            &endpoint,
+                            auth.backend_token_file_path(),
+                            auth.token_sha256(),
+                        ),
+                    };
+                    let owner = WslSupervision::new(
+                        launch_spec
+                            .wsl_supervisor_artifact()
+                            .ok_or(ManagedBackendError::WslArtifactUnavailable)?,
+                        distribution.as_str().into(),
+                        launch_spec.working_directory().as_str().into(),
+                    )?;
+                    cleanup.process = Some(ManagedProcessOwner::Wsl(owner));
+                    let Some(ManagedProcessOwner::Wsl(owner)) = cleanup.process.as_mut() else {
+                        unreachable!()
+                    };
+                    owner.launch(request, Instant::now() + Duration::from_secs(5), None)?;
+                }
+            }
+            allocate_process_generation()
+        })();
+        let process_generation = match launched {
+            Ok(generation) => generation,
+            Err(error) => return Err(ManagedBackendLaunchFailure::new(error, cleanup)),
+        };
         let identity = ManagedBackendLaunchIdentity::new(&launch_spec, process_generation);
-
         Ok(Self {
             launch_spec,
             endpoint,
-            auth,
-            process,
-            process_boundary_released: false,
-            stderr_reader: Some(stderr_reader),
-            #[cfg(feature = "lifecycle-test-support")]
-            fail_stderr_join_for_lifecycle_test: false,
+            cleanup,
             provenance: ManagedLaunchProvenance::Production(identity),
         })
     }
-
     pub fn launch_spec(&self) -> &ManagedBackendLaunchSpec {
         &self.launch_spec
     }
@@ -182,58 +215,78 @@ impl ManagedBackendServer {
     }
 
     pub fn process_id(&self) -> Option<u32> {
-        self.process.process_id()
+        self.cleanup
+            .process
+            .as_ref()
+            .and_then(ManagedProcessOwner::process_id)
     }
 
     pub fn is_process_alive(&mut self) -> bool {
-        !self.process.has_exited()
+        !self
+            .cleanup
+            .process
+            .as_mut()
+            .is_none_or(ManagedProcessOwner::has_exited)
     }
 
     pub fn client_connector(&self) -> ManagedBackendClientConnector {
         ManagedBackendClientConnector {
             endpoint: self.endpoint.clone(),
-            authorization_header_value: self.auth.authorization_header_value(),
+            authorization_header_value: self
+                .cleanup
+                .auth
+                .as_ref()
+                .expect("live server owns authentication")
+                .authorization_header_value(),
             provenance: self.provenance.clone(),
         }
     }
 
     pub fn shutdown(&mut self) -> Result<(), ManagedBackendError> {
-        self.process.shutdown(
-            SERVER_PROCESS_CLOSE_GRACE_TIMEOUT,
-            MANAGED_PROCESS_KILL_TIMEOUT,
-        )?;
-        self.process_boundary_released = true;
-
-        // Auth material protects a live process boundary, not diagnostic reader cleanup. Once
-        // supervision confirms termination, attempt deletion before joining stderr so a reader
-        // failure cannot retain the launch capability.
-        let auth_cleanup = self.auth.cleanup();
-        let stderr_join = self.join_stderr_reader();
-        auth_cleanup?;
-        stderr_join
+        self.cleanup.shutdown()
     }
 
-    fn join_stderr_reader(&mut self) -> Result<(), ManagedBackendError> {
-        let join_result = match self.stderr_reader.take() {
-            Some(stderr_reader) => stderr_reader
-                .join()
-                .map_err(|_| ManagedBackendError::StderrReaderPanicked),
-            None => Ok(()),
-        };
-
-        #[cfg(feature = "lifecycle-test-support")]
-        if std::mem::take(&mut self.fail_stderr_join_for_lifecycle_test) {
-            return Err(ManagedBackendError::StderrReaderPanicked);
+    #[cfg(feature = "lifecycle-test-support")]
+    pub fn shutdown_wsl_with_timeout_for_lifecycle_test(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), ManagedBackendError> {
+        if !self.cleanup.process_closed {
+            let Some(ManagedProcessOwner::Wsl(owner)) = self.cleanup.process.as_mut() else {
+                return Err(ManagedBackendError::WslSupervisionUnavailable);
+            };
+            owner.shutdown(Instant::now() + timeout.min(Duration::from_secs(5)))?;
+            self.cleanup.process_closed = true;
         }
+        self.cleanup.shutdown()
+    }
 
-        join_result
+    #[cfg(feature = "lifecycle-test-support")]
+    pub fn close_wsl_control_for_lifecycle_test(
+        &mut self,
+        role: beryl_wsl_supervisor::Role,
+    ) -> Result<(), ManagedBackendError> {
+        let Some(ManagedProcessOwner::Wsl(owner)) = self.cleanup.process.as_mut() else {
+            return Err(ManagedBackendError::WslSupervisionUnavailable);
+        };
+        owner.close_control_for_lifecycle_test(role)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub fn wsl_resource_custody_for_lifecycle_test(
+        &self,
+    ) -> Option<crate::lifecycle_test_support::WslOwnedResourceCustodyForLifecycleTest> {
+        match self.cleanup.process.as_ref()? {
+            ManagedProcessOwner::Wsl(owner) => Some(owner.resource_custody_for_lifecycle_test()),
+            ManagedProcessOwner::Host(_) => None,
+        }
     }
 
     /// Injects one post-termination stderr-join failure for lifecycle tests.
     #[cfg(feature = "lifecycle-test-support")]
     #[doc(hidden)]
     pub fn fail_next_stderr_join_for_lifecycle_test(&mut self) {
-        self.fail_stderr_join_for_lifecycle_test = true;
+        self.cleanup.fail_stderr_join_for_lifecycle_test = true;
     }
 }
 
@@ -364,17 +417,6 @@ impl std::fmt::Debug for ManagedBackendClientConnector {
             .field("endpoint", &self.endpoint)
             .field("authorization_header_value", &"<redacted>")
             .finish()
-    }
-}
-
-impl Drop for ManagedBackendServer {
-    fn drop(&mut self) {
-        if let Err(error) = self.shutdown() {
-            if !self.process_boundary_released {
-                self.auth.preserve_file_on_drop();
-            }
-            tracing::warn!(%error, "failed to shut down managed backend server");
-        }
     }
 }
 

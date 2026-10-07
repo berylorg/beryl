@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use self::worker::{TerminalWorkerExit, TerminalWorkerStart};
 use crate::cas_projection::{
-    ProjectionConnectionService, ProjectionConnectionServiceCloseError, ProjectionServiceConfig,
+    ProjectionConnectionService, ProjectionConnectionServiceCloseFailure, ProjectionServiceConfig,
     ProjectionServiceGeneration, ScheduledOrdinaryExecutionProvider,
 };
 use slot::RunningServiceLease;
@@ -62,7 +62,7 @@ enum TerminalServiceShutdownError {
     #[error("the terminal service worker panicked")]
     WorkerPanicked,
     #[error("the current projection service failed to close: {0}")]
-    Service(#[source] ProjectionConnectionServiceCloseError),
+    Service(#[source] ProjectionConnectionServiceCloseFailure),
     #[error("failed-service disposal made the service terminally unavailable")]
     TerminalUnavailable,
 }

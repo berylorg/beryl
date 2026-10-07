@@ -22,7 +22,7 @@ impl ManagedBackendAuthMaterial {
     pub(crate) fn generate(
         host_token_directory: &AdmittedHostPath,
         runtime_token_directory: &RuntimeNativePath,
-    ) -> Result<Self, ManagedBackendError> {
+    ) -> Result<Self, crate::ManagedBackendLaunchFailure> {
         let token = random_hex(TOKEN_BYTES)?;
         let file_name = format!("token-{}.txt", random_hex(NONCE_BYTES)?);
         let host_token_file_path = PathBuf::from(host_token_directory.as_str()).join(&file_name);
@@ -44,7 +44,29 @@ impl ManagedBackendAuthMaterial {
         }
 
         #[cfg(target_os = "windows")]
-        let file = private_file::create(&host_token_file_path);
+        let file = match private_file::create(&host_token_file_path) {
+            Ok(file) => Ok(file),
+            Err(failure) => {
+                let error = ManagedBackendError::CreateWebSocketTokenFile {
+                    path: host_token_file_path.clone(),
+                    source: failure.source,
+                };
+                if !failure.owned_empty_file {
+                    return Err(error.into());
+                }
+                let material = Self {
+                    token_sha256: hex::encode(Sha256::digest(token.as_bytes())),
+                    token,
+                    host_token_file_path,
+                    backend_token_file_path,
+                    cleaned_up: false,
+                };
+                return Err(crate::ManagedBackendLaunchFailure::new(
+                    error,
+                    crate::ManagedBackendLaunchCleanup::new(None, Some(material)),
+                ));
+            }
+        };
         #[cfg(not(target_os = "windows"))]
         let file = {
             let mut options = fs::OpenOptions::new();
@@ -81,7 +103,10 @@ impl ManagedBackendAuthMaterial {
                     })
             });
         drop(file);
-        written?;
+        if let Err(error) = written {
+            let cleanup = crate::ManagedBackendLaunchCleanup::new(None, Some(material));
+            return Err(crate::ManagedBackendLaunchFailure::new(error, cleanup));
+        }
         Ok(material)
     }
 
@@ -98,6 +123,11 @@ impl ManagedBackendAuthMaterial {
     }
 
     pub(crate) fn cleanup(&mut self) -> Result<(), ManagedBackendError> {
+        // Zeroes keep UTF-8 valid while releasing the retained bearer bytes.
+        unsafe {
+            self.token.as_bytes_mut().fill(0);
+        }
+        self.token.clear();
         if self.cleaned_up {
             return Ok(());
         }

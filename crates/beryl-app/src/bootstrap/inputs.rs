@@ -94,6 +94,7 @@ pub(super) fn services() -> Result<AppServiceConfiguration, BootstrapError> {
             OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), Duration::from_secs(30)),
         ),
         token_directory: token_directory()?,
+        wsl_supervisor_artifact: None,
         handoff: HandoffScanLimits::try_from(HandoffScanConfiguration {
             handoff_recovery_page_items: 16,
             handoff_recovery_page_encoded_bytes: beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,

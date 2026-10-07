@@ -29,6 +29,7 @@ pub struct RuntimeSessionPreparationConfig {
     pub assets: AssetState,
     pub policy: ScheduledOrdinaryRequestPolicy,
     pub token_directory: RuntimeTokenDirectory,
+    pub wsl_supervisor_artifact: Option<Arc<beryl_backend::WslSupervisorArtifact>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]

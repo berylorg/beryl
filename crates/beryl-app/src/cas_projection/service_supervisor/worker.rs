@@ -2,7 +2,7 @@ use std::sync::{Arc, mpsc};
 
 use super::{TerminalServiceShutdownError, TerminalServiceStartError, slot::RunningServiceSlot};
 use crate::cas_projection::{
-    PersistentFailureNotificationStatus, ProjectionConnectionServiceCloseError,
+    PersistentFailureNotificationStatus, ProjectionConnectionServiceCloseFailure,
     ProjectionConnectionServiceCloseOutcome,
 };
 
@@ -12,7 +12,7 @@ pub(super) struct TerminalWorkerStart {
 }
 
 pub(super) struct TerminalWorkerExit {
-    service_error: Option<ProjectionConnectionServiceCloseError>,
+    service_error: Option<ProjectionConnectionServiceCloseFailure>,
     terminal_unavailable: bool,
 }
 
@@ -22,7 +22,7 @@ enum TerminalCutFailure {
     ServiceWithdrawal,
     ServiceOwnership,
     ServiceClosed,
-    ServiceClose(ProjectionConnectionServiceCloseError),
+    ServiceClose(ProjectionConnectionServiceCloseFailure),
 }
 
 impl std::fmt::Display for TerminalCutFailure {
@@ -148,14 +148,14 @@ fn cut_and_dispose_current_failed_service(
 
 fn settle_current_service(
     slot: &Arc<RunningServiceSlot>,
-) -> Result<(), ProjectionConnectionServiceCloseError> {
+) -> Result<(), ProjectionConnectionServiceCloseFailure> {
     let Some(publication) = slot.take_for_shutdown() else {
         return Ok(());
     };
     slot.wait_until_unleased();
     let (service, _state) = publication
         .into_parts()
-        .map_err(|_| ProjectionConnectionServiceCloseError::ServiceOwnershipUnavailable)?;
+        .unwrap_or_else(|_| panic!("unleased service retains exclusive shutdown ownership"));
     service.close().map(|_terminal_outcome| ())
 }
 
