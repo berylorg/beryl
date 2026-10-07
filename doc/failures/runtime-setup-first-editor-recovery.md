@@ -2,9 +2,13 @@
 
 ## Current Disposition
 
-Setup mounting is paused on 2026-10-07. Accepted runtime/root admission and both executable
+The recovery prerequisite is accepted on 2026-10-07. Accepted runtime/root admission and both executable
 launch forms remain unchanged. No native GUI, picker, backend process or clipboard was exercised.
-The incomplete mounting draft is unaccepted and excluded from production source.
+The incomplete mounting draft is unaccepted and excluded from production source. The Operator
+authorized the recommended recovery correction on 2026-10-07. Its narrow storage/app capability
+passed focused qualification, locked all-target compilation and independent consequential review;
+see [acceptance evidence](../audits/unpublished-first-editor-recovery-qualification.md). Setup
+mounting resumes as its separate boundary, with the preserved draft still unaccepted.
 
 ## Invalidated Assumption
 
@@ -17,8 +21,8 @@ editor opening and before publication.
 requires ordinary storage access for opening reconciliation, preparation of fresh-session
 abandonment and classification of its outcome. Syndic's
 [fresh-session abandonment implementation](../../crates/syndic-storage/src/draft_piece/publication/abandon_fresh.rs)
-accepts `&HomeStore` in both `prepare_abandon_fresh_draft_editor_candidate_session` and
-`reconcile_abandon_fresh_draft_editor_candidate_session`. It has no equivalent consumer of borrowed
+accepted only `&HomeStore` at discovery in both `prepare_abandon_fresh_draft_editor_candidate_session` and
+`reconcile_abandon_fresh_draft_editor_candidate_session`. It then had no equivalent consumer of borrowed
 `HomeCandidateRecoveryAccess`. Failed Home cannot provide ordinary admission; recovery cannot
 pretend this original unpublished editor was disposed by dropping it.
 
@@ -59,4 +63,8 @@ but did not qualify this first-editor failed-home disposal boundary.
 Independent source/authority review confirmed the gap and found no blocking documentation findings.
 The recommendation explicitly separates retained immutable intent/outcome evidence from retired
 graph resources and covers committed opening before classification. Neither the mounting draft nor
-the proposed recovery capability has compilation or behavioral acceptance.
+the proposed recovery capability had compilation or behavioral acceptance at that blocker checkpoint.
+
+The subsequently authorized correction is now accepted. Review found and resolved an exact-absence
+gap involving an orphan receipt at the original disposal key, while keeping the shared ordinary
+algorithms and complete old-graph retirement. The mounting draft remains unaccepted.

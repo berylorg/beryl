@@ -58,3 +58,27 @@ Service retirement cancels and joins its original operation, preserves pending c
 publication authority. Returned errors and the service share the same cleanup owner, so consuming
 or retrying either path cannot create replacement work over incomplete disposal. The future shell
 consumer must honor this retirement and outcome contract when mounting the capability.
+
+## First Conversation Preparation Recovery
+
+First-runtime mounting prepares the selected conversation under the committed onboarding window
+and claim and retains the original admission publication fence. It preserves the existing native
+window reservation. A selected predecessor or a Restoring claim is not required for that first
+conversation; construction supplies no replacement window or new claim.
+
+If Home fails before first-conversation publication, the app captures move-only compact cleanup
+intent for its original unpublished fresh editor. This includes the original opening request,
+disposal operation, exact known outcomes and pending reconciliation handles even when opening
+committed before its head could be classified. The retained intent is bound to the same durable
+home identity and contains no old Home service reference, Syndic handle, composer host/service,
+widget, native reservation, worker or admission publication lease. All old runtime resources are
+fenced and joined before reporting the graph retired. Intent transfer neither proves editor
+disposal nor grants publication authority.
+
+The existing same-home recovery attempt retains that intent outside the retired graph. Fresh
+Syndic handles and borrowed private recovery access authenticate and settle the exact opening and
+fresh-session abandonment under the storage contract. No successor editor or graph is published
+until cleanup is proven. Failed candidate work preserves original intent and outcome custody for
+the established recovery path; cancellation and terminal close preserve ordinary conservative
+storage custody. No runtime/root registration, opening or abandonment is guessed or resubmitted
+with new identities. Successful cleanup does not undo the committed onboarding thread or registry.

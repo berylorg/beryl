@@ -65,12 +65,14 @@
 - [Scroll-ownership contract](../../gui/widgets/contracts/scroll-ownership.md)
 - [Beryl package](../../../crates/beryl/doc/design.md)
 - [Beryl app package](../../../crates/beryl-app/doc/design.md)
+- [Runtime/root admission and first-editor recovery](../../../crates/beryl-app/doc/design-runtime-root-admission.md)
 - [Beryl backend package](../../../crates/beryl-backend/doc/design.md)
 - [Beryl home-store package](../../../crates/beryl-home-store/doc/design.md)
 - [Beryl model package](../../../crates/beryl-model/doc/design.md)
 - [Beryl state package](../../../crates/beryl-state/doc/design.md)
 - [Beryl stream package](../../../crates/beryl-stream/doc/design.md)
 - [Syndic storage package](../../../crates/syndic-storage/doc/design.md)
+- [Syndic draft storage](../../../crates/syndic-storage/doc/design-draft-storage.md)
 - [Owned Fjall design](../../../../fjall-fork/doc/design.md)
 - [Owned LSM-tree design](../../../../fjall-fork/crates/lsm-tree/doc/design.md)
 - [GPUI text-input spec](../../../../gpui-text-input/doc/gui/widgets/text-input/spec.md)
@@ -433,11 +435,8 @@
   remains separate. See [coordinator acceptance](../../failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance).
 - [x] Accepted process-owned ordinary close versus Exit, including created windows, exact layout,
   healthy and failed-home resident recovery and fresh activation after cancellation; [evidence](../../failures/ordinary-close-recovery.md#ordinary-command-integration-acceptance).
-- [ ] Implement restoration, progressive bootstrap, runtime/root
-  creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
-  Runtime/root creation source readiness is recorded in
-  [readiness evidence](../../audits/runtime-root-creation-readiness.md); atomic admission and
-  main-shell setup/first-conversation mounting remain unaccepted.
+- [x] Accepted atomic runtime/root admission and unpublished first-editor recovery cleanup; see [admission](../../audits/runtime-root-admission-qualification.md) and [cleanup](../../audits/unpublished-first-editor-recovery-qualification.md) qualification.
+- [ ] Complete restoration, progressive bootstrap, runtime/root creation and zero-runtime onboarding through the accepted bounded main-window boundary; main-shell setup/first-conversation mounting remains unaccepted.
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).
   Ordinary command and complete recovery mounting remain separate.

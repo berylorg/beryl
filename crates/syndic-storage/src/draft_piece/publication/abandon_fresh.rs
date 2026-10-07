@@ -53,6 +53,31 @@ pub(super) fn history_is_exact(
     Ok(true)
 }
 
+pub(crate) fn fresh_opening_history_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    let durable = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
+        store,
+        head.durable_base_history().key(),
+        point_limit(),
+    )?;
+    let newest = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
+        store,
+        head.newest_history().key(),
+        point_limit(),
+    )?;
+    let (Some(durable), Some(newest)) = (durable, newest) else {
+        return Ok(false);
+    };
+    Ok(durable.reference() == head.durable_base_history()
+        && newest.reference() == head.newest_history()
+        && durable.fork_session(head.session_id()).as_ref() == Some(&newest)
+        && draft_edit_history_frontier_is_authenticated_with_access(storage, store, &durable)?
+        && draft_edit_history_frontier_is_authenticated_with_access(storage, store, &newest)?)
+}
+
 fn committed_from_resolution(
     resolution: ReconciliationResolution,
 ) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
@@ -215,13 +240,44 @@ impl SyndicStorage {
         PreparedDraftEditorCandidateSessionAbandonFreshV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
+        self.prepare_abandon_fresh_draft_editor_candidate_session_with_access(
+            ReadAccess::Ordinary(store),
+            request,
+        )
+    }
+
+    pub fn prepare_abandon_fresh_draft_editor_candidate_session_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        request: DraftEditorCandidateSessionDisposeRequestV1,
+    ) -> Result<
+        PreparedDraftEditorCandidateSessionAbandonFreshV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        self.prepare_abandon_fresh_draft_editor_candidate_session_with_access(
+            ReadAccess::Candidate(store),
+            request,
+        )
+    }
+
+    fn prepare_abandon_fresh_draft_editor_candidate_session_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        request: DraftEditorCandidateSessionDisposeRequestV1,
+    ) -> Result<
+        PreparedDraftEditorCandidateSessionAbandonFreshV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
         if !request.expected_pair().is_coherent() {
             return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
         }
         let limit = point_limit();
-        let occupied =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, disposal_key(request), limit)?;
-        let head = match self.point::<DraftEditorCandidateSessionsFamily>(
+        let occupied = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            disposal_key(request),
+            limit,
+        )?;
+        let head = match self.point_with_access::<DraftEditorCandidateSessionsFamily>(
             store,
             session_key(request.draft_id(), request.session_id()),
             limit,
@@ -229,7 +285,7 @@ impl SyndicStorage {
             Some(DraftEditorCandidateSessionRecordV1::Head(head)) => head,
             _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
         };
-        let open_receipt = match self.point::<DraftEditorCandidateSessionsFamily>(
+        let open_receipt = match self.point_with_access::<DraftEditorCandidateSessionsFamily>(
             store,
             DraftEditorCandidateSessionRecordKeyV1::open_receipt(
                 head.draft_id(),
@@ -278,41 +334,84 @@ impl SyndicStorage {
         DraftEditorCandidateSessionAbandonFreshOutcomeV1,
         DraftEditorCandidatePublicationCommandErrorV1,
     > {
+        self.reconcile_abandon_fresh_draft_editor_candidate_session_with_access(
+            ReadAccess::Ordinary(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    pub fn reconcile_abandon_fresh_draft_editor_candidate_session_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
+        outcome: CommandOutcome,
+    ) -> Result<
+        DraftEditorCandidateSessionAbandonFreshOutcomeV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
+        self.reconcile_abandon_fresh_draft_editor_candidate_session_with_access(
+            ReadAccess::Candidate(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    fn reconcile_abandon_fresh_draft_editor_candidate_session_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
+        outcome: CommandOutcome,
+    ) -> Result<
+        DraftEditorCandidateSessionAbandonFreshOutcomeV1,
+        DraftEditorCandidatePublicationCommandErrorV1,
+    > {
         let committed = reconcile_command_outcome(store, outcome)?;
+        let revision = self
+            .revision_with_access(store)
+            .map_err(SyndicReadError::Read)?;
         if let Some(receipt) = read_abandonment_receipt(self, store, prepared.request)? {
-            if !validate_disposal_receipt_in_store(self, store, &receipt)? {
+            if !validate_disposal_receipt_with_access(self, store, &receipt)? {
                 return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
             }
+            ensure_abandonment_revision(self, store, revision)?;
             return Ok(classify_abandonment_receipt(prepared, committed, receipt));
         }
-        classify_absent_abandonment(self, store, prepared, committed)
+        let result = classify_absent_abandonment(self, store, prepared, committed);
+        ensure_abandonment_revision(self, store, revision)?;
+        result
     }
 }
 
 fn reconcile_command_outcome(
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     outcome: CommandOutcome,
 ) -> Result<bool, DraftEditorCandidatePublicationCommandErrorV1> {
     match outcome {
         CommandOutcome::NotCommitted { .. } => Ok(false),
         CommandOutcome::Committed { .. } => Ok(true),
-        CommandOutcome::Indeterminate { reconciliation, .. } => committed_from_resolution(
-            store
-                .reconcile(&reconciliation.install_and_handle())
+        CommandOutcome::Indeterminate { reconciliation, .. } => {
+            let handle = reconciliation.install_and_handle();
+            committed_from_resolution(
+                match store {
+                    ReadAccess::Ordinary(store) => store.reconcile(&handle),
+                    ReadAccess::Candidate(store) => store.reconcile(&handle),
+                }
                 .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?,
-        ),
+            )
+        }
     }
 }
 
 fn read_abandonment_receipt(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     request: DraftEditorCandidateSessionDisposeRequestV1,
 ) -> Result<
     Option<DraftEditorCandidateSessionDisposeReceiptV1>,
     DraftEditorCandidatePublicationCommandErrorV1,
 > {
-    let Some(record) = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let Some(record) = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         disposal_key(request),
         point_limit(),
@@ -353,7 +452,7 @@ fn classify_abandonment_receipt(
 
 fn classify_absent_abandonment(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     prepared: &PreparedDraftEditorCandidateSessionAbandonFreshV1,
     committed: bool,
 ) -> Result<
@@ -361,7 +460,8 @@ fn classify_absent_abandonment(
     DraftEditorCandidatePublicationCommandErrorV1,
 > {
     let request = prepared.request;
-    let head = match storage.draft_editor_candidate_session(
+    let head = match abandonment_session_with_access(
+        storage,
         store,
         request.draft_id(),
         request.session_id(),
@@ -384,5 +484,109 @@ fn classify_absent_abandonment(
         DraftEditorCandidatePublicationCommandErrorV1::Invariant
     } else {
         DraftEditorCandidatePublicationCommandErrorV1::NotCommitted
+    })
+}
+
+fn ensure_abandonment_revision(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    revision: DomainRevision,
+) -> Result<(), DraftEditorCandidatePublicationCommandErrorV1> {
+    if storage
+        .revision_with_access(store)
+        .map_err(SyndicReadError::Read)?
+        != revision
+    {
+        return Err(SyndicReadError::ConcurrentChange {
+            operation: "fresh editor abandonment outcome",
+        }
+        .into());
+    }
+    Ok(())
+}
+
+fn abandonment_session_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    draft_id: beryl_model::SyndicDraftId,
+    session_id: DraftEditorCandidateSessionIdV1,
+) -> Result<DraftEditorCandidateSessionReadOutcomeV1, SyndicReadError> {
+    if let ReadAccess::Ordinary(store) = store {
+        return storage.draft_editor_candidate_session(store, draft_id, session_id);
+    }
+    let key = session_key(draft_id, session_id);
+    let first = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+        store,
+        key,
+        point_limit(),
+    )?;
+    let exact = match &first {
+        Some(DraftEditorCandidateSessionRecordV1::Head(head)) => match head.lifecycle() {
+            DraftEditorCandidateSessionLifecycleV1::Active => {
+                if checkpoint::has_opening_identity(head) && checkpoint::has_saved_identity(head) {
+                    let receipt = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                        store,
+                        DraftEditorCandidateSessionRecordKeyV1::open_receipt(
+                            head.draft_id(),
+                            head.session_id(),
+                            head.open_operation_id(),
+                        ),
+                        point_limit(),
+                    )?;
+                    matches!(receipt, Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt))
+                        if receipt.is_open() && receipt.head() == head)
+                        && head.active_operation().is_none()
+                        && fresh_opening_history_is_exact_with_access(storage, store, head)?
+                } else {
+                    session::idle_candidate_closure_is_exact_with_access(storage, store, head)?
+                }
+            }
+            DraftEditorCandidateSessionLifecycleV1::Disposed => {
+                let operation = head
+                    .disposal_operation_id()
+                    .ok_or(SyndicReadError::Invariant(
+                        "disposed editor has no disposal identity",
+                    ))?;
+                match storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                    store,
+                    DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
+                        draft_id, session_id, operation,
+                    ),
+                    point_limit(),
+                )? {
+                    Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) => {
+                        match receipt.disposal() {
+                            Some(receipt) => {
+                                validate_disposal_receipt_with_access(storage, store, receipt)?
+                            }
+                            None => false,
+                        }
+                    }
+                    _ => false,
+                }
+            }
+        },
+        None => true,
+        _ => false,
+    };
+    if storage.point_with_access::<DraftEditorCandidateSessionsFamily>(store, key, point_limit())?
+        != first
+    {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::ConcurrentChange);
+    }
+    if !exact {
+        return Ok(DraftEditorCandidateSessionReadOutcomeV1::InvariantFailure);
+    }
+    Ok(match first {
+        None => DraftEditorCandidateSessionReadOutcomeV1::Absent,
+        Some(DraftEditorCandidateSessionRecordV1::Head(head)) => match head.lifecycle() {
+            DraftEditorCandidateSessionLifecycleV1::Active => {
+                DraftEditorCandidateSessionReadOutcomeV1::Active(head)
+            }
+            DraftEditorCandidateSessionLifecycleV1::Disposed => {
+                DraftEditorCandidateSessionReadOutcomeV1::Disposed(head)
+            }
+        },
+        _ => DraftEditorCandidateSessionReadOutcomeV1::InvariantFailure,
     })
 }

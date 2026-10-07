@@ -662,6 +662,25 @@ It uses the same bounds and authentication as ordinary reads, performs no writes
 open ordinary service access. The caller separately authenticates the retained saved checkpoint
 and claims before deriving a replacement composer binding.
 
+## Unpublished Fresh Editor Recovery Disposal
+
+Borrowed same-home recovery candidate access supports preparation and classification of exact
+fresh-editor abandonment through fresh Syndic handles. It shares ordinary abandonment's request,
+receipt, unchanged opening root/history authentication, revision fences and atomic mutation. It
+does not open an editor, publish a draft or adopt unpublished edits. Existing V7 encodings remain
+unchanged. Foreign homes, substituted opening/session/disposal identities, later edits, unsettled
+operation custody and contradictory receipts fail closed.
+
+The caller retains the original immutable opening and disposal intent and exact outcome evidence,
+including a committed opening whose classification failed before an opened head was returned.
+Candidate qualification distinguishes an absent original opening from its exact active or already
+disposed session using that original opening request. It never substitutes another session or
+treats a missing receipt alone as proven noncommit. Original pending opening or disposal outcomes
+are settled through their retained reconciliation custody before conflicting recovery commands.
+Recovery abandonment has its own exact command outcome and reconciliation custody. Exact committed
+disposal is not repeated; exact noncommit permits only the same authenticated cleanup intent.
+Collision remains unavailable and retains the evidence. Uncertainty permits no replacement editor.
+
 ## Retained Composer Candidate Recovery Publication
 
 - Borrowed same-home recovery candidate access supports exact retained editor-candidate

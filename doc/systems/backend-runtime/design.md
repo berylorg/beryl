@@ -293,6 +293,12 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   failed home owner through `HomeStore::recover_same_home`. It never releases and reacquires the
   home lock, opens another path, or falls back to initial creation. Unproven component retirement
   blocks reopening; the failed home remains under conservative storage custody.
+- An unpublished first-conversation editor may leave compact immutable opening/disposal intent
+  and exact outcome evidence with the same-home recovery attempt outside the retired graph.
+  It retains no old service, widget, worker or publication capability. Fresh borrowed candidate
+  access authenticates its exact fresh-session disposal before successor editor preparation or
+  graph publication. This bounded cleanup handoff follows the app and Syndic contracts; it does
+  not permit an old graph to accompany the failed home into reopening.
 - Reopening yields the storage package's unpublished `HomeRecoveryCandidate`. Fresh typed domain
   handles and service factories use only that candidate's generation and explicit recovery access.
   Initial and replacement construction share service implementations and convergence rules, while

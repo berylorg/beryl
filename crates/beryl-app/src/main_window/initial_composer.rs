@@ -22,9 +22,11 @@ use crate::window_acquisition::{
 };
 
 mod activation;
+mod recovery;
 mod restored;
 mod retirement;
 
+pub use recovery::*;
 pub use restored::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

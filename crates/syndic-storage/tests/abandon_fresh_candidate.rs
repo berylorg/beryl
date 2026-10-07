@@ -10,6 +10,8 @@ mod codec;
 mod concurrency;
 #[path = "abandon_fresh_candidate/reconciliation.rs"]
 mod reconciliation;
+#[path = "abandon_fresh_candidate/recovery.rs"]
+mod recovery;
 #[path = "abandon_fresh_candidate/rejection.rs"]
 mod rejection;
 #[path = "abandon_fresh_candidate/shared.rs"]

@@ -33,6 +33,7 @@ mod recovery;
 pub(crate) use disposal::{PreparedCandidateDisposal, prepare_candidate_disposal};
 
 pub use abandon_fresh::PreparedDraftEditorCandidateSessionAbandonFreshV1;
+pub(super) use abandon_fresh::fresh_opening_history_is_exact_with_access;
 #[cfg(feature = "test-faults")]
 pub use abandon_fresh::test_abandon_fresh_reconciliation_resolution;
 pub use recovery::{
@@ -670,18 +671,6 @@ pub(super) fn candidate_session_publication_is_exact_with_access(
     Ok(published_checkpoint_matches_selector(head, selector))
 }
 
-fn candidate_session_publication_history_is_exact_in_store(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    head: &DraftEditorCandidateSessionV1,
-) -> Result<bool, SyndicReadError> {
-    candidate_session_publication_history_is_exact_with_access(
-        storage,
-        crate::read::access::ReadAccess::Ordinary(store),
-        head,
-    )
-}
-
 fn candidate_session_publication_history_is_exact_with_access(
     storage: &SyndicStorage,
     store: crate::read::access::ReadAccess<'_>,
@@ -989,16 +978,24 @@ fn validate_disposal_receipt_in_store(
     store: &HomeStore,
     receipt: &DraftEditorCandidateSessionDisposeReceiptV1,
 ) -> Result<bool, SyndicReadError> {
+    validate_disposal_receipt_with_access(storage, ReadAccess::Ordinary(store), receipt)
+}
+
+pub(super) fn validate_disposal_receipt_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    receipt: &DraftEditorCandidateSessionDisposeReceiptV1,
+) -> Result<bool, SyndicReadError> {
     let (request, transition) = match disposal_receipt_parts(receipt) {
         Some(parts) => parts,
         None => return Ok(false),
     };
-    let frontier = storage.point::<DraftEditHistoryFrontiersFamily>(
+    let frontier = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
         store,
         receipt.frontier().reference().key(),
         point_limit(),
     )?;
-    let open = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let open = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         DraftEditorCandidateSessionRecordKeyV1::open_receipt(
             request.draft_id(),
@@ -1007,7 +1004,7 @@ fn validate_disposal_receipt_in_store(
         ),
         point_limit(),
     )?;
-    let head = storage.point::<DraftEditorCandidateSessionsFamily>(
+    let head = storage.point_with_access::<DraftEditorCandidateSessionsFamily>(
         store,
         session_key(request.draft_id(), request.session_id()),
         point_limit(),
@@ -1024,7 +1021,7 @@ fn validate_disposal_receipt_in_store(
     let source_is_exact = match transition {
         DisposalTransitionKind::Ordinary => {
             session::receipt_matches_head(&open, receipt.before_head())
-                && candidate_session_publication_history_is_exact_in_store(
+                && candidate_session_publication_history_is_exact_with_access(
                     storage,
                     store,
                     receipt.before_head(),
@@ -1032,12 +1029,12 @@ fn validate_disposal_receipt_in_store(
         }
         DisposalTransitionKind::OpeningNormalization => {
             session::receipt_matches_head(&open, receipt.before_head())
-                && candidate_session_publication_history_is_exact_in_store(
+                && candidate_session_publication_history_is_exact_with_access(
                     storage,
                     store,
                     receipt.before_head(),
                 )?
-                && checkpoint::opening_is_exact_in_store(
+                && checkpoint::opening_is_exact_with_access(
                     storage,
                     store,
                     receipt.before_head(),
@@ -1045,7 +1042,7 @@ fn validate_disposal_receipt_in_store(
                 )?
         }
         DisposalTransitionKind::FreshAbandonment => {
-            let durable = storage.point::<DraftEditHistoryFrontiersFamily>(
+            let durable = storage.point_with_access::<DraftEditHistoryFrontiersFamily>(
                 store,
                 receipt.before_head().durable_base_history().key(),
                 point_limit(),
@@ -1058,11 +1055,13 @@ fn validate_disposal_receipt_in_store(
                             .as_ref()
                             == Some(frontier)
                 })
-                && draft_edit_history_frontier_is_authenticated_v1(storage, store, frontier)?
+                && draft_edit_history_frontier_is_authenticated_with_access(
+                    storage, store, frontier,
+                )?
                 && match durable.as_ref() {
-                    Some(durable) => {
-                        draft_edit_history_frontier_is_authenticated_v1(storage, store, durable)?
-                    }
+                    Some(durable) => draft_edit_history_frontier_is_authenticated_with_access(
+                        storage, store, durable,
+                    )?,
                     None => false,
                 }
         }

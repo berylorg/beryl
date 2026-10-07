@@ -1,17 +1,21 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CommandOutcome, DomainMutation, DomainReader, HomeStore, MutationBuilder, MutationContribution,
-    ReconciliationFailure, ReconciliationReservation, ReconciliationResolution,
+    CommandOutcome, DomainMutation, DomainReader, HomeCandidateRecoveryAccess, HomeStore,
+    MutationBuilder, MutationContribution, ReconciliationFailure, ReconciliationReservation,
+    ReconciliationResolution,
 };
 use beryl_model::DomainRevision;
 
 use crate::codec::{DraftByThreadFamily, ThreadsFamily};
 use crate::domain::{SyndicDomain, SyndicStorage};
 use crate::mutation::{current_draft, point, required};
+use crate::read::access::ReadAccess;
 use crate::{SyndicMutationError, SyndicReadError};
 
 use super::*;
+
+mod recovery;
 
 #[derive(Clone)]
 pub struct PreparedDraftEditorCandidateSessionOpenV1 {
@@ -608,14 +612,44 @@ impl SyndicStorage {
         outcome: CommandOutcome,
     ) -> Result<DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionCommandErrorV1>
     {
+        self.reconcile_draft_editor_candidate_session_open_with_access(
+            ReadAccess::Ordinary(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    pub fn reconcile_draft_editor_candidate_session_open_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        prepared: &PreparedDraftEditorCandidateSessionOpenV1,
+        outcome: CommandOutcome,
+    ) -> Result<DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionCommandErrorV1>
+    {
+        self.reconcile_draft_editor_candidate_session_open_with_access(
+            ReadAccess::Candidate(store),
+            prepared,
+            outcome,
+        )
+    }
+
+    fn reconcile_draft_editor_candidate_session_open_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        prepared: &PreparedDraftEditorCandidateSessionOpenV1,
+        outcome: CommandOutcome,
+    ) -> Result<DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionCommandErrorV1>
+    {
         let created_by_command = match outcome {
             CommandOutcome::NotCommitted { .. } => false,
             CommandOutcome::Committed { .. } => true,
             CommandOutcome::Indeterminate { reconciliation, .. } => {
                 let handle = reconciliation.install_and_handle();
-                match store
-                    .reconcile(&handle)
-                    .map_err(DraftEditorCandidateSessionCommandErrorV1::Reconciliation)?
+                match match store {
+                    ReadAccess::Ordinary(store) => store.reconcile(&handle),
+                    ReadAccess::Candidate(store) => store.reconcile(&handle),
+                }
+                .map_err(DraftEditorCandidateSessionCommandErrorV1::Reconciliation)?
                 {
                     ReconciliationResolution::ExactNew { .. } => true,
                     ReconciliationResolution::ExactOld => false,
@@ -626,20 +660,38 @@ impl SyndicStorage {
                 }
             }
         };
-        self.draft_editor_candidate_session_open_outcome(store, prepared, created_by_command)
+        let revision = self
+            .revision_with_access(store)
+            .map_err(SyndicReadError::Read)?;
+        let outcome =
+            self.draft_editor_candidate_session_open_outcome(store, prepared, created_by_command);
+        if self
+            .revision_with_access(store)
+            .map_err(SyndicReadError::Read)?
+            != revision
+        {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "editor candidate opening outcome",
+            }
+            .into());
+        }
+        outcome
     }
 
     fn draft_editor_candidate_session_open_outcome(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         prepared: &PreparedDraftEditorCandidateSessionOpenV1,
         created_by_command: bool,
     ) -> Result<DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionCommandErrorV1>
     {
         let request = prepared.request;
         let limit = point_limit();
-        let head =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, head_key(request), limit)?;
+        let head = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            head_key(request),
+            limit,
+        )?;
         match head {
             Some(DraftEditorCandidateSessionRecordV1::Head(head)) => {
                 for (root_reference, history_reference) in [
@@ -647,12 +699,15 @@ impl SyndicStorage {
                     (head.published_root(), head.published_history()),
                     (head.newest_root(), head.newest_history()),
                 ] {
-                    let Some(root) =
-                        self.point::<DraftPieceRootsFamily>(store, root_reference.key(), limit)?
+                    let Some(root) = self.point_with_access::<DraftPieceRootsFamily>(
+                        store,
+                        root_reference.key(),
+                        limit,
+                    )?
                     else {
                         return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
                     };
-                    let Some(history) = self.point::<DraftEditHistoryFrontiersFamily>(
+                    let Some(history) = self.point_with_access::<DraftEditHistoryFrontiersFamily>(
                         store,
                         history_reference.key(),
                         limit,
@@ -673,7 +728,11 @@ impl SyndicStorage {
                     head.open_operation_id(),
                 );
                 let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)) =
-                    self.point::<DraftEditorCandidateSessionsFamily>(store, occupied_key, limit)?
+                    self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                        store,
+                        occupied_key,
+                        limit,
+                    )?
                 else {
                     return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
                 };
@@ -703,7 +762,7 @@ impl SyndicStorage {
             }
             None => {
                 let Some(current) =
-                    self.current_draft(store, request.selector().thread_id(), limit)?
+                    self.current_draft_with_access(store, request.selector().thread_id(), limit)?
                 else {
                     return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
                 };

@@ -30,20 +30,13 @@ pub(super) fn candidate_is_exact_in_transaction(
     candidate_is_exact(reader, head, frontier)
 }
 
-pub(super) fn opening_is_exact_in_store(
+pub(super) fn opening_is_exact_with_access(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: crate::read::access::ReadAccess<'_>,
     head: &DraftEditorCandidateSessionV1,
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<bool, SyndicReadError> {
-    opening_is_exact(
-        &StoreCheckpointReader {
-            storage,
-            store: crate::read::access::ReadAccess::Ordinary(store),
-        },
-        head,
-        frontier,
-    )
+    opening_is_exact(&StoreCheckpointReader { storage, store }, head, frontier)
 }
 
 pub(super) fn opening_is_exact_in_transaction(

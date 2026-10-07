@@ -89,15 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 733: Implement Atomic Runtime And Root Admission (finished)
+# Phase 738: Qualify Unpublished First Editor Recovery Cleanup (finished)
 
-Accepted selected-path validation and atomic first-runtime/root/thread/catalog/window/session
-registration with explicit standalone-server or CLI form. All 39 admission cases have passing
-evidence; locked metadata, focused app check, Serena refresh, final State/app/Beryl all-target
-check and independent consequential review passed. Original cleanup, reconciliation intent and
-publication fences remain retained. See
-[qualification evidence](audits/runtime-root-admission-qualification.md). Native setup and ordinary
-New Thread confirmation remain the mounting boundaries below.
+Accepted exact candidate opening/disposal qualification and a compact move-only app cleanup
+handoff that releases old runtime resources before same-home reopen while fencing the original
+window reservation. All 54 distinct focused/regression cases have passing evidence; locked
+Syndic/app/Beryl all-target compilation and independent semantic/adversarial review passed.
+See [qualification](audits/unpublished-first-editor-recovery-qualification.md). Production graph
+integration and GUI mounting remain the next boundary.
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (wip)
 
@@ -119,17 +118,14 @@ scope/search/selection preservation, noncommit, pending reconciliation, terminal
 retirement. Focused model/controller and GPUI tests, locked compile checks and independent review
 must qualify the complete mount; a helper-only implementation does not finish this phase.
 
-Resumed on 2026-10-07: accepted admission is unchanged. Shared picker variant implementation and
-production graph/first-conversation attachment readiness are being inspected before shell mounting.
-
-Blocked on 2026-10-07: first-conversation construction opens an unpublished fresh editor, but its
-original cleanup can only prepare/classify abandonment through ordinary Home access. Failed Home
-cannot supply that access during private same-home recovery. Retaining the owner indefinitely
-would prevent recovery completion; dropping it would lose cleanup custody. See
-[first-editor recovery evidence and recommended correction](failures/runtime-setup-first-editor-recovery.md).
-The unaccepted mounting draft is preserved locally and excluded from production source. Establish
-the narrow owning storage/app recovery capability before resuming this phase; no compatibility
-attachment or replacement editor over unsettled custody is authorized.
+Resumed on 2026-10-07 after acceptance of the first-editor recovery prerequisite. Reconsider the
+24-file draft in `.tmp/runtime-setup-mount-draft` (bounded to 2 MiB) against accepted admission and
+cleanup APIs; it remains unaccepted and excluded from production source. Preserve newly accepted
+recovery code rather than overwriting it with the older draft's initial-composer files. Integrate
+compact cleanup custody outside retired graph resources and settle it through the fresh candidate
+before successor editor preparation/publication. Finish the missing shell command/page/render
+consumers, shared-picker eligibility/restoration/retry and bounded GPUI qualification. No native
+Operator GUI/picker/backend launch is needed for the focused qualification.
 
 # Phase 735: Mount New Thread Root Confirmation (pending)
 
