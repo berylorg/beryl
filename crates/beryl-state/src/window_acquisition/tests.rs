@@ -121,10 +121,7 @@ fn exact_initial_claim_publication_returns_opaque_committed_facts() {
     assert_eq!(facts.placement(), &fixture.placement);
     assert_eq!(facts.session_revision(), facts.claim_generation());
     assert_eq!(facts.fallback_target(), fixture.target);
-    assert_eq!(
-        facts.origin(),
-        WindowAcquisitionThreadOrigin::CreatedFallback
-    );
+    assert_eq!(facts.origin(), None);
 }
 
 #[test]
@@ -189,7 +186,7 @@ fn missing_window_claim_copy_from_public_fault_seam_is_a_collision() {
 }
 
 #[test]
-fn unrelated_stale_catalog_row_requests_typed_repair_before_missing() {
+fn unrelated_stale_catalog_row_does_not_block_missing_window_audit() {
     let fixture = Fixture::new();
     let stale_thread = SyndicThreadId::from_bytes([9; 16]);
     publish_unclaimed_catalog_row(&fixture, stale_thread);
@@ -197,9 +194,9 @@ fn unrelated_stale_catalog_row_requests_typed_repair_before_missing() {
     assert!(matches!(
         fixture
             .state
-            .audit_window_acquisition(&fixture.store, fixture.window_id),
-        Err(WindowAcquisitionAuditError::RepairNeeded { thread_id })
-            if thread_id == stale_thread
+            .audit_window_acquisition(&fixture.store, fixture.window_id)
+            .unwrap(),
+        WindowAcquisitionNaturalState::Missing
     ));
 }
 
@@ -271,6 +268,7 @@ fn abandonment_audit_uses_no_catalog_scan() {
     else {
         panic!("exact publication was not committed")
     };
+    let facts = facts.with_thread_origin(WindowAcquisitionThreadOrigin::CreatedFallback);
     let cancellation = CommandCancellation::new();
     reset_catalog_scan_test_state();
     set_catalog_scan_page_hook_for_test(|| panic!("abandonment audit scanned catalog rows"));
@@ -295,6 +293,7 @@ fn created_abandonment_with_retained_expected_recency_copy_is_a_collision() {
     else {
         panic!("exact publication was not committed")
     };
+    let facts = facts.with_thread_origin(WindowAcquisitionThreadOrigin::CreatedFallback);
     let retained_row = facts.catalog_current.row().clone();
     let retained_cursor = retained_row.recency_cursor();
     let mut abandonment = HomeCommand::new(fixture.store.home_revision().unwrap());
@@ -407,10 +406,7 @@ fn exact_committed_facts_survive_close_and_reopen() {
     assert_eq!(facts.thread_id(), thread_id);
     assert_eq!(facts.target(), target);
     assert_eq!(facts.placement(), &placement);
-    assert_eq!(
-        facts.origin(),
-        WindowAcquisitionThreadOrigin::CreatedFallback
-    );
+    assert_eq!(facts.origin(), None);
     reopened.close().unwrap();
 }
 

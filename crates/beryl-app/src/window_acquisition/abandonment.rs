@@ -18,6 +18,9 @@ use super::{
     RuntimeBackedWindowAcquisitionNotCommitted, RuntimeBackedWindowAcquisitionService,
 };
 
+mod thread_source;
+use thread_source::AcquiredThreadSource;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AbandonmentFingerprint {
     window_id: WindowId,
@@ -30,6 +33,8 @@ struct AbandonmentFingerprint {
     fallback_draft_id: SyndicDraftId,
     fallback_execution: ExecutionBinding,
     fallback_created_at: SyndicTimestamp,
+    reused_source: Option<syndic_storage::EligibleEmptyThreadOutcome>,
+    catalog_audit: Option<beryl_state::CatalogClaimReplacementAudit>,
 }
 
 impl From<&RuntimeBackedWindowAcquisition> for AbandonmentFingerprint {
@@ -45,6 +50,8 @@ impl From<&RuntimeBackedWindowAcquisition> for AbandonmentFingerprint {
             fallback_draft_id: acquisition.fallback_draft_id,
             fallback_execution: acquisition.fallback_execution.clone(),
             fallback_created_at: acquisition.fallback_created_at,
+            reused_source: acquisition.reused_source.clone(),
+            catalog_audit: acquisition.catalog_audit.clone(),
         }
     }
 }
@@ -65,7 +72,7 @@ impl RuntimeBackedWindowAcquisition {
 pub struct RuntimeBackedWindowAbandonmentAuditSeed {
     fingerprint: AbandonmentFingerprint,
     state: WindowAcquisitionCommittedFacts,
-    syndic: PristineThreadCandidate,
+    syndic: AcquiredThreadSource,
 }
 
 impl RuntimeBackedWindowAbandonmentAuditSeed {
@@ -338,20 +345,30 @@ impl RuntimeBackedWindowAcquisitionService {
                         .to_owned(),
                 );
             }
-            let candidate = self
-                .syndic
-                .audit_pristine_thread(
-                    &self.store,
-                    acquisition.thread_id,
-                    &acquisition.fallback_execution,
-                )
-                .map_err(|error| error.to_string())?;
-            if !matches!(candidate, PristineThreadAudit::Exact(ref candidate) if candidate_matches_fingerprint(candidate, acquisition))
+            if AcquiredThreadSource::inspect(self, acquisition)
+                .map_err(|error| error.to_string())?
+                .is_none()
             {
                 return Err(
                     "shell editor does not match the acquired draft and execution binding"
                         .to_owned(),
                 );
+            }
+            if let Some(audit) = acquisition.catalog_audit.as_ref() {
+                let row = self
+                    .state
+                    .catalog()
+                    .row(
+                        &self.store,
+                        acquisition.thread_id,
+                        beryl_state::CatalogPointReadLimit::schema_maximum(),
+                    )
+                    .map_err(|error| error.to_string())?;
+                if !row.as_ref().is_some_and(|row| audit.matches_row(row)) {
+                    return Err(
+                        "shell catalog differs from the original acquired projection".to_owned(),
+                    );
+                }
             }
             if before
                 == self
@@ -434,21 +451,12 @@ impl RuntimeBackedWindowAcquisitionService {
             if !state_matches_acquisition(&state, &acquisition) {
                 return RuntimeBackedWindowAbandonmentPreparationOutcome::Collision { window_id };
             }
-            let syndic = match self.syndic.audit_pristine_thread(
-                &self.store,
-                acquisition.thread_id,
-                &acquisition.fallback_execution,
+            let syndic = match AcquiredThreadSource::inspect(
+                self,
+                &AbandonmentFingerprint::from(&acquisition),
             ) {
-                Ok(PristineThreadAudit::Exact(candidate))
-                    if candidate_matches_acquisition(&candidate, &acquisition) =>
-                {
-                    candidate
-                }
-                Ok(
-                    PristineThreadAudit::Exact(_)
-                    | PristineThreadAudit::Missing
-                    | PristineThreadAudit::Conflict,
-                ) => {
+                Ok(Some(source)) => source,
+                Ok(None) => {
                     return RuntimeBackedWindowAbandonmentPreparationOutcome::Collision {
                         window_id,
                     };
@@ -480,7 +488,7 @@ impl RuntimeBackedWindowAcquisitionService {
             }
             let seed = RuntimeBackedWindowAbandonmentAuditSeed {
                 fingerprint: AbandonmentFingerprint::from(&acquisition),
-                state,
+                state: state.with_thread_origin(syndic.origin()),
                 syndic,
             };
             return RuntimeBackedWindowAbandonmentPreparationOutcome::ExactAcquired {
@@ -538,9 +546,55 @@ impl RuntimeBackedWindowAcquisitionService {
                     return abandonment_natural_not_committed(seed, abandonment_audit(error));
                 }
             };
+            if matches!(&seed.syndic, AcquiredThreadSource::Reused { .. }) {
+                let source = match AcquiredThreadSource::inspect(self, &seed.fingerprint) {
+                    Ok(source) => source,
+                    Err(error) => {
+                        return abandonment_natural_not_committed(seed, abandonment_audit(error));
+                    }
+                };
+                if cancellation.is_cancelled() {
+                    return abandonment_natural_not_committed(
+                        seed,
+                        RuntimeBackedWindowAbandonmentNotCommitted::Cancelled,
+                    );
+                }
+                let after = match self.store.home_revision() {
+                    Ok(after) => after,
+                    Err(error) => {
+                        return abandonment_natural_not_committed(seed, abandonment_audit(error));
+                    }
+                };
+                if before != after {
+                    continue;
+                }
+                return match (state, source) {
+                    (WindowAbandonmentNaturalState::ExactAcquired(state), Some(syndic)) => {
+                        let seed = RuntimeBackedWindowAbandonmentAuditSeed {
+                            state: state.with_thread_origin(syndic.origin()),
+                            syndic,
+                            ..seed
+                        };
+                        RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::ExactAcquired {
+                            abandonment: RuntimeBackedWindowAbandonment { seed, flight },
+                        }
+                    }
+                    (WindowAbandonmentNaturalState::ExactAbandoned, Some(_)) => {
+                        RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::ExactAbandoned {
+                            window_id,
+                        }
+                    }
+                    _ => RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::Collision {
+                        window_id,
+                    },
+                };
+            }
+            let AcquiredThreadSource::Created(original) = &seed.syndic else {
+                unreachable!();
+            };
             let removal = match self
                 .syndic
-                .audit_pristine_thread_removal(&self.store, &seed.syndic)
+                .audit_pristine_thread_removal(&self.store, original)
             {
                 Ok(removal) => removal,
                 Err(error) => {
@@ -580,8 +634,9 @@ impl RuntimeBackedWindowAcquisitionService {
                     _,
                 ) if candidate_matches_fingerprint(&syndic, &seed.fingerprint) => {
                     let seed = RuntimeBackedWindowAbandonmentAuditSeed {
-                        state,
-                        syndic,
+                        state: state
+                            .with_thread_origin(WindowAcquisitionThreadOrigin::CreatedFallback),
+                        syndic: AcquiredThreadSource::Created(syndic),
                         ..seed
                     };
                     return RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::ExactAcquired {
@@ -704,15 +759,25 @@ impl RuntimeBackedWindowAcquisitionService {
                 RuntimeBackedWindowAbandonmentNotCommitted::CommandBuild(error),
             );
         }
-        let syndic = match abandonment.disposition() {
-            RuntimeBackedWindowAcquisitionDisposition::Reused => self
-                .syndic
-                .validate_pristine_thread(abandonment.seed.syndic.clone()),
-            RuntimeBackedWindowAcquisitionDisposition::Created => {
-                if let Err(error) = command.add(
-                    self.syndic
-                        .delete_pristine_thread(abandonment.seed.syndic.clone()),
-                ) {
+        let syndic = match &abandonment.seed.syndic {
+            AcquiredThreadSource::Reused { candidate, .. } => {
+                match self
+                    .syndic
+                    .validate_eligible_empty_thread(&self.store, candidate.clone())
+                {
+                    Ok(validation) => validation,
+                    Err(error) => {
+                        return abandonment_not_committed(
+                            abandonment,
+                            abandonment_preparation(error),
+                        );
+                    }
+                }
+            }
+            AcquiredThreadSource::Created(candidate) => {
+                if let Err(error) =
+                    command.add(self.syndic.delete_pristine_thread(candidate.clone()))
+                {
                     return abandonment_not_committed(
                         abandonment,
                         RuntimeBackedWindowAbandonmentNotCommitted::CommandBuild(error),
@@ -793,23 +858,6 @@ fn state_matches_fingerprint(
         && state.target() == acquisition.target
         && state.placement() == &acquisition.placement
         && state.fallback_target() == acquisition.target
-        && matches!(
-            (state.origin(), acquisition.disposition),
-            (
-                WindowAcquisitionThreadOrigin::Reused,
-                RuntimeBackedWindowAcquisitionDisposition::Reused
-            ) | (
-                WindowAcquisitionThreadOrigin::CreatedFallback,
-                RuntimeBackedWindowAcquisitionDisposition::Created
-            )
-        )
-}
-
-fn candidate_matches_acquisition(
-    candidate: &PristineThreadCandidate,
-    acquisition: &RuntimeBackedWindowAcquisition,
-) -> bool {
-    candidate_matches_fingerprint(candidate, &AbandonmentFingerprint::from(acquisition))
 }
 
 fn candidate_matches_fingerprint(

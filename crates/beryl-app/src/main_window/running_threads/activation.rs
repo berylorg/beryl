@@ -7,9 +7,10 @@ use beryl_model::{SyndicThreadId, WindowId};
 use beryl_state::{
     BerylState, CatalogClaimKind, CatalogClaimReplacementAudit, CatalogClaimReplacementRow,
     CatalogClaimSummary, CatalogCurrentRowError, CatalogPointReadLimit, CatalogReadError,
-    CatalogSourceRevisions, PreparedWindowClaimReplacement, PublishCatalogClaimReplacement,
-    RememberedTarget, SessionMutationError, SessionWindowRecord, ThreadClaimRecord,
-    WindowClaimReplacementPreparation, WindowClaimReplacementState, WindowClaimSelection,
+    CatalogSourceRevisions, CatalogWindowClaim, PreparedWindowClaimReplacement,
+    PublishCatalogClaimReplacement, RememberedTarget, SessionMutationError, SessionWindowRecord,
+    ThreadClaimRecord, WindowClaimReplacementPreparation, WindowClaimReplacementState,
+    WindowClaimSelection,
 };
 use syndic_storage::{
     SyndicMutationError, SyndicReadError, SyndicStorage, ThreadCatalogSummaryPreparation,
@@ -378,6 +379,62 @@ pub(crate) fn prepare_catalog_row(
     ),
     RunningThreadActivationError,
 > {
+    prepare_catalog_row_with_claim(
+        store,
+        state,
+        syndic,
+        thread_id,
+        claim.map_or(CatalogClaimSummary::Unclaimed, |claim| {
+            CatalogClaimSummary::claimed(claim.window_id(), CatalogClaimKind::Active)
+        }),
+        claim.map(|claim| claim.revision()),
+    )
+}
+
+pub(crate) fn prepare_catalog_row_for_claim(
+    store: &HomeStore,
+    state: &BerylState,
+    syndic: &SyndicStorage,
+    thread_id: SyndicThreadId,
+    claim: Option<CatalogWindowClaim>,
+) -> Result<
+    (
+        CatalogClaimReplacementRow,
+        ThreadCatalogSummaryPreparation,
+        beryl_state::RuntimeRootCatalogSource,
+    ),
+    RunningThreadActivationError,
+> {
+    if claim.is_some_and(|claim| claim.thread_id() != thread_id) {
+        return Err(CatalogProjectionBuildError::ThreadClaimMismatch.into());
+    }
+    prepare_catalog_row_with_claim(
+        store,
+        state,
+        syndic,
+        thread_id,
+        claim.map_or(CatalogClaimSummary::Unclaimed, |claim| {
+            CatalogClaimSummary::claimed(claim.window_id(), CatalogClaimKind::Active)
+        }),
+        claim.map(|claim| claim.revision()),
+    )
+}
+
+fn prepare_catalog_row_with_claim(
+    store: &HomeStore,
+    state: &BerylState,
+    syndic: &SyndicStorage,
+    thread_id: SyndicThreadId,
+    projected_claim: CatalogClaimSummary,
+    claim_revision: Option<beryl_model::ClaimRevision>,
+) -> Result<
+    (
+        CatalogClaimReplacementRow,
+        ThreadCatalogSummaryPreparation,
+        beryl_state::RuntimeRootCatalogSource,
+    ),
+    RunningThreadActivationError,
+> {
     let source = syndic
         .prepare_thread_catalog_summary(store, thread_id)?
         .ok_or(RunningThreadActivationError::ThreadMissing)?;
@@ -391,15 +448,12 @@ pub(crate) fn prepare_catalog_row(
         )
         .map_err(CatalogProjectionBuildError::from)?;
     validate_execution_binding(summary, &runtime)?;
-    let projected_claim = claim.map_or(CatalogClaimSummary::Unclaimed, |claim| {
-        CatalogClaimSummary::claimed(claim.window_id(), CatalogClaimKind::Active)
-    });
     let facts = project_facts(summary, &runtime, projected_claim)?;
     let sources = CatalogSourceRevisions::new(
         summary.revision(),
         runtime.runtime().revision(),
         runtime.root().revision(),
-        claim.map(|claim| claim.revision()),
+        claim_revision,
     );
     let current = state
         .catalog()

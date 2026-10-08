@@ -58,6 +58,52 @@ pub enum PristineThreadRemovalAudit {
 }
 
 impl PristineThreadCandidate {
+    pub(crate) fn with_catalog_successor(
+        &self,
+        preparation: &crate::ThreadCatalogSummaryPreparation,
+    ) -> Result<Self, SyndicMutationError> {
+        let (revision, expected, successor, sources) = match preparation {
+            crate::ThreadCatalogSummaryPreparation::ExactCurrent(exact) => (
+                exact.source_revision,
+                &exact.summary,
+                &exact.summary,
+                &exact.sources,
+            ),
+            crate::ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => {
+                if prepared.expected.revision().checked_next()? != prepared.replacement.revision() {
+                    return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+                }
+                (
+                    prepared.source_revision,
+                    &prepared.expected,
+                    &prepared.replacement,
+                    &prepared.sources,
+                )
+            }
+        };
+        if revision != self.source_revision
+            || expected != &self.facts.catalog
+            || sources.thread != self.facts.thread
+            || sources.execution != self.facts.execution
+            || sources.attributes != self.facts.attributes
+            || sources.history != self.facts.summary
+            || successor
+                != &ThreadCatalogSummaryRecord::from_sources(
+                    successor.revision(),
+                    None,
+                    &self.facts.thread,
+                    &self.facts.execution,
+                    &self.facts.attributes,
+                    &self.facts.summary,
+                )
+        {
+            return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+        }
+        let mut candidate = self.clone();
+        candidate.facts.catalog = successor.clone();
+        Ok(candidate)
+    }
+
     pub(crate) fn source_revision(&self) -> DomainRevision {
         self.source_revision
     }
@@ -129,6 +175,39 @@ enum PristineThreadInspection {
 }
 
 impl SyndicStorage {
+    pub(crate) fn audit_eligible_empty_thread_candidate(
+        &self,
+        store: &HomeStore,
+        expected: &PristineThreadCandidate,
+    ) -> Result<PristineThreadAudit, SyndicReadError> {
+        let source_revision = self.revision(store)?;
+        let inspection = self.inspect_empty_thread_state(
+            store,
+            expected.thread_id(),
+            expected.execution(),
+            false,
+        );
+        let inspection = match inspection {
+            Ok(inspection) => inspection,
+            Err(SyndicReadError::Invariant(_)) => {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadAudit::Conflict,
+                );
+            }
+            Err(error) => return Err(error),
+        };
+        match inspection {
+            PristineThreadInspection::Missing => Ok(PristineThreadAudit::Missing),
+            PristineThreadInspection::Exact(current) if current.facts == expected.facts => {
+                Ok(PristineThreadAudit::Exact(current))
+            }
+            _ => Ok(PristineThreadAudit::Conflict),
+        }
+    }
+
     pub fn inspect_pristine_thread(
         &self,
         store: &HomeStore,

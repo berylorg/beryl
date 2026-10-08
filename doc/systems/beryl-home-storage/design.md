@@ -478,7 +478,10 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   close or turns it into an unreported drop-only unlock.
 - Live assistant deltas and other replayable stream updates may be coalesced into bounded short commits, but every published commit preserves a valid incomplete turn and uses `SyncAll`. A crash may lose only the uncommitted stream suffix.
 - High-frequency window geometry and transcript-position state may be coalesced by durable key, but explicit Exit, ordinary window close, thread switch, and application shutdown create flush barriers.
-- Rebuildable catalog indexes may lag their source records only when a durable stale marker makes that state explicit. Catalog publication waits for a coherent rebuilt durable index generation rather than mixing source and stale index revisions or materializing all rows.
+- Rebuildable catalog indexes may lag their source records only when committed source-witness
+  disagreement or a durable row marker makes staleness explicit. Catalog publication waits for a
+  coherent rebuilt durable index generation rather than mixing source and stale index revisions or
+  materializing all rows.
 - No caller may request weaker persistence for a correctness-sensitive class merely to reduce latency. A later design decision is required to weaken one of these guarantees.
 
 ## Turn-Start Free-Space Admission
@@ -718,7 +721,23 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   viewing, and releasing or replacing a window claim does not release process execution authority.
   Execution leases and same-thread operation gates remain owned by the CAS-live system.
 - Each claim stores the exact session generation in which its current ownership/state was published and a separate monotonic claim revision. A later unrelated session publication does not rewrite an unchanged claim, but every claim-changing command validates both values as well as the current session revision.
-- Claim-or-create is one serialized, revision-checked command over the exact runtime/root scope, catalog eligibility facts, thread record, current draft, and claim records.
+- Claim-or-create is one serialized, revision-checked command over the exact runtime/root scope,
+  authoritative thread and current draft eligibility, claims, jobs and the successor catalog row.
+  Its worker elects from bounded canonical Syndic thread pages, authenticating exact live claim
+  presence or absence before occupancy filtering. Missing or stale derived rows cannot exclude an
+  otherwise eligible source thread. The whole preparation is fenced by one Home revision; final
+  writer admission revalidates the selected source closure and joins any required compact-summary
+  and catalog replacement. No exhaustive scan runs inside the writer.
+- Existing-window and additional-window reuse share eligible-empty source authority, including a
+  draft made empty after unsubmitted typing and removal. Strict pristine deletion authority belongs
+  only to exact original fallback-creation cleanup. The acquisition owner retains original selected
+  target and complete successor-row outcome evidence through reconciliation; an observed empty
+  thread or reconstructed pristine proof cannot replace that custody.
+- Catalog row creation or rebuild revision does not identify whether acquisition reused a Syndic
+  thread or created its original fallback. State authenticates its own acquisition facts; the
+  composing owner qualifies source origin from retained acquisition evidence or the exact
+  supported natural source fingerprint before cleanup classification. Unqualified origin cannot
+  authorize abandonment settlement or weaken fallback deletion.
 - Eligible empty threads are ordered deterministically by oldest creation identity and then stable thread id. The first still-eligible unclaimed thread is reused; otherwise a new thread and empty current draft are created atomically.
 - Claim eligibility is revalidated inside the writer. A stale catalog query revision or resident page cannot cause two windows to acquire the same thread.
 - Thread claim release is coupled to the accepted replacement claim or durable window removal so a visible window is not left threadless once a runtime exists.
@@ -832,10 +851,17 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   branch-discussion archive state, recent activity, availability, claim state, lineage summary,
   search normalization, exact source revisions, and deterministic ordering.
 - Turn bodies, transcript items, Markdown, resource bytes, draft text, and CAS thread metadata are excluded.
-- Source mutations update the row in the same commit when the required facts are available, or atomically mark that row stale for bounded background rebuild.
+- Source mutations publish the row in the same commit when required facts are available, or
+  durably invalidate its projection through an atomic row marker or exact committed source-witness
+  disagreement. Effective currentness requires authenticated canonical Syndic sources, full
+  runtime/root facts and exact Session claim presence or absence as well as matching Catalog
+  facts and witnesses; neither the stored Current flag nor a summary revision alone proves it.
+  Source revision advancement or deletion invalidates dependent projections in that same commit,
+  including bulk claim restoration and shared runtime/root changes. A source operation must not
+  rewrite an unbounded dependent population or fail merely because a rebuildable row is absent.
 - The app projection owner joins source-owned typed mutations with State-owned catalog effects;
   neither domain reads the other's private records. Current-record-fenced producers use a typed
-  current cross-domain Home command when invalidation must share their commit. Ordinary
+  current cross-domain Home command when a bounded physical row marker shares their commit. Ordinary
   caller-fenced joins retain their existing command and exact outcome custody.
 - Coherent catalog readiness is established by bounded source-completeness and source-agreement
   evaluation, including Syndic threads with a missing catalog row. A compact Catalog-only scan or

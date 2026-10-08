@@ -7,8 +7,8 @@ use beryl_model::{
 
 use crate::{
     AbandonSessionWindow, BerylState, CatalogClaimKind, CatalogCurrentRow, CatalogReadError,
-    CatalogRecencyCursor, CatalogRevision, CatalogWindowClaim, DeleteCatalogClaimedRow,
-    RecordRevision, ReleaseCatalogClaim, RememberedTarget, SessionReadError, ThreadClaimState,
+    CatalogRecencyCursor, CatalogWindowClaim, DeleteCatalogClaimedRow, RecordRevision,
+    ReleaseCatalogClaim, RememberedTarget, SessionReadError, ThreadClaimState,
     WindowClaimSelection,
     session::{SessionAbandonmentSource, SessionAcquisitionSource},
 };
@@ -45,7 +45,7 @@ pub struct WindowAcquisitionCommittedFacts {
     catalog_domain_revision: DomainRevision,
     catalog_current: CatalogCurrentRow,
     fallback_target: RememberedTarget,
-    origin: WindowAcquisitionThreadOrigin,
+    origin: Option<WindowAcquisitionThreadOrigin>,
 }
 
 impl WindowAcquisitionCommittedFacts {
@@ -136,8 +136,14 @@ impl WindowAcquisitionCommittedFacts {
     }
 
     #[must_use]
-    pub const fn origin(&self) -> WindowAcquisitionThreadOrigin {
+    pub const fn origin(&self) -> Option<WindowAcquisitionThreadOrigin> {
         self.origin
+    }
+
+    #[must_use]
+    pub fn with_thread_origin(mut self, origin: WindowAcquisitionThreadOrigin) -> Self {
+        self.origin = Some(origin);
+        self
     }
 }
 
@@ -366,6 +372,9 @@ impl BerylState {
         if cancellation.is_cancelled() {
             return Err(WindowAcquisitionAuditError::Cancelled);
         }
+        if expected.origin.is_none() {
+            return Ok(WindowAbandonmentNaturalState::Collision);
+        }
         let before = store
             .home_revision()
             .map_err(WindowAcquisitionAuditError::Store)?;
@@ -459,7 +468,7 @@ fn classify_abandoned_catalog(
     expected_index: Option<crate::CatalogRow>,
 ) -> WindowAbandonmentNaturalState {
     let exact = match expected.origin {
-        WindowAcquisitionThreadOrigin::Reused => match current {
+        Some(WindowAcquisitionThreadOrigin::Reused) => match current {
             Some(current) => {
                 expected
                     .catalog_current
@@ -469,9 +478,10 @@ fn classify_abandoned_catalog(
             }
             None => false,
         },
-        WindowAcquisitionThreadOrigin::CreatedFallback => {
+        Some(WindowAcquisitionThreadOrigin::CreatedFallback) => {
             current.is_none() && expected_index.is_none()
         }
+        None => false,
     };
     if exact {
         WindowAbandonmentNaturalState::ExactAbandoned
@@ -732,7 +742,15 @@ fn scan_catalog(
         if cancellation.is_cancelled() {
             return Err(WindowAcquisitionAuditError::Cancelled);
         }
-        let page = match state.catalog().current_page(store, scan, after, limits) {
+        if state
+            .catalog()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?
+            != scan.revision()
+        {
+            return Err(WindowAcquisitionAuditError::ConcurrentPublication);
+        }
+        let page = match state.catalog().recency_page(store, after, limits) {
             Ok(page) => page,
             Err(CatalogReadError::RevisionChanged { .. }) => {
                 return Err(WindowAcquisitionAuditError::ConcurrentPublication);
@@ -745,16 +763,52 @@ fn scan_catalog(
             }
             Err(error) => return Err(WindowAcquisitionAuditError::Catalog(error)),
         };
-        for current in page.rows() {
-            let row = current.row();
+        for row in page.rows() {
+            if cancellation.is_cancelled() {
+                return Err(WindowAcquisitionAuditError::Cancelled);
+            }
+            if state
+                .catalog()
+                .row(
+                    store,
+                    row.thread_id(),
+                    crate::CatalogPointReadLimit::schema_maximum(),
+                )
+                .map_err(WindowAcquisitionAuditError::Catalog)?
+                != Some(row.clone())
+            {
+                return Ok(CatalogClassification::Collision);
+            }
             if row.facts().claim().window_id() != Some(window_id) {
                 continue;
             }
+            let current = match state.catalog().current_row_source(
+                store,
+                row.thread_id(),
+                crate::CatalogPointReadLimit::schema_maximum(),
+            ) {
+                Ok(Some(current)) => current,
+                Err(crate::CatalogCurrentRowError::NotCurrent { thread_id }) => {
+                    return Err(WindowAcquisitionAuditError::RepairNeeded { thread_id });
+                }
+                Err(crate::CatalogCurrentRowError::Read(error)) => {
+                    return Err(WindowAcquisitionAuditError::Store(error));
+                }
+                Ok(None) | Err(_) => return Ok(CatalogClassification::Collision),
+            };
             if matched.is_some() {
                 duplicate = true;
             } else {
-                matched = Some(current.clone());
+                matched = Some(current);
             }
+        }
+        if state
+            .catalog()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?
+            != scan.revision()
+        {
+            return Err(WindowAcquisitionAuditError::ConcurrentPublication);
         }
         page_ordinal += 1;
         observe_catalog_page(window_id, page_ordinal, usize::from(matched.is_some()));
@@ -863,11 +917,6 @@ fn combine(
     {
         return WindowAcquisitionNaturalState::Collision;
     }
-    let origin = if row.revision() == CatalogRevision::INITIAL {
-        WindowAcquisitionThreadOrigin::CreatedFallback
-    } else {
-        WindowAcquisitionThreadOrigin::Reused
-    };
     WindowAcquisitionNaturalState::Committed(WindowAcquisitionCommittedFacts {
         window_id: session.window_id,
         thread_id: session.thread_id,
@@ -881,7 +930,7 @@ fn combine(
         catalog_domain_revision,
         catalog_current: current,
         fallback_target: session.fallback_target,
-        origin,
+        origin: None,
     })
 }
 

@@ -3,6 +3,12 @@
 #[path = "same_window_thread_acquisition/candidate_recovery.rs"]
 mod candidate_recovery;
 
+#[path = "same_window_thread_acquisition/canonical_election.rs"]
+mod canonical_election;
+
+#[path = "acquisition_support/empty_after_edit.rs"]
+mod empty_after_edit;
+
 include!("same_window_thread_acquisition/support.rs");
 use beryl_app::catalog_projection::{
     ThreadCatalogProjectionPreparation, prepare_thread_catalog_projection,

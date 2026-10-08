@@ -743,7 +743,9 @@ pub use pristine_thread::{
     PristineThreadAudit, PristineThreadCandidate, PristineThreadRemovalAudit,
 };
 mod eligible_empty_thread;
-pub use eligible_empty_thread::EligibleEmptyThreadCandidate;
+pub use eligible_empty_thread::{
+    EligibleEmptyThreadCandidate, EligibleEmptyThreadOutcome, EligibleEmptyThreadOutcomeAudit,
+};
 pub use provider_item::*;
 pub use provider_observation::*;
 pub(crate) use read::AcceptedNextCandidateBasis;
@@ -774,7 +776,10 @@ pub use read::{
     ThreadCatalogSummaryPreparation, ThreadLineageCursor, ThreadLineageEntry, ThreadLineageHead,
     ThreadLineagePage,
 };
-pub use read::{SyndicCurrentDraft, SyndicThreadTail};
+pub use read::{
+    SyndicCurrentDraft, SyndicThreadTail, THREAD_DISCOVERY_PAGE_MAX_BYTES,
+    THREAD_DISCOVERY_PAGE_MAX_ITEMS,
+};
 pub use record::*;
 pub use recovery::{
     RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES, RecoveryAssembly, RecoveryCursor, RecoveryCursorPage,

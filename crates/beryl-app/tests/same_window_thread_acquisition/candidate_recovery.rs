@@ -72,8 +72,10 @@ fn candidate_recovery_settles_original_pending_claim_without_another_acquisition
 fn known_commit_candidate_validation_retains_original_joined_facts_and_receipt() {
     let fixture = Fixture::new();
     let first = settled(&fixture, prepared(&fixture, None, 9));
-    disqualify_submission(&fixture, 9);
+    assert_eq!(first.selection.thread_id(), thread(3));
+    disqualify_submission(&fixture, 3);
     let mut second = settled(&fixture, prepared(&fixture, Some(first.selection), 10));
+    assert_eq!(second.selection.thread_id(), thread(4));
     fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(fixture.store.home_revision().is_err());
     let mut recovery = fixture.store.recover_same_home().unwrap();

@@ -213,6 +213,24 @@ its current draft has no user-authored payload. Accepted input permanently disqu
 active work and nonordinary lineage remain ineligible. Inspection grants no Beryl claim, job,
 selection or deletion authority. The app owns scope-qualified election, occupancy and job checks.
 
+Canonical thread discovery exposes bounded identity-ordered pages with explicit item and encoded
+byte limits, continuation and actual byte accounting. It covers the complete durable thread family,
+including threads whose derived Catalog projection is missing or stale. It grants no eligibility,
+occupancy or mutation authority; consumers fence multi-page preparation and authenticate each
+candidate through the existing typed inspection boundary.
+
+Eligible-empty acquisition exposes an opaque bounded outcome audit derived from the original
+candidate and its exact planned compact-summary successor. It retains the complete inspected source
+closure with that sole planned replacement; a wrong identity or source fence rejects preparation.
+Fresh typed handles may classify exact successor, missing or conflicting current facts under a
+stable source revision, and obtain an exact validation-only eligible closure. The audit grants no
+claim, command receipt, deletion or generic reconstruction authority. Source changes cannot become
+exact merely because the thread remains empty. Reused prepublication abandonment authenticates
+this original expected closure; created-fallback deletion retains strict pristine authority.
+The original candidate is bound to its Home and generation; command preparation rejects foreign
+or retired provenance. Pure outcome facts retain durable Home identity across recovery, and a
+successful same-home audit produces only a freshly fenced eligible candidate.
+
 Eligibility authenticates the current binding head, its named binding and coherent selected-path
 facts. A later binding revision or idle Unbound, Valid or Stale binding does not imply accepted
 input or active work and does not by itself disqualify reuse; same-source runtime recovery may

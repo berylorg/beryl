@@ -50,7 +50,7 @@ impl CatalogClaimReplacementRow {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CatalogClaimReplacementAudit {
     target: CatalogRow,
     predecessor: Option<CatalogRow>,

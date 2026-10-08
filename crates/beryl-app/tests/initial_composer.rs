@@ -2,6 +2,10 @@
 
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
+#[path = "initial_composer/eligible_reuse.rs"]
+mod eligible_reuse;
+#[path = "acquisition_support/empty_after_edit.rs"]
+mod empty_after_edit;
 #[path = "initial_composer/fresh_candidate.rs"]
 mod fresh_candidate;
 #[path = "initial_composer/gpui.rs"]

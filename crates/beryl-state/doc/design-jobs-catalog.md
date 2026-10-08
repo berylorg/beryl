@@ -137,6 +137,22 @@ durable job records and transitions plus compact catalog schema, normalization, 
   reads, rather than an app's earlier row revision. It grants no source mutation, arbitrary range
   scan, global freshness promise or rebuild permission. Multiple affected identities remain
   explicitly bounded; scope-wide runtime/root fanout belongs to the owning projection coordinator.
+- A Current row or Catalog-local current scan authenticates only Catalog copies and revision.
+  Composed consumers additionally authenticate canonical source agreement under the storage system
+  contract. Exact committed source revision changes or absence durably invalidate the projection
+  without a physical row rewrite. In particular, bulk Session changes do not copy every dependent
+  maximum-sized Catalog pair into one command. Missing projections remain rebuild work rather than
+  a reason to reject a valid source mutation or infer an empty source population.
+- Window acquisition's bounded natural-state Catalog audit preserves primary/reverse agreement,
+  revision and duplicate-window checks across its pages. It requests rebuild only for a matching
+  requested-window projection; unrelated Stale rows cannot consume its repair budget or block
+  canonical empty-thread election.
+- Acquisition reads authenticate State window, claim and Catalog facts without inferring Syndic
+  creation origin from a rebuildable row revision. Their origin starts unqualified. The composing
+  owner attaches Reused or CreatedFallback only after authenticating its original acquisition
+  source or the exact supported natural fallback fingerprint; this pure fact annotation grants
+  no receipt or deletion capability. Abandonment classification refuses unqualified origin and
+  preserves its distinct exact unclaimed-successor or absent-created-row rules.
 
 ## Frozen catalog queries
 
@@ -149,7 +165,8 @@ durable job records and transitions plus compact catalog schema, normalization, 
   missing or disagreeing projection cannot be omitted or interpreted as an empty result. The
   owning projection service resolves its bounded rebuild before admitting a new query; it never
   inserts a rebuilt live row into an existing frozen collection. Exact source-coupled publication
-  or invalidation is required before a stored Current flag can certify this readiness.
+  or source-witness invalidation and full composed source agreement are required; a stored Current
+  flag alone never certifies this readiness.
 - Evaluation may walk the complete durable compact catalog to count and filter matches. It retains
   only bounded row/index pages, checked totals and compact continuation state, never all matching
   rows or a thread-sized presentation model. Scope and substring filtering use the existing

@@ -66,7 +66,7 @@ Ordinary New Thread creation accepts the exact published invoking window, its se
 one configured runtime/root. A process selection lease excludes competing selection, acquisition
 and close through the original operation's durable settlement and coherent view publication.
 After the predecessor draft's saved checkpoint is qualified, worker-side preparation elects a
-deterministic eligible pristine thread or prepares a fresh thread/draft, and joins State/Syndic
+deterministic eligible empty thread or prepares a fresh thread/draft, and joins State/Syndic
 claim, catalog, remembered-target and creation contributions in one revision-checked HomeCommand.
 The operation creates no additional session member and never commits creation separately from
 claim replacement. Writer-side validation authenticates the exact predecessor and reuse facts.
@@ -1728,7 +1728,7 @@ by the executable composition root.
   exact entry; indeterminate and pending reconciliation retain it.
 - The app composes the typed session, catalog, durable-job, and Syndic participants into one
   `HomeCommand`. It neither inspects package-private records nor performs a compensating cleanup
-  command. A reused pristine thread is validation-only; a created fallback contributes the typed
+  command. A reused eligible-empty thread is validation-only; a created fallback contributes the typed
   authenticated pristine-deletion mutation.
 - App abandonment and reconciliation custody is opaque, move-only, and retained across
   cancellation and acknowledgement loss until exact classification. `NotCommitted` returns the

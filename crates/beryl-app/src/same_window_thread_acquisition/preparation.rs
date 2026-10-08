@@ -100,9 +100,9 @@ impl SameWindowThreadRequest {
                 }
             }
         }
-        let scan = state
+        let catalog_revision = state
             .catalog()
-            .begin_current_scan(store)
+            .revision(store)
             .map_err(RunningThreadActivationError::from)?;
         let jobs = state
             .durable_jobs()
@@ -110,26 +110,31 @@ impl SameWindowThreadRequest {
             .map_err(RunningThreadActivationError::from)?;
         let mut after = None;
         let mut best = None;
-        let limits =
-            CursorReadLimits::new(16, 16 * beryl_state::CATALOG_MAX_STORED_RECENCY_BYTES).unwrap();
+        let limits = CursorReadLimits::new(
+            syndic_storage::THREAD_DISCOVERY_PAGE_MAX_ITEMS,
+            syndic_storage::THREAD_DISCOVERY_PAGE_MAX_BYTES,
+        )
+        .unwrap();
         loop {
-            let page = state
-                .catalog()
-                .current_page(store, scan, after, limits)
+            let page = syndic
+                .threads_page(store, after, limits)
                 .map_err(RunningThreadActivationError::from)?;
-            for current in page.rows() {
+            for thread in page.records() {
                 if cancellation.is_cancelled() {
                     return Err(SameWindowThreadError::Cancelled);
                 }
-                let row = current.row();
-                if row.facts().claim() != CatalogClaimSummary::Unclaimed
-                    || row.facts().execution().runtime_id() != self.target.runtime_id()
-                    || row.facts().execution().root_id() != self.target.root_id()
+                if state
+                    .session()
+                    .thread_claim_catalog_source(store, thread.id())
+                    .map_err(CatalogProjectionBuildError::from)
+                    .map_err(RunningThreadActivationError::from)?
+                    .claim()
+                    .is_some()
                 {
                     continue;
                 }
                 let Some(candidate) = syndic
-                    .inspect_eligible_empty_thread(store, row.thread_id(), summary.execution())
+                    .inspect_eligible_empty_thread(store, thread.id(), summary.execution())
                     .map_err(RunningThreadActivationError::from)?
                 else {
                     continue;
@@ -157,7 +162,9 @@ impl SameWindowThreadRequest {
                 break;
             }
             after = Some(
-                page.next_after()
+                page.records()
+                    .last()
+                    .map(|thread| thread.id())
                     .ok_or(SameWindowThreadError::SourceChanged)?,
             );
         }
@@ -208,7 +215,12 @@ impl SameWindowThreadRequest {
             let (row, target_source, _) =
                 prepare_catalog_row(store, state, syndic, thread, Some(claim))?;
             match syndic
-                .reuse_empty_thread_with_catalog_predecessor(candidate, target_source, old_source)
+                .reuse_empty_thread_with_catalog_predecessor(
+                    store,
+                    candidate,
+                    target_source,
+                    old_source,
+                )
                 .map_err(RunningThreadActivationError::from)?
             {
                 syndic_storage::ThreadAcquisitionContribution::Validation(contribution) => {
@@ -267,7 +279,7 @@ impl SameWindowThreadRequest {
             .add(
                 state
                     .catalog()
-                    .replace_claim_projection(scan.revision(), publication),
+                    .replace_claim_projection(catalog_revision, publication),
             )
             .map_err(RunningThreadActivationError::from)?;
         command

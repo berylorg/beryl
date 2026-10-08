@@ -17,6 +17,27 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Creation, pristine reuse, selection, occupancy, additional-window acquisition, and claim release
   call typed atomic operations, not app-local check-then-act logic. Visible behavior belongs to the
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md).
+- Empty-thread election uses bounded canonical Syndic thread pages and authenticated live Session
+  claims, immutable execution and job guards before eligibility filtering. It retains only the
+  best deterministic candidate and one bounded page under a stable Home revision. Catalog caches
+  do not define the source population or occupancy. The selected target's exact source-owned summary
+  and matching Catalog successor publish with claim acquisition; an absent or stale target row
+  does not suppress reuse. Current-thread no-op and original acquisition outcome custody retain
+  their independent contracts.
+- Additional-window reuse uses the same eligible-empty Syndic boundary as same-window reuse and
+  retains original target and complete joined successor outcome evidence through reconciliation.
+  Strict pristine closure remains the original created-fallback abandonment boundary; neither
+  ordinary empty inspection nor natural-state reconciliation grants deletion authority.
+- Natural additional-window reconciliation authenticates the exact persisted State acquisition
+  fingerprint and the fresh eligible closure of that selected thread under one stable Home
+  revision, including matching target Catalog and canonical sources. It classifies supported
+  current natural state only; it neither reconstructs the original command's outcome audit or
+  receipt nor re-elects or repeats acquisition. Changed or missing authority refuses through its
+  typed custody route. Created-fallback identity, draft, creation time and execution stay strict.
+- The additional-window request reserves fresh fallback thread and draft identities. Election
+  rejects an elected reuse source that coincides with either reserved identity rather than skipping
+  it or fabricating creation origin. Natural replay can then distinguish the exact original fallback
+  fingerprint from a distinct reused source without treating Catalog revision as creation proof.
 
 ## Published Frozen Catalog Reader
 

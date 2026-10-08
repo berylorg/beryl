@@ -166,10 +166,15 @@ impl Fixture {
         else {
             panic!("window cleanup exact")
         };
-        assert!(matches!(
-            abandonment.abandon(&self.service, CommandCancellation::new()),
-            MainWindowShellAbandonmentOutcome::Committed { .. }
-        ));
+        match abandonment.abandon(&self.service, CommandCancellation::new()) {
+            MainWindowShellAbandonmentOutcome::Committed { .. } => {}
+            MainWindowShellAbandonmentOutcome::NotCommitted { evidence, .. } => {
+                panic!("window cleanup did not commit: {evidence:?}")
+            }
+            MainWindowShellAbandonmentOutcome::Indeterminate { failure, .. } => {
+                panic!("window cleanup remains indeterminate: {failure:?}")
+            }
+        }
     }
 
     pub fn remove_session_window(&self, window: WindowId) {

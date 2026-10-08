@@ -23,10 +23,12 @@ struct AcquireThread {
 impl SyndicStorage {
     pub fn reuse_empty_thread_with_catalog_predecessor(
         &self,
+        store: &beryl_home_store::HomeStore,
         candidate: EligibleEmptyThreadCandidate,
         target_summary: ThreadCatalogSummaryPreparation,
         predecessor: Option<ThreadCatalogSummaryPreparation>,
     ) -> Result<ThreadAcquisitionContribution, SyndicMutationError> {
+        self.qualify_eligible_candidate(store, &candidate)?;
         let revision = candidate.source_revision();
         if source_revision(&target_summary) != revision
             || summary_id(&target_summary) != candidate.thread_id()

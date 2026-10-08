@@ -94,27 +94,28 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 742: Implement Atomic Current Catalog Invalidation (finished)
+# Phase 743: Authenticate Sources Before Empty-Thread Election (finished)
 
-Accepted the separately typed writer-admitted current cross-domain command and exact named-thread
-Catalog invalidation, retaining cancellation, original receipts and ordinary reconciliation.
-Canonical HomeStore/State checks, all 546 nextest cases, frozen source correspondence, scoped
-formatting and independent integrity review passed. Producer integration and coherent catalog
-readiness remain the next separate boundary.
-See [qualification](audits/atomic-current-catalog-invalidation-qualification.md).
+Accepted canonical source election for both production New Thread entrances, joined selected-target
+publication, positively qualified origin and original reuse/cleanup custody. Canonical all-target
+checks, 407 distinct affected app/State/Syndic cases, frozen source correspondence, scoped formatting
+and independent integrity review passed; the audit records broad evidence plus corrected-fixture
+reruns precisely. Coherent source readiness and frozen queries retain separate gates.
+See [qualification](audits/source-authenticated-thread-acquisition-qualification.md).
 
-# Phase 743: Establish Production Catalog Currentness And Rebuild Readiness (wip)
+# Phase 744: Establish Coherent Published Catalog Source Readiness (pending)
 
-Join source-coupled publication/invalidation into the finite producer inventory in the readiness
-evidence, with unchanged original outcome custody. Establish bounded exhaustive compact-source
-completeness and coherent projection readiness before query admission. Reconcile compact-summary
-maintenance and exact source-witness policy in owning authority before implementation; do not make
-flyout loading depend on history fallback. Unmounted scope-wide/title setters remain separately
-gated until their bounded producer contract is ready. Frozen queries stay pending until this passes.
+Establish the bounded source-owned compact-summary maintenance and exhaustive cross-domain rebuild
+coordinator before frozen query admission. Authenticate complete canonical thread coverage,
+including missing projections, and publish one coherent compact source generation with bounded
+retirement custody. Source history-title preparation belongs to background readiness, never opening
+or filtering the flyout. Qualify every mounted source producer's committed invalidation witnesses;
+unmounted scope-wide/title setters remain separately gated. This source-publication acceptance is
+distinct from live acquisition eligibility and the subsequent immutable query/page capability.
 
 # Phase 739: Implement Published Frozen Thread Catalog Queries (pending)
 
-After the preceding source-currentness prerequisite passes, implement the generation-owned bounded catalog
+After coherent source readiness passes, implement the generation-owned bounded catalog
 reader and published query/page capability for the ordinary Thread Switcher, with stable complete
 scope/search and retirement release. Preserve a separate visible mounting acceptance.
 

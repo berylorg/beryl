@@ -10,17 +10,16 @@ use beryl_home_store::{
 };
 use beryl_model::{ExecutionBinding, SyndicDraftId, SyndicThreadId, WindowId, WindowPlacement};
 use beryl_state::{
-    BerylState, CATALOG_MAX_STORED_RECENCY_BYTES, CatalogArchiveSummary,
-    CatalogAvailabilitySummary, CatalogClaimSummary, CatalogCurrentRow, CatalogExecutionSummary,
-    CatalogFacts, CatalogLineageSummary, CatalogReadError, CatalogResolvedTitle,
-    CatalogSourceRevisions, CreateClaimedWindow, MAX_RESTORABLE_WINDOWS, PublishCatalogClaim,
-    RememberedTarget, UnixMillis, WindowAcquisitionAuditError, WindowAcquisitionNaturalState,
-    WindowAcquisitionThreadOrigin,
+    BerylState, CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimReplacementAudit,
+    CatalogClaimReplacementRow, CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts,
+    CatalogLineageSummary, CatalogResolvedTitle, CatalogSourceRevisions, CreateClaimedWindow,
+    MAX_RESTORABLE_WINDOWS, PublishCatalogClaimReplacement, RememberedTarget, UnixMillis,
+    WindowAcquisitionAuditError, WindowAcquisitionNaturalState,
 };
 use syndic_storage::{
-    CreateThread, DraftEditHistoryPolicyV1, PristineThreadAudit, PristineThreadCandidate,
-    SyndicStorage, SyndicTimestamp, ThreadArchiveState, ThreadCatalogSummaryRecord,
-    ThreadCatalogTitleSource, ThreadLineageDepth,
+    CreateThread, DraftEditHistoryPolicyV1, EligibleEmptyThreadCandidate,
+    EligibleEmptyThreadOutcome, PristineThreadAudit, SyndicStorage, SyndicTimestamp,
+    ThreadArchiveState, ThreadCatalogSummaryRecord, ThreadCatalogTitleSource, ThreadLineageDepth,
 };
 
 use crate::catalog_projection::{
@@ -30,6 +29,9 @@ use crate::catalog_projection::{
 
 mod abandonment;
 mod close_admission;
+mod eligible_source;
+mod natural_state;
+mod preparation;
 mod selection_admission;
 
 pub use abandonment::*;
@@ -38,8 +40,6 @@ pub(crate) use close_admission::*;
 pub use selection_admission::WindowSelectionAdmissionTestProbe;
 pub(crate) use selection_admission::*;
 
-const CATALOG_PAGE_ITEMS: usize = 16;
-const CATALOG_PAGE_BYTES: usize = CATALOG_PAGE_ITEMS * CATALOG_MAX_STORED_RECENCY_BYTES;
 const CATALOG_REPAIR_BUDGET: usize = MAX_RESTORABLE_WINDOWS;
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -150,6 +150,8 @@ pub struct RuntimeBackedWindowAcquisition {
     fallback_draft_id: SyndicDraftId,
     fallback_execution: ExecutionBinding,
     fallback_created_at: SyndicTimestamp,
+    reused_source: Option<EligibleEmptyThreadOutcome>,
+    catalog_audit: Option<CatalogClaimReplacementAudit>,
 }
 
 impl RuntimeBackedWindowAcquisition {
@@ -623,158 +625,6 @@ impl RuntimeBackedWindowAcquisitionService {
         self.reconcile_natural_state_in_flight(request, &CommandCancellation::new())
     }
 
-    fn reconcile_natural_state_in_flight(
-        &self,
-        request: &RuntimeBackedWindowAcquisitionRequest,
-        cancellation: &CommandCancellation,
-    ) -> RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome {
-        let window_id = request.window_id;
-        for _ in 0..=MAX_RESTORABLE_WINDOWS {
-            let before = match self.store.home_revision() {
-                Ok(revision) => revision,
-                Err(error) => {
-                    return natural_reconciliation_not_committed(window_id, error);
-                }
-            };
-            let natural = match self.state.audit_window_acquisition_with_cancellation(
-                &self.store,
-                window_id,
-                cancellation,
-            ) {
-                Ok(natural) => natural,
-                Err(WindowAcquisitionAuditError::Cancelled) => {
-                    return RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::NotCommitted {
-                        window_id,
-                        evidence: RuntimeBackedWindowAcquisitionNotCommitted::Cancelled,
-                    };
-                }
-                Err(WindowAcquisitionAuditError::RepairNeeded { thread_id }) => {
-                    return RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::NotCommitted {
-                        window_id,
-                        evidence:
-                            RuntimeBackedWindowAcquisitionNotCommitted::CatalogRepairNeeded(
-                                thread_id,
-                            ),
-                    };
-                }
-                Err(error) => {
-                    return natural_reconciliation_not_committed(window_id, error);
-                }
-            };
-            if cancellation.is_cancelled() {
-                return RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::NotCommitted {
-                    window_id,
-                    evidence: RuntimeBackedWindowAcquisitionNotCommitted::Cancelled,
-                };
-            }
-            let audited = match natural {
-                WindowAcquisitionNaturalState::Missing => {
-                    match self.syndic.audit_pristine_thread(
-                        &self.store,
-                        request.fallback_thread_id,
-                        &request.fallback_execution,
-                    ) {
-                        Ok(PristineThreadAudit::Missing) => NaturalAcquisitionAudit::ExactOld,
-                        Ok(PristineThreadAudit::Exact(_) | PristineThreadAudit::Conflict) => {
-                            NaturalAcquisitionAudit::Collision
-                        }
-                        Err(error) => {
-                            return natural_reconciliation_not_committed(window_id, error);
-                        }
-                    }
-                }
-                WindowAcquisitionNaturalState::Collision => NaturalAcquisitionAudit::Collision,
-                WindowAcquisitionNaturalState::Committed(facts) => {
-                    if facts.target() != request.target
-                        || facts.placement() != &request.placement
-                        || facts.fallback_target() != request.target
-                    {
-                        NaturalAcquisitionAudit::Collision
-                    } else {
-                        match self.syndic.audit_pristine_thread(
-                            &self.store,
-                            facts.thread_id(),
-                            &request.fallback_execution,
-                        ) {
-                            Ok(PristineThreadAudit::Exact(candidate)) => {
-                                let disposition = match facts.origin() {
-                                    WindowAcquisitionThreadOrigin::Reused => {
-                                        Some(RuntimeBackedWindowAcquisitionDisposition::Reused)
-                                    }
-                                    WindowAcquisitionThreadOrigin::CreatedFallback
-                                        if facts.thread_id() == request.fallback_thread_id
-                                            && candidate.draft_id()
-                                                == request.fallback_draft_id
-                                            && candidate.created_at()
-                                                == request.fallback_created_at =>
-                                    {
-                                        Some(RuntimeBackedWindowAcquisitionDisposition::Created)
-                                    }
-                                    WindowAcquisitionThreadOrigin::CreatedFallback => None,
-                                };
-                                match disposition {
-                                    Some(disposition) => NaturalAcquisitionAudit::ExactCommitted(
-                                        RuntimeBackedWindowAcquisition {
-                                            home_id: self.store.home_id(),
-                                            window_id,
-                                            thread_id: candidate.thread_id(),
-                                            draft_id: candidate.draft_id(),
-                                            target: facts.target(),
-                                            placement: facts.placement().clone(),
-                                            disposition,
-                                            window_revision: facts.window_revision(),
-                                            fallback_thread_id: request.fallback_thread_id,
-                                            fallback_draft_id: request.fallback_draft_id,
-                                            fallback_execution: request.fallback_execution.clone(),
-                                            fallback_created_at: request.fallback_created_at,
-                                        },
-                                    ),
-                                    None => NaturalAcquisitionAudit::Collision,
-                                }
-                            }
-                            Ok(PristineThreadAudit::Missing | PristineThreadAudit::Conflict) => {
-                                NaturalAcquisitionAudit::Collision
-                            }
-                            Err(error) => {
-                                return natural_reconciliation_not_committed(window_id, error);
-                            }
-                        }
-                    }
-                }
-            };
-            let after = match self.store.home_revision() {
-                Ok(revision) => revision,
-                Err(error) => {
-                    return natural_reconciliation_not_committed(window_id, error);
-                }
-            };
-            if before != after {
-                continue;
-            }
-            return match audited {
-                NaturalAcquisitionAudit::ExactOld => {
-                    RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::ExactOld {
-                        window_id,
-                    }
-                }
-                NaturalAcquisitionAudit::ExactCommitted(acquisition) => {
-                    RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::ExactCommitted {
-                        acquisition,
-                    }
-                }
-                NaturalAcquisitionAudit::Collision => {
-                    RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::Collision {
-                        window_id,
-                    }
-                }
-            };
-        }
-        natural_reconciliation_not_committed(
-            window_id,
-            AcquisitionInvariant("natural-state reconciliation retry budget exhausted"),
-        )
-    }
-
     fn acquire_in_flight(
         &self,
         request: RuntimeBackedWindowAcquisitionRequest,
@@ -797,7 +647,6 @@ impl RuntimeBackedWindowAcquisitionService {
                         Ok(prepared) => {
                             return self.execute_acquisition(prepared, cancellation, flight);
                         }
-                        Err(PreparationFailure::StaleCatalog(thread_id)) => thread_id,
                         Err(PreparationFailure::NotCommitted(evidence)) => {
                             return not_committed(window_id, evidence);
                         }
@@ -852,247 +701,6 @@ impl RuntimeBackedWindowAcquisitionService {
             }
         }
         unreachable!("bounded repair loop returns at its upper bound")
-    }
-
-    fn prepare_acquisition(
-        &self,
-        request: &RuntimeBackedWindowAcquisitionRequest,
-        cancellation: &CommandCancellation,
-    ) -> Result<PreparedAcquisition, PreparationFailure> {
-        let home_revision = self.store.home_revision().map_err(preparation)?;
-        let session_revision = self
-            .state
-            .session()
-            .revision(&self.store)
-            .map_err(preparation)?;
-        let Some(session) = self
-            .state
-            .session()
-            .minimal_bootstrap(&self.store)
-            .map_err(preparation)?
-        else {
-            return Err(PreparationFailure::NotCommitted(
-                RuntimeBackedWindowAcquisitionNotCommitted::SessionNotInitialized,
-            ));
-        };
-        if session.windows().len() >= MAX_RESTORABLE_WINDOWS {
-            return Err(PreparationFailure::NotCommitted(
-                RuntimeBackedWindowAcquisitionNotCommitted::WindowCapacity,
-            ));
-        }
-
-        let runtime_revision = self
-            .state
-            .runtime_roots()
-            .revision(&self.store)
-            .map_err(preparation)?;
-        let runtime_source = self
-            .state
-            .runtime_roots()
-            .catalog_source(
-                &self.store,
-                request.target.runtime_id(),
-                request.target.root_id(),
-            )
-            .map_err(preparation)?;
-        validate_execution(request.fallback_execution(), &runtime_source).map_err(|error| {
-            PreparationFailure::NotCommitted(
-                RuntimeBackedWindowAcquisitionNotCommitted::Preparation(Box::new(error)),
-            )
-        })?;
-
-        let catalog_scan = self
-            .state
-            .catalog()
-            .begin_current_scan(&self.store)
-            .map_err(catalog_read)?;
-        let durable_job_revision = self
-            .state
-            .durable_jobs()
-            .revision(&self.store)
-            .map_err(preparation)?;
-        let syndic_revision = self.syndic.revision(&self.store).map_err(preparation)?;
-        let limits = CursorReadLimits::new(CATALOG_PAGE_ITEMS, CATALOG_PAGE_BYTES)
-            .expect("catalog acquisition page limits are nonzero");
-        let mut after = None;
-        let mut selected: Option<ReuseCandidate> = None;
-        loop {
-            if cancellation.is_cancelled() {
-                return Err(PreparationFailure::NotCommitted(
-                    RuntimeBackedWindowAcquisitionNotCommitted::Cancelled,
-                ));
-            }
-            let page = self
-                .state
-                .catalog()
-                .current_page(&self.store, catalog_scan, after, limits)
-                .map_err(catalog_read)?;
-            for current in page.rows() {
-                if cancellation.is_cancelled() {
-                    return Err(PreparationFailure::NotCommitted(
-                        RuntimeBackedWindowAcquisitionNotCommitted::Cancelled,
-                    ));
-                }
-                let row = current.row();
-                let facts = row.facts();
-                if facts.claim() != CatalogClaimSummary::Unclaimed
-                    || facts.execution().runtime_id() != request.target.runtime_id()
-                    || facts.execution().root_id() != request.target.root_id()
-                {
-                    continue;
-                }
-                let Some(candidate) = self
-                    .syndic
-                    .inspect_pristine_thread(
-                        &self.store,
-                        row.thread_id(),
-                        request.fallback_execution(),
-                    )
-                    .map_err(preparation)?
-                else {
-                    continue;
-                };
-                let Some(job_guard) = self
-                    .state
-                    .durable_jobs()
-                    .thread_reuse_guard(&self.store, candidate.thread_id())
-                    .map_err(preparation)?
-                else {
-                    continue;
-                };
-                let replace = selected.as_ref().is_none_or(|best| {
-                    (candidate.created_at(), candidate.thread_id())
-                        < (best.candidate.created_at(), best.candidate.thread_id())
-                });
-                if replace {
-                    selected = Some(ReuseCandidate {
-                        current: current.clone(),
-                        candidate,
-                        job_guard,
-                    });
-                }
-            }
-            if !page.has_more() {
-                break;
-            }
-            after = page.next_after();
-            if after.is_none() {
-                return Err(PreparationFailure::NotCommitted(
-                    RuntimeBackedWindowAcquisitionNotCommitted::Preparation(Box::new(
-                        AcquisitionInvariant(
-                            "catalog page advertised continuation without a cursor",
-                        ),
-                    )),
-                ));
-            }
-        }
-
-        let target = request.target;
-        let placement = request.placement.clone();
-        let (thread_id, draft_id, disposition, intent) = match selected {
-            Some(reuse) => (
-                reuse.candidate.thread_id(),
-                reuse.candidate.draft_id(),
-                RuntimeBackedWindowAcquisitionDisposition::Reused,
-                AcquisitionIntent::Reuse(reuse),
-            ),
-            None => {
-                let creation = CreateThread::ordinary(
-                    request.fallback_thread_id,
-                    request.fallback_draft_id,
-                    request.fallback_execution.clone(),
-                    request.fallback_created_at,
-                    request.fallback_history_policy,
-                );
-                (
-                    request.fallback_thread_id,
-                    request.fallback_draft_id,
-                    RuntimeBackedWindowAcquisitionDisposition::Created,
-                    AcquisitionIntent::Create(creation),
-                )
-            }
-        };
-        let acquisition = RuntimeBackedWindowAcquisition {
-            home_id: self.store.home_id(),
-            window_id: request.window_id,
-            thread_id,
-            draft_id,
-            target,
-            placement: placement.clone(),
-            disposition,
-            window_revision: beryl_state::RecordRevision::INITIAL,
-            fallback_thread_id: request.fallback_thread_id,
-            fallback_draft_id: request.fallback_draft_id,
-            fallback_execution: request.fallback_execution.clone(),
-            fallback_created_at: request.fallback_created_at,
-        };
-        let session_command = CreateClaimedWindow::new(
-            session.header().revision(),
-            request.window_id,
-            target,
-            thread_id,
-            placement,
-        );
-        let claim = session_command.catalog_claim();
-        let mut command = HomeCommand::new(home_revision).with_cancellation(cancellation.clone());
-        command
-            .add(
-                self.state
-                    .session()
-                    .create_claimed_window(session_revision, session_command),
-            )
-            .map_err(command_build)?;
-        match intent {
-            AcquisitionIntent::Reuse(reuse) => {
-                command
-                    .add(self.state.catalog().publish_claim(
-                        catalog_scan.revision(),
-                        PublishCatalogClaim::current(reuse.current, claim),
-                    ))
-                    .map_err(command_build)?;
-                command
-                    .add_validation(self.syndic.validate_pristine_thread(reuse.candidate))
-                    .map_err(command_build)?;
-                command
-                    .add_validation(
-                        self.state
-                            .durable_jobs()
-                            .validate_thread_reuse_guard(durable_job_revision, reuse.job_guard),
-                    )
-                    .map_err(command_build)?;
-            }
-            AcquisitionIntent::Create(creation) => {
-                let summary = creation.initial_catalog_summary();
-                let facts =
-                    project_unclaimed_facts(&summary, &runtime_source).map_err(preparation)?;
-                let sources = CatalogSourceRevisions::new(
-                    summary.revision(),
-                    runtime_source.runtime().revision(),
-                    runtime_source.root().revision(),
-                    None,
-                );
-                command
-                    .add(self.state.catalog().publish_claim(
-                        catalog_scan.revision(),
-                        PublishCatalogClaim::initial(thread_id, sources, facts, claim),
-                    ))
-                    .map_err(command_build)?;
-                command
-                    .add(self.syndic.create_thread(syndic_revision, creation))
-                    .map_err(command_build)?;
-            }
-        }
-        command
-            .add_validation(
-                self.state
-                    .runtime_roots()
-                    .validate_catalog_source(runtime_revision, runtime_source),
-            )
-            .map_err(command_build)?;
-        Ok(PreparedAcquisition {
-            acquisition,
-            command,
-        })
     }
 
     fn execute_acquisition(
@@ -1188,8 +796,7 @@ struct PreparedAcquisition {
 }
 
 struct ReuseCandidate {
-    current: CatalogCurrentRow,
-    candidate: PristineThreadCandidate,
+    candidate: EligibleEmptyThreadCandidate,
     job_guard: beryl_state::ThreadReuseJobGuard,
 }
 
@@ -1205,7 +812,6 @@ enum NaturalAcquisitionAudit {
 }
 
 enum PreparationFailure {
-    StaleCatalog(SyndicThreadId),
     NotCommitted(RuntimeBackedWindowAcquisitionNotCommitted),
 }
 
@@ -1234,15 +840,6 @@ fn command_build(error: beryl_home_store::CommandBuildError) -> PreparationFailu
     PreparationFailure::NotCommitted(RuntimeBackedWindowAcquisitionNotCommitted::CommandBuild(
         error,
     ))
-}
-
-fn catalog_read(error: CatalogReadError) -> PreparationFailure {
-    match error {
-        CatalogReadError::StaleRow { thread_id } => PreparationFailure::StaleCatalog(thread_id),
-        other => PreparationFailure::NotCommitted(
-            RuntimeBackedWindowAcquisitionNotCommitted::Preparation(Box::new(other)),
-        ),
-    }
 }
 
 fn not_committed(

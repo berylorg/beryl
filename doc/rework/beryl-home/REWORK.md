@@ -501,6 +501,10 @@
   [qualification](../../audits/atomic-current-catalog-invalidation-qualification.md). Producer completeness/rebuild readiness,
   frozen reader implementation and visible Thread Switcher mounting remain separate gates;
   [evidence](../../audits/frozen-thread-catalog-readiness.md).
+- [x] Accepted canonical source election for both New Thread entrances with joined target Catalog
+  publication, original eligible-outcome custody and source-qualified cleanup. Canonical checks,
+  407 distinct affected cases and independent review passed; coherent source publication and frozen
+  queries remain separate gates; [qualification](../../audits/source-authenticated-thread-acquisition-qualification.md).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

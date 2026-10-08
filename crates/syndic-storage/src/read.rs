@@ -23,6 +23,9 @@ mod routes;
 mod stop;
 mod stop_admission;
 mod terminal_history;
+mod threads;
+
+pub use threads::{THREAD_DISCOVERY_PAGE_MAX_BYTES, THREAD_DISCOVERY_PAGE_MAX_ITEMS};
 
 pub use accepted_delivery::{AcceptedInputDeliveryTransitionStatus, SyndicReadySteeringInput};
 pub(crate) use accepted_next::AcceptedNextCandidateBasis;

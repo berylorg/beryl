@@ -42,6 +42,12 @@ use syndic_storage::{
     CreateThread, DraftEditHistoryPolicyV1, PristineThreadAudit, SyndicStorage, SyndicTimestamp,
 };
 
+#[path = "window_acquisition/canonical_election.rs"]
+mod canonical_election;
+
+#[path = "acquisition_support/empty_after_edit.rs"]
+mod empty_after_edit;
+
 struct Fixture {
     state: BerylState,
     syndic: SyndicStorage,
@@ -582,7 +588,7 @@ fn ack_loss_subprocess_child() {
 }
 
 #[test]
-fn stale_catalog_is_repaired_before_the_fixed_reuse_intent() {
+fn stale_catalog_is_refreshed_with_the_fixed_reuse_intent() {
     let fixture = Fixture::new(150);
     let candidate = fixture.publish_pristine_thread(160, 10);
     fixture.mark_catalog_row_stale(candidate);
@@ -591,7 +597,7 @@ fn stale_catalog_is_repaired_before_the_fixed_reuse_intent() {
         .service
         .acquire(fixture.request(170), CommandCancellation::new());
     let RuntimeBackedWindowAcquisitionOutcome::Committed { acquisition, .. } = outcome else {
-        panic!("stale catalog repair must precede acquisition: {outcome:?}")
+        panic!("stale target catalog must refresh within acquisition: {outcome:?}")
     };
     assert_eq!(
         acquisition.disposition(),
@@ -604,11 +610,16 @@ fn stale_catalog_is_repaired_before_the_fixed_reuse_intent() {
 fn repair_budget_exhaustion_is_definitive_atomic_and_releases_identity() {
     let fixture = Fixture::new(135);
     let first = fixture.publish_pristine_thread(145, 10);
-    let second = fixture.publish_pristine_thread(146, 20);
-    fixture.mark_catalog_row_stale(first);
-    fixture.mark_catalog_row_stale(second);
     let request = fixture.request(155);
-    let bounded = fixture.service.clone().test_with_catalog_repair_budget(1);
+    assert!(matches!(
+        fixture
+            .service
+            .acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::Committed { .. }
+    ));
+    fixture.mark_catalog_row_stale(first);
+    let before = fixture.store.home_revision().unwrap();
+    let bounded = fixture.service.clone().test_with_catalog_repair_budget(0);
     assert!(matches!(
         bounded.acquire(request.clone(), CommandCancellation::new()),
         RuntimeBackedWindowAcquisitionOutcome::NotCommitted {
@@ -626,8 +637,9 @@ fn repair_budget_exhaustion_is_definitive_atomic_and_releases_identity() {
         bootstrap
             .windows()
             .iter()
-            .all(|window| window.window_id() != request.window_id())
+            .any(|window| window.window_id() == request.window_id())
     );
+    assert_eq!(fixture.store.home_revision().unwrap(), before);
     assert!(
         fixture
             .state
@@ -666,8 +678,14 @@ fn repair_budget_exhaustion_is_definitive_atomic_and_releases_identity() {
 fn repair_ack_loss_retains_identity_custody_until_exact_classification() {
     let fixture = Fixture::new(180);
     let candidate = fixture.publish_pristine_thread(190, 10);
-    fixture.mark_catalog_row_stale(candidate);
     let request = fixture.request(200);
+    assert!(matches!(
+        fixture
+            .service
+            .acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::Committed { .. }
+    ));
+    fixture.mark_catalog_row_stale(candidate);
     let block = fixture.faults.block_next(FaultPoint::BeforeCommit);
     let service = fixture.service.clone();
     let worker = std::thread::spawn(move || service.acquire(request, CommandCancellation::new()));

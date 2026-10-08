@@ -79,7 +79,7 @@ impl Fixture {
         else {
             panic!("acquired window was not exact")
         };
-        facts
+        facts.with_thread_origin(WindowAcquisitionThreadOrigin::CreatedFallback)
     }
 
     fn abandon(&self, facts: &WindowAcquisitionCommittedFacts) -> CommandOutcome {
@@ -90,7 +90,10 @@ impl Fixture {
                 facts.abandon_session_window(),
             ))
             .unwrap();
-        match facts.origin() {
+        match facts
+            .origin()
+            .expect("fixture source-qualified acquisition origin")
+        {
             WindowAcquisitionThreadOrigin::Reused => command
                 .add(self.state.catalog().release_claim(
                     facts.catalog_domain_revision(),
@@ -163,9 +166,45 @@ impl Fixture {
         else {
             panic!("reused acquired window was not exact")
         };
-        assert_eq!(facts.origin(), WindowAcquisitionThreadOrigin::Reused);
-        facts
+        assert_eq!(facts.origin(), None);
+        facts.with_thread_origin(WindowAcquisitionThreadOrigin::Reused)
     }
+}
+
+#[test]
+fn unqualified_acquisition_origin_cannot_classify_abandonment_before_or_after_cleanup() {
+    let fixture = Fixture::new();
+    let original = fixture.publish_acquired();
+    let WindowAcquisitionNaturalState::Committed(unqualified) = fixture
+        .state
+        .audit_window_acquisition(&fixture.store, fixture.window_id)
+        .unwrap()
+    else {
+        panic!("acquired State facts were not exact")
+    };
+    assert_eq!(unqualified.origin(), None);
+    assert_eq!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &unqualified)
+            .unwrap(),
+        WindowAbandonmentNaturalState::Collision
+    );
+    assert_committed(fixture.abandon(&original));
+    assert_eq!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &unqualified)
+            .unwrap(),
+        WindowAbandonmentNaturalState::Collision
+    );
+    assert_eq!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &original)
+            .unwrap(),
+        WindowAbandonmentNaturalState::ExactAbandoned
+    );
 }
 
 #[test]
@@ -291,7 +330,7 @@ fn session_only_partial_abandonment_is_a_collision() {
 }
 
 #[test]
-fn cross_origin_catalog_participants_reject_without_mutating_the_claimed_row() {
+fn initial_catalog_claim_release_preserves_row_and_reused_deletion_rejects() {
     let created = Fixture::new();
     let created_facts = created.publish_acquired();
     let mut release = HomeCommand::new(created.store.home_revision().unwrap());
@@ -301,13 +340,24 @@ fn cross_origin_catalog_participants_reject_without_mutating_the_claimed_row() {
             created_facts.release_catalog_claim(),
         ))
         .unwrap();
-    assert_not_committed(created.store.execute(release));
+    assert_committed(created.store.execute(release));
+    let released = created
+        .state
+        .catalog()
+        .row(
+            &created.store,
+            created_facts.thread_id(),
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(released.facts().claim(), CatalogClaimSummary::Unclaimed);
     assert_eq!(
         created
             .state
             .audit_window_abandonment(&created.store, &created_facts)
             .unwrap(),
-        WindowAbandonmentNaturalState::ExactAcquired(created_facts.clone())
+        WindowAbandonmentNaturalState::Collision
     );
 
     let reused = Fixture::new();

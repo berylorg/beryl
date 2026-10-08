@@ -238,7 +238,6 @@ impl DomainMutation<CatalogDomain> for ReleaseCatalogClaim {
         }
         if expected.facts().execution().runtime_id() != runtime_id
             || expected.facts().execution().root_id() != root_id
-            || expected.revision() == CatalogRevision::INITIAL
             || expected.sources().claim() != Some(claim.revision())
             || expected.facts().claim()
                 != CatalogClaimSummary::claimed(claim.window_id(), CatalogClaimKind::Active)
