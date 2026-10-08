@@ -15,6 +15,7 @@ impl ProcessServiceOwner {
             && self.failed_retirement.is_none()
             && self.failed_cas_close.is_none()
             && self.closing_graph.is_none()
+            && self.closing_catalog_query.is_none()
             && matches!(
                 self.attempt,
                 InitialServiceAttemptState::Initial | InitialServiceAttemptState::Retired(_)
@@ -32,6 +33,7 @@ impl ProcessServiceOwner {
             || self.failed_close.is_some()
             || self.failed_cas_close.is_some()
             || self.failed_retirement.is_some()
+            || self.closing_catalog_query.is_some()
         {
             return Err(AppServiceOpenError::AlreadyInstalled);
         }

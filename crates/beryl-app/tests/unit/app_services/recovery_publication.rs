@@ -11,6 +11,16 @@ fn replacement(
 ) -> (HomeGeneration, Option<PreparedRecoveryServiceGraph>) {
     let mut candidate = Some(owner.recover_retired_service_home(expected).unwrap());
     let generation = candidate.as_ref().unwrap().generation();
+    let state = BerylState::reacquire_candidate(candidate.as_ref().unwrap()).unwrap();
+    let syndic = SyndicStorage::reacquire_candidate(candidate.as_ref().unwrap()).unwrap();
+    owner
+        .settle_retired_process_work(
+            &candidate.as_mut().unwrap().recovery_access().unwrap(),
+            &state,
+            &syndic,
+            &CommandCancellation::new(),
+        )
+        .unwrap();
     let graph = owner
         .prepare_recovery_service_graph(
             expected,

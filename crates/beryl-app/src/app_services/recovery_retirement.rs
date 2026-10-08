@@ -19,6 +19,8 @@ pub(crate) enum RetiredProcessWorkError {
     CatalogCollision,
     #[error(transparent)]
     CatalogReconciliation(#[from] beryl_home_store::ReconciliationFailure),
+    #[error("original catalog query retirement still retains read custody")]
+    CatalogQueryPending,
     #[error("process work settlement requires completed graph retirement")]
     RetirementIncomplete,
     #[error("process work settlement requires a replacement candidate for the same home")]
@@ -42,6 +44,8 @@ pub(super) struct ServiceGraphRetirement {
     failure: Option<AppServiceCloseError>,
     joined_handoff_read_failure: Option<HandoffCoordinatorError>,
     joined_catalog_failure: std::sync::Mutex<Option<CatalogSourceCoordinatorError>>,
+    catalog_query: std::sync::Mutex<Option<CatalogQueryService>>,
+    joined_catalog_query_failure: std::sync::Mutex<Option<CatalogQueryServiceError>>,
     complete: bool,
 }
 
@@ -176,6 +180,32 @@ impl ProcessServiceOwner {
                 }
             }
         }
+        let mut queries = retirement
+            .catalog_query
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(service) = queries.as_mut() {
+            if let Err(error) = service.stop_and_join() {
+                let mut failure = retirement
+                    .joined_catalog_query_failure
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                if failure.is_none() {
+                    *failure = Some(error);
+                }
+            }
+            if !service.reads_drained() {
+                return Err(RetiredProcessWorkError::CatalogQueryPending);
+            }
+        }
+        drop(queries.take());
+        drop(
+            retirement
+                .joined_catalog_query_failure
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take(),
+        );
         drop(catalog_failure.take());
         Ok(())
     }
@@ -194,6 +224,16 @@ impl ProcessServiceOwner {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .is_some()
+            || retirement
+                .catalog_query
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
+            || retirement
+                .joined_catalog_query_failure
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
         {
             return Err(ServiceGraphRetirementError::Incomplete);
         }
@@ -254,10 +294,25 @@ impl ProcessServiceOwner {
             failure: None,
             joined_handoff_read_failure: None,
             joined_catalog_failure: std::sync::Mutex::new(None),
+            catalog_query: std::sync::Mutex::new(None),
+            joined_catalog_query_failure: std::sync::Mutex::new(None),
             complete: false,
         });
         let retirement = self.recovery_retirement.as_mut().unwrap();
         let graph = retirement.graph.as_mut().unwrap();
+        if let Some(mut queries) = graph.catalog_query.take() {
+            if let Err(error) = queries.stop_and_join() {
+                *retirement
+                    .joined_catalog_query_failure
+                    .get_mut()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(error);
+            }
+            assert!(queries.work_drained());
+            *retirement
+                .catalog_query
+                .get_mut()
+                .unwrap_or_else(|e| e.into_inner()) = Some(queries);
+        }
         if let Some(mut catalog) = graph.catalog_source.take() {
             if let Err(error) = catalog.stop_and_join() {
                 *retirement

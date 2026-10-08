@@ -143,6 +143,13 @@ pub use catalog::{
     ReleaseCatalogClaim,
 };
 pub use catalog::{
+    CATALOG_QUERY_COLLECTION_LIMIT, CATALOG_QUERY_PAGE_MAX_BYTES, CATALOG_QUERY_PAGE_MAX_ITEMS,
+    CatalogQueryCriteria, CatalogQueryCursor, CatalogQueryError, CatalogQueryOpenError,
+    CatalogQueryOpened, CatalogQueryOwner, CatalogQueryPage, CatalogQueryPageLimit,
+    CatalogQueryPosition, CatalogQueryRow, CatalogQueryScope, CatalogQueryScopePresentation,
+    CatalogQueryToken,
+};
+pub use catalog::{
     CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement,
 };
 #[cfg(feature = "test-faults")]

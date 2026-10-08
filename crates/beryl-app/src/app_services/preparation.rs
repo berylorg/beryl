@@ -14,6 +14,7 @@ pub(super) struct PreparedAppServices {
     process: ProcessAdmissionGate,
     cas: Option<PreparedCasServices>,
     catalog_source: Option<CatalogSourceCoordinator>,
+    catalog_query: Option<CatalogQueryService>,
     marker: Option<PreparedMarkerServices>,
     activity: Option<PreparedActivityService>,
     theme: Option<PreparedThemeRuntime>,
@@ -39,6 +40,14 @@ impl std::fmt::Debug for PreparedAppServiceFailure {
 }
 
 impl PreparedAppServices {
+    #[cfg(test)]
+    pub(super) fn catalog_query_reader(&self) -> crate::catalog_query::PublishedCatalogQueryReader {
+        self.catalog_query
+            .as_ref()
+            .expect("prepared catalog queries")
+            .reader()
+    }
+
     #[cfg(test)]
     pub(super) fn catalog_source_reader(&self) -> crate::catalog_readiness::CatalogSourceReader {
         self.catalog_source
@@ -86,6 +95,7 @@ impl PreparedAppServices {
             process: owner.process.clone(),
             cas: None,
             catalog_source: None,
+            catalog_query: None,
             marker: None,
             activity: None,
             theme: None,
@@ -169,6 +179,11 @@ impl PreparedAppServices {
                 catalog_start.unwrap_or_else(|| cas.catalog_source_start_gate()),
             )?;
             cas.install_catalog_source_waker(catalog_source.waker());
+            prepared.catalog_query = Some(CatalogQueryService::prepare(
+                Arc::new(candidate.service_reference()),
+                prepared.state.clone(),
+                catalog_source.reader(),
+            )?);
             prepared.catalog_source = Some(catalog_source);
             prepared.marker = Some(PreparedMarkerServices::prepare(
                 candidate,
@@ -232,6 +247,10 @@ impl PreparedAppServices {
             .take()
             .expect("prepared CAS")
             .into_published_parts();
+        self.catalog_query
+            .as_ref()
+            .expect("prepared catalog queries")
+            .publish();
         let graph = PublishedAppServices {
             runtime_setup: self
                 .runtime_setup
@@ -257,6 +276,7 @@ impl PreparedAppServices {
             loaded_theme: None,
             cas: Some(cas),
             catalog_source: self.catalog_source.take(),
+            catalog_query: self.catalog_query.take(),
             sessions: self.sessions.clone(),
             attention: Arc::clone(&self.attention),
             state: self.state.clone(),
@@ -276,6 +296,7 @@ impl PreparedAppServices {
     }
 
     fn join_components(&mut self) {
+        drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         drop(self.runtime_setup.take());
         drop(self.cas.take());

@@ -17,6 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "app_services/catalog_query_lifecycle.rs"]
+mod catalog_query_lifecycle;
 #[path = "app_services/catalog_source_lifecycle.rs"]
 mod catalog_source_lifecycle;
 #[path = "app_services/committed_first_conversation.rs"]

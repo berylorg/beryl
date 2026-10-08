@@ -194,6 +194,7 @@ mod diagnostic_child_protocol;
 mod diagnostic_child_target;
 
 pub mod catalog_projection;
+pub mod catalog_query;
 pub mod catalog_readiness;
 pub mod composer_host;
 pub mod composer_marker_seal;

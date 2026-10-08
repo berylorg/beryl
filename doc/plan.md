@@ -94,20 +94,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 744: Establish Coherent Published Catalog Source Readiness (finished)
+# Phase 739: Implement Published Frozen Thread Catalog Queries (finished)
 
-Accepted generation-owned bounded frozen reads, complete background Catalog source certification,
-guarded rebuild and exact startup/recovery retirement custody. Canonical affected App qualification
-passes 95/95, every original diagnostic failure has corresponding passing coverage, reused domain
-regressions and current four-crate checks pass, and independent review is complete.
-See [qualification](audits/coherent-catalog-source-readiness-qualification.md).
-Frozen queries, ordinary selection recovery and visible mounting remain separate boundaries.
-
-# Phase 739: Implement Published Frozen Thread Catalog Queries (pending)
-
-After coherent source readiness passes, implement the generation-owned bounded catalog
-reader and published query/page capability for the ordinary Thread Switcher, with stable complete
-scope/search and retirement release. Preserve a separate visible mounting acceptance.
+Accepted State-owned complete immutable queries through the actual published App reader and
+background worker, with finite admission and exact cancellation/retirement custody. Combined
+qualification covers 268 State and 412 distinct App cases, including all corrected earlier failures
+and actual first-reply waker panic. Final checks, hashes and independent review pass; see
+[qualification](audits/frozen-catalog-query-qualification.md). Ordinary selection recovery and
+visible Thread Switcher mounting remain separate boundaries.
 
 # Phase 740: Qualify Ordinary Selection Failed-Home Custody (pending)
 
@@ -117,7 +111,7 @@ Do not reuse the creation-specific exception as ordinary activation authority.
 
 # Phase 741: Mount The Thread Switcher (pending)
 
-Mount the exhaustive stable catalog, runtime/root browsing, bounded search and exact available
+Mount the exhaustive stable catalog, bounded frozen runtime/root option browsing, search and exact available
 thread activation after its reader and ordinary-selection recovery prerequisites pass. Keep
 current-thread no-op and open-elsewhere unavailability; remaining navigation and shell mounts
 continue through later bounded tracker slices.

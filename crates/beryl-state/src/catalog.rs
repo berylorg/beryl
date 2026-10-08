@@ -27,6 +27,8 @@ mod invalidation;
 mod mutation;
 #[path = "catalog/normalization.rs"]
 mod normalization;
+#[path = "catalog/query.rs"]
+mod query;
 #[path = "catalog/rebuild.rs"]
 mod rebuild;
 #[path = "catalog/row.rs"]
@@ -59,6 +61,13 @@ pub use mutation::{
 pub use normalization::{
     CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
     CatalogNormalizedQuery,
+};
+pub use query::{
+    CATALOG_QUERY_COLLECTION_LIMIT, CATALOG_QUERY_PAGE_MAX_BYTES, CATALOG_QUERY_PAGE_MAX_ITEMS,
+    CatalogQueryCriteria, CatalogQueryCursor, CatalogQueryError, CatalogQueryOpenError,
+    CatalogQueryOpened, CatalogQueryOwner, CatalogQueryPage, CatalogQueryPageLimit,
+    CatalogQueryPosition, CatalogQueryRow, CatalogQueryScope, CatalogQueryScopePresentation,
+    CatalogQueryToken,
 };
 pub use rebuild::RebuildCatalogRow;
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};

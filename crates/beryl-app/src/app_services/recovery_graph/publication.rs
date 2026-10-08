@@ -45,6 +45,11 @@ impl ProcessServiceOwner {
             .expect("complete recovery CAS")
             .publish()
             .map_err(|error| error.to_string())?;
+        services
+            .catalog_query
+            .as_ref()
+            .expect("prepared recovery queries")
+            .publish();
         self.graph = Some(PublishedAppServices {
             runtime_setup: graph
                 .runtime_setup
@@ -65,6 +70,7 @@ impl ProcessServiceOwner {
             loaded_theme: None,
             cas: Some(cas),
             catalog_source: services.catalog_source.take(),
+            catalog_query: services.catalog_query.take(),
             sessions: graph.sessions.clone(),
             attention: graph.attention.take().unwrap(),
             state: graph.state.clone(),

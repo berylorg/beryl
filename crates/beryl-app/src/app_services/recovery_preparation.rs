@@ -10,6 +10,7 @@ use crate::{
 pub(crate) struct PreparedRecoveryAppServices {
     pub(super) cas: Option<PreparedRecoveryCasServices>,
     pub(super) catalog_source: Option<CatalogSourceCoordinator>,
+    pub(super) catalog_query: Option<CatalogQueryService>,
     pub(super) marker: Option<PreparedMarkerServices>,
     pub(super) activity: Option<PreparedActivityService>,
     pub(super) theme: Option<PreparedThemeRuntime>,
@@ -197,6 +198,7 @@ impl PreparedRecoveryAppServices {
         let mut prepared = Self {
             cas: Some(cas),
             catalog_source: None,
+            catalog_query: None,
             marker: None,
             activity: None,
             theme: None,
@@ -219,6 +221,11 @@ impl PreparedRecoveryAppServices {
                 cas.catalog_source_start_gate(),
             )?;
             cas.install_catalog_source_waker(catalog_source.waker());
+            prepared.catalog_query = Some(CatalogQueryService::prepare(
+                Arc::new(candidate.service_reference()),
+                state.clone(),
+                catalog_source.reader(),
+            )?);
             prepared.catalog_source = Some(catalog_source);
             prepared.marker = Some(PreparedMarkerServices::prepare_recovery(
                 candidate,
@@ -264,6 +271,7 @@ impl PreparedRecoveryAppServices {
     }
 
     fn join_ancillary_services(&mut self) {
+        drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         drop(self.theme.take());
         drop(self.activity.take());

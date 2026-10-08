@@ -197,6 +197,26 @@ durable job records and transitions plus compact catalog schema, normalization, 
   its exact Home read on dismissal, cancellation, supersession, failure or service retirement;
   stale outstanding requests cannot publish into another query. Query results grant no claim or
   activation authority; the serialized live writer independently revalidates selection.
+- A generation-qualified query owner admits at most 32 collections, including entries retaining
+  unsuccessful release custody. Query operations are serialized through that owner. Scan pages
+  admit at most 16 records and 4,194,752 stored bytes; presentation row pages admit at most 16 rows
+  and 8 MiB of conservatively charged payload, including Catalog and runtime/root encoded bounds
+  with checked key and cumulative overhead. Opened-query criteria and scope headers have their
+  existing separate schema bounds. This charge is not an exact aggregate allocation measurement.
+  Each otherwise valid maximum-size row remains reachable. Owner/query identities use
+  checked non-reused counters; exhaustion refuses admission without wrapping.
+- Opening transfers an independently retained read only when finite owner admission succeeds.
+  A pre-admission failure returns its original read custody to the composing owner; it never
+  discards a foreign, saturated, retired or exhausted request's read. After collection admission,
+  failed opening evaluation or cancellation releases the entry or retains its exact bounded
+  retiring custody. Cancellation or refusal of an individual page/position request does not itself
+  terminate the already opened collection; its owner retains explicit collection-release duty.
+- The composing worker preserves the query owner across unwind and explicitly retires it using
+  the original Home reference. Failed releases remain owned rather than becoming successful
+  cleanup. Successful release, or the original Home's authenticated typed frozen-read Released
+  result after registry retirement, settles that entry. Foreign, poisoned or other failures do
+  not prove retirement. Query metadata holds no database or snapshot ownership outside Home's
+  registry; Home generation retirement closes and drains that registry independently.
 
 ## Exact catalog claim replacement
 

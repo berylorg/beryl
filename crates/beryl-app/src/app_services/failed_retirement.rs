@@ -29,6 +29,7 @@ impl ProcessServiceOwner {
         }
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("admitted failed graph");
+        self.begin_catalog_query_close(graph.catalog_query.take());
         if let Some(mut catalog) = graph.catalog_source.take() {
             if let Err(error) = catalog.stop_and_join() {
                 assert!(self.closing_catalog_error.is_none());
@@ -81,6 +82,7 @@ impl ProcessServiceOwner {
             self.failed_close = Some(error);
         }
         drop(graph);
+        self.finish_catalog_query_close()?;
         settled_handoff(handoff, home_generation)?;
         custody?;
         if !retired {
@@ -95,6 +97,9 @@ impl ProcessServiceOwner {
         }
         self.attempt = InitialServiceAttemptState::Retired(fence);
         if let Some(error) = self.closing_catalog_error.take() {
+            return Err(error.into());
+        }
+        if let Some(error) = self.closing_catalog_query_error.take() {
             return Err(error.into());
         }
         Ok(())

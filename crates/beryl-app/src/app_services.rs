@@ -12,6 +12,7 @@ use crate::{
         RuntimeInterestConfig, RuntimeSessionPreparationConfig, RuntimeTokenDirectory,
         ScheduledExecutionSessions, ScheduledOrdinaryRequestPolicy,
     },
+    catalog_query::{CatalogQueryService, CatalogQueryServiceError},
     catalog_readiness::{CatalogSourceCoordinator, CatalogSourceCoordinatorError},
     composer_marker_seal::{
         DraftMarkerSealService, DraftMarkerSealServiceLimits,
@@ -31,6 +32,7 @@ use crate::{
 };
 
 mod attempt;
+mod catalog_queries;
 mod failed_retirement;
 mod initial_disposal;
 mod preparation;
@@ -105,6 +107,8 @@ pub(crate) enum AppServiceOpenError {
     #[error(transparent)]
     Catalog(#[from] CatalogSourceCoordinatorError),
     #[error(transparent)]
+    CatalogQuery(#[from] CatalogQueryServiceError),
+    #[error(transparent)]
     Enrollment(#[from] ActivityEnrollmentCustodyError),
     #[error(transparent)]
     Settlement(#[from] HandoffCandidateConvergenceError),
@@ -168,6 +172,8 @@ pub(crate) struct ProcessServiceOwner {
     closing_handoff_error:
         Option<crate::discussion_settlement::coordinator::HandoffCoordinatorError>,
     closing_catalog_error: Option<CatalogSourceCoordinatorError>,
+    closing_catalog_query: Option<CatalogQueryService>,
+    closing_catalog_query_error: Option<CatalogQueryServiceError>,
     recovery_retirement: Option<recovery_retirement::ServiceGraphRetirement>,
     attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
@@ -198,6 +204,7 @@ pub(crate) struct PublishedAppServices {
     loaded_theme: Option<crate::theme_runtime::ThemeRuntime>,
     cas: Option<ProjectionConnectionService>,
     catalog_source: Option<CatalogSourceCoordinator>,
+    catalog_query: Option<CatalogQueryService>,
     sessions: ScheduledExecutionSessions,
     attention: Arc<ProcessLifecycleAttentionPool>,
     state: BerylState,
@@ -229,6 +236,8 @@ impl ProcessServiceOwner {
             closing_graph: None,
             closing_handoff_error: None,
             closing_catalog_error: None,
+            closing_catalog_query: None,
+            closing_catalog_query_error: None,
             recovery_retirement: None,
             attempt: InitialServiceAttemptState::Initial,
             home_id,
@@ -360,6 +369,11 @@ impl ProcessServiceOwner {
     }
 
     pub(crate) fn drain_initial_catalog_source(&mut self) {
+        let query = self
+            .graph
+            .as_mut()
+            .and_then(|graph| graph.catalog_query.take());
+        self.begin_catalog_query_close(query);
         if let Some(mut catalog) = self
             .graph
             .as_mut()
@@ -382,6 +396,7 @@ impl Drop for PublishedAppServices {
 
 impl PublishedAppServices {
     fn join_components(&mut self) {
+        drop(self.catalog_query.take());
         drop(self.catalog_source.take());
         self.private_clipboard.retire();
         drop(self.restore_lifetime.take());

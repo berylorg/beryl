@@ -14,6 +14,12 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(crate) fn catalog_query_reader(&self) -> crate::catalog_query::PublishedCatalogQueryReader {
+        self.catalog_query
+            .as_ref()
+            .expect("published catalog query service")
+            .reader()
+    }
     pub(crate) fn catalog_source_reader(&self) -> crate::catalog_readiness::CatalogSourceReader {
         self.catalog_source
             .as_ref()

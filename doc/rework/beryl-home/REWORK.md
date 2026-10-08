@@ -514,6 +514,11 @@
   App qualification passes 95/95 with current checks and independent review;
   [qualification](../../audits/coherent-catalog-source-readiness-qualification.md). Query capabilities
   and visible Thread Switcher mounting remain separate gates.
+- [x] Accepted State-owned immutable complete Catalog queries through the published App graph
+  reader, finite background worker and exact retirement custody. Combined qualification covers
+  268 State and 412 distinct App cases, including actual first-reply waker panic; current checks
+  and independent review pass. See [qualification](../../audits/frozen-catalog-query-qualification.md).
+  Ordinary selection recovery and visible Thread Switcher mounting remain separate gates.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

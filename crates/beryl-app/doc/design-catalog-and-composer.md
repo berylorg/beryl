@@ -89,6 +89,30 @@ governed by [design.md](design.md). It does not independently declare engineerin
   or callback surviving graph retirement cannot pin old database or snapshot ownership. Actual
   activation uses the ordinary exact idle-thread route and independently authenticates live
   immutable execution, draft, claim and source facts; frozen rows confer no activation permission.
+- The graph's query worker serializes requests through the State query owner. Its ordinary FIFO
+  admits at most 64 pending requests, with one active request and at most 32 State collections.
+  Checked request identities never wrap. Saturation is typed refusal. Collection release and
+  service stop use bounded independent control state, so a full request queue cannot prevent
+  cancellation, source release or retirement.
+- First-response cancellation or failed delivery releases an opened State collection before
+  consumer adoption. A State pre-admission error returns the original retained read to this
+  worker; the service retains and releases that exact custody rather than inventing a second
+  collection or emergency queue. Worker unwind preserves the State owner for explicit drainage.
+- Canceling an individual page/position request leaves its existing immutable collection owned
+  and available for later requests. Scope/search supersession, dismissal and collection cancellation
+  terminate that collection and cancel its queued or active requests through the independent
+  release control. Request failure never becomes a successful empty collection.
+- Graph retirement first closes query admission, cancels requests and joins all admitted work on
+  its existing background disposal path. An unsuccessful read release remains in the original
+  bounded query-service custody. It does not prevent Home from retiring its own frozen registry
+  after work drainage. Retry against the same original Home reference settles metadata only
+  through successful release or the authenticated typed Released acknowledgement; foreign or
+  poisoned evidence does not settle it. Home-close failure retains that query service in the
+  existing ordinary-close or failed-Home retirement owner for later cleanup.
+- Proven drained query spawn, read or worker-panic failures are historical errors with no repair
+  command, receipt or reconciliation authority. Existing fresh-candidate retained-process-work
+  settlement may consume that graph's bounded historical error after required settlement succeeds.
+  Pending release custody remains distinct and cannot be classified as drained historical failure.
 
 ## Range-Backed Composer Host
 

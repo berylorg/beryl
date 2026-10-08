@@ -758,6 +758,23 @@ An intentionally failed Home can additionally leave a drained Catalog source rea
 teardown. Accept only the exact Failed-generation HealthGate classification and separately prove
 the attempt is Retired with no graph or retained close; other teardown errors remain failures.
 
+Frozen query integration exposed another original-custody fixture omission. A joined query service
+remains in its bounded retirement slot even when no collection was opened; work drainage alone
+does not settle that original owner. The recovery-publication helper recovered a candidate and
+prepared services without the production route's `settle_retired_process_work` step. Publication
+correctly refused the retained slot. Reacquire State/Syndic from that same candidate and settle
+through its exact recovery access before every replacement preparation; preserve the publication
+guard and all original fault/fence assertions. The complete corrected fixture family passes in
+[query qualification](../audits/frozen-catalog-query-qualification.md).
+
+The same diagnostic packet aborted one ordinary recovery fixture after it compared unrestricted
+desktop foreground HWNDs across an eleven-second scenario. Neither HWND owner was recorded, so
+the mismatch does not prove recovery changed Beryl focus. The abort followed an assertion panic
+crossing a native callback boundary, not the earlier worker stack-overflow signature. Qualify each
+preserved window's exact logical focus, native HWND and placement without post-recovery refocus;
+keep external desktop transitions diagnostic and do not claim shared-desktop foreground continuity.
+The complete corrected ordinary recovery family passes, including original uncertain enrollment.
+
 Abandoned resident preparation and refused current configuration expose an actual continuation
 precondition mismatch. Resident preparation owns the original graph while service settlement is
 Pending. The outer driver nevertheless performs a fresh New Thread classification that requires

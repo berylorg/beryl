@@ -44,6 +44,10 @@ pub(crate) enum AppServiceCloseError {
     Cas(#[from] ProjectionConnectionServiceCloseError),
     #[error(transparent)]
     Catalog(#[from] CatalogSourceCoordinatorError),
+    #[error(transparent)]
+    CatalogQuery(#[from] CatalogQueryServiceError),
+    #[error("catalog query read retirement retains exact source custody")]
+    CatalogQueryPending,
 }
 
 #[derive(Debug)]
@@ -229,6 +233,7 @@ impl ProcessServiceOwner {
             .take()
             .or_else(|| self.closing_graph.take())
             .expect("ready or retained closing graph");
+        self.begin_catalog_query_close(graph.catalog_query.take());
         if let Some(mut catalog) = graph.catalog_source.take() {
             if let Err(error) = catalog.stop_and_join() {
                 assert!(self.closing_catalog_error.is_none());
@@ -276,6 +281,7 @@ impl ProcessServiceOwner {
         if let Err(error) = home {
             self.failed_close = Some(error);
         }
+        self.finish_catalog_query_close()?;
         if let Some(error) = self.closing_handoff_error.take() {
             return Err(error.into());
         }
@@ -296,6 +302,9 @@ impl ProcessServiceOwner {
         }
         self.record_initial_retirement()?;
         if let Some(error) = self.closing_catalog_error.take() {
+            return Err(error.into());
+        }
+        if let Some(error) = self.closing_catalog_query_error.take() {
             return Err(error.into());
         }
         Ok(())
