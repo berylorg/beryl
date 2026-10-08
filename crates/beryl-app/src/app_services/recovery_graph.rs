@@ -13,6 +13,10 @@ use crate::{
 use beryl_home_store::{HomeGeneration, HomeRecoveryCandidate};
 
 pub(crate) struct PreparedRecoveryServiceGraph {
+    pub(super) first_composer: Option<crate::main_window::MainWindowFreshComposerPreparation>,
+    first_transcript: Option<crate::syndic_transcript::PreparedTranscriptActivation>,
+    first_configurator: Option<crate::main_window::MainWindowCreationConfiguratorSource>,
+    pub(super) runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     private_clipboard: Option<crate::main_window::MainWindowPrivateClipboardOwner>,
     pub(super) failed_residents: Vec<super::recovery_failed_residents::FailedResidentSource>,
     process: ProcessAdmissionGate,
@@ -86,6 +90,23 @@ impl ProcessServiceOwner {
             .map_err(|error| reject(error.to_string()))?;
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = PreparedRecoveryServiceGraph {
+            first_composer: None,
+            first_transcript: None,
+            first_configurator: self
+                .first_configurator
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+            runtime_setup: Some(
+                super::runtime_setup::RuntimeSetupService::prepare(
+                    Arc::new(retained.service_reference()),
+                    state.clone(),
+                    syndic.clone(),
+                    self.windows.clone(),
+                    &configuration,
+                )
+                .map_err(reject)?,
+            ),
             private_clipboard: Some(
                 crate::main_window::MainWindowPrivateClipboardOwner::with_paste_resources(
                     configuration.paste_resources,
@@ -200,7 +221,7 @@ impl PreparedRecoveryServiceGraph {
             }
             _ => None,
         };
-        Ok(())
+        self.validate_first_conversation()
     }
 
     pub(crate) fn composer_recovery_read(
@@ -304,6 +325,7 @@ impl Drop for PreparedRecoveryServiceGraph {
     }
 }
 
+mod first_conversation;
 mod publication;
 
 #[cfg(all(test, feature = "test-faults", target_os = "windows"))]

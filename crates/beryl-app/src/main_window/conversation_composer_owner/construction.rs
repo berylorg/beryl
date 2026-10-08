@@ -250,6 +250,8 @@ impl MainWindowConversationComposer {
             failed_resident: None,
             failed_resident_generation: 0,
             unpublished_recovery_protection: None,
+            fresh_recovery_release_requests: None,
+            fresh_recovery_gui: None,
             startup_interaction_gated: false,
             shutdown_interaction_gated: false,
             startup_release_started: false,

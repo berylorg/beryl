@@ -30,6 +30,7 @@ mod close;
 mod close_cleanup;
 mod failed_candidate_source;
 mod failed_resident;
+mod fresh_candidate;
 pub use failed_candidate_source::MainWindowFailedResidentCandidateSource;
 mod native_disposal;
 mod retirement;
@@ -253,6 +254,8 @@ pub struct MainWindowConversationComposerService {
     test_append_impossible_pending_initial_response: AtomicBool,
     #[cfg(feature = "test-faults")]
     test_selected_preparation_fault: Mutex<Option<MainWindowSelectedComposerPreparationTestFault>>,
+    #[cfg(feature = "test-faults")]
+    test_fail_fresh_widget_release: AtomicBool,
 }
 
 impl MainWindowConversationComposerService {
@@ -384,6 +387,8 @@ impl MainWindowConversationComposerService {
             test_append_impossible_pending_initial_response: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
             test_selected_preparation_fault: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_fail_fresh_widget_release: AtomicBool::new(false),
         }
     }
 

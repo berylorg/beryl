@@ -28,6 +28,20 @@ pub(crate) enum RunningShutdownSession {
     RecoveryOwned,
 }
 
+impl RunningShutdownSession {
+    pub(crate) fn first_conversation_facts(
+        &self,
+    ) -> Option<&crate::runtime_admission::recovery::FirstConversationFacts> {
+        match self {
+            Self::UnchangedRunning(running) => running.first_conversation_facts(),
+            _ => None,
+        }
+    }
+    pub(crate) fn has_first_admission(&self) -> bool {
+        matches!(self, Self::UnchangedRunning(running) if running.has_first_admission())
+    }
+}
+
 impl RunningProcessOwner {
     pub(super) fn require_shutdown_session_released(
         owner: &Rc<RefCell<Self>>,

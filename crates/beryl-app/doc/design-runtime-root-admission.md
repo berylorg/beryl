@@ -82,3 +82,50 @@ until cleanup is proven. Failed candidate work preserves original intent and out
 the established recovery path; cancellation and terminal close preserve ordinary conservative
 storage custody. No runtime/root registration, opening or abandonment is guessed or resubmitted
 with new identities. Successful cleanup does not undo the committed onboarding thread or registry.
+
+## Committed First Conversation Recovery
+
+The process recovery owner distinguishes an unpublished first conversation from both an empty
+initial window and a published selected resident. Before retiring the failed graph it captures the
+original admission identity, immutable resulting window/thread/draft/Active-claim facts, actual
+admission outcome and any unpublished editor cleanup custody. This capture also applies before an
+editor preparation owner exists. Pending admission settles through its original reconciliation;
+only exact committed onboarding admits selected reconstruction. Proven noncommit retains the
+original empty-window route; terminal uncertainty retains unavailable custody without replay.
+
+Ordinary failure capture and preserved-window validation consume this typed onboarding custody
+instead of deriving its selection from a nonexistent resident. The original window reservation and
+recovery fence stay with the surviving shell. Old admission leases and services are retired and
+release their resources before reopening; retained facts identify recovery work but grant no fresh
+publication authority. The process owner retains at most one unpublished first-conversation owner
+per surviving window within the existing bounded window set.
+
+Fresh private recovery access authenticates the same home, exact selected window, remembered target,
+fallback, catalog/thread/draft and paired Active claim under coherent revision checks. No State
+rollback, replacement claim, Restoring transition or predecessor editor is manufactured. Complete
+original editor cleanup precedes a new opening. Each fresh opening is one immutable attempt-owned
+request, with its own disposal identity and original outcome/reconciliation custody. It is not a
+replay of a previous uncertain opening. Repeated recovery may prepare another editor only after the
+previous attempt's opening and disposal settle exactly.
+
+Candidate-only construction prepares the new editor session, host, bounded initial text/markers,
+slot and service without admitting ordinary healthy-home work. Worker qualification supplies GUI
+preparation with immutable coherent facts; storage reads and outcome settlement stay off the GUI.
+The new editor remains recovery-fenced while its composer, transcript, appearance, notices,
+subscriptions and close custody are prepared and attached to the same native reservation through
+an explicit attachment that needs no selected predecessor. All fallible preparation and complete
+State/shell binding revalidation precede atomic whole-graph publication and interaction release.
+
+Cancellation, stale delivery, partial attachment and candidate failure dispose and join every fresh
+runtime resource while retaining actual opening/disposal evidence outside the disposed graph.
+Incomplete cleanup or collision blocks a successor and keeps the original recovery request
+unavailable. Close/Exit remains serialized by the process recovery fence; publication cancellation
+or closing the newly published graph follows the existing supervisor rule. Successful recovery
+preserves the admitted runtime, root, thread, draft, claim, native identity and placement.
+
+Qualify the complete ordinary failure consumer from committed onboarding through retirement, private
+candidate preparation, preserved-shell attachment, graph publication and interaction reopening.
+Cover failure before editor construction, opening commit before classification, preparation and
+partial attachment failure, exact noncommit/commit/ambiguity/collision, cancellation, repeated
+failure, stale delivery and close/Exit races. Independently review exact outcome/resource custody
+and production consumer correspondence; isolated opening wrappers do not establish this boundary.

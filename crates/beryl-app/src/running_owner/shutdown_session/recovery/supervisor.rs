@@ -63,33 +63,33 @@ impl RunningProcessOwner {
         request: impl RecoveryIdentity + 'static,
         app: &mut App,
     ) {
-        let ordinary_notices = request.lifecycle().is_none().then(|| {
-            let retained = owner.borrow();
-            let generation = retained
-                .process
-                .services
-                .as_ref()
-                .and_then(|services| services.graph())
-                .and_then(|graph| graph.home().health().generation())
-                .expect("captured failed home generation remains current");
-            (
-                retained
-                    .process
-                    .windows
-                    .shells()
-                    .iter()
-                    .map(|shell| shell.window())
-                    .collect(),
-                retained
-                    .observed_home_failure
-                    .as_ref()
-                    .filter(|failure| failure.generation == generation)
-                    .map(|failure| failure.condition.clone())
-                    .unwrap_or_default(),
-                crate::main_window::NoticeConditionId::new(),
-                generation,
-            )
-        });
+        let original_generation = owner.borrow().recovery_supervisor_generation(&request);
+        let ordinary_notices = request
+            .lifecycle()
+            .is_none()
+            .then(|| {
+                let retained = owner.borrow();
+                original_generation.as_ref().ok().map(|generation| {
+                    (
+                        retained
+                            .process
+                            .windows
+                            .shells()
+                            .iter()
+                            .map(|shell| shell.window())
+                            .collect(),
+                        retained
+                            .observed_home_failure
+                            .as_ref()
+                            .filter(|failure| failure.generation == *generation)
+                            .map(|failure| failure.condition.clone())
+                            .unwrap_or_default(),
+                        crate::main_window::NoticeConditionId::new(),
+                        *generation,
+                    )
+                })
+            })
+            .flatten();
         let configured = (|| -> Result<_, String> {
             let retained = owner.borrow();
             let mut configured = Vec::new();
@@ -112,17 +112,7 @@ impl RunningProcessOwner {
                     ));
                 }
             }
-            let generation = retained
-                .process
-                .services
-                .as_ref()
-                .ok_or("Recovery service owner is unavailable")?
-                .graph()
-                .ok_or("Recovery service graph is unavailable")?
-                .home()
-                .health()
-                .generation()
-                .ok_or("Recovery home generation is unavailable")?;
+            let generation = *original_generation.as_ref().map_err(Clone::clone)?;
             Ok((configured, generation))
         })();
         let cancellation = CommandCancellation::new();
@@ -196,6 +186,33 @@ impl RunningProcessOwner {
             ordinary_notices,
             _task: task,
         });
+    }
+
+    pub(super) fn recovery_supervisor_generation(
+        &self,
+        request: &impl RecoveryIdentity,
+    ) -> Result<beryl_home_store::HomeGeneration, String> {
+        if !self.active_recovery_identity(&request.identity()) {
+            return Err("Recovery request changed".into());
+        }
+        if request.lifecycle().is_none() {
+            let recovery = self
+                .interrupted_exit
+                .as_ref()
+                .ok_or("ordinary recovery capture is unavailable")?;
+            return match recovery.session.borrow().as_ref() {
+                Some(RunningShutdownSession::UnchangedRunning(capture)) => {
+                    Ok(capture.captured_generation())
+                }
+                _ => Err("ordinary recovery original generation capture is unavailable".into()),
+            };
+        }
+        self.process
+            .services
+            .as_ref()
+            .and_then(|services| services.graph())
+            .and_then(|graph| graph.home().health().generation())
+            .ok_or_else(|| "Recovery home generation is unavailable".into())
     }
 
     pub(in crate::running_owner) fn project_running_home_recovery_notices(

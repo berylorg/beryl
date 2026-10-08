@@ -233,14 +233,29 @@ impl InitialComposerCandidate {
                 fault(&self.store, self.storage.clone());
             }
             match self.store.execute(command) {
-                CommandOutcome::NotCommitted { .. } => {
+                CommandOutcome::NotCommitted { evidence } => {
+                    self.open_noncommit = Some(evidence);
                     return Ok(MainWindowInitialComposerProgress::Retry);
                 }
-                CommandOutcome::Indeterminate { reconciliation, .. } => {
+                CommandOutcome::Indeterminate {
+                    reconciliation,
+                    failure,
+                } => {
+                    self.open_noncommit = None;
+                    self.open_indeterminate_failure = Some(failure);
                     self.open_reconciliation = Some(reconciliation.install_and_handle());
                     return Ok(MainWindowInitialComposerProgress::Pending);
                 }
-                CommandOutcome::Committed { receipt, .. } => self.open_receipt = Some(receipt),
+                CommandOutcome::Committed {
+                    receipt,
+                    later_failure,
+                    local_finalization,
+                } => {
+                    self.open_noncommit = None;
+                    self.open_later_failure = later_failure;
+                    self.open_local_finalization = local_finalization;
+                    self.open_receipt = Some(receipt);
+                }
             }
             self.classify_open()?;
         }

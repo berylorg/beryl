@@ -151,11 +151,21 @@ impl InitialComposerCandidate {
                 outcome @ CommandOutcome::NotCommitted { .. } => {
                     return self.classify_abandonment(outcome);
                 }
-                CommandOutcome::Indeterminate { reconciliation, .. } => {
+                CommandOutcome::Indeterminate {
+                    reconciliation,
+                    failure,
+                } => {
+                    self.abandonment_indeterminate_failure = Some(failure);
                     self.abandonment_reconciliation = Some(reconciliation.install_and_handle());
                     return Ok(false);
                 }
-                CommandOutcome::Committed { receipt, .. } => {
+                CommandOutcome::Committed {
+                    receipt,
+                    later_failure,
+                    local_finalization,
+                } => {
+                    self.abandonment_later_failure = later_failure;
+                    self.abandonment_local_finalization = local_finalization;
                     self.abandonment_receipt = Some(receipt)
                 }
             }

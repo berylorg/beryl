@@ -43,6 +43,9 @@ impl MainWindowConversationComposer {
                     format!("recovered resident protection release was rejected: {error:?}")
                 })?;
             self.unpublished_recovery_protection = None;
+            if self.fresh_recovery_gui.is_some() {
+                self.activation_seeds.clear();
+            }
         }
         self.input.update(cx, |input, cx| {
             input.set_read_only(true, cx);

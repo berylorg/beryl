@@ -88,6 +88,37 @@ impl RunningProcessOwner {
             return Self::recover_published_interrupted_exit(owner, request, cancellation, cx)
                 .await;
         }
+        let first = owner
+            .recovery_owner()?
+            .borrow()
+            .first_conversation_window()?;
+        if let Some(window) = first {
+            let retired = {
+                let retained = owner.recovery_owner()?;
+                let mut retained = retained.borrow_mut();
+                let prepared = retained.interrupted_exit_appearance(request)?;
+                retained
+                    .process
+                    .services
+                    .as_ref()
+                    .ok_or("first conversation service owner is unavailable")?
+                    .retired_service_generation_for_home_return(
+                        prepared.prepared().home().home_id(),
+                    )
+                    .map_err(|e| e.to_string())?
+            };
+            return Self::recover_first_conversation(
+                owner,
+                request,
+                retired,
+                window,
+                SyndicTimestamp::from_unix_millis(0),
+                cancellation,
+                |_| {},
+                cx,
+            )
+            .await;
+        }
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let retained_owner = owner.recovery_owner()?;
@@ -209,7 +240,8 @@ impl RunningProcessOwner {
                 if cancellation.is_cancelled() {
                     return Err("Interrupted Exit preparation was cancelled".into());
                 }
-                Ok(owner.interrupted_exit_threadless_window(app)?.is_some())
+                Ok(owner.first_conversation_window()?.is_some()
+                    || owner.interrupted_exit_threadless_window(app)?.is_some())
             })
             .map_err(|error| error.to_string())??;
         if threadless {
@@ -236,6 +268,27 @@ impl RunningProcessOwner {
         failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let first = owner
+            .recovery_owner()?
+            .borrow()
+            .first_conversation_window()?;
+        if let Some(window) = first {
+            let retired = owner
+                .recovery_owner()?
+                .borrow()
+                .recovery_supervisor_generation(request)?;
+            return Self::recover_first_conversation(
+                owner,
+                request,
+                retired,
+                window,
+                at,
+                cancellation,
+                failed,
+                cx,
+            )
+            .await;
+        }
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let retained_owner = owner.recovery_owner()?;
@@ -310,6 +363,32 @@ impl RunningProcessOwner {
         failed: impl FnMut(RecoveryPreparationFailure),
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        let first = owner
+            .recovery_owner()?
+            .borrow()
+            .first_conversation_window()?;
+        if let Some(window) = first {
+            let retired = owner
+                .recovery_owner()?
+                .borrow()
+                .process
+                .services
+                .as_ref()
+                .ok_or("first conversation service owner is unavailable")?
+                .retired_service_generation()
+                .map_err(|e| e.to_string())?;
+            return Self::recover_first_conversation(
+                owner,
+                request,
+                retired,
+                window,
+                at,
+                cancellation,
+                failed,
+                cx,
+            )
+            .await;
+        }
         let (threadless, retired) = cx
             .update(|app| -> Result<_, String> {
                 let retained_owner = owner.recovery_owner()?;

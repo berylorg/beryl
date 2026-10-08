@@ -30,9 +30,9 @@ mod initial_observation;
 mod observation;
 mod ordinary_close_session;
 mod ordinary_commands;
-mod running_threads_commands;
 mod progress;
 mod running_threads_attention;
+mod running_threads_commands;
 mod shutdown_drafts;
 mod unchanged_running;
 mod unremoved_windows;
@@ -110,6 +110,8 @@ pub(crate) struct RunningProcessOwner {
     cancel_recovery_after_resident_admission: bool,
     #[cfg(test)]
     reject_ordinary_recovery_attachment_after: Option<usize>,
+    #[cfg(test)]
+    reject_first_conversation_widget_release: bool,
     #[cfg(test)]
     exit_waiting_passes: usize,
     #[cfg(test)]
@@ -282,6 +284,8 @@ impl RunningProcessOwner {
             #[cfg(test)]
             reject_ordinary_recovery_attachment_after: None,
             #[cfg(test)]
+            reject_first_conversation_widget_release: false,
+            #[cfg(test)]
             exit_waiting_passes: 0,
             #[cfg(test)]
             confirmed_refreshes: 0,
@@ -336,6 +340,20 @@ impl RunningProcessOwner {
             .services
             .as_ref()
             .expect("services retained on GUI")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_take_services(&mut self) -> ProcessServiceOwner {
+        self.process
+            .services
+            .take()
+            .expect("test service custody is retained")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_restore_services(&mut self, services: ProcessServiceOwner) {
+        assert!(self.process.services.is_none());
+        self.process.services = Some(services);
     }
 
     #[cfg(test)]

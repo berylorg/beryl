@@ -9,6 +9,7 @@ use crate::{
 
 mod appearance;
 mod bindings;
+mod first_conversation;
 
 impl MainWindowShellRoot {
     pub(crate) fn adopt_failed_interrupted_exit_shell<C: Send + 'static>(

@@ -88,25 +88,29 @@ fn range_error(error: DraftPiecePrepareErrorV1) -> DraftPieceRangeSourceErrorV1 
 }
 
 impl SyndicStorage {
-    fn current_range_selector(
+    pub(super) fn current_range_selector(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         thread_id: SyndicThreadId,
     ) -> Result<Option<DraftEditorCurrentSelectorV1>, DraftPieceRangeSourceErrorV1> {
         let limit = point_limit();
-        let Some(first) = self.point::<DraftByThreadFamily>(store, thread_id, limit)? else {
-            return match self.point::<DraftByThreadFamily>(store, thread_id, limit)? {
+        let Some(first) = self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)?
+        else {
+            return match self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)? {
                 None => Ok(None),
                 Some(_) => Err(DraftPieceRangeSourceErrorV1::ConcurrentChange),
             };
         };
-        let Some(thread) = self.point::<ThreadsFamily>(store, thread_id, limit)? else {
+        let Some(thread) = self.point_with_access::<ThreadsFamily>(store, thread_id, limit)? else {
             return Err(DraftPieceRangeSourceErrorV1::Invariant);
         };
-        let Some(draft) = self.point::<DraftsFamily>(store, first.draft_id(), limit)? else {
+        let Some(draft) = self.point_with_access::<DraftsFamily>(store, first.draft_id(), limit)?
+        else {
             return Err(DraftPieceRangeSourceErrorV1::Invariant);
         };
-        let Some(second) = self.point::<DraftByThreadFamily>(store, thread_id, limit)? else {
+        let Some(second) =
+            self.point_with_access::<DraftByThreadFamily>(store, thread_id, limit)?
+        else {
             return Err(DraftPieceRangeSourceErrorV1::ConcurrentChange);
         };
         if second != first {
@@ -121,12 +125,15 @@ impl SyndicStorage {
         {
             return Err(DraftPieceRangeSourceErrorV1::Invariant);
         }
-        let history =
-            self.point::<DraftEditHistoryFrontiersFamily>(store, draft.history().key(), limit)?;
+        let history = self.point_with_access::<DraftEditHistoryFrontiersFamily>(
+            store,
+            draft.history().key(),
+            limit,
+        )?;
         if history
             .as_ref()
             .is_none_or(|history| history.reference() != draft.history())
-            || !draft_edit_history_frontier_is_authenticated_v1(
+            || !draft_edit_history_frontier_is_authenticated_with_access(
                 self,
                 store,
                 history.as_ref().expect("history presence checked"),
@@ -146,7 +153,7 @@ impl SyndicStorage {
 
     fn stabilized_current_range<T>(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         thread_id: SyndicThreadId,
         read: impl FnOnce(DraftPieceRootReferenceV1) -> Result<T, DraftPieceRangeSourceErrorV1>,
     ) -> Result<Option<DraftPieceCurrentRangeResultV1<T>>, DraftPieceRangeSourceErrorV1> {
@@ -155,7 +162,9 @@ impl SyndicStorage {
         };
         let value = read(selector.root())?;
         #[cfg(feature = "test-faults")]
-        crate::test_faults::run_draft_piece_current_read_fault(store, self.clone());
+        if let ReadAccess::Ordinary(store) = store {
+            crate::test_faults::run_draft_piece_current_read_fault(store, self.clone());
+        }
         if self.current_range_selector(store, thread_id)? != Some(selector) {
             return Err(DraftPieceRangeSourceErrorV1::ConcurrentChange);
         }
@@ -164,11 +173,11 @@ impl SyndicStorage {
 
     fn stabilized_candidate_range<T>(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         expected: DraftEditorCandidateActivationBindingV1,
         read: impl FnOnce(DraftPieceRootReferenceV1) -> Result<T, DraftPieceRangeSourceErrorV1>,
     ) -> Result<DraftPieceCandidateRangeResultV1<T>, DraftPieceRangeSourceErrorV1> {
-        let head = match self.draft_editor_candidate_session(
+        let head = match self.draft_editor_candidate_session_for_range_with_access(
             store,
             expected.draft_id(),
             expected.session_id(),
@@ -199,8 +208,10 @@ impl SyndicStorage {
         }
         let value = read(expected.root())?;
         #[cfg(feature = "test-faults")]
-        crate::test_faults::run_draft_piece_candidate_read_fault(store, self.clone());
-        match self.draft_editor_candidate_session(
+        if let ReadAccess::Ordinary(store) = store {
+            crate::test_faults::run_draft_piece_candidate_read_fault(store, self.clone());
+        }
+        match self.draft_editor_candidate_session_for_range_with_access(
             store,
             expected.draft_id(),
             expected.session_id(),
@@ -263,7 +274,7 @@ impl SyndicStorage {
         Option<DraftPieceCurrentRangeResultV1<DraftPieceTextDemandResultV1>>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_current_range(store, thread_id, |root| {
+        self.stabilized_current_range(ReadAccess::Ordinary(store), thread_id, |root| {
             self.draft_piece_text_demand(store, root, demand, max_bytes)
         })
     }
@@ -278,7 +289,7 @@ impl SyndicStorage {
         DraftPieceCandidateRangeResultV1<DraftPieceTextDemandResultV1>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_candidate_range(store, binding, |root| {
+        self.stabilized_candidate_range(ReadAccess::Ordinary(store), binding, |root| {
             self.draft_piece_text_demand(store, root, demand, max_bytes)
         })
     }
@@ -317,7 +328,7 @@ impl SyndicStorage {
         Option<DraftPieceCurrentRangeResultV1<DraftPieceMarkerDemandResultV1>>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_current_range(store, thread_id, |root| {
+        self.stabilized_current_range(ReadAccess::Ordinary(store), thread_id, |root| {
             self.draft_piece_marker_demand(store, root, demand)
         })
     }
@@ -331,7 +342,7 @@ impl SyndicStorage {
         DraftPieceCandidateRangeResultV1<DraftPieceMarkerDemandResultV1>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_candidate_range(store, binding, |root| {
+        self.stabilized_candidate_range(ReadAccess::Ordinary(store), binding, |root| {
             self.draft_piece_marker_demand(store, root, demand)
         })
     }
@@ -385,7 +396,7 @@ impl SyndicStorage {
         Option<DraftPieceCurrentRangeResultV1<Option<DraftPieceMarkerEdgeProofV1>>>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_current_range(store, thread_id, |root| {
+        self.stabilized_current_range(ReadAccess::Ordinary(store), thread_id, |root| {
             self.draft_piece_marker_edge_proof(store, root, request, retained_byte_ceiling)
         })
     }
@@ -400,7 +411,7 @@ impl SyndicStorage {
         DraftPieceCandidateRangeResultV1<Option<DraftPieceMarkerEdgeProofV1>>,
         DraftPieceRangeSourceErrorV1,
     > {
-        self.stabilized_candidate_range(store, binding, |root| {
+        self.stabilized_candidate_range(ReadAccess::Ordinary(store), binding, |root| {
             self.draft_piece_marker_edge_proof(store, root, request, retained_byte_ceiling)
         })
     }

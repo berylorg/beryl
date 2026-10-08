@@ -93,6 +93,31 @@ impl RunningProcessOwner {
             )
         };
         if let Some((home, generation)) = candidate {
+            let first = owner
+                .recovery_owner()?
+                .borrow()
+                .first_conversation_window()?
+                .is_some();
+            if first {
+                loop {
+                    let done = cx
+                        .update(|app| {
+                            owner
+                                .recovery_owner()?
+                                .borrow()
+                                .recovery_drafts()?
+                                .borrow_mut()
+                                .detach_first_conversation(home, generation, app)
+                        })
+                        .map_err(|e| e.to_string())??;
+                    if done {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(50))
+                        .await;
+                }
+            }
             if let Some(selected) = selected {
                 selected
                     .try_borrow_mut()

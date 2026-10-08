@@ -1,5 +1,6 @@
 use super::*;
 use crate::cas_projection::CasRetirementFailure;
+use crate::discussion_settlement::coordinator::HandoffCoordinatorError;
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeRecoveryCandidate, HomeRecoveryError};
 
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +36,7 @@ pub(super) struct ServiceGraphRetirement {
     marker: Option<DraftMarkerSealService>,
     home: Option<HomeStore>,
     failure: Option<AppServiceCloseError>,
+    joined_handoff_read_failure: Option<HandoffCoordinatorError>,
     complete: bool,
 }
 
@@ -46,6 +48,8 @@ pub(crate) enum ServiceGraphRetirementError {
     Stale,
     #[error("service graph retirement is incomplete; original custody remains retained")]
     Incomplete,
+    #[error("original runtime setup retirement retains custody: {0}")]
+    RuntimeSetup(String),
     #[error("retired marker drives are still settling")]
     MarkerDrivesPending,
     #[error("retired home custody has already transferred")]
@@ -186,10 +190,19 @@ impl ProcessServiceOwner {
             marker: None,
             home: None,
             failure: None,
+            joined_handoff_read_failure: None,
             complete: false,
         });
         let retirement = self.recovery_retirement.as_mut().unwrap();
         let graph = retirement.graph.as_mut().unwrap();
+        graph
+            .runtime_setup
+            .retire(
+                self.first_cleanups
+                    .get_mut()
+                    .unwrap_or_else(|e| e.into_inner()),
+            )
+            .map_err(ServiceGraphRetirementError::RuntimeSetup)?;
         graph.private_clipboard.retire();
         drop(graph.restore_lifetime.take());
         let cas = graph.cas.take().expect("complete graph CAS");
@@ -223,9 +236,27 @@ impl ProcessServiceOwner {
         graph.attention.close();
         retirement.home = graph.home.take();
         drop(retirement.graph.take());
-        retirement.failure = failed_retirement::settled_handoff(handoff, expected)
-            .err()
-            .map(AppServiceCloseError::from);
+        let handoff = failed_retirement::settled_handoff(handoff, expected);
+        let exact_failed_home = retirement.home.as_ref().is_some_and(|home| {
+            let health = home.health();
+            health.state() == HomeHealthState::Failed && health.generation() == Some(expected)
+        });
+        if exact_failed_home
+            && matches!(
+                &handoff,
+                Err(HandoffCoordinatorError::Read(
+                    beryl_home_store::ReadError::Storage { .. }
+                )) | Err(HandoffCoordinatorError::Page(
+                    beryl_state::DurableJobReadError::Read(
+                        beryl_home_store::ReadError::Storage { .. }
+                    )
+                ))
+            )
+        {
+            retirement.joined_handoff_read_failure = handoff.err();
+        } else {
+            retirement.failure = handoff.err().map(AppServiceCloseError::from);
+        }
         #[cfg(feature = "test-faults")]
         if std::mem::take(&mut self.fail_shutdown_completion) {
             retirement.failure = Some(AppServiceCloseError::PersistentFailure);
@@ -309,6 +340,38 @@ impl ProcessServiceOwner {
             .as_ref()
             .map(|_| ())
             .ok_or(ServiceGraphRetirementError::HomeTransferred)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_recovery_retirement_stage(&self) -> String {
+        let graph_health = self
+            .graph
+            .as_ref()
+            .map(|graph| graph.home().health().state());
+        let retirement = self.recovery_retirement.as_ref().map(|retirement| {
+            (
+                retirement.complete,
+                retirement.graph.is_some(),
+                retirement.home.is_some(),
+                retirement
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.cas.is_some()),
+                retirement.failure.as_ref().map(ToString::to_string),
+                retirement
+                    .joined_handoff_read_failure
+                    .as_ref()
+                    .map(ToString::to_string),
+            )
+        });
+        format!(
+            "graph_health={graph_health:?}, retirement={retirement:?}, first_cleanups={}, cas_disposal={}",
+            self.first_cleanups
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .len(),
+            self.failed_retirement.is_some()
+        )
     }
 
     #[cfg(test)]

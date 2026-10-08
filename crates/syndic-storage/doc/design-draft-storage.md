@@ -681,6 +681,25 @@ Recovery abandonment has its own exact command outcome and reconciliation custod
 disposal is not repeated; exact noncommit permits only the same authenticated cleanup intent.
 Collision remains unavailable and retains the evidence. Uncertainty permits no replacement editor.
 
+## Fresh Editor Construction During Recovery
+
+Borrowed private recovery access supports fresh editor-session opening preparation and exact outcome
+classification through fresh Syndic handles. It shares the ordinary canonical request, immutable
+opening receipt, authenticated durable selector/root/history, revision fences and atomic command
+algorithm. It exposes no ordinary healthy-store admission and preserves existing encodings.
+
+The app authenticates its exact committed Active onboarding claim and settles every prior editor
+opening/disposal before requesting a fresh session. Syndic requires the supplied durable selector
+and opening frontier to remain exact, with no foreign, substituted or occupied session. Original
+prepared opening intent and receipt/reconciliation custody remain available through noncommit,
+commit-before-classification, ambiguity, cancellation and repeated recovery. An uncertain outcome
+does not authorize another session. A committed new opening is classified exactly and not repeated.
+
+Candidate-only initial content reads retain ordinary bounded text/marker demand authentication.
+Opening or constructing content grants no app service, native-window or graph publication authority.
+Failure after opening requires exact fresh-session abandonment before a successor; the accepted
+recovery disposal contract above applies to each attempt's own original immutable opening.
+
 ## Retained Composer Candidate Recovery Publication
 
 - Borrowed same-home recovery candidate access supports exact retained editor-candidate

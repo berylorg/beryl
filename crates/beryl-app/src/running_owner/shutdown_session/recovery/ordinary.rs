@@ -47,6 +47,31 @@ impl RunningProcessOwner {
         {
             return;
         }
+        let pending = owner
+            .borrow()
+            .process
+            .services
+            .as_ref()
+            .and_then(|services| services.graph())
+            .is_some_and(|graph| graph.runtime_setup().has_pending_flights());
+        if pending {
+            owner
+                .borrow()
+                .process
+                .services
+                .as_ref()
+                .unwrap()
+                .graph()
+                .unwrap()
+                .runtime_setup()
+                .cancel_pending_flights();
+            owner
+                .borrow()
+                .process
+                .commands
+                .set_gate(RunningExitGate::HomeUnavailable, true);
+            return;
+        }
         let admission = Self::capture_running_home_failure(owner, generation, app);
         match admission {
             Ok(Some(key)) => Self::start_recovery_task(owner, key, app),
@@ -168,6 +193,14 @@ impl RunningProcessOwner {
                 .collect()
         };
         let drafts = Rc::new(RefCell::new(RunningShutdownDrafts::empty_recovery()));
+        let first = owner
+            .borrow()
+            .process
+            .services
+            .as_ref()
+            .and_then(|s| s.graph())
+            .ok_or("ordinary first admission graph is unavailable")?
+            .capture_first_conversation_recovery()?;
         {
             let mut retained = owner.borrow_mut();
             retained
@@ -180,9 +213,9 @@ impl RunningProcessOwner {
                 drafts: Some(drafts.clone()),
                 focus,
                 session: Rc::new(RefCell::new(Some(
-                    RunningShutdownSession::UnchangedRunning(UnchangedRunning::new(
-                        home, path, members,
-                    )),
+                    RunningShutdownSession::UnchangedRunning(
+                        UnchangedRunning::new(home, generation, path, members).with_first(first),
+                    ),
                 ))),
                 previous_resume: Rc::new(RefCell::new(None)),
                 settlement: Rc::new(RefCell::new(None)),
@@ -223,6 +256,21 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_observe_running_home_failure(owner: &Rc<RefCell<Self>>, app: &mut App) {
         Self::observe_running_home_failure(owner, app);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_retry_running_home_recovery(owner: &Rc<RefCell<Self>>, app: &mut App) {
+        let identity = owner
+            .borrow()
+            .test_running_home_recovery_identity()
+            .unwrap();
+        Self::start_recovery_task(owner, OrdinaryHomeRecoveryKey(identity), app);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_reject_first_conversation_widget_release(&mut self) {
+        self.reject_first_conversation_widget_release = true;
+        self.reject_ordinary_recovery_attachment_after = Some(1);
     }
 
     #[cfg(test)]

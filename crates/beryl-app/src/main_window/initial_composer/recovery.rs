@@ -23,15 +23,27 @@ pub struct MainWindowInitialComposerRecoveryCleanup {
     home_id: BerylHomeId,
     canonical_home: std::path::PathBuf,
     failed_generation: HomeGeneration,
+    same_candidate_cleanup: bool,
     opening: Option<PreparedDraftEditorCandidateSessionOpenV1>,
     disposal_operation: DraftPieceOperationIdV1,
     opening_reconciliation: Option<ReconciliationHandle>,
     opening_receipt: Option<CommitReceipt>,
+    opening_noncommit: Option<beryl_home_store::CommandError>,
+    _opening_later_failure: Option<beryl_home_store::CommandError>,
+    _opening_indeterminate_failure: Option<beryl_home_store::CommandError>,
+    _opening_local_finalization: Option<beryl_home_store::CommittedLocalFinalization>,
     abandonment: Option<PreparedDraftEditorCandidateSessionAbandonFreshV1>,
     abandonment_reconciliation: Option<ReconciliationHandle>,
     abandonment_receipt: Option<CommitReceipt>,
+    _abandonment_later_failure: Option<beryl_home_store::CommandError>,
+    _abandonment_indeterminate_failure: Option<beryl_home_store::CommandError>,
+    _abandonment_local_finalization: Option<beryl_home_store::CommittedLocalFinalization>,
     recovery_receipt: Option<CommitReceipt>,
     recovery_reconciliation: Option<ReconciliationHandle>,
+    _recovery_noncommit: Option<beryl_home_store::CommandError>,
+    _recovery_later_failure: Option<beryl_home_store::CommandError>,
+    _recovery_indeterminate_failure: Option<beryl_home_store::CommandError>,
+    _recovery_local_finalization: Option<beryl_home_store::CommittedLocalFinalization>,
     complete: bool,
     unavailable: Option<String>,
 }
@@ -137,22 +149,41 @@ impl InitialComposerCandidate {
                 }
             }
         }
-        Ok(MainWindowInitialComposerRecoveryCleanup {
+        Ok(self.into_recovery_cleanup(false))
+    }
+
+    pub(super) fn into_recovery_cleanup(
+        self,
+        same_candidate_cleanup: bool,
+    ) -> MainWindowInitialComposerRecoveryCleanup {
+        MainWindowInitialComposerRecoveryCleanup {
             home_id: self.store.home_id(),
             canonical_home: self.store.canonical_path().to_owned(),
             failed_generation: self.home_generation,
+            same_candidate_cleanup,
             opening: self.open,
             disposal_operation: self.retirement_operation,
             opening_reconciliation: self.open_reconciliation,
             opening_receipt: self.open_receipt,
+            opening_noncommit: self.open_noncommit,
+            _opening_later_failure: self.open_later_failure,
+            _opening_indeterminate_failure: self.open_indeterminate_failure,
+            _opening_local_finalization: self.open_local_finalization,
             abandonment: self.abandonment,
             abandonment_reconciliation: self.abandonment_reconciliation,
             abandonment_receipt: self.abandonment_receipt,
+            _abandonment_later_failure: self.abandonment_later_failure,
+            _abandonment_indeterminate_failure: self.abandonment_indeterminate_failure,
+            _abandonment_local_finalization: self.abandonment_local_finalization,
             recovery_receipt: None,
             recovery_reconciliation: None,
+            _recovery_noncommit: None,
+            _recovery_later_failure: None,
+            _recovery_indeterminate_failure: None,
+            _recovery_local_finalization: None,
             complete: false,
             unavailable: None,
-        })
+        }
     }
 }
 
@@ -170,7 +201,7 @@ impl MainWindowInitialComposerRecoveryCleanup {
     ) -> Result<MainWindowInitialComposerRecoveryProgress, String> {
         if access.home_id() != self.home_id
             || access.canonical_path() != self.canonical_home
-            || access.generation() == self.failed_generation
+            || (access.generation() == self.failed_generation && !self.same_candidate_cleanup)
         {
             return Err(
                 "initial composer recovery requires a fresh candidate for the same home".into(),
@@ -290,6 +321,11 @@ impl MainWindowInitialComposerRecoveryCleanup {
                 return Ok(MainWindowInitialComposerRecoveryProgress::Complete);
             }
             DraftEditorCandidateSessionReadOutcomeV1::Active(head) => {
+                if self.opening_noncommit.is_some() {
+                    return Ok(self.mark_unavailable(
+                        "initial composer recovery opening contradicts original noncommit",
+                    ));
+                }
                 if self.abandonment_receipt.is_some() || self.recovery_receipt.is_some() {
                     return Ok(self.mark_unavailable(
                         "initial composer recovery disposal contradicts active session",
@@ -341,14 +377,27 @@ impl MainWindowInitialComposerRecoveryCleanup {
             )
             .map_err(|error| error.to_string())?;
         match access.execute(command) {
-            CommandOutcome::NotCommitted { .. } => {
+            CommandOutcome::NotCommitted { evidence } => {
+                self._recovery_noncommit = Some(evidence);
                 Ok(MainWindowInitialComposerRecoveryProgress::Pending)
             }
-            CommandOutcome::Indeterminate { reconciliation, .. } => {
+            CommandOutcome::Indeterminate {
+                reconciliation,
+                failure,
+            } => {
+                self._recovery_noncommit = None;
+                self._recovery_indeterminate_failure = Some(failure);
                 self.recovery_reconciliation = Some(reconciliation.install_and_handle());
                 Ok(MainWindowInitialComposerRecoveryProgress::Pending)
             }
-            CommandOutcome::Committed { receipt, .. } => {
+            CommandOutcome::Committed {
+                receipt,
+                later_failure,
+                local_finalization,
+            } => {
+                self._recovery_noncommit = None;
+                self._recovery_later_failure = later_failure;
+                self._recovery_local_finalization = local_finalization;
                 self.recovery_receipt = Some(receipt);
                 self.classify_abandonment(
                     storage,

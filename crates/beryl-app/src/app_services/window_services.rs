@@ -313,8 +313,12 @@ impl ProcessServiceOwner {
         let creation = self.build_creation_services(
             inputs.request_source,
             inputs.activation_source,
-            inputs.configurator_source,
+            inputs.configurator_source.clone(),
         )?;
+        *self
+            .first_configurator
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(inputs.configurator_source);
         creation.validate_source()?;
         Ok(PublishedMainWindowServices {
             creation,

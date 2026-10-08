@@ -12,6 +12,82 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(crate) fn adopt_first_conversation(
+        &mut self,
+        root: &mut MainWindowShellRoot,
+        facts: &crate::runtime_admission::recovery::FirstConversationFacts,
+        preparation: &mut crate::main_window::MainWindowFreshComposerPreparation,
+        adapters: crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        configure: crate::main_window::MainWindowShellComposerConfigurator,
+        transcript: crate::syndic_transcript::PreparedTranscriptActivation,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<(), String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("first conversation draft set is unavailable".into());
+        }
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("first conversation window is not preserved")?
+            .1
+            .as_mut()
+            .map_err(|e| e.clone())?;
+        root.adopt_first_conversation_shell(
+            draft,
+            facts,
+            preparation,
+            adapters,
+            configure,
+            transcript,
+            window,
+            cx,
+        )?;
+        self.ready = false;
+        Ok(())
+    }
+
+    pub(crate) fn advance_first_conversation(
+        &self,
+        root: &mut MainWindowShellRoot,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<bool, String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("first conversation preparation draft set is unavailable".into());
+        }
+        let draft = self
+            .windows
+            .iter()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("first conversation preparation window is not preserved")?
+            .1
+            .as_ref()
+            .map_err(|e| e.clone())?;
+        root.advance_first_conversation_shell(draft, home, generation, window, cx)
+    }
+
+    pub(crate) fn detach_first_conversation(
+        &mut self,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        app: &mut App,
+    ) -> Result<bool, String> {
+        let mut done = true;
+        for (window, draft) in &mut self.windows {
+            let draft = draft.as_mut().map_err(|e| e.clone())?;
+            done &= window
+                .update(app, |root, native, cx| {
+                    root.detach_first_conversation_shell(draft, home, generation, native, cx)
+                })
+                .map_err(|e| e.to_string())??;
+        }
+        self.ready = false;
+        Ok(done)
+    }
     pub(crate) fn adopt_failed_recovered_shell<C: Send + 'static>(
         &mut self,
         root: &mut MainWindowShellRoot,

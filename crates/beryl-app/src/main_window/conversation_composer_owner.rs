@@ -33,6 +33,7 @@ mod construction;
 mod detached;
 mod dispatch;
 mod failed_resident;
+mod fresh_candidate;
 mod lifecycle;
 mod prepublication;
 mod realization;
@@ -231,6 +232,8 @@ pub struct MainWindowConversationComposer {
         super::MainWindowConversationComposerCloseTicket,
         gpui_text_input::RangeResidentProtection,
     )>,
+    fresh_recovery_release_requests: Option<Vec<RangeTextInputRequest>>,
+    fresh_recovery_gui: Option<fresh_candidate::FreshRecoveryGuiPreparation>,
     startup_interaction_gated: bool,
     shutdown_interaction_gated: bool,
     startup_release_started: bool,

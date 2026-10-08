@@ -35,6 +35,7 @@ mod initial_disposal;
 mod preparation;
 mod published;
 mod running_threads;
+pub(crate) mod runtime_setup;
 pub(crate) use running_threads::PublishedRunningThreadsReader;
 pub(crate) mod recovery_composer;
 mod recovery_failed_residents;
@@ -73,6 +74,8 @@ pub(crate) struct AppServiceConfiguration {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppServiceOpenError {
+    #[error("runtime admission preparation failed: {0}")]
+    RuntimeSetup(String),
     #[error("a service graph is already installed")]
     AlreadyInstalled,
     #[error("the candidate belongs to another process home")]
@@ -139,6 +142,10 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    first_configurator:
+        std::sync::Mutex<Option<crate::main_window::MainWindowCreationConfiguratorSource>>,
+    first_cleanups:
+        std::sync::Mutex<Vec<crate::main_window::MainWindowInitialComposerRecoveryCleanup>>,
     failed_residents: Vec<recovery_failed_residents::FailedResidentSource>,
     failed_markers: Option<crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     graph: Option<PublishedAppServices>,
@@ -165,6 +172,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    runtime_setup: Arc<runtime_setup::RuntimeSetupService>,
     private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner,
     restore_lifetime: Option<Arc<()>>,
     process: ProcessAdmissionGate,
@@ -191,6 +199,8 @@ impl ProcessServiceOwner {
     ) -> Self {
         let process = ProcessAdmissionGate::new();
         Self {
+            first_configurator: std::sync::Mutex::new(None),
+            first_cleanups: std::sync::Mutex::new(Vec::new()),
             failed_residents: Vec::new(),
             failed_markers: None,
             graph: None,

@@ -129,6 +129,9 @@ impl MainWindowShellRoot {
                 {
                     return Err("Recovery resident binding is stale".into());
                 }
+                mount
+                    .read(cx)
+                    .validate_fresh_recovery_protection(*close, cx)?;
                 Ok(())
             }
             _ => Err("Recovery shell binding is incomplete".into()),

@@ -267,16 +267,22 @@ impl RunningProcessOwner {
             let mut services = services;
             let mut prepared = prepared;
             services.retain_cancelled_failed_residents(&mut prepared);
+            if let Err(error) = services.retain_cancelled_first_conversation(&mut prepared) {
+                return (services, original, Err((prepared, error)));
+            }
             let failure = prepared.cancel();
-            (services, original, failure)
+            (services, original, Ok(failure))
         });
         app.spawn(async move |cx| {
             let (services, original, failure) = work.await;
             retained.borrow_mut().process.services = Some(services);
             *session_slot.borrow_mut() = Some(original);
-            *settlement_slot.borrow_mut() = Some(CandidateSettlement::Services(Err(
-                RecoveryServicePreparationError::App(failure),
-            )));
+            *settlement_slot.borrow_mut() = Some(match failure {
+                Ok(failure) => CandidateSettlement::Services(Err(
+                    RecoveryServicePreparationError::App(failure),
+                )),
+                Err((prepared, _error)) => CandidateSettlement::Services(Ok(prepared)),
+            });
             let _ = cx.update(|app| completed(&retained, app));
         })
         .detach();

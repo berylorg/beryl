@@ -15,7 +15,9 @@ pub(crate) struct RunningWindowFacts {
 
 #[derive(Debug)]
 pub(crate) struct UnchangedRunning {
+    first: Option<crate::runtime_admission::recovery::FirstConversationAdmissionRecovery>,
     home: BerylHomeId,
+    generation: beryl_home_store::HomeGeneration,
     path: std::path::PathBuf,
     members: Vec<RunningWindowFacts>,
     pinned: Option<MinimalSessionBootstrap>,
@@ -24,15 +26,43 @@ pub(crate) struct UnchangedRunning {
 impl UnchangedRunning {
     pub(crate) fn new(
         home: BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
         path: std::path::PathBuf,
         members: Vec<RunningWindowFacts>,
     ) -> Self {
         Self {
+            first: None,
             home,
+            generation,
             path,
             members,
             pinned: None,
         }
+    }
+
+    pub(crate) fn with_first(
+        mut self,
+        first: Option<crate::runtime_admission::recovery::FirstConversationAdmissionRecovery>,
+    ) -> Self {
+        self.first = first;
+        self
+    }
+
+    pub(crate) fn first_conversation_facts(
+        &self,
+    ) -> Option<&crate::runtime_admission::recovery::FirstConversationFacts> {
+        self.first
+            .as_ref()
+            .filter(|first| first.committed())
+            .map(|first| first.facts())
+    }
+
+    pub(crate) fn has_first_admission(&self) -> bool {
+        self.first.is_some()
+    }
+
+    pub(crate) fn captured_generation(&self) -> beryl_home_store::HomeGeneration {
+        self.generation
     }
 
     fn read(
@@ -107,6 +137,27 @@ impl UnchangedRunning {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
+        if let Some(first) = self.first.as_mut() {
+            let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+            if first.settle(&access)? {
+                let exact = first.facts().window();
+                if self.members.len() != 1 {
+                    return Err(
+                        "original first conversation requires its sole preserved window".into(),
+                    );
+                }
+                let member = self
+                    .members
+                    .iter_mut()
+                    .find(|w| w.window == exact.window_id())
+                    .ok_or("original first conversation window is absent from preserved set")?;
+                if member.placement != *exact.placement() {
+                    return Err("original first conversation preserved set changed".into());
+                }
+                member.revision = exact.revision();
+                member.selection = exact.selected_thread();
+            }
+        }
         let snapshot = self.read(candidate, session)?;
         self.pinned = Some(snapshot);
         Ok(())

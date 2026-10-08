@@ -22,10 +22,14 @@ use crate::window_acquisition::{
 };
 
 mod activation;
+mod first_conversation;
+mod fresh_candidate;
 mod recovery;
 mod restored;
 mod retirement;
 
+pub use first_conversation::*;
+pub use fresh_candidate::*;
 pub use recovery::*;
 pub use restored::*;
 
@@ -166,6 +170,10 @@ pub(in crate::main_window) struct InitialComposerCandidate {
     open: Option<PreparedDraftEditorCandidateSessionOpenV1>,
     open_reconciliation: Option<ReconciliationHandle>,
     open_receipt: Option<CommitReceipt>,
+    open_noncommit: Option<beryl_home_store::CommandError>,
+    open_later_failure: Option<beryl_home_store::CommandError>,
+    open_indeterminate_failure: Option<beryl_home_store::CommandError>,
+    open_local_finalization: Option<beryl_home_store::CommittedLocalFinalization>,
     opened: Option<DraftEditorCandidateSessionV1>,
     open_terminal: bool,
     activated: bool,
@@ -174,6 +182,9 @@ pub(in crate::main_window) struct InitialComposerCandidate {
     abandonment: Option<PreparedDraftEditorCandidateSessionAbandonFreshV1>,
     abandonment_reconciliation: Option<ReconciliationHandle>,
     abandonment_receipt: Option<CommitReceipt>,
+    abandonment_later_failure: Option<beryl_home_store::CommandError>,
+    abandonment_indeterminate_failure: Option<beryl_home_store::CommandError>,
+    abandonment_local_finalization: Option<beryl_home_store::CommittedLocalFinalization>,
     #[cfg(feature = "test-faults")]
     before_open: Option<Box<dyn FnOnce(&HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
@@ -316,6 +327,10 @@ impl InitialComposerCandidate {
             open: None,
             open_reconciliation: None,
             open_receipt: None,
+            open_noncommit: None,
+            open_later_failure: None,
+            open_indeterminate_failure: None,
+            open_local_finalization: None,
             opened: None,
             open_terminal: false,
             activated: false,
@@ -324,6 +339,9 @@ impl InitialComposerCandidate {
             abandonment: None,
             abandonment_reconciliation: None,
             abandonment_receipt: None,
+            abandonment_later_failure: None,
+            abandonment_indeterminate_failure: None,
+            abandonment_local_finalization: None,
             #[cfg(feature = "test-faults")]
             before_open: None,
             #[cfg(feature = "test-faults")]

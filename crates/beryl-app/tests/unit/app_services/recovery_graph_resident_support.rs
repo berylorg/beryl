@@ -18,6 +18,14 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
     let state = BerylState::reacquire_candidate(&candidate).unwrap();
     let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
     let configuration = crate::app_services::tests::configuration();
+    let runtime_setup = super::super::runtime_setup::RuntimeSetupService::prepare(
+        Arc::new(candidate.service_reference()),
+        state.clone(),
+        syndic.clone(),
+        owner.windows.clone(),
+        &configuration,
+    )
+    .unwrap();
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     let attention = Arc::new(ProcessLifecycleAttentionPool::new());
     let cas = PreparedRecoveryCasServices::prepare(
@@ -69,6 +77,10 @@ pub(crate) fn prepared(candidate: HomeRecoveryCandidate) -> PreparedRecoveryServ
     )
     .unwrap();
     PreparedRecoveryServiceGraph {
+        runtime_setup: Some(runtime_setup),
+        first_composer: None,
+        first_configurator: None,
+        first_transcript: None,
         private_clipboard: Some(crate::main_window::MainWindowPrivateClipboardOwner::new()),
         failed_residents: Vec::new(),
         recovered_window: None,

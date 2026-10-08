@@ -7,6 +7,7 @@ mod completion;
 mod construction;
 mod disposal;
 mod driver;
+mod first_conversation;
 mod identity;
 mod initial_driver;
 mod ordinary;

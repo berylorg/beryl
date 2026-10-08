@@ -623,6 +623,14 @@ by the executable composition root.
   retaining local recovery fencing. Threadless attachment authenticates the same surviving window
   and replacement generation and transfers its existing native reservation without a composer.
   Neither attachment enters startup publication, creates a native window or grants destruction.
+- A committed first conversation whose initial shell has no published selected resident uses the
+  explicit [onboarding recovery branch](design-runtime-root-admission.md#committed-first-conversation-recovery).
+  Ordinary capture retains its original admission outcome and exact selected facts before graph
+  retirement, rather than treating missing resident selection as an empty durable window. Fresh
+  candidate qualification authenticates the existing Active claim after exact unpublished-editor
+  cleanup. Candidate construction and attachment install a new fenced composer/transcript in the
+  same surviving reservation without a predecessor, before complete graph publication. Empty-window
+  and preserved-resident recovery keep their distinct source requirements and attachment rules.
 - Every surviving shell requires fresh candidate-generation appearance, notice, subscription and
   native-release ownership. Registration uses the existing preserved-shell validation and one GUI
   commit; all fallible preparation precedes adoption. Complete binding validation matches each

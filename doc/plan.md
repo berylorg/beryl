@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 738: Qualify Unpublished First Editor Recovery Cleanup (finished)
+# Phase 739: Recover A Committed Unpublished First Conversation (finished)
 
-Accepted exact candidate opening/disposal qualification and a compact move-only app cleanup
-handoff that releases old runtime resources before same-home reopen while fencing the original
-window reservation. All 54 distinct focused/regression cases have passing evidence; locked
-Syndic/app/Beryl all-target compilation and independent semantic/adversarial review passed.
-See [qualification](audits/unpublished-first-editor-recovery-qualification.md). Production graph
-integration and GUI mounting remain the next boundary.
+Accepted complete ordinary recovery from committed onboarding through original cleanup, private
+fresh editor preparation, same-window attachment, graph publication and interaction release.
+All 92 distinct selected cases have passing evidence; canonical Syndic/app/Beryl locked all-target
+compilation and independent consequential review passed. See
+[qualification](audits/committed-first-conversation-recovery-qualification.md).
 
 # Phase 734: Mount Runtime And Root Setup And First Conversation Activation (wip)
 
@@ -127,15 +126,13 @@ before successor editor preparation/publication. Finish the missing shell comman
 consumers, shared-picker eligibility/restoration/retry and bounded GPUI qualification. No native
 Operator GUI/picker/backend launch is needed for the focused qualification.
 
-Blocked on 2026-10-07: accepted cleanup settles the original unpublished editor but cannot construct
-the successor behind private recovery access. Committed onboarding leaves durable Active selection
-while the surviving shell is still threadless; empty-window recovery rejects that selection, and
-resident recovery requires an absent predecessor. See the
-[complete correction recommendation](failures/runtime-setup-first-editor-recovery.md#recommended-complete-correction).
-Resolve the explicit committed-first recovery branch and its candidate editor/host preparation
-before resuming this mount. The newer 34-file `.tmp/runtime-setup-mount-resumed-draft` is hash-verified,
-bounded to 2 MiB, uncompiled and excluded from production; accepted `0c34dfd3` source is restored.
-Both archives remain review material. No mounting acceptance or new implementation phase is implied.
+Current milestone: the committed-first recovery prerequisite is accepted. Reconsider both archived
+mounting drafts against the current graph-owned admission/first-conversation consumers, candidate
+construction and actual cleanup custody before restoring any source. The newer 34-file
+`.tmp/runtime-setup-mount-resumed-draft` remains hash-verified, bounded to 2 MiB, uncompiled and
+excluded from production. Implement and qualify the complete healthy shell/picker/page consumers;
+both archives remain review material and neither has mounting acceptance. No blocker remains from
+the [first-editor recovery diagnosis](failures/runtime-setup-first-editor-recovery.md).
 
 # Phase 735: Mount New Thread Root Confirmation (pending)
 

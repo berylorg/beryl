@@ -17,6 +17,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "app_services/committed_first_conversation.rs"]
+#[cfg(target_os = "windows")]
+mod committed_first_conversation;
 #[path = "app_services/recovery_graph.rs"]
 mod recovery_graph;
 #[path = "app_services/recovery_preparation.rs"]

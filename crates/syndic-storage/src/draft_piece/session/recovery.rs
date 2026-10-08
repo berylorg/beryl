@@ -1,6 +1,125 @@
 use super::*;
 
 impl SyndicStorage {
+    pub fn prepare_open_draft_editor_candidate_session_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        request: DraftEditorCandidateSessionOpenRequestV1,
+    ) -> Result<PreparedDraftEditorCandidateSessionOpenV1, DraftEditorCandidateSessionCommandErrorV1>
+    {
+        let access = ReadAccess::Candidate(store);
+        let revision = self
+            .revision_with_access(access)
+            .map_err(SyndicReadError::Read)?;
+        let prepared =
+            self.prepare_open_draft_editor_candidate_session_with_access(access, request)?;
+        let current = self
+            .current_range_selector(access, request.selector().thread_id())
+            .map_err(|error| match error {
+                DraftPieceRangeSourceErrorV1::Operational(error) => {
+                    DraftEditorCandidateSessionCommandErrorV1::Read(error)
+                }
+                _ => DraftEditorCandidateSessionCommandErrorV1::Invariant,
+            })?;
+        let frontier = self.point_with_access::<DraftEditHistoryFrontiersFamily>(
+            access,
+            DraftEditHistoryFrontierKeyV1::session(
+                request.selector().draft_id(),
+                request.session_id(),
+            ),
+            point_limit(),
+        )?;
+        let root = self.point_with_access::<DraftPieceRootsFamily>(
+            access,
+            request.selector().root().key(),
+            point_limit(),
+        )?;
+        let receipt = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            access,
+            receipt_key(request),
+            point_limit(),
+        )?;
+        if !prepared.initially_absent
+            || frontier.is_some()
+            || receipt.is_some()
+            || current != Some(request.selector())
+            || !root.as_ref().is_some_and(|root| {
+                root.reference() == request.selector().root()
+                    && draft_piece_root_reference_is_locally_exact_v1(root.reference())
+            })
+        {
+            return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
+        }
+        if self
+            .revision_with_access(access)
+            .map_err(SyndicReadError::Read)?
+            != revision
+        {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "fresh editor opening preparation",
+            }
+            .into());
+        }
+        Ok(prepared)
+    }
+
+    pub fn reconcile_fresh_draft_editor_candidate_session_open_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        prepared: &PreparedDraftEditorCandidateSessionOpenV1,
+        outcome: CommandOutcome,
+    ) -> Result<DraftEditorCandidateSessionOpenOutcomeV1, DraftEditorCandidateSessionCommandErrorV1>
+    {
+        let access = ReadAccess::Candidate(store);
+        let result = self
+            .reconcile_draft_editor_candidate_session_open_with_access(access, prepared, outcome)?;
+        if let DraftEditorCandidateSessionOpenOutcomeV1::Opened(head)
+        | DraftEditorCandidateSessionOpenOutcomeV1::ExactReplay(head) = &result
+        {
+            let revision = self
+                .revision_with_access(access)
+                .map_err(SyndicReadError::Read)?;
+            let receipt = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                access,
+                receipt_key(prepared.request),
+                point_limit(),
+            )?;
+            let current = self
+                .current_range_selector(access, prepared.request.selector().thread_id())
+                .map_err(|error| match error {
+                    DraftPieceRangeSourceErrorV1::Operational(error) => {
+                        DraftEditorCandidateSessionCommandErrorV1::Read(error)
+                    }
+                    _ => DraftEditorCandidateSessionCommandErrorV1::Invariant,
+                })?;
+            if !matches!(receipt, Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(ref receipt))
+                if receipt.head() == head && receipt.request_bytes() == prepared.canonical_request)
+                || current != Some(prepared.request.selector())
+                || !idle_candidate_closure_is_exact_with_access(self, access, head)?
+                || !publication::fresh_opening_history_is_exact_with_access(self, access, head)?
+            {
+                return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
+            }
+            let after = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+                access,
+                head_key(prepared.request),
+                point_limit(),
+            )?;
+            if !matches!(after, Some(DraftEditorCandidateSessionRecordV1::Head(ref after)) if after == head)
+                || self
+                    .revision_with_access(access)
+                    .map_err(SyndicReadError::Read)?
+                    != revision
+            {
+                return Err(SyndicReadError::ConcurrentChange {
+                    operation: "fresh editor opening outcome",
+                }
+                .into());
+            }
+        }
+        Ok(result)
+    }
+
     pub fn qualify_fresh_draft_editor_candidate_session_open_candidate(
         &self,
         store: &HomeCandidateRecoveryAccess<'_>,

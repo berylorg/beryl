@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(super) struct PreparedAppServices {
+    runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     paste_resources: crate::main_window::MainWindowComposerPasteResources,
     process: ProcessAdmissionGate,
     cas: Option<PreparedCasServices>,
@@ -48,6 +49,7 @@ impl PreparedAppServices {
     ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
+            runtime_setup: None,
             paste_resources: configuration.paste_resources,
             process: owner.process.clone(),
             cas: None,
@@ -63,6 +65,16 @@ impl PreparedAppServices {
         let result: Result<(), AppServiceOpenError> = (|| {
             check_cancellation(cancellation)?;
             let candidate = prepared.candidate.as_mut().expect("private candidate");
+            prepared.runtime_setup = Some(
+                super::runtime_setup::RuntimeSetupService::prepare(
+                    Arc::new(candidate.service_reference()),
+                    prepared.state.clone(),
+                    prepared.syndic.clone(),
+                    owner.windows.clone(),
+                    &configuration,
+                )
+                .map_err(AppServiceOpenError::RuntimeSetup)?,
+            );
             {
                 let access = candidate.recovery_access()?;
                 owner.enrollments.settle_retired_candidate(
@@ -179,6 +191,10 @@ impl PreparedAppServices {
             .expect("prepared CAS")
             .into_published_parts();
         let graph = PublishedAppServices {
+            runtime_setup: self
+                .runtime_setup
+                .take()
+                .expect("prepared runtime admission"),
             private_clipboard:
                 crate::main_window::MainWindowPrivateClipboardOwner::with_paste_resources(
                     self.paste_resources,
@@ -217,6 +233,7 @@ impl PreparedAppServices {
     }
 
     fn join_components(&mut self) {
+        drop(self.runtime_setup.take());
         drop(self.cas.take());
         drop(self.activity.take());
         drop(self.marker.take());

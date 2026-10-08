@@ -1,4 +1,5 @@
 mod outcome;
+pub(crate) mod recovery;
 mod transaction;
 pub use outcome::*;
 pub mod validation;
@@ -119,6 +120,33 @@ impl Drop for AdmissionWorker {
 }
 
 impl RuntimeAdmissionService {
+    #[cfg(test)]
+    pub(crate) fn test_execute_first(
+        &self,
+        command: HomeCommand,
+        runtime_id: RuntimeId,
+        root_id: RootId,
+        onboarding: OnboardingFacts,
+    ) -> RuntimeAdmissionOutcome {
+        let window_id = onboarding.window().window_id();
+        let lease = self
+            .process
+            .admit_selection(&[window_id], window_id)
+            .unwrap();
+        self.execute(
+            transaction::PreparedAdmission {
+                command,
+                admission: AdmissionFacts {
+                    window_id,
+                    runtime_id,
+                    root_id,
+                    onboarding: Some(onboarding),
+                },
+            },
+            lease,
+        )
+        .unwrap()
+    }
     pub fn new(
         store: Arc<HomeServiceReference>,
         state: BerylState,

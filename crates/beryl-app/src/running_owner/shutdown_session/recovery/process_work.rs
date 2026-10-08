@@ -82,12 +82,15 @@ impl RunningProcessOwner {
                 let syndic =
                     syndic_storage::SyndicStorage::reacquire_candidate(&candidate.candidate)
                         .map_err(|error| CandidateSettlementError::Candidate(error.to_string()))?;
-                let access = candidate
+                let mut access = candidate
                     .candidate
                     .recovery_access()
                     .map_err(|error| CandidateSettlementError::Candidate(error.to_string()))?;
+                let services = services.unwrap();
                 services
-                    .unwrap()
+                    .settle_first_conversation_cleanup(&mut access, &syndic, &cancellation)
+                    .map_err(CandidateSettlementError::Candidate)?;
+                services
                     .settle_retired_process_work(&access, &state, &syndic, &cancellation)
                     .map_err(CandidateSettlementError::ProcessWork)
             },

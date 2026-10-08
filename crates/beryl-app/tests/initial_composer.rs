@@ -2,6 +2,8 @@
 
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
+#[path = "initial_composer/fresh_candidate.rs"]
+mod fresh_candidate;
 #[path = "initial_composer/gpui.rs"]
 mod gpui_cases;
 #[path = "main_window_shell/support.rs"]

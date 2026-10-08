@@ -234,7 +234,7 @@ impl SyndicComposerHost {
         self.pending_mutation.is_some() || self.pending_history.is_some()
     }
 
-    fn submission_pending(&self) -> bool {
+    pub(crate) fn submission_pending(&self) -> bool {
         self.submission.pending.is_some()
     }
 

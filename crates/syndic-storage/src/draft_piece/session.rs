@@ -313,7 +313,7 @@ pub(super) fn idle_candidate_closure_is_exact_with_access(
     )
 }
 
-fn opening_receipt_is_exact_with_access(
+pub(super) fn opening_receipt_is_exact_with_access(
     storage: &SyndicStorage,
     store: crate::read::access::ReadAccess<'_>,
     head: &DraftEditorCandidateSessionV1,
@@ -569,6 +569,18 @@ impl SyndicStorage {
         request: DraftEditorCandidateSessionOpenRequestV1,
     ) -> Result<PreparedDraftEditorCandidateSessionOpenV1, DraftEditorCandidateSessionCommandErrorV1>
     {
+        self.prepare_open_draft_editor_candidate_session_with_access(
+            ReadAccess::Ordinary(store),
+            request,
+        )
+    }
+
+    fn prepare_open_draft_editor_candidate_session_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        request: DraftEditorCandidateSessionOpenRequestV1,
+    ) -> Result<PreparedDraftEditorCandidateSessionOpenV1, DraftEditorCandidateSessionCommandErrorV1>
+    {
         if request.selector().draft_id() != request.selector().root().key().draft_id()
             || request.selector().draft_id() != request.selector().history().key().draft_id()
             || request.selector().root() != request.selector().history().root()
@@ -582,10 +594,16 @@ impl SyndicStorage {
             return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
         }
         let limit = point_limit();
-        let head =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, head_key(request), limit)?;
-        let receipt =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, receipt_key(request), limit)?;
+        let head = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            head_key(request),
+            limit,
+        )?;
+        let receipt = self.point_with_access::<DraftEditorCandidateSessionsFamily>(
+            store,
+            receipt_key(request),
+            limit,
+        )?;
         if head.is_none() && receipt.is_some() {
             return Err(DraftEditorCandidateSessionCommandErrorV1::Invariant);
         }

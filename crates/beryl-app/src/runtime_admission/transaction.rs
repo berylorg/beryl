@@ -247,6 +247,18 @@ pub struct OnboardingFacts {
 }
 
 impl OnboardingFacts {
+    #[cfg(test)]
+    pub(crate) fn test_committed(
+        thread_id: SyndicThreadId,
+        draft_id: SyndicDraftId,
+        replacement: PreparedWindowClaimReplacement,
+    ) -> Self {
+        Self {
+            thread_id,
+            draft_id,
+            replacement,
+        }
+    }
     pub fn thread_id(&self) -> SyndicThreadId {
         self.thread_id
     }

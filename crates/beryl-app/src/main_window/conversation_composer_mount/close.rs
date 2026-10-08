@@ -2,6 +2,7 @@ use super::*;
 use crate::composer_host::{ComposerHostFlushAdvance, ComposerHostFlushFailure};
 
 mod detached;
+mod fresh_candidate;
 mod recovery;
 mod recovery_attachment;
 mod recovery_resources;

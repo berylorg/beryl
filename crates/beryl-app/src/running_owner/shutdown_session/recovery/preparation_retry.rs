@@ -88,6 +88,50 @@ impl RunningProcessOwner {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         loop {
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit preparation was cancelled".into());
+            }
+            let previous = {
+                let retained_owner = owner.recovery_owner()?;
+                let mut retained = retained_owner.borrow_mut();
+                retained.interrupted_exit_graph_retirement_result(request)?;
+                let disposed = match retained
+                    .interrupted_exit
+                    .as_ref()
+                    .unwrap()
+                    .settlement
+                    .borrow()
+                    .as_ref()
+                {
+                    Some(CandidateSettlement::DisposedFailure(_)) => Some(true),
+                    Some(CandidateSettlement::DisposedPreparationFailure { .. }) => Some(false),
+                    _ => None,
+                };
+                if let Some(candidate) = disposed {
+                    retained
+                        .process
+                        .services
+                        .as_ref()
+                        .ok_or("The complete service owner is on a worker")?
+                        .validate_retired_service_home(generation)
+                        .map_err(|error| error.to_string())?;
+                    Some(if candidate {
+                        RecoveryPreparationFailure::Candidate(
+                            retained.take_interrupted_exit_candidate_failure(request)?,
+                        )
+                    } else {
+                        RecoveryPreparationFailure::Services(
+                            retained
+                                .take_interrupted_exit_preparation_failure(request, generation)?,
+                        )
+                    })
+                } else {
+                    None
+                }
+            };
+            if let Some(previous) = previous {
+                failed(previous);
+            }
             owner
                 .recovery_owner()?
                 .borrow()

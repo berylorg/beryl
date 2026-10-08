@@ -43,6 +43,10 @@ impl ProcessServiceOwner {
             .publish()
             .map_err(|error| error.to_string())?;
         self.graph = Some(PublishedAppServices {
+            runtime_setup: graph
+                .runtime_setup
+                .take()
+                .expect("prepared runtime admission"),
             private_clipboard: graph
                 .private_clipboard
                 .take()
@@ -63,6 +67,12 @@ impl ProcessServiceOwner {
             syndic: graph.syndic.clone(),
             home: Some(home),
         });
+        if let Some(first) = graph.first_composer.take() {
+            assert!(
+                first.release_publication().is_ok(),
+                "qualified first editor transfers with whole graph publication"
+            );
+        }
         let retirement = self.recovery_retirement.take().unwrap();
         self.attempt = InitialServiceAttemptState::Published(Some(retirement.fence));
         drop(prepared.take());

@@ -249,3 +249,16 @@ stage-appropriate driver, rather than replaying the preparation/attachment batch
 Corrected run `3adb41b8-1c76-448b-8bd9-7b7794724684` passed all thirty-three focused native cases,
 including retained graph custody, partial multiwindow continuation and the single-update focus
 regression. The app library check, scoped formatting and independent lifecycle review also passed.
+
+## Virtual Recovery Qualification Isolation
+
+The committed-first-conversation qualification requires virtual GPUI windows and no Operator GUI
+or clipboard interaction. Existing ordinary-running-home fixtures perform native restoration;
+their names do not establish a virtual boundary. The new fixture consumes a real prepared
+threadless reservation through a test-only virtual publication constructor.
+
+When combining its library target with initial-composer integration regressions, a broad
+`test(recovery::)` predicate also selects unrelated library recovery cases. The checkpoint was
+stopped during compilation before test execution. Confine those regression predicates with
+`binary(initial_composer)` and select only the committed-first-conversation library module.
+Verify the selected inventory before expanding a qualification command to another binary.

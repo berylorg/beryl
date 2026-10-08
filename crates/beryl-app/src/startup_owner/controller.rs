@@ -68,6 +68,20 @@ pub(crate) struct StartupCommands(Rc<RefCell<Commands>>);
 
 impl StartupCommands {
     #[cfg(test)]
+    pub(crate) fn test_running() -> RunningExitCommands {
+        RunningExitCommands::new(Self(Rc::new(RefCell::new(Commands {
+            stage: Stage::Running,
+            exit: false,
+            process_exit: false,
+            exit_window: None,
+            ordinary_close: false,
+            retry: None,
+            wake: None,
+            active_exit: None,
+            exit_gates: Default::default(),
+        }))))
+    }
+    #[cfg(test)]
     pub(crate) fn test_set_exit_gate(&self, gate: RunningExitGate, blocked: bool) {
         RunningExitCommands::new(self.clone()).set_gate(gate, blocked);
     }

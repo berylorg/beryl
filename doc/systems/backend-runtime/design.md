@@ -283,6 +283,15 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   home recovery attempt, one retry deadline and the publication slot. Concurrent failure notices
   coalesce for the same failed generation; stale notices and completions cannot replace a newer
   graph. Retry uses the home-store delay sequence and cannot overlap disposal or candidate work.
+- Committed onboarding may leave an existing native shell without a published editor while its
+  durable window already owns a selected thread and Active claim. The app supervisor preserves the
+  original admission/outcome and compact unpublished-editor cleanup intent outside retired graphs.
+  After complete retirement, private candidate consumers authenticate those selected facts, settle
+  original cleanup, construct a fresh fenced editor and attach the complete selected presentation to
+  the same reservation before graph publication. This is a distinct preserved-window consumer of
+  [app authority](../../../crates/beryl-app/doc/design-runtime-root-admission.md#committed-first-conversation-recovery),
+  not empty-window recovery or resident adoption. Candidate failure retains actual fresh opening and
+  disposal custody through complete resource disposal; no successor bypasses uncertain cleanup.
 - Retirement separates runtime disposal from storage recovery custody. Every old graph component
   fences admission and joins its workers before reporting its exact generation retired. Only
   storage-package recovery custody survives in the failed home owner; reopening preserves its

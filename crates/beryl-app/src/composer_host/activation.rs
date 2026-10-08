@@ -8,6 +8,9 @@ use syndic_storage::{
 
 use super::*;
 
+mod access;
+use access::InitialActivationAccess;
+
 impl SyndicComposerHost {
     pub(crate) fn validate_initial_request(
         request: &ComposerHostActivationRequest,
@@ -133,6 +136,49 @@ impl SyndicComposerHost {
         open_outcome: DraftEditorCandidateSessionOpenOutcomeV1,
         retain_open_on_terminal: bool,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
+        self.finish_initial_activation_with_access(
+            InitialActivationAccess::Ordinary(store),
+            request,
+            cancellation,
+            home_generation,
+            selector,
+            open_outcome,
+            retain_open_on_terminal,
+        )
+    }
+
+    pub(crate) fn finish_initial_activation_candidate(
+        &mut self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        request: ComposerHostActivationRequest,
+        cancellation: &CommandCancellation,
+        selector: syndic_storage::DraftEditorCurrentSelectorV1,
+        open_outcome: DraftEditorCandidateSessionOpenOutcomeV1,
+    ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
+        if request.restoration().is_some() {
+            return Err(ComposerHostError::RestorationBindingMismatch);
+        }
+        self.finish_initial_activation_with_access(
+            InitialActivationAccess::Candidate(access),
+            request,
+            cancellation,
+            access.generation(),
+            selector,
+            open_outcome,
+            true,
+        )
+    }
+
+    fn finish_initial_activation_with_access(
+        &mut self,
+        access: InitialActivationAccess<'_, '_>,
+        request: ComposerHostActivationRequest,
+        cancellation: &CommandCancellation,
+        home_generation: beryl_home_store::HomeGeneration,
+        selector: syndic_storage::DraftEditorCurrentSelectorV1,
+        open_outcome: DraftEditorCandidateSessionOpenOutcomeV1,
+        retain_open_on_terminal: bool,
+    ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
         if self.active.is_some() {
             return Err(ComposerHostError::LifecycleBlocked);
         }
@@ -158,7 +204,7 @@ impl SyndicComposerHost {
         let candidate = DraftEditorCandidateActivationBindingV1::from_head(&head);
         let host_generation = self.next_generation()?;
         let binding = ComposerHostBinding::new(
-            store.home_id(),
+            access.home_id(),
             home_generation,
             host_generation,
             candidate,
@@ -181,7 +227,9 @@ impl SyndicComposerHost {
         }));
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_open_fault.take() {
-            fault(store, self.storage.clone());
+            if let InitialActivationAccess::Ordinary(store) = access {
+                fault(store, self.storage.clone());
+            }
         }
         if let Some(restoration) = request.restoration() {
             if restoration.root() != binding.root()
@@ -192,9 +240,8 @@ impl SyndicComposerHost {
                 }
                 return Err(ComposerHostError::RestorationBindingMismatch);
             }
-            if let Err(error) = self
-                .storage
-                .validate_draft_piece_restoration(store, restoration.restoration())
+            if let Err(error) =
+                access.validate_restoration(&self.storage, restoration.restoration())
             {
                 if !retain_open_on_terminal {
                     self.active = None;
@@ -214,10 +261,7 @@ impl SyndicComposerHost {
             let value = match demand {
                 ComposerHostInitialDemand::Text {
                     demand, max_bytes, ..
-                } => match self
-                    .storage
-                    .candidate_draft_piece_text_demand(store, candidate, *demand, *max_bytes)
-                {
+                } => match access.text(&self.storage, candidate, *demand, *max_bytes) {
                     Ok(value) => ComposerHostResponseValue::CandidateText(value),
                     Err(error) => {
                         if !retain_open_on_terminal {
@@ -227,11 +271,7 @@ impl SyndicComposerHost {
                     }
                 },
                 ComposerHostInitialDemand::Markers { demand, .. } => {
-                    match self.storage.candidate_draft_piece_marker_demand(
-                        store,
-                        candidate,
-                        demand.clone(),
-                    ) {
+                    match access.markers(&self.storage, candidate, demand.clone()) {
                         Ok(value) => ComposerHostResponseValue::CandidateMarkers(value),
                         Err(error) => {
                             if !retain_open_on_terminal {
@@ -245,8 +285,8 @@ impl SyndicComposerHost {
                     request,
                     retained_byte_ceiling,
                     ..
-                } => match self.storage.candidate_draft_piece_marker_edge_proof(
-                    store,
+                } => match access.marker_proof(
+                    &self.storage,
                     candidate,
                     *request,
                     *retained_byte_ceiling,
@@ -268,21 +308,11 @@ impl SyndicComposerHost {
             }
             return Ok(ComposerHostActivationOutcome::Cancelled);
         }
-        let after = store.health();
-        if after.state() != HomeHealthState::Healthy {
+        if let Err(error) = access.validate_generation(home_generation) {
             if !retain_open_on_terminal {
                 self.active = None;
             }
-            return Err(ComposerHostError::HomeUnavailable(after.state()));
-        }
-        if after.generation() != Some(home_generation) {
-            if !retain_open_on_terminal {
-                self.active = None;
-            }
-            return Err(ComposerHostError::HomeGenerationChanged {
-                expected: home_generation,
-                actual: after.generation(),
-            });
+            return Err(error);
         }
         self.active.as_mut().unwrap().initial_responses = initial_responses;
         self.lifecycle.activate();

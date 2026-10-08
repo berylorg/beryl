@@ -72,6 +72,37 @@ impl PreparedNativeMainWindowRestoreSet {
 }
 
 impl PublishedMainWindowRestoreSet {
+    #[cfg(test)]
+    pub(crate) fn from_virtual_prepared_test(
+        mut prepared: PreparedMainWindowRestoreSet,
+        appearance: Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<Self, String> {
+        prepared.revalidate()?;
+        let mut shells = Vec::new();
+        for member in std::mem::take(&mut prepared.owner.members) {
+            let PreparedRestoreSetMember::Threadless(member) = member else {
+                return Err(
+                    "virtual recovery fixture requires exact threadless preparation".into(),
+                );
+            };
+            let mut host = GpuiMainWindowShellHost::new(app, appearance.clone())
+                .with_virtual_placement(member.window_id(), member.placement().clone());
+            let mut shell = host.construct_threadless_hidden(member)?;
+            app.update_window(shell.window().into(), |_, window, app| {
+                window.draw(app).clear()
+            })
+            .map_err(|e| e.to_string())?;
+            shell.publish(app)?;
+            shells.push(shell);
+        }
+        Ok(Self {
+            owner: Box::new(prepared.owner),
+            shells,
+            appearance,
+        })
+    }
+
     pub(crate) fn test_swap_recovery_shell(&mut self, shell: &mut MainWindowShell) {
         assert_eq!(self.shells.len(), 1);
         std::mem::swap(&mut self.shells[0], shell);

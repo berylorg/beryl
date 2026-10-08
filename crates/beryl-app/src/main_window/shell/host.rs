@@ -99,6 +99,8 @@ pub struct GpuiMainWindowShellHost<'a> {
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
     #[cfg(target_os = "windows")]
     prepared_placement: Option<crate::main_window::PreparedWindowsWindowPlacement>,
+    #[cfg(all(test, target_os = "windows"))]
+    virtual_placement: Option<(beryl_model::WindowId, beryl_model::WindowPlacement)>,
     #[cfg(feature = "test-faults")]
     reject_mount: bool,
     #[cfg(all(target_os = "windows", feature = "test-faults"))]
@@ -113,6 +115,8 @@ impl<'a> GpuiMainWindowShellHost<'a> {
             appearance_owner,
             #[cfg(target_os = "windows")]
             prepared_placement: None,
+            #[cfg(all(test, target_os = "windows"))]
+            virtual_placement: None,
             #[cfg(feature = "test-faults")]
             reject_mount: false,
             #[cfg(all(target_os = "windows", feature = "test-faults"))]
@@ -136,6 +140,16 @@ impl<'a> GpuiMainWindowShellHost<'a> {
 }
 
 impl GpuiMainWindowShellHost<'_> {
+    #[cfg(all(test, target_os = "windows"))]
+    pub(crate) fn with_virtual_placement(
+        mut self,
+        window: beryl_model::WindowId,
+        saved: beryl_model::WindowPlacement,
+    ) -> Self {
+        self.virtual_placement = Some((window, saved));
+        self
+    }
+
     #[cfg(target_os = "windows")]
     fn apply_prepared_placement(
         &self,
@@ -144,6 +158,23 @@ impl GpuiMainWindowShellHost<'_> {
         saved: &beryl_model::WindowPlacement,
         required: bool,
     ) -> Result<(), String> {
+        #[cfg(test)]
+        if let Some((expected, placement)) = &self.virtual_placement {
+            if *expected != window_id || placement != saved {
+                return Err("virtual placement differs from exact prepared window record".into());
+            }
+            let bounds = saved.bounds();
+            let rect = crate::main_window::WindowPlacementRect {
+                x: f64::from(bounds.x()),
+                y: f64::from(bounds.y()),
+                width: f64::from(bounds.width()),
+                height: f64::from(bounds.height()),
+            };
+            options.window_bounds = Some(gpui::WindowBounds::Windowed(
+                rect.gpui_bounds(1.).map_err(|e| e.to_string())?,
+            ));
+            return Ok(());
+        }
         let Some(placement) = &self.prepared_placement else {
             return if required {
                 Err("startup shell construction requires prepared window placement".to_owned())
