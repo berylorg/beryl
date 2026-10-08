@@ -225,6 +225,14 @@ impl InitialThreadRecords {
         &self,
         reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
+        self.reserve_with_catalog_summaries(reservation, 1)
+    }
+
+    pub(crate) fn reserve_with_catalog_summaries(
+        &self,
+        reservation: &mut beryl_home_store::ReconciliationReservation<'_, SyndicDomain>,
+        catalog_summaries: usize,
+    ) -> Result<(), SyndicMutationError> {
         let records = self;
         reservation.reserve_records::<ThreadsCodec>(1)?;
         reservation.reserve_records::<ImageLabelAuthorityHeadsCodec>(1)?;
@@ -232,7 +240,7 @@ impl InitialThreadRecords {
         reservation.reserve_records::<ThreadExecutionsCodec>(1)?;
         reservation.reserve_records::<ThreadAttributesCodec>(1)?;
         reservation.reserve_records::<ThreadUsageCodec>(1)?;
-        reservation.reserve_records::<ThreadCatalogSummariesCodec>(1)?;
+        reservation.reserve_records::<ThreadCatalogSummariesCodec>(catalog_summaries)?;
         reservation.reserve_records::<DraftsCodec>(1)?;
         reservation.reserve_records::<DraftPieceRootsCodec>(1)?;
         reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;

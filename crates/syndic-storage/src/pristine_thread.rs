@@ -58,6 +58,18 @@ pub enum PristineThreadRemovalAudit {
 }
 
 impl PristineThreadCandidate {
+    pub(crate) fn source_revision(&self) -> DomainRevision {
+        self.source_revision
+    }
+    pub(crate) fn validate_for_reuse(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+    ) -> Result<(), SyndicMutationError> {
+        if !empty_facts_match(reader, &self.facts, false)? {
+            return Err(SyndicMutationError::PristineThreadConflict);
+        }
+        Ok(())
+    }
     #[must_use]
     pub const fn thread_id(&self) -> SyndicThreadId {
         self.facts.thread.id()
@@ -164,6 +176,32 @@ impl SyndicStorage {
         thread_id: SyndicThreadId,
         expected_execution: &ExecutionBinding,
     ) -> Result<PristineThreadInspection, SyndicReadError> {
+        self.inspect_empty_thread_state(store, thread_id, expected_execution, true)
+    }
+
+    pub(crate) fn inspect_eligible_empty_thread_candidate(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+        expected_execution: &ExecutionBinding,
+    ) -> Result<Option<PristineThreadCandidate>, SyndicReadError> {
+        match self.inspect_empty_thread_state(store, thread_id, expected_execution, false)? {
+            PristineThreadInspection::Exact(candidate) => Ok(Some(candidate)),
+            PristineThreadInspection::Ineligible => Ok(None),
+            PristineThreadInspection::Missing => {
+                Err(SyndicReadError::Invariant("empty-thread owner is missing"))
+            }
+            PristineThreadInspection::Conflict(message) => Err(SyndicReadError::Invariant(message)),
+        }
+    }
+
+    fn inspect_empty_thread_state(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+        expected_execution: &ExecutionBinding,
+        require_current_catalog: bool,
+    ) -> Result<PristineThreadInspection, SyndicReadError> {
         let source_revision = self.revision(store)?;
         if self
             .point::<DiscussionHandoffGatesFamily>(
@@ -266,32 +304,6 @@ impl SyndicStorage {
                 PristineThreadInspection::Conflict("pristine-thread attributes are missing"),
             );
         };
-        let Some(summary) = self.point::<HistorySummariesFamily>(
-            store,
-            thread_id,
-            limit::<HistorySummariesFamily>(),
-        )?
-        else {
-            return stable_inspection(
-                self,
-                store,
-                source_revision,
-                PristineThreadInspection::Conflict("pristine-thread history summary is missing"),
-            );
-        };
-        let Some(catalog) = self.point::<ThreadCatalogSummariesFamily>(
-            store,
-            thread_id,
-            limit::<ThreadCatalogSummariesFamily>(),
-        )?
-        else {
-            return stable_inspection(
-                self,
-                store,
-                source_revision,
-                PristineThreadInspection::Conflict("pristine-thread catalog summary is missing"),
-            );
-        };
         let Some(input_gate) =
             self.point::<InputGatesFamily>(store, thread_id, limit::<InputGatesFamily>())?
         else {
@@ -319,6 +331,126 @@ impl SyndicStorage {
                 PristineThreadInspection::Conflict("pristine-thread non-idle source disagrees"),
             );
         }
+        let mut eligible_binding = None;
+        if !require_current_catalog {
+            if index.thread_id() != thread.id()
+                || index.draft_id() != draft.id()
+                || index.draft_revision() != draft.revision()
+                || index.thread_revision() != thread.revision()
+                || thread.current_draft_id() != draft.id()
+                || draft.thread_id() != thread.id()
+                || root.reference() != draft.piece_root()
+                || history.reference() != draft.history()
+                || execution.thread_id() != thread.id()
+                || attributes.thread_id() != thread.id()
+                || input_gate.thread_id() != thread.id()
+            {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadInspection::Conflict("empty-thread canonical sources disagree"),
+                );
+            }
+            if thread.committed_tail().is_some()
+                || thread.selected_path_digest() != empty_selected_path_digest()
+                || thread.parent_thread_id().is_some()
+                || thread.context_owner_id().is_some()
+                || draft.submission_intent() != DraftSubmissionIntent::Ordinary
+                || root.reference().summary().logical_utf8_bytes() != 0
+                || root.reference().summary().marker_count() != 0
+                || execution.execution() != expected_execution
+                || attributes.archive() != ThreadArchiveState::Ordinary
+                || attributes.generated_title().is_some()
+                || input_gate.state() != &InputGateState::Idle
+                || input_gate.accepted_high_water() != 0
+                || input_gate.live_steering_count() != 0
+                || input_gate.live_next_turn_count() != 0
+            {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadInspection::Ineligible,
+                );
+            }
+            let head = self
+                .point::<BindingHeadsFamily>(store, thread_id, limit::<BindingHeadsFamily>())?
+                .ok_or(SyndicReadError::Invariant(
+                    "empty-thread binding head is missing",
+                ))?;
+            if head.thread_id() != thread_id {
+                return Err(SyndicReadError::Invariant(
+                    "empty-thread binding head owner disagrees",
+                ));
+            }
+            let current = self
+                .point::<BindingsFamily>(
+                    store,
+                    BindingKey {
+                        thread: thread_id,
+                        revision: head.revision(),
+                    },
+                    limit::<BindingsFamily>(),
+                )?
+                .ok_or(SyndicReadError::Invariant(
+                    "empty-thread current binding is missing",
+                ))?;
+            if current.thread_id() != thread_id
+                || current.revision() != head.revision()
+                || current.state().lifecycle() != head.lifecycle()
+                || current.selected_path()
+                    != SelectedPathProof::new(
+                        thread.committed_tail(),
+                        thread.revision(),
+                        thread.selected_path_digest(),
+                    )
+                || head.selected_path_digest() != thread.selected_path_digest()
+                || current
+                    .state()
+                    .execution()
+                    .is_some_and(|binding| binding != execution.execution())
+            {
+                return Err(SyndicReadError::Invariant(
+                    "empty-thread current binding disagrees",
+                ));
+            }
+            if head.lifecycle() == crate::BindingLifecycle::Active {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadInspection::Ineligible,
+                );
+            }
+            eligible_binding = Some((current, head));
+        }
+        let Some(summary) = self.point::<HistorySummariesFamily>(
+            store,
+            thread_id,
+            limit::<HistorySummariesFamily>(),
+        )?
+        else {
+            return stable_inspection(
+                self,
+                store,
+                source_revision,
+                PristineThreadInspection::Conflict("pristine-thread history summary is missing"),
+            );
+        };
+        let Some(catalog) = self.point::<ThreadCatalogSummariesFamily>(
+            store,
+            thread_id,
+            limit::<ThreadCatalogSummariesFamily>(),
+        )?
+        else {
+            return stable_inspection(
+                self,
+                store,
+                source_revision,
+                PristineThreadInspection::Conflict("pristine-thread catalog summary is missing"),
+            );
+        };
         let Some(image_label_authority) = self.point::<ImageLabelAuthorityHeadsFamily>(
             store,
             thread_id,
@@ -375,7 +507,11 @@ impl SyndicStorage {
         };
         let transcript_key = ThreadTranscriptBuildKey {
             thread: thread_id,
-            generation: TranscriptGeneration::FIRST,
+            generation: if require_current_catalog {
+                TranscriptGeneration::FIRST
+            } else {
+                transcript_head.generation()
+            },
         };
         let Some(transcript_build) = self.point::<TranscriptBuildsFamily>(
             store,
@@ -403,29 +539,34 @@ impl SyndicStorage {
                 PristineThreadInspection::Conflict("pristine-thread activity head is missing"),
             );
         };
-        let binding_key = BindingKey {
-            thread: thread_id,
-            revision: BindingRevision::new(1).expect("initial binding revision is nonzero"),
-        };
-        let Some(binding) =
-            self.point::<BindingsFamily>(store, binding_key, limit::<BindingsFamily>())?
-        else {
-            return stable_inspection(
-                self,
-                store,
-                source_revision,
-                PristineThreadInspection::Conflict("pristine-thread binding is missing"),
-            );
-        };
-        let Some(binding_head) =
-            self.point::<BindingHeadsFamily>(store, thread_id, limit::<BindingHeadsFamily>())?
-        else {
-            return stable_inspection(
-                self,
-                store,
-                source_revision,
-                PristineThreadInspection::Conflict("pristine-thread binding head is missing"),
-            );
+        let (binding, binding_head) = if let Some(binding) = eligible_binding {
+            binding
+        } else {
+            let binding_key = BindingKey {
+                thread: thread_id,
+                revision: BindingRevision::new(1).expect("initial binding revision is nonzero"),
+            };
+            let Some(binding) =
+                self.point::<BindingsFamily>(store, binding_key, limit::<BindingsFamily>())?
+            else {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadInspection::Conflict("pristine-thread binding is missing"),
+                );
+            };
+            let Some(binding_head) =
+                self.point::<BindingHeadsFamily>(store, thread_id, limit::<BindingHeadsFamily>())?
+            else {
+                return stable_inspection(
+                    self,
+                    store,
+                    source_revision,
+                    PristineThreadInspection::Conflict("pristine-thread binding head is missing"),
+                );
+            };
+            (binding, binding_head)
         };
         let facts = PristineThreadFacts {
             thread,
@@ -448,10 +589,10 @@ impl SyndicStorage {
             binding_head,
         };
         stable_inspection(self, store, source_revision, ())?;
-        if let Err(message) = validate_closure(&facts) {
+        if let Err(message) = validate_closure(&facts, require_current_catalog) {
             return Ok(PristineThreadInspection::Conflict(message));
         }
-        if !is_eligible(&facts, expected_execution) {
+        if !is_eligible(&facts, expected_execution, require_current_catalog) {
             return Ok(PristineThreadInspection::Ineligible);
         }
         if !draft_edit_history_frontier_is_authenticated_v1(self, store, &facts.history)? {
@@ -538,7 +679,10 @@ impl DomainMutation<SyndicDomain> for DeletePristineThread {
     }
 }
 
-fn validate_closure(facts: &PristineThreadFacts) -> Result<(), &'static str> {
+fn validate_closure(
+    facts: &PristineThreadFacts,
+    require_current_catalog: bool,
+) -> Result<(), &'static str> {
     let thread = &facts.thread;
     let draft = &facts.draft;
     if facts.index.thread_id() != thread.id()
@@ -571,7 +715,16 @@ fn validate_closure(facts: &PristineThreadFacts) -> Result<(), &'static str> {
             )
         || facts.binding_head.selected_path_digest() != thread.selected_path_digest()
         || facts.binding_head.lifecycle() != facts.binding.state().lifecycle()
-        || facts.binding_head.lifecycle() != crate::BindingLifecycle::Unbound
+        || (require_current_catalog
+            && facts.binding_head.lifecycle() != crate::BindingLifecycle::Unbound)
+        || (!require_current_catalog
+            && facts.binding_head.lifecycle() == crate::BindingLifecycle::Active)
+        || (!require_current_catalog
+            && facts
+                .binding
+                .state()
+                .execution()
+                .is_some_and(|binding| binding != facts.execution.execution()))
     {
         return Err("pristine-thread binding head is not the initial unbound binding");
     }
@@ -589,7 +742,7 @@ fn validate_closure(facts: &PristineThreadFacts) -> Result<(), &'static str> {
         &facts.attributes,
         &facts.summary,
     );
-    if expected_catalog != facts.catalog {
+    if require_current_catalog && expected_catalog != facts.catalog {
         return Err("pristine-thread catalog summary is not current");
     }
     Ok(())
@@ -598,6 +751,14 @@ fn validate_closure(facts: &PristineThreadFacts) -> Result<(), &'static str> {
 fn facts_match(
     reader: &DomainReader<'_, SyndicDomain>,
     facts: &PristineThreadFacts,
+) -> Result<bool, SyndicMutationError> {
+    empty_facts_match(reader, facts, true)
+}
+
+fn empty_facts_match(
+    reader: &DomainReader<'_, SyndicDomain>,
+    facts: &PristineThreadFacts,
+    require_current_catalog: bool,
 ) -> Result<bool, SyndicMutationError> {
     let thread_id = facts.thread.id();
     Ok(
@@ -651,8 +812,8 @@ fn facts_match(
                 &facts.binding,
             )?
             && point_matches::<BindingHeadsFamily>(reader, &thread_id, &facts.binding_head)?
-            && validate_closure(facts).is_ok()
-            && is_eligible(facts, facts.execution.execution()),
+            && validate_closure(facts, require_current_catalog).is_ok()
+            && is_eligible(facts, facts.execution.execution(), require_current_catalog),
     )
 }
 
@@ -762,8 +923,8 @@ fn removal_audit(
     Ok(if all_absent {
         PristineThreadRemovalAudit::Removed
     } else if exact
-        && validate_closure(facts).is_ok()
-        && is_eligible(facts, facts.execution.execution())
+        && validate_closure(facts, true).is_ok()
+        && is_eligible(facts, facts.execution.execution(), true)
         && is_created_fallback(facts)
     {
         PristineThreadRemovalAudit::Present
@@ -863,7 +1024,11 @@ fn delete_pristine_thread_records(
     Ok(())
 }
 
-fn is_eligible(facts: &PristineThreadFacts, expected_execution: &ExecutionBinding) -> bool {
+fn is_eligible(
+    facts: &PristineThreadFacts,
+    expected_execution: &ExecutionBinding,
+    require_current_catalog: bool,
+) -> bool {
     let root_summary = facts.root.reference().summary();
     facts.thread.committed_tail().is_none()
         && facts.thread.selected_path_digest() == empty_selected_path_digest()
@@ -879,7 +1044,7 @@ fn is_eligible(facts: &PristineThreadFacts, expected_execution: &ExecutionBindin
         && facts.attributes.archive() == ThreadArchiveState::Ordinary
         && facts.attributes.generated_title().is_none()
         && facts.summary.complete()
-        && facts.catalog.title().is_none()
+        && (!require_current_catalog || facts.catalog.title().is_none())
         && facts.input_gate.state() == &InputGateState::Idle
         && facts.input_gate.accepted_high_water() == 0
         && facts.input_gate.route_generation_high_water().is_none()

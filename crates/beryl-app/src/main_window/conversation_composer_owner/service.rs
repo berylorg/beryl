@@ -25,6 +25,8 @@ use crate::main_window::MainWindowComposerSlot;
 mod candidate_source;
 mod candidate_worker;
 mod claim_publication;
+mod thread_creation;
+pub(crate) use thread_creation::MainWindowThreadPredecessorSave;
 pub(in crate::main_window) use claim_publication::*;
 mod close;
 mod close_cleanup;

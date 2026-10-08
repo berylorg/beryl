@@ -656,6 +656,7 @@ mod error;
 mod footprint;
 mod membership;
 mod mutation;
+pub use mutation::ThreadAcquisitionContribution;
 mod native_projection;
 mod pristine_thread;
 mod projection;
@@ -741,6 +742,8 @@ pub use native_projection::{
 pub use pristine_thread::{
     PristineThreadAudit, PristineThreadCandidate, PristineThreadRemovalAudit,
 };
+mod eligible_empty_thread;
+pub use eligible_empty_thread::EligibleEmptyThreadCandidate;
 pub use provider_item::*;
 pub use provider_observation::*;
 pub(crate) use read::AcceptedNextCandidateBasis;

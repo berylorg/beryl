@@ -355,7 +355,7 @@ impl RunningThreadActivationPending {
     }
 }
 
-fn summary(
+pub(crate) fn summary(
     source: &ThreadCatalogSummaryPreparation,
 ) -> &syndic_storage::ThreadCatalogSummaryRecord {
     match source {
@@ -364,7 +364,7 @@ fn summary(
     }
 }
 
-fn prepare_catalog_row(
+pub(crate) fn prepare_catalog_row(
     store: &HomeStore,
     state: &BerylState,
     syndic: &SyndicStorage,

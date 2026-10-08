@@ -68,6 +68,7 @@ pub use recovery::{
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowComposerCandidateSource;
 pub use service::MainWindowConversationComposerService;
+pub(crate) use service::MainWindowThreadPredecessorSave;
 pub use service::MainWindowFailedResidentCandidateSource;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 pub use service::{

@@ -8,6 +8,12 @@ pub(crate) struct ComposerHostSelectionSave {
     flush: ComposerHostFlushTicket,
 }
 
+impl ComposerHostSelectionSave {
+    pub(crate) fn flush_ticket(self) -> ComposerHostFlushTicket {
+        self.flush
+    }
+}
+
 impl SyndicComposerHost {
     pub(crate) fn qualify_selection_save(
         &mut self,
@@ -54,6 +60,7 @@ impl SyndicComposerHost {
             || active.storage_candidate != saved.candidate
             || active.durable_selector != saved.selector
             || self.lifecycle.barrier_generation != saved.flush.barrier_generation
+            || !self.lifecycle.barrier_matches(saved.flush)
             || saved.flush.host_generation != active.binding.host_generation()
             || self.publication.lane.is_some()
             || self.is_dirty()

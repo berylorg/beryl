@@ -40,6 +40,9 @@ pub struct Fixture {
 }
 
 impl Fixture {
+    pub fn state(&self) -> BerylState {
+        self.state.clone()
+    }
     pub fn new(name: &str, seed: u8) -> Self {
         Self::with_history_budget(name, seed, 65_536)
     }

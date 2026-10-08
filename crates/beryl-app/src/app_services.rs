@@ -36,7 +36,11 @@ mod preparation;
 mod published;
 mod running_threads;
 pub(crate) mod runtime_setup;
-pub(crate) use running_threads::PublishedRunningThreadsReader;
+pub(crate) use running_threads::{
+    PublishedRunningThreadsReader, PublishedSameWindowThreadCurrent,
+    PublishedSameWindowThreadOperation, PublishedSameWindowThreadPreparation,
+    PublishedSameWindowThreadPreparationFailure,
+};
 pub(crate) use runtime_setup::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 pub(crate) mod recovery_composer;
 mod recovery_failed_residents;

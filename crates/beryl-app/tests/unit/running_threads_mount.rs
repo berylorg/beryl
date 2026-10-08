@@ -11,6 +11,8 @@ mod support;
 
 #[path = "running_threads_mount/selection_save.rs"]
 mod selection_save;
+#[path = "running_threads_mount/creation_save.rs"]
+mod creation_save;
 
 fn clipboard_payload() -> gpui_text_input::ClipboardWriteRequest {
     use gpui_text_input::*;

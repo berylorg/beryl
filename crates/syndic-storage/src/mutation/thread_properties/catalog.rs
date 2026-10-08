@@ -14,6 +14,8 @@ use crate::{
 };
 
 use super::super::required;
+mod acquisition;
+pub use acquisition::ThreadAcquisitionContribution;
 
 struct RebuildThreadCatalogSummary {
     prepared: PreparedThreadCatalogSummaryReplacement,

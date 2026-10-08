@@ -38,6 +38,24 @@ governed by [design.md](design.md). It does not independently declare engineerin
   cleanup custody; they never roll back the claim or resume the old editor. Ordinary close,
   submission and ordinary ThreadSwitch completion retain their own existing semantics.
 
+- Existing-window thread creation may qualify the same selected editor's saved checkpoint before
+  a target editor exists. Its opaque move-only predecessor-save proof authenticates that exact
+  editor binding, candidate, durable draft selector and original flush attempt, retaining the
+  prior editor and save barrier. It grants no target selection or publication capability.
+  Advancing saved publication returns the exact refreshed selected-editor identity with that
+  advance; qualification uses that identity rather than the prepublication binding. Each original
+  save barrier issues at most one proof, and validation authenticates the continued matching
+  retained barrier, not only its generation or unchanged draft bytes.
+  Current-thread no-op and proven noncommit release consume the proof only after validating the
+  same durable invoking claim and selected editor; failed release retains both proof and process
+  selection lease. Indeterminate or terminal Unavailable acquisition cannot release that fence.
+  After known atomic claim commitment and preparation of the exact successor editor, the existing
+  activation receipt adopts the saved proof into its selection-saved stage without saving again.
+  Adoption authenticates the unchanged predecessor and ready target before canonical committed
+  disposal, widget release and promotion. Original committed outcome, saved proof and lease remain
+  owned through errors or retirement; a fresh reader or reconstructed receipt cannot substitute
+  for them.
+
 - Marker sealing consumes the single injected home-generation service owned by the
   [process service graph](design-shell-lifecycle.md#process-service-graph-and-windows); a host or
   window never constructs independent flight capacity.

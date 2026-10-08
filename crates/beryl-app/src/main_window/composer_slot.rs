@@ -48,6 +48,7 @@ pub struct MainWindowComposerSlot {
     disposed: bool,
     disposal_stage: Option<DisposalStage>,
     submission_successor: Option<MainWindowComposerActivationReceipt>,
+    thread_predecessor_save: Option<crate::composer_host::ComposerHostFlushTicket>,
     native_lineage_suspension: Option<MainWindowComposerSelectionIdentity>,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     #[cfg(feature = "test-faults")]
@@ -190,6 +191,7 @@ impl MainWindowComposerSlot {
             disposed: false,
             disposal_stage: None,
             submission_successor: None,
+            thread_predecessor_save: None,
             native_lineage_suspension: None,
             window_close: None,
             #[cfg(feature = "test-faults")]

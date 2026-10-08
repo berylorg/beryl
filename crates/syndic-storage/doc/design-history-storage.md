@@ -35,6 +35,18 @@ at most two summary reconciliation records. No caller may combine separate same-
 or compute replacement summary revisions. These operations grant no transcript publication,
 execution, loading or input capability.
 
+The joined acquisition operations `reuse_empty_thread_with_catalog_predecessor` and
+`create_thread_with_catalog_predecessor` accept one authenticated `EligibleEmptyThreadCandidate`
+with its exact opaque target catalog-summary preparation, or one fresh `CreateThread`, plus at
+most one distinct opaque predecessor catalog-summary preparation. They authenticate the target's
+eligible closure or fresh absence and each summary's exact current sources under one shared
+Syndic-domain revision. Required target and predecessor summary replacements publish alongside
+creation or reuse in one Syndic participant; exact members remain validation assertions. Reuse
+with no summary replacement is validation-only. Reconciliation bounds include the fresh canonical
+closure, when present, and at most two summary records. The operations expose no Beryl session,
+claim, election, GUI or process-execution authority and preserve ordinary strict pristine and
+creation semantics.
+
 A discussion-context envelope is immutable, bounded, and keyed by its context-owner identity. It
 retains exact selected UTF-8, source thread and turn provenance, and SHA-256 over those exact bytes.
 The constructor observes no clock. Draft validation proves its immutable source and branch binding
@@ -191,6 +203,28 @@ composes these checks with the system's whole-operation custody before exposing 
   revision changes, stale handles, changed gate or changed disposition reject the whole command.
   Ready validation writes no Syndic records; queued release uses the existing exact gate old/new
   outcome witness. Read-only settlement observations are not mutation outcome evidence.
+
+## Empty Thread Reuse Eligibility
+
+`inspect_eligible_empty_thread` returns a distinct opaque `EligibleEmptyThreadCandidate` from
+bounded authoritative thread, input, gate, execution and current draft facts. An ordinary thread
+that has never accepted user input may remain eligible after unsubmitted typing and removal when
+its current draft has no user-authored payload. Accepted input permanently disqualifies it;
+active work and nonordinary lineage remain ineligible. Inspection grants no Beryl claim, job,
+selection or deletion authority. The app owns scope-qualified election, occupancy and job checks.
+
+Eligibility authenticates the current binding head, its named binding and coherent selected-path
+facts. A later binding revision or idle Unbound, Valid or Stale binding does not imply accepted
+input or active work and does not by itself disqualify reuse; same-source runtime recovery may
+publish such binding facts without submitting input. Active binding/work remains ineligible.
+Missing or disagreeing current authority is a typed failure, never an inferred empty thread.
+
+Derived catalog-summary staleness neither substitutes for these source facts nor makes an otherwise
+eligible thread unavailable. Claiming an eligible thread prepares its exact source-owned target
+summary and joins any needed refresh with acquisition's one command; Current-thread no-op needs
+no cache write. Inspection and writer validation authenticate the bounded current source closure
+without enumerating an unbounded edit history. The acquisition candidate cannot be consumed by
+strict pristine fallback-deletion APIs, which retain their original creation-fingerprint boundary.
 
 ## Pristine Thread Abandonment
 

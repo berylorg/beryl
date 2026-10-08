@@ -232,6 +232,7 @@ pub use main_window::running_threads::*;
 pub(crate) mod syndic_transcript;
 pub(crate) mod transcript_provider;
 pub mod window_acquisition;
+pub mod same_window_thread_acquisition;
 
 pub use branch_discussion_dynamic_tools::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,

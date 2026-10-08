@@ -60,6 +60,31 @@ operation's targeted reconciliation. Exact old restores the initiating command, 
 coherent publication, and collision/successor becomes terminal Unavailable with retained intent.
 The New Thread controller owns visible pending, cancellation, error and Unavailable presentation.
 
+## Existing-Window Thread Claim Or Creation
+
+Ordinary New Thread creation accepts the exact published invoking window, its selected claim and
+one configured runtime/root. A process selection lease excludes competing selection, acquisition
+and close through the original operation's durable settlement and coherent view publication.
+After the predecessor draft's saved checkpoint is qualified, worker-side preparation elects a
+deterministic eligible pristine thread or prepares a fresh thread/draft, and joins State/Syndic
+claim, catalog, remembered-target and creation contributions in one revision-checked HomeCommand.
+The operation creates no additional session member and never commits creation separately from
+claim replacement. Writer-side validation authenticates the exact predecessor and reuse facts.
+
+The prepared capability supplies the exact future window, claim, thread and draft identity. Its
+move-only result retains original receipt, reconciliation and publication custody. Proven noncommit
+permits the same prior editor's fence to be released; uncertainty retains the request and lease,
+and collision becomes terminal Unavailable without creating another request or inferring noncommit.
+
+A fresh thread's successor editor is prepared from its newly durable thread/draft only after the
+original atomic command is known committed. The prior coherent editor remains retained until
+successor preparation, canonical predecessor disposal, widget release and complete target promotion
+settle. A failure or cancellation after commitment retains committed target and original cleanup
+custody; it cannot roll back the claim, resume the predecessor as current authority or report the
+request as uncommitted. Same-home retirement settles those retained original owners before any
+replacement generation may publish. The feature's confirmed-selection picker owns visible busy,
+failure, cancellation and Unavailable presentation, not the non-GPUI transaction capability.
+
 ## Running-Thread Selection Contribution
 
 The published graph exposes a narrow weak process-work reader with revision-bound searchable pages,

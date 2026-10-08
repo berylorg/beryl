@@ -12,6 +12,7 @@ use crate::{
 use super::required;
 
 mod catalog;
+pub use catalog::ThreadAcquisitionContribution;
 
 /// One-way acceptance of an exact generated title and its immutable source witness.
 pub struct AcceptGeneratedThreadTitle {

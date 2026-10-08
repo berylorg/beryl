@@ -60,6 +60,7 @@ mod provider_frame;
 mod provider_observation;
 mod stop;
 mod thread_properties;
+pub use thread_properties::ThreadAcquisitionContribution;
 mod transcript;
 
 pub use accepted::{

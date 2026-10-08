@@ -24,6 +24,17 @@ pub(crate) struct PublishedRunningThreadsReader {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn thread_creation_reader(&self) -> Option<PublishedRunningThreadsReader> {
+        self.running_threads_reader()
+    }
+
+    pub(crate) fn admit_thread_creation(
+        &self,
+        members: &[beryl_model::WindowId],
+        invoking: beryl_model::WindowId,
+    ) -> Result<crate::window_acquisition::WindowSelectionLease, String> {
+        self.admit_running_selection(members, invoking)
+    }
     pub(crate) fn running_selection_pending(&self) -> bool {
         self.windows.selection_pending()
     }
@@ -60,6 +71,74 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedRunningThreadsReader {
+    pub(crate) fn prepare_thread_creation(
+        &self,
+        request: crate::same_window_thread_acquisition::SameWindowThreadRequest,
+        lease: Arc<crate::window_acquisition::WindowSelectionLease>,
+        saved: crate::main_window::MainWindowThreadPredecessorSave,
+        cancellation: beryl_home_store::CommandCancellation,
+    ) -> Result<PublishedSameWindowThreadPreparation, PublishedSameWindowThreadPreparationFailure>
+    {
+        let result = (|| -> Result<_, String> {
+            if !self.current()
+                || lease.invoking() != request.window_id()
+                || saved.selected().window_id() != request.window_id()
+                || Some(saved.selected().claim()) != request.selected()
+            {
+                return Err("Thread creation source retired or belongs to another window".into());
+            }
+            lease
+                .validate_publication()
+                .map_err(|error| error.to_string())?;
+            saved.validate()?;
+            let preparation = request
+                .prepare(&self.home, &self.state, &self.syndic, cancellation)
+                .map_err(|error| error.to_string())?;
+            if !self.current() {
+                return Err("Thread creation source retired".into());
+            }
+            Ok(preparation)
+        })();
+        let preparation = match result {
+            Ok(preparation) => preparation,
+            Err(error) => {
+                return Err(PublishedSameWindowThreadPreparationFailure {
+                    reader: self.clone(),
+                    lease,
+                    saved: Some(saved),
+                    error,
+                });
+            }
+        };
+        Ok(match preparation {
+            crate::same_window_thread_acquisition::SameWindowThreadPreparation::Current {
+                window,
+                claim,
+                draft,
+            } => PublishedSameWindowThreadPreparation::Current(PublishedSameWindowThreadCurrent {
+                window,
+                claim,
+                draft,
+                custody: PublishedSameWindowThreadPreparationFailure {
+                    reader: self.clone(),
+                    lease,
+                    saved: Some(saved),
+                    error: String::new(),
+                },
+            }),
+            crate::same_window_thread_acquisition::SameWindowThreadPreparation::Prepared(
+                prepared,
+            ) => {
+                PublishedSameWindowThreadPreparation::Prepared(PublishedSameWindowThreadOperation {
+                    reader: self.clone(),
+                    lease,
+                    saved: Some(saved),
+                    prepared: Some(prepared),
+                    outcome: None,
+                })
+            }
+        })
+    }
     #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn for_test(
         service: &crate::cas_projection::ProjectionConnectionService,
@@ -233,5 +312,210 @@ impl PublishedRunningThreadsReader {
             return Err(ProcessWorkError::Closed);
         }
         Ok(position)
+    }
+}
+
+pub(crate) enum PublishedSameWindowThreadPreparation {
+    Current(PublishedSameWindowThreadCurrent),
+    Prepared(PublishedSameWindowThreadOperation),
+}
+
+pub(crate) struct PublishedSameWindowThreadPreparationFailure {
+    reader: PublishedRunningThreadsReader,
+    lease: Arc<crate::window_acquisition::WindowSelectionLease>,
+    saved: Option<crate::main_window::MainWindowThreadPredecessorSave>,
+    error: String,
+}
+
+impl PublishedSameWindowThreadPreparationFailure {
+    pub(crate) fn error(&self) -> &str {
+        &self.error
+    }
+    pub(crate) fn release(mut self) -> Result<(), Self> {
+        let Some(saved) = self.saved.take() else {
+            return Err(self);
+        };
+        match saved.release(&self.reader.state) {
+            Ok(()) => Ok(()),
+            Err((saved, error)) => {
+                self.saved = Some(saved);
+                self.error = error;
+                Err(self)
+            }
+        }
+    }
+}
+
+pub(crate) struct PublishedSameWindowThreadCurrent {
+    pub(crate) window: beryl_state::SessionWindowRecord,
+    pub(crate) claim: beryl_state::ThreadClaimRecord,
+    pub(crate) draft: beryl_model::SyndicDraftId,
+    custody: PublishedSameWindowThreadPreparationFailure,
+}
+
+impl PublishedSameWindowThreadCurrent {
+    pub(crate) fn release(self) -> Result<(), PublishedSameWindowThreadPreparationFailure> {
+        self.custody.release()
+    }
+}
+
+pub(crate) struct PublishedSameWindowThreadOperation {
+    reader: PublishedRunningThreadsReader,
+    lease: Arc<crate::window_acquisition::WindowSelectionLease>,
+    saved: Option<crate::main_window::MainWindowThreadPredecessorSave>,
+    prepared: Option<crate::same_window_thread_acquisition::SameWindowThreadAcquisition>,
+    outcome: Option<crate::same_window_thread_acquisition::SameWindowThreadOutcome>,
+}
+
+impl PublishedSameWindowThreadOperation {
+    pub(crate) fn future_selection(&self) -> beryl_state::WindowClaimSelection {
+        if let Some(prepared) = &self.prepared {
+            return prepared.future_selection();
+        }
+        match self
+            .outcome
+            .as_ref()
+            .expect("original thread creation result")
+        {
+            crate::same_window_thread_acquisition::SameWindowThreadOutcome::Settled(commit) => {
+                commit.selection
+            }
+            crate::same_window_thread_acquisition::SameWindowThreadOutcome::Pending(pending)
+            | crate::same_window_thread_acquisition::SameWindowThreadOutcome::Unavailable(
+                pending,
+            ) => pending.future_selection(),
+            crate::same_window_thread_acquisition::SameWindowThreadOutcome::NotCommitted(_) => {
+                unreachable!("noncommit grants no target selection")
+            }
+        }
+    }
+    pub(crate) fn commit(&mut self) -> Result<(), String> {
+        if self.outcome.is_some() {
+            return Err("Thread creation already owns its original result".into());
+        }
+        if !self.reader.current() {
+            return Err("Thread creation source retired".into());
+        }
+        self.saved
+            .as_ref()
+            .ok_or("Thread creation predecessor custody is missing")?
+            .validate()?;
+        let lease = self.lease.clone();
+        lease
+            .admit_commit(|| {
+                let prepared = self
+                    .prepared
+                    .take()
+                    .expect("original thread creation capability");
+                self.outcome = Some(prepared.commit(&self.reader.home, &self.reader.state));
+            })
+            .map_err(|error| error.to_string())
+    }
+    pub(crate) fn outcome(
+        &self,
+    ) -> Option<&crate::same_window_thread_acquisition::SameWindowThreadOutcome> {
+        self.outcome.as_ref()
+    }
+    pub(crate) fn reconcile(&mut self) -> Result<(), String> {
+        if !self.reader.current() {
+            return Err("Thread creation source retired; original custody remains retained".into());
+        }
+        if !matches!(
+            self.outcome,
+            Some(crate::same_window_thread_acquisition::SameWindowThreadOutcome::Pending(_))
+        ) {
+            return Err("Thread creation has no pending reconciliation".into());
+        }
+        let Some(crate::same_window_thread_acquisition::SameWindowThreadOutcome::Pending(pending)) =
+            self.outcome.take()
+        else {
+            unreachable!()
+        };
+        self.outcome = Some(pending.reconcile(&self.reader.home, &self.reader.state));
+        Ok(())
+    }
+    pub(crate) fn validate_publication(&self) -> Result<(), String> {
+        if !self.reader.current() {
+            return Err(
+                "Thread creation publication retired; original custody remains retained".into(),
+            );
+        }
+        if !matches!(
+            self.outcome,
+            Some(crate::same_window_thread_acquisition::SameWindowThreadOutcome::Settled(_))
+        ) {
+            return Err("Thread creation has no exact committed publication".into());
+        }
+        self.lease
+            .validate_publication()
+            .map_err(|error| error.to_string())
+    }
+    pub(crate) fn reader(&self) -> &PublishedRunningThreadsReader {
+        &self.reader
+    }
+    pub(crate) fn selection_lease(&self) -> &Arc<crate::window_acquisition::WindowSelectionLease> {
+        &self.lease
+    }
+    pub(crate) fn adopt_predecessor_save(
+        &mut self,
+        receipt: crate::main_window::MainWindowComposerActivationReceipt,
+    ) -> Result<(), String> {
+        self.validate_publication()?;
+        let Some(crate::same_window_thread_acquisition::SameWindowThreadOutcome::Settled(commit)) =
+            &self.outcome
+        else {
+            return Err("Thread creation has no committed target".into());
+        };
+        let target = commit.selection;
+        if receipt.target_thread() != target.thread_id()
+            || receipt.expected_prior().window_id() != commit.window.window_id()
+        {
+            return Err("Thread creation receipt differs from its original target".into());
+        }
+        let current = self
+            .reader
+            .state
+            .session()
+            .capture_window_removal(&self.reader.home, commit.window.window_id())
+            .map_err(|error| error.to_string())?;
+        if current.window().selected_thread() != Some(target) {
+            return Err("Thread creation durable target changed".into());
+        }
+        let saved = self
+            .saved
+            .take()
+            .ok_or("Thread creation predecessor custody is missing")?;
+        match saved.adopt(receipt, target) {
+            Ok(()) => Ok(()),
+            Err((saved, error)) => {
+                self.saved = Some(saved);
+                Err(error)
+            }
+        }
+    }
+    pub(crate) fn release_noncommit(mut self) -> Result<(), (Self, String)> {
+        if self.prepared.is_none()
+            && !matches!(
+                self.outcome,
+                Some(
+                    crate::same_window_thread_acquisition::SameWindowThreadOutcome::NotCommitted(_)
+                )
+            )
+        {
+            return Err((self, "Thread creation has no proven noncommit".into()));
+        }
+        let Some(saved) = self.saved.take() else {
+            return Err((
+                self,
+                "Thread creation predecessor custody is missing".into(),
+            ));
+        };
+        match saved.release(&self.reader.state) {
+            Ok(()) => Ok(()),
+            Err((saved, error)) => {
+                self.saved = Some(saved);
+                Err((self, error))
+            }
+        }
     }
 }
