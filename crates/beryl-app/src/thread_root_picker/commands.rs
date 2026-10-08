@@ -1,9 +1,37 @@
 use super::*;
 
 impl ThreadRootPicker {
+    pub fn set_external_command_reason(
+        &mut self,
+        reason: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.dismissed
+            || (reason.is_some()
+                && (self.full.external_command_reason.is_some()
+                    || self.full.native_dialog_open
+                    || self.full.in_flight.is_some()
+                    || self.activation_in_flight.is_some()))
+        {
+            return false;
+        }
+        if reason.is_some() {
+            self.full.external_search_enabled = Some(self.search.read(cx).is_enabled());
+            self.search
+                .update(cx, |input, cx| input.set_enabled(false, cx));
+        } else if let Some(enabled) = self.full.external_search_enabled.take() {
+            self.search
+                .update(cx, |input, cx| input.set_enabled(enabled, cx));
+        }
+        self.full.external_command_reason = reason;
+        cx.notify();
+        true
+    }
+
     pub fn dispatch_command(&mut self, command: PickerCommand, cx: &mut Context<Self>) {
         if self.dismissed
             || self.full.native_dialog_open
+            || self.full.external_command_reason.is_some()
             || self.full.in_flight.as_ref() == Some(&command)
         {
             return;
@@ -234,7 +262,9 @@ impl ThreadRootPicker {
             }
         };
         state.pending |= self.full.in_flight.as_ref() == Some(command);
-        if self.full.native_dialog_open {
+        if let Some(reason) = &self.full.external_command_reason {
+            state.unavailable_reason = Some(reason.clone());
+        } else if self.full.native_dialog_open {
             state.unavailable_reason = Some("A platform dialog is open.".into());
         } else if self.full.in_flight.is_some()
             && self.full.in_flight.as_ref() != Some(command)

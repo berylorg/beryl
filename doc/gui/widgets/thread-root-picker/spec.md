@@ -77,6 +77,14 @@ Selection and keyboard focus are separate states. Focus movement never implies s
 
 Unavailable and pending commands remain visible, disabled, and explanatory according to `expected-action-availability`.
 
+The owner may temporarily make the picker unavailable while a separate admitted command owns
+the same feature mutation boundary. It supplies one bounded explanation; the default is available.
+The widget rejects row acceptance, query edits and command dispatch before enrolling a command.
+Installing or clearing this condition preserves the existing scope, search, selection, focus,
+scroll and command custody; inspection focus, keyboard traversal and viewport scrolling remain
+available. Clearing it restores the original picker without inventing or settling a picker
+command. Escape and outside dismissal continue through their existing owner-controlled route.
+
 # Interaction
 
 Opening the picker establishes one owning trigger. Dismissal returns focus to that exact trigger unless the owning feature successfully activates another window-level target.

@@ -202,6 +202,11 @@ impl Render for ThreadRootPicker {
                 div()
                     .id("thread-root-picker-search")
                     .debug_selector(|| "thread-root-picker-search".to_owned())
+                    .when(self.full.external_command_reason.is_some(), |search| {
+                        search
+                            .track_focus(&self.search.read(cx).focus_handle(cx))
+                            .tab_stop(true)
+                    })
                     .h(px(style.search_height))
                     .flex_shrink_0()
                     .flex()
@@ -211,8 +216,11 @@ impl Render for ThreadRootPicker {
                     .child(div().flex_1().min_w_0().child(self.search.clone()))
                     .on_mouse_down(
                         gpui::MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
+                        cx.listener(|this, _, window, cx| {
                             this.collection.cancel_navigation();
+                            if this.full.external_command_reason.is_some() {
+                                this.search.read(cx).focus_handle(cx).focus(window);
+                            }
                             cx.notify();
                         }),
                     ),

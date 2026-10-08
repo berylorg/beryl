@@ -88,6 +88,8 @@ pub(super) struct FullPickerState {
     pub command_focus: Vec<(PickerCommand, FocusHandle)>,
     pub rendered_commands: Vec<PickerCommand>,
     pub native_dialog_open: bool,
+    pub external_command_reason: Option<String>,
+    pub external_search_enabled: Option<bool>,
     pub collection_retry: Option<PickerCommandState>,
     pub runtime_retry: Option<PickerCommandState>,
     pub eligibility: Option<SelectionEligibility>,
@@ -115,6 +117,8 @@ impl FullPickerState {
             command_focus: Vec::new(),
             rendered_commands: Vec::new(),
             native_dialog_open: false,
+            external_command_reason: None,
+            external_search_enabled: None,
             collection_retry: None,
             runtime_retry: None,
             eligibility: None,
@@ -177,6 +181,9 @@ impl ThreadRootPicker {
     }
 
     pub fn clear_search(&mut self, cx: &mut Context<Self>) {
+        if self.full.external_command_reason.is_some() {
+            return;
+        }
         self.change_query(String::new(), cx);
         let query = self.query.clone();
         self.search
@@ -195,6 +202,7 @@ impl ThreadRootPicker {
         if self.dismissed
             || matches!(self.full.selection, PickerSelectionMode::Immediate)
             || self.full.native_dialog_open
+            || self.full.external_command_reason.is_some()
             || self.full.in_flight.is_some()
         {
             return;

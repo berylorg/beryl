@@ -340,6 +340,7 @@ impl ThreadRootPicker {
     pub fn activate(&mut self, key: &PickerRowKey, cx: &mut Context<Self>) {
         if self.dismissed
             || self.full.native_dialog_open
+            || self.full.external_command_reason.is_some()
             || self.activation_in_flight.is_some()
             || self.full.in_flight.is_some()
         {

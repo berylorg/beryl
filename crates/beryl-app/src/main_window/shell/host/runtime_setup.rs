@@ -10,6 +10,7 @@ use std::{collections::VecDeque, time::Duration};
 mod commands;
 mod confirmation;
 mod pages;
+mod primary;
 mod render;
 #[cfg(all(test, feature = "test-faults"))]
 mod test_access;
@@ -38,6 +39,8 @@ pub(super) struct RuntimeSetupContribution {
     pub(super) native_dialog: bool,
     pub(super) native_task: Option<gpui::Task<()>>,
     pub(super) command: Option<PickerCommand>,
+    pub(super) primary_command: bool,
+    pub(super) primary_task: Option<gpui::Task<()>>,
     pub(super) unavailable: Option<String>,
     pub(super) failure_notice: Option<crate::main_window::NoticeRecordToken>,
     pub(super) suspended: bool,
@@ -88,8 +91,8 @@ impl RuntimeSetupContribution {
     pub(super) fn new(cx: &mut Context<MainWindowShellRoot>) -> Self {
         Self {
             services: None,
-            focus: cx.focus_handle(),
-            primary_focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
+            primary_focus: cx.focus_handle().tab_stop(true),
             picker: None,
             subscription: None,
             scope: None,
@@ -105,6 +108,8 @@ impl RuntimeSetupContribution {
             native_dialog: false,
             native_task: None,
             command: None,
+            primary_command: false,
+            primary_task: None,
             unavailable: None,
             failure_notice: None,
             suspended: false,
@@ -158,6 +163,7 @@ impl RuntimeSetupContribution {
             || self.flight.is_some()
             || self.unavailable.is_some()
             || self.command.is_some()
+            || self.primary_command
     }
 }
 
@@ -473,15 +479,22 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         let command = self.runtime_setup.command.take();
+        let primary = std::mem::take(&mut self.runtime_setup.primary_command);
         self.runtime_setup.native_dialog = false;
         if let Some(picker) = &self.runtime_setup.picker {
             picker.update(cx, |picker, cx| {
+                if primary {
+                    picker.set_external_command_reason(None, cx);
+                }
                 picker.set_native_dialog_open(false, cx);
                 if let Some(command) = &command {
                     picker.finish_command(command, cx);
                     picker.restore_command_focus(command, window, cx);
                 }
             });
+        }
+        if primary {
+            window.focus(&self.runtime_setup.primary_focus);
         }
         cx.notify();
     }

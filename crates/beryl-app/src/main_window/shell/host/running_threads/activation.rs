@@ -226,7 +226,9 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if matches!(self.runtime_setup.command, Some(PickerCommand::Confirm(_))) {
+        if self.runtime_setup.primary_command
+            || matches!(self.runtime_setup.command, Some(PickerCommand::Confirm(_)))
+        {
             let terminal = self
                 .running_threads
                 .activation_operation

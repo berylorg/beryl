@@ -2,6 +2,9 @@ use super::*;
 
 impl ThreadRootPicker {
     pub(super) fn change_query(&mut self, query: String, cx: &mut Context<Self>) {
+        if self.full.external_command_reason.is_some() {
+            return;
+        }
         if self.dismissed
             || self.query == query
             || self.full.native_dialog_open

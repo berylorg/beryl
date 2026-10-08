@@ -94,24 +94,48 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 735: Mount New Thread Root Confirmation (finished)
+# Phase 737: Mount Primary New Thread In The Current Runtime And Root (finished)
 
-Accepted ordinary root Confirm through exact same-window acquisition, original save/claim custody,
-coherent promotion and complete creation-specific failed-home recovery. Mounted uncertainty and
-close retention, positive original Page release, cancellation and same-fence retry are qualified.
-Canonical app/Beryl/State/Syndic checks, 191 nextest cases, scoped formatting and independent
-semantic review passed; retain the two reproduced baseline clipboard limitations.
-See [qualification](audits/new-thread-confirmation-mount-qualification.md).
+Accepted the exact selected-scope primary entrance through the shared engine, independent keyboard
+focus, fixed themed geometry and open-picker command/input fencing with preserved inspection and
+search state. Published the qualified owned-input correction and aligned Settings consumer.
+Canonical app/Beryl checks, 341 nextest cases, scoped formatting and independent review passed;
+retain the documented virtual-input and baseline clipboard limits.
+See [qualification](audits/new-thread-primary-qualification.md).
 
-# Phase 737: Mount Primary New Thread In The Current Runtime And Root (wip)
+# Phase 738: Establish Frozen Thread Catalog Query Readiness (wip)
 
-Mount the primary segment under the [split-button contract](features/conversation-threads/design.md#new-thread-split-button),
-using the accepted same-window acquisition and committed activation path with the selected
-thread's exact immutable runtime/root. Keep the zero-runtime explanation, independent keyboard
-focus and secondary flyout behavior. Current eligible-empty selection remains a no-op.
+Prepare the next [catalog and Thread Switcher boundary](features/conversation-threads/design.md#thread-catalog)
+from the current storage, State and app source. Existing current-revision recency scans and
+Running inventory cannot supply the exhaustive immutable flyout collection; qualify the missing
+source and lifecycle capabilities before production implementation.
 
-Qualify pointer/keyboard/programmatic admission, scope identity, create/reuse/Current, duplicate
-suppression, preserved edited predecessor, remembered target and original reconciliation/cleanup
-custody. Reuse accepted Confirm evidence for its unchanged shared engine; verify the primary
-entrance and affected regressions, app/Beryl checks, scoped formatting and independent review.
-This accepts the primary command, not the remaining restoration/bootstrap or catalog mounts.
+Deliver bounded source-backed readiness evidence covering stable query identity, coherent frozen
+revision, complete scope/search, deterministic recency, bounded pages and position/reveal reads,
+first coherent presentation, source staleness and disposal across home retirement. Reconcile the
+existing authoritative supplements where a technical lifecycle boundary needs clarification;
+do not use this plan to choose ownership or substitute a resident catalog, CAS enumeration or
+transcript loading. Verify applicable rigor and obtain independent readiness review.
+
+This boundary accepts actionable catalog authority and exact implementation prerequisites only.
+No production catalog or Thread Switcher source is implemented before it passes. Ordinary claim
+activation's failed-home custody remains separately qualified before the visible mount.
+
+# Phase 739: Implement Published Frozen Thread Catalog Queries (pending)
+
+After 738 establishes the exact ready boundary, implement its generation-owned bounded catalog
+reader and published query/page capability for the ordinary Thread Switcher, with stable complete
+scope/search and retirement release. Preserve a separate visible mounting acceptance.
+
+# Phase 740: Qualify Ordinary Selection Failed-Home Custody (pending)
+
+Establish and qualify original ordinary claim-activation save/outcome/cleanup custody across failed
+home retirement and fresh graph publication before using that route for idle catalog selection.
+Do not reuse the creation-specific exception as ordinary activation authority.
+
+# Phase 741: Mount The Thread Switcher (pending)
+
+Mount the exhaustive stable catalog, runtime/root browsing, bounded search and exact available
+thread activation after its reader and ordinary-selection recovery prerequisites pass. Keep
+current-thread no-op and open-elsewhere unavailability; remaining navigation and shell mounts
+continue through later bounded tracker slices.

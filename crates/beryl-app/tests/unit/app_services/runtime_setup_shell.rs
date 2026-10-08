@@ -39,6 +39,8 @@ mod confirmation_recovery;
 mod lifecycle;
 #[path = "runtime_setup_shell/native.rs"]
 mod native;
+#[path = "runtime_setup_shell/primary.rs"]
+mod primary;
 
 fn mounted(
     cx: &mut TestAppContext,

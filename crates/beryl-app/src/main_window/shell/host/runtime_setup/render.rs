@@ -23,10 +23,13 @@ pub(in crate::main_window::shell::host) fn render_command(
     let attention = root
         .controller()
         .is_some_and(|controller| controller.is_threadless());
+    let primary_enabled = root.primary_thread_reason(cx).is_none();
     let background = color("button.secondary.normal", Property::Background, 0xf8fafc);
     let foreground = color("button.secondary.label", Property::Foreground, 0x1f2937);
     let separator = color("button.secondary.normal", Property::Border, 0xcbd5e1);
     let ring = color("focus.ring", Property::Color, 0x2563eb);
+    let hover = color("button.secondary.hover", Property::Background, 0xeef2f7);
+    let pressed = color("button.secondary.pressed", Property::Background, 0xe2e8f0);
     let source = cx.weak_entity();
     let primary_source = source.clone();
     let secondary = div()
@@ -56,7 +59,7 @@ pub(in crate::main_window::shell::host) fn render_command(
         .when(secondary_enabled, |button| {
             button
                 .cursor_pointer()
-                .hover(move |style| style.bg(gpui::rgb(0xeef2f7)))
+                .hover(move |style| style.bg(hover))
                 .on_click(cx.listener(|root, _, window, cx| root.open_runtime_setup(window, cx)))
                 .on_key_down(cx.listener(|root, event: &gpui::KeyDownEvent, window, cx| {
                     if matches!(event.keystroke.key.as_str(), "enter" | "space") {
@@ -87,12 +90,31 @@ pub(in crate::main_window::shell::host) fn render_command(
         .items_center()
         .justify_center()
         .bg(background)
-        .text_color(color(
-            "button.secondary.disabled",
-            Property::Foreground,
-            0x94a3b8,
-        ))
+        .relative()
+        .border_1()
+        .border_color(background)
+        .text_color(if primary_enabled {
+            foreground
+        } else {
+            color("button.secondary.disabled", Property::Foreground, 0x94a3b8)
+        })
         .focus(move |style| style.border_color(ring))
+        .when(primary_enabled, |button| {
+            button
+                .cursor_pointer()
+                .hover(move |style| style.bg(hover))
+                .active(move |style| style.bg(pressed))
+                .on_click(cx.listener(|root, _, window, cx| {
+                    root.begin_primary_thread(window, cx);
+                    cx.stop_propagation();
+                }))
+                .on_key_down(cx.listener(|root, event: &gpui::KeyDownEvent, window, cx| {
+                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                        root.begin_primary_thread(window, cx);
+                        cx.stop_propagation();
+                    }
+                }))
+        })
         .tooltip(move |_, cx| -> AnyView {
             cx.new(|cx| SetupCommandTooltip {
                 source: primary_source.clone(),
@@ -103,7 +125,20 @@ pub(in crate::main_window::shell::host) fn render_command(
             })
             .into()
         })
-        .child("New Thread");
+        .child("New Thread")
+        .when(
+            root.runtime_setup.primary_command && root.runtime_setup.unavailable.is_none(),
+            |button| {
+                button.child(
+                    div()
+                        .absolute()
+                        .right(px(2.))
+                        .bottom(px(1.))
+                        .text_color(foreground)
+                        .child("…"),
+                )
+            },
+        );
     div()
         .id("main-window-new-thread-split-button")
         .h(px(32.))
@@ -135,14 +170,8 @@ impl Render for SetupCommandTooltip {
             .map(|root| {
                 let root = root.read(cx);
                 if self.primary {
-                    if root
-                        .controller()
-                        .is_some_and(|controller| controller.is_threadless())
-                    {
-                        "Add a runtime with the … button before creating a thread.".into()
-                    } else {
-                        "New thread creation is not available yet.".into()
-                    }
+                    root.primary_thread_reason(cx)
+                        .unwrap_or_else(|| "New Thread".into())
                 } else if let Some(error) = &root.runtime_setup.unavailable {
                     error.clone()
                 } else if root.runtime_setup.pending() {

@@ -439,7 +439,7 @@
 - [x] Accepted main-shell runtime/root setup, coherent bounded picker pages, 16-scope restoration history and same-window first-conversation activation; [qualification](../../audits/runtime-root-setup-mount-qualification.md).
 - [x] Accepted atomic existing-window thread claim or creation and exact process/editor custody; [qualification](../../audits/same-window-thread-acquisition-qualification.md).
 - [x] Accepted ordinary New Thread root confirmation with original outcome custody, same-native-window failed-home recovery and exact Page cleanup; [qualification](../../audits/new-thread-confirmation-mount-qualification.md).
-- [ ] Mount primary New Thread through the selected thread's exact immutable runtime and root.
+- [x] Accepted primary New Thread through the selected thread's exact immutable runtime/root, independent split-button focus and preserved picker state; [qualification](../../audits/new-thread-primary-qualification.md).
 - [ ] Complete remaining restoration and progressive bootstrap through the accepted bounded main-window boundary.
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).

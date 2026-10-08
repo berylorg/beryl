@@ -1,6 +1,26 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(crate) fn test_primary_thread_command(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.begin_primary_thread(window, cx);
+    }
+
+    pub(crate) fn test_primary_thread_reason(&self, cx: &App) -> Option<String> {
+        self.primary_thread_reason(cx)
+    }
+
+    pub(crate) fn test_new_thread_focus(&self, primary: bool) -> gpui::FocusHandle {
+        if primary {
+            self.runtime_setup.primary_focus.clone()
+        } else {
+            self.runtime_setup.focus.clone()
+        }
+    }
+
     pub(crate) fn test_thread_confirmation_visible_transcript_claim(
         &self,
     ) -> Option<beryl_state::WindowClaimSelection> {

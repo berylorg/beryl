@@ -82,33 +82,52 @@ impl MainWindowShellRoot {
                 .cached_running_selection(cx)
                 .ok_or("The invoking conversation is unavailable.")?
                 .0;
-            let mut thread = [0; 16];
-            let mut draft = [0; 16];
-            getrandom::fill(&mut thread).map_err(|error| error.to_string())?;
-            getrandom::fill(&mut draft).map_err(|error| error.to_string())?;
-            let at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| error.to_string())?
-                .as_millis();
-            let at = u64::try_from(at).map_err(|error| error.to_string())?;
-            SameWindowThreadRequest::new(
-                selected.window_id(),
-                Some(selected.claim()),
-                beryl_state::RememberedTarget::new(row.runtime.runtime_id(), row.root.root_id()),
-                beryl_model::SyndicThreadId::from_bytes(thread),
-                beryl_model::SyndicDraftId::from_bytes(draft),
+            Self::thread_creation_request(
+                selected,
                 beryl_model::ExecutionBinding::new(
                     row.runtime.runtime_id(),
                     row.root.root_id(),
                     row.root.canonical_path().clone(),
                 ),
-                syndic_storage::SyndicTimestamp::from_unix_millis(at),
-                syndic_storage::DraftEditHistoryPolicyV1::new(8 * 1024 * 1024, 1)
-                    .ok_or("Thread history policy is invalid")?,
             )
-            .map_err(|error| error.to_string())
         })();
         self.runtime_setup.command = Some(command);
+        self.accept_thread_creation_request(result, window, cx);
+    }
+
+    pub(in crate::main_window::shell::host) fn thread_creation_request(
+        selected: crate::main_window::MainWindowComposerSelectionIdentity,
+        execution: beryl_model::ExecutionBinding,
+    ) -> Result<SameWindowThreadRequest, String> {
+        let mut thread = [0; 16];
+        let mut draft = [0; 16];
+        getrandom::fill(&mut thread).map_err(|error| error.to_string())?;
+        getrandom::fill(&mut draft).map_err(|error| error.to_string())?;
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_millis();
+        let at = u64::try_from(at).map_err(|error| error.to_string())?;
+        SameWindowThreadRequest::new(
+            selected.window_id(),
+            Some(selected.claim()),
+            beryl_state::RememberedTarget::new(execution.runtime_id(), execution.root_id()),
+            beryl_model::SyndicThreadId::from_bytes(thread),
+            beryl_model::SyndicDraftId::from_bytes(draft),
+            execution,
+            syndic_storage::SyndicTimestamp::from_unix_millis(at),
+            syndic_storage::DraftEditHistoryPolicyV1::new(8 * 1024 * 1024, 1)
+                .ok_or("Thread history policy is invalid")?,
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    pub(in crate::main_window::shell::host) fn accept_thread_creation_request(
+        &mut self,
+        result: Result<SameWindowThreadRequest, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match result.and_then(|request| self.start_thread_creation(request, window, cx)) {
             Ok(()) => self.setup_command_state("Confirm", false, cx),
             Err(error) => {
