@@ -63,6 +63,9 @@ impl MainWindowShellRoot {
         if !self.shutdown_interaction_gated || self.startup_interaction_gated() {
             return Err("failed shutdown capture requires exact running shell gate".into());
         }
+        if !self.retire_setup_first_mount(window, cx)? {
+            return Err("original first conversation widget release is still settling".into());
+        }
         self.suspend_running_thread_reads(window, cx);
         if self.running_threads.pending_activation.is_some() {
             return Err("running thread selection custody prevents failed-home capture".into());

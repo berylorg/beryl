@@ -1,8 +1,20 @@
+mod commands;
+mod focus;
+mod full;
+mod input;
 mod model;
 mod render;
+mod render_commands;
+mod render_rows;
+mod render_runtime;
+mod runtime;
 mod style;
 
+pub use full::*;
 pub use model::*;
+pub use runtime::{
+    PickerRuntimeCollection, PickerRuntimePage, PickerRuntimePageOutcome, PickerRuntimeRow,
+};
 pub use style::ThreadRootPickerStyle;
 
 use gpui::{
@@ -44,6 +56,7 @@ pub struct ThreadRootPicker {
     last_coherent_scroll: f32,
     scrollbar_interaction: ScrollbarInteraction,
     query: String,
+    full: FullPickerState,
 }
 
 impl gpui::EventEmitter<PickerEvent> for ThreadRootPicker {}
@@ -84,7 +97,7 @@ impl ThreadRootPicker {
                             input.set_text(query.clone(), cx);
                         });
                     }
-                    this.change_query(query, window, cx);
+                    this.change_query(query, cx);
                 }
             }),
             cx.on_blur(&collection_focus, window, |this, _, cx| {
@@ -96,6 +109,8 @@ impl ThreadRootPicker {
                 this.collection.requests.clear();
                 this.scrollbar_state
                     .unmount_viewport(this.scrollbar_owner, window, cx);
+                this.release_runtime(window, cx);
+                this.discard_collection_memory();
             }),
         ];
         let scrollbar_owner = ScrollbarOwnerKey {
@@ -112,12 +127,19 @@ impl ThreadRootPicker {
             Axis::Vertical,
             move |_, _, cx| {
                 let _ = entity.update(cx, |this, cx| {
+                    if this.full.native_dialog_open || this.full.in_flight.is_some() {
+                        this.scroll
+                            .set_offset(point(px(0.), px(-this.last_coherent_scroll)));
+                        cx.notify();
+                        return;
+                    }
                     this.collection.cancel_navigation();
                     this.request_viewport(cx);
                     cx.notify();
                 });
             },
         );
+        let full = FullPickerState::new(&key);
         Self {
             config,
             collection: PickerCollection::new(key, revision, total),
@@ -134,6 +156,7 @@ impl ThreadRootPicker {
             last_coherent_scroll: 0.,
             scrollbar_interaction,
             query: String::new(),
+            full,
         }
     }
 
@@ -194,10 +217,31 @@ impl ThreadRootPicker {
             return;
         }
         let changed_key = self.collection.key != key;
+        let changed_revision = self.collection.revision != revision;
+        if changed_key {
+            self.save_collection_memory();
+        }
         self.collection.replace(key, revision, total);
+        if changed_key || changed_revision {
+            self.invalidate_selection_eligibility();
+        }
         self.activation_in_flight = None;
         if changed_key {
             self.scroll.set_offset(point(px(0.), px(0.)));
+            self.last_coherent_scroll = 0.;
+            self.query.clear();
+            let restored_position = self.restore_collection_memory();
+            let query = self.query.clone();
+            self.search
+                .update(cx, |input, cx| input.set_text(query.clone(), cx));
+            cx.emit(PickerEvent::QueryChanged {
+                collection_key: self.collection.key.clone(),
+                query_revision: self.collection.revision,
+                query,
+            });
+            if let Some(position) = restored_position {
+                self.restore_focus_position(position, window, cx);
+            }
         }
         if let Some(position) = focus_position {
             self.restore_focus_position(position, window, cx);
@@ -250,12 +294,19 @@ impl ThreadRootPicker {
     }
 
     pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.full.native_dialog_open || self.full.in_flight.is_some() {
+            return;
+        }
         self.collection.cancel_navigation();
         self.search.update(cx, |input, cx| input.focus(window, cx));
     }
 
     pub fn focus_row(&mut self, position: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.dismissed && self.collection.focus_position(position) {
+        if !self.dismissed
+            && !self.full.native_dialog_open
+            && self.full.in_flight.is_none()
+            && self.collection.focus_position(position)
+        {
             self.collection_focus.focus(window);
             self.reveal(position);
             cx.notify();
@@ -268,11 +319,14 @@ impl ThreadRootPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.dismissed || !self.collection_focus.is_focused(window) {
+        if self.dismissed
+            || self.full.native_dialog_open
+            || self.full.in_flight.is_some()
+            || !self.collection_focus.is_focused(window)
+        {
             return;
         }
-        let rows =
-            (self.config.style.viewport_height() / self.config.style.row_stride()).floor() as usize;
+        let rows = (self.collection_height() / self.collection_stride()).floor() as usize;
         let (position, request) = self.collection.navigate(direction, rows);
         if let Some(position) = position {
             self.reveal(position);
@@ -284,12 +338,22 @@ impl ThreadRootPicker {
     }
 
     pub fn activate(&mut self, key: &PickerRowKey, cx: &mut Context<Self>) {
-        if self.dismissed || self.activation_in_flight.is_some() {
+        if self.dismissed
+            || self.full.native_dialog_open
+            || self.activation_in_flight.is_some()
+            || self.full.in_flight.is_some()
+        {
             return;
         }
         if let Some(event) = self.collection.activation(key) {
-            self.activation_in_flight = Some(key.clone());
-            cx.emit(event);
+            if matches!(self.full.selection, PickerSelectionMode::Confirmed { .. }) {
+                self.full.selected = Some(key.clone());
+                self.invalidate_selection_eligibility();
+                cx.emit(PickerEvent::SelectionChanged(key.clone()));
+            } else {
+                self.activation_in_flight = Some(key.clone());
+                cx.emit(event);
+            }
             cx.notify();
         }
     }
@@ -300,7 +364,7 @@ impl ThreadRootPicker {
     }
 
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.dismissed {
+        if self.dismissed || self.full.native_dialog_open {
             return;
         }
         self.dismissed = true;
@@ -308,6 +372,8 @@ impl ThreadRootPicker {
         self.collection.requests.clear();
         self.scrollbar_state
             .unmount_viewport(self.scrollbar_owner, window, cx);
+        self.release_runtime(window, cx);
+        self.discard_collection_memory();
         self.config.owner_focus.focus(window);
         cx.emit(PickerEvent::Dismiss);
         cx.notify();
@@ -345,46 +411,20 @@ impl ThreadRootPicker {
             realized_range: realized,
             realized_row_count: self.last_realized,
             focused_key: self.collection.focused_key().cloned(),
+            selected_key: self.full.selected.clone(),
             pending_navigation: self.collection.target.clone(),
             scroll_offset: -f32::from(self.scroll.offset().y),
             collection_failed: self.collection.failure.is_some(),
         }
     }
 
-    fn change_query(&mut self, query: String, _: &mut Window, cx: &mut Context<Self>) {
-        if self.dismissed || self.query == query {
-            return;
-        }
-        let Some(revision) = self.collection.revision.checked_add(1) else {
-            self.collection.failure = Some("Search revision capacity was exhausted.".into());
-            cx.notify();
-            return;
-        };
-        self.collection
-            .replace(self.collection.key.clone(), revision, self.collection.total);
-        self.query = query.clone();
-        self.activation_in_flight = None;
-        cx.emit(PickerEvent::QueryChanged {
-            collection_key: self.collection.key.clone(),
-            query_revision: revision,
-            query,
-        });
-        self.request_initial_page(cx);
-        cx.notify();
-    }
-
     fn ranges(&self) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
-        let stride = self.config.style.row_stride();
-        let offset = (-f32::from(self.scroll.offset().y)).max(0.);
-        let start = ((offset / stride).floor() as usize).min(self.collection.total);
-        let end = (((offset + self.config.style.viewport_height()) / stride).ceil() as usize)
-            .min(self.collection.total);
-        let realized_start = start.saturating_sub(PICKER_OVERSCAN_ROWS);
-        let realized_end = end
-            .saturating_add(PICKER_OVERSCAN_ROWS)
-            .min(self.collection.total)
-            .min(realized_start.saturating_add(PICKER_MAX_REALIZED_ROWS));
-        (start..end, realized_start..realized_end)
+        runtime::bounded_ranges(
+            self.collection.total,
+            -f32::from(self.scroll.offset().y),
+            self.collection_height(),
+            self.collection_stride(),
+        )
     }
 
     fn request_viewport(&mut self, cx: &mut Context<Self>) {
@@ -411,11 +451,11 @@ impl ThreadRootPicker {
     }
 
     fn reveal(&mut self, position: usize) {
-        let stride = self.config.style.row_stride();
-        let viewport = self.config.style.viewport_height();
+        let stride = self.collection_stride();
+        let viewport = self.collection_height();
         let offset = (-f32::from(self.scroll.offset().y)).max(0.);
         let top = position as f32 * stride;
-        let bottom = top + self.config.style.row_height;
+        let bottom = top + self.collection_row_height();
         let next = if top < offset {
             top
         } else if bottom > offset + viewport {
@@ -424,50 +464,6 @@ impl ThreadRootPicker {
             offset
         };
         self.scroll.set_offset(point(px(0.), px(-next.max(0.))));
-    }
-
-    fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        match event.keystroke.key.as_str() {
-            "escape" => {
-                cx.stop_propagation();
-                self.dismiss(window, cx);
-            }
-            "tab" => {
-                self.collection.cancel_navigation();
-                if self.collection_focus.is_focused(window) {
-                    self.focus_search(window, cx);
-                } else {
-                    self.collection_focus.focus(window);
-                    if self.collection.focused_key().is_none() {
-                        let first = self.ranges().0.start;
-                        self.collection.focus_position(first);
-                    }
-                }
-                cx.stop_propagation();
-                cx.notify();
-            }
-            key if self.collection_focus.is_focused(window) => {
-                let direction = match key {
-                    "up" => Some(PickerNavigation::Up),
-                    "down" => Some(PickerNavigation::Down),
-                    "home" => Some(PickerNavigation::Home),
-                    "end" => Some(PickerNavigation::End),
-                    "pageup" => Some(PickerNavigation::PageUp),
-                    "pagedown" => Some(PickerNavigation::PageDown),
-                    _ => None,
-                };
-                if let Some(direction) = direction {
-                    cx.stop_propagation();
-                    self.navigate(direction, window, cx);
-                } else if key == "enter" && !event.is_held {
-                    cx.stop_propagation();
-                    if let Some(key) = self.collection.focused_key().cloned() {
-                        self.activate(&key, cx);
-                    }
-                }
-            }
-            _ => {}
-        }
     }
 }
 

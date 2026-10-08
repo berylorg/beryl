@@ -11,9 +11,29 @@ production recovery consumer is now accepted with 92 distinct passing cases, loc
 compilation and independent review. See [qualification](../audits/committed-first-conversation-recovery-qualification.md).
 Accepted runtime/root
 admission and both executable forms remain unchanged. No native GUI, picker, backend process or
-clipboard was exercised. All mounting source is archived, unaccepted and excluded from production.
+clipboard was exercised during that qualification. Healthy mounting has resumed against the
+accepted recovery branch and is now accepted with 57 passing selected cases, locked all-target
+compilation and independent review; see [mounting qualification](../audits/runtime-root-setup-mount-qualification.md).
+Both prior archives remain unchanged historical review material and are not production authority.
 
 ## Invalidated Assumption
+
+Healthy mounting qualification on 2026-10-08 exposed a separate publication lock-order error.
+Run `b035e64c-932c-44bf-b7f0-91770f87cc1e` passed the six accepted recovery regressions and five
+service cases, then stalled in the first healthy same-window shell case. Transcript
+`publish_if_current` elects under the Home health mutex; the nested first-admission publication
+validation tried to read that same health identity again. The healthy fixture never reached
+its asynchronous timeout because publication was synchronously blocked.
+
+Validate the original retained admission and prepared first-conversation facts before entering
+the transcript's elected callback. Inside that callback, consume only the already authenticated
+construction/mount facts and its existing generation fence; do not reacquire the Home health
+mutex. Corrected run `671d0d62-a1b9-4414-8a28-4f67277b59ca` passed the complete selected
+54-case mounting checkpoint, including healthy same-window first publication and all six accepted
+first-conversation recovery regressions. Independent review verified the callback lock order;
+the subsequently approved scope-memory bound is now qualified with the complete mounting boundary.
+The exact stalled runner, test and Cargo processes were stopped and verified absent. Its fixture
+home path was not printed, so any residue has ambiguous ownership and must not be swept.
 
 The phase 734 mounting approach reused `InitialComposerCandidate` to open the first conversation
 editor under the exact committed onboarding window/claim and retained admission lease. This is

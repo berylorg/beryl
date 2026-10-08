@@ -89,50 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 739: Recover A Committed Unpublished First Conversation (finished)
+# Phase 734: Mount Runtime And Root Setup And First Conversation Activation (finished)
 
-Accepted complete ordinary recovery from committed onboarding through original cleanup, private
-fresh editor preparation, same-window attachment, graph publication and interaction release.
-All 92 distinct selected cases have passing evidence; canonical Syndic/app/Beryl locked all-target
-compilation and independent consequential review passed. See
-[qualification](audits/committed-first-conversation-recovery-qualification.md).
-
-# Phase 734: Mount Runtime And Root Setup And First Conversation Activation (wip)
-
-Consume accepted admission through the main-shell New Thread secondary segment and shared bounded
-thread/root picker. Mount Add runtime/Add root, coherent runtime/root pages, exact pending/error and
-reconciliation presentation, and attach the first selected conversation to the existing initial
-window. Qualify cancellation, duplicate suppression, retained scope/selection/focus, retirement and
-same-shell first-runtime publication. Preserve existing Running threads and lifecycle behavior.
-
-Production entry is the existing main-shell New Thread secondary segment. Extend the accepted
-shared picker with independently bounded runtime and root pages, typed setup commands and retained
-focus; compose admission from the active home graph and retire its original work with that graph.
-Use platform-native file/folder prompts and retain the selected executable form. Publish an exact
-first-runtime receipt by preparing and attaching the selected conversation in the same shell,
-without reacquiring the held selection lease or allocating another native window.
-
-Verify both launch-form choices, picker cancellation, duplicate suppression, coherent page refresh,
-scope/search/selection preservation, noncommit, pending reconciliation, terminal Unavailable and
-retirement. Focused model/controller and GPUI tests, locked compile checks and independent review
-must qualify the complete mount; a helper-only implementation does not finish this phase.
-
-Resumed on 2026-10-07 after acceptance of the first-editor recovery prerequisite. Reconsider the
-24-file draft in `.tmp/runtime-setup-mount-draft` (bounded to 2 MiB) against accepted admission and
-cleanup APIs; it remains unaccepted and excluded from production source. Preserve newly accepted
-recovery code rather than overwriting it with the older draft's initial-composer files. Integrate
-compact cleanup custody outside retired graph resources and settle it through the fresh candidate
-before successor editor preparation/publication. Finish the missing shell command/page/render
-consumers, shared-picker eligibility/restoration/retry and bounded GPUI qualification. No native
-Operator GUI/picker/backend launch is needed for the focused qualification.
-
-Current milestone: the committed-first recovery prerequisite is accepted. Reconsider both archived
-mounting drafts against the current graph-owned admission/first-conversation consumers, candidate
-construction and actual cleanup custody before restoring any source. The newer 34-file
-`.tmp/runtime-setup-mount-resumed-draft` remains hash-verified, bounded to 2 MiB, uncompiled and
-excluded from production. Implement and qualify the complete healthy shell/picker/page consumers;
-both archives remain review material and neither has mounting acceptance. No blocker remains from
-the [first-editor recovery diagnosis](failures/runtime-setup-first-editor-recovery.md).
+Accepted main-shell runtime/root setup, coherent bounded picker pages and original same-window
+first editor/transcript activation. The Operator-approved history retains the 16 most recently
+visited scopes per picker, including current, with qualified eviction and initial-position fallback.
+All 57 selected cases, locked offline app/Beryl all-target checks and independent completion review
+passed. See [qualification](audits/runtime-root-setup-mount-qualification.md).
 
 # Phase 735: Mount New Thread Root Confirmation (pending)
 

@@ -57,7 +57,10 @@ pub enum PickerEvent {
         query: String,
     },
     RequestPage(PickerPageRequest),
+    RequestRuntimePage(PickerPageRequest),
     Activate(PickerRowKey),
+    SelectionChanged(PickerRowKey),
+    Command(super::PickerCommand),
     Dismiss,
 }
 
@@ -92,6 +95,7 @@ pub struct PickerDiagnostics {
     pub realized_range: Range<usize>,
     pub realized_row_count: usize,
     pub focused_key: Option<PickerRowKey>,
+    pub selected_key: Option<PickerRowKey>,
     pub pending_navigation: Option<PickerNavigationTarget>,
     pub scroll_offset: f32,
     pub collection_failed: bool,
@@ -107,6 +111,7 @@ pub struct PickerCollection {
     pub(super) focused: Option<(PickerRowKey, usize)>,
     pub(super) target: Option<PickerNavigationTarget>,
     pub(super) failure: Option<String>,
+    pub(super) failed_request: Option<PickerPageRequest>,
     pub(super) admitted_revision: Option<u64>,
 }
 
@@ -122,6 +127,7 @@ impl PickerCollection {
             focused: None,
             target: None,
             failure: None,
+            failed_request: None,
             admitted_revision: None,
         }
     }
@@ -138,6 +144,7 @@ impl PickerCollection {
         self.requests.clear();
         self.target = None;
         self.failure = None;
+        self.failed_request = None;
         self.admitted_revision = None;
     }
 
@@ -228,6 +235,26 @@ impl PickerCollection {
 
     pub fn cancel_navigation(&mut self) {
         self.target = None;
+    }
+
+    pub fn failed_request(&self) -> Option<&PickerPageRequest> {
+        self.failed_request.as_ref()
+    }
+
+    pub fn retry_pending(&self) -> bool {
+        self.failed_request.as_ref().is_some_and(|failed| {
+            self.requests
+                .iter()
+                .any(|request| request.range == failed.range)
+        })
+    }
+
+    pub fn retry(&mut self) -> Option<PickerPageRequest> {
+        let failed = self.failed_request.as_ref()?;
+        if failed.collection_key != self.key || failed.query_revision != self.revision {
+            return None;
+        }
+        self.request(failed.range.start)
     }
 
     pub fn navigate(
@@ -371,6 +398,7 @@ impl PickerCollection {
                     });
                 if !valid {
                     self.failure = Some("The collection page was invalid.".into());
+                    self.failed_request = Some(page.request);
                     if target_matches {
                         self.target = None;
                     }
@@ -381,7 +409,14 @@ impl PickerCollection {
                 }
                 self.total = page.total_count;
                 self.admitted_revision = Some(self.revision);
-                self.failure = None;
+                if self
+                    .failed_request
+                    .as_ref()
+                    .is_none_or(|failed| failed.range == page.request.range)
+                {
+                    self.failure = None;
+                    self.failed_request = None;
+                }
                 self.pages
                     .retain(|resident| resident.request.range.start != page.request.range.start);
                 if self.pages.len() == PICKER_MAX_RESIDENT_PAGES {
@@ -414,8 +449,9 @@ impl PickerCollection {
                     }
                 }
             }
-            PickerPageOutcome::Failed { message, .. } => {
+            PickerPageOutcome::Failed { request, message } => {
                 self.failure = Some(message);
+                self.failed_request = Some(request);
                 if target_matches {
                     self.target = None;
                 }

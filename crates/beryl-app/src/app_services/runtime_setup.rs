@@ -1,5 +1,6 @@
 use crate::runtime_admission::{
-    RuntimeAdmissionOutcome, RuntimeAdmissionService, RuntimeAdmissionSource,
+    AdmissionReconciliationOutcome, RuntimeAdmissionOutcome, RuntimeAdmissionService,
+    RuntimeAdmissionSource,
     recovery::FirstConversationAdmissionRecovery,
     validation::{RuntimePathValidator, ValidationLimits},
 };
@@ -15,20 +16,32 @@ use std::{
     thread::JoinHandle,
 };
 use syndic_storage::{DraftEditHistoryPolicyV1, SyndicStorage};
+mod healthy;
+#[cfg(test)]
+mod test_support;
+pub(crate) use healthy::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 
 pub(crate) struct RuntimeSetupService {
+    home: Mutex<Option<Arc<HomeServiceReference>>>,
     admission: Mutex<Option<Arc<RuntimeAdmissionService>>>,
-    retired: AtomicBool,
+    retired: Arc<AtomicBool>,
+    publication_gate: Arc<Mutex<()>>,
     flights: Mutex<Vec<Arc<RuntimeSetupFlight>>>,
 }
 
 pub(crate) struct RuntimeSetupFlight {
+    home: Mutex<Option<Arc<HomeServiceReference>>>,
+    retired: Arc<AtomicBool>,
+    publication_gate: Arc<Mutex<()>>,
     cancellation: CommandCancellation,
     pending: AtomicBool,
     worker: Mutex<Option<JoinHandle<()>>>,
     outcome: Mutex<Option<RuntimeAdmissionOutcome>>,
     first: Mutex<Option<crate::main_window::MainWindowFirstConversationPreparation>>,
     failure: Mutex<Option<String>>,
+    preparation_error: Mutex<Option<String>>,
+    unavailable: Mutex<Option<AdmissionReconciliationOutcome>>,
+    revalidation_ready: AtomicBool,
 }
 
 impl RuntimeSetupService {
@@ -37,7 +50,7 @@ impl RuntimeSetupService {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
-            .any(|flight| flight.pending.load(Ordering::Acquire))
+            .any(|flight| flight.is_pending())
     }
 
     pub(crate) fn cancel_pending_flights(&self) {
@@ -47,7 +60,7 @@ impl RuntimeSetupService {
             .unwrap_or_else(|e| e.into_inner())
             .iter()
         {
-            if flight.pending.load(Ordering::Acquire) {
+            if flight.is_pending() {
                 flight.cancellation.cancel();
             }
         }
@@ -68,10 +81,12 @@ impl RuntimeSetupService {
         let history = DraftEditHistoryPolicyV1::new(8 * 1024 * 1024, 1)
             .ok_or("first conversation history policy is unavailable")?;
         Ok(Arc::new(Self {
+            home: Mutex::new(Some(home.clone())),
             admission: Mutex::new(Some(Arc::new(RuntimeAdmissionService::new(
                 home, state, storage, windows, validator, history,
             )))),
-            retired: AtomicBool::new(false),
+            retired: Arc::new(AtomicBool::new(false)),
+            publication_gate: Arc::new(Mutex::new(())),
             flights: Mutex::new(Vec::new()),
         }))
     }
@@ -100,18 +115,25 @@ impl RuntimeSetupService {
         form: RuntimeLaunchForm,
     ) -> Result<Arc<RuntimeSetupFlight>, String> {
         let mut flights = self.flights.lock().unwrap_or_else(|e| e.into_inner());
+        flights.retain(|flight| flight.has_custody());
         if self.retired.load(Ordering::Acquire)
             || flights.len() >= beryl_state::MAX_RESTORABLE_WINDOWS
         {
             return Err("runtime admission graph is retired or full".into());
         }
         let flight = Arc::new(RuntimeSetupFlight {
+            home: Mutex::new(self.home.lock().unwrap_or_else(|e| e.into_inner()).clone()),
+            retired: self.retired.clone(),
+            publication_gate: self.publication_gate.clone(),
             cancellation: CommandCancellation::new(),
             pending: AtomicBool::new(true),
             worker: Mutex::new(None),
             outcome: Mutex::new(None),
             first: Mutex::new(None),
             failure: Mutex::new(None),
+            preparation_error: Mutex::new(None),
+            unavailable: Mutex::new(None),
+            revalidation_ready: AtomicBool::new(false),
         });
         let retained = flight.clone();
         let admission = self
@@ -157,7 +179,7 @@ impl RuntimeSetupService {
         for flight in flights.iter() {
             flight.cancellation.cancel();
         }
-        if flights.iter().any(|f| f.pending.load(Ordering::Acquire)) {
+        if flights.iter().any(|f| f.is_pending()) {
             return Err("original admission is still settling".into());
         }
         let count = flights
@@ -169,6 +191,12 @@ impl RuntimeSetupService {
                     .unwrap_or_else(|e| e.into_inner())
                     .as_ref()
                     .is_some_and(|outcome| outcome.first_conversation_facts().is_some())
+                    || flight
+                        .unavailable
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .as_ref()
+                        .is_some_and(|outcome| outcome.first_conversation_facts().is_some())
             })
             .count();
         if count > 1 {
@@ -186,6 +214,20 @@ impl RuntimeSetupService {
         }
         let mut captures = Vec::new();
         for flight in flights.iter() {
+            let unavailable = flight
+                .unavailable
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            if let Some(outcome) = unavailable {
+                match outcome.into_first_conversation_recovery() {
+                    Ok(capture) => captures.push(capture),
+                    Err(outcome) => {
+                        *flight.unavailable.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(outcome)
+                    }
+                }
+            }
             let outcome = flight
                 .outcome
                 .lock()
@@ -207,7 +249,13 @@ impl RuntimeSetupService {
         &self,
         cleanups: &mut Vec<crate::main_window::MainWindowInitialComposerRecoveryCleanup>,
     ) -> Result<(), String> {
-        self.retired.store(true, Ordering::Release);
+        {
+            let _publication = self
+                .publication_gate
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            self.retired.store(true, Ordering::Release);
+        }
         let flights = self
             .flights
             .lock()
@@ -228,11 +276,26 @@ impl RuntimeSetupService {
             }
             let mut first = flight.first.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(owner) = first.take() {
-                match owner.capture_failed_recovery() {
-                    Ok(cleanup) => cleanups.push(cleanup),
-                    Err((owner, error)) => {
-                        *first = Some(owner);
-                        return Err(error);
+                if owner.home_failed() {
+                    match owner.capture_failed_recovery() {
+                        Ok(cleanup) => cleanups.push(cleanup),
+                        Err((owner, error)) => {
+                            *first = Some(owner);
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    let mut owner = owner;
+                    match owner.retire_healthy() {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            *first = Some(owner);
+                            return Err("first conversation cleanup remains pending".into());
+                        }
+                        Err(error) => {
+                            *first = Some(owner);
+                            return Err(error);
+                        }
                     }
                 }
             }
@@ -242,66 +305,43 @@ impl RuntimeSetupService {
                 .unwrap_or_else(|e| e.into_inner())
                 .as_ref()
                 .is_some_and(|o| o.first_conversation_facts().is_some())
+                && flight.home_failed()
             {
                 return Err("original first conversation admission has not transferred".into());
+            }
+            if flight.home_failed()
+                && flight
+                    .unavailable
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .as_ref()
+                    .is_some_and(|outcome| outcome.first_conversation_facts().is_some())
+            {
+                return Err("unavailable first conversation admission has not transferred".into());
             }
             flight
                 .outcome
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .take();
+            flight
+                .unavailable
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            flight.home.lock().unwrap_or_else(|e| e.into_inner()).take();
         }
         let mut admission = self.admission.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(service) = admission.as_ref() {
             service.retire().map_err(|e| e.to_string())?;
         }
         admission.take();
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_first_flight(&self) -> Arc<RuntimeSetupFlight> {
-        let flights = self.flights.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(flights.len(), 1);
-        flights[0].clone()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_execute_first(
-        &self,
-        command: beryl_home_store::HomeCommand,
-        runtime: beryl_model::RuntimeId,
-        root: beryl_model::RootId,
-        onboarding: crate::runtime_admission::OnboardingFacts,
-    ) -> Arc<RuntimeSetupFlight> {
-        let outcome = self
-            .admission
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .unwrap()
-            .test_execute_first(command, runtime, root, onboarding);
-        self.retain_test_outcome(outcome)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn retain_test_outcome(
-        &self,
-        outcome: RuntimeAdmissionOutcome,
-    ) -> Arc<RuntimeSetupFlight> {
-        let flight = Arc::new(RuntimeSetupFlight {
-            cancellation: CommandCancellation::new(),
-            pending: AtomicBool::new(false),
-            worker: Mutex::new(None),
-            outcome: Mutex::new(Some(outcome)),
-            first: Mutex::new(None),
-            failure: Mutex::new(None),
-        });
+        self.home.lock().unwrap_or_else(|e| e.into_inner()).take();
         self.flights
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .push(flight.clone());
-        flight
+            .clear();
+        Ok(())
     }
 }
 

@@ -136,14 +136,26 @@ result is admitted only as ordinary resident page data and does not move focus.
 
 Every row has an owner-supplied stable identity independent of visible index. Focus, selection, current state, command dispatch, and selected-row reveal follow that identity across filtering, viewport entry, and viewport exit.
 
-Each stable collection key owns its scroll position and focused-row identity. Returning to a previously visited collection restores those facts when the rows still exist; otherwise the widget resolves to the nearest valid owner-supplied initial row without activating it.
+Each picker instance retains restoration facts for the 16 most recently visited stable collection
+keys, including its current collection. Entering or returning to a collection makes that key most
+recent; revisiting a retained key does not consume another slot. Query or page revisions within
+the same collection do not create additional history entries. The least recently visited key is
+evicted when a seventeenth distinct collection is entered.
+
+Returning to a retained collection restores its scroll position and focused-row identity when
+the rows still exist; otherwise the widget resolves to the nearest valid owner-supplied initial
+row without activating it. An evicted collection starts from its owner-supplied initial focus and
+scroll position, without activation. Collection history belongs to that picker instance and is
+discarded when it is disposed. Search clearing or preservation remains governed by the owning
+feature, and pending selection remains governed by its existing eligibility rules.
 
 A tooltip stays anchored while its owning row remains realized. When virtualization removes that row, the widget closes the tooltip intentionally instead of retaining an offscreen row solely as an anchor.
 
 Row hover, focus, selection, current, pending, and unavailable changes never alter fixed row height or total scroll geometry.
 
 Content-free diagnostics expose widget instance id, collection key, query revision, total row count,
-resident page count, pending page count, realized row count, visible range, overscan count,
+resident page count, pending page count, retained collection count and history capacity, realized
+row count, visible range, overscan count,
 fixed row-height variant, scroll offset, focused stable row id, selected stable row id, pending
 navigation-target kind and logical position, and tooltip anchor presence. Diagnostics never include
 titles, paths, search text, labels, or tooltip content.
@@ -155,6 +167,11 @@ The flyout is anchored below or near its owning trigger, remains inside the owni
 The outer footprint is fixed and non-user-resizable. Every feature variant uses the same outer width and height; optional footer presence reallocates bounded internal collection height instead of stretching the flyout.
 
 The header, search field, headings, collection viewport, runtime/root section, Add runtime command, and optional footer form one vertical stack. The primary collection receives the stretchable bounded middle allocation. Header, search, section headings, Add runtime, and footer remain reachable without scrolling the entire flyout.
+
+The primary viewport consumes the remaining inner height after the visible fixed regions and
+their inter-region gaps. Omitting the runtime section or footer returns its allocation and gaps
+to that viewport. Its default role heights describe the resulting allocation; they do not add
+another fixed region or enlarge the outer footprint.
 
 Runtime rows always form one vertical list. They never reflow into horizontal columns when unused inline space is available.
 
@@ -224,12 +241,12 @@ Default variant: immediate selection with thread-row presentation.
 }
 
 .thread-root-picker__collection-viewport {
-  --height: 228px;
+  --height: 240px;
   --row-gap: 6px;
 }
 
 .thread-root-picker__collection-viewport[data-variant~="confirmed-selection"] {
-  --height: 202px;
+  --height: 168px;
 }
 
 .thread-root-picker__row {

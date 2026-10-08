@@ -72,6 +72,28 @@ impl RunningProcessOwner {
                 .set_gate(RunningExitGate::HomeUnavailable, true);
             return;
         }
+        let windows = owner
+            .borrow()
+            .process
+            .windows
+            .shells()
+            .iter()
+            .map(|shell| shell.window())
+            .collect::<Vec<_>>();
+        for window in windows {
+            if !matches!(
+                window.update(app, |root, window, cx| root
+                    .retire_setup_first_mount(window, cx)),
+                Ok(Ok(true))
+            ) {
+                owner
+                    .borrow()
+                    .process
+                    .commands
+                    .set_gate(RunningExitGate::HomeUnavailable, true);
+                return;
+            }
+        }
         let admission = Self::capture_running_home_failure(owner, generation, app);
         match admission {
             Ok(Some(key)) => Self::start_recovery_task(owner, key, app),

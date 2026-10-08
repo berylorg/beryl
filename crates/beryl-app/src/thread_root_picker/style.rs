@@ -24,6 +24,12 @@ pub struct ThreadRootPickerStyle {
     pub row_icon_size: f32,
     pub ring_width: f32,
     pub unavailable_opacity: f32,
+    pub root_row_height: f32,
+    pub runtime_viewport_height: f32,
+    pub runtime_row_height: f32,
+    pub runtime_row_gap: f32,
+    pub command_height: f32,
+    pub footer_height: f32,
 }
 
 impl Default for ThreadRootPickerStyle {
@@ -49,11 +55,20 @@ impl Default for ThreadRootPickerStyle {
             row_icon_size: 18.,
             ring_width: 2.,
             unavailable_opacity: 0.72,
+            root_row_height: 48.,
+            runtime_viewport_height: 102.,
+            runtime_row_height: 48.,
+            runtime_row_gap: 6.,
+            command_height: 32.,
+            footer_height: 60.,
         }
     }
 }
 
 impl ThreadRootPickerStyle {
+    pub fn runtime_row_stride(&self) -> f32 {
+        (self.runtime_row_height + self.runtime_row_gap).max(1.)
+    }
     pub fn row_stride(&self) -> f32 {
         (self.row_height + self.row_gap).max(1.)
     }

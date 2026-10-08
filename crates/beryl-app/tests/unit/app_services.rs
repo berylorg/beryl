@@ -30,6 +30,12 @@ mod recovery_publication;
 mod recovery_retirement;
 #[path = "app_services/recovery_support.rs"]
 mod recovery_support;
+#[path = "app_services/runtime_setup_services.rs"]
+#[cfg(target_os = "windows")]
+mod runtime_setup_services;
+#[path = "app_services/runtime_setup_shell.rs"]
+#[cfg(target_os = "windows")]
+mod runtime_setup_shell;
 
 mod custody {
     include!(concat!(

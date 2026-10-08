@@ -217,6 +217,7 @@ pub mod process_admission;
 mod running_owner;
 pub mod runtime_activity_enrollment;
 pub mod runtime_admission;
+mod runtime_setup_catalog;
 #[cfg(target_os = "windows")]
 mod startup_owner;
 pub mod startup_surface;

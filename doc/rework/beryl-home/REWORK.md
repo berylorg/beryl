@@ -436,7 +436,8 @@
 - [x] Accepted process-owned ordinary close versus Exit, including created windows, exact layout,
   healthy and failed-home resident recovery and fresh activation after cancellation; [evidence](../../failures/ordinary-close-recovery.md#ordinary-command-integration-acceptance).
 - [x] Accepted atomic runtime/root admission, unpublished first-editor cleanup and complete committed-first ordinary recovery; see [admission](../../audits/runtime-root-admission-qualification.md), [cleanup](../../audits/unpublished-first-editor-recovery-qualification.md) and [reconstruction](../../audits/committed-first-conversation-recovery-qualification.md) qualification.
-- [ ] Complete restoration, progressive bootstrap, runtime/root creation and zero-runtime onboarding through the accepted bounded main-window boundary; qualify main-shell setup and first-conversation mounting using the accepted recovery consumer.
+- [x] Accepted main-shell runtime/root setup, coherent bounded picker pages, 16-scope restoration history and same-window first-conversation activation; [qualification](../../audits/runtime-root-setup-mount-qualification.md).
+- [ ] Complete restoration, progressive bootstrap and ordinary New Thread root confirmation through the accepted bounded main-window boundary.
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).
   Ordinary command and complete recovery mounting remain separate.

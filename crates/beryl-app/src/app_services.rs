@@ -37,6 +37,7 @@ mod published;
 mod running_threads;
 pub(crate) mod runtime_setup;
 pub(crate) use running_threads::PublishedRunningThreadsReader;
+pub(crate) use runtime_setup::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 pub(crate) mod recovery_composer;
 mod recovery_failed_residents;
 pub(crate) mod recovery_graph;
@@ -142,6 +143,7 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    runtime_setup_inputs: std::sync::Mutex<Option<MainWindowServiceInputs>>,
     first_configurator:
         std::sync::Mutex<Option<crate::main_window::MainWindowCreationConfiguratorSource>>,
     first_cleanups:
@@ -199,6 +201,7 @@ impl ProcessServiceOwner {
     ) -> Self {
         let process = ProcessAdmissionGate::new();
         Self {
+            runtime_setup_inputs: std::sync::Mutex::new(None),
             first_configurator: std::sync::Mutex::new(None),
             first_cleanups: std::sync::Mutex::new(Vec::new()),
             failed_residents: Vec::new(),

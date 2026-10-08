@@ -295,6 +295,7 @@ impl ProcessServiceOwner {
         &self,
         inputs: MainWindowServiceInputs,
     ) -> Result<PublishedMainWindowServices, String> {
+        let runtime_setup_inputs = inputs.clone();
         let graph = self
             .graph()
             .ok_or_else(|| "the complete service graph is unavailable".to_owned())?;
@@ -320,6 +321,10 @@ impl ProcessServiceOwner {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(inputs.configurator_source);
         creation.validate_source()?;
+        *self
+            .runtime_setup_inputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(runtime_setup_inputs);
         Ok(PublishedMainWindowServices {
             creation,
             exact_stop: PublishedExactStopWorker {
@@ -354,7 +359,7 @@ impl ProcessServiceOwner {
         )
     }
 
-    fn build_creation_services(
+    pub(super) fn build_creation_services(
         &self,
         request_source: MainWindowCreationRequestSource,
         activation_source: MainWindowCreationActivationSource,

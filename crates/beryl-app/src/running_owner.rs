@@ -33,6 +33,7 @@ mod ordinary_commands;
 mod progress;
 mod running_threads_attention;
 mod running_threads_commands;
+mod runtime_setup;
 mod shutdown_drafts;
 mod unchanged_running;
 mod unremoved_windows;

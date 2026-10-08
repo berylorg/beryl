@@ -1,5 +1,8 @@
 use beryl_app::thread_root_picker::*;
 
+#[path = "thread_root_picker/mod.rs"]
+mod picker_support;
+
 fn row(position: usize) -> PickerRow {
     PickerRow {
         key: PickerRowKey(format!("row-{position}")),

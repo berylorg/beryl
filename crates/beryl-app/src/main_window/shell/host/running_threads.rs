@@ -24,7 +24,7 @@ struct RunningReadOutput<T> {
 fn release_running_read_output() {}
 
 pub(super) struct RunningThreadsContribution {
-    reader: Option<PublishedRunningThreadsReader>,
+    pub(super) reader: Option<PublishedRunningThreadsReader>,
     #[cfg(all(test, feature = "test-faults"))]
     fixture_reader: Option<std::sync::Weak<PublishedRunningThreadsReader>>,
     #[cfg(all(test, feature = "test-faults"))]
@@ -39,7 +39,7 @@ pub(super) struct RunningThreadsContribution {
     views_retired: bool,
     read_drain_task: Option<gpui::Task<()>>,
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
-    transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
+    pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
     transcript_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub(super) transcript_claim: Option<beryl_state::WindowClaimSelection>,
@@ -617,6 +617,9 @@ impl MainWindowShellRoot {
                 }
             }
             PickerEvent::RequestPage(request) => self.request_running_page(request, window, cx),
+            PickerEvent::RequestRuntimePage(_)
+            | PickerEvent::SelectionChanged(_)
+            | PickerEvent::Command(_) => return,
             PickerEvent::Activate(key) => {
                 if !self.running_threads_enabled()
                     || self.running_threads.pending_activation.is_some()

@@ -49,7 +49,8 @@ enum RecoveryOutcome {
     },
     Pending {
         handle: ReconciliationHandle,
-        _failure: CommandError,
+        _failure: Option<CommandError>,
+        _retry_failure: Option<beryl_home_store::ReconciliationFailure>,
     },
     NotCommitted,
     Unavailable {
@@ -106,9 +107,59 @@ impl RuntimeAdmissionOutcome {
                 reconciliation,
             } => RecoveryOutcome::Pending {
                 handle: reconciliation.handle,
-                _failure: failure,
+                _failure: Some(failure),
+                _retry_failure: None,
             },
             _ => unreachable!(),
+        };
+        Ok(FirstConversationAdmissionRecovery { facts, outcome })
+    }
+}
+
+impl AdmissionReconciliationOutcome {
+    pub(crate) fn first_conversation_facts(&self) -> Option<FirstConversationFacts> {
+        let admission = match self {
+            Self::Committed { admission, .. } => admission,
+            Self::Pending { reconciliation, .. } => &reconciliation.admission,
+            Self::Unavailable { custody } => &custody.admission,
+            Self::NotCommitted => return None,
+        };
+        let onboarding = admission.facts.onboarding()?;
+        Some(FirstConversationFacts {
+            home: admission.store.home_id(),
+            generation: admission.store.health().generation()?,
+            window: onboarding.window().clone(),
+            thread: onboarding.thread_id(),
+            draft: onboarding.draft_id(),
+            runtime: admission.facts.runtime_id(),
+            root: admission.facts.root_id(),
+        })
+    }
+
+    pub(crate) fn into_first_conversation_recovery(
+        self,
+    ) -> Result<FirstConversationAdmissionRecovery, Self> {
+        let Some(facts) = self.first_conversation_facts() else {
+            return Err(self);
+        };
+        let outcome = match self {
+            Self::Committed { receipt, .. } => RecoveryOutcome::Committed {
+                _receipt: receipt,
+                _later_failure: None,
+                _local: None,
+            },
+            Self::Pending {
+                failure,
+                reconciliation,
+            } => RecoveryOutcome::Pending {
+                handle: reconciliation.handle,
+                _failure: None,
+                _retry_failure: Some(failure),
+            },
+            Self::Unavailable { custody } => RecoveryOutcome::Unavailable {
+                _handle: custody._handle,
+            },
+            Self::NotCommitted => unreachable!(),
         };
         Ok(FirstConversationAdmissionRecovery { facts, outcome })
     }

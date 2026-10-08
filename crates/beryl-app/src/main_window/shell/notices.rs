@@ -12,8 +12,9 @@ mod composer;
 mod home_warning;
 mod lifecycle_attention;
 mod recovery;
-mod runtime;
 mod running_threads;
+mod runtime;
+mod runtime_setup;
 mod stop_feedback;
 #[cfg(feature = "test-faults")]
 pub use home_warning::BestEffortHomeWarningTimer;
@@ -267,6 +268,7 @@ impl MainWindowShellRoot {
             self.notice_safe_focus(cx),
             cx,
         );
+        self.reset_recovered_runtime_setup(cx);
         self.set_notices_inert(true, window, cx);
         self.subscribe_notices(window, cx);
     }
@@ -331,6 +333,11 @@ impl MainWindowShellRoot {
         self.notices.inert
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_home_recovery_retrying(&self) -> bool {
+        self.notices.recovery.state == Some(MainWindowHomeRecoveryNoticeState::Retrying)
+    }
+
     pub(super) fn refresh_startup_notice_gate(
         &mut self,
         window: &mut Window,
@@ -343,6 +350,7 @@ impl MainWindowShellRoot {
         if self.notices.retired {
             return;
         }
+        self.retire_runtime_setup(window, cx);
         self.refresh_notice_safe_focus(cx);
         self.notices.retired = true;
         self.notices.home_warning = home_warning::HomeWarning::default();

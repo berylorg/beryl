@@ -656,6 +656,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    runtime_setup: runtime_setup::RuntimeSetupContribution,
     running_threads: running_threads::RunningThreadsContribution,
     status_controls: status_controls::ExactStatusControls,
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
@@ -679,3 +680,5 @@ pub struct MainWindowShellRoot {
 }
 
 mod root;
+mod runtime_setup;
+mod runtime_setup_attachment;

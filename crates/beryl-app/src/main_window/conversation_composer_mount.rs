@@ -36,6 +36,7 @@ mod submission;
 pub(in crate::main_window) mod worker;
 
 use pending_presentation::MainWindowConversationComposerPendingPresentation;
+mod first_conversation;
 mod realization;
 mod running_threads;
 

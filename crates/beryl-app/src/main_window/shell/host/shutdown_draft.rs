@@ -117,6 +117,11 @@ impl MainWindowShellRoot {
         if draft.root != cx.entity_id() {
             return Err("shutdown draft belongs to another shell".into());
         }
+        if !self.retire_setup_first_mount(window, cx)? {
+            return Ok(MainWindowShutdownDraftAdvance::Resident(
+                MainWindowConversationComposerCloseAdvance::Preparing,
+            ));
+        }
         if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
         {
             return Ok(MainWindowShutdownDraftAdvance::Resident(
@@ -150,6 +155,9 @@ impl MainWindowShellRoot {
     ) -> Result<MainWindowShutdownDraftRelease, String> {
         if draft.root != cx.entity_id() {
             return Err("shutdown draft belongs to another shell".into());
+        }
+        if !self.retire_setup_first_mount(window, cx)? {
+            return Ok(MainWindowShutdownDraftRelease::Pending);
         }
         if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
         {

@@ -12,6 +12,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            runtime_setup: runtime_setup::RuntimeSetupContribution::new(cx),
             running_threads: running_threads::RunningThreadsContribution::new(cx),
             status_controls: status_controls::ExactStatusControls::new(cx),
             startup_interaction: None,
@@ -187,12 +188,15 @@ impl Render for MainWindowShellRoot {
         crate::parent_completion_sound::refresh_focus(cx);
         self.sync_status_controls(window, cx);
         self.sync_running_threads(window, cx);
+        self.sync_runtime_setup(window, cx);
         self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
         };
         let appearance = &controller.appearance;
-        let composer = controller.composer_mount();
+        let composer = controller
+            .composer_mount()
+            .or_else(|| self.runtime_setup.mount.clone());
         let content_height = composer
             .as_ref()
             .and_then(|mount| mount.read(cx).contribution())
@@ -213,6 +217,8 @@ impl Render for MainWindowShellRoot {
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
         let running = running_threads::render_command(self, window, cx);
+        let setup = runtime_setup::render_command(self, window, cx);
+        let setup_picker = runtime_setup::render_picker(self, window);
         let running_picker = running_threads::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
@@ -252,6 +258,8 @@ impl Render for MainWindowShellRoot {
                     .px(px(12.))
                     .flex_none()
                     .bg(appearance.toolbar)
+                    .child(setup)
+                    .child(div().flex_1())
                     .child(running)
                     .children(command)
                     .child(exit),
@@ -280,6 +288,7 @@ impl Render for MainWindowShellRoot {
             .child(status)
             .children(stop_menu)
             .children(running_picker)
+            .children(setup_picker)
             .child(self.notices.widget.clone())
             .into_any_element()
     }

@@ -99,7 +99,7 @@ pub enum AdmissionReconciliationOutcome {
 #[must_use]
 pub struct UnavailableAdmission {
     pub(super) admission: CommittedAdmission,
-    _handle: ReconciliationHandle,
+    pub(super) _handle: ReconciliationHandle,
 }
 
 impl UnavailableAdmission {

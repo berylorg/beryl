@@ -1,4 +1,5 @@
 use super::*;
+mod healthy;
 use crate::composer_host::{
     ComposerHostInitialDemand, ComposerHostRequestId, ComposerHostRequestPurpose,
 };
@@ -19,7 +20,18 @@ pub struct MainWindowFirstConversationPreparation {
     state: BerylState,
     window: SessionWindowRecord,
     draft: SyndicDraftId,
+    mount_inputs: Option<FirstConversationMountInputs>,
+    mounted: bool,
+    published: bool,
+    publication_ready: bool,
 }
+
+type FirstConversationMountInputs = (
+    MainWindowConversationComposerPreparedSelection,
+    crate::main_window::MainWindowShellComposerConfigurator,
+    crate::composer_marker_seal::DraftMarkerSealService,
+    crate::main_window::MainWindowComposerSubmissionRequestSource,
+);
 
 impl MainWindowFirstConversationPreparation {
     #[cfg(feature = "test-faults")]
@@ -66,6 +78,10 @@ impl MainWindowFirstConversationPreparation {
             state: state.clone(),
             window,
             draft,
+            mount_inputs: None,
+            mounted: false,
+            published: false,
+            publication_ready: false,
         };
         owner.validate_source()?;
         Ok(owner)
@@ -174,6 +190,13 @@ impl MainWindowFirstConversationPreparation {
             return Err((
                 self,
                 "first conversation capture requires failed home".into(),
+            ));
+        }
+        self.mount_inputs.take();
+        if self.mounted {
+            return Err((
+                self,
+                "first conversation mounted presentation has not retired".into(),
             ));
         }
         if let Err(error) = super::fresh_candidate::retire_runtime(&mut self.candidate) {
