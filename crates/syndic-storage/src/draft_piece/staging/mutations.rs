@@ -5,7 +5,7 @@ use super::*;
 impl DomainMutation<SyndicDomain> for StagingMutation {
     type Error = SyndicMutationError;
     type Prepared = Option<(
-        PreparedDraftMutationStagingCommandV1,
+        Box<PreparedDraftMutationStagingCommandV1>,
         Option<PreparedDraftMarkerWriterBeginV1>,
         Option<PreparedDraftMarkerWriterTerminalV1>,
     )>;

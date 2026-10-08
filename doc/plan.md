@@ -94,16 +94,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 743: Authenticate Sources Before Empty-Thread Election (finished)
+# Phase 745: Bound Native Editing And Recovery Stack Custody (finished)
 
-Accepted canonical source election for both production New Thread entrances, joined selected-target
-publication, positively qualified origin and original reuse/cleanup custody. Canonical all-target
-checks, 407 distinct affected app/State/Syndic cases, frozen source correspondence, scoped formatting
-and independent integrity review passed; the audit records broad evidence plus corrected-fixture
-reruns precisely. Coherent source readiness and frozen queries retain separate gates.
-See [qualification](audits/source-authenticated-thread-acquisition-qualification.md).
+Accepted bounded private staging heap custody and separated failed-resident slot assembly from
+authentication on unchanged production Windows worker stacks. Canonical staging/admission/history
+and ordinary failed-Home recovery passed 96 distinct cases, including the original two-unsaved-editor
+failure. Isolated App/Syndic all-target checks, four-path hash correspondence, scoped formatting and
+independent semantic review passed. See [qualification](audits/native-editing-recovery-stack-qualification.md).
 
-# Phase 744: Establish Coherent Published Catalog Source Readiness (pending)
+# Phase 744: Establish Coherent Published Catalog Source Readiness (wip)
 
 Establish the bounded source-owned compact-summary maintenance and exhaustive cross-domain rebuild
 coordinator before frozen query admission. Authenticate complete canonical thread coverage,
@@ -112,6 +111,45 @@ retirement custody. Source history-title preparation belongs to background readi
 or filtering the flyout. Qualify every mounted source producer's committed invalidation witnesses;
 unmounted scope-wide/title setters remain separately gated. This source-publication acceptance is
 distinct from live acquisition eligibility and the subsequent immutable query/page capability.
+
+Derive the required Home generation-owned retained reader before certification, preserving finite
+retention admission, non-owning identities, typed bounded reads and draining release/retirement.
+Add source-owned compact-only Syndic authentication and separate exact background summary repair,
+plus frozen State source/primary/recency coverage. Mount one coordinator in the prepared/published
+graph using the existing observation owner with bounded wake fanout. Publish only a complete
+qualified captured generation; repair-required captures release before ordinary repair and fresh
+certification. Conflicts remain unready rather than publishing mixed rows or claiming progress
+under perpetual invalidation.
+
+Use a separate exact projection rebuild for source-owned absent-summary restoration and recreated
+claim witnesses whose scalar revision legitimately restarts. Preserve ordinary publication's
+monotonic guards, full old paired-row expectation, immutable execution and complete joined source
+validation. Qualify a repaired summary at revision one against an existing higher derived witness.
+
+Qualify empty and multi-page populations, missing derived authority, stale source witnesses,
+primary/reverse disagreement and orphan coverage, exact title precedence, maximum admitted rows,
+concurrent writes, cancelled/superseded attempts, saturated/exhausted/foreign/released reads, and
+actual Home retirement with escaped non-owning capabilities. Preserve original repair outcomes,
+exact-snapshot independently admitted retention across published-source replacement,
+initial/recovery graph cleanup and scheduler wakes. Run focused Home/Syndic/State/coordinator tests,
+affected all-target checks and independent lifecycle/source-integrity review. No query service or
+visible flyout is accepted here. Source-backed readiness investigation found no product decision;
+owning-contract and plan authoring review passed, including exact-snapshot independent retention
+across published-source replacement. Home retention and typed source reads are implemented;
+the focused source suites and canonical 572-case Home/State regression pass. Independent review
+found and corrected closing-slot retention accounting; the corrected canonical frozen-read suite
+passes 10/10. Source certification, guarded rebuild, graph mounting and exact recovery-outcome
+settlement are implemented. Canonical app qualification exposed competing Catalog repair during
+selected-window startup; the focused native diagnostic reports an exact restoration source-fence
+failure. Owning contracts now require a prepublication Catalog-only startup fence, released at
+whole native restore-set publication, while preserving headless immediate release and recovery's
+existing deferred worker release. The fence implementation and its nine lifecycle cases pass;
+selected native final-close now passes. Phase 745 separately accepted the baseline native editing
+and recovery stack correction, with all twelve ordinary failed-Home cases passing. Resume this
+source overlay on that accepted prerequisite, then rerun affected app families and
+corrected older fixtures. The broad app diagnostic was interrupted
+after repeated native watchdog failures and is not accepted regression evidence.
+See the [in-progress qualification](audits/coherent-catalog-source-readiness-qualification.md).
 
 # Phase 739: Implement Published Frozen Thread Catalog Queries (pending)
 

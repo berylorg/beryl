@@ -281,21 +281,17 @@ impl MainWindowFailedComposerRetirement {
             Ok(host) => host,
             Err(error) => return Err((self, error)),
         };
-        let mut slot = Box::new(MainWindowComposerSlot::from_selected(
-            self.selection.window_id(),
+        let mut slot = construct_reconstructed_composer_slot(
             storage,
             MainWindowComposerMarkerMetadataAuthority::new(state.assets()),
-            SelectedComposer {
-                identity: MainWindowComposerSelectionIdentity {
-                    window_id: self.selection.window_id(),
-                    claim: window.selected_thread().unwrap(),
-                    binding,
-                },
-                dispatcher: MainWindowComposerDispatcher::new(binding),
-                draft_state,
-                host: *host,
+            MainWindowComposerSelectionIdentity {
+                window_id: self.selection.window_id(),
+                claim: window.selected_thread().unwrap(),
+                binding,
             },
-        ));
+            draft_state,
+            host,
+        );
         slot.last_activation_generation = self.last_activation_generation;
         self.reconstructed = slot.selected_identity();
         Ok((slot, window, self))
@@ -371,4 +367,25 @@ impl MainWindowFailedComposerRetirement {
         self.reconstructed = None;
         Ok(())
     }
+}
+
+#[inline(never)]
+fn construct_reconstructed_composer_slot(
+    storage: SyndicStorage,
+    metadata: MainWindowComposerMarkerMetadataAuthority,
+    identity: MainWindowComposerSelectionIdentity,
+    draft_state: MainWindowComposerDraftState,
+    host: Box<SyndicComposerHost>,
+) -> Box<MainWindowComposerSlot> {
+    Box::new(MainWindowComposerSlot::from_selected(
+        identity.window_id(),
+        storage,
+        metadata,
+        SelectedComposer {
+            identity,
+            dispatcher: MainWindowComposerDispatcher::new(identity.binding()),
+            draft_state,
+            host: *host,
+        },
+    ))
 }

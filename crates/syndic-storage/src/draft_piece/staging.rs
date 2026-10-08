@@ -267,7 +267,7 @@ impl PreparedDraftMutationStagingBatchV1 {
 
 #[derive(Clone)]
 struct StagingMutation {
-    prepared: PreparedDraftMutationStagingCommandV1,
+    prepared: Box<PreparedDraftMutationStagingCommandV1>,
     writer_progress_allowed: bool,
 }
 

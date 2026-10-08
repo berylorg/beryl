@@ -505,6 +505,10 @@
   publication, original eligible-outcome custody and source-qualified cleanup. Canonical checks,
   407 distinct affected cases and independent review passed; coherent source publication and frozen
   queries remain separate gates; [qualification](../../audits/source-authenticated-thread-acquisition-qualification.md).
+- [x] Corrected baseline native staging and failed-resident reconstruction stack custody while
+  preserving authentication and original recovery outcomes. Canonical checks, 96 distinct cases
+  and independent review passed on unchanged production worker stacks;
+  [qualification](../../audits/native-editing-recovery-stack-qualification.md).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

@@ -673,6 +673,49 @@ Run `89bce977-5b32-42e1-bd58-fc54fcb371c5` passed both that regression and the o
 created-window Exit case in 5.011 seconds. All prior failed cases now have passing focused evidence;
 the final combined canonical run and current app checks remain the acceptance gate.
 
+## Native Staging Preparation Regression
+
+On 2026-10-08, ordinary unsaved-editor recovery qualification reproduced a native worker stack
+overflow at accepted baseline `1c7b8b5a`. Reverting the pending frozen-read wrapper did not remove
+the failure, and restoring all tracked App/Home/State/Syndic source to the accepted baseline still
+reproduced it. The pending Catalog coordinator is therefore not a necessary cause.
+
+First-chance CDB evidence in
+`.tmp/coherent-catalog-source-evidence/baseline-native-first-chance-stack.log` shows staging
+preparation retaining approximately 267 KiB and its generic typed participant preparation
+approximately 197 KiB above candidate-session decoding. The callback runs on the existing WinRT
+thread-pool worker; no recursive Catalog call appears in the captured stack. Large by-value private
+prepared custody crosses both frames. Phase 745 qualifies bounded heap custody while preserving
+public APIs, authentication and original outcomes on the unchanged production stack.
+
+The first boxed diagnostic reused a pending Home artifact from the shared target directory: its
+stack contains `execute_guarded_read`, absent from the canonical baseline source. This run is not
+isolated-baseline acceptance evidence. Refresh every affected crate entry point after switching
+overlays, including unchanged dependency source, so Cargo rebuilds the complete intended input.
+The corrected qualification rebuilds Home, State, Syndic and App before executing the native case.
+
+Fresh isolated-baseline qualification with the three-path staging correction completes dirty
+editing, then exposes failed-resident reconstruction stack pressure. CDB evidence in
+`.tmp/coherent-catalog-source-evidence/staging-box-baseline-first-chance-stack.log` shows the
+unchanged ordinary Home read path and an approximately 117-KiB reconstruction frame retaining
+slot-construction storage above deep saved-candidate authentication. Keep authentication in the
+reconstruction body and move slot assembly into a private non-inlined helper, following the same
+frame-separation rule already qualified for the other recovery constructor below. Runtime
+acceptance remains pending; the diagnostic is evidence of remaining failure, not a passing check.
+
+The first isolated all-target check also discovered eighteen task-owned untracked Catalog test
+files left by the pending overlay. Restoring tracked baseline files does not remove automatically
+discovered integration tests. Their references to pending frozen APIs made that check fail without
+invalidating the scoped native or staging inputs. Move those exact owned files to bounded evidence
+custody, then rerun the baseline all-target check; restore them before source-readiness qualification.
+
+The complete four-path correction passed independent semantic review, 84 canonical staging and
+history cases, all twelve ordinary failed-Home native recovery cases and isolated App/Syndic
+all-target checks on 2026-10-08. The original two-unsaved-editor case passes on unchanged production
+Windows worker stacks. [Qualification](../audits/native-editing-recovery-stack-qualification.md)
+records exact inputs, diagnostic exclusions and evidence reuse; Catalog source acceptance resumes
+separately on this prerequisite.
+
 ## Ordinary Command Integration Acceptance
 
 Phase 595 passed completion review on 2026-10-02. Ordinary native close and dedicated toolbar Exit
