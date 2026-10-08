@@ -98,9 +98,10 @@ impl MainWindowFailedResidentCandidateSource {
     }
 
     pub(crate) async fn dispose_cancelled_service(
-        self,
+        mut self,
+        candidate: &mut HomeRecoveryCandidate,
         executor: gpui::BackgroundExecutor,
-    ) -> MainWindowFailedComposerRetirement {
+    ) -> Result<MainWindowFailedComposerRetirement, (Self, String)> {
         loop {
             self.service.drive_native_lineage_cleanup_sources();
             let drained = self
@@ -119,9 +120,40 @@ impl MainWindowFailedResidentCandidateSource {
             }
             executor.timer(std::time::Duration::from_millis(50)).await;
         }
+        let settled = (|| -> Result<(), String> {
+            let access = candidate
+                .recovery_access()
+                .map_err(|error| error.to_string())?;
+            self.validate_source(&access)?;
+            drop(access);
+            if self
+                .service
+                .window_close
+                .lock()
+                .map_err(|_| "cancelled candidate close custody is poisoned")?
+                .is_some()
+            {
+                return Err("cancelled candidate still owns window-close custody".into());
+            }
+            let service = Arc::get_mut(&mut self.service)
+                .ok_or("cancelled candidate service still has aliases")?;
+            let slot = service
+                .slot
+                .get_mut()
+                .map_err(|_| "cancelled candidate slot custody is poisoned")?;
+            self.retained.settle_cancelled_reconstruction(
+                candidate,
+                &self.storage,
+                &self.state,
+                slot,
+            )
+        })();
+        if let Err(error) = settled {
+            return Err((self, error));
+        }
         let (service, retained) = self.into_resources();
         drop(service);
-        retained
+        Ok(retained)
     }
 
     fn validate_source(&self, access: &HomeCandidateRecoveryAccess<'_>) -> Result<(), String> {

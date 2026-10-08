@@ -102,6 +102,12 @@ pub(crate) struct RunningWindowExit {
 }
 
 impl RunningWindowExit {
+    pub(crate) fn same_recovered_binding(&self, expected: &Self) -> bool {
+        Rc::ptr_eq(&self.commands.0, &expected.commands.0)
+            && self.invoking == expected.invoking
+            && self.generation == expected.generation
+    }
+
     pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
         let state = self.commands.0.borrow();
         if state
@@ -153,6 +159,43 @@ impl RunningWindowExit {
 }
 
 impl RunningExitCommands {
+    pub(crate) fn validate_recovered_home_binding(
+        &self,
+        request: Option<&RunningExitRequest>,
+        home: &beryl_home_store::HomeServiceReference,
+    ) -> Result<(), String> {
+        let state = self.0.0.borrow();
+        if !state.exit_gates.home_unavailable
+            || match request {
+                Some(request) => state
+                    .active_exit
+                    .as_ref()
+                    .is_none_or(|active| !Rc::ptr_eq(active, &request.identity)),
+                None => state.active_exit.is_some(),
+            }
+        {
+            return Err("Recovered process binding lost its original lifecycle fence".into());
+        }
+        let (bound, generation) = state
+            .exit_gates
+            .home
+            .as_ref()
+            .ok_or("Recovered process Home binding is missing")?;
+        let health = home.health();
+        let bound_health = bound.health();
+        if bound.home_id() != home.home_id()
+            || bound.database_path() != home.database_path()
+            || generation.is_none()
+            || *generation != health.generation()
+            || *generation != bound_health.generation()
+            || health.state() != beryl_home_store::HomeHealthState::Healthy
+            || bound_health.state() != beryl_home_store::HomeHealthState::Healthy
+        {
+            return Err("Recovered process Home binding changed".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn disabled_reason(&self) -> Option<&'static str> {
         self.0.0.borrow().exit_gates.disabled_reason()
     }

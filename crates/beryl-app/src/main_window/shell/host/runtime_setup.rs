@@ -8,6 +8,7 @@ use crate::{
 use std::{collections::VecDeque, time::Duration};
 
 mod commands;
+mod confirmation;
 mod pages;
 mod render;
 #[cfg(all(test, feature = "test-faults"))]
@@ -79,6 +80,8 @@ pub(super) struct RuntimeSetupContribution {
     pub(super) fixture_admission: Option<Arc<RuntimeSetupFlight>>,
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fixture_fail_root_page: Option<Arc<std::sync::atomic::AtomicBool>>,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_thread_lease: Option<Arc<crate::window_acquisition::WindowSelectionLease>>,
 }
 
 impl RuntimeSetupContribution {
@@ -139,6 +142,8 @@ impl RuntimeSetupContribution {
             fixture_admission: None,
             #[cfg(all(test, feature = "test-faults"))]
             fixture_fail_root_page: None,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_thread_lease: None,
         }
     }
 
@@ -399,32 +404,16 @@ impl MainWindowShellRoot {
             }
             PickerEvent::Command(command) => self.setup_command(command, window, cx),
             PickerEvent::SelectionChanged(key) => {
+                if self.runtime_setup.pending() {
+                    return;
+                }
                 self.runtime_setup.selected_root = self
                     .runtime_setup
                     .roots
                     .iter()
                     .find(|row| key == PickerRowKey(format!("root:{}", row.root.root_id())))
                     .cloned();
-                if let Some(picker) = &self.runtime_setup.picker {
-                    picker.update(cx, |picker, cx| {
-                        picker.configure_selection(
-                            PickerSelectionMode::Confirmed {
-                                confirm: PickerCommandState::unavailable(
-                                    "Confirm",
-                                    "Thread confirmation is not available yet.",
-                                ),
-                            },
-                            cx,
-                        )
-                    });
-                    picker.update(cx, |picker, cx| {
-                        picker.set_selection_eligibility(
-                            &key,
-                            Some("Thread confirmation is not available yet.".into()),
-                            cx,
-                        )
-                    });
-                }
+                self.sync_thread_confirmation(cx);
             }
             PickerEvent::Dismiss => {
                 if self.runtime_setup.native_dialog {
@@ -435,6 +424,9 @@ impl MainWindowShellRoot {
                 self.runtime_setup.subscription = None;
                 if let Some(flight) = &self.runtime_setup.flight {
                     flight.cancellation().cancel();
+                }
+                if matches!(self.runtime_setup.command, Some(PickerCommand::Confirm(_))) {
+                    self.cancel_thread_confirmation();
                 }
             }
             PickerEvent::Activate(_) => {}

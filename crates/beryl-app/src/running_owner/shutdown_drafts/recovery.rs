@@ -1,6 +1,12 @@
 use super::*;
 use std::sync::Arc;
 
+pub(super) struct NoncommittedThreadCreationProvenance {
+    window: gpui::WindowHandle<MainWindowShellRoot>,
+    selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ticket: crate::main_window::MainWindowFailedResidentTicket,
+}
+
 #[cfg(test)]
 impl RunningProcessOwner {
     pub(crate) fn test_replace_recovery_drafts(
@@ -12,6 +18,156 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    #[cfg(test)]
+    pub(crate) fn test_thread_creation_retirement_diagnostics(&self) -> Vec<String> {
+        self.windows
+            .iter()
+            .filter_map(|(_, draft)| {
+                draft
+                    .as_ref()
+                    .ok()?
+                    .thread_creation
+                    .as_ref()
+                    .map(|creation| creation.retirement_diagnostic.clone())
+            })
+            .collect()
+    }
+
+    pub(crate) fn has_captured_thread_creation_window(
+        &self,
+        window: gpui::WindowHandle<MainWindowShellRoot>,
+    ) -> Result<bool, String> {
+        self.has_captured_thread_creation()?;
+        let draft = self
+            .windows
+            .iter()
+            .find(|(captured, _)| *captured == window)
+            .ok_or("New Thread original captured window is missing")?
+            .1
+            .as_ref()
+            .map_err(Clone::clone)?;
+        Ok(draft.thread_creation.is_some()
+            || self
+                .noncommitted_creations
+                .iter()
+                .any(|prior| prior.window == window))
+    }
+
+    pub(crate) fn has_captured_thread_creation(&self) -> Result<bool, String> {
+        self.require_complete_capture()?;
+        for prior in &self.noncommitted_creations {
+            let draft = self
+                .windows
+                .iter()
+                .find(|(window, _)| *window == prior.window)
+                .ok_or("noncommitted New Thread preserved window changed")?
+                .1
+                .as_ref()
+                .map_err(Clone::clone)?;
+            if draft
+                .failed
+                .as_ref()
+                .is_none_or(|failed| failed.ticket != prior.ticket)
+                || draft
+                    .failed
+                    .as_ref()
+                    .and_then(|failed| failed.capture.as_ref())
+                    .is_some_and(|capture| capture.selection() != prior.selection)
+            {
+                return Err("noncommitted New Thread original resident identity changed".into());
+            }
+        }
+        Ok(!self.noncommitted_creations.is_empty()
+            || self.windows.iter().any(|(_, draft)| {
+                draft
+                    .as_ref()
+                    .is_ok_and(|draft| draft.thread_creation.is_some())
+            }))
+    }
+
+    pub(crate) fn detach_recovered_thread_creation_window(
+        &mut self,
+        handle: gpui::WindowHandle<MainWindowShellRoot>,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        app: &mut App,
+    ) -> Result<Option<bool>, String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("New Thread candidate cleanup draft set is unavailable".into());
+        }
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(window, _)| *window == handle)
+            .ok_or("New Thread candidate cleanup window is missing")?
+            .1
+            .as_mut()
+            .map_err(|error| error.clone())?;
+        if draft.thread_creation.is_none() {
+            return Ok(None);
+        }
+        handle
+            .update(app, |root, window, cx| {
+                root.detach_recovered_thread_creation_shell(draft, home, generation, window, cx)
+            })
+            .map_err(|error| error.to_string())?
+            .map(Some)
+    }
+
+    pub(crate) fn adopt_recovered_thread_creation(
+        &mut self,
+        root: &mut MainWindowShellRoot,
+        preparation: &mut crate::main_window::MainWindowFreshComposerPreparation,
+        retirement: &mut crate::main_window::MainWindowFailedThreadCreationRetirement,
+        adapters: crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
+        configure: crate::main_window::MainWindowShellComposerConfigurator,
+        transcript: crate::syndic_transcript::PreparedTranscriptActivation,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<crate::main_window::MainWindowConversationComposerCloseTicket, String> {
+        if !self.prepared || self.driving || self.releasing || self.released {
+            return Err("New Thread recovery draft set is unavailable".into());
+        }
+        let draft = self
+            .windows
+            .iter_mut()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("New Thread recovery window is missing")?
+            .1
+            .as_mut()
+            .map_err(|error| error.clone())?;
+        let close = root.adopt_recovered_thread_creation_shell(
+            draft,
+            preparation,
+            retirement,
+            adapters,
+            configure,
+            transcript,
+            window,
+            cx,
+        )?;
+        self.ready = false;
+        Ok(close)
+    }
+
+    pub(crate) fn advance_recovered_thread_creation(
+        &self,
+        root: &mut MainWindowShellRoot,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<MainWindowShellRoot>,
+    ) -> Result<bool, String> {
+        let draft = self
+            .windows
+            .iter()
+            .find(|(handle, _)| gpui::AnyWindowHandle::from(*handle) == window.window_handle())
+            .ok_or("New Thread recovery window is missing")?
+            .1
+            .as_ref()
+            .map_err(Clone::clone)?;
+        root.advance_first_conversation_shell(draft, home, generation, window, cx)
+    }
     pub(crate) fn adopt_first_conversation(
         &mut self,
         root: &mut MainWindowShellRoot,
@@ -346,6 +502,7 @@ impl RunningShutdownDrafts {
     ) -> Self {
         Self {
             windows: vec![(window, Ok(draft))],
+            noncommitted_creations: Vec::new(),
             driving: false,
             prepared: true,
             releasing: false,
@@ -428,6 +585,14 @@ impl RunningShutdownDrafts {
             .1
             .as_mut()
             .map_err(|e| e.clone())?;
+        if let Some((selection, ticket)) = draft.adopt_noncommitted_thread_creation_capture()? {
+            self.noncommitted_creations
+                .push(NoncommittedThreadCreationProvenance {
+                    window,
+                    selection,
+                    ticket,
+                });
+        }
         Ok(draft
             .failed
             .as_mut()
@@ -441,9 +606,11 @@ impl RunningShutdownDrafts {
     }
 
     pub(in crate::running_owner) fn has_failed_residents(&self) -> bool {
-        self.windows
-            .iter()
-            .any(|(_, draft)| draft.as_ref().is_ok_and(|draft| draft.failed.is_some()))
+        self.windows.iter().any(|(_, draft)| {
+            draft
+                .as_ref()
+                .is_ok_and(|draft| draft.failed.is_some() || draft.thread_creation.is_some())
+        })
     }
     pub(in crate::running_owner) fn return_failed_capture(
         &mut self,

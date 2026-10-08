@@ -97,7 +97,9 @@ impl RunningProcessOwner {
         let admission = Self::capture_running_home_failure(owner, generation, app);
         match admission {
             Ok(Some(key)) => Self::start_recovery_task(owner, key, app),
-            Err(_) => {
+            Err(error) => {
+                #[cfg(test)]
+                eprintln!("ordinary failed Home capture retained: {error}");
                 let identity = owner
                     .borrow()
                     .interrupted_exit
@@ -117,7 +119,7 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
         app: &mut App,
     ) -> Result<Option<OrdinaryHomeRecoveryKey>, String> {
-        let (home, path, windows, members) = {
+        let (home, path, windows, members, thread_creations) = {
             let retained = owner.borrow();
             if retained.interrupted_exit.is_some() {
                 return Ok(None);
@@ -178,11 +180,20 @@ impl RunningProcessOwner {
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
+            let thread_creations = windows
+                .iter()
+                .filter_map(|window| {
+                    let root = window.read(app).ok()?;
+                    root.has_failed_thread_creation_entrance()
+                        .then(|| root.controller().unwrap().window_id())
+                })
+                .collect::<Vec<_>>();
             (
                 graph.home().home_id(),
                 graph.home().canonical_path().to_owned(),
                 windows,
                 members,
+                thread_creations,
             )
         };
         let identity = Rc::new(());
@@ -236,7 +247,9 @@ impl RunningProcessOwner {
                 focus,
                 session: Rc::new(RefCell::new(Some(
                     RunningShutdownSession::UnchangedRunning(
-                        UnchangedRunning::new(home, generation, path, members).with_first(first),
+                        UnchangedRunning::new(home, generation, path, members)
+                            .with_first(first)
+                            .with_thread_creations(thread_creations),
                     ),
                 ))),
                 previous_resume: Rc::new(RefCell::new(None)),
@@ -244,6 +257,7 @@ impl RunningProcessOwner {
                 service_validation: Rc::new(RefCell::new(None)),
                 theme_activation: Rc::new(RefCell::new(None)),
                 publication: Rc::new(RefCell::new(None)),
+                process_binding: None,
                 retirement: Rc::new(RefCell::new(None)),
                 resident: None,
                 pending_resident_frame: None,
@@ -256,12 +270,19 @@ impl RunningProcessOwner {
             });
         }
         for window in windows {
-            window
+            let gated = window
                 .update(app, |root, window, cx| {
                     root.set_notices_inert(true, window, cx);
                     root.set_shutdown_interaction_gated(true, cx)
                 })
-                .map_err(|e| e.to_string())??;
+                .map_err(|e| e.to_string())
+                .and_then(|result| result);
+            if let Err(error) = gated {
+                drafts
+                    .borrow_mut()
+                    .retain_capture_failure(window, error.clone());
+                return Err(error);
+            }
             drafts.borrow_mut().add_recovery_window(window, app);
         }
         let residents = drafts.borrow().recovery_residents();
@@ -278,6 +299,58 @@ impl RunningProcessOwner {
     #[cfg(test)]
     pub(crate) fn test_observe_running_home_failure(owner: &Rc<RefCell<Self>>, app: &mut App) {
         Self::observe_running_home_failure(owner, app);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_thread_creation_recovery_stage(&self) -> String {
+        use super::settlement::CandidateSettlement;
+        let Some(recovery) = self.interrupted_exit.as_ref() else {
+            return "no captured recovery".into();
+        };
+        let settlement = recovery.settlement.borrow();
+        let stage = match settlement.as_ref() {
+            None => "none".into(),
+            Some(CandidateSettlement::Pending) => "pending worker".into(),
+            Some(CandidateSettlement::Published) => "published".into(),
+            Some(CandidateSettlement::Constructed(result)) => format!(
+                "constructed {:?}",
+                result
+                    .as_ref()
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            ),
+            Some(CandidateSettlement::Services(result)) => format!(
+                "services {:?}",
+                result
+                    .as_ref()
+                    .map(|_| ())
+                    .map_err(|error| format!("{error:?}"))
+            ),
+            Some(CandidateSettlement::Returned { result, .. }) => format!("returned {result:?}"),
+            Some(CandidateSettlement::DisposedFailure(error)) => format!("disposed {error}"),
+            Some(CandidateSettlement::DisposedPreparationFailure { failure, .. }) => {
+                format!("disposed preparation {failure:?}")
+            }
+        };
+        let resident = recovery
+            .resident
+            .as_ref()
+            .map(|_| self.test_resident_preparation_state());
+        format!(
+            "settlement={stage}; original={}; driver={}; resident={resident:?}; validation={:?}; publication={:?}; retry={}; creation_retirement={:?}",
+            recovery.session.borrow().is_some(),
+            recovery.driver.upgrade().is_some(),
+            recovery.service_validation.borrow().as_ref(),
+            recovery
+                .publication
+                .borrow()
+                .as_ref()
+                .map(|result| result.as_ref().map(|_| ())),
+            recovery.reopen_deadline.is_some(),
+            recovery.drafts.as_ref().map(|drafts| drafts
+                .borrow()
+                .test_thread_creation_retirement_diagnostics())
+        )
     }
 
     #[cfg(test)]
@@ -333,6 +406,69 @@ impl RunningProcessOwner {
             })
             .map_err(|e| e.to_string())??;
         Self::settle_automatic_interrupted_exit_cancellation(owner, &key, retired, cx).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_continue_retired_running_home_recovery(
+        owner: &Rc<RefCell<Self>>,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<(), String> {
+        Self::test_continue_retired_running_home_recovery_with(
+            owner,
+            beryl_home_store::CommandCancellation::new(),
+            cx,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_hold_running_home_recovery_driver(&mut self) -> Result<Rc<()>, String> {
+        let key = OrdinaryHomeRecoveryKey(
+            self.test_running_home_recovery_identity()
+                .ok_or("original ordinary recovery identity is unavailable")?,
+        );
+        self.reserve_interrupted_exit_driver(&key)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_thread_creation_disposed_generation(&self) -> Option<HomeGeneration> {
+        let recovery = self.interrupted_exit.as_ref()?;
+        match recovery.settlement.borrow().as_ref()? {
+            super::settlement::CandidateSettlement::DisposedPreparationFailure {
+                retired, ..
+            } => Some(*retired),
+            super::settlement::CandidateSettlement::DisposedFailure(_) => self
+                .process
+                .services
+                .as_ref()?
+                .retired_service_generation()
+                .ok(),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_continue_retired_running_home_recovery_with(
+        owner: &Rc<RefCell<Self>>,
+        cancellation: beryl_home_store::CommandCancellation,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<(), String> {
+        let key = OrdinaryHomeRecoveryKey(
+            owner
+                .borrow()
+                .test_running_home_recovery_identity()
+                .ok_or("original ordinary recovery identity is unavailable")?,
+        );
+        Self::recover_owned_thread_creation(
+            owner,
+            &key,
+            syndic_storage::SyndicTimestamp::from_unix_millis(3),
+            cancellation,
+            |_| Err("retired New Thread continuation must retain its original configurator".into()),
+            |_| {},
+            cx,
+        )
+        .await
     }
 
     #[cfg(test)]

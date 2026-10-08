@@ -7,6 +7,21 @@ use beryl_home_store::HomeRecoveryCandidate;
 use beryl_state::SessionState;
 
 impl RunningShutdownSession {
+    pub(crate) fn accept_thread_creation_candidate(
+        &mut self,
+        window: beryl_model::WindowId,
+        committed: Option<&crate::same_window_thread_acquisition::SameWindowThreadCommit>,
+        candidate: &mut HomeRecoveryCandidate,
+        state: &beryl_state::BerylState,
+    ) -> Result<(), String> {
+        let Self::UnchangedRunning(running) = self else {
+            return Err(
+                "original thread creation requires its captured Running recovery session".into(),
+            );
+        };
+        running.accept_thread_creation_candidate(window, committed, candidate, state)
+    }
+
     pub(crate) fn revalidate_candidate(
         &self,
         candidate: &mut HomeRecoveryCandidate,

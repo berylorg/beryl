@@ -56,6 +56,26 @@ governed by [design.md](design.md). It does not independently declare engineerin
   owned through errors or retirement; a fresh reader or reconstructed receipt cannot substitute
   for them.
 
+- Failed-home New Thread capture has a distinct owner-supplied retirement conversion for original
+  targetless save and selection custody. It retains pending publication, candidate provenance,
+  sole-proof identity and completed disposal/widget-release stages without retaining old service
+  capability. Conversion failure returns or retains original custody. Prior-claim recovery uses
+  the existing protected resident; committed-target recovery completes remaining predecessor
+  cleanup and prepares a fresh candidate-generation target. Old successor preparation is cleanup
+  evidence only, never fresh target authority. Neither route reissues the original claim command,
+  fabricates its receipt, repeats a completed release or performs a second predecessor save.
+  This explicit exception does not relax unchanged resident/source/history admission; see
+  [creation recovery](design-shell-lifecycle.md#failed-home-new-thread-recovery).
+  The native prepublication source owns the cleanup-only handoff for already delivered original
+  Pages. It validates exact original selection/environment/session and ledger/token/flight
+  correspondence, rejecting active producers, pending work and undelivered outcomes. The resulting
+  bounded capsule contains only closed cleanup protocol state and pure ledger coordination; it
+  grants no provider dispatch or Home/service access. Actual old cleanup-driver completion after
+  source transfer preserves the ordinary exclusive-service retirement guard. The common window
+  draft retains the capsule through prior conversion and drives only original release/cancel
+  acknowledgements after actual widget release or checked rebinding. Every refusal preserves actual
+  source and capsule custody; zero collections or dropped handles cannot certify drainage.
+
 - Marker sealing consumes the single injected home-generation service owned by the
   [process service graph](design-shell-lifecycle.md#process-service-graph-and-windows); a host or
   window never constructs independent flight capacity.

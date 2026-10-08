@@ -20,6 +20,7 @@ pub(crate) struct UnchangedRunning {
     generation: beryl_home_store::HomeGeneration,
     path: std::path::PathBuf,
     members: Vec<RunningWindowFacts>,
+    thread_creations: Vec<WindowId>,
     pinned: Option<MinimalSessionBootstrap>,
 }
 
@@ -36,6 +37,7 @@ impl UnchangedRunning {
             generation,
             path,
             members,
+            thread_creations: Vec::new(),
             pinned: None,
         }
     }
@@ -46,6 +48,53 @@ impl UnchangedRunning {
     ) -> Self {
         self.first = first;
         self
+    }
+
+    pub(crate) fn with_thread_creations(mut self, windows: Vec<WindowId>) -> Self {
+        assert!(
+            windows
+                .iter()
+                .all(|window| self.members.iter().any(|member| member.window == *window))
+        );
+        self.thread_creations = windows;
+        self
+    }
+
+    pub(crate) fn accept_thread_creation_candidate(
+        &mut self,
+        window: WindowId,
+        committed: Option<&crate::same_window_thread_acquisition::SameWindowThreadCommit>,
+        candidate: &mut HomeRecoveryCandidate,
+        state: &beryl_state::BerylState,
+    ) -> Result<(), String> {
+        if !self.thread_creations.contains(&window) {
+            return Err(
+                "original thread creation window is not captured by the Running set".into(),
+            );
+        }
+        let member = self
+            .members
+            .iter_mut()
+            .find(|member| member.window == window)
+            .ok_or("original thread creation window is missing")?;
+        if let Some(committed) = committed {
+            let access = candidate
+                .recovery_access()
+                .map_err(|error| error.to_string())?;
+            committed
+                .validate_candidate(&access, state)
+                .map_err(|error| error.to_string())?;
+            if committed.window.window_id() != window
+                || committed.window.placement() != &member.placement
+            {
+                return Err("original thread creation changed its preserved native window".into());
+            }
+            member.revision = committed.window.revision();
+            member.selection = Some(committed.selection);
+        }
+        self.thread_creations.retain(|captured| *captured != window);
+        self.pinned = None;
+        Ok(())
     }
 
     pub(crate) fn first_conversation_facts(
@@ -94,9 +143,11 @@ impl UnchangedRunning {
                 .iter()
                 .find(|w| w.window_id() == captured.window)
                 .ok_or("captured Running window is missing")?;
-            if window.revision() != captured.revision
-                || window.placement() != &captured.placement
-                || window.selected_thread() != captured.selection
+            let deferred = self.thread_creations.contains(&captured.window);
+            if window.placement() != &captured.placement
+                || !deferred
+                    && (window.revision() != captured.revision
+                        || window.selected_thread() != captured.selection)
             {
                 return Err(
                     "captured Running window revision, placement or selection changed".into(),
@@ -105,7 +156,14 @@ impl UnchangedRunning {
             let source = session
                 .window_claim_catalog_source_candidate(&access, captured.window)
                 .map_err(|e| e.to_string())?;
-            let exact = match (source.claim(), captured.selection) {
+            let exact = match (
+                source.claim(),
+                if deferred {
+                    window.selected_thread()
+                } else {
+                    captured.selection
+                },
+            ) {
                 (None, None) => self.members.len() == 1 && snapshot.header().fallback().is_none(),
                 (Some(claim), Some(selection)) => {
                     claim.thread_id() == selection.thread_id()
@@ -159,7 +217,9 @@ impl UnchangedRunning {
             }
         }
         let snapshot = self.read(candidate, session)?;
-        self.pinned = Some(snapshot);
+        if self.thread_creations.is_empty() {
+            self.pinned = Some(snapshot);
+        }
         Ok(())
     }
 
@@ -168,7 +228,7 @@ impl UnchangedRunning {
         candidate: &mut HomeRecoveryCandidate,
         session: &SessionState,
     ) -> Result<(), String> {
-        if self.pinned.is_none() {
+        if self.pinned.is_none() || !self.thread_creations.is_empty() {
             return Err("unchanged Running session has not been authenticated".into());
         }
         self.read(candidate, session).map(|_| ())

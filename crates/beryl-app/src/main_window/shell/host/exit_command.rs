@@ -5,6 +5,20 @@ use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, AnyView, InteractiveElement, StatefulInteractiveElement};
 
 impl MainWindowShellRoot {
+    pub(crate) fn validate_recovered_running_command(
+        &self,
+        expected: &crate::startup_owner::RunningWindowExit,
+    ) -> Result<(), String> {
+        if self
+            .running_command
+            .as_ref()
+            .is_none_or(|command| !command.same_recovered_binding(expected))
+        {
+            return Err("Recovered window command binding changed".into());
+        }
+        Ok(())
+    }
+
     pub(super) fn running_selection_interaction_gated(&self, app: &App) -> bool {
         if self.running_threads.pending_activation.is_some() {
             return true;

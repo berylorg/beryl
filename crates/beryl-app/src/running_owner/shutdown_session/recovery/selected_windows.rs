@@ -20,6 +20,12 @@ impl SelectedWindowRecovery {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         for entry in &mut self.windows {
+            let original_creation = owner
+                .recovery_owner()?
+                .borrow()
+                .recovery_drafts()?
+                .borrow()
+                .has_captured_thread_creation_window(entry.window)?;
             if entry.preparation.is_some() {
                 if owner
                     .recovery_owner()?
@@ -45,7 +51,35 @@ impl SelectedWindowRecovery {
                     }
                 }
             }
-            if let Some((close, _)) = entry.attached {
+            let creation = loop {
+                let handled = cx
+                    .update(|app| {
+                        owner
+                            .recovery_owner()?
+                            .borrow()
+                            .recovery_drafts()?
+                            .borrow_mut()
+                            .detach_recovered_thread_creation_window(
+                                entry.window,
+                                home,
+                                generation,
+                                app,
+                            )
+                    })
+                    .map_err(|error| error.to_string())??;
+                match handled {
+                    Some(false) => {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(50))
+                            .await
+                    }
+                    Some(true) => break true,
+                    None => break false,
+                }
+            };
+            if creation {
+                entry.retain_creation_configuration_after_detach();
+            } else if let Some((close, _)) = entry.attached {
                 loop {
                     let detached = cx
                         .update(|app| {
@@ -71,7 +105,11 @@ impl SelectedWindowRecovery {
                 }
             }
             entry.adapters.take();
-            entry.configurator.take();
+            if original_creation {
+                entry.retain_creation_configuration_after_detach();
+            } else {
+                entry.configurator.take();
+            }
         }
         if let Some(appearance) = self.appearance.take() {
             cx.update(|app| appearance.update(app, |appearance, _| appearance.retire()))

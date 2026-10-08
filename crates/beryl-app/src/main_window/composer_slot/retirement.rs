@@ -76,7 +76,7 @@ impl MainWindowComposerSlot {
 
     pub fn reconcile_pending_after_recovery(
         &mut self,
-        store: &HomeStore,
+        candidate: &mut beryl_home_store::HomeRecoveryCandidate,
         recovered_storage: SyndicStorage,
         receipt: MainWindowComposerActivationReceipt,
     ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
@@ -85,11 +85,74 @@ impl MainWindowComposerSlot {
         if !matches!(pending.stage, PendingStage::Reconciliation) || pending.abandonment.is_none() {
             return Err(MainWindowComposerSlotError::TargetNotReady);
         }
-        recovered_storage
-            .revision(store)
+        let access = candidate
+            .recovery_access()
             .map_err(|_| MainWindowComposerSlotError::RecoveryHandleMismatch)?;
-        self.storage = recovered_storage;
-        self.drive_retirement(store, receipt)
+        recovered_storage
+            .revision_candidate(&access)
+            .map_err(|_| MainWindowComposerSlotError::RecoveryHandleMismatch)?;
+        let pending = self.pending.as_mut().unwrap();
+        let binding = pending
+            .host
+            .binding()
+            .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
+        if pending.retain_thread_cleanup
+            || access.home_id() != binding.home_id()
+            || access.generation() == binding.home_generation()
+            || pending.abandonment_canonical_home.as_deref() != Some(access.canonical_path())
+        {
+            return Err(MainWindowComposerSlotError::RecoveryHandleMismatch);
+        }
+        let Some(original) = pending.abandonment_outcome.as_mut() else {
+            return Err(MainWindowComposerSlotError::TargetNotReady);
+        };
+        match original.reconcile(&access) {
+            Ok(true) => {}
+            Ok(false) => {
+                let mut command = HomeCommand::new(
+                    access
+                        .home_revision()
+                        .map_err(MainWindowComposerSlotError::RecoveryRead)?,
+                );
+                command
+                    .add(
+                        recovered_storage.abandon_fresh_draft_editor_candidate_session(
+                            recovered_storage
+                                .revision_candidate(&access)
+                                .map_err(MainWindowComposerSlotError::RecoveryRead)?,
+                            pending.abandonment.as_ref().unwrap().clone(),
+                        ),
+                    )
+                    .map_err(|_| MainWindowComposerSlotError::TargetNotReady)?;
+                *original = crate::composer_host::RetainedComposerCommandOutcome::new(
+                    access.execute(command),
+                );
+                if original.reconcile(&access) != Ok(true) {
+                    return Ok(MainWindowComposerRetirementAdvance::Pending);
+                }
+            }
+            Err(_) => return Ok(MainWindowComposerRetirementAdvance::Pending),
+        }
+        match recovered_storage.reconcile_abandon_fresh_draft_editor_candidate_session_candidate(
+            &access,
+            pending.abandonment.as_ref().unwrap(),
+            original.committed_classification().unwrap(),
+        ) {
+            Ok(
+                DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(_)
+                | DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(_),
+            ) => {
+                self.pending = None;
+                self.submission_successor = None;
+                self.storage = recovered_storage;
+                Ok(MainWindowComposerRetirementAdvance::Retired)
+            }
+            Ok(_) => {
+                pending.stage = PendingStage::Departed;
+                Ok(MainWindowComposerRetirementAdvance::DepartedFreshBoundary)
+            }
+            Err(_) => Ok(MainWindowComposerRetirementAdvance::Pending),
+        }
     }
 
     pub fn begin_disposal(
@@ -217,6 +280,9 @@ impl MainWindowComposerSlot {
             source_selector: None,
             stage: PendingStage::Retiring,
             abandonment: None,
+            abandonment_outcome: None,
+            retain_thread_cleanup: self.capture_thread_cleanup,
+            abandonment_canonical_home: None,
         });
     }
 
@@ -231,15 +297,24 @@ impl MainWindowComposerSlot {
             return Ok(MainWindowComposerRetirementAdvance::DepartedFreshBoundary);
         }
         if pending.abandonment.is_none() {
-            let request = pending
-                .host
-                .fresh_abandonment_request(pending.retirement_operation_id)
-                .ok_or(MainWindowComposerSlotError::TargetNotFresh)?;
+            let request = if pending.retain_thread_cleanup {
+                pending
+                    .host
+                    .thread_creation_fresh_abandonment_request(pending.retirement_operation_id)
+            } else {
+                pending
+                    .host
+                    .fresh_abandonment_request(pending.retirement_operation_id)
+            }
+            .ok_or(MainWindowComposerSlotError::TargetNotFresh)?;
             match self
                 .storage
                 .prepare_abandon_fresh_draft_editor_candidate_session(store, request)
             {
-                Ok(prepared) => pending.abandonment = Some(prepared),
+                Ok(prepared) => {
+                    pending.abandonment = Some(prepared);
+                    pending.abandonment_canonical_home = Some(store.canonical_path().to_owned());
+                }
                 Err(_) => {
                     pending.stage = PendingStage::Retiring;
                     return Ok(MainWindowComposerRetirementAdvance::Pending);
@@ -247,6 +322,34 @@ impl MainWindowComposerSlot {
             }
         }
         let prepared = pending.abandonment.as_ref().unwrap().clone();
+        if let Some(outcome) = pending.abandonment_outcome.as_mut() {
+            if let crate::composer_host::RetainedComposerCommandOutcome::Indeterminate {
+                handle,
+                result,
+                ..
+            } = outcome
+            {
+                let settled = match result {
+                    None => Some(store.reconcile(handle)),
+                    Some(Err(_)) => Some(store.retry_reconciliation(handle)),
+                    Some(Ok(_)) => None,
+                };
+                if let Some(settled) = settled {
+                    *result = Some(settled);
+                }
+            }
+            match outcome.known_commit() {
+                Some(true) => {
+                    let classification = outcome.committed_classification().unwrap();
+                    return self.finish_retirement_classification(store, &prepared, classification);
+                }
+                Some(false) => {}
+                None => {
+                    pending.stage = PendingStage::Reconciliation;
+                    return Ok(MainWindowComposerRetirementAdvance::Pending);
+                }
+            }
+        }
         let mut command = match store.home_revision() {
             Ok(revision) => HomeCommand::new(revision),
             Err(_) => {
@@ -275,14 +378,57 @@ impl MainWindowComposerSlot {
         if let Some(fault) = self.abandonment_before_execute_fault.take() {
             fault(store, self.storage.clone());
         }
-        let outcome = store.execute(command);
+        pending.abandonment_outcome = Some(
+            crate::composer_host::RetainedComposerCommandOutcome::new(store.execute(command)),
+        );
+        let retained = pending.abandonment_outcome.as_ref().unwrap();
+        let Some(outcome) = retained
+            .committed_classification()
+            .or_else(|| retained.noncommitted_classification())
+        else {
+            pending.stage = PendingStage::Reconciliation;
+            return Ok(MainWindowComposerRetirementAdvance::Pending);
+        };
+        self.finish_retirement_classification(store, &prepared, outcome)
+    }
+
+    fn finish_retirement_classification(
+        &mut self,
+        store: &HomeStore,
+        prepared: &syndic_storage::PreparedDraftEditorCandidateSessionAbandonFreshV1,
+        outcome: beryl_home_store::CommandOutcome,
+    ) -> Result<MainWindowComposerRetirementAdvance, MainWindowComposerSlotError> {
         let reconciled = self
             .storage
-            .reconcile_abandon_fresh_draft_editor_candidate_session(store, &prepared, outcome);
+            .reconcile_abandon_fresh_draft_editor_candidate_session(store, prepared, outcome);
+        let pending = self.pending.as_mut().unwrap();
         match reconciled {
             Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(_))
             | Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(_))
             | Ok(DraftEditorCandidateSessionAbandonFreshOutcomeV1::AlreadyDisposed(_)) => {
+                if pending.retain_thread_cleanup {
+                    if !matches!(
+                        reconciled,
+                        Ok(
+                            DraftEditorCandidateSessionAbandonFreshOutcomeV1::Abandoned(_)
+                                | DraftEditorCandidateSessionAbandonFreshOutcomeV1::ExactReplay(_)
+                        )
+                    ) || self.completed_thread_successor.is_some()
+                    {
+                        pending.stage = PendingStage::Reconciliation;
+                        return Ok(MainWindowComposerRetirementAdvance::Pending);
+                    }
+                    let retired = self.pending.take().unwrap();
+                    match self.retain_completed_thread_successor(store, retired) {
+                        Ok(completed) => self.completed_thread_successor = Some(completed),
+                        Err(pending) => {
+                            self.pending = Some(pending);
+                            return Ok(MainWindowComposerRetirementAdvance::Pending);
+                        }
+                    }
+                    self.submission_successor = None;
+                    return Ok(MainWindowComposerRetirementAdvance::Retired);
+                }
                 let mut retired = self.pending.take().unwrap();
                 let _ = retired.host.dispose_composer_service(store);
                 self.submission_successor = None;

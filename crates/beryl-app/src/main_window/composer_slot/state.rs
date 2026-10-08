@@ -48,4 +48,7 @@ pub(super) struct PendingComposer {
     pub(super) source_selector: Option<DraftEditorCurrentSelectorV1>,
     pub(super) stage: PendingStage,
     pub(super) abandonment: Option<PreparedDraftEditorCandidateSessionAbandonFreshV1>,
+    pub(super) abandonment_outcome: Option<crate::composer_host::RetainedComposerCommandOutcome>,
+    pub(super) retain_thread_cleanup: bool,
+    pub(super) abandonment_canonical_home: Option<std::path::PathBuf>,
 }

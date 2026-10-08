@@ -5,6 +5,12 @@ use syndic_storage::{
 
 use super::*;
 
+pub(crate) struct RetainedComposerDisposal {
+    pub(in crate::composer_host) binding: ComposerHostBinding,
+    pub(in crate::composer_host) prepared: PreparedDraftEditorCandidateSessionDisposeV1,
+    pub(in crate::composer_host) outcome: RetainedComposerCommandOutcome,
+}
+
 impl SyndicComposerHost {
     pub(in crate::composer_host) fn capture_clean_disposal(
         &mut self,
@@ -39,6 +45,7 @@ impl SyndicComposerHost {
             lane_generation,
         };
         self.publication.lane_generation = lane_generation;
+        self.publication.retained_disposal = None;
         self.publication.lane = Some(Box::new(ComposerHostPublicationLane::Disposal(
             PendingDisposal {
                 ticket,
@@ -78,14 +85,26 @@ impl SyndicComposerHost {
         if let Some(fault) = self.publication_before_execute_fault.take() {
             fault(store, self.storage.clone());
         }
-        let outcome = store.execute(command);
+        let outcome = RetainedComposerCommandOutcome::new(store.execute(command));
+        self.publication.retained_disposal = Some(Box::new(RetainedComposerDisposal {
+            binding,
+            prepared: prepared.clone(),
+            outcome,
+        }));
+        let outcome = &self.publication.retained_disposal.as_ref().unwrap().outcome;
         match outcome {
-            CommandOutcome::Indeterminate { reconciliation, .. } => {
-                self.pending_disposal_mut(ticket)?.reconciliation =
-                    Some(reconciliation.install_and_handle());
+            RetainedComposerCommandOutcome::Indeterminate { handle, .. } => {
+                let handle = handle.clone();
+                self.pending_disposal_mut(ticket)?.reconciliation = Some(handle);
                 Ok(ComposerHostDisposalCompletion::ReconciliationPending)
             }
-            outcome => self.settle_disposal(store, ticket, binding, prepared, outcome),
+            outcome => {
+                let classification = outcome
+                    .committed_classification()
+                    .or_else(|| outcome.noncommitted_classification())
+                    .expect("retained disposal command has an exact classification");
+                self.settle_disposal(store, ticket, binding, prepared, classification)
+            }
         }
     }
 
@@ -106,7 +125,14 @@ impl SyndicComposerHost {
                     .ok_or(ComposerHostError::PublicationPending)?,
             )
         };
-        let outcome = match store.reconcile(&handle)? {
+        let resolution = store.reconcile(&handle)?;
+        if let Some(retained) = self.publication.retained_disposal.as_mut()
+            && let RetainedComposerCommandOutcome::Indeterminate { result, .. } =
+                &mut retained.outcome
+        {
+            *result = Some(Ok(resolution.clone()));
+        }
+        let outcome = match resolution {
             ReconciliationResolution::ExactOld => CommandOutcome::NotCommitted {
                 evidence: CommandError::ReentrantWriter,
             },

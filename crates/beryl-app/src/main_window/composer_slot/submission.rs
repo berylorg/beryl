@@ -245,6 +245,9 @@ impl MainWindowComposerSlot {
             source_selector: Some(source_selector),
             stage: PendingStage::Ready,
             abandonment: None,
+            abandonment_outcome: None,
+            retain_thread_cleanup: false,
+            abandonment_canonical_home: None,
         });
         self.submission_successor = Some(receipt);
         Ok(MainWindowComposerSubmissionAdvance::SuccessorReady {

@@ -39,7 +39,7 @@ pub(crate) mod runtime_setup;
 pub(crate) use running_threads::{
     PublishedRunningThreadsReader, PublishedSameWindowThreadCurrent,
     PublishedSameWindowThreadOperation, PublishedSameWindowThreadPreparation,
-    PublishedSameWindowThreadPreparationFailure,
+    PublishedSameWindowThreadPreparationFailure, RetiredSameWindowThreadOperation,
 };
 pub(crate) use runtime_setup::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 pub(crate) mod recovery_composer;
@@ -153,6 +153,9 @@ pub(crate) struct ProcessServiceOwner {
     first_cleanups:
         std::sync::Mutex<Vec<crate::main_window::MainWindowInitialComposerRecoveryCleanup>>,
     failed_residents: Vec<recovery_failed_residents::FailedResidentSource>,
+    failed_thread_creations: Vec<recovery_failed_residents::FailedThreadCreationSource>,
+    failed_thread_creation_graph_return:
+        std::sync::Mutex<Arc<recovery_graph::RecoveryGraphReturnSlot>>,
     failed_markers: Option<crate::composer_marker_seal::DraftMarkerSealRetainedFlights>,
     graph: Option<PublishedAppServices>,
     failed_close: Option<beryl_home_store::HomeCloseError>,
@@ -209,6 +212,10 @@ impl ProcessServiceOwner {
             first_configurator: std::sync::Mutex::new(None),
             first_cleanups: std::sync::Mutex::new(Vec::new()),
             failed_residents: Vec::new(),
+            failed_thread_creations: Vec::new(),
+            failed_thread_creation_graph_return: std::sync::Mutex::new(Arc::new(
+                std::sync::Mutex::new(None),
+            )),
             failed_markers: None,
             graph: None,
             failed_close: None,

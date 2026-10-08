@@ -28,6 +28,14 @@ pub(crate) struct ResidentRecoveryWindow {
 }
 
 impl ResidentRecoveryWindow {
+    pub(super) fn retain_creation_configuration_after_detach(&mut self) {
+        self.attached.take();
+        self.bound = false;
+        self.configurator = Some(ResidentWindowConfiguration::mount_configurator(
+            &self.configuration,
+        ));
+    }
+
     pub(crate) fn unprepared(
         window: WindowHandle<MainWindowShellRoot>,
         configure: ResidentRecoveryConfigurator,
@@ -398,6 +406,37 @@ impl RunningProcessOwner {
         })
         .map_err(|error| error.to_string())??;
         for entry in windows.iter_mut() {
+            let creation = cx
+                .update(|app| -> Result<bool, String> {
+                    let window = entry
+                        .window
+                        .read(app)
+                        .map_err(|error| error.to_string())?
+                        .controller()
+                        .ok_or("Recovery controller is missing")?
+                        .window_id();
+                    owner
+                        .recovery_owner()?
+                        .borrow()
+                        .committed_thread_creation_window(request, window)
+                })
+                .map_err(|error| error.to_string())??;
+            if creation && entry.attached.is_none() {
+                entry.attached = Some(
+                    Self::attach_recovered_thread_creation_pass(
+                        owner,
+                        request,
+                        entry.window,
+                        appearance,
+                        cancellation.clone(),
+                        cx,
+                    )
+                    .await?,
+                );
+                entry.adapters.take();
+                entry.configurator.take();
+                entry.bound = true;
+            }
             if entry.attached.is_none() {
                 let configuration = entry.configuration.clone();
                 let current_configuration = configuration.clone();

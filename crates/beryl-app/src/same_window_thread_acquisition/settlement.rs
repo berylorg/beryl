@@ -13,6 +13,12 @@ impl SameWindowThreadAcquisition {
     pub fn disposition(&self) -> SameWindowThreadDisposition {
         self.disposition
     }
+    pub fn retire_unadmitted(self) -> SameWindowThreadUnadmitted {
+        SameWindowThreadUnadmitted {
+            replacement: self.replacement,
+            _rows: self.rows,
+        }
+    }
     pub fn commit(self, store: &HomeStore, state: &BerylState) -> SameWindowThreadOutcome {
         if store.home_id() != self.home || store.generation_identity().ok() != Some(self.generation)
         {
@@ -141,16 +147,27 @@ impl SameWindowThreadPending {
                 self.problem = error;
                 SameWindowThreadOutcome::Pending(self)
             }
-            Ok(true) => SameWindowThreadOutcome::Settled(SameWindowThreadCommit {
-                window: self.replacement.future_window().clone(),
-                selection: self.replacement.future_selection(),
-                claim: self.replacement.future_claim(),
-                draft: self.draft,
-                disposition: self.disposition,
-                receipt: self.receipt.take().unwrap(),
-                later_failure: self.later_failure,
-                local_finalization: self.local_finalization,
-            }),
+            Ok(true) => self.settled(),
         }
+    }
+
+    pub(super) fn settled(mut self) -> SameWindowThreadOutcome {
+        let receipt = self
+            .receipt
+            .take()
+            .expect("settlement requires original commitment");
+        SameWindowThreadOutcome::Settled(SameWindowThreadCommit {
+            window: self.replacement.future_window().clone(),
+            selection: self.replacement.future_selection(),
+            claim: self.replacement.future_claim(),
+            draft: self.draft,
+            disposition: self.disposition,
+            original_receipt: receipt.clone(),
+            receipt,
+            later_failure: self.later_failure,
+            local_finalization: self.local_finalization,
+            replacement: self.replacement,
+            rows: self.rows,
+        })
     }
 }

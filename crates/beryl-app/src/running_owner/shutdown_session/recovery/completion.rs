@@ -6,6 +6,14 @@ use crate::{
 
 impl RunningProcessOwner {
     #[cfg(test)]
+    pub(crate) fn test_before_thread_creation_reopen(
+        &mut self,
+        hook: Box<dyn FnOnce(&crate::app_services::ProcessServiceOwner)>,
+    ) {
+        self.before_thread_creation_reopen = Some(hook);
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_interrupted_exit_start_gate(
         &self,
     ) -> std::sync::Arc<crate::cas_projection::initial_start::InitialStartGate> {
@@ -70,8 +78,26 @@ impl RunningProcessOwner {
                 let drafts = drafts
                     .try_borrow()
                     .map_err(|_| "Interrupted Exit drafts are busy")?;
+                #[cfg(test)]
+                let (process, before_reopen) = {
+                    let retained = &mut *owner;
+                    (
+                        &mut retained.process,
+                        &mut retained.before_thread_creation_reopen,
+                    )
+                };
+                #[cfg(not(test))]
                 let process = &mut owner.process;
                 drafts.release_recovered_mounts_after(&process.windows, &appearance, app, || {
+                    #[cfg(test)]
+                    if let Some(hook) = before_reopen.take() {
+                        hook(
+                            process
+                                .services
+                                .as_ref()
+                                .ok_or("Published recovery services are unavailable")?,
+                        );
+                    }
                     process
                         .services
                         .as_mut()

@@ -1,11 +1,44 @@
 use super::*;
 
 impl ActivationSource {
+    fn capture_completed_successor(&mut self) -> Result<(), String> {
+        if self.creation.is_some() && self.completed_successor.is_none() {
+            if let Some(target) = self.committed_selection() {
+                self.completed_successor = self
+                    .service
+                    .take_completed_thread_successor_cleanup(target)?;
+            }
+        }
+        Ok(())
+    }
     pub(super) fn irreversible(&self) -> bool {
-        self.outcome.is_some() || self.committed.is_some() || self.publication.is_some()
+        self.outcome.is_some()
+            || self.committed.is_some()
+            || self.publication.is_some()
+            || self
+                .creation
+                .as_ref()
+                .is_some_and(|source| source.irreversible())
     }
     pub(super) fn fail(&mut self, error: String) {
         self.error = Some(error);
+        if self.creation.is_some() {
+            if !self.irreversible() && !self.terminal_release_failure {
+                self.stage = if self
+                    .creation
+                    .as_ref()
+                    .is_some_and(|creation| creation.has_save_custody())
+                {
+                    Stage::ThreadRelease
+                } else if self.flush.is_some() {
+                    self.terminal_release_failure = true;
+                    self.stage
+                } else {
+                    Stage::RestoreAutosave
+                };
+            }
+            return;
+        }
         if !self.irreversible() && !self.retired {
             self.stage = if self.receipt.is_some() {
                 Stage::Retire
@@ -29,6 +62,7 @@ impl ActivationSource {
             return Err("Activation Home is unavailable; admitted custody is retained".into());
         }
         if self.cancellation.is_cancelled()
+            && self.creation.is_none()
             && !self.irreversible()
             && self.flush.is_none()
             && !matches!(self.stage, Stage::Retire | Stage::RestoreAutosave)
@@ -37,7 +71,30 @@ impl ActivationSource {
             return Ok(());
         }
         match self.stage {
+            Stage::ThreadSave
+            | Stage::ThreadPrepare
+            | Stage::ThreadCommit
+            | Stage::ThreadReconcile
+            | Stage::ThreadAdopt
+            | Stage::ThreadRelease => {
+                return self.run_thread_creation_source();
+            }
             Stage::Begin => {
+                if self.creation.is_some() {
+                    self.capture_completed_successor()?;
+                    if let Some(completed) = self.completed_successor.take() {
+                        match self
+                            .service
+                            .settle_completed_thread_successor_cleanup(completed)
+                        {
+                            Ok(progress) => self.completed_successor_progress = Some(progress),
+                            Err((completed, error)) => {
+                                self.completed_successor = Some(completed);
+                                return Err(error);
+                            }
+                        }
+                    }
+                }
                 let (home, state, syndic) = self
                     .reader
                     .activation_sources()
@@ -47,16 +104,34 @@ impl ActivationSource {
                 self.syndic = Some(syndic);
                 let (request, retirement) =
                     crate::bootstrap::thread_activation_request(self.target.thread_id())?;
-                let admission = self.service.begin_activation(
-                    self.target,
-                    request,
-                    retirement,
-                    &self.cancellation,
-                );
+                let committed_preparation = beryl_home_store::CommandCancellation::new();
+                let preparation_cancel = if self.creation.is_some() {
+                    &committed_preparation
+                } else {
+                    &self.cancellation
+                };
+                let admission = if self.creation.is_some() && self.receipt.is_some() {
+                    Ok(ActivationAdvance::Ready(self.receipt()?))
+                } else if self.creation.is_some() {
+                    self.service.begin_thread_creation_activation(
+                        self.target,
+                        request,
+                        retirement,
+                        preparation_cancel,
+                    )
+                } else {
+                    self.service.begin_activation(
+                        self.target,
+                        request,
+                        retirement,
+                        preparation_cancel,
+                    )
+                };
                 let admission = match admission {
                     Ok(value) => value,
                     Err(error) => {
                         self.receipt = self.service.pending_receipt();
+                        self.capture_completed_successor()?;
                         return Err(error);
                     }
                 };
@@ -219,6 +294,13 @@ impl ActivationSource {
                 self.stage = Stage::AcceptDisposal;
             }
             Stage::Complete => {
+                if self.creation.is_some() && self.completed_predecessor.is_none() {
+                    self.completed_predecessor =
+                        Some(self.service.take_completed_thread_predecessor_disposal(
+                            self.receipt()?,
+                            self.expected,
+                        )?);
+                }
                 let work = self
                     .widget_work
                     .take()
@@ -273,6 +355,13 @@ impl ActivationSource {
                 };
             }
             Stage::Revalidate => {
+                if let Some(creation) = &self.creation {
+                    creation
+                        .operation
+                        .as_ref()
+                        .ok_or("Original thread confirmation custody is missing")?
+                        .validate_publication()?;
+                }
                 let provider = self
                     .provider
                     .as_ref()
@@ -318,6 +407,7 @@ impl ActivationSource {
                 };
                 match advance {
                     RetirementAdvance::Retired => {
+                        self.capture_completed_successor()?;
                         self.retired = true;
                         self.stage = Stage::Detach;
                     }
@@ -339,7 +429,11 @@ impl ActivationSource {
                     self.service
                         .prepare_claim_autosave_source(self.expected, self.settings)?,
                 );
-                self.stage = Stage::Restore;
+                self.stage = if self.creation.is_some() {
+                    Stage::ThreadRestore
+                } else {
+                    Stage::Restore
+                };
             }
             _ => {}
         }
@@ -368,7 +462,13 @@ impl ActivationSource {
     pub(super) fn source_stage(&self) -> bool {
         matches!(
             self.stage,
-            Stage::Begin
+            Stage::ThreadSave
+                | Stage::ThreadPrepare
+                | Stage::ThreadCommit
+                | Stage::ThreadReconcile
+                | Stage::ThreadAdopt
+                | Stage::ThreadRelease
+                | Stage::Begin
                 | Stage::PrepareFence
                 | Stage::Flush
                 | Stage::Commit

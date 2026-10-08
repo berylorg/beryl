@@ -1,5 +1,8 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "same_window_thread_acquisition/candidate_recovery.rs"]
+mod candidate_recovery;
+
 include!("same_window_thread_acquisition/support.rs");
 use beryl_app::catalog_projection::{
     ThreadCatalogProjectionPreparation, prepare_thread_catalog_projection,

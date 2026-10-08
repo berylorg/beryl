@@ -29,6 +29,12 @@ use support::*;
 
 #[path = "runtime_setup_shell/catalog.rs"]
 mod catalog;
+#[path = "runtime_setup_shell/confirmation.rs"]
+mod confirmation;
+#[path = "runtime_setup_shell/confirmation_failures.rs"]
+mod confirmation_failures;
+#[path = "runtime_setup_shell/confirmation_recovery.rs"]
+mod confirmation_recovery;
 #[path = "runtime_setup_shell/lifecycle.rs"]
 mod lifecycle;
 #[path = "runtime_setup_shell/native.rs"]

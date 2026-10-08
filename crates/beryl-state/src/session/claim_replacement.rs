@@ -1,13 +1,18 @@
 use std::path::PathBuf;
 
-use beryl_home_store::{HomeGenerationIdentity, HomeStore, MutationContribution, PointReadLimit};
+use beryl_home_store::{
+    HomeCandidateRecoveryAccess, HomeGenerationIdentity, HomeStore, MutationContribution,
+    PointReadLimit,
+};
 use beryl_model::{BerylHomeId, DomainRevision, SyndicThreadId, WindowId};
 
 use super::{
-    CLAIM_V1_BYTES, RememberedTarget, ReplaceWindowClaim, SessionDomain, SessionHeader,
-    SessionMutationError, SessionState, SessionWindowRecord, SessionWindowRemovalEvidence,
-    ThreadClaimRecord, WindowClaimSelection,
-    codec::{ClaimByThreadCodec, ClaimByWindowCodec},
+    CLAIM_V1_BYTES, RememberedTarget, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionDomain, SessionHeader, SessionMutationError, SessionState,
+    SessionWindowRecord, SessionWindowRemovalEvidence, ThreadClaimRecord, WindowClaimSelection,
+    codec::{
+        ClaimByThreadCodec, ClaimByWindowCodec, HEADER_KEY, SessionHeaderCodec, SessionWindowCodec,
+    },
 };
 
 #[derive(Debug)]
@@ -202,6 +207,74 @@ impl SessionState {
         if current.header() == &prepared.header
             && current.window() == &prepared.window
             && current.claim() == Some(prepared.claim)
+            && target == Some(prepared.claim)
+            && prior.is_none()
+        {
+            return Ok(WindowClaimReplacementState::Committed);
+        }
+        Ok(WindowClaimReplacementState::Collision)
+    }
+
+    pub fn classify_window_claim_replacement_candidate(
+        &self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        prepared: &PreparedWindowClaimReplacement,
+    ) -> Result<WindowClaimReplacementState, SessionMutationError> {
+        if access.home_id() != prepared.home_id
+            || access.canonical_path() != prepared.canonical_path
+        {
+            return Err(invalid("claim replacement belongs to another home"));
+        }
+        let revision = access.home_revision()?;
+        let header = access.read_point::<SessionDomain, SessionHeaderCodec>(
+            &self.handle,
+            &HEADER_KEY,
+            PointReadLimit::new(SESSION_HEADER_V1_BYTES + 4).expect("fixed header limit"),
+        )?;
+        let window = access.read_point::<SessionDomain, SessionWindowCodec>(
+            &self.handle,
+            &prepared.window.window_id(),
+            PointReadLimit::new(SESSION_WINDOW_V1_BYTES + 4).expect("fixed window limit"),
+        )?;
+        let limit = PointReadLimit::new(CLAIM_V1_BYTES + 4).expect("fixed claim limit");
+        let by_window = access.read_point::<SessionDomain, ClaimByWindowCodec>(
+            &self.handle,
+            &prepared.window.window_id(),
+            limit,
+        )?;
+        let target = access.read_point::<SessionDomain, ClaimByThreadCodec>(
+            &self.handle,
+            &prepared.claim.thread_id(),
+            limit,
+        )?;
+        let prior = prepared
+            .original
+            .claim()
+            .map(|claim| {
+                access.read_point::<SessionDomain, ClaimByThreadCodec>(
+                    &self.handle,
+                    &claim.thread_id(),
+                    limit,
+                )
+            })
+            .transpose()?
+            .flatten();
+        if access.home_revision()? != revision {
+            return Err(invalid(
+                "claim replacement sources changed during candidate audit",
+            ));
+        }
+        if header.as_ref() == Some(prepared.original.header())
+            && window.as_ref() == Some(prepared.original.window())
+            && by_window == prepared.original.claim()
+            && prior == prepared.original.claim()
+            && target.is_none()
+        {
+            return Ok(WindowClaimReplacementState::Original);
+        }
+        if header.as_ref() == Some(&prepared.header)
+            && window.as_ref() == Some(&prepared.window)
+            && by_window == Some(prepared.claim)
             && target == Some(prepared.claim)
             && prior.is_none()
         {

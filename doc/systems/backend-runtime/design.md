@@ -329,6 +329,62 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   rejection and publication races. Component acceptance does not substitute for complete-graph
   publication or running-window recovery evidence.
 
+### Interrupted New Thread During Same-Home Recovery
+
+- A published window with an admitted New Thread operation uses a distinct move-only recovery
+  bundle when its home fails. This is an explicit exception to unchanged selected-resident
+  reconstruction, not first-conversation recovery or permission to weaken unchanged-source checks.
+  The app process owner captures the exact surviving native/window identity, predecessor resident,
+  original save/publication and claim-operation custody, selection exclusion, optional unpublished
+  successor and completed cleanup stages after their workers drain.
+- Owner-supplied consuming retirement converts old-generation custody into bounded reference-free
+  evidence. Conversion failure returns or retains the original owners and blocks retirement.
+  Original command identity/outcome and candidate provenance survive; copied ids, a reconstructed
+  command receipt, ordinary cancellation or a dropped provider do not prove retirement. No old
+  service, worker, widget adapter or writer capability accompanies reopening. Process-owned native
+  presentation and selection exclusion remain protected outside the retired graph.
+- Original delivered prepublication Page cleanup may remain in the protected predecessor widget.
+  Its source owner may transfer a bounded cleanup-only capsule during capture preparation after
+  producer/native work drains. The capsule authenticates the original window/editor, environment,
+  session generation and delivered key/token/ledger correspondence; active producers, pending work
+  or undelivered outcomes refuse transfer. It retains only original protocol facts, shared pure
+  cleanup coordination and weak surviving-native GUI coordination, with no old Home/service,
+  dispatch adapter, worker or writer authority. Source transfer must positively end the old cleanup
+  driver before service-reference retirement; an empty source collection alone is not that proof.
+  Transfer failure retains actual source, capsule and driver custody.
+- The process-owned window draft holds this capsule separately from claim-disposition-specific
+  capture, so exact prior/noncommit conversion cannot drop it. Fresh candidate qualification still
+  precedes committed predecessor widget release. Original widget release or checked prior-resident
+  rebinding supplies the actual original cleanup effects; the capsule acknowledges only matching
+  key/token effects and proves its ledger and retained flights drained before coherent reopening.
+  It cannot mark Page tokens ready early, manufacture cleanup, authorize a new read, or repeat
+  completed cleanup. Cancellation and stale completion retain incomplete capsule custody.
+- Fresh candidate access settles original predecessor publication before the original claim
+  outcome, then performs dependent qualification. A never-admitted claim operation is classified
+  only by its original typed admission custody; it is not given a fabricated noncommit receipt.
+  Proven noncommit authenticates the same durable window and paired prior claim, and restores the
+  protected predecessor candidate, input, history, caret and selection through ordinary resident
+  recovery. Failed save retains newer edits and grants no claim-commitment inference.
+- Exact original commitment authenticates the same-home target window, paired Active claim,
+  runtime/root, remembered target and joined catalog facts. The old editor cannot be reconstructed
+  as active authority. Syndic/app retirement retains its saved checkpoint and remaining canonical
+  cleanup; candidate services prepare the exact committed target from its durable draft. An old
+  partial successor is cleanup custody only. Completed disposal/widget-release stages are not
+  repeated. A fresh candidate-generation target receipt grants fresh editor authority, without
+  recreating or reissuing the original claim command or its receipt.
+- Exact target editor/transcript preparation, predecessor cleanup, complete fresh bindings and
+  original outcome settlement precede coherent publication in the same surviving native reservation.
+  Interaction and selection exclusion release only at the established whole-graph reopening cut.
+  No inverse claim write, new acquisition, native replacement or automatic confirmation retry occurs.
+  Collision, conflicting source or terminal uncertainty retain original evidence and unavailable
+  dependent actions even when old graph resources have retired; retirement alone grants no success.
+- Qualify failed save before claim admission, pending claim resolving exact old or new, known
+  commitment before/after target preparation and each cleanup stage, candidate failure/cancellation,
+  stale delivery and terminal collision. Demonstrate complete old-generation disposal and actual
+  fresh graph/native-window continuation, not only safe capture refusal. Independently review
+  persistence identity and lifecycle custody. App-local capture and attachment obey
+  [shell lifecycle](../../../crates/beryl-app/doc/design-shell-lifecycle.md#failed-home-new-thread-recovery).
+
 ### Interrupted Exit During Same-Home Recovery
 
 - The process supervisor retains the reported-failed Exit's identity and bounded immutable session

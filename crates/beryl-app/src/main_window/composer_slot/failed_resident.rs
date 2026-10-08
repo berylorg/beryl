@@ -7,7 +7,7 @@ pub struct MainWindowFailedComposerRetirement {
     selection: MainWindowComposerSelectionIdentity,
     host: Option<Box<ComposerHostFailedResident>>,
     last_activation_generation: u64,
-    reconstructed: bool,
+    reconstructed: Option<MainWindowComposerSelectionIdentity>,
 }
 
 impl MainWindowComposerSlot {
@@ -63,7 +63,7 @@ impl MainWindowComposerSlot {
                     selection: identity,
                     host: Some(Box::new(host)),
                     last_activation_generation: self.last_activation_generation,
-                    reconstructed: false,
+                    reconstructed: None,
                 })
             }
             Err(host) => {
@@ -80,6 +80,18 @@ impl MainWindowComposerSlot {
 }
 
 impl MainWindowFailedComposerRetirement {
+    pub(crate) fn from_failed_thread_creation(
+        selection: MainWindowComposerSelectionIdentity,
+        host: ComposerHostFailedResident,
+        last_activation_generation: u64,
+    ) -> Self {
+        Self {
+            selection,
+            host: Some(Box::new(host)),
+            last_activation_generation,
+            reconstructed: None,
+        }
+    }
     pub(crate) fn prior_selector(&self) -> syndic_storage::DraftEditorCurrentSelectorV1 {
         self.host.as_ref().unwrap().selector()
     }
@@ -232,7 +244,7 @@ impl MainWindowFailedComposerRetirement {
         ),
         (Self, String),
     > {
-        if self.reconstructed {
+        if self.reconstructed.is_some() {
             return Err((
                 self,
                 "failed resident reconstruction is already owned".into(),
@@ -285,7 +297,78 @@ impl MainWindowFailedComposerRetirement {
             },
         ));
         slot.last_activation_generation = self.last_activation_generation;
-        self.reconstructed = true;
+        self.reconstructed = slot.selected_identity();
         Ok((slot, window, self))
+    }
+
+    pub(crate) fn settle_cancelled_reconstruction(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &SyndicStorage,
+        state: &beryl_state::BerylState,
+        slot: &mut MainWindowComposerSlot,
+    ) -> Result<(), String> {
+        let expected = self
+            .reconstructed
+            .ok_or("original resident reconstruction is not owned")?;
+        if !self
+            .host
+            .as_mut()
+            .unwrap()
+            .qualify_saved(candidate, storage)?
+        {
+            return Err("cancelled resident reconstruction original save is not proven".into());
+        }
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        if access.home_id() != expected.binding().home_id()
+            || access.generation() != expected.binding().home_generation()
+            || expected.window_id() != self.selection.window_id()
+            || slot.window_id != expected.window_id()
+            || slot.selected_identity() != Some(expected)
+            || slot.disposed
+            || slot.pending.is_some()
+            || slot.disposal_stage.is_some()
+            || slot.submission_successor.is_some()
+            || slot.thread_predecessor_save.is_some()
+            || slot.failed_thread_successor.is_some()
+            || slot.completed_thread_successor.is_some()
+            || slot.capture_thread_cleanup
+            || slot.native_lineage_suspension.is_some()
+            || slot.window_close.is_some()
+            || slot.last_activation_generation != self.last_activation_generation
+        {
+            return Err("cancelled resident reconstruction correspondence changed".into());
+        }
+        expected
+            .validate_candidate_claim(&access, state)
+            .map_err(|error| error.to_string())?;
+        let (binding, selector) = self.host.as_ref().unwrap().reconstruction_facts()?;
+        if binding != expected.binding()
+            || !storage
+                .draft_editor_candidate_is_saved_candidate(&access, binding.candidate(), selector)
+                .map_err(|error| error.to_string())?
+        {
+            return Err("cancelled resident reconstruction saved source changed".into());
+        }
+        let selected = slot.selected.as_mut().unwrap();
+        let published = selected.draft_state.published();
+        if selected.dispatcher.binding != binding
+            || !selected.dispatcher.is_drained()
+            || selected.draft_state.adopted() != binding
+            || published.candidate_generation() != binding.candidate().candidate_generation()
+            || published.root() != selector.root()
+            || published.history() != selector.history()
+        {
+            return Err("cancelled resident reconstruction dispatcher is retained".into());
+        }
+        selected
+            .host
+            .retire_cancelled_failed_resident_reconstruction(binding, selector)?;
+        slot.selected.take();
+        slot.disposed = true;
+        self.reconstructed = None;
+        Ok(())
     }
 }

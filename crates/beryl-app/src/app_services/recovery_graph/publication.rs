@@ -31,6 +31,7 @@ impl ProcessServiceOwner {
         self.require_settled_custody()
             .map_err(|error| error.to_string())?;
         check_cancellation(cancellation).map_err(|error| error.to_string())?;
+        graph.validate_thread_creations()?;
         let services = graph.services.as_mut().expect("complete recovery services");
         assert!(
             services.marker.is_some() && services.activity.is_some() && services.theme.is_some()
@@ -69,10 +70,16 @@ impl ProcessServiceOwner {
         });
         if let Some(first) = graph.first_composer.take() {
             assert!(
-                first.release_publication().is_ok(),
+                (*first).release_publication().is_ok(),
                 "qualified first editor transfers with whole graph publication"
             );
         }
+        assert!(
+            graph.release_thread_creation_publications().is_ok(),
+            "qualified New Thread editor transfers with whole graph publication"
+        );
+        self.failed_thread_creations
+            .append(&mut graph.failed_thread_creations);
         let retirement = self.recovery_retirement.take().unwrap();
         self.attempt = InitialServiceAttemptState::Published(Some(retirement.fence));
         drop(prepared.take());
@@ -93,11 +100,54 @@ impl ProcessServiceOwner {
         if graph.home().health().generation() != Some(generation) {
             return Err("Published recovery generation changed".into());
         }
-        graph
-            .cas()
-            .try_reopen_shutdown_admission(fence)
-            .map_err(|error| error.to_string())?;
+        for source in &self.failed_thread_creations {
+            source
+                .operation
+                .exclusion
+                .as_ref()
+                .ok_or("original New Thread exclusion is missing")?
+                .validate_owner()?;
+            if source.committed {
+                source
+                    .retirement
+                    .as_ref()
+                    .ok_or("original New Thread cleanup is missing")?
+                    .validate_complete_retirement()?;
+            }
+        }
+        if self.failed_thread_creations.is_empty() {
+            graph
+                .cas()
+                .try_reopen_shutdown_admission(fence)
+                .map_err(|error| error.to_string())?;
+        } else {
+            graph
+                .cas()
+                .try_reopen_shutdown_admission_with(
+                    fence,
+                    || {
+                        self.failed_thread_creations
+                            .iter()
+                            .map(|source| {
+                                source
+                                    .operation
+                                    .exclusion
+                                    .as_ref()
+                                    .ok_or("original New Thread exclusion is missing".to_owned())?
+                                    .prepare_coherent_release()
+                            })
+                            .collect::<Result<Vec<_>, String>>()
+                    },
+                    |releases| {
+                        for release in releases {
+                            release.apply();
+                        }
+                    },
+                )
+                .map_err(|error| error.to_string())??;
+        }
         self.attempt = InitialServiceAttemptState::Published(None);
+        self.failed_thread_creations.clear();
         Ok(())
     }
 }

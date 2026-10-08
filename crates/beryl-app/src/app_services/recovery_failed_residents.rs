@@ -59,6 +59,17 @@ pub(super) struct FailedResidentSource {
     operation: Option<DraftPieceOperationIdV1>,
 }
 
+pub(super) struct FailedThreadCreationSource {
+    pub(super) operation: Box<RetiredSameWindowThreadOperation>,
+    pub(super) retirement:
+        Option<Box<crate::main_window::MainWindowFailedThreadCreationRetirement>>,
+    pub(super) window: beryl_model::WindowId,
+    pub(super) seed: Option<RangeRestorationSeed>,
+    pub(super) prior: crate::main_window::MainWindowComposerSelectionIdentity,
+    pub(super) qualified: bool,
+    pub(super) committed: bool,
+}
+
 impl FailedResidentSource {
     pub(crate) fn new(
         retired: MainWindowFailedComposerRetirement,
@@ -77,6 +88,136 @@ impl FailedResidentSource {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn retain_failed_thread_creation(
+        &mut self,
+        operation: Box<RetiredSameWindowThreadOperation>,
+        retirement: Box<crate::main_window::MainWindowFailedThreadCreationRetirement>,
+        seed: Option<RangeRestorationSeed>,
+    ) -> Result<
+        (),
+        (
+            Box<RetiredSameWindowThreadOperation>,
+            Box<crate::main_window::MainWindowFailedThreadCreationRetirement>,
+        ),
+    > {
+        let window = retirement.prior_selection().window_id();
+        if self
+            .failed_thread_creations
+            .iter()
+            .any(|source| source.window == window)
+            || self.failed_thread_creations.len() >= beryl_state::MAX_RESTORABLE_WINDOWS
+        {
+            return Err((operation, retirement));
+        }
+        self.failed_thread_creations
+            .push(FailedThreadCreationSource {
+                operation,
+                prior: retirement.prior_selection(),
+                retirement: Some(retirement),
+                window,
+                seed,
+                qualified: false,
+                committed: false,
+            });
+        Ok(())
+    }
+
+    pub(crate) fn prepare_failed_thread_creations(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        original: &mut crate::running_owner::RunningShutdownSession,
+        cancellation: &CommandCancellation,
+    ) -> Result<(), String> {
+        if self.has_returned_thread_creation_graph() {
+            return Err(
+                "original New Thread candidate graph must return before fresh preparation".into(),
+            );
+        }
+        if self.failed_thread_creations.is_empty() {
+            return Ok(());
+        }
+        let storage =
+            SyndicStorage::reacquire_candidate(candidate).map_err(|error| error.to_string())?;
+        let state =
+            BerylState::reacquire_candidate(candidate).map_err(|error| error.to_string())?;
+        for source in &mut self.failed_thread_creations {
+            if cancellation.is_cancelled() {
+                return Err("original thread creation recovery was cancelled".into());
+            }
+            if source.retirement.is_none() {
+                source.operation.settle_claim(
+                    &candidate
+                        .recovery_access()
+                        .map_err(|error| error.to_string())?,
+                    &state,
+                )?;
+                continue;
+            }
+            let retirement = source.retirement.as_mut().unwrap();
+            let saved = retirement.settle_predecessor_publication(candidate, &storage)?;
+            if !saved && source.operation.claim_was_admitted() {
+                return Err(
+                    "original admitted thread claim has no settled predecessor save".into(),
+                );
+            }
+            let access = candidate
+                .recovery_access()
+                .map_err(|error| error.to_string())?;
+            let committed = source.operation.settle_claim(&access, &state)?;
+            if !committed {
+                source.operation.qualify_prior_candidate(
+                    &access,
+                    &state,
+                    retirement.prior_selection(),
+                )?;
+            }
+            drop(access);
+            if !source.qualified {
+                original.accept_thread_creation_candidate(
+                    source.window,
+                    source.operation.committed(),
+                    candidate,
+                    &state,
+                )?;
+                source.qualified = true;
+                source.committed = committed;
+            } else if source.committed != committed {
+                return Err("original thread creation settlement changed".into());
+            }
+            if committed {
+                retirement.accept_committed_claim(
+                    source.operation.committed().unwrap(),
+                    candidate,
+                    &state,
+                )?;
+                retirement.settle_remaining_cleanup(candidate, &storage)?;
+            } else {
+                let seed = source
+                    .seed
+                    .ok_or("original noncommit prior editor protection is missing")?;
+                if self
+                    .failed_residents
+                    .iter()
+                    .any(|resident| resident.window == source.window)
+                {
+                    return Err("original noncommit prior reconstruction is duplicated".into());
+                }
+                let retirement = source.retirement.take().unwrap();
+                match retirement.into_prior_after_proven_noncommit() {
+                    Ok(retired) => {
+                        self.failed_residents
+                            .push(FailedResidentSource::new(retired, seed));
+                    }
+                    Err(retirement) => {
+                        source.retirement = Some(retirement);
+                        return Err("original noncommit predecessor retains cleanup custody".into());
+                    }
+                }
+            }
+        }
+        original.converge_candidate(candidate, &state.session())
+    }
+
     pub(crate) fn retain_cancelled_failed_residents(
         &mut self,
         graph: &mut super::recovery_graph::PreparedRecoveryServiceGraph,
@@ -88,6 +229,8 @@ impl ProcessServiceOwner {
                 .any(|retained| retained.window == source.window)
         }));
         self.failed_residents.append(&mut graph.failed_residents);
+        self.failed_thread_creations
+            .append(&mut graph.failed_thread_creations);
     }
 
     pub(crate) fn capture_failed_markers(&mut self) -> Result<(), String> {

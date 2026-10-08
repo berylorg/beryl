@@ -6,9 +6,14 @@ use crate::main_window::{
 
 mod detached;
 pub(super) mod recovery;
+mod thread_creation;
+pub(crate) use thread_creation::{FailedShutdownThreadCreation, RetainedThreadCreationMount};
 
 pub struct MainWindowShutdownDraft {
     pub(crate) failed: Option<FailedShutdownResident>,
+    pub(crate) thread_creation: Option<Box<FailedShutdownThreadCreation>>,
+    pub(super) prepublication_cleanup:
+        std::cell::RefCell<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>>,
     pub(super) root: gpui::EntityId,
     pub(super) retirement: Option<recovery::ResidentRetirement>,
     pub(super) detached_source: Option<syndic_storage::DetachedDraftReadSourceV1>,
@@ -100,6 +105,8 @@ impl MainWindowShellRoot {
         };
         Ok(MainWindowShutdownDraft {
             failed: None,
+            thread_creation: None,
+            prepublication_cleanup: std::cell::RefCell::new(None),
             root: cx.entity_id(),
             retirement: None,
             detached_source: None,

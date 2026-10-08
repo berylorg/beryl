@@ -25,7 +25,8 @@ impl PreparedRecoveryServiceGraph {
         {
             return Err("first conversation candidate does not match captured admission".into());
         }
-        let transcript = prepare_first_transcript(candidate, &self.syndic, facts.thread_id())?;
+        let transcript =
+            prepare_empty_thread_transcript(candidate, &self.syndic, facts.thread_id())?;
         if self
             .first_transcript
             .as_ref()
@@ -35,7 +36,7 @@ impl PreparedRecoveryServiceGraph {
         }
         self.first_transcript = Some(transcript);
         if self.first_composer.is_none() {
-            self.first_composer = Some(MainWindowFreshComposerPreparation::new_fresh(
+            self.first_composer = Some(Box::new(MainWindowFreshComposerPreparation::new_fresh(
                 candidate,
                 &self.state,
                 self.syndic.clone(),
@@ -43,7 +44,7 @@ impl PreparedRecoveryServiceGraph {
                 facts.thread_id(),
                 facts.draft_id(),
                 MainWindowComposerMarkerMetadataAuthority::new(self.state.assets()),
-            )?);
+            )?));
         }
         Ok(matches!(
             self.first_composer
@@ -77,7 +78,7 @@ impl PreparedRecoveryServiceGraph {
         &mut self,
     ) -> Result<&mut MainWindowFreshComposerPreparation, String> {
         self.first_composer
-            .as_mut()
+            .as_deref_mut()
             .ok_or_else(|| "fresh first conversation editor is unavailable".into())
     }
 
@@ -101,7 +102,7 @@ impl PreparedRecoveryServiceGraph {
                 .app_preparation_parts()
                 .ok_or("first conversation candidate is unavailable")?;
             first.revalidate_ready(candidate)?;
-            let transcript = prepare_first_transcript(
+            let transcript = prepare_empty_thread_transcript(
                 candidate,
                 &self.syndic,
                 first.window().selected_thread().unwrap().thread_id(),
@@ -116,7 +117,7 @@ impl PreparedRecoveryServiceGraph {
     }
 }
 
-fn prepare_first_transcript(
+pub(super) fn prepare_empty_thread_transcript(
     candidate: &mut HomeRecoveryCandidate,
     storage: &SyndicStorage,
     thread_id: beryl_model::SyndicThreadId,
@@ -179,14 +180,14 @@ impl ProcessServiceOwner {
         graph: &mut PreparedRecoveryServiceGraph,
     ) -> Result<(), String> {
         if let Some(first) = graph.first_composer.take() {
-            match first.capture_cleanup() {
+            match (*first).capture_cleanup() {
                 Ok(cleanup) => self
                     .first_cleanups
                     .get_mut()
                     .unwrap_or_else(|e| e.into_inner())
                     .push(cleanup),
                 Err((first, error)) => {
-                    graph.first_composer = Some(first);
+                    graph.first_composer = Some(Box::new(first));
                     return Err(error);
                 }
             }

@@ -61,6 +61,7 @@ impl MainWindowShellRoot {
             self.runtime_setup.flight = None;
         }
         drop(retained);
+        self.sync_thread_confirmation(cx);
         cx.notify();
     }
 

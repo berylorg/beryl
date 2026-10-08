@@ -82,6 +82,8 @@ pub(crate) struct RunningProcessOwner {
     waiting_for_exit: bool,
     ordinary_close_window: Option<gpui::WindowHandle<crate::main_window::MainWindowShellRoot>>,
     ordinary_commands_mounted: bool,
+    #[cfg(test)]
+    last_ordinary_command_failure: Option<(Option<beryl_model::WindowId>, String)>,
     cancelled_ordinary_close: Option<ordinary_close_session::OrdinaryCloseSession>,
     #[cfg(test)]
     before_ordinary_session_removal: Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
@@ -111,6 +113,16 @@ pub(crate) struct RunningProcessOwner {
     cancel_recovery_after_resident_admission: bool,
     #[cfg(test)]
     reject_ordinary_recovery_attachment_after: Option<usize>,
+    #[cfg(test)]
+    capture_resident_frames: bool,
+    #[cfg(test)]
+    captured_resident_frame: Option<Box<dyn FnOnce(&mut App)>>,
+    #[cfg(test)]
+    drop_thread_creation_graph: bool,
+    #[cfg(test)]
+    returned_thread_creation_graphs: usize,
+    #[cfg(test)]
+    before_thread_creation_reopen: Option<Box<dyn FnOnce(&ProcessServiceOwner)>>,
     #[cfg(test)]
     reject_first_conversation_widget_release: bool,
     #[cfg(test)]
@@ -255,6 +267,8 @@ impl RunningProcessOwner {
             waiting_for_exit: false,
             ordinary_close_window: None,
             ordinary_commands_mounted: false,
+            #[cfg(test)]
+            last_ordinary_command_failure: None,
             cancelled_ordinary_close: None,
             #[cfg(test)]
             before_ordinary_session_removal: None,
@@ -284,6 +298,16 @@ impl RunningProcessOwner {
             cancel_recovery_after_resident_admission: false,
             #[cfg(test)]
             reject_ordinary_recovery_attachment_after: None,
+            #[cfg(test)]
+            capture_resident_frames: false,
+            #[cfg(test)]
+            captured_resident_frame: None,
+            #[cfg(test)]
+            drop_thread_creation_graph: false,
+            #[cfg(test)]
+            returned_thread_creation_graphs: 0,
+            #[cfg(test)]
+            before_thread_creation_reopen: None,
             #[cfg(test)]
             reject_first_conversation_widget_release: false,
             #[cfg(test)]

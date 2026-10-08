@@ -27,6 +27,7 @@ use super::*;
 
 mod abandon_fresh;
 mod disposal;
+mod disposal_access;
 mod preparation;
 mod recovery;
 
@@ -148,6 +149,8 @@ impl PreparedDraftEditorCandidatePublicationV1 {
 
 #[derive(Clone)]
 pub struct PreparedDraftEditorCandidateSessionDisposeV1 {
+    home_id: beryl_model::BerylHomeId,
+    canonical_path: std::path::PathBuf,
     request: DraftEditorCandidateSessionDisposeRequestV1,
     canonical_request: Vec<u8>,
     frontier: DraftEditHistoryFrontierV1,
@@ -1709,154 +1712,6 @@ impl SyndicStorage {
         );
         if selector != request.selector() {
             return Ok(DraftEditorCandidatePublicationOutcomeV1::DurableBaseConflict(selector));
-        }
-        Err(if committed {
-            DraftEditorCandidatePublicationCommandErrorV1::Invariant
-        } else {
-            DraftEditorCandidatePublicationCommandErrorV1::NotCommitted
-        })
-    }
-
-    pub fn prepare_dispose_draft_editor_candidate_session(
-        &self,
-        store: &HomeStore,
-        request: DraftEditorCandidateSessionDisposeRequestV1,
-    ) -> Result<
-        PreparedDraftEditorCandidateSessionDisposeV1,
-        DraftEditorCandidatePublicationCommandErrorV1,
-    > {
-        if !request.expected_pair().is_coherent() {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        let limit = point_limit();
-        if let Some(record) =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, disposal_key(request), limit)?
-        {
-            let DraftEditorCandidateSessionRecordV1::OpenReceipt(occupied) = record else {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            };
-            let occupied = occupied
-                .disposal()
-                .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-            if !validate_disposal_receipt_in_store(self, store, occupied)? {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            }
-            return Ok(PreparedDraftEditorCandidateSessionDisposeV1 {
-                request,
-                canonical_request: canonical_candidate_disposal_request_bytes(request),
-                frontier: occupied.frontier().clone(),
-                initially_absent: false,
-            });
-        }
-        let head = match self.draft_editor_candidate_session(
-            store,
-            request.draft_id(),
-            request.session_id(),
-        )? {
-            DraftEditorCandidateSessionReadOutcomeV1::Active(head)
-            | DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => head,
-            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
-        };
-        if disposal_request_matches_head(request, &head) && head.active_operation().is_some() {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::ActiveOperation);
-        }
-        let frontier = self
-            .point::<DraftEditHistoryFrontiersFamily>(store, head.newest_history().key(), limit)?
-            .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-        if frontier.reference() != head.newest_history()
-            || !draft_edit_history_frontier_is_authenticated_v1(self, store, &frontier)?
-        {
-            return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-        }
-        Ok(PreparedDraftEditorCandidateSessionDisposeV1 {
-            request,
-            canonical_request: canonical_candidate_disposal_request_bytes(request),
-            frontier,
-            initially_absent: true,
-        })
-    }
-
-    pub fn dispose_draft_editor_candidate_session(
-        &self,
-        expected_domain_revision: DomainRevision,
-        prepared: PreparedDraftEditorCandidateSessionDisposeV1,
-    ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, DisposalMutation { prepared })
-    }
-
-    pub fn reconcile_draft_editor_candidate_session_disposal(
-        &self,
-        store: &HomeStore,
-        prepared: &PreparedDraftEditorCandidateSessionDisposeV1,
-        outcome: CommandOutcome,
-    ) -> Result<
-        DraftEditorCandidateSessionDisposeOutcomeV1,
-        DraftEditorCandidatePublicationCommandErrorV1,
-    > {
-        let committed = match outcome {
-            CommandOutcome::NotCommitted { .. } => false,
-            CommandOutcome::Committed { .. } => true,
-            CommandOutcome::Indeterminate { reconciliation, .. } => match store
-                .reconcile(&reconciliation.install_and_handle())
-                .map_err(DraftEditorCandidatePublicationCommandErrorV1::Reconciliation)?
-            {
-                ReconciliationResolution::ExactNew { .. } => true,
-                ReconciliationResolution::ExactOld => false,
-                ReconciliationResolution::ExactSuccessor { .. }
-                | ReconciliationResolution::Collision => {
-                    return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-                }
-            },
-        };
-        let request = prepared.request;
-        let limit = point_limit();
-        if let Some(record) =
-            self.point::<DraftEditorCandidateSessionsFamily>(store, disposal_key(request), limit)?
-        {
-            let DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) = record else {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            };
-            let receipt = receipt
-                .disposal()
-                .cloned()
-                .ok_or(DraftEditorCandidatePublicationCommandErrorV1::Invariant)?;
-            if !validate_disposal_receipt_in_store(self, store, &receipt)? {
-                return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant);
-            }
-            if receipt.request_bytes() != prepared.canonical_request {
-                return Ok(
-                    DraftEditorCandidateSessionDisposeOutcomeV1::OccupiedIdentityCollision(
-                        DraftEditorCandidateSessionDisposeCollisionProofV1::new(request, receipt),
-                    ),
-                );
-            }
-            return if committed && prepared.initially_absent {
-                Ok(DraftEditorCandidateSessionDisposeOutcomeV1::Disposed(
-                    receipt.after_head().clone(),
-                ))
-            } else {
-                Ok(DraftEditorCandidateSessionDisposeOutcomeV1::ExactReplay(
-                    receipt,
-                ))
-            };
-        }
-        let head = match self.draft_editor_candidate_session(
-            store,
-            request.draft_id(),
-            request.session_id(),
-        )? {
-            DraftEditorCandidateSessionReadOutcomeV1::Active(h)
-            | DraftEditorCandidateSessionReadOutcomeV1::Disposed(h) => h,
-            _ => return Err(DraftEditorCandidatePublicationCommandErrorV1::Invariant),
-        };
-        if head.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Disposed {
-            return Ok(DraftEditorCandidateSessionDisposeOutcomeV1::AlreadyDisposed(head));
-        }
-        if !disposal_request_matches_head(request, &head) {
-            return Ok(DraftEditorCandidateSessionDisposeOutcomeV1::DirtyConflict(
-                head,
-            ));
         }
         Err(if committed {
             DraftEditorCandidatePublicationCommandErrorV1::Invariant

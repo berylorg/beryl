@@ -3,6 +3,7 @@ mod disposal;
 pub(in crate::composer_host) use candidate::{
     add_asset_participant_candidate, prepare_asset_plan_candidate,
 };
+pub(crate) use disposal::RetainedComposerDisposal;
 mod execution;
 mod lane;
 pub(in crate::composer_host) mod retained;
@@ -159,6 +160,7 @@ pub(super) struct ComposerHostPublicationCoordinator {
     lane_generation: u64,
     pub(super) lane: Option<Box<ComposerHostPublicationLane>>,
     pub(in crate::composer_host) retained: Option<Box<retained::RetainedComposerPublication>>,
+    pub(in crate::composer_host) retained_disposal: Option<Box<RetainedComposerDisposal>>,
     #[cfg(feature = "test-faults")]
     convergence_read_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, syndic_storage::SyndicStorage) + Send>>,
@@ -170,6 +172,7 @@ impl ComposerHostPublicationCoordinator {
             lane_generation: 0,
             lane: None,
             retained: None,
+            retained_disposal: None,
             #[cfg(feature = "test-faults")]
             convergence_read_fault: None,
         }
@@ -301,7 +304,7 @@ pub(in crate::composer_host) enum PublicationAssetPlan {
 pub(super) struct PendingDisposal {
     pub(super) ticket: ComposerHostDisposalTicket,
     binding: ComposerHostBinding,
-    prepared: PreparedDraftEditorCandidateSessionDisposeV1,
+    pub(in crate::composer_host) prepared: PreparedDraftEditorCandidateSessionDisposeV1,
     cancellation: CommandCancellation,
     pub(super) reconciliation: Option<ReconciliationHandle>,
     terminal: Option<ComposerHostPublicationUnavailable>,

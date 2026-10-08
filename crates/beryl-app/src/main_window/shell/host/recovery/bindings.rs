@@ -66,18 +66,32 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
         self.validate_interrupted_exit_binding(draft, target, cx)?;
-        let Some((mount, _, close)) = &draft.composer else {
-            return Ok(true);
-        };
-        match mount.update(cx, |mount, cx| {
-            mount.release_interrupted_exit_draft(*close, cx)
-        })? {
-            crate::main_window::MainWindowConversationComposerCloseRelease::Pending => Ok(false),
-            crate::main_window::MainWindowConversationComposerCloseRelease::Released => Ok(true),
-            crate::main_window::MainWindowConversationComposerCloseRelease::Stale => {
-                Err("Recovery draft close ticket changed".into())
+        if let Some((mount, _, close)) = &draft.composer {
+            match mount.update(cx, |mount, cx| {
+                mount.release_interrupted_exit_draft(*close, cx)
+            })? {
+                crate::main_window::MainWindowConversationComposerCloseRelease::Pending => {
+                    return Ok(false);
+                }
+                crate::main_window::MainWindowConversationComposerCloseRelease::Released => {}
+                crate::main_window::MainWindowConversationComposerCloseRelease::Stale => {
+                    return Err("Recovery draft close ticket changed".into());
+                }
             }
         }
+        let drained = draft.advance_original_prepublication_cleanup(
+            self.controller
+                .as_ref()
+                .ok_or("Recovered cleanup controller is missing")?
+                .window_id(),
+        )?;
+        #[cfg(all(test, feature = "test-faults"))]
+        {
+            self.running_threads
+                .fixture_creation_page_release_acknowledgements =
+                draft.accepted_prepublication_page_release_acknowledgements()?;
+        }
+        Ok(drained)
     }
 
     pub(crate) fn validate_interrupted_exit_binding(

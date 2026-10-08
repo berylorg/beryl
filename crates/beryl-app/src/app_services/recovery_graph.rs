@@ -12,13 +12,20 @@ use crate::{
 };
 use beryl_home_store::{HomeGeneration, HomeRecoveryCandidate};
 
+pub(super) type RecoveryGraphReturnSlot =
+    std::sync::Mutex<Option<Box<PreparedRecoveryServiceGraph>>>;
+
 pub(crate) struct PreparedRecoveryServiceGraph {
-    pub(super) first_composer: Option<crate::main_window::MainWindowFreshComposerPreparation>,
+    pub(super) first_composer: Option<Box<crate::main_window::MainWindowFreshComposerPreparation>>,
     first_transcript: Option<crate::syndic_transcript::PreparedTranscriptActivation>,
     first_configurator: Option<crate::main_window::MainWindowCreationConfiguratorSource>,
     pub(super) runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     private_clipboard: Option<crate::main_window::MainWindowPrivateClipboardOwner>,
     pub(super) failed_residents: Vec<super::recovery_failed_residents::FailedResidentSource>,
+    pub(super) failed_thread_creations:
+        Vec<super::recovery_failed_residents::FailedThreadCreationSource>,
+    thread_creations: Vec<thread_creation::PreparedThreadCreation>,
+    return_slot: std::sync::Weak<RecoveryGraphReturnSlot>,
     process: ProcessAdmissionGate,
     pub(super) services: Option<PreparedRecoveryAppServices>,
     sessions: ScheduledExecutionSessions,
@@ -45,6 +52,40 @@ impl std::fmt::Debug for RecoveryServicePreparationError {
 }
 
 impl ProcessServiceOwner {
+    pub(super) fn recovery_graph_return_slot(&self) -> std::sync::Weak<RecoveryGraphReturnSlot> {
+        Arc::downgrade(
+            &self
+                .failed_thread_creation_graph_return
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+        )
+    }
+
+    pub(crate) fn has_returned_thread_creation_graph(&self) -> bool {
+        self.failed_thread_creation_graph_return
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some()
+    }
+
+    pub(crate) fn take_returned_thread_creation_graph(
+        &self,
+    ) -> Option<PreparedRecoveryServiceGraph> {
+        let mut current_slot = self
+            .failed_thread_creation_graph_return
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut returned = current_slot
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()?;
+        // Each restored graph receives a new return slot.
+        *current_slot = Arc::new(std::sync::Mutex::new(None));
+        returned.return_slot = Arc::downgrade(&current_slot);
+        Some(*returned)
+    }
     pub(crate) fn return_recovery_preparation_home(
         &mut self,
         expected: HomeGeneration,
@@ -68,6 +109,11 @@ impl ProcessServiceOwner {
         cancellation: &CommandCancellation,
     ) -> Result<PreparedRecoveryServiceGraph, RecoveryServicePreparationError> {
         let reject = |error: String| RecoveryServicePreparationError::Refused(error);
+        if self.has_returned_thread_creation_graph() {
+            return Err(reject(
+                "original New Thread candidate graph retains exclusive recovery custody".into(),
+            ));
+        }
         let retained = candidate
             .as_ref()
             .ok_or_else(|| reject("recovery candidate is unavailable".into()))?;
@@ -113,6 +159,9 @@ impl ProcessServiceOwner {
                 ),
             ),
             failed_residents: Vec::new(),
+            failed_thread_creations: Vec::new(),
+            thread_creations: Vec::new(),
+            return_slot: self.recovery_graph_return_slot(),
             process: self.process.clone(),
             services: None,
             sessions,
@@ -179,6 +228,7 @@ impl ProcessServiceOwner {
             .map_err(RecoveryServicePreparationError::App)?,
         );
         prepared.failed_residents = std::mem::take(&mut self.failed_residents);
+        prepared.failed_thread_creations = std::mem::take(&mut self.failed_thread_creations);
         Ok(prepared)
     }
 }
@@ -221,7 +271,8 @@ impl PreparedRecoveryServiceGraph {
             }
             _ => None,
         };
-        self.validate_first_conversation()
+        self.validate_first_conversation()?;
+        self.validate_thread_creations()
     }
 
     pub(crate) fn composer_recovery_read(
@@ -315,6 +366,30 @@ impl PreparedRecoveryServiceGraph {
 
 impl Drop for PreparedRecoveryServiceGraph {
     fn drop(&mut self) {
+        if !self.failed_thread_creations.is_empty() {
+            if let Some(slot) = self.return_slot.upgrade() {
+                let retained = Box::new(Self {
+                    first_composer: self.first_composer.take(),
+                    first_transcript: self.first_transcript.take(),
+                    first_configurator: self.first_configurator.take(),
+                    runtime_setup: self.runtime_setup.take(),
+                    private_clipboard: self.private_clipboard.take(),
+                    failed_residents: std::mem::take(&mut self.failed_residents),
+                    failed_thread_creations: std::mem::take(&mut self.failed_thread_creations),
+                    thread_creations: std::mem::take(&mut self.thread_creations),
+                    return_slot: self.return_slot.clone(),
+                    process: self.process.clone(),
+                    services: self.services.take(),
+                    sessions: self.sessions.clone(),
+                    attention: self.attention.take(),
+                    state: self.state.clone(),
+                    syndic: self.syndic.clone(),
+                    recovered_window: self.recovered_window.take(),
+                });
+                *slot.lock().unwrap_or_else(|error| error.into_inner()) = Some(retained);
+                return;
+            }
+        }
         if let Some(private_clipboard) = self.private_clipboard.take() {
             private_clipboard.retire();
         }
@@ -327,6 +402,7 @@ impl Drop for PreparedRecoveryServiceGraph {
 
 mod first_conversation;
 mod publication;
+mod thread_creation;
 
 #[cfg(all(test, feature = "test-faults", target_os = "windows"))]
 #[path = "../../tests/unit/app_services/recovery_graph_resident_support.rs"]

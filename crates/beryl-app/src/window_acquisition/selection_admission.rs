@@ -19,7 +19,29 @@ pub(crate) struct WindowSelectionLease {
     membership: Arc<()>,
     owner: Arc<()>,
     invoking: WindowId,
-    _reservation: ProcessAdmissionReservation,
+    reservation: Option<ProcessAdmissionReservation>,
+    retired: bool,
+}
+
+pub(crate) struct RetiredWindowSelectionLease {
+    registry: Arc<Mutex<AcquisitionFlights>>,
+    process: crate::process_admission::ProcessAdmissionGate,
+    membership: Arc<()>,
+    owner: Arc<()>,
+    invoking: WindowId,
+    home: beryl_model::BerylHomeId,
+    generation: beryl_home_store::HomeGeneration,
+    path: std::path::PathBuf,
+}
+
+pub(crate) struct PreparedRetiredWindowSelectionRelease<'a> {
+    registry: std::sync::MutexGuard<'a, AcquisitionFlights>,
+}
+
+impl PreparedRetiredWindowSelectionRelease<'_> {
+    pub(crate) fn apply(mut self) {
+        self.registry.selection_owner = None;
+    }
 }
 
 impl RuntimeBackedWindowProcessRegistry {
@@ -64,12 +86,57 @@ impl RuntimeBackedWindowProcessRegistry {
             membership,
             owner,
             invoking,
-            _reservation: reservation,
+            reservation: Some(reservation),
+            retired: false,
         })
     }
 }
 
 impl WindowSelectionLease {
+    pub(crate) fn retire_failed_home(
+        mut self: Arc<Self>,
+        home: &beryl_home_store::HomeStore,
+        generation: beryl_home_store::HomeGeneration,
+        invoking: WindowId,
+    ) -> Result<RetiredWindowSelectionLease, (Arc<Self>, String)> {
+        let health = home.health();
+        if health.state() != beryl_home_store::HomeHealthState::Failed
+            || health.generation() != Some(generation)
+            || self.invoking != invoking
+        {
+            return Err((
+                self,
+                "selection retirement does not match its failed home transfer".into(),
+            ));
+        }
+        let validation = self
+            .registry
+            .try_lock()
+            .map_err(|_| "selection retirement registry is busy".to_owned())
+            .and_then(|registry| self.validate(&registry).map_err(|error| error.to_string()));
+        if let Err(error) = validation {
+            return Err((self, error));
+        }
+        let Some(lease) = Arc::get_mut(&mut self) else {
+            return Err((
+                self,
+                "selection retirement still has original owners".into(),
+            ));
+        };
+        let retired = RetiredWindowSelectionLease {
+            registry: lease.registry.clone(),
+            process: lease.process.clone(),
+            membership: lease.membership.clone(),
+            owner: lease.owner.clone(),
+            invoking,
+            home: home.home_id(),
+            generation,
+            path: home.canonical_path().to_owned(),
+        };
+        lease.retired = true;
+        drop(lease.reservation.take());
+        Ok(retired)
+    }
     pub(crate) fn invoking(&self) -> WindowId {
         self.invoking
     }
@@ -119,6 +186,82 @@ impl WindowSelectionLease {
 }
 
 impl Drop for WindowSelectionLease {
+    fn drop(&mut self) {
+        if self.retired {
+            return;
+        }
+        self.process.settle(|| {
+            let mut registry = self
+                .registry
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if registry
+                .selection_owner
+                .as_ref()
+                .is_some_and(|owner| Arc::ptr_eq(owner, &self.owner))
+            {
+                registry.selection_owner = None;
+            }
+        });
+    }
+}
+
+impl RetiredWindowSelectionLease {
+    pub(crate) fn invoking(&self) -> WindowId {
+        self.invoking
+    }
+    pub(crate) fn validate_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<(), String> {
+        if access.home_id() != self.home
+            || access.canonical_path() != self.path
+            || access.generation() == self.generation
+        {
+            return Err("retained selection exclusion has another recovery candidate".into());
+        }
+        self.validate_owner()
+    }
+    pub(crate) fn validate_owner(&self) -> Result<(), String> {
+        let registry = self
+            .registry
+            .try_lock()
+            .map_err(|_| "retained selection registry is busy")?;
+        self.validate_registry(&registry)
+    }
+    fn validate_registry(&self, registry: &AcquisitionFlights) -> Result<(), String> {
+        if registry.close_owner.is_some()
+            || !registry.active.is_empty()
+            || !registry
+                .selection_owner
+                .as_ref()
+                .is_some_and(|owner| Arc::ptr_eq(owner, &self.owner))
+            || !Arc::ptr_eq(&registry.membership_revision, &self.membership)
+            || !registry.main_window_reservations.contains(&self.invoking)
+        {
+            return Err("retained selection exclusion membership changed".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn prepare_coherent_release(
+        &self,
+    ) -> Result<PreparedRetiredWindowSelectionRelease<'_>, String> {
+        let registry = self
+            .registry
+            .try_lock()
+            .map_err(|_| "retained selection registry is busy")?;
+        self.validate_registry(&registry)?;
+        Ok(PreparedRetiredWindowSelectionRelease { registry })
+    }
+    pub(crate) fn release(self) -> Result<(), (Self, String)> {
+        match self.validate_owner() {
+            Ok(()) => Ok(()),
+            Err(error) => Err((self, error)),
+        }
+    }
+}
+
+impl Drop for RetiredWindowSelectionLease {
     fn drop(&mut self) {
         self.process.settle(|| {
             let mut registry = self

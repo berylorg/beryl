@@ -182,3 +182,164 @@ fn live_commands_and_home_election_share_master_then_process_lock_order() {
     });
     drop(fixture.gate.execution_permit().reserve().unwrap());
 }
+
+#[test]
+fn home_election_failure_retains_original_selection_exclusion_until_one_successful_reopening() {
+    use crate::window_acquisition::RuntimeBackedWindowProcessRegistry;
+    use std::{cell::Cell, sync::Arc};
+
+    let directory = tempfile::tempdir().unwrap();
+    let faults = beryl_home_store::test_faults::FaultController::new();
+    let mut opening = beryl_home_store::HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    BerylState::register(&mut opening).unwrap();
+    SyndicStorage::register(&mut opening).unwrap();
+    let home = opening
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let original_generation = home.health().generation().unwrap();
+    let gate = ProcessAdmissionGate::new();
+    let registry = RuntimeBackedWindowProcessRegistry::new(gate.clone());
+    let window = beryl_model::WindowId::from_bytes([207; 16]);
+    let reservation = registry.reserve_main_window(window).unwrap();
+    let lease = Arc::new(registry.admit_selection(&[window], window).unwrap());
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(home.home_revision().is_err());
+    let retired = lease
+        .retire_failed_home(&home, original_generation, window)
+        .ok()
+        .unwrap();
+    let fence = gate.fence().unwrap();
+    let mut candidate = home.recover_same_home().unwrap();
+    retired
+        .validate_candidate(&candidate.recovery_access().unwrap())
+        .unwrap();
+    BerylState::reacquire_candidate(&candidate).unwrap();
+    let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let home = candidate.publish().unwrap();
+    let (provider, _sessions) = ProcessScheduledExecutionProvider::new();
+    let service = ProjectionConnectionService::new(
+        gate.clone(),
+        home,
+        storage,
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap(),
+        Box::new(provider),
+    )
+    .unwrap();
+    let home = service.home.as_deref().unwrap();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    command
+        .add(
+            service.storage.create_thread(
+                service.storage.revision(home).unwrap(),
+                CreateThread::ordinary(
+                    SyndicThreadId::from_bytes([208; 16]),
+                    SyndicDraftId::from_bytes([209; 16]),
+                    ExecutionBinding::new(
+                        RuntimeId::from_bytes([210; 16]),
+                        RootId::from_bytes([211; 16]),
+                        RuntimeNativePath::from_admitted(
+                            RuntimeMode::host(),
+                            PathFlavor::Windows,
+                            r"C:\work\beryl",
+                        )
+                        .unwrap(),
+                    ),
+                    SyndicTimestamp::from_unix_millis(1),
+                    DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+                ),
+            ),
+        )
+        .unwrap();
+    let prepared = Cell::new(0);
+    let applied = Cell::new(0);
+    let pause = faults.block_next(FaultPoint::AfterCommitBeforePersist);
+    let refused = std::thread::scope(|scope| {
+        let worker = scope.spawn(|| home.execute(command));
+        assert!(pause.wait_until_reached(std::time::Duration::from_secs(10)));
+        let result = service.try_reopen_shutdown_admission_with(
+            &fence,
+            || {
+                let guard = retired.prepare_coherent_release()?;
+                prepared.set(prepared.get() + 1);
+                Ok::<_, String>(guard)
+            },
+            |guard| {
+                guard.apply();
+                applied.set(applied.get() + 1);
+            },
+        );
+        pause.release();
+        assert!(matches!(
+            worker.join().unwrap(),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        result
+    });
+    assert_eq!(
+        refused,
+        Err(ProcessAdmissionReopenError::Home(HomeCoherenceError::Busy))
+    );
+    assert_eq!((prepared.get(), applied.get()), (1, 0));
+    retired.validate_owner().unwrap();
+    assert!(registry.selection_pending());
+    assert!(registry.test_close_is_blocked(&[window]));
+    assert!(registry.test_acquisition_is_blocked(beryl_model::WindowId::from_bytes([212; 16])));
+    assert!(matches!(
+        gate.execution_permit().reserve(),
+        Err(ProcessAdmissionError::Fenced)
+    ));
+    service
+        .try_reopen_shutdown_admission_with(
+            &fence,
+            || {
+                let guard = retired.prepare_coherent_release()?;
+                prepared.set(prepared.get() + 1);
+                Ok::<_, String>(guard)
+            },
+            |guard| {
+                guard.apply();
+                applied.set(applied.get() + 1);
+            },
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!((prepared.get(), applied.get()), (2, 1));
+    assert!(!registry.selection_pending());
+    drop(gate.execution_permit().reserve().unwrap());
+    assert!(matches!(
+        service.try_reopen_shutdown_admission_with(
+            &fence,
+            || {
+                let guard = retired.prepare_coherent_release()?;
+                prepared.set(prepared.get() + 1);
+                Ok::<_, String>(guard)
+            },
+            |guard| {
+                guard.apply();
+                applied.set(applied.get() + 1);
+            }
+        ),
+        Err(ProcessAdmissionReopenError::Process(
+            ProcessAdmissionError::Stale
+        ))
+    ));
+    assert_eq!((prepared.get(), applied.get()), (2, 1));
+    drop(retired);
+    drop(reservation);
+    let _ = service.close().unwrap();
+}

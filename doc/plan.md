@@ -94,42 +94,24 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 736: Establish Existing-Window Thread Claim Or Creation (finished)
+# Phase 735: Mount New Thread Root Confirmation (finished)
 
-Accepted atomic same-window reuse/create, claim/catalog/remembered-target publication and original
-process/editor custody. Canonical app/Beryl all-target checks, 27 acquisition/save cases, 17 strict
-deletion/catalog regressions, scoped formatting and independent semantic review passed.
-See [qualification](audits/same-window-thread-acquisition-qualification.md).
+Accepted ordinary root Confirm through exact same-window acquisition, original save/claim custody,
+coherent promotion and complete creation-specific failed-home recovery. Mounted uncertainty and
+close retention, positive original Page release, cancellation and same-fence retry are qualified.
+Canonical app/Beryl/State/Syndic checks, 191 nextest cases, scoped formatting and independent
+semantic review passed; retain the two reproduced baseline clipboard limitations.
+See [qualification](audits/new-thread-confirmation-mount-qualification.md).
 
+# Phase 737: Mount Primary New Thread In The Current Runtime And Root (wip)
 
-# Phase 735: Mount New Thread Root Confirmation (wip)
+Mount the primary segment under the [split-button contract](features/conversation-threads/design.md#new-thread-split-button),
+using the accepted same-window acquisition and committed activation path with the selected
+thread's exact immutable runtime/root. Keep the zero-runtime explanation, independent keyboard
+focus and secondary flyout behavior. Current eligible-empty selection remains a no-op.
 
-Complete ordinary New Thread scope/search, pending root selection and Confirm through accepted
-pristine reuse/create and existing-window activation. Verify exact remembered-target updates,
-cancellation/noncommit preservation, reconciliation and bounded picker behavior.
-
-Production entry point is the existing New Thread secondary segment's confirmed-selection
-thread/root picker. Successful Confirm closes it and coherently promotes the exact same-window
-conversation; pending selection alone changes no durable or visible conversation binding.
-
-- Map exact eligible root selection to enabled Confirm, keep missing/ineligible selection
-  explanatory, clear selection only when its root leaves the runtime scope, and start each opening
-  with all runtimes, empty search and no pending root. Preserve accepted bounded page/history behavior.
-- Admit one original confirmation using Phase 736's capability and the predecessor save fence;
-  keep Confirm visible/busy and suppress duplicate pointer, keyboard and programmatic commands.
-  Dismissal/cancellation before acceptance preserves current thread and remembered target.
-- Publish the exact accepted claim, remembered target, editor and transcript together after
-  original outcome and cleanup custody settle. Ordinary failure/noncommit restores eligible
-  selection and per-window failure feedback; indeterminate and terminal Unavailable retain exact
-  intent and explanatory unavailable presentation without operation retry or guessed noncommit.
-- Verify mounted create/reuse, preserved prior edited draft, runtime scope/search changes,
-  stale selections/pages, duplicate suppression, cancellation/noncommit, ambiguous outcome,
-  committed successor-preparation/cleanup failure and close/recovery custody. Run focused and
-  affected nextest checks, app/Beryl compilation, scoped formatting and independent review.
-
-Resumable milestone: Phase 736 is accepted. Mount the existing confirmed-selection picker using
-its exact operation and saved predecessor proof, with a typed entrance into the shared committed
-activation tail. Qualification must include close/recovery custody and irreversible committed
-preparation/cleanup failure. The Operator released
-the prior technical-plan pause and authorized this prerequisite; see
-[source evidence and clean correction](failures/new-thread-confirmation.md).
+Qualify pointer/keyboard/programmatic admission, scope identity, create/reuse/Current, duplicate
+suppression, preserved edited predecessor, remembered target and original reconciliation/cleanup
+custody. Reuse accepted Confirm evidence for its unchanged shared engine; verify the primary
+entrance and affected regressions, app/Beryl checks, scoped formatting and independent review.
+This accepts the primary command, not the remaining restoration/bootstrap or catalog mounts.

@@ -1,6 +1,11 @@
+mod failed_thread_creation;
 mod presentation;
 mod source;
 mod startup;
+mod thread_creation;
+pub(in crate::main_window::shell::host) use failed_thread_creation::{
+    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+};
 
 use super::*;
 use crate::composer_host::{
@@ -34,6 +39,7 @@ use std::sync::{Mutex, atomic::AtomicBool};
 
 #[derive(Clone)]
 pub(in crate::main_window::shell::host) struct UnviewedRunningActivation {
+    creation: bool,
     source: Arc<Mutex<ActivationSource>>,
     active: Arc<AtomicBool>,
     suspended: Arc<AtomicBool>,
@@ -43,6 +49,15 @@ pub(in crate::main_window::shell::host) struct UnviewedRunningActivation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Stage {
+    ThreadFence,
+    ThreadSave,
+    ThreadAcceptSave,
+    ThreadPrepare,
+    ThreadCommit,
+    ThreadReconcile,
+    ThreadAdopt,
+    ThreadRelease,
+    ThreadRestore,
     Begin,
     Install,
     PrepareFence,
@@ -74,6 +89,7 @@ struct ActivationSource {
     service: Arc<Service>,
     lease: Arc<crate::window_acquisition::WindowSelectionLease>,
     owner: Option<RunningThreadActivation>,
+    creation: Option<thread_creation::ThreadCreationSource>,
     outcome: Option<Outcome>,
     committed: Option<Commit>,
     home: Option<Arc<beryl_home_store::HomeServiceReference>>,
@@ -91,6 +107,10 @@ struct ActivationSource {
     widget_work: Option<WidgetWork>,
     release: Option<Release>,
     publication: Option<Publication>,
+    completed_predecessor: Option<crate::main_window::MainWindowCompletedThreadPredecessorDisposal>,
+    completed_successor: Option<crate::main_window::MainWindowCompletedThreadSuccessorCleanup>,
+    completed_successor_progress:
+        Option<crate::main_window::MainWindowCompletedThreadSuccessorProgress>,
     autosave: Option<Autosave>,
     settings: Option<(u64, ComposerHostAutosaveInterval)>,
     assets: beryl_state::AssetState,
@@ -129,12 +149,7 @@ pub(in crate::main_window::shell::host) struct RunningActivationFixtureHooks {
 impl UnviewedRunningActivation {
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fn committed_window_for_test(&self) -> Option<beryl_state::SessionWindowRecord> {
-        self.source
-            .try_lock()
-            .ok()?
-            .committed
-            .as_ref()
-            .map(|commit| commit.window.clone())
+        self.source.try_lock().ok()?.committed_window().cloned()
     }
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fn diagnostics(&self) -> String {
@@ -170,6 +185,9 @@ impl UnviewedRunningActivation {
     }
     pub(in crate::main_window::shell::host) fn resume(&self) {
         self.suspended.store(false, Ordering::Release);
+    }
+    pub(in crate::main_window::shell::host) fn is_unavailable(&self) -> bool {
+        self.suspended.load(Ordering::Acquire)
     }
     pub(in crate::main_window::shell::host) fn is_drained(&self) -> bool {
         !self.active.load(Ordering::Acquire)
@@ -210,7 +228,9 @@ impl MainWindowShellRoot {
             self.retain_running_activation_failure(error, window, cx);
             return;
         }
-        if source.stage == Stage::Begin && self.running_threads.workers.retained() != 0 {
+        if matches!(source.stage, Stage::Begin | Stage::ThreadFence)
+            && self.running_threads.workers.retained() != 0
+        {
             return;
         }
         if !source.reader.current()
@@ -256,20 +276,29 @@ impl MainWindowShellRoot {
         let result = self.accept_running_activation_stage(&operation, &mut source, window, cx);
         if let Err(error) = result {
             source.fail(error.clone());
+            if source.terminal_release_failure {
+                operation.suspend();
+            }
             self.retain_running_activation_failure(error, window, cx);
         }
         if source.stage == Stage::Finished {
             let result = source.error.take().map_or(Ok(()), Err);
             let success = result.is_ok();
             let reader = source.reader.clone();
+            let creation = source.creation.is_some();
             drop(source);
             self.running_threads.activation_operation = None;
             if success {
-                self.acknowledge_running_activation(&reader);
-                self.dismiss_running_picker(window, cx);
+                if !creation {
+                    self.acknowledge_running_activation(&reader);
+                    self.dismiss_running_picker(window, cx);
+                }
                 window.activate_window();
             }
             self.finish_running_activation(result, window, cx);
+            if creation {
+                self.finish_thread_confirmation(success, window, cx);
+            }
             self.resume_running_thread_reads(window, cx);
             return;
         }
@@ -295,6 +324,10 @@ impl MainWindowShellRoot {
             self.schedule_running_activation_wake(operation, delay, window, cx);
             return;
         }
+        #[cfg(all(test, feature = "test-faults"))]
+        let fixture_real_reconciliation = self.running_threads.fixture_real_creation_reconciliation
+            && operation.creation
+            && source.stage == Stage::ThreadReconcile;
         drop(source);
         if operation.active.swap(true, Ordering::AcqRel) {
             return;
@@ -336,6 +369,22 @@ impl MainWindowShellRoot {
                 suspended.store(true, Ordering::Release);
             }
         });
+        #[cfg(all(test, feature = "test-faults"))]
+        let job = if fixture_real_reconciliation {
+            self.running_threads.fixture_real_creation_reconciliation = false;
+            let (returned, completion) = futures_channel::oneshot::channel();
+            let worker = std::thread::spawn(move || {
+                work.run();
+                let _ = returned.send(());
+            });
+            cx.background_executor().spawn(async move {
+                let _ = completion.await;
+                let _ = worker.join();
+            })
+        } else {
+            cx.background_executor().spawn(async move { work.run() })
+        };
+        #[cfg(not(all(test, feature = "test-faults")))]
         let job = cx.background_executor().spawn(async move { work.run() });
         self.running_threads.activation_task = Some(cx.spawn_in(window, async move |this, cx| {
             job.await;

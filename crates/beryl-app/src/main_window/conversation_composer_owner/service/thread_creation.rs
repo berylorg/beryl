@@ -10,6 +10,11 @@ pub(crate) struct MainWindowThreadPredecessorSave {
     saved: ComposerHostSelectionSave,
 }
 
+pub(crate) struct MainWindowRetiredThreadPredecessorSave {
+    pub(crate) selected: MainWindowComposerSelectionIdentity,
+    pub(crate) saved: ComposerHostSelectionSave,
+}
+
 impl MainWindowConversationComposerService {
     pub(in crate::main_window) fn begin_thread_predecessor_save(
         &self,
@@ -98,6 +103,26 @@ impl MainWindowConversationComposerService {
 }
 
 impl MainWindowThreadPredecessorSave {
+    pub(crate) fn retire_failed_home(
+        self,
+    ) -> Result<MainWindowRetiredThreadPredecessorSave, (Self, String)> {
+        let validation = (|| {
+            self.service.qualify_failed_resident_home(self.selected)?;
+            self.service
+                .slot
+                .lock()
+                .map_err(|_| "thread predecessor retirement lock failed")?
+                .validate_failed_thread_predecessor_save(self.selected, self.saved)
+                .map_err(|error| error.to_string())
+        })();
+        match validation {
+            Ok(()) => Ok(MainWindowRetiredThreadPredecessorSave {
+                selected: self.selected,
+                saved: self.saved,
+            }),
+            Err(error) => Err((self, error)),
+        }
+    }
     pub(crate) fn selected(&self) -> MainWindowComposerSelectionIdentity {
         self.selected
     }
@@ -114,7 +139,7 @@ impl MainWindowThreadPredecessorSave {
         self,
         receipt: super::super::MainWindowComposerActivationReceipt,
         target: beryl_state::WindowClaimSelection,
-    ) -> Result<(), (Self, String)> {
+    ) -> Result<MainWindowRetiredThreadPredecessorSave, (Self, String)> {
         let result = (|| {
             self.service
                 .slot
@@ -129,7 +154,13 @@ impl MainWindowThreadPredecessorSave {
                 )
                 .map_err(|error| error.to_string())
         })();
-        result.map_err(|error| (self, error))
+        match result {
+            Ok(()) => Ok(MainWindowRetiredThreadPredecessorSave {
+                selected: self.selected,
+                saved: self.saved,
+            }),
+            Err(error) => Err((self, error)),
+        }
     }
     pub(crate) fn release(self, state: &beryl_state::BerylState) -> Result<(), (Self, String)> {
         let result = (|| {

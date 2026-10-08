@@ -15,6 +15,11 @@ use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 mod close;
 mod close_retirement;
 mod failed_resident;
+mod failed_thread_creation;
+pub(crate) use failed_thread_creation::{
+    MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
+    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedThreadCreationRetirement,
+};
 mod fresh_candidate;
 mod surviving_native_close;
 pub use failed_resident::MainWindowFailedComposerRetirement;
@@ -49,6 +54,10 @@ pub struct MainWindowComposerSlot {
     disposal_stage: Option<DisposalStage>,
     submission_successor: Option<MainWindowComposerActivationReceipt>,
     thread_predecessor_save: Option<crate::composer_host::ComposerHostFlushTicket>,
+    failed_thread_successor: Option<failed_thread_creation::RetiredThreadSuccessor>,
+    capture_thread_cleanup: bool,
+    completed_thread_successor:
+        Option<failed_thread_creation::MainWindowCompletedThreadSuccessorCleanup>,
     native_lineage_suspension: Option<MainWindowComposerSelectionIdentity>,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     #[cfg(feature = "test-faults")]
@@ -192,6 +201,9 @@ impl MainWindowComposerSlot {
             disposal_stage: None,
             submission_successor: None,
             thread_predecessor_save: None,
+            failed_thread_successor: None,
+            capture_thread_cleanup: false,
+            completed_thread_successor: None,
             native_lineage_suspension: None,
             window_close: None,
             #[cfg(feature = "test-faults")]
@@ -458,6 +470,9 @@ impl MainWindowComposerSlot {
                     source_selector: Some(source_selector),
                     stage: PendingStage::Ready,
                     abandonment: None,
+                    abandonment_outcome: None,
+                    retain_thread_cleanup: self.capture_thread_cleanup,
+                    abandonment_canonical_home: None,
                 });
                 Ok(MainWindowComposerActivationAdvance::Ready(receipt))
             }

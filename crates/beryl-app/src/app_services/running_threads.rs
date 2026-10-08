@@ -1,10 +1,13 @@
 use super::*;
+
+mod thread_creation_recovery;
 use crate::cas_projection::{
     ProcessWorkError, ProcessWorkPageLimits, ProcessWorkQueryPage, ProcessWorkQueryRevision,
     ProcessWorkReader, ProjectionCancellationToken,
 };
 use crate::lifecycle_attention::{LifecycleAttentionToken, ProcessLifecycleAttentionPool};
 use std::sync::Weak;
+pub(crate) use thread_creation_recovery::*;
 
 pub(crate) struct RunningThreadsObservation {
     observation: beryl_home_store::HomeMutationObservation,
@@ -37,6 +40,14 @@ impl ProcessServiceOwner {
     }
     pub(crate) fn running_selection_pending(&self) -> bool {
         self.windows.selection_pending()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_recovery_process_is_fenced(&self) -> bool {
+        matches!(
+            self.process.execution_permit().reserve(),
+            Err(crate::process_admission::ProcessAdmissionError::Fenced)
+        )
     }
     pub(crate) fn admit_running_selection(
         &self,
@@ -71,6 +82,10 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedRunningThreadsReader {
+    pub(crate) fn failed_retirement_home(&self) -> &beryl_home_store::HomeStore {
+        &self.home
+    }
+
     pub(crate) fn prepare_thread_creation(
         &self,
         request: crate::same_window_thread_acquisition::SameWindowThreadRequest,
@@ -135,6 +150,7 @@ impl PublishedRunningThreadsReader {
                     saved: Some(saved),
                     prepared: Some(prepared),
                     outcome: None,
+                    adopted_save: None,
                 })
             }
         })
@@ -365,6 +381,7 @@ pub(crate) struct PublishedSameWindowThreadOperation {
     saved: Option<crate::main_window::MainWindowThreadPredecessorSave>,
     prepared: Option<crate::same_window_thread_acquisition::SameWindowThreadAcquisition>,
     outcome: Option<crate::same_window_thread_acquisition::SameWindowThreadOutcome>,
+    adopted_save: Option<crate::main_window::MainWindowRetiredThreadPredecessorSave>,
 }
 
 impl PublishedSameWindowThreadOperation {
@@ -486,7 +503,10 @@ impl PublishedSameWindowThreadOperation {
             .take()
             .ok_or("Thread creation predecessor custody is missing")?;
         match saved.adopt(receipt, target) {
-            Ok(()) => Ok(()),
+            Ok(saved) => {
+                self.adopted_save = Some(saved);
+                Ok(())
+            }
             Err((saved, error)) => {
                 self.saved = Some(saved);
                 Err(error)

@@ -27,11 +27,17 @@ impl ResidentWindowConfiguration {
             configure,
             selection: None,
         }));
-        let mounted = retained.clone();
-        let configurator = Box::new(move |selection| {
-            (mounted.borrow_mut().configure)(selection).map(|(config, _)| config)
-        });
+        let configurator = Self::mount_configurator(&retained);
         (retained, configurator)
+    }
+
+    pub(super) fn mount_configurator(
+        retained: &Rc<RefCell<Self>>,
+    ) -> MainWindowConversationComposerConfigurator {
+        let mounted = retained.clone();
+        Box::new(move |selection| {
+            (mounted.borrow_mut().configure)(selection).map(|(config, _)| config)
+        })
     }
 
     pub(super) fn prepare(

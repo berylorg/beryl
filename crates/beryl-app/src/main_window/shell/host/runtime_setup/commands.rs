@@ -74,9 +74,8 @@ impl MainWindowShellRoot {
                 }
             }
             PickerCommand::Return => self.setup_scope(None, window, cx),
-            PickerCommand::Confirm(_)
-            | PickerCommand::RetryCollection
-            | PickerCommand::RetryRuntime => {}
+            PickerCommand::Confirm(key) => self.begin_thread_confirmation(key, window, cx),
+            PickerCommand::RetryCollection | PickerCommand::RetryRuntime => {}
         }
         cx.notify();
     }
@@ -129,6 +128,7 @@ impl MainWindowShellRoot {
             });
         }
         self.refresh_setup_collections(window, cx);
+        self.sync_thread_confirmation(cx);
     }
 
     pub(in crate::main_window::shell::host) fn setup_command_state(

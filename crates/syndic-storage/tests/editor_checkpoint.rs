@@ -9,6 +9,8 @@ mod publication_support;
 #[allow(dead_code, unused_imports)]
 mod support;
 
+#[path = "editor_checkpoint/candidate_disposal.rs"]
+mod candidate_disposal;
 #[path = "editor_checkpoint/checkpoint.rs"]
 mod checkpoint;
 #[path = "editor_checkpoint/disposal.rs"]

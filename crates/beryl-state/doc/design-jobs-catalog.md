@@ -138,6 +138,11 @@ command. The audit compares whole expected rows, including their State-owned rev
 no view publication or command replay authority. Query search uses `CatalogSearchFields::matches`
 with the same canonical normalization as durable catalog keys.
 
+Explicit same-home candidate access can read the exact named current row and its reverse recency
+copy for this retained outcome audit. Ordinary and candidate reads share bounded schema and
+primary/index agreement checks at a coherent Catalog revision. Missing, mixed or foreign facts
+fail closed; the read cannot repair rows, grant claim authority or replace original command settlement.
+
 ## Initial catalog publication
 
 - Initial publication prepares an opaque home-bound witness containing one validated current row

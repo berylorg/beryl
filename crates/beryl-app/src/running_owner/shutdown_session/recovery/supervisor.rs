@@ -93,7 +93,18 @@ impl RunningProcessOwner {
         let configured = (|| -> Result<_, String> {
             let retained = owner.borrow();
             let mut configured = Vec::new();
-            for shell in retained.process.windows.shells() {
+            for shell in retained.process.windows.shells().iter().filter(|_| {
+                retained
+                    .process
+                    .services
+                    .as_ref()
+                    .and_then(|services| services.graph())
+                    .is_some()
+                    && retained
+                        .interrupted_exit
+                        .as_ref()
+                        .is_some_and(|recovery| recovery.publication.borrow().is_none())
+            }) {
                 let window = shell.window();
                 let root = window.read(app).map_err(|error| error.to_string())?;
                 let controller = root
@@ -137,7 +148,7 @@ impl RunningProcessOwner {
                         .borrow_mut()
                         .retain_interrupted_exit_session(lifecycle)?;
                 }
-                Self::recover_interrupted_exit(
+                Self::recover_owned_thread_creation(
                     &weak,
                     &request,
                     SyndicTimestamp::from_unix_millis(millis),

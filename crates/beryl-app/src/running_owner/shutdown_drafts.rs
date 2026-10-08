@@ -20,6 +20,7 @@ mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
 
 pub(crate) struct RunningShutdownDrafts {
+    noncommitted_creations: Vec<recovery::NoncommittedThreadCreationProvenance>,
     windows: Vec<(
         WindowHandle<MainWindowShellRoot>,
         Result<MainWindowShutdownDraft, String>,
@@ -36,6 +37,7 @@ pub(crate) struct RunningShutdownDrafts {
 impl RunningShutdownDrafts {
     pub(super) fn empty_recovery() -> Self {
         Self {
+            noncommitted_creations: Vec::new(),
             windows: Vec::new(),
             driving: false,
             prepared: true,
@@ -56,6 +58,24 @@ impl RunningShutdownDrafts {
         }
         Ok(())
     }
+
+    pub(super) fn retain_capture_failure(
+        &mut self,
+        window: WindowHandle<MainWindowShellRoot>,
+        error: String,
+    ) {
+        if let Some(entry) = self
+            .windows
+            .iter_mut()
+            .find(|(captured, _)| *captured == window)
+        {
+            if entry.1.is_err() {
+                entry.1 = Err(error);
+            }
+        } else {
+            self.windows.push((window, Err(error)));
+        }
+    }
     pub(super) fn add_recovery_window(
         &mut self,
         window: WindowHandle<MainWindowShellRoot>,
@@ -67,7 +87,11 @@ impl RunningShutdownDrafts {
                 .iter_mut()
                 .find(|(captured, _)| *captured == window)
                 .unwrap();
-            if entry.1.as_ref().is_ok_and(|draft| draft.failed.is_some()) {
+            if entry
+                .1
+                .as_ref()
+                .is_ok_and(|draft| draft.failed.is_some() || draft.thread_creation.is_some())
+            {
                 return;
             }
             entry.1 = window
@@ -171,6 +195,7 @@ impl RunningProcessOwner {
             return Err("shutdown drafts have no published windows".into());
         }
         let drafts = Rc::new(RefCell::new(RunningShutdownDrafts {
+            noncommitted_creations: Vec::new(),
             windows,
             driving: false,
             prepared: false,

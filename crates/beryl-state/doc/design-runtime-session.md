@@ -42,6 +42,13 @@ distinguishes the exact original, exact committed replacement and collision; no 
 execution dispatch, view publication or replay. Elsewhere occupancy also authenticates the
 target's referenced window and remembered runtime/root binding.
 
+Exact original/replacement classification is also available through explicit same-home candidate
+recovery access using the retained original prepared replacement evidence. It authenticates the
+complete window and both paired claim copies with bounded named reads, including remembered
+runtime/root and relevant revisions. Missing, mixed, foreign or conflicting facts are collision,
+not evidence of noncommit or replay authority. Candidate classification creates no claim command
+and does not replace original HomeCommand outcome reconciliation.
+
 - The `beryl-session` domain owns one active header, restorable main-window records, and claims
   keyed both by window and by Syndic thread. One home has at most 256 restorable main windows. The
   V1 header is fixed-capacity; each V1 window record is fixed-size with canonical tagged padding

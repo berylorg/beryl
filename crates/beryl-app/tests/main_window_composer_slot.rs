@@ -280,17 +280,21 @@ fn indeterminate_abandonment_retains_one_prepared_custody_then_reconciles() {
         Some(beryl_app::main_window::MainWindowComposerPendingStatus::ReconciliationPending)
     );
     let stale_storage = fixture.storage.clone();
-    let (_directory, store, recovered_storage) = fixture.recover_same_home();
+    assert!(fixture.store.home_revision().is_err());
+    let (_directory, store, _) = fixture.into_store();
+    let mut candidate = store.recover_same_home().unwrap();
+    let recovered_storage = syndic_storage::SyndicStorage::reacquire_candidate(&candidate).unwrap();
     assert!(matches!(
-        slot.reconcile_pending_after_recovery(&store, stale_storage, receipt),
+        slot.reconcile_pending_after_recovery(&mut candidate, stale_storage, receipt),
         Err(MainWindowComposerSlotError::RecoveryHandleMismatch)
     ));
     assert_eq!(
-        slot.reconcile_pending_after_recovery(&store, recovered_storage, receipt)
+        slot.reconcile_pending_after_recovery(&mut candidate, recovered_storage, receipt)
             .unwrap(),
         MainWindowComposerRetirementAdvance::Retired
     );
     assert!(slot.pending_receipt().is_none());
+    candidate.publish().unwrap();
 }
 
 #[test]

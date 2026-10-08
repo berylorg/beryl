@@ -97,12 +97,14 @@ impl MainWindowShellRoot {
             RunningActivationFixtureHooks::default()
         };
         self.running_threads.activation_operation = Some(UnviewedRunningActivation {
+            creation: false,
             source: Arc::new(Mutex::new(ActivationSource {
                 stage: Stage::Begin,
                 reader,
                 service,
                 lease,
                 owner: Some(owner),
+                creation: None,
                 outcome: None,
                 committed: None,
                 home: None,
@@ -120,6 +122,9 @@ impl MainWindowShellRoot {
                 widget_work: None,
                 release: None,
                 publication: None,
+                completed_predecessor: None,
+                completed_successor: None,
+                completed_successor_progress: None,
                 autosave: None,
                 settings,
                 assets,

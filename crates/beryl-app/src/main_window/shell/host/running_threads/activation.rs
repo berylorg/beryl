@@ -7,6 +7,9 @@ mod attachment;
 #[cfg(all(test, feature = "test-faults"))]
 pub(super) use attachment::RunningActivationFixtureHooks;
 pub(super) use attachment::UnviewedRunningActivation;
+pub(in crate::main_window::shell::host) use attachment::{
+    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+};
 
 impl MainWindowShellRoot {
     pub(super) fn begin_running_activation(
@@ -223,6 +226,17 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if matches!(self.runtime_setup.command, Some(PickerCommand::Confirm(_))) {
+            let terminal = self
+                .running_threads
+                .activation_operation
+                .as_ref()
+                .is_some_and(|operation| operation.is_unavailable());
+            if terminal {
+                self.runtime_setup.unavailable = Some(error.clone());
+            }
+            self.setup_command_state("Confirm", terminal, cx);
+        }
         if self.running_threads.failure.as_ref() != Some(&error) {
             let previous = self.running_threads.failure_notice.take();
             self.running_threads.failure_notice =

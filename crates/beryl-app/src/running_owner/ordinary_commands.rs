@@ -15,6 +15,20 @@ struct MountedRunningOwner(std::rc::Weak<RefCell<RunningProcessOwner>>);
 impl gpui::Global for MountedRunningOwner {}
 
 impl RunningProcessOwner {
+    #[cfg(test)]
+    pub(crate) fn test_last_ordinary_command_failure(
+        &self,
+    ) -> Option<(Option<beryl_model::WindowId>, &str)> {
+        self.last_ordinary_command_failure
+            .as_ref()
+            .map(|(window, error)| (*window, error.as_str()))
+    }
+    pub(crate) fn thread_creation_reader(
+        &self,
+    ) -> Option<crate::app_services::PublishedRunningThreadsReader> {
+        self.process.services.as_ref()?.thread_creation_reader()
+    }
+
     pub(crate) fn running_threads_reader(
         &self,
     ) -> Option<crate::app_services::PublishedRunningThreadsReader> {
@@ -215,6 +229,11 @@ impl RunningProcessOwner {
         error: &str,
         app: &mut App,
     ) {
+        #[cfg(test)]
+        {
+            owner.borrow_mut().last_ordinary_command_failure =
+                Some((invoking, error.chars().take(512).collect()));
+        }
         let windows = owner
             .borrow()
             .process

@@ -112,3 +112,109 @@ The atomic same-window capability and exact process/editor custody passed indepe
 review, canonical app/Beryl all-target checks, 27 acquisition/save cases and 17 strict-deletion/
 catalog regressions. See [qualification](../audits/same-window-thread-acquisition-qualification.md).
 The visible Confirm mount remains the subsequent acceptance boundary.
+
+## Failed-Home Confirmation Custody
+
+Mounted review found that retaining a suspended creation operation and rejecting failed-home
+capture is safe but does not establish ordinary recovery. After a Pending commit or failed saved
+publication, the original owner can remain suspended with its lease while capture rejects that
+same owner. Reopening cannot then reach the original outcome to settle it.
+
+The [ordinary recovery contract](../../crates/beryl-app/doc/design-shell-lifecycle.md#ordinary-running-home-recovery-ownership)
+requires original publication/reconciliation custody to survive capture and old-generation
+retirement, with settlement through fresh candidate access before dependent qualification.
+The mounted creation boundary needs a typed handoff into that route. Dropping the operation,
+releasing its save fence as guessed noncommit, or rebuilding its receipt is not a correction.
+Qualification must demonstrate actual original-owner settlement and recovery; a refusal-only
+test proves exclusion, not successful retirement or replacement. Independent architecture review
+accepted the distinct [recovery contract](../systems/backend-runtime/design.md#interrupted-new-thread-during-same-home-recovery),
+including never-admitted versus noncommit evidence, original save-first settlement, recorded cleanup
+progress and original claim receipt versus fresh editor receipt authority. Its implementation and
+actual same-window recovery qualification remain prerequisites of Confirm acceptance.
+
+The same boundary must retain completed cleanup evidence. A disposal that commits before dependent
+audit fails needs its original receipt, prepared intent and prior binding even after the host's
+active editor is cleared. An adopted save proof likewise needs owning retirement metadata after
+ordinary adoption consumes its service-held form. Keeping only a reconciliation handle or dropping
+adopted proof metadata makes later capture unable to distinguish completed disposal/widget release
+from work still required. Retain one bounded original cleanup owner and exact progress; fresh
+candidate validation must not repeat completed cleanup or reconstruct the original claim receipt.
+Partial successor abandonment has the same requirement: retaining only its preparation while
+discarding the unresolved original command outcome prevents exact candidate cleanup. The bounded
+retirement owner must preserve that outcome through failed reconciliation before any remaining intent.
+
+Completed successor abandonment also needs an owning handoff before the ordinary slot drops its
+retirement owner: target preparation can fail while the committed creation source remains retained.
+Forbidding all later target preparation would strand a still-healthy home. Validate the original
+terminal abandonment in its exact healthy generation, then retain bounded typed completion evidence
+before preparing the same committed target again. Keep any new partial successor's original custody
+separate; validation failure preserves the completed owner and blocks preparation. This settlement
+repeats neither the claim command nor predecessor save, disposal or widget release.
+
+Prepared replacement ownership must also survive paths outside explicit cancellation. Dropping a
+prepared graph while it owns the original selection lease can otherwise release exclusion before
+coherent reopening. Keep bounded reference-free original custody in the process owner on every
+unpublished graph exit, and preserve any fresh editor's actual cleanup owner before retry. Restoring
+the original bundle alone cannot prove that the unpublished replacement editor was retired.
+
+Keeping the new retirement packets inline expanded the shutdown draft to 150,880 bytes, with
+47,504-byte creation and 64,560-byte retirement owners. Normal confirmation and recovery then
+overflowed the ordinary Windows test stack as unoptimized result/future frames moved these values.
+Box the large move-only packets at their owning boundaries while preserving exact returned custody;
+increasing the test stack would conceal the production ownership footprint.
+
+Recovery fixtures must resume the phase actually retained by cancellation. After fresh-mount
+cancellation has returned the candidate Home and fresh-editor cleanup to the original retirement
+owner, the cold supervisor entry requires an original graph that has already been retired.
+Using that entry reports unavailable despite retained valid custody. Source review then found
+that the production supervisor also always used the cold entry; a test-only continuation wrapper
+would therefore conceal a missing mounted continuation. Route the supervisor through the original
+typed creation bundle and its actually retained graph or candidate state, using the existing exact-
+key retired and prepared paths. Settle actual returned cleanup and assert coherent reopening;
+do not fabricate a graph or treat returned cleanup as completed work.
+
+Continuation routing must authenticate retained lifecycle state rather than test only graph
+presence. The fresh published graph can remain owned after final coherent reopening refuses;
+that state resumes publication completion, not cold recovery. Proven-prior conversion must retain
+its original typed creation provenance for a later attachment failure. Cancellation or busy
+driver admission must also leave an authenticated disposal marker untouched, so a later accepted
+continuation can settle the same owner. Consuming the marker before admission strands valid custody.
+
+History qualification must distinguish the original publication request from its prepared output.
+The request retains the mounted Session-key frontier, while preparation can normalize its captured
+frontier to a Publication key. Authenticate each exact key and compare the full semantic frontier
+and journal; opaque equality and digest equality across that conversion are invalid because the
+digest includes the key. Restored canonical history and the fresh editor session also have distinct
+identities even when content, caret and history are preserved.
+
+Nonempty text alone does not prove adopted Page custody. The widget diagnostic counts adopted
+prepublication custody separately from ordinary resident pages; ordinary restored construction
+passes no prepublication input. Use an actual failed-resident recovery to seed that resource and
+assert its original release, as recorded in the
+[source investigation](../memory/github.com/berylorg/gpui-text-input/commit/f9651f8909f67f52f322b78547cb22f297572c0a/adopted-prepublication-custody-diagnostics.md).
+An intentionally unmounted fixture must then rebind its exact newly published services through
+its existing fixture setup, matching the globally mounted production owner without bypassing guards.
+
+The positive Page case then exposed a real ownership cycle: the protected widget retained original
+Page tokens, the native cleanup driver retained the service until those tokens released, exclusive
+service retirement preceded candidate claim qualification, and that qualification preceded widget
+release. The decisive capture had two service references, one store reference, no active producer,
+pending or undelivered work, three delivered flights and two active cleanup tokens. Weakening
+exclusive retirement or releasing Pages early would conceal the cycle and violate original custody.
+The clarified recovery contract instead separates a source-owned, reference-free cleanup-only
+capsule into the common window draft. Actual driver completion still precedes service retirement;
+later original widget release or checked prior rebinding drives exact key/token acknowledgements.
+The capsule survives prior conversion and cancellation, and incomplete cleanup blocks reopening.
+
+After the cycle correction, whole-graph recovery completed but the fixture still required a
+nonempty ordinary `RangeTextInputRequest` release vector. That vector is a different protocol:
+adopted Page disposal readies the original shared cleanup ledger directly. Keep the positive
+adoption assertion and measure actual authenticated Accepted Page acknowledgements after original
+widget release. Do not invent ordinary demands to make the unrelated vector nonempty.
+
+Mounted uncertainty fixtures cannot hold a real synchronous fault block inside GPUI's simulated
+background executor: that executor runs background work on the test thread, so the blocked worker
+also prevents the GUI pump from observing the reached barrier. Longer waits do not fix the
+dependency. Use an explicit default-off test adapter that runs the same tracked worker on one
+real thread and delivers its unchanged completion to the existing task, retaining and joining the
+actual worker. Keep production scheduling, admission, original outcome custody and timeout bounds.

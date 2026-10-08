@@ -196,12 +196,64 @@ pub(super) fn current_row_source(
     thread_id: SyndicThreadId,
     limit: CatalogPointReadLimit,
 ) -> Result<Option<CatalogCurrentRow>, CatalogCurrentRowError> {
-    let Some(row) = store.read_point::<CatalogDomain, CatalogRowCodec>(
-        &state.handle,
-        &thread_id,
-        PointReadLimit::new(limit.max_bytes()).expect("catalog point limit is nonzero"),
-    )?
-    else {
+    let revision = state.revision(store)?;
+    let result = current_row_source_from_reads(
+        thread_id,
+        store.read_point::<CatalogDomain, CatalogRowCodec>(
+            &state.handle,
+            &thread_id,
+            PointReadLimit::new(limit.max_bytes()).expect("catalog point limit is nonzero"),
+        ),
+        |row| {
+            store.read_point::<CatalogDomain, CatalogRecencyCodec>(
+                &state.handle,
+                &row.recency_cursor(),
+                PointReadLimit::new(CATALOG_POINT_READ_MAX_BYTES)
+                    .expect("catalog point limit is nonzero"),
+            )
+        },
+    );
+    if state.revision(store)? != revision {
+        return Err(CatalogCurrentRowError::ReverseCopyChanged { thread_id });
+    }
+    result
+}
+
+pub(super) fn current_row_source_candidate(
+    state: &CatalogState,
+    access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    thread_id: SyndicThreadId,
+    limit: CatalogPointReadLimit,
+) -> Result<Option<CatalogCurrentRow>, CatalogCurrentRowError> {
+    let revision = access.domain_revision(&state.handle)?;
+    let result = current_row_source_from_reads(
+        thread_id,
+        access.read_point::<CatalogDomain, CatalogRowCodec>(
+            &state.handle,
+            &thread_id,
+            PointReadLimit::new(limit.max_bytes()).expect("catalog point limit is nonzero"),
+        ),
+        |row| {
+            access.read_point::<CatalogDomain, CatalogRecencyCodec>(
+                &state.handle,
+                &row.recency_cursor(),
+                PointReadLimit::new(CATALOG_POINT_READ_MAX_BYTES)
+                    .expect("catalog point limit is nonzero"),
+            )
+        },
+    );
+    if access.domain_revision(&state.handle)? != revision {
+        return Err(CatalogCurrentRowError::ReverseCopyChanged { thread_id });
+    }
+    result
+}
+
+fn current_row_source_from_reads(
+    thread_id: SyndicThreadId,
+    row: Result<Option<CatalogRow>, ReadError>,
+    read_index: impl FnOnce(&CatalogRow) -> Result<Option<CatalogRow>, ReadError>,
+) -> Result<Option<CatalogCurrentRow>, CatalogCurrentRowError> {
+    let Some(row) = row? else {
         return Ok(None);
     };
     if row.thread_id() != thread_id {
@@ -210,11 +262,7 @@ pub(super) fn current_row_source(
     if row.freshness() != CatalogFreshness::Current {
         return Err(CatalogCurrentRowError::NotCurrent { thread_id });
     }
-    let index = store.read_point::<CatalogDomain, CatalogRecencyCodec>(
-        &state.handle,
-        &row.recency_cursor(),
-        PointReadLimit::new(CATALOG_POINT_READ_MAX_BYTES).expect("catalog point limit is nonzero"),
-    )?;
+    let index = read_index(&row)?;
     if index != Some(row.clone()) {
         return Err(CatalogCurrentRowError::ReverseCopyChanged { thread_id });
     }

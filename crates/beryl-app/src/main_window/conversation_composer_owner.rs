@@ -33,9 +33,15 @@ mod construction;
 mod detached;
 mod dispatch;
 mod failed_resident;
+mod failed_thread_creation;
+pub(crate) use failed_thread_creation::{
+    MainWindowFailedThreadCreationCapture, MainWindowFailedThreadCreationGuiAuthority,
+    MainWindowFailedThreadCreationResources,
+};
 mod fresh_candidate;
 mod lifecycle;
 mod prepublication;
+pub(crate) use prepublication::MainWindowRetiredPrepublicationCleanup;
 mod realization;
 mod recovery;
 mod render;
@@ -68,9 +74,13 @@ pub use recovery::{
 pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowComposerCandidateSource;
 pub use service::MainWindowConversationComposerService;
-pub(crate) use service::MainWindowThreadPredecessorSave;
 pub use service::MainWindowFailedResidentCandidateSource;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
+pub(crate) use service::{
+    MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
+    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedThreadCreationRetirement,
+    MainWindowThreadCreationRetirementSource,
+};
 pub use service::{
     MainWindowComposerCandidateCompletion, MainWindowComposerCandidateCustody,
     MainWindowComposerCandidateRead, MainWindowComposerCandidateWorker,
@@ -80,6 +90,7 @@ pub use service::{
     MainWindowNativeLineageCleanupTestWitness, MainWindowNativeLineageCleanupTestWitnessSnapshot,
     MainWindowSelectedComposerPreparationTestFault,
 };
+pub(crate) use service::{MainWindowRetiredThreadPredecessorSave, MainWindowThreadPredecessorSave};
 
 pub type ComposerClipboardWriter =
     Box<dyn FnMut(&str, &mut App) -> ClipboardWriteOutcome + 'static>;

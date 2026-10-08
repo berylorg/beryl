@@ -20,6 +20,8 @@ use std::{
 #[path = "app_services/committed_first_conversation.rs"]
 #[cfg(target_os = "windows")]
 mod committed_first_conversation;
+#[path = "window_selection_admission/failed_home_retirement.rs"]
+mod failed_home_selection_retirement;
 #[path = "app_services/recovery_graph.rs"]
 mod recovery_graph;
 #[path = "app_services/recovery_preparation.rs"]

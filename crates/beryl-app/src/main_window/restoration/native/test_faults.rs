@@ -73,6 +73,38 @@ impl PreparedNativeMainWindowRestoreSet {
 
 impl PublishedMainWindowRestoreSet {
     #[cfg(test)]
+    pub(crate) fn prepare_virtual_restored_test(
+        mut prepared: PreparedMainWindowRestoreSet,
+        appearance: Entity<GpuiAppearanceWindowSet>,
+        app: &mut App,
+    ) -> Result<VirtualRestoredMainWindowRestoreSet, String> {
+        prepared.revalidate()?;
+        if prepared.owner.expected_windows.len() != 1 || prepared.owner.members.len() != 1 {
+            return Err("virtual restored fixture requires one exact original member".into());
+        }
+        let member = prepared.owner.members.pop().expect("exact single member");
+        let PreparedRestoreSetMember::Restored(member) = member else {
+            return Err("virtual restored fixture requires actual restored preparation".into());
+        };
+        let window_id = member.window_id();
+        let check = member.native_validation();
+        let mut host = GpuiMainWindowShellHost::new(app, appearance.clone())
+            .with_virtual_placement(window_id, member.placement().clone());
+        let shell = host
+            .construct_restored_hidden(*member)
+            .map_err(|failure| match failure {
+                RestoredWindowShellHostFailure::BeforeConstruction { error, .. }
+                | RestoredWindowShellHostFailure::Construction { error, .. } => error,
+            })?;
+        Ok(VirtualRestoredMainWindowRestoreSet {
+            owner: Some(Box::new(prepared.owner)),
+            shell: Some(shell),
+            validation: NativeValidation { window_id, check },
+            appearance,
+        })
+    }
+
+    #[cfg(test)]
     pub(crate) fn from_virtual_prepared_test(
         mut prepared: PreparedMainWindowRestoreSet,
         appearance: Entity<GpuiAppearanceWindowSet>,
@@ -145,5 +177,49 @@ impl PublishedMainWindowRestoreSet {
                 .expect("test startup teardown retains a live GUI executor");
         })
         .detach();
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct VirtualRestoredMainWindowRestoreSet {
+    owner: Option<Box<MainWindowRestoreSet>>,
+    shell: Option<MainWindowShell>,
+    validation: NativeValidation,
+    appearance: Entity<GpuiAppearanceWindowSet>,
+}
+
+#[cfg(test)]
+impl VirtualRestoredMainWindowRestoreSet {
+    pub(crate) fn advance(
+        &mut self,
+        app: &mut App,
+    ) -> Result<Option<PublishedMainWindowRestoreSet>, String> {
+        let owner = self
+            .owner
+            .as_ref()
+            .ok_or("virtual restored fixture already published")?;
+        let shell = self
+            .shell
+            .as_mut()
+            .ok_or("virtual restored fixture lost its exact shell")?;
+        app.update_window(shell.window().into(), |_, window, app| {
+            window.draw(app).clear()
+        })
+        .map_err(|e| e.to_string())?;
+        if !shell.ready_to_publish(app) {
+            return Ok(None);
+        }
+        owner.revalidate_members(1, |_, expected| {
+            if self.validation.window_id != expected {
+                return Err("virtual restored fixture validation identity changed".into());
+            }
+            (self.validation.check)(&owner.attempt, &owner.services)
+        })?;
+        shell.publish(app)?;
+        Ok(Some(PublishedMainWindowRestoreSet {
+            owner: self.owner.take().expect("validated original owner"),
+            shells: vec![self.shell.take().expect("published original shell")],
+            appearance: self.appearance.clone(),
+        }))
     }
 }

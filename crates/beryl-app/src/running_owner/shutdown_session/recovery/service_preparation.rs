@@ -153,17 +153,25 @@ impl RunningProcessOwner {
         let retained = owner.clone();
         let worker_cancellation = cancellation.clone();
         let work = app.background_executor().spawn(async move {
-            let original = original;
+            let mut original = original;
             let mut candidate = candidate;
-            let settled = match original
-                .revalidate_candidate(&mut candidate.candidate, &candidate.session)
+            let settled = match services
+                .prepare_failed_thread_creations(
+                    &mut candidate.candidate,
+                    &mut original,
+                    &worker_cancellation,
+                )
                 .and_then(|()| {
-                    services.prepare_failed_residents(
-                        &mut candidate.candidate,
-                        &original,
-                        at,
-                        &worker_cancellation,
-                    )
+                    original
+                        .revalidate_candidate(&mut candidate.candidate, &candidate.session)
+                        .and_then(|()| {
+                            services.prepare_failed_residents(
+                                &mut candidate.candidate,
+                                &original,
+                                at,
+                                &worker_cancellation,
+                            )
+                        })
                 }) {
                 Err(error) => CandidateSettlement::Returned {
                     candidate,
@@ -266,6 +274,9 @@ impl RunningProcessOwner {
         let work = app.background_executor().spawn(async move {
             let mut services = services;
             let mut prepared = prepared;
+            if let Err(error) = services.retain_cancelled_thread_creation_editors(&mut prepared) {
+                return (services, original, Err((prepared, error)));
+            }
             services.retain_cancelled_failed_residents(&mut prepared);
             if let Err(error) = services.retain_cancelled_first_conversation(&mut prepared) {
                 return (services, original, Err((prepared, error)));
@@ -294,6 +305,23 @@ impl RunningProcessOwner {
         request: &impl RecoveryIdentity,
     ) -> Result<(), String> {
         self.interrupted_exit_graph_retirement_result(request)?;
+        let recovery = self.interrupted_exit.as_ref().unwrap();
+        if let Some(services) = self.process.services.as_ref() {
+            if services.has_returned_thread_creation_graph() {
+                let mut slot = recovery.settlement.borrow_mut();
+                if !matches!(slot.as_ref(), None | Some(CandidateSettlement::Pending))
+                    || recovery.session.borrow().is_none()
+                    || recovery.resident.is_some()
+                {
+                    return Err(
+                        "returned New Thread graph cannot replace active recovery custody".into(),
+                    );
+                }
+                if let Some(graph) = services.take_returned_thread_creation_graph() {
+                    *slot = Some(CandidateSettlement::Services(Ok(graph)));
+                }
+            }
+        }
         match self
             .interrupted_exit
             .as_ref()

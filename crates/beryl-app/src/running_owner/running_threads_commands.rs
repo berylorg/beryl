@@ -1,6 +1,26 @@
 use super::*;
 
 impl RunningProcessOwner {
+    pub(crate) fn admit_thread_creation(
+        &self,
+        invoking: beryl_model::WindowId,
+        app: &App,
+    ) -> Result<crate::window_acquisition::WindowSelectionLease, String> {
+        let members = self
+            .process
+            .windows
+            .shells()
+            .iter()
+            .filter(|shell| shell.is_published())
+            .map(|shell| shell.retained_window_id(app))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.process
+            .services
+            .as_ref()
+            .ok_or("Thread creation services unavailable")?
+            .admit_thread_creation(&members, invoking)
+    }
+
     pub(crate) fn running_selection_pending(&self) -> bool {
         self.process
             .services

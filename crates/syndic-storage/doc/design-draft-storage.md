@@ -114,6 +114,17 @@ An exact disposal receipt authenticates its recorded source and terminal session
 later draft replaces the disposed editor's draft. Mutable current-selector eligibility is checked
 at admission and is not a continuing prerequisite for validating that committed historical receipt.
 
+Explicit borrowed same-home recovery candidate access also supports ordinary final-disposal
+preparation, execution and exact receipt classification through fresh Syndic handles. It preserves
+the same authenticated source, clean checkpoint, no-custody and revision requirements. The caller
+settles any original pending disposal outcome through its retained original command handle before
+preparing remaining cleanup. Already committed disposal is validation-only and is never repeated;
+proven noncommit or original typed never-admitted custody permits only the same authenticated
+remaining disposal intent. Foreign homes, substituted sessions/receipts, conflicting facts and
+terminal uncertainty refuse cleanup or publication. Candidate access grants no editor adoption,
+claim replacement or ordinary admission, and leaves V7 encodings unchanged. This supplies canonical
+predecessor cleanup for [interrupted New Thread recovery](../../../doc/systems/backend-runtime/design.md#interrupted-new-thread-during-same-home-recovery).
+
 Captured publication validates the captured checkpoint even when the live session has advanced.
 Current-session eligibility, custody, and publication preconditions remain separate checks; proving
 the current head does not prove an older captured candidate. Publication moves the captured root

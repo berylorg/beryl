@@ -28,7 +28,9 @@ use super::{
 pub(super) mod autosave;
 mod close;
 mod failed_resident;
+mod failed_thread_creation;
 pub use failed_resident::MainWindowFailedResidentMountResources;
+pub(crate) use failed_thread_creation::MainWindowFailedThreadCreationMountCapture;
 mod native_disposal;
 mod native_lineage;
 mod pending_presentation;
@@ -39,6 +41,7 @@ use pending_presentation::MainWindowConversationComposerPendingPresentation;
 mod first_conversation;
 mod realization;
 mod running_threads;
+mod thread_creation;
 
 pub use autosave::*;
 pub use close::{

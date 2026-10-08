@@ -1,8 +1,132 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(crate) fn test_thread_confirmation_visible_transcript_claim(
+        &self,
+    ) -> Option<beryl_state::WindowClaimSelection> {
+        self.running_threads.transcript_claim
+    }
+    pub(crate) fn test_thread_confirmation_visible_identity(
+        &self,
+        app: &App,
+    ) -> (gpui::EntityId, usize, Option<beryl_state::RememberedTarget>) {
+        let controller = self.controller.as_ref().unwrap();
+        let remembered = match &controller.content {
+            ShellContent::Selected { window, .. } => window.remembered_target(),
+            ShellContent::Acquired { custody, .. } => Some(custody.acquisition.target()),
+            ShellContent::Restored { custody, .. } => {
+                custody.composer.recovery_window().remembered_target()
+            }
+            ShellContent::Threadless { source, .. } => source.recovery_window().remembered_target(),
+            ShellContent::RecoveredThreadless { source, .. } => source.window().remembered_target(),
+            ShellContent::Retired { .. } => None,
+        };
+        let transcript = self.running_threads.transcript.read(app).snapshot();
+        (
+            controller.composer_mount.as_ref().unwrap().entity_id(),
+            Arc::as_ptr(&transcript) as usize,
+            remembered,
+        )
+    }
+    pub(crate) fn test_bound_running_window_command(
+        &self,
+    ) -> Option<crate::startup_owner::RunningWindowExit> {
+        self.running_command.clone()
+    }
+    pub(crate) fn test_thread_creation_picker_open_diagnostics(&self) -> String {
+        format!(
+            "enabled={}, pending={}, picker={}, unavailable={:?}, suspended={}, retired={}, shutdown_gated={}, activation_pending={}, services_current={}",
+            self.setup_enabled(),
+            self.runtime_setup.pending(),
+            self.runtime_setup.picker.is_some(),
+            self.runtime_setup.unavailable,
+            self.runtime_setup.suspended,
+            self.runtime_setup.retired,
+            self.shutdown_interaction_gated,
+            self.running_threads.pending_activation.is_some(),
+            self.runtime_setup
+                .services
+                .as_ref()
+                .is_some_and(|services| services.current())
+        )
+    }
+
+    pub(crate) fn test_reject_thread_creation_recovery_mount(&mut self) {
+        self.running_threads.fixture_reject_creation_recovery_mount = true;
+    }
+
+    pub(crate) fn test_thread_creation_recovery_mount(
+        &self,
+        app: &App,
+    ) -> Option<(
+        gpui::EntityId,
+        crate::main_window::MainWindowComposerSelectionIdentity,
+        bool,
+    )> {
+        let mount = self.controller.as_ref()?.composer_mount.as_ref()?;
+        Some((
+            mount.entity_id(),
+            mount.read(app).fresh_recovery_ticket()?.selection(),
+            self.shutdown_interaction_gated,
+        ))
+    }
+    pub(crate) fn test_thread_creation_composer_adopted_custody_items(&self, cx: &App) -> usize {
+        self.controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount.as_ref())
+            .and_then(|mount| mount.read(cx).contribution())
+            .map_or(0, |resident| {
+                resident
+                    .read(cx)
+                    .gpui_input()
+                    .read(cx)
+                    .realization_diagnostics()
+                    .adopted_custody_items
+            })
+    }
+    pub(crate) fn test_thread_creation_composer_selection(
+        &self,
+        cx: &App,
+    ) -> Option<gpui_text_input::RangeSourceSelection> {
+        let composer = self
+            .controller
+            .as_ref()?
+            .composer_mount
+            .as_ref()?
+            .read(cx)
+            .contribution()?;
+        let input = composer.read(cx).gpui_input();
+        input.read(cx).surface().map(|surface| surface.selection())
+    }
+    pub(crate) fn test_thread_creation_recovery_widget_release_counts(&self) -> (usize, usize) {
+        self.running_threads.fixture_creation_release_counts
+    }
+    pub(crate) fn test_thread_creation_prepublication_page_release_acknowledgements(
+        &self,
+    ) -> usize {
+        self.running_threads
+            .fixture_creation_page_release_acknowledgements
+    }
+    pub(crate) fn test_thread_confirmation_lease(
+        &mut self,
+        lease: Arc<crate::window_acquisition::WindowSelectionLease>,
+    ) {
+        self.runtime_setup.fixture_thread_lease = Some(lease);
+    }
+
+    pub(crate) fn test_thread_confirmation_command(
+        &mut self,
+        key: PickerRowKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.setup_command(PickerCommand::Confirm(key), window, cx);
+    }
     pub(crate) fn test_runtime_setup_query(&self) -> &str {
         self.runtime_setup.query.as_str()
+    }
+    pub(crate) fn test_runtime_setup_scope(&self) -> Option<beryl_model::RuntimeId> {
+        self.runtime_setup.scope
     }
     pub(crate) fn test_runtime_setup_admission(
         &mut self,

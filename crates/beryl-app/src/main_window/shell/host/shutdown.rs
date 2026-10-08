@@ -109,6 +109,19 @@ impl MainWindowShellRoot {
             controller.validate_recovered_appearance()?;
         }
         if !controller.is_threadless() {
+            if gated
+                && controller
+                    .composer_mount
+                    .as_ref()
+                    .is_some_and(|mount| self.failed_thread_creation_mount_matches(mount))
+            {
+                controller
+                    .composer_mount
+                    .as_ref()
+                    .unwrap()
+                    .update(cx, |mount, cx| mount.gate_failed_thread_creation(cx))?;
+                return Ok(());
+            }
             let composer = controller
                 .composer_mount
                 .as_ref()

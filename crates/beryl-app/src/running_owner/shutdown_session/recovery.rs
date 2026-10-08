@@ -19,6 +19,7 @@ mod preparation_driver;
 mod preparation_retry;
 mod publication_driver;
 pub(crate) use preparation_retry::RecoveryPreparationFailure;
+mod process_binding;
 mod process_work;
 mod resident;
 mod resident_publication_driver;
@@ -35,6 +36,7 @@ mod service_publication;
 mod service_validation;
 mod settlement;
 mod theme_activation;
+mod thread_creation;
 mod threadless;
 mod threadless_driver;
 pub(crate) use settlement::InterruptedExitCandidate;
@@ -72,6 +74,7 @@ pub(in crate::running_owner) struct InterruptedExitRecovery {
     publication: Rc<
         RefCell<Option<Result<crate::cas_projection::initial_start::InitialStartOwner, String>>>,
     >,
+    process_binding: Option<process_binding::RecoveredProcessBinding>,
     retirement: Rc<RefCell<Option<retirement::GraphRetirement>>>,
     resident: Option<resident::ResidentPreparation>,
     pending_resident_frame: Option<std::rc::Weak<()>>,
@@ -109,6 +112,7 @@ impl RunningProcessOwner {
             service_validation: Rc::new(RefCell::new(None)),
             theme_activation: Rc::new(RefCell::new(None)),
             publication: Rc::new(RefCell::new(None)),
+            process_binding: None,
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,

@@ -85,6 +85,54 @@ request as uncommitted. Same-home retirement settles those retained original own
 replacement generation may publish. The feature's confirmed-selection picker owns visible busy,
 failure, cancellation and Unavailable presentation, not the non-GPUI transaction capability.
 
+## Failed-Home New Thread Recovery
+
+The process owner consumes one creation-specific capture under
+[interrupted New Thread recovery](../../../doc/systems/backend-runtime/design.md#interrupted-new-thread-during-same-home-recovery).
+Admission fences first; all original worker tasks and GUI completion deliveries drain before capture.
+The capture authenticates the failed home/service generation, invoking window and native reservation,
+shell, mount and protected predecessor identities. It owns the complete original creation source,
+save/claim outcome, process selection exclusion, optional successor and exact cleanup progress.
+No Running-row selection is required. Failed capture retains those owners and refuses replacement.
+
+Capture preparation may retain the source-owned cleanup-only capsule for original delivered
+prepublication Pages under the system contract. The common window draft owns it outside the
+optional creation capture, preserving it through proven-prior conversion, candidate cancellation
+and later preparation. It authenticates the original protected input/environment and bounded
+delivered source facts. Producer/native work must already be drained; actual cleanup-driver
+completion after the typed transfer precedes service-reference retirement. No ordinary native
+drainage or exclusive-service guard is weakened. Original GUI release or checked prior rebinding
+drives exact pure cleanup; incomplete or failed acknowledgement retains the capsule and blocks
+draft release and whole-graph reopening. No old adapter, Home/service or worker enters replacement.
+
+Before claim admission, the original typed source records that no command was admitted. Original
+predecessor publication settles before prior-claim qualification; this preserves unsaved edits,
+history and selection when save itself failed. Proven original claim noncommit takes the same
+protected-resident recovery route after exact candidate-generation State authentication.
+
+Known claim commitment takes a distinct attachment route for its exact durable target. Fresh State
+candidate access classifies the original complete window/paired claims; Syndic authenticates target
+draft/catalog facts and original saved predecessor provenance. The old selected resident and any
+old unpublished successor contribute cleanup custody, not selected authority. Owning retirement
+conversions retain progress and original outcomes while removing old service references; they may
+not relax ordinary slot disposal or unchanged-resident guards. Completed canonical predecessor
+disposal or widget release is recorded and never repeated. If the old widget is still protected,
+its release completes through the existing GUI continuation before fresh target promotion.
+
+Fresh candidate-generation target/editor receipts are separate from the original atomic command
+receipt. They grant only the new service's preparation and publication authority. All fallible
+construction, bounded realization, adapter binding and validation precede coherent claim/editor/
+transcript publication in the same surviving shell. This route creates no native window, startup
+attempt, first-conversation admission, fresh claim command or second predecessor save.
+
+The process owner retains one bundle per affected window and one preparation flight, keyed by the
+ordinary recovery attempt and fresh generation. Cancellation/stale completion returns actual
+candidate and cleanup custody. Terminal uncertainty retains unavailable intent and exclusion;
+successful old-resource retirement does not imply noncommit, target authority or interaction release.
+Complete graph bindings and every original outcome/cleanup settle before the ordinary atomic
+reopening boundary. Qualification includes actual recovery from save/claim and postcommit cleanup
+failures alongside terminal refusal, preserving native identity and exact remembered target.
+
 ## Running-Thread Selection Contribution
 
 The published graph exposes a narrow weak process-work reader with revision-bound searchable pages,
@@ -656,6 +704,11 @@ by the executable composition root.
   cleanup. Candidate construction and attachment install a new fenced composer/transcript in the
   same surviving reservation without a predecessor, before complete graph publication. Empty-window
   and preserved-resident recovery keep their distinct source requirements and attachment rules.
+- An interrupted New Thread command with a published predecessor instead uses
+  [creation-specific recovery](#failed-home-new-thread-recovery). Its exact original committed
+  successor is an explicitly supported selected-target change; the ordinary unchanged-resident
+  route still rejects changed claims and source/history. Original operation settlement determines
+  which typed route is admissible before resident or target qualification.
 - Every surviving shell requires fresh candidate-generation appearance, notice, subscription and
   native-release ownership. Registration uses the existing preserved-shell validation and one GUI
   commit; all fallible preparation precedes adoption. Complete binding validation matches each

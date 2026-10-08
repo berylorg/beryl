@@ -10,6 +10,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 mod activation;
+pub(in crate::main_window::shell::host) use activation::{
+    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+};
 mod command;
 mod transcript;
 pub(super) use command::{render_command, render_picker};
@@ -31,6 +34,14 @@ pub(super) struct RunningThreadsContribution {
     fixture_windows: Vec<WindowHandle<MainWindowShellRoot>>,
     #[cfg(all(test, feature = "test-faults"))]
     fixture_activation_hooks: Option<activation::RunningActivationFixtureHooks>,
+    #[cfg(all(test, feature = "test-faults"))]
+    fixture_real_creation_reconciliation: bool,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_creation_release_counts: (usize, usize),
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_creation_page_release_acknowledgements: usize,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_reject_creation_recovery_mount: bool,
     generation: Arc<AtomicU64>,
     cancellation: ProjectionCancellationToken,
     poll: Option<gpui::Task<()>>,
@@ -94,6 +105,14 @@ impl RunningThreadsContribution {
             fixture_windows: Vec::new(),
             #[cfg(all(test, feature = "test-faults"))]
             fixture_activation_hooks: None,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_real_creation_reconciliation: false,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_creation_release_counts: (0, 0),
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_creation_page_release_acknowledgements: 0,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_reject_creation_recovery_mount: false,
             generation: Arc::new(AtomicU64::new(1)),
             cancellation: ProjectionCancellationToken::new(),
             poll: None,
@@ -130,7 +149,7 @@ impl RunningThreadsContribution {
         }
     }
 
-    fn has_activation_custody(&self) -> bool {
+    pub(in crate::main_window::shell::host) fn has_activation_custody(&self) -> bool {
         self.pending_activation.is_some()
             || self.activation_operation.is_some()
             || self.activation_task.is_some()

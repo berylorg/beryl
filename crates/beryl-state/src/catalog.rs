@@ -24,7 +24,7 @@ mod mutation;
 mod normalization;
 #[path = "catalog/row.rs"]
 mod row;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 #[path = "catalog/test_support.rs"]
 #[allow(dead_code)]
 mod test_support;
@@ -37,7 +37,9 @@ pub use acquisition::{
     CatalogCurrentPage, CatalogCurrentRow, CatalogCurrentRowError, CatalogCurrentScan,
     CatalogWindowClaim,
 };
-pub use claim_replacement::{CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement};
+pub use claim_replacement::{
+    CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement,
+};
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
 pub use initial::{
@@ -320,6 +322,15 @@ impl CatalogState {
         acquisition::current_row_source(self, store, thread_id, limit)
     }
 
+    pub fn current_row_source_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: CatalogPointReadLimit,
+    ) -> Result<Option<CatalogCurrentRow>, CatalogCurrentRowError> {
+        acquisition::current_row_source_candidate(self, access, thread_id, limit)
+    }
+
     pub(crate) fn recency_row_source(
         &self,
         store: &HomeStore,
@@ -387,9 +398,9 @@ impl CatalogState {
         self.handle.contribution(expected_revision, command)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     #[allow(dead_code)]
-    pub(crate) fn corrupt_recency_copy_for_test(
+    pub fn corrupt_recency_copy_for_test(
         &self,
         expected_revision: DomainRevision,
         key: CatalogRecencyCursor,
@@ -401,8 +412,8 @@ impl CatalogState {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn remove_copy_for_test(
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn remove_copy_for_test(
         &self,
         expected_revision: DomainRevision,
         row: CatalogRow,

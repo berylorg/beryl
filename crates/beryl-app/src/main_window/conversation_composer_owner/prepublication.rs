@@ -15,6 +15,9 @@ use gpui_text_input::{
 
 use super::{MainWindowComposerDispatchOutcome, MainWindowComposerSelectionIdentity};
 
+mod retired_cleanup;
+pub(crate) use retired_cleanup::MainWindowRetiredPrepublicationCleanup;
+
 pub(in crate::main_window) enum MainWindowNativeLineagePrepublicationResult {
     Validation(Result<RangePrepublicationValidationResponse, String>),
     Request(Result<MainWindowComposerDispatchOutcome, String>),

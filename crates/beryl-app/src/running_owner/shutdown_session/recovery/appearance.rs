@@ -10,37 +10,7 @@ impl RunningProcessOwner {
     ) -> Result<(), String> {
         self.interrupted_exit_publication_result(request)?;
         self.validate_interrupted_exit_bindings(request, appearance, app)?;
-        let home = self
-            .process
-            .services
-            .as_ref()
-            .and_then(|services| services.graph())
-            .ok_or("Published recovery graph is unavailable")?
-            .home()
-            .service_reference();
-        crate::main_window::MainWindowCreationOwner::validate_recovered_process(&home, app)?;
-        if let Some(request) = request.lifecycle() {
-            self.process.commands.bind_recovered_home(request, home)?;
-        } else {
-            self.process.commands.bind_recovered_running_home(home)?;
-        }
-        if self.ordinary_commands_mounted {
-            for shell in self.process.windows.shells() {
-                let window = shell.window();
-                let id = window
-                    .read(app)
-                    .map_err(|e| e.to_string())?
-                    .controller()
-                    .ok_or("Recovered command controller is unavailable")?
-                    .window_id();
-                let command = self.process.commands.window_command(id);
-                window
-                    .update(app, |root, window, cx| {
-                        root.mount_running_command(command, window, cx)
-                    })
-                    .map_err(|e| e.to_string())?;
-            }
-        }
+        self.bind_recovered_process_commands(request, app)?;
         self.process.appearance = appearance.clone();
         Ok(())
     }

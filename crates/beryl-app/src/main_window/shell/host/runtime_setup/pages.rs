@@ -245,6 +245,7 @@ impl MainWindowShellRoot {
                     root.fail_setup_bootstrap(window, cx);
                 }
                 picker.update(cx, |picker, pcx| picker.settle_page(outcome, window, pcx));
+                root.sync_thread_confirmation(cx);
                 cx.notify();
             });
         });

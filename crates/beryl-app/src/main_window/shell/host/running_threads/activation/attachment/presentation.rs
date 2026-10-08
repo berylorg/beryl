@@ -9,6 +9,9 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         match source.stage {
+            Stage::ThreadFence | Stage::ThreadAcceptSave | Stage::ThreadRestore => {
+                return self.accept_thread_creation_stage(operation, source, window, cx);
+            }
             Stage::Install => {
                 let ready = if let Some(prepared) = source.presentation.take() {
                     match prepared.try_elect_current(|prepared| {
@@ -38,7 +41,11 @@ impl MainWindowShellRoot {
                 };
                 source.installed = true;
                 if ready {
-                    source.stage = Stage::PrepareFence;
+                    source.stage = if source.creation.is_some() {
+                        Stage::ThreadAdopt
+                    } else {
+                        Stage::PrepareFence
+                    };
                 }
             }
             Stage::Fence => {
@@ -138,11 +145,14 @@ impl MainWindowShellRoot {
                     .read(cx)
                     .validate_claim_promotion(publication, cx)?;
                 self.preflight_running_selection(&source.service, cx)?;
-                let commit = source
-                    .committed
-                    .as_ref()
+                let committed = source
+                    .committed_selection()
                     .ok_or("Committed selection custody is missing")?;
-                if commit.selection != publication.selection().claim()
+                let committed_window = source
+                    .committed_window()
+                    .ok_or("Committed window custody is missing")?
+                    .clone();
+                if committed != publication.selection().claim()
                     || operation.panel != self.running_threads.transcript
                 {
                     return Err("Running selection publication identity is stale".into());
@@ -171,7 +181,7 @@ impl MainWindowShellRoot {
                                 panel_cx.notify();
                             });
                             self.publish_running_selection(
-                                commit.window.clone(),
+                                committed_window.clone(),
                                 publication.selection(),
                                 cx,
                             )
@@ -181,7 +191,7 @@ impl MainWindowShellRoot {
                 match result {
                     Ok(Ok(Ok(()))) => {
                         self.running_threads.transcript_provider = Some(provider.clone());
-                        self.running_threads.transcript_claim = Some(commit.selection);
+                        self.running_threads.transcript_claim = Some(committed);
                         self.running_threads.transcript_source = Some(identity);
                         source.error = None;
                         source.gui_published = true;

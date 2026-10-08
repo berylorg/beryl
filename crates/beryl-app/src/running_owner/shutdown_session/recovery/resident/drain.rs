@@ -83,21 +83,44 @@ impl RunningProcessOwner {
                 .await;
         };
         let cleanup_executor = cx.background_executor().clone();
-        let graph = cx
+        let (graph, failure) = cx
             .background_executor()
             .spawn(async move {
                 let mut graph = graph;
                 let retired = match source {
-                    Ok(source) => source.dispose_cancelled_service(cleanup_executor).await,
+                    Ok(source) => match graph
+                        .dispose_cancelled_failed_resident_source(source, cleanup_executor)
+                        .await
+                    {
+                        Ok(retired) => retired,
+                        Err((source, error)) => return (graph, Some((source, error))),
+                    },
                     Err((retired, _)) => retired,
                 };
                 graph.return_failed_resident_source(retired);
-                graph
+                (graph, None)
             })
             .await;
         cx.update(|_| {
             let mut retained = retained_owner.borrow_mut();
             assert!(retained.failed_resident_preparation(key).unwrap());
+            if let Some((source, error)) = failure {
+                let flight = retained
+                    .interrupted_exit
+                    .as_mut()
+                    .unwrap()
+                    .resident
+                    .as_mut()
+                    .unwrap();
+                flight.returned = Some(ReturnedPreparation::Failed(Box::new((
+                    graph,
+                    Ok(source),
+                    capture,
+                ))));
+                flight.cleanup_failed = true;
+                flight.result = Err(error.clone());
+                return Err(error);
+            }
             retained
                 .recovery_drafts()
                 .unwrap()
@@ -110,8 +133,9 @@ impl RunningProcessOwner {
             ));
             *recovery.settlement.borrow_mut() = Some(CandidateSettlement::Services(Ok(graph)));
             recovery.resident.take();
+            Ok(())
         })
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())??;
         preparation.take();
         Ok(())
     }

@@ -77,6 +77,14 @@ pub struct SameWindowThreadCommit {
     pub receipt: CommitReceipt,
     pub later_failure: Option<beryl_home_store::CommandError>,
     pub local_finalization: Option<CommittedLocalFinalization>,
+    replacement: PreparedWindowClaimReplacement,
+    rows: CatalogClaimReplacementAudit,
+    original_receipt: CommitReceipt,
+}
+
+pub struct SameWindowThreadUnadmitted {
+    replacement: PreparedWindowClaimReplacement,
+    _rows: CatalogClaimReplacementAudit,
 }
 
 pub enum SameWindowThreadOutcome {
@@ -100,4 +108,5 @@ pub struct SameWindowThreadPending {
 }
 
 mod preparation;
+mod recovery;
 mod settlement;

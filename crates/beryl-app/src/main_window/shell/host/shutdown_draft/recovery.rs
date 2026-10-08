@@ -67,7 +67,10 @@ impl MainWindowShellRoot {
             return Err("original first conversation widget release is still settling".into());
         }
         self.suspend_running_thread_reads(window, cx);
-        if self.running_threads.pending_activation.is_some() {
+        if self.has_failed_thread_creation_entrance() {
+            return self.begin_failed_thread_creation_shutdown_draft(cx);
+        }
+        if self.running_threads.has_activation_custody() {
             return Err("running thread selection custody prevents failed-home capture".into());
         }
         let controller = self
@@ -111,6 +114,8 @@ impl MainWindowShellRoot {
             (None, None)
         };
         Ok(MainWindowShutdownDraft {
+            thread_creation: None,
+            prepublication_cleanup: std::cell::RefCell::new(None),
             root: cx.entity_id(),
             failed,
             retirement: None,
@@ -131,6 +136,9 @@ impl MainWindowShellRoot {
             || self.startup_interaction_gated()
         {
             return Err("failed shutdown draft lost its exact gated shell".into());
+        }
+        if draft.thread_creation.is_some() {
+            return self.retire_failed_thread_creation_shutdown_draft(draft, services, cx);
         }
         if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
         {

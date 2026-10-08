@@ -25,9 +25,17 @@ use crate::main_window::MainWindowComposerSlot;
 mod candidate_source;
 mod candidate_worker;
 mod claim_publication;
+mod failed_thread_creation;
 mod thread_creation;
-pub(crate) use thread_creation::MainWindowThreadPredecessorSave;
+pub(crate) use crate::main_window::composer_slot::{
+    MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
+    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedThreadCreationRetirement,
+};
 pub(in crate::main_window) use claim_publication::*;
+pub(crate) use failed_thread_creation::MainWindowThreadCreationRetirementSource;
+pub(crate) use thread_creation::{
+    MainWindowRetiredThreadPredecessorSave, MainWindowThreadPredecessorSave,
+};
 mod close;
 mod close_cleanup;
 mod failed_candidate_source;

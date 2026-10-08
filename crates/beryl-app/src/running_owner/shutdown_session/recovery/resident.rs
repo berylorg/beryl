@@ -54,6 +54,26 @@ pub(super) struct ResidentPreparation {
 
 impl RunningProcessOwner {
     #[cfg(test)]
+    pub(crate) fn test_enable_resident_frame_capture(&mut self) {
+        assert!(self.captured_resident_frame.is_none());
+        self.capture_resident_frames = true;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_dispatch_scheduled_resident_frame(
+        owner: &Rc<RefCell<Self>>,
+        app: &mut App,
+    ) -> bool {
+        let callback = owner.borrow_mut().captured_resident_frame.take();
+        if let Some(callback) = callback {
+            callback(app);
+            true
+        } else {
+            false
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_captured_recovery_ticket(
         &self,
         resident: gpui::EntityId,
@@ -114,6 +134,7 @@ impl RunningProcessOwner {
             service_validation: Rc::new(RefCell::new(None)),
             theme_activation: Rc::new(RefCell::new(None)),
             publication: Rc::new(RefCell::new(None)),
+            process_binding: None,
             retirement: Rc::new(RefCell::new(None)),
             resident: None,
             pending_resident_frame: None,
@@ -313,19 +334,24 @@ impl RunningProcessOwner {
             let frame_owner = Rc::downgrade(&owner);
             let frame_key = key.clone();
             let frame_wake = wake.clone();
+            let callback = move |app: &mut App| {
+                app.defer(move |app| {
+                    if let Some(owner) = frame_owner.upgrade() {
+                        Self::advance_resident_preparation(&owner, &frame_key, &frame_wake, app)
+                    }
+                });
+            };
+            #[cfg(test)]
+            if owner.borrow().capture_resident_frames {
+                let mut retained = owner.borrow_mut();
+                assert!(retained.captured_resident_frame.is_none());
+                retained.captured_resident_frame = Some(Box::new(callback));
+                return;
+            }
             if window
                 .update(app, |_, window, _| {
                     window.on_next_frame(move |_, app| {
-                        app.defer(move |app| {
-                            if let Some(owner) = frame_owner.upgrade() {
-                                Self::advance_resident_preparation(
-                                    &owner,
-                                    &frame_key,
-                                    &frame_wake,
-                                    app,
-                                )
-                            }
-                        });
+                        callback(app);
                     });
                 })
                 .is_err()

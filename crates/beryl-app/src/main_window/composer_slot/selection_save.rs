@@ -1,6 +1,27 @@
 use super::*;
 
 impl MainWindowComposerSlot {
+    pub(crate) fn validate_failed_thread_predecessor_save(
+        &self,
+        expected: MainWindowComposerSelectionIdentity,
+        saved: crate::composer_host::ComposerHostSelectionSave,
+    ) -> Result<(), MainWindowComposerSlotError> {
+        if self.selected_identity() != Some(expected)
+            || self.thread_predecessor_save != Some(saved.flush_ticket())
+            || self
+                .selected
+                .as_ref()
+                .is_none_or(|selected| !selected.dispatcher.is_drained())
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        Ok(self
+            .selected
+            .as_ref()
+            .unwrap()
+            .host
+            .validate_failed_selection_save(saved)?)
+    }
     pub(crate) fn qualify_thread_predecessor_save(
         &mut self,
         store: &HomeStore,

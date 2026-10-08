@@ -165,7 +165,7 @@ impl MainWindowConversationComposer {
         Ok(())
     }
 
-    fn failed_editor_drained(&self, cx: &App) -> bool {
+    pub(super) fn failed_editor_drained(&self, cx: &App) -> bool {
         self.active_flight.is_none()
             && self.pending_dispatch.is_none()
             && self.pending_realizer.is_none()
