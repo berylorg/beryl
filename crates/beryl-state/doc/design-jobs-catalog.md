@@ -128,8 +128,8 @@ durable job records and transitions plus compact catalog schema, normalization, 
 
 ## Atomic catalog invalidation
 
-- The Catalog owner offers a writer-time bounded invalidation contribution for exact named thread
-  identities. It authenticates the current primary row and reverse recency copy, preserves source
+- `CatalogState::invalidate_current` seals a writer-time bounded invalidation contribution for
+  one exact named thread. It authenticates the current primary row and reverse recency copy, preserves source
   facts and recency, advances the row revision and publishes matching Stale copies atomically with
   the source mutation. Missing or disagreeing copies reject; it cannot invent a Current projection.
   An already stale exact row is handled through the same validated mutation semantics.

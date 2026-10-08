@@ -449,7 +449,7 @@ fn read_pair(
     Ok(Some(row))
 }
 
-fn required_pair(
+pub(super) fn required_pair(
     reader: &DomainReader<'_, CatalogDomain>,
     thread_id: SyndicThreadId,
 ) -> Result<CatalogRow, CatalogMutationError> {

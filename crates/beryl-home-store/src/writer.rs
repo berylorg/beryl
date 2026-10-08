@@ -24,6 +24,7 @@ use crate::{
 
 mod batch;
 mod command_error;
+mod current_home;
 mod fault_context;
 
 use batch::assemble;
@@ -166,7 +167,7 @@ impl HomeStore {
         };
         self.execute_serialized(
             access,
-            cancellation,
+            || cancellation.is_cancelled(),
             reservation,
             |generation, health_generation, reservation| {
                 self.execute_admitted(
@@ -211,7 +212,7 @@ impl HomeStore {
         };
         self.execute_serialized(
             access,
-            cancellation,
+            || cancellation.is_cancelled(),
             reservation,
             |generation, health_generation, reservation| {
                 self.execute_current_admitted(generation, health_generation, command, reservation)
@@ -281,7 +282,7 @@ impl HomeStore {
     fn execute_serialized(
         &self,
         access: crate::candidate_access::StoreOperationAccess,
-        cancellation: crate::CommandCancellation,
+        cancelled: impl Fn() -> bool,
         reservation: CommandReservation,
         operation: impl FnOnce(
             &StoreGeneration,
@@ -289,7 +290,7 @@ impl HomeStore {
             &mut CommandReservation,
         ) -> ExecutionOutcome,
     ) -> CommandOutcome {
-        if cancellation.is_cancelled() {
+        if cancelled() {
             return not_committed(CommandError::CancelledBeforeAdmission);
         }
         if ActiveWriter::already_active(self.writer_id) {
@@ -306,7 +307,7 @@ impl HomeStore {
         };
         // Acquiring the mutex ends the wait; this terminal cancellation observation is the
         // admission handshake. No cancellation state is consulted after `ActiveWriter::enter`.
-        let cancelled = cancellation.is_cancelled();
+        let cancelled = cancelled();
         let _active = ActiveWriter::enter(self.writer_id);
         // Drop unconsumed command state inside both writer and reentry guards on early returns.
         let operation = operation;

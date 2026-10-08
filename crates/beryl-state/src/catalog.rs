@@ -1,10 +1,11 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
-    DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
-    KeyspaceSchemaVersion, MutationBuildError, MutationContribution, PointReadLimit, ReadError,
-    ReadLimitError, ReconciliationReader, RecordFamily, StorageDomain, ValidationContribution,
+    CurrentDomainCommand, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
+    DomainCallbackSource, DomainHandle, DomainReconciliation, DomainRegistrationError,
+    DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError,
+    MutationContribution, PointReadLimit, ReadError, ReadLimitError, ReconciliationReader,
+    RecordFamily, StorageDomain, ValidationContribution,
 };
 use beryl_model::{DomainRevision, SyndicThreadId};
 
@@ -18,6 +19,8 @@ mod codec;
 mod error;
 #[path = "catalog/initial.rs"]
 mod initial;
+#[path = "catalog/invalidation.rs"]
+mod invalidation;
 #[path = "catalog/mutation.rs"]
 mod mutation;
 #[path = "catalog/normalization.rs"]
@@ -398,6 +401,12 @@ impl CatalogState {
         self.handle.contribution(expected_revision, command)
     }
 
+    #[must_use]
+    pub fn invalidate_current(&self, thread_id: SyndicThreadId) -> CurrentDomainCommand {
+        self.handle
+            .current_command(invalidation::InvalidateCurrentCatalogRow { thread_id })
+    }
+
     #[cfg(any(test, feature = "test-faults"))]
     #[allow(dead_code)]
     pub fn corrupt_recency_copy_for_test(
@@ -422,6 +431,35 @@ impl CatalogState {
         self.handle.contribution(
             expected_revision,
             test_support::RemoveCatalogCopy { row, primary },
+        )
+    }
+
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn corrupt_primary_copy_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        key: SyndicThreadId,
+        row: CatalogRow,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::CorruptPrimaryCopy { key, row },
+        )
+    }
+
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn set_row_revision_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        thread_id: SyndicThreadId,
+        revision: CatalogRevision,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::SetCatalogRevision {
+                thread_id,
+                revision,
+            },
         )
     }
 }

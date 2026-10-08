@@ -497,7 +497,8 @@
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current
-  invalidation is the next accepted-design prerequisite. Producer completeness/rebuild readiness,
+  invalidation is accepted with all 546 Home/State cases and independent review;
+  [qualification](../../audits/atomic-current-catalog-invalidation-qualification.md). Producer completeness/rebuild readiness,
   frozen reader implementation and visible Thread Switcher mounting remain separate gates;
   [evidence](../../audits/frozen-thread-catalog-readiness.md).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

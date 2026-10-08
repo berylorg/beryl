@@ -3,7 +3,7 @@ pub use beryl_state::{RecordRevision, StatePage, UnixMillis};
 #[path = "../src/reconciliation.rs"]
 mod reconciliation;
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_imports)]
 #[path = "../src/catalog.rs"]
 mod catalog;
 
@@ -86,6 +86,8 @@ macro_rules! assert_committed {
 
 #[path = "catalog/initial_publication.rs"]
 mod initial_publication;
+#[path = "catalog/invalidation.rs"]
+mod invalidation;
 
 fn execute(
     store: &HomeStore,

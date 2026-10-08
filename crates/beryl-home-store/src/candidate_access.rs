@@ -139,6 +139,11 @@ impl<'a> HomeCandidateRecoveryAccess<'a> {
         self.store.execute_current_with_access(self.access, command)
     }
 
+    pub fn execute_current_home(&self, command: crate::CurrentHomeCommand) -> CommandOutcome {
+        self.store
+            .execute_current_home_with_access(self.access, command)
+    }
+
     pub fn receipt_domain_revision<D: StorageDomain>(
         &self,
         receipt: &CommitReceipt,

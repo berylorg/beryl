@@ -94,35 +94,16 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 738: Establish Frozen Thread Catalog Query Readiness (finished)
+# Phase 742: Implement Atomic Current Catalog Invalidation (finished)
 
-Accepted source-backed missing frozen-read and producer-currentness evidence, generation-owned
-read/query boundaries and first count-plus-bounded-page semantics. Independent review established
-742 as actionable; source-completeness, compact-summary maintenance and coherent producer readiness
-remain separate gates before 739. No product-level blocker was found.
-See [readiness evidence](audits/frozen-thread-catalog-readiness.md).
+Accepted the separately typed writer-admitted current cross-domain command and exact named-thread
+Catalog invalidation, retaining cancellation, original receipts and ordinary reconciliation.
+Canonical HomeStore/State checks, all 546 nextest cases, frozen source correspondence, scoped
+formatting and independent integrity review passed. Producer integration and coherent catalog
+readiness remain the next separate boundary.
+See [qualification](audits/atomic-current-catalog-invalidation-qualification.md).
 
-# Phase 742: Implement Atomic Current Catalog Invalidation (wip)
-
-The [readiness evidence](audits/frozen-thread-catalog-readiness.md) found that existing live source
-commands cannot atomically join Catalog invalidation. Establish the Home/State capability before
-integrating those production producers; this boundary does not claim coherent catalog readiness.
-
-Implement the separately typed current cross-domain Home command under the
-[atomic command contract](../crates/beryl-home-store/doc/design-atomic-commands.md), preserving the
-existing single-domain command. Capture physical revisions only after serialized admission and
-reuse ordinary bounded preparation, atomic batch, receipts, cancellation and original reconciliation.
-Implement bounded exact named-thread writer-time Catalog invalidation under
-[State authority](../crates/beryl-state/doc/design-jobs-catalog.md#atomic-catalog-invalidation).
-No retry, sidecar path, raw storage escape or arbitrary fanout is admitted.
-
-Verify source logical fences, exact distinct-domain/type/generation admission, duplicate/empty
-rejection, primary/index disagreement, missing and already-stale rows, revision exhaustion,
-cancellation and all-or-nothing old/new outcome classification through original receipts and fault
-seams. Run focused HomeStore/State checks and nextest, canonical qualification and independent
-integrity review. Producer integration remains the next boundary.
-
-# Phase 743: Establish Production Catalog Currentness And Rebuild Readiness (pending)
+# Phase 743: Establish Production Catalog Currentness And Rebuild Readiness (wip)
 
 Join source-coupled publication/invalidation into the finite producer inventory in the readiness
 evidence, with unchanged original outcome custody. Establish bounded exhaustive compact-source

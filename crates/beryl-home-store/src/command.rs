@@ -23,9 +23,11 @@ use crate::{
     },
 };
 
+mod current_home;
 mod participant;
 mod result;
 
+pub use current_home::CurrentHomeCommand;
 pub(crate) use participant::{DomainMutationPlan, DomainParticipant, PreparedDomainMutation};
 use participant::{mutation_plan, validation_plan};
 pub(crate) use result::RetainedReconciliationDescriptor;
