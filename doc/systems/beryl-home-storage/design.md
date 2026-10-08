@@ -833,6 +833,21 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   search normalization, exact source revisions, and deterministic ordering.
 - Turn bodies, transcript items, Markdown, resource bytes, draft text, and CAS thread metadata are excluded.
 - Source mutations update the row in the same commit when the required facts are available, or atomically mark that row stale for bounded background rebuild.
+- The app projection owner joins source-owned typed mutations with State-owned catalog effects;
+  neither domain reads the other's private records. Current-record-fenced producers use a typed
+  current cross-domain Home command when invalidation must share their commit. Ordinary
+  caller-fenced joins retain their existing command and exact outcome custody.
+- Coherent catalog readiness is established by bounded source-completeness and source-agreement
+  evaluation, including Syndic threads with a missing catalog row. A compact Catalog-only scan or
+  its Current flags cannot certify exhaustive source coverage. The projection owner repairs exact
+  missing/stale rows from authenticated source facts before publishing readiness; source changes
+  invalidate that readiness. No complete resident registry is required.
+- Catalog-affecting Syndic history/title/archive/lineage changes, Session claim acquisition,
+  replacement/release/restoration and RuntimeRoot label/path/availability changes participate in
+  source-coupled publication or invalidation. Scope-wide changes retain bounded durable rebuild
+  custody until all affected compact rows agree; incomplete fanout cannot certify readiness.
+  Compact source-summary maintenance belongs to its source owner and cannot become a flyout-triggered
+  history-loading path. Opening or filtering consumes qualified compact readiness only.
 - Catalog authority maintains rebuildable title, runtime, root, availability, recency, and
   normalized-search indexes. Revision-bound recent, scope, and search queries return bounded
   deterministic cursor pages without constructing a complete in-memory metadata model.
@@ -842,6 +857,10 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   mapping and matches a contiguous normalized substring. It is lexical filtering only and is not
   the deferred semantic-search feature.
 - An open flyout receives an immutable query revision and compact cursor authority. Background catalog updates publish a later revision for the next interaction instead of reordering the open collection.
+- Home owns the retained snapshot within its generation; State owns query criteria, count, order,
+  page and position semantics; the published app graph owns query custody and non-owning readers.
+  Exact release and generation retirement drain admitted requests and drop snapshot pins before
+  database disposal. Activation always revalidates live authority independently of frozen rows.
 - Query evaluation may perform work proportional to the durable catalog, but its local page,
   index-walk, and ordering state remain bounded by configured item and byte limits. GUI row
   construction remains fixed-height and virtualized.

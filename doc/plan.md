@@ -94,36 +94,46 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 737: Mount Primary New Thread In The Current Runtime And Root (finished)
+# Phase 738: Establish Frozen Thread Catalog Query Readiness (finished)
 
-Accepted the exact selected-scope primary entrance through the shared engine, independent keyboard
-focus, fixed themed geometry and open-picker command/input fencing with preserved inspection and
-search state. Published the qualified owned-input correction and aligned Settings consumer.
-Canonical app/Beryl checks, 341 nextest cases, scoped formatting and independent review passed;
-retain the documented virtual-input and baseline clipboard limits.
-See [qualification](audits/new-thread-primary-qualification.md).
+Accepted source-backed missing frozen-read and producer-currentness evidence, generation-owned
+read/query boundaries and first count-plus-bounded-page semantics. Independent review established
+742 as actionable; source-completeness, compact-summary maintenance and coherent producer readiness
+remain separate gates before 739. No product-level blocker was found.
+See [readiness evidence](audits/frozen-thread-catalog-readiness.md).
 
-# Phase 738: Establish Frozen Thread Catalog Query Readiness (wip)
+# Phase 742: Implement Atomic Current Catalog Invalidation (wip)
 
-Prepare the next [catalog and Thread Switcher boundary](features/conversation-threads/design.md#thread-catalog)
-from the current storage, State and app source. Existing current-revision recency scans and
-Running inventory cannot supply the exhaustive immutable flyout collection; qualify the missing
-source and lifecycle capabilities before production implementation.
+The [readiness evidence](audits/frozen-thread-catalog-readiness.md) found that existing live source
+commands cannot atomically join Catalog invalidation. Establish the Home/State capability before
+integrating those production producers; this boundary does not claim coherent catalog readiness.
 
-Deliver bounded source-backed readiness evidence covering stable query identity, coherent frozen
-revision, complete scope/search, deterministic recency, bounded pages and position/reveal reads,
-first coherent presentation, source staleness and disposal across home retirement. Reconcile the
-existing authoritative supplements where a technical lifecycle boundary needs clarification;
-do not use this plan to choose ownership or substitute a resident catalog, CAS enumeration or
-transcript loading. Verify applicable rigor and obtain independent readiness review.
+Implement the separately typed current cross-domain Home command under the
+[atomic command contract](../crates/beryl-home-store/doc/design-atomic-commands.md), preserving the
+existing single-domain command. Capture physical revisions only after serialized admission and
+reuse ordinary bounded preparation, atomic batch, receipts, cancellation and original reconciliation.
+Implement bounded exact named-thread writer-time Catalog invalidation under
+[State authority](../crates/beryl-state/doc/design-jobs-catalog.md#atomic-catalog-invalidation).
+No retry, sidecar path, raw storage escape or arbitrary fanout is admitted.
 
-This boundary accepts actionable catalog authority and exact implementation prerequisites only.
-No production catalog or Thread Switcher source is implemented before it passes. Ordinary claim
-activation's failed-home custody remains separately qualified before the visible mount.
+Verify source logical fences, exact distinct-domain/type/generation admission, duplicate/empty
+rejection, primary/index disagreement, missing and already-stale rows, revision exhaustion,
+cancellation and all-or-nothing old/new outcome classification through original receipts and fault
+seams. Run focused HomeStore/State checks and nextest, canonical qualification and independent
+integrity review. Producer integration remains the next boundary.
+
+# Phase 743: Establish Production Catalog Currentness And Rebuild Readiness (pending)
+
+Join source-coupled publication/invalidation into the finite producer inventory in the readiness
+evidence, with unchanged original outcome custody. Establish bounded exhaustive compact-source
+completeness and coherent projection readiness before query admission. Reconcile compact-summary
+maintenance and exact source-witness policy in owning authority before implementation; do not make
+flyout loading depend on history fallback. Unmounted scope-wide/title setters remain separately
+gated until their bounded producer contract is ready. Frozen queries stay pending until this passes.
 
 # Phase 739: Implement Published Frozen Thread Catalog Queries (pending)
 
-After 738 establishes the exact ready boundary, implement its generation-owned bounded catalog
+After the preceding source-currentness prerequisite passes, implement the generation-owned bounded catalog
 reader and published query/page capability for the ordinary Thread Switcher, with stable complete
 scope/search and retirement release. Preserve a separate visible mounting acceptance.
 

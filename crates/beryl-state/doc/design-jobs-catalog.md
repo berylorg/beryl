@@ -126,6 +126,47 @@ durable job records and transitions plus compact catalog schema, normalization, 
   byte cost, and fail rather than represent an incomplete collection as complete; stale rows rebuild
   before correctness-sensitive mutation.
 
+## Atomic catalog invalidation
+
+- The Catalog owner offers a writer-time bounded invalidation contribution for exact named thread
+  identities. It authenticates the current primary row and reverse recency copy, preserves source
+  facts and recency, advances the row revision and publishes matching Stale copies atomically with
+  the source mutation. Missing or disagreeing copies reject; it cannot invent a Current projection.
+  An already stale exact row is handled through the same validated mutation semantics.
+- The contribution uses exact logical identities from the source operation and writer-time Catalog
+  reads, rather than an app's earlier row revision. It grants no source mutation, arbitrary range
+  scan, global freshness promise or rebuild permission. Multiple affected identities remain
+  explicitly bounded; scope-wide runtime/root fanout belongs to the owning projection coordinator.
+
+## Frozen catalog queries
+
+- State owns immutable query identity, complete runtime/root scope, canonical normalized search,
+  frozen Home and Catalog revisions, deterministic recency order, exact matching count and bounded
+  continuation/position semantics. Each query uses one generation-owned Home frozen read for every
+  row, reverse-index agreement check, count, page and position request. Live revision drift cannot
+  reorder or change that collection. Query identity cannot be reused after release or recovery.
+- Query readiness requires a coherent current projection at the captured revision. A stale,
+  missing or disagreeing projection cannot be omitted or interpreted as an empty result. The
+  owning projection service resolves its bounded rebuild before admitting a new query; it never
+  inserts a rebuilt live row into an existing frozen collection. Exact source-coupled publication
+  or invalidation is required before a stored Current flag can certify this readiness.
+- Evaluation may walk the complete durable compact catalog to count and filter matches. It retains
+  only bounded row/index pages, checked totals and compact continuation state, never all matching
+  rows or a thread-sized presentation model. Scope and substring filtering use the existing
+  canonical search fields and normalization. Equal activity uses ascending stable thread identity.
+- The first coherent response supplies the exact matching count and first bounded presentation
+  page after compact query evaluation. This does not prepare presentation rows for the complete
+  collection. Later page and exact-thread position/reveal requests share the same criteria and
+  revision. Missing identities return absence; limit, stale capability and structural failures
+  remain distinct from an empty complete result.
+- Page validation accommodates the full admitted 256-KiB catalog record, its encoded key and
+  checked cumulative overhead. A smaller unrelated widget page budget cannot make an otherwise
+  valid catalog row unreachable. Item and byte ceilings remain finite and explicit.
+- Query tokens and cursors are non-owning generation-bound capabilities. The query owner releases
+  its exact Home read on dismissal, cancellation, supersession, failure or service retirement;
+  stale outstanding requests cannot publish into another query. Query results grant no claim or
+  activation authority; the serialized live writer independently revalidates selection.
+
 ## Exact catalog claim replacement
 
 `CatalogClaimReplacementRow` prepares an opaque target row from its exact existing row or proven

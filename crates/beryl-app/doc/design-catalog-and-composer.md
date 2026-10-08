@@ -18,6 +18,26 @@ governed by [design.md](design.md). It does not independently declare engineerin
   call typed atomic operations, not app-local check-then-act logic. Visible behavior belongs to the
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md).
 
+## Published Frozen Catalog Reader
+
+- The published service graph owns one generation-bound query service and exposes a narrow
+  non-owning catalog reader. Worker-side preparation obtains a coherent current projection and
+  opens the State-owned immutable query. The app transports complete criteria, opaque query
+  capabilities and bounded typed responses; it does not own snapshot, search or ordering policy.
+- Query preparation and page/position work stay off the GUI thread. The first response joins exact
+  count and bounded first presentation page under one query identity. It does not construct all
+  result rows, load transcripts or enumerate CAS. Runtime/root presentation facts belong to the
+  same coherent frozen source as the rows and cannot be substituted from a later live revision.
+- Every request has a non-reused identity sealed to its query and published Home generation. GUI
+  publication rechecks that exact service, selected request and query before accepting a response.
+  Late completion after supersession, cancellation, dismissal or recovery is discarded with its
+  bounded custody. No old query response can seed a new flyout.
+- The service owns release on every terminal path and retirement, including failed preparation and
+  first-response publication. It drains admitted work before dropping its retained reads. A reader
+  or callback surviving graph retirement cannot pin old database or snapshot ownership. Actual
+  activation uses the ordinary exact idle-thread route and independently authenticates live
+  immutable execution, draft, claim and source facts; frozen rows confer no activation permission.
+
 ## Range-Backed Composer Host
 
 - Running-thread claim activation separates worker-side source preparation, predecessor draft-save

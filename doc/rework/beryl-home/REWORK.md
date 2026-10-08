@@ -496,6 +496,10 @@
   [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
+- [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current
+  invalidation is the next accepted-design prerequisite. Producer completeness/rebuild readiness,
+  frozen reader implementation and visible Thread Switcher mounting remain separate gates;
+  [evidence](../../audits/frozen-thread-catalog-readiness.md).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

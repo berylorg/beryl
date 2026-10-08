@@ -87,6 +87,25 @@ bounded typed reads and results, and read-only proof composition. It is governed
   state, including malformed or sentinel keys outside ordinary typed ranges, without exposing
   retired versions or tombstones or retaining a whole-domain collection.
 
+## Generation-Owned Frozen Reads
+
+- A retained frozen read fixes one coherent cross-domain snapshot and its Home revision. The Home
+  generation owns the snapshot and its retention slot; callers receive only an opaque non-owning
+  capability qualified by store, generation and non-reused read identity. Cloning that capability
+  cannot extend database or generation lifetime. No raw snapshot escapes the package boundary.
+- Each typed point, revision or finite cursor-page request reacquires ordinary generation admission
+  and validates the exact domain owner, codec and registration before reading the retained snapshot.
+  It uses the same envelope checks, explicit bounds and health classification as ordinary reads.
+  A later live write cannot change the frozen result; this grants no live mutation permission.
+- Retention admission has an explicit finite slot limit. Identity exhaustion, saturation, released
+  identity, foreign store and stale generation reject without replacement or identity reuse.
+  Releasing a read closes new requests and drains its admitted requests before dropping its snapshot.
+  Generation retirement closes all such access, drains admitted reads and releases every retained
+  snapshot before database-generation disposal. Surviving capabilities cannot delay retirement.
+- Cancellation, supersession and consumer disposal release their exact retained read through the
+  owning query service. A failed bounded request neither fabricates a complete page nor grants
+  access to a fresh snapshot under the old identity. Recovery creates fresh read identities.
+
 ## Read-Only Proof Composition
 
 - `HomeProofCommand<P>` and `HomeStore::compose_proof` form the generic process-local boundary for

@@ -14,6 +14,13 @@ is governed by [the package design](design.md), including that design's engineer
 - `HomeCommand` is the caller-fenced boundary for cross-domain or sidecar-retaining atomic work. It
   contains at least one typed mutation participant and may contain typed validation-only
   participants. One domain may participate at most once across both roles.
+- A separately typed current cross-domain command composes a finite set of typed mutation
+  participants whose owners enforce exact logical-record fences at writer-time preparation.
+  Serialized admission captures physical Home and participating domain revisions from the same
+  snapshot. It uses ordinary atomic batch, bounds, receipts, persistence, fault, cancellation and
+  reconciliation semantics without retries or sidecar tokens. Duplicate domains, stale handles,
+  empty contributions and failed logical fences reject the whole command. It does not relax the
+  single-domain shape above or give a callback access to another domain's private records.
 - The writer validates expected revisions, exact live owners, persistent registrations, and the
   current generation against one coherent writer-time snapshot. Each mutation then performs one
   bounded preparation pass containing its operation-owned reads and semantic validation and yields
