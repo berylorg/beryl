@@ -17,6 +17,8 @@ mod claim_replacement;
 mod codec;
 #[path = "catalog/error.rs"]
 mod error;
+#[path = "catalog/frozen.rs"]
+mod frozen;
 #[path = "catalog/initial.rs"]
 mod initial;
 #[path = "catalog/invalidation.rs"]
@@ -25,6 +27,8 @@ mod invalidation;
 mod mutation;
 #[path = "catalog/normalization.rs"]
 mod normalization;
+#[path = "catalog/rebuild.rs"]
+mod rebuild;
 #[path = "catalog/row.rs"]
 mod row;
 #[cfg(any(test, feature = "test-faults"))]
@@ -56,6 +60,7 @@ pub use normalization::{
     CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
     CatalogNormalizedQuery,
 };
+pub use rebuild::RebuildCatalogRow;
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};
 pub use value::{
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
@@ -407,6 +412,14 @@ impl CatalogState {
             .current_command(invalidation::InvalidateCurrentCatalogRow { thread_id })
     }
 
+    pub fn rebuild(
+        &self,
+        expected_revision: DomainRevision,
+        command: RebuildCatalogRow,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
     #[cfg(any(test, feature = "test-faults"))]
     #[allow(dead_code)]
     pub fn corrupt_recency_copy_for_test(
@@ -558,6 +571,9 @@ pub enum CatalogMutationError {
     CurrentRowStale {
         thread_id: SyndicThreadId,
     },
+    ExecutionIdentityChanged {
+        thread_id: SyndicThreadId,
+    },
 }
 
 impl fmt::Display for CatalogMutationError {
@@ -580,6 +596,12 @@ impl fmt::Display for CatalogMutationError {
             ),
             Self::SourceRevisionRegressed { kind } => {
                 write!(formatter, "catalog {kind} source revision cannot regress")
+            }
+            Self::ExecutionIdentityChanged { thread_id } => {
+                write!(
+                    formatter,
+                    "catalog rebuild cannot change execution identity for {thread_id}"
+                )
             }
             Self::AlreadyStale { thread_id } => {
                 write!(formatter, "catalog row for {thread_id} is already stale")

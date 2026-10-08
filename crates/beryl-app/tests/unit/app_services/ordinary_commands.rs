@@ -266,6 +266,12 @@ fn confirmed(toolbar: bool, count: u8) {
                     &owner,
                     beryl_model::SyndicThreadId::from_bytes([250; 16]),
                 );
+                wait_for_unviewed_catalog_source(
+                    &owner,
+                    beryl_model::SyndicThreadId::from_bytes([250; 16]),
+                    cx,
+                )
+                .await;
                 if toolbar {
                     activate_exit(invoking, cx);
                 } else {
@@ -330,6 +336,12 @@ fn cancellation(toolbar: bool) {
                     &owner,
                     beryl_model::SyndicThreadId::from_bytes([248; 16]),
                 );
+                wait_for_unviewed_catalog_source(
+                    &owner,
+                    beryl_model::SyndicThreadId::from_bytes([248; 16]),
+                    cx,
+                )
+                .await;
                 let native = native(invoking, cx).await;
                 for _ in 0..2 {
                     if toolbar {

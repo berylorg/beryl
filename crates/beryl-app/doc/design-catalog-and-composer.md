@@ -41,9 +41,40 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Published Frozen Catalog Reader
 
+- One graph-owned background source coordinator certifies exhaustive canonical thread, Catalog
+  primary/recency and source agreement on a retained Home read before publishing a compact source
+  generation. It holds one bounded attempt, one coalesced refresh and one published generation;
+  it never retains a thread-sized registry. The existing mutation observer supplies explicit wake
+  fanout without another registration that could replace scheduler observation.
+- Actual process startup keeps Catalog maintenance behind a separate initial-publication fence
+  created before graph publication. Mutation wakes coalesce while native restoration prepares;
+  Catalog remains unready and cannot write competing projections. The whole native restore-set
+  publication releases the fence before Running handoff. Failed or cancelled startup cancels and
+  joins the fenced worker through ordinary graph disposal. Headless graph opening keeps immediate
+  worker release. Recovery retains its existing worker gate until exact resident publication and
+  admission reopening complete; it does not release Catalog early at graph publication.
+- Source-owned summary/title repair and exact State projection repair precede fresh certification;
+  opening or filtering only consumes an already qualified compact generation. Missing derived rows
+  cannot disappear from coverage. Stable structural disagreement is typed failure; drift/conflict
+  stays unready with bounded refresh custody. A successful certification names its captured Home
+  revision and cannot claim a later live revision. Source mutations schedule later publication.
+- Preparation, supersession, initial failure, failed-home recovery and graph disposal retain exact
+  repair command/outcome custody, cancel and drain worker work, and release owned frozen reads.
+  Escaped consumers remain non-owning generation-qualified views. No callback may pin a retired Home.
+- Failed-home graph retirement retains at most that graph's original coordinator repair outcome
+  in its existing retirement custody. The fresh candidate's ordinary retained-process-work
+  settlement consumes known noncommit/commit outcomes only after other required settlement succeeds;
+  an indeterminate outcome first reconciles its original installed Home handle. Exact old, new or
+  successor classifications permit settlement; collision or reconciliation failure preserves the
+  original handle and refuses publication. Historical read/spawn/panic failures carry no repair
+  authority and may be consumed after settlement. Recovery publication requires that custody to be
+  settled; another historical queue or reconstruction of the original receipt is unnecessary.
 - The published service graph owns one generation-bound query service and exposes a narrow
-  non-owning catalog reader. Worker-side preparation obtains a coherent current projection and
-  opens the State-owned immutable query. The app transports complete criteria, opaque query
+  non-owning catalog reader. Worker-side preparation independently retains the exact certified
+  source snapshot and opens the State-owned immutable query on that retained read; it does not
+  recapture live state under an earlier readiness result. Coordinator replacement releases only
+  its published-read ownership, leaving already admitted query collections stable. Home retirement
+  closes and drains every independently admitted read. The app transports complete criteria, opaque query
   capabilities and bounded typed responses; it does not own snapshot, search or ordering policy.
 - Query preparation and page/position work stay off the GUI thread. The first response joins exact
   count and bounded first presentation page under one query identity. It does not construct all

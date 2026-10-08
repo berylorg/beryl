@@ -24,8 +24,13 @@ fn shutdown_refuses_uncertain_enrollment_and_keeps_the_original_process_custody(
         .unwrap();
     let _fence = owner.process.fence().unwrap();
     let graph = owner.graph().unwrap();
-    let runtime =
-        install_uncertain_enrollment(&owner, graph.home.as_ref().unwrap(), &graph.syndic, &faults);
+    let runtime = install_uncertain_enrollment(
+        &owner,
+        graph.home.as_ref().unwrap(),
+        graph.state(),
+        &graph.syndic,
+        &faults,
+    );
     let original = owner
         .graph()
         .unwrap()
@@ -123,10 +128,10 @@ fn shutdown_refuses_uncertain_enrollment_and_keeps_the_original_process_custody(
 
 #[test]
 fn rejected_foreign_initial_candidate_does_not_discard_retained_enrollment() {
-    let (_directory, candidate, _state, syndic, faults) = fixture();
+    let (_directory, candidate, state, syndic, faults) = fixture();
     let mut owner = owner(&candidate);
     let home = candidate.publish().unwrap();
-    let runtime = install_uncertain_enrollment(&owner, &home, &syndic, &faults);
+    let runtime = install_uncertain_enrollment(&owner, &home, &state, &syndic, &faults);
     let original = home.pending_reconciliations().pop().unwrap();
     let (_foreign_directory, foreign, foreign_state, foreign_syndic, _) = fixture();
     let result = owner.open_initial(
@@ -160,10 +165,10 @@ fn rejected_foreign_initial_candidate_does_not_discard_retained_enrollment() {
 
 #[test]
 fn same_home_candidate_cannot_replace_pending_process_enrollment_custody() {
-    let (directory, candidate, _, syndic, faults) = fixture();
+    let (directory, candidate, state, syndic, faults) = fixture();
     let mut owner = owner(&candidate);
     let home = candidate.publish().unwrap();
-    install_uncertain_enrollment(&owner, &home, &syndic, &faults);
+    install_uncertain_enrollment(&owner, &home, &state, &syndic, &faults);
     let original = home.pending_reconciliations().pop().unwrap();
     assert!(matches!(
         home.retry_reconciliation(&original).unwrap(),

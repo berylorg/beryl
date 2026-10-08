@@ -261,7 +261,10 @@ fn complete_freeze_and_final_membership_validation_precede_obligation_installati
             match service.retire_for_recovery(generation) {
                 Err(CasRetirementFailure::Disposal(failure)) => {
                     assert!(matches!(failure.error(), CasRetirementError::IncompleteCut));
-                    failure.close().unwrap();
+                    let terminal = failure
+                        .close()
+                        .expect_err("incomplete cut cannot grant successful recovery retirement");
+                    drop(terminal);
                 }
                 _ => panic!("incomplete freeze must not grant recovery custody"),
             }

@@ -239,6 +239,10 @@ by the executable composition root.
   continuation intent and performs no provider dispatch.
 - Only the complete private prepared graph can consume app publication. It publishes the same
   candidate generation and graph under one outer transition, then releases ordinary workers.
+  Actual process startup holds Catalog maintenance behind its separately owned initial fence
+  until the complete native restore set publishes, preserving exact restoration source fences.
+  Startup failure cancels and drains that worker; headless opening keeps immediate release, and
+  recovery preserves its existing deferred release after resident publication and reopening.
   Consumers receive a published graph or a typed failure, never a builder, partial handle tuple,
   candidate access, pending constructor or early healthy-store result.
 - Exactly one marker-seal service is constructed from the prepared graph's home generation and

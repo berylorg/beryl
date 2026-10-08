@@ -12,6 +12,7 @@ use crate::{AvailabilitySnapshot, RecordRevision, StatePage, UnixMillis};
 
 mod codec;
 mod error;
+mod frozen;
 mod mutation;
 mod validate;
 

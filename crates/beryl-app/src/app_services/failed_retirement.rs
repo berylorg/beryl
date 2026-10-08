@@ -29,6 +29,12 @@ impl ProcessServiceOwner {
         }
         self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("admitted failed graph");
+        if let Some(mut catalog) = graph.catalog_source.take() {
+            if let Err(error) = catalog.stop_and_join() {
+                assert!(self.closing_catalog_error.is_none());
+                self.closing_catalog_error = Some(error);
+            }
+        }
         graph.private_clipboard.retire();
         let home_generation = graph
             .home()
@@ -88,6 +94,9 @@ impl ProcessServiceOwner {
             return Err(AppServiceCloseError::PersistentFailure);
         }
         self.attempt = InitialServiceAttemptState::Retired(fence);
+        if let Some(error) = self.closing_catalog_error.take() {
+            return Err(error.into());
+        }
         Ok(())
     }
 }

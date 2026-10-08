@@ -250,7 +250,7 @@ fn publication_evidence_is_exact(request: DraftEditorCandidatePublicationRequest
 
 #[derive(Clone)]
 struct PublicationMutation {
-    prepared: PreparedDraftEditorCandidatePublicationV1,
+    prepared: Box<PreparedDraftEditorCandidatePublicationV1>,
 }
 
 #[derive(Clone)]
@@ -1101,7 +1101,7 @@ pub(super) fn candidate_session_disposal_is_exact_in_store(
 
 impl DomainMutation<SyndicDomain> for PublicationMutation {
     type Error = SyndicMutationError;
-    type Prepared = PreparedPublicationMutation;
+    type Prepared = Box<PreparedPublicationMutation>;
 
     fn prepare(
         self,
@@ -1215,7 +1215,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
             self.prepared.captured_frontier.clone(),
         );
         let _ = reverse;
-        Ok(PreparedPublicationMutation {
+        Ok(Box::new(PreparedPublicationMutation {
             request,
             next_draft,
             next_reverse,
@@ -1223,7 +1223,7 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
             captured_frontier: self.prepared.captured_frontier,
             after_head,
             receipt,
-        })
+        }))
     }
 
     fn reserve_reconciliation(
@@ -1546,8 +1546,12 @@ impl SyndicStorage {
         expected_domain_revision: DomainRevision,
         prepared: PreparedDraftEditorCandidatePublicationV1,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, PublicationMutation { prepared })
+        self.handle.contribution(
+            expected_domain_revision,
+            PublicationMutation {
+                prepared: Box::new(prepared),
+            },
+        )
     }
 
     pub fn publish_draft_editor_candidate_candidate(

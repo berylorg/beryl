@@ -123,10 +123,12 @@ pub(super) fn marker_flight(
 pub(super) fn install_uncertain_enrollment(
     owner: &ProcessServiceOwner,
     home: &HomeStore,
+    state: &beryl_state::BerylState,
     syndic: &SyndicStorage,
     faults: &FaultController,
 ) -> RuntimeId {
     let thread = support::id(30);
+    register_populated_execution_source(home, state);
     support::seed_populated(home, syndic.clone());
     support::converge_and_release_terminal_history(
         home,
@@ -175,4 +177,59 @@ pub(super) fn install_uncertain_enrollment(
     assert_eq!(owner.enrollments.pending_count(), 1);
     assert_eq!(home.pending_reconciliations().len(), 1);
     runtime
+}
+
+fn register_populated_execution_source(home: &HomeStore, state: &beryl_state::BerylState) {
+    use beryl_home_store::{CommandOutcome, HomeCommand};
+    use beryl_model::{
+        AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeLaunchForm, RuntimeMode,
+        RuntimeNativePath,
+    };
+    use beryl_state::{
+        AvailabilitySnapshot, CreateRuntimeWithHomeRoot, RootRegistration, RuntimeRegistration,
+        UnixMillis,
+    };
+    let executable =
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\Codex\codex.exe").unwrap();
+    let root =
+        RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, r"C:\populated")
+            .unwrap();
+    let available =
+        AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(1)).unwrap();
+    let registration = CreateRuntimeWithHomeRoot::new(
+        RuntimeRegistration::new(
+            RuntimeId::from_bytes([48; 16]),
+            executable.clone(),
+            root.mode().clone(),
+            RuntimeLaunchForm::CodexCli,
+            RuntimeNativePath::from_admitted(
+                root.mode().clone(),
+                executable.flavor(),
+                executable.as_str(),
+            )
+            .unwrap(),
+            UnixMillis::new(1),
+            available,
+        )
+        .unwrap(),
+        RootRegistration::new(
+            RootId::from_bytes([49; 16]),
+            root.clone(),
+            AdmittedHostPath::from_admitted(root.flavor(), root.as_str()).unwrap(),
+            UnixMillis::new(1),
+            available,
+        ),
+    )
+    .unwrap();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    command
+        .add(state.runtime_roots().create_runtime_with_home_root(
+            state.runtime_roots().revision(home).unwrap(),
+            registration,
+        ))
+        .unwrap();
+    assert!(matches!(
+        home.execute(command),
+        CommandOutcome::Committed { .. }
+    ));
 }

@@ -659,16 +659,25 @@ fn verify_published_bindings(
         .bind_interrupted_exit_process(request, appearance, app)
         .unwrap();
     assert_eq!(running.test_process_appearance(), *appearance);
-    assert!(
-        running
-            .bind_interrupted_exit_process(request, appearance, app)
-            .is_err()
-    );
-    assert_eq!(running.test_process_appearance(), *appearance);
+    let binding_count = running.test_recovered_process_command_binding_count();
+    assert!(binding_count.is_some());
     let command = running
         .window_exit_command(running.test_process().windows.window_ids()[0], app)
         .unwrap();
     assert!(command.disabled_reason().is_some());
+    running
+        .bind_interrupted_exit_process(request, appearance, app)
+        .unwrap();
+    assert_eq!(running.test_process_appearance(), *appearance);
+    assert_eq!(
+        running.test_recovered_process_command_binding_count(),
+        binding_count
+    );
+    let repeated_command = running
+        .window_exit_command(running.test_process().windows.window_ids()[0], app)
+        .unwrap();
+    assert!(command.same_recovered_binding(&repeated_command));
+    assert!(repeated_command.disabled_reason().is_some());
     command.request_exit();
     let calls = Cell::new(0);
     assert_eq!(

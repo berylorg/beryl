@@ -36,6 +36,7 @@ fn retired_home_construction_preserves_failed_custody_and_returns_private_candid
         super::recovery_support::install_uncertain_enrollment(
             &owner,
             graph.home(),
+            graph.state(),
             graph.syndic(),
             &faults,
         );
@@ -172,6 +173,7 @@ fn recovery_retirement_preserves_home_registry_and_resident_occupancy() {
     super::recovery_support::install_uncertain_enrollment(
         &owner,
         graph.home(),
+        graph.state(),
         graph.syndic(),
         &faults,
     );

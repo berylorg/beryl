@@ -182,6 +182,7 @@ fn erased_storage_failure_severity(
 fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
     match error {
         ReadError::HealthGate(_)
+        | ReadError::FrozenRead(_)
         | ReadError::ForeignDomain { .. }
         | ReadError::UnknownFamily { .. }
         | ReadError::CodecTypeMismatch { .. }

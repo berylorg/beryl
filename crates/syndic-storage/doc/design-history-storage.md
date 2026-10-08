@@ -26,6 +26,19 @@ Independent records prevent unrelated changes from fencing one another:
   usage revision.
 - Thread catalog summary is a compact rebuildable query value derived from current durable facts.
 
+Compact catalog authentication on a retained Home read uses bounded Thread, immutable Execution,
+Attributes, HistorySummary and ThreadCatalogSummary records. It requires exact canonical source
+witness equality, identity/execution/lineage agreement, archive/activity/completeness facts and
+package-owned title precedence. A history-derived title already earned under those exact witnesses
+does not require repeating history traversal. Missing or outdated derived authority is a typed
+rebuild requirement, not absence of the canonical thread. This read grants no mutation capability.
+
+Background summary preparation separately derives any required history title under existing bounded
+source traversal and seals exact canonical source and old-summary-or-absence guards. The owning
+package chooses an initial revision only for proven absence; callers cannot manufacture it. Its
+ordinary contribution publishes one exact summary replacement with existing reconciliation and
+source validation. A captured old read never observes that later repair.
+
 The source-owned catalog summary pair operations admit exactly one target and at most one distinct
 predecessor under a shared Syndic-domain revision. `publish_thread_catalog_summary_pair` contributes
 one mutation when either opaque preparation requires replacement; exact members remain validation

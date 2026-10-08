@@ -206,10 +206,10 @@ impl RunningProcessOwner {
                     }
                 }
             };
-            (services, original, settled)
+            Box::new((services, original, settled))
         });
         app.spawn(async move |cx| {
-            let (services, original, mut settled) = work.await;
+            let (services, original, mut settled) = *work.await;
             if cancellation.is_cancelled() {
                 if let CandidateSettlement::Services(Ok(prepared)) = settled {
                     settled = cx

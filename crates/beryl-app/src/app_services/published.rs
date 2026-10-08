@@ -14,6 +14,13 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(crate) fn catalog_source_reader(&self) -> crate::catalog_readiness::CatalogSourceReader {
+        self.catalog_source
+            .as_ref()
+            .expect("published catalog source coordinator")
+            .reader()
+    }
+
     pub(crate) fn current_appearance(
         &self,
     ) -> Option<Arc<crate::theme_runtime::AppearanceGeneration>> {

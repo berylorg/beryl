@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     app_services::AppServiceShutdownProgress,
     cas_projection::ProjectionCancellationToken,
+    cas_projection::initial_start::InitialStartOwner,
     main_window::{
         MainWindowRestoreSet, MainWindowRestoreSetOutcome, PreparedNativeMainWindowRestoreSet,
     },
@@ -40,6 +41,7 @@ impl PreparationCancellation {
 }
 
 pub(super) struct Worker {
+    catalog_start: Option<InitialStartOwner>,
     pub(super) services: Option<ProcessServiceOwner>,
     pub(super) failed_open: Option<beryl_home_store::HomeCloseError>,
     pub(super) retained_restore: Option<MainWindowRestoreSet>,
@@ -61,6 +63,7 @@ pub(super) enum Preparation {
 impl Worker {
     pub(super) fn new() -> Self {
         Self {
+            catalog_start: None,
             services: None,
             failed_open: None,
             retained_restore: None,
@@ -105,7 +108,7 @@ impl Worker {
             .unwrap_or_default();
         let at =
             SyndicTimestamp::from_unix_millis(u64::try_from(now.as_millis()).unwrap_or(u64::MAX));
-        if let Err(failure) = owner.open_initial(
+        let catalog_start = match owner.open_initial_for_startup(
             candidate,
             state,
             syndic,
@@ -113,14 +116,19 @@ impl Worker {
             at,
             cancellation.current(),
         ) {
-            let detail = failure.to_string();
-            if let Some(candidate) = failure.rejected_candidate {
-                if let Err(error) = candidate.close() {
-                    self.failed_open = Some(error);
+            Ok(catalog_start) => catalog_start,
+            Err(failure) => {
+                let detail = failure.to_string();
+                if let Some(candidate) = failure.rejected_candidate {
+                    if let Err(error) = candidate.close() {
+                        self.failed_open = Some(error);
+                    }
                 }
+                return self.failure(detail);
             }
-            return self.failure(detail);
-        }
+        };
+        assert!(self.catalog_start.is_none());
+        self.catalog_start = Some(catalog_start);
         let (appearance, mut work) = match self.restore(input) {
             Ok(value) => value,
             Err(error) => return self.failure(error),
@@ -215,6 +223,7 @@ impl Worker {
     }
 
     pub(super) fn close(&mut self) -> Result<(), String> {
+        self.cancel_catalog_start();
         if self.failed_open.is_some() || self.retained_restore.is_some() {
             return Err("original home or restore-command custody remains retained".to_owned());
         }
@@ -248,6 +257,23 @@ impl Worker {
                 }
                 Err(error) => return Self::failed_during_shutdown(owner, error.to_string()),
             }
+        }
+    }
+
+    pub(super) fn publish_catalog_start(&mut self) {
+        assert!(
+            self.catalog_start
+                .take()
+                .expect("startup catalog publication fence")
+                .release(),
+            "whole native publication releases the original catalog fence once"
+        );
+    }
+
+    pub(super) fn cancel_catalog_start(&mut self) {
+        drop(self.catalog_start.take());
+        if let Some(owner) = self.services.as_mut() {
+            owner.drain_initial_catalog_source();
         }
     }
 

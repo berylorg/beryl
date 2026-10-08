@@ -9,6 +9,7 @@ use crate::{
 
 pub(crate) struct PreparedRecoveryAppServices {
     pub(super) cas: Option<PreparedRecoveryCasServices>,
+    pub(super) catalog_source: Option<CatalogSourceCoordinator>,
     pub(super) marker: Option<PreparedMarkerServices>,
     pub(super) activity: Option<PreparedActivityService>,
     pub(super) theme: Option<PreparedThemeRuntime>,
@@ -195,6 +196,7 @@ impl PreparedRecoveryAppServices {
     ) -> Result<Self, RecoveryAppServicePreparationFailure> {
         let mut prepared = Self {
             cas: Some(cas),
+            catalog_source: None,
             marker: None,
             activity: None,
             theme: None,
@@ -210,6 +212,14 @@ impl PreparedRecoveryAppServices {
             let runtime = cas
                 .activity_read_source()
                 .ok_or(AppServiceOpenError::RuntimeUnavailable)?;
+            let catalog_source = CatalogSourceCoordinator::prepare(
+                Arc::new(candidate.service_reference()),
+                syndic.clone(),
+                state.clone(),
+                cas.catalog_source_start_gate(),
+            )?;
+            cas.install_catalog_source_waker(catalog_source.waker());
+            prepared.catalog_source = Some(catalog_source);
             prepared.marker = Some(PreparedMarkerServices::prepare_recovery(
                 candidate,
                 syndic.clone(),
@@ -254,6 +264,7 @@ impl PreparedRecoveryAppServices {
     }
 
     fn join_ancillary_services(&mut self) {
+        drop(self.catalog_source.take());
         drop(self.theme.take());
         drop(self.activity.take());
         drop(self.marker.take());

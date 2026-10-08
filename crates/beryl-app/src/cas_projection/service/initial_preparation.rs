@@ -34,6 +34,20 @@ pub(crate) enum CasPreparationError {
 }
 
 impl PreparedCasServices {
+    pub(crate) fn catalog_source_start_gate(&self) -> Arc<InitialStartGate> {
+        self.service
+            .as_ref()
+            .expect("prepared CAS custody")
+            .catalog_source_start_gate()
+    }
+
+    pub(crate) fn install_catalog_source_waker(&self, waker: std::task::Waker) {
+        self.service
+            .as_ref()
+            .expect("prepared CAS custody")
+            .install_catalog_source_waker(waker);
+    }
+
     pub(crate) fn activity_read_source(
         &self,
     ) -> Option<crate::cas_projection::RuntimeActivityReadSource> {

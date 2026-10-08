@@ -1,5 +1,8 @@
 use beryl_home_store::HomeStore;
-use beryl_model::DomainRevision;
+use beryl_model::{DomainRevision, ProjectionRevision};
+
+mod frozen;
+pub use frozen::{FrozenThreadCatalogSummaryAuthentication, ThreadCatalogSummaryRebuildReason};
 
 use crate::{
     HistorySummaryRecord, SyndicReadError, ThreadAttributesRecord, ThreadCatalogSummaryRecord,
@@ -15,6 +18,8 @@ use crate::{
 };
 
 const PREPARATION_OPERATION: &str = "thread-catalog summary preparation";
+const INITIAL_SUMMARY_REVISION: ProjectionRevision =
+    ProjectionRevision::from_nonzero(std::num::NonZeroU64::MIN);
 
 #[derive(Clone, Debug)]
 pub(crate) struct CurrentCatalogSources {
@@ -44,7 +49,7 @@ impl ExactThreadCatalogSummary {
 #[derive(Clone, Debug)]
 pub struct PreparedThreadCatalogSummaryReplacement {
     pub(crate) source_revision: DomainRevision,
-    pub(crate) expected: ThreadCatalogSummaryRecord,
+    pub(crate) expected: Option<ThreadCatalogSummaryRecord>,
     pub(crate) replacement: ThreadCatalogSummaryRecord,
     pub(crate) sources: CurrentCatalogSources,
 }
@@ -111,15 +116,20 @@ impl SyndicStorage {
             )?,
             "thread-catalog history source is missing",
         )?;
-        let current = required(
-            self.point::<ThreadCatalogSummariesFamily>(
-                store,
-                thread_id,
-                limit::<ThreadCatalogSummariesFamily>(),
-            )?,
-            "thread-catalog current summary is missing",
+        if thread.id() != thread_id {
+            return Err(SyndicReadError::Invariant(
+                "thread-catalog thread key and identity disagree",
+            ));
+        }
+        let current = self.point::<ThreadCatalogSummariesFamily>(
+            store,
+            thread_id,
+            limit::<ThreadCatalogSummariesFamily>(),
         )?;
-        validate_source_identities(&thread, &execution, &attributes, &history, &current)?;
+        validate_canonical_sources(&thread, &execution, &attributes, &history)?;
+        if let Some(current) = &current {
+            validate_source_identities(&thread, &execution, &attributes, &history, current)?;
+        }
         let title = match attributes.generated_title() {
             Some(generated) => Some(
                 ThreadCatalogTitle::new(generated.text(), ThreadCatalogTitleSource::Generated)
@@ -150,26 +160,32 @@ impl SyndicStorage {
             history,
         };
         let desired = ThreadCatalogSummaryRecord::from_sources(
-            current.revision(),
+            current.as_ref().map_or(
+                INITIAL_SUMMARY_REVISION,
+                ThreadCatalogSummaryRecord::revision,
+            ),
             title,
             &sources.thread,
             &sources.execution,
             &sources.attributes,
             &sources.history,
         );
-        if desired == current {
+        if current.as_ref() == Some(&desired) {
             return Ok(Some(ThreadCatalogSummaryPreparation::ExactCurrent(
                 ExactThreadCatalogSummary {
                     source_revision,
-                    summary: current,
+                    summary: desired,
                     sources,
                 },
             )));
         }
-        let next_revision = current
-            .revision()
-            .checked_next()
-            .map_err(|_| SyndicReadError::CatalogSummaryRevisionExhausted)?;
+        let next_revision = match &current {
+            Some(current) => current
+                .revision()
+                .checked_next()
+                .map_err(|_| SyndicReadError::CatalogSummaryRevisionExhausted)?,
+            None => INITIAL_SUMMARY_REVISION,
+        };
         let replacement = ThreadCatalogSummaryRecord::from_sources(
             next_revision,
             desired.title().cloned(),
@@ -196,21 +212,10 @@ fn validate_source_identities(
     history: &HistorySummaryRecord,
     current: &ThreadCatalogSummaryRecord,
 ) -> Result<(), SyndicReadError> {
-    if execution.thread_id() != thread.id()
-        || attributes.thread_id() != thread.id()
-        || history.thread_id() != thread.id()
-        || current.thread_id() != thread.id()
-    {
+    validate_canonical_sources(thread, execution, attributes, history)?;
+    if current.thread_id() != thread.id() {
         return Err(SyndicReadError::Invariant(
             "thread-catalog canonical source identities disagree",
-        ));
-    }
-    if history.thread_revision() != thread.revision()
-        || history.committed_tail() != thread.committed_tail()
-        || history.selected_path_digest() != thread.selected_path_digest()
-    {
-        return Err(SyndicReadError::Invariant(
-            "thread-catalog history source is not current for its thread",
         ));
     }
     if current.execution() != execution.execution()
@@ -230,6 +235,31 @@ fn validate_source_identities(
     {
         return Err(SyndicReadError::Invariant(
             "thread-catalog source witness is in the future",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_canonical_sources(
+    thread: &ThreadRecord,
+    execution: &ThreadExecutionRecord,
+    attributes: &ThreadAttributesRecord,
+    history: &HistorySummaryRecord,
+) -> Result<(), SyndicReadError> {
+    if execution.thread_id() != thread.id()
+        || attributes.thread_id() != thread.id()
+        || history.thread_id() != thread.id()
+    {
+        return Err(SyndicReadError::Invariant(
+            "thread-catalog canonical source identities disagree",
+        ));
+    }
+    if history.thread_revision() != thread.revision()
+        || history.committed_tail() != thread.committed_tail()
+        || history.selected_path_digest() != thread.selected_path_digest()
+    {
+        return Err(SyndicReadError::Invariant(
+            "thread-catalog history source is not current for its thread",
         ));
     }
     Ok(())

@@ -15,6 +15,13 @@ must drain admitted reads and drop retained snapshots before disposing the gener
 ordinary Home reads capture a new short-lived snapshot per call; revision sandwiches detect drift
 but cannot implement the retained immutable collection.
 
+`Snapshot` has no `Clone` implementation at this exact commit. Independent Beryl retention of an
+already certified capture can share an internal `Arc<Snapshot>` among separately admitted
+generation-owned slots; it must not call `Database::snapshot` again. Public capabilities contain
+only identities and revisions, while slot release drains admitted requests before releasing its
+internal reference. The final slot/request releases the original nonce and database clone. This
+does not require a dependency change or expose owning engine references to callers.
+
 # Sources
 
 - Canonical remote: https://github.com/berylorg/fjall-fork.git; requested ref: checked-out HEAD;

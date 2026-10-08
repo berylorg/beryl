@@ -763,7 +763,8 @@ pub use read::{
     CompactionRequestTransitionStatus, DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
     DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS, DeliveryRecoveryCase,
     DeliveryRecoveryClassificationError, DeliveryRecoverySource, DeliveryRecoveryStartupCursor,
-    DeliveryRecoveryStartupPage, ExactThreadCatalogSummary, NON_IDLE_GATE_PAGE_MAX_BYTES,
+    DeliveryRecoveryStartupPage, ExactThreadCatalogSummary,
+    FrozenThreadCatalogSummaryAuthentication, NON_IDLE_GATE_PAGE_MAX_BYTES,
     NON_IDLE_GATE_PAGE_MAX_RECORDS, NonIdleGateSourceCursor, NonIdleGateSourcePage,
     PendingDispatchEvidence, PreparedThreadCatalogSummaryReplacement, QUERY_PAGE_MAX_RECORDS,
     QUERY_PAGE_MAX_STORED_BYTES, RecoveredPendingCursor, RecoveredPendingPage,
@@ -773,8 +774,8 @@ pub use read::{
     SyndicContentTextSegmentRangeRead, SyndicCurrentBinding, SyndicDeliveringSteeringInput,
     SyndicLiveStopOperation, SyndicPage, SyndicPointReadLimit, SyndicReadySteeringInput,
     SyndicResolvedImageLabelOriginSpan, SyndicResourceRangeRead, TerminalHistoryEvidence,
-    ThreadCatalogSummaryPreparation, ThreadLineageCursor, ThreadLineageEntry, ThreadLineageHead,
-    ThreadLineagePage,
+    ThreadCatalogSummaryPreparation, ThreadCatalogSummaryRebuildReason, ThreadLineageCursor,
+    ThreadLineageEntry, ThreadLineageHead, ThreadLineagePage,
 };
 pub use read::{
     SyndicCurrentDraft, SyndicThreadTail, THREAD_DISCOVERY_PAGE_MAX_BYTES,

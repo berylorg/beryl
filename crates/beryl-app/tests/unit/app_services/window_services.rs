@@ -30,6 +30,61 @@ fn installed() -> (tempfile::TempDir, ProcessServiceOwner, FaultController) {
     (directory, owner, faults)
 }
 
+fn register_exact_stop_source(home: &HomeStore, state: &beryl_state::BerylState) {
+    use beryl_home_store::{CommandOutcome, HomeCommand};
+    use beryl_model::{AdmittedHostPath, Availability, RuntimeLaunchForm, RuntimeNativePath};
+    use beryl_state::{
+        AvailabilitySnapshot, CreateRuntimeWithHomeRoot, RootRegistration, RuntimeRegistration,
+        UnixMillis,
+    };
+    let binding = crate::support::exact_cas::execution_binding();
+    let executable =
+        AdmittedHostPath::from_admitted(binding.root_path().flavor(), r"C:\Codex\exact-stop.exe")
+            .unwrap();
+    let available =
+        AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(1)).unwrap();
+    let registration = CreateRuntimeWithHomeRoot::new(
+        RuntimeRegistration::new(
+            binding.runtime_id(),
+            executable.clone(),
+            binding.root_path().mode().clone(),
+            RuntimeLaunchForm::CodexCli,
+            RuntimeNativePath::from_admitted(
+                binding.root_path().mode().clone(),
+                executable.flavor(),
+                executable.as_str(),
+            )
+            .unwrap(),
+            UnixMillis::new(1),
+            available,
+        )
+        .unwrap(),
+        RootRegistration::new(
+            binding.root_id(),
+            binding.root_path().clone(),
+            AdmittedHostPath::from_admitted(
+                binding.root_path().flavor(),
+                binding.root_path().as_str(),
+            )
+            .unwrap(),
+            UnixMillis::new(1),
+            available,
+        ),
+    )
+    .unwrap();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    command
+        .add(state.runtime_roots().create_runtime_with_home_root(
+            state.runtime_roots().revision(home).unwrap(),
+            registration,
+        ))
+        .unwrap();
+    assert!(matches!(
+        home.execute(command),
+        CommandOutcome::Committed { .. }
+    ));
+}
+
 fn appearance(owner: &mut ProcessServiceOwner) -> Arc<AppearanceGeneration> {
     let graph = owner.graph_mut().unwrap();
     graph.release_theme().unwrap();
@@ -282,6 +337,7 @@ fn exact_stop_window_worker_runs_off_thread_and_never_rebinds_after_graph_replac
         )
     );
     let thread = beryl_model::SyndicThreadId::from_bytes([91; 16]);
+    register_exact_stop_source(graph.home(), graph.state());
     crate::support::seed_canonical_empty_thread(
         graph.home(),
         graph.syndic().clone(),
@@ -332,6 +388,7 @@ fn exact_stop_window_worker_rejects_result_after_graph_publication_retires() {
     let worker = owner.window_services(inputs()).unwrap().exact_stop_worker();
     let thread = beryl_model::SyndicThreadId::from_bytes([92; 16]);
     let graph = owner.graph().unwrap();
+    register_exact_stop_source(graph.home(), graph.state());
     crate::support::seed_canonical_empty_thread(
         graph.home(),
         graph.syndic().clone(),

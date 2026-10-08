@@ -413,6 +413,9 @@ impl HomeStore {
             return Err(HomeRecoveryError::HomeMismatch);
         }
         let mut generation = StoreGeneration {
+            frozen_reads: std::sync::Arc::new(crate::read::frozen::FrozenReadRegistry::new(
+                self.storage_profile.frozen_read_slots(),
+            )),
             database: opened.database,
             control: opened.control,
             registry: Default::default(),

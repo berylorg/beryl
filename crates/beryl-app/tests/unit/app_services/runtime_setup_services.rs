@@ -156,6 +156,14 @@ fn runtime_setup_reconciliation_refuses_a_settled_outcome_without_discarding_it(
 #[test]
 fn runtime_setup_page_election_refuses_a_mutated_observation_and_accepts_fresh_coherence() {
     let (directory, mut process) = installed();
+    process
+        .graph_mut()
+        .unwrap()
+        .catalog_source
+        .as_mut()
+        .unwrap()
+        .stop_and_join()
+        .unwrap();
     let services = process.runtime_setup_services().unwrap();
     let original = services.observe().unwrap();
     let graph = process.graph().unwrap();

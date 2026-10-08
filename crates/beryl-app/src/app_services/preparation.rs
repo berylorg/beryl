@@ -13,6 +13,7 @@ pub(super) struct PreparedAppServices {
     paste_resources: crate::main_window::MainWindowComposerPasteResources,
     process: ProcessAdmissionGate,
     cas: Option<PreparedCasServices>,
+    catalog_source: Option<CatalogSourceCoordinator>,
     marker: Option<PreparedMarkerServices>,
     activity: Option<PreparedActivityService>,
     theme: Option<PreparedThemeRuntime>,
@@ -38,6 +39,15 @@ impl std::fmt::Debug for PreparedAppServiceFailure {
 }
 
 impl PreparedAppServices {
+    #[cfg(test)]
+    pub(super) fn catalog_source_reader(&self) -> crate::catalog_readiness::CatalogSourceReader {
+        self.catalog_source
+            .as_ref()
+            .expect("prepared catalog source coordinator")
+            .reader()
+    }
+
+    #[cfg(test)]
     pub(super) fn prepare(
         owner: &ProcessServiceOwner,
         candidate: HomeOpenPublication,
@@ -47,12 +57,35 @@ impl PreparedAppServices {
         at: SyndicTimestamp,
         cancellation: &CommandCancellation,
     ) -> Result<Self, PreparedAppServiceFailure> {
+        Self::prepare_with_catalog_start(
+            owner,
+            candidate,
+            state,
+            syndic,
+            configuration,
+            at,
+            cancellation,
+            None,
+        )
+    }
+
+    pub(super) fn prepare_with_catalog_start(
+        owner: &ProcessServiceOwner,
+        candidate: HomeOpenPublication,
+        state: BerylState,
+        syndic: SyndicStorage,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: &CommandCancellation,
+        catalog_start: Option<Arc<crate::cas_projection::initial_start::InitialStartGate>>,
+    ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
             runtime_setup: None,
             paste_resources: configuration.paste_resources,
             process: owner.process.clone(),
             cas: None,
+            catalog_source: None,
             marker: None,
             activity: None,
             theme: None,
@@ -128,6 +161,15 @@ impl PreparedAppServices {
                 )?,
             );
             check_cancellation(cancellation)?;
+            let cas = prepared.cas.as_ref().expect("prepared CAS");
+            let catalog_source = CatalogSourceCoordinator::prepare(
+                Arc::new(candidate.service_reference()),
+                prepared.syndic.clone(),
+                prepared.state.clone(),
+                catalog_start.unwrap_or_else(|| cas.catalog_source_start_gate()),
+            )?;
+            cas.install_catalog_source_waker(catalog_source.waker());
+            prepared.catalog_source = Some(catalog_source);
             prepared.marker = Some(PreparedMarkerServices::prepare(
                 candidate,
                 prepared.syndic.clone(),
@@ -214,6 +256,7 @@ impl PreparedAppServices {
             theme: self.theme.take(),
             loaded_theme: None,
             cas: Some(cas),
+            catalog_source: self.catalog_source.take(),
             sessions: self.sessions.clone(),
             attention: Arc::clone(&self.attention),
             state: self.state.clone(),
@@ -233,6 +276,7 @@ impl PreparedAppServices {
     }
 
     fn join_components(&mut self) {
+        drop(self.catalog_source.take());
         drop(self.runtime_setup.take());
         drop(self.cas.take());
         drop(self.activity.take());

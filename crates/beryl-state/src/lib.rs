@@ -139,20 +139,24 @@ pub use catalog::{
     CatalogRecencyCursor, CatalogResolvedTitle, CatalogRevision, CatalogRow, CatalogRowExpectation,
     CatalogSearchFields, CatalogSourceRevisions, CatalogState, CatalogTitleSource,
     CatalogValueError, CatalogWindowClaim, DeleteCatalogClaimedRow, MarkCatalogRowStale,
-    PreparedInitialCatalogPublication, PublishCatalogClaim, PublishCatalogRow, ReleaseCatalogClaim,
+    PreparedInitialCatalogPublication, PublishCatalogClaim, PublishCatalogRow, RebuildCatalogRow,
+    ReleaseCatalogClaim,
+};
+pub use catalog::{
+    CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement,
 };
 #[cfg(feature = "test-faults")]
 pub use durable_job::HandoffJobIndexFault;
 pub use durable_job::{
-    PreparedHandoffJobAdmission, HandoffJobAdmissionWitness, HandoffJobAdmissionStatus,
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
     BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
     CompleteResolvingTurn, DiscussionContextDigest, DiscussionContextOwnerId,
-    DurableJobMutationError, DurableJobState, DurableJobValueError,
-    DurableJobReadError, HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES, HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,
-    HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
-    HandoffJobTransition, HandoffJobTransitionStatus, HandoffJobTransitionWitness,
-    LatestBranchHandoffAttempt, ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal,
+    DurableJobMutationError, DurableJobReadError, DurableJobState, DurableJobValueError,
+    HANDOFF_FAILURE_DETAIL_MAX_BYTES, HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES,
+    HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES, HandoffFailureEvidence, HandoffFailureKind,
+    HandoffJobAdmissionStatus, HandoffJobAdmissionWitness, HandoffJobTransition,
+    HandoffJobTransitionStatus, HandoffJobTransitionWitness, LatestBranchHandoffAttempt,
+    ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, PreparedHandoffJobAdmission,
     PreparedHandoffJobTransition, RESOLUTION_TEXT_MAX_BYTES, RESOLUTION_TEXT_MAX_SCALARS,
     RecordParentCasAcceptance, RecordRetryableHandoffFailure, RecordTerminalHandoffFailure,
     ResolutionAttemptOrdinal, ResolutionRequestAdmission, ResolutionRequestIdentity,
@@ -164,17 +168,17 @@ pub use runtime_root::{
     RuntimeRecord, RuntimeRegistration, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError,
     RuntimeRootMutationError, RuntimeRootState, SetRootAvailability, SetRuntimeAvailability,
 };
-pub use catalog::{CatalogClaimReplacementAudit, CatalogClaimReplacementRow, PublishCatalogClaimReplacement};
 pub use session::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
     ExitWindowPlacement, InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit,
-    MinimalSessionBootstrap, PreparedWindowClaimReplacement, PublishExitSession, RememberedTarget, RemoveSessionWindow,
-    ReplaceWindowClaim, ResumeSessionAfterExit, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
-    SessionWindowRecord, SessionWindowReference, SessionWindowRemovalEvidence,
-    SessionWindowRemovalState, ThreadClaimCatalogSource, ThreadClaimCatalogSourceError,
-    ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement, WindowClaimCatalogSource,
-    WindowClaimSelection, WindowClaimReplacementPreparation, WindowClaimReplacementState,
+    MinimalSessionBootstrap, PreparedWindowClaimReplacement, PublishExitSession, RememberedTarget,
+    RemoveSessionWindow, ReplaceWindowClaim, ResumeSessionAfterExit, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionExitIntent, SessionHeader, SessionMutationError,
+    SessionReadError, SessionState, SessionWindowRecord, SessionWindowReference,
+    SessionWindowRemovalEvidence, SessionWindowRemovalState, ThreadClaimCatalogSource,
+    ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement,
+    WindowClaimCatalogSource, WindowClaimReplacementPreparation, WindowClaimReplacementState,
+    WindowClaimSelection,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,

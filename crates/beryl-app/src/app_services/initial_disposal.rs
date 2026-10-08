@@ -1,6 +1,10 @@
 use super::*;
 
 impl ProcessServiceOwner {
+    pub(crate) fn retained_catalog_close(&self) -> Option<&CatalogSourceCoordinatorError> {
+        self.closing_catalog_error.as_ref()
+    }
+
     pub(crate) fn retained_close(&self) -> Option<&beryl_home_store::HomeCloseError> {
         self.failed_close.as_ref()
     }

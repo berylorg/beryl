@@ -65,24 +65,27 @@ impl PristineThreadCandidate {
         let (revision, expected, successor, sources) = match preparation {
             crate::ThreadCatalogSummaryPreparation::ExactCurrent(exact) => (
                 exact.source_revision,
-                &exact.summary,
+                Some(&exact.summary),
                 &exact.summary,
                 &exact.sources,
             ),
             crate::ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) => {
-                if prepared.expected.revision().checked_next()? != prepared.replacement.revision() {
+                let Some(expected) = prepared.expected.as_ref() else {
+                    return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
+                };
+                if expected.revision().checked_next()? != prepared.replacement.revision() {
                     return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
                 }
                 (
                     prepared.source_revision,
-                    &prepared.expected,
+                    Some(expected),
                     &prepared.replacement,
                     &prepared.sources,
                 )
             }
         };
         if revision != self.source_revision
-            || expected != &self.facts.catalog
+            || expected != Some(&self.facts.catalog)
             || sources.thread != self.facts.thread
             || sources.execution != self.facts.execution
             || sources.attributes != self.facts.attributes

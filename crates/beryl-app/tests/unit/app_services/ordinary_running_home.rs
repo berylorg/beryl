@@ -74,7 +74,7 @@ fn native_ordinary_failed_home_old_generation_notice_cannot_replace_current_cust
 
 #[test]
 fn native_ordinary_failed_home_settles_original_uncertain_process_enrollment() {
-    run_recovery(0, false, Scenario::UncertainEnrollment);
+    run_recovery(1, false, Scenario::UncertainEnrollment);
 }
 
 fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
@@ -117,6 +117,7 @@ fn run_recovery(count: u8, dirty: bool, scenario: Scenario) {
                     super::super::recovery_support::install_uncertain_enrollment(
                         services,
                         graph.home(),
+                        graph.state(),
                         graph.syndic(),
                         &faults,
                     );

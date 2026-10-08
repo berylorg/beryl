@@ -4,7 +4,7 @@ use beryl_state::{
     BerylState, CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind,
     CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts, CatalogFreshness,
     CatalogLineageSummary, CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle,
-    CatalogRowExpectation, CatalogSourceRevisions, CatalogValueError, RuntimeRootCatalogSource,
+    CatalogSourceRevisions, CatalogValueError, RuntimeRootCatalogSource,
     RuntimeRootCatalogSourceError, ThreadClaimCatalogSource, ThreadClaimCatalogSourceError,
     ThreadClaimState, UnixMillis,
 };
@@ -137,14 +137,9 @@ pub fn prepare_thread_catalog_projection(
         return Ok(ThreadCatalogProjectionPreparation::ExactCurrent);
     }
 
-    let expectation = current
-        .as_ref()
-        .map_or(CatalogRowExpectation::Missing, |row| {
-            CatalogRowExpectation::Revision(row.revision())
-        });
-    let publication = beryl_state::PublishCatalogRow::new(thread_id, expectation, sources, facts)?;
+    let publication = beryl_state::RebuildCatalogRow::new(thread_id, current, sources, facts)?;
     let mut command = HomeCommand::new(home_revision);
-    command.add(state.catalog().publish(catalog_revision, publication))?;
+    command.add(state.catalog().rebuild(catalog_revision, publication))?;
     match syndic_plan {
         SyndicPlan::Validate(exact) => {
             command.add_validation(syndic.validate_current_thread_catalog_summary(exact))?;
@@ -181,7 +176,7 @@ pub(crate) fn validate_execution_binding(
     Ok(())
 }
 
-fn project_claim(
+pub(crate) fn project_claim(
     thread_id: SyndicThreadId,
     source: ThreadClaimCatalogSource,
 ) -> Result<(CatalogClaimSummary, Option<beryl_model::ClaimRevision>), CatalogProjectionBuildError>

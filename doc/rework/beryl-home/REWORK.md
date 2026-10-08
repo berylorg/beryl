@@ -509,6 +509,11 @@
   preserving authentication and original recovery outcomes. Canonical checks, 96 distinct cases
   and independent review passed on unchanged production worker stacks;
   [qualification](../../audits/native-editing-recovery-stack-qualification.md).
+- [x] Accepted coherent background Catalog source certification, bounded generation-owned frozen
+  retention, exact guarded rebuild and startup/recovery retirement custody. Canonical affected
+  App qualification passes 95/95 with current checks and independent review;
+  [qualification](../../audits/coherent-catalog-source-readiness-qualification.md). Query capabilities
+  and visible Thread Switcher mounting remain separate gates.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

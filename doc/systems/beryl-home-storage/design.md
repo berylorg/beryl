@@ -868,6 +868,41 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   its Current flags cannot certify exhaustive source coverage. The projection owner repairs exact
   missing/stale rows from authenticated source facts before publishing readiness; source changes
   invalidate that readiness. No complete resident registry is required.
+- The projection coordinator separates background repair from certification. Certification captures
+  one generation-owned frozen Home read and authenticates canonical thread coverage, primary and
+  recency agreement, compact Syndic source witnesses, exact optional claims and runtime/root facts
+  entirely on that snapshot. It publishes only the complete qualified snapshot, without a final
+  live-revision retry. A later commit cannot change that captured generation or its query facts.
+  Source changes request a new certification; they cannot make an old generation appear current
+  at a newer Home revision.
+- A capture requiring repair is not published. The coordinator releases it, prepares and settles
+  bounded exact repairs through ordinary command/outcome custody, then certifies a fresh capture.
+  Missing rebuildable summaries/projections use source-owned absence preparations; contradictory
+  canonical records or index copies fail through their typed integrity boundary. Conflicts and
+  continuous source invalidation may leave readiness pending; no unconditional progress guarantee
+  or mixed-generation publication follows from retaining a snapshot.
+- Exact projection rebuild uses the complete old derived row or its proven absence and fresh
+  authenticated canonical source facts. Recreating an absent derived Syndic summary or Session claim
+  may reset that record's local scalar revision; this cannot establish source disagreement by
+  itself. A separately typed rebuild operation admits those authenticated source witnesses while
+  preserving immutable execution and exact old-row/index guards. The same Home command validates
+  or publishes every required source participant; ordinary publication keeps its monotonic checks.
+- The published graph owns one bounded coordinator and coalesced refresh request, one retained
+  published source generation and at most one certification attempt. It shares the existing Home
+  mutation-observation owner through explicit wake fanout rather than replacing its registration.
+  Opening/filtering consumes the qualified compact generation and cannot initiate title/history
+  repair. Supersession and graph retirement cancel and drain attempts, settle retained repair custody
+  and release exact Home reads before database disposal.
+- Initial process restoration holds Catalog maintenance behind a prepublication startup fence
+  until the whole native restore set publishes. Coalesced wakes remain pending and readiness
+  remains unavailable while exact restoration source and command outcomes are being admitted.
+  Failed/cancelled startup drains without releasing that fence. Headless graph opening releases
+  immediately; recovery uses its existing deferred worker-release boundary after resident
+  publication and admission reopening.
+- Query admission retains an independently admitted Home read of the exact certified source
+  snapshot. It cannot recapture live rows using an older readiness result. Replacing the coordinator's
+  published generation releases its own read while existing query reads preserve their collection;
+  every retention shares the finite Home slot budget and is revoked and drained on Home retirement.
 - Catalog-affecting Syndic history/title/archive/lineage changes, Session claim acquisition,
   replacement/release/restoration and RuntimeRoot label/path/availability changes participate in
   source-coupled publication or invalidation. Scope-wide changes retain bounded durable rebuild

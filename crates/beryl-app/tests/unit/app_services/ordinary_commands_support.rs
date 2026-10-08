@@ -383,6 +383,71 @@ pub(super) fn retain_unviewed_work(
     crate::cas_projection::test_faults::retain_admitted_projection_work(graph.cas(), thread)
 }
 
+pub(super) async fn wait_for_unviewed_catalog_source(
+    owner: &Owner,
+    thread: beryl_model::SyndicThreadId,
+    cx: &mut AsyncApp,
+) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let ready = {
+            let owner = owner.borrow();
+            let graph = owner.test_services().graph().unwrap();
+            let home = graph.home();
+            match graph
+                .catalog_source_reader()
+                .retain_source(home, &beryl_home_store::CommandCancellation::new())
+            {
+                Ok(source) => {
+                    let row = graph.state().catalog().frozen_row(
+                        home,
+                        &source,
+                        thread,
+                        beryl_state::CatalogPointReadLimit::schema_maximum(),
+                    );
+                    let revision = home.home_revision();
+                    home.release_frozen_read(&source)
+                        .expect("unviewed Catalog setup releases each admitted source");
+                    let row = match row {
+                        Ok(row) => row,
+                        Err(error) => panic!("unviewed Catalog row read failed: {error:?}"),
+                    };
+                    let revision = match revision {
+                        Ok(revision) => revision,
+                        Err(error) => panic!("unviewed Catalog live revision failed: {error:?}"),
+                    };
+                    if row.is_some() && source.home_revision() == revision {
+                        match home.try_elect_coherent(home.health().generation().unwrap(), || ()) {
+                            Ok(()) => match home.home_revision() {
+                                Ok(revision) => source.home_revision() == revision,
+                                Err(error) => {
+                                    panic!("unviewed Catalog final revision failed: {error:?}")
+                                }
+                            },
+                            Err(beryl_home_store::HomeCoherenceError::Busy) => false,
+                            Err(error) => panic!("unviewed Catalog coherence failed: {error:?}"),
+                        }
+                    } else {
+                        false
+                    }
+                }
+                Err(crate::catalog_readiness::CatalogSourceReadError::NotReady) => false,
+                Err(error) => panic!("unviewed Catalog source failed: {error:?}"),
+            }
+        };
+        if ready {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "unviewed Catalog source not ready"
+        );
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
+}
+
 pub(super) async fn native(window: Window, cx: &mut AsyncApp) -> HWND {
     static TITLE: AtomicUsize = AtomicUsize::new(0);
     let title = format!(
@@ -554,10 +619,43 @@ pub(super) async fn dialog(cx: &mut AsyncApp) -> HWND {
         if let Ok(dialog) = unsafe { FindWindowW(None, PCWSTR(title.as_ptr())) } {
             return dialog;
         }
-        assert!(
-            Instant::now() < deadline,
-            "mounted native confirmation not delivered"
-        );
+        if Instant::now() >= deadline {
+            let diagnostic = cx
+                .update(|app| {
+                    let owner = RunningProcessOwner::mounted_owner(app)?.upgrade()?;
+                    let status = {
+                        let owner = owner.borrow();
+                        (
+                            owner.test_ordinary_command_status(),
+                            owner.shutdown_status(),
+                            owner.running_selection_pending(),
+                            owner
+                                .test_last_ordinary_command_failure()
+                                .map(|(window, error)| (window, error.to_owned())),
+                        )
+                    };
+                    let gates = windows(&owner)
+                        .into_iter()
+                        .map(|window| {
+                            window
+                                .update(app, |root, window, _| {
+                                    (
+                                        root.startup_interaction_gated(),
+                                        root.test_exit_command_enabled(),
+                                        window.windows_native_close_requested(),
+                                        root.notice_projection().map(|projection| {
+                                            projection.content.detail().as_str().to_owned()
+                                        }),
+                                    )
+                                })
+                                .ok()
+                        })
+                        .collect::<Vec<_>>();
+                    Some((status, gates))
+                })
+                .unwrap();
+            panic!("mounted native confirmation not delivered: {diagnostic:?}");
+        }
         cx.background_executor()
             .timer(Duration::from_millis(10))
             .await;

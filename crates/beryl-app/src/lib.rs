@@ -194,6 +194,7 @@ mod diagnostic_child_protocol;
 mod diagnostic_child_target;
 
 pub mod catalog_projection;
+pub mod catalog_readiness;
 pub mod composer_host;
 pub mod composer_marker_seal;
 pub mod conversation_tools;
@@ -228,11 +229,11 @@ pub mod theme_runtime;
 pub mod thread_root_picker;
 #[cfg(feature = "test-faults")]
 pub use main_window::running_threads::*;
+pub mod same_window_thread_acquisition;
 #[path = "shell/syndic_transcript/mod.rs"]
 pub(crate) mod syndic_transcript;
 pub(crate) mod transcript_provider;
 pub mod window_acquisition;
-pub mod same_window_thread_acquisition;
 
 pub use branch_discussion_dynamic_tools::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,

@@ -406,8 +406,8 @@ impl RunningProcessOwner {
         })
         .map_err(|error| error.to_string())??;
         for entry in windows.iter_mut() {
-            let creation = cx
-                .update(|app| -> Result<bool, String> {
+            let creation = if entry.preparation.is_none() && entry.attached.is_none() {
+                cx.update(|app| -> Result<bool, String> {
                     let window = entry
                         .window
                         .read(app)
@@ -420,7 +420,10 @@ impl RunningProcessOwner {
                         .borrow()
                         .committed_thread_creation_window(request, window)
                 })
-                .map_err(|error| error.to_string())??;
+                .map_err(|error| error.to_string())??
+            } else {
+                false
+            };
             if creation && entry.attached.is_none() {
                 entry.attached = Some(
                     Self::attach_recovered_thread_creation_pass(

@@ -15,6 +15,10 @@ pub(crate) enum RetiredHomeRecoveryError {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RetiredProcessWorkError {
+    #[error("original catalog repair reconciliation collided")]
+    CatalogCollision,
+    #[error(transparent)]
+    CatalogReconciliation(#[from] beryl_home_store::ReconciliationFailure),
     #[error("process work settlement requires completed graph retirement")]
     RetirementIncomplete,
     #[error("process work settlement requires a replacement candidate for the same home")]
@@ -37,6 +41,7 @@ pub(super) struct ServiceGraphRetirement {
     home: Option<HomeStore>,
     failure: Option<AppServiceCloseError>,
     joined_handoff_read_failure: Option<HandoffCoordinatorError>,
+    joined_catalog_failure: std::sync::Mutex<Option<CatalogSourceCoordinatorError>>,
     complete: bool,
 }
 
@@ -148,7 +153,64 @@ impl ProcessServiceOwner {
             cancellation.clone(),
         )?;
         self.require_settled_custody()?;
+        if cancellation.is_cancelled() {
+            return Err(RetiredProcessWorkError::Cancelled);
+        }
+        let mut catalog_failure = retirement
+            .joined_catalog_failure
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(CatalogSourceCoordinatorError::Repair(repair)) = catalog_failure.as_ref() {
+            if let crate::catalog_readiness::RetainedCatalogRepair::Indeterminate {
+                reconciliation,
+                ..
+            } = repair.as_ref()
+            {
+                match candidate.reconcile(reconciliation)? {
+                    beryl_home_store::ReconciliationResolution::ExactOld
+                    | beryl_home_store::ReconciliationResolution::ExactNew { .. }
+                    | beryl_home_store::ReconciliationResolution::ExactSuccessor { .. } => {}
+                    beryl_home_store::ReconciliationResolution::Collision => {
+                        return Err(RetiredProcessWorkError::CatalogCollision);
+                    }
+                }
+            }
+        }
+        drop(catalog_failure.take());
         Ok(())
+    }
+
+    pub(super) fn require_catalog_recovery_settlement(
+        &self,
+        expected: HomeGeneration,
+    ) -> Result<(), ServiceGraphRetirementError> {
+        let retirement = self
+            .recovery_retirement
+            .as_ref()
+            .filter(|retirement| retirement.complete && retirement.generation == expected)
+            .ok_or(ServiceGraphRetirementError::Incomplete)?;
+        if retirement
+            .joined_catalog_failure
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+        {
+            return Err(ServiceGraphRetirementError::Incomplete);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_catalog_retirement_failure(&self, error: CatalogSourceCoordinatorError) {
+        let mut retained = self
+            .recovery_retirement
+            .as_ref()
+            .expect("retained graph retirement")
+            .joined_catalog_failure
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        assert!(retained.is_none());
+        *retained = Some(error);
     }
 
     pub(crate) fn validate_failed_service_graph_retirement(
@@ -191,10 +253,19 @@ impl ProcessServiceOwner {
             home: None,
             failure: None,
             joined_handoff_read_failure: None,
+            joined_catalog_failure: std::sync::Mutex::new(None),
             complete: false,
         });
         let retirement = self.recovery_retirement.as_mut().unwrap();
         let graph = retirement.graph.as_mut().unwrap();
+        if let Some(mut catalog) = graph.catalog_source.take() {
+            if let Err(error) = catalog.stop_and_join() {
+                *retirement
+                    .joined_catalog_failure
+                    .get_mut()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(error);
+            }
+        }
         graph
             .runtime_setup
             .retire(

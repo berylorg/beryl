@@ -42,8 +42,9 @@ pub use accepted_ready::{
 pub use capture::SyndicCaptureItem;
 pub use capture_text::SyndicCaptureTextRangeRead;
 pub use catalog_summary::{
-    ExactThreadCatalogSummary, PreparedThreadCatalogSummaryReplacement,
-    ThreadCatalogSummaryPreparation,
+    ExactThreadCatalogSummary, FrozenThreadCatalogSummaryAuthentication,
+    PreparedThreadCatalogSummaryReplacement, ThreadCatalogSummaryPreparation,
+    ThreadCatalogSummaryRebuildReason,
 };
 pub use compaction::{
     CompactionAdmissionCandidate, CompactionAdmissionIneligibility, CompactionAdmissionRead,

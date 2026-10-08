@@ -151,7 +151,12 @@ pub use proof::{
     ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity, ProofReceiptConsumer,
     ProofReceiptError, ProofSourceContribution, ProofWitnessContribution,
 };
-pub use read::{CodecOperation, DomainReader, DomainRegistrationReader, ReadError, ReadStage};
+#[cfg(feature = "test-faults")]
+pub use read::frozen::set_frozen_read_limits_for_test;
+pub use read::{
+    CodecOperation, DomainReader, DomainRegistrationReader, FrozenHomeRead, FrozenReadAccessError,
+    ReadError, ReadStage,
+};
 pub use reconciliation::{
     DomainReconciliation, ReconciliationFailure, ReconciliationHandle, ReconciliationReader,
     ReconciliationRecord, ReconciliationResolution,

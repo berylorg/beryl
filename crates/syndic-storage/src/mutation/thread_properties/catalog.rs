@@ -239,14 +239,22 @@ fn validate_prepared(
     reader: &DomainReader<'_, SyndicDomain>,
     prepared: &PreparedThreadCatalogSummaryReplacement,
 ) -> Result<(), SyndicMutationError> {
-    let thread_id = prepared.expected.thread_id();
-    if prepared.replacement.thread_id() != thread_id
-        || required::<ThreadCatalogSummariesFamily>(reader, &thread_id)? != prepared.expected
+    let thread_id = prepared.replacement.thread_id();
+    let next_revision = match &prepared.expected {
+        Some(expected) if expected.thread_id() == thread_id => {
+            expected.revision().checked_next().ok()
+        }
+        Some(_) => None,
+        None => Some(beryl_model::ProjectionRevision::from_nonzero(
+            std::num::NonZeroU64::MIN,
+        )),
+    };
+    if super::super::point::<ThreadCatalogSummariesFamily>(reader, &thread_id)? != prepared.expected
         || required::<ThreadsFamily>(reader, &thread_id)? != prepared.sources.thread
         || required::<ThreadExecutionsFamily>(reader, &thread_id)? != prepared.sources.execution
         || required::<ThreadAttributesFamily>(reader, &thread_id)? != prepared.sources.attributes
         || required::<HistorySummariesFamily>(reader, &thread_id)? != prepared.sources.history
-        || prepared.expected.revision().checked_next().ok() != Some(prepared.replacement.revision())
+        || next_revision != Some(prepared.replacement.revision())
     {
         return Err(SyndicMutationError::ThreadCatalogSummaryConflict);
     }
@@ -259,7 +267,7 @@ fn validate_prepared(
         &prepared.sources.history,
     );
     if expected_replacement != prepared.replacement
-        || prepared.expected == prepared.replacement
+        || prepared.expected.as_ref() == Some(&prepared.replacement)
         || !title_precedence_agrees(prepared)
     {
         return Err(SyndicMutationError::ThreadCatalogSummaryConflict);

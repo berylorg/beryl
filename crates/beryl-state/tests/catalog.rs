@@ -1,4 +1,8 @@
-pub use beryl_state::{RecordRevision, StatePage, UnixMillis};
+pub use beryl_state::{RecordRevision, UnixMillis};
+
+#[path = "catalog/page_context.rs"]
+mod page_context;
+use page_context::StatePage;
 
 #[path = "../src/reconciliation.rs"]
 mod reconciliation;

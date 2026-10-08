@@ -266,11 +266,11 @@ impl Controller {
             self.commands.0.borrow_mut().stage = Stage::Preparing(cancellation.clone());
             let configuration = self.configuration.clone();
             let mut worker = self.custody.worker;
-            let (worker, prepared) = cx
+            let (worker, prepared) = *cx
                 .background_executor()
                 .spawn(async move {
                     let prepared = worker.prepare(&configuration, &cancellation);
-                    (worker, prepared)
+                    Box::new((worker, prepared))
                 })
                 .await;
             self.custody.worker = worker;
@@ -301,6 +301,7 @@ impl Controller {
                                 appearance.clone(),
                                 move |result, app| match result {
                                     MainWindowNativeRestoreSetCompletion::Published(windows) => {
+                                        worker.publish_catalog_start();
                                         commands.0.borrow_mut().stage = Stage::Running;
                                         let result = StartedProcess {
                                             configuration,
@@ -347,7 +348,14 @@ impl Controller {
                     else {
                         return;
                     };
-                    self.custody.worker = worker;
+                    self.custody.worker = cx
+                        .background_executor()
+                        .spawn(async move {
+                            let mut worker = worker;
+                            worker.cancel_catalog_start();
+                            worker
+                        })
+                        .await;
                     self.custody.surface = surface;
                     self.custody.appearance = Some(appearance);
                     self.custody.retained_native = failure.retained;

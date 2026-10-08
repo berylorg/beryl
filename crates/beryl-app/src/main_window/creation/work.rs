@@ -68,7 +68,7 @@ impl MainWindowCreation {
                     if let Err(error) = self.services.validate_source() {
                         self.error = Some(error);
                         self.cancellation.cancel();
-                        self.state = CreationState::Unpublished(prepared.into_unpublished());
+                        self.retain_unpublished_preparation(prepared);
                         continue;
                     }
                     return self.prepared_owned(prepared);
@@ -79,6 +79,11 @@ impl MainWindowCreation {
             }
         }
         self.pending_owned()
+    }
+
+    #[inline(never)]
+    fn retain_unpublished_preparation(&mut self, prepared: Box<MainWindowShellPrepared>) {
+        self.state = CreationState::Unpublished(prepared.into_unpublished());
     }
 
     #[inline(never)]

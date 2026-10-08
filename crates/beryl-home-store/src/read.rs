@@ -18,6 +18,9 @@ use crate::{
 };
 
 mod execute;
+pub(crate) mod frozen;
+
+pub use frozen::{FrozenHomeRead, FrozenReadAccessError};
 
 use crate::candidate_access::StoreOperationAccess;
 pub(crate) use execute::{
@@ -71,6 +74,8 @@ pub enum ReadStage {
 /// Why a typed point or cursor read could not complete.
 #[derive(Debug, Error)]
 pub enum ReadError {
+    #[error(transparent)]
+    FrozenRead(#[from] FrozenReadAccessError),
     /// The process-wide health gate is not accepting state-dependent work.
     #[error(transparent)]
     HealthGate(#[from] crate::HealthGateError),
@@ -484,7 +489,7 @@ impl HomeStore {
         })
     }
 
-    fn execute_read<T>(
+    pub(crate) fn execute_read<T>(
         &self,
         access: StoreOperationAccess,
         operation: impl FnOnce(&StoreGeneration) -> Result<T, ReadError>,
@@ -593,6 +598,7 @@ fn invalid_revision(kind: &'static str, message: &'static str) -> ReadError {
 pub(crate) fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
     match error {
         ReadError::HealthGate(_)
+        | ReadError::FrozenRead(_)
         | ReadError::ForeignDomain { .. }
         | ReadError::UnknownFamily { .. }
         | ReadError::CodecTypeMismatch { .. }

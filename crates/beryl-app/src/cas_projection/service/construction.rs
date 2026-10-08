@@ -142,7 +142,11 @@ impl ProjectionConnectionService {
         let command_authorizer = command_gate.authorizer();
         let connections = ProjectionServiceConnectionRegistry::new(service_generation);
         let scheduler_signal = AcceptedInputSchedulerSignal::new();
-        let mutation_observer = home.observe_mutations(scheduler_signal.idle_recheck_waker())?;
+        let mutation_wake = Arc::new(super::mutation_wake::HomeMutationWake::new(
+            scheduler_signal.idle_recheck_waker(),
+        ));
+        let mutation_observer =
+            home.observe_mutations(std::task::Waker::from(Arc::clone(&mutation_wake)))?;
         let stop_coordinator = Arc::new(StopCoordinator::new(
             &home,
             home.home_id(),
@@ -216,6 +220,7 @@ impl ProjectionConnectionService {
             scheduler: None,
             scheduler_signal: scheduler_signal.clone(),
             mutation_observer,
+            mutation_wake,
             native_lineage_recovery: native_lineage_recovery.clone(),
             scheduled_ordinary_provider: Some(Arc::new(Mutex::new(scheduled_ordinary_provider))),
             runtime_interest: None,

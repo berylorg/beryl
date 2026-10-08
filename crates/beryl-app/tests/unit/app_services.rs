@@ -17,6 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "app_services/catalog_source_lifecycle.rs"]
+mod catalog_source_lifecycle;
 #[path = "app_services/committed_first_conversation.rs"]
 #[cfg(target_os = "windows")]
 mod committed_first_conversation;
@@ -425,67 +427,7 @@ fn retained_attention_clones_cannot_report_or_track_after_graph_retirement() {
     }
 }
 
-#[test]
-fn startup_converges_persisted_terminal_history_before_returning_the_graph() {
-    use crate::support;
-    use syndic_storage::{InputGateState, SyndicPointReadLimit};
-    let (directory, candidate, _, syndic, _) = fixture();
-    let home = candidate.publish().unwrap();
-    support::seed_populated(&home, syndic.clone());
-    let thread = support::id(30);
-    let limit = SyndicPointReadLimit::new(65_536).unwrap();
-    assert_ne!(
-        syndic
-            .input_gate(&home, thread, limit)
-            .unwrap()
-            .unwrap()
-            .state(),
-        &InputGateState::Idle
-    );
-    home.close().unwrap();
-    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
-        directory.path(),
-        HomeSchemaVersion::CURRENT,
-    ))
-    .unwrap();
-    let state = BerylState::register(&mut candidate).unwrap();
-    let syndic = SyndicStorage::register(&mut candidate).unwrap();
-    let candidate = candidate
-        .prepare_publication(
-            BerylState::required_domains()
-                .unwrap()
-                .merge(SyndicStorage::required_domains().unwrap())
-                .unwrap(),
-        )
-        .unwrap();
-    let mut owner = owner(&candidate);
-    owner
-        .open_initial(
-            candidate,
-            state,
-            syndic,
-            configuration(),
-            support::timestamp(1000),
-            CommandCancellation::new(),
-        )
-        .unwrap();
-    let graph = owner.graph().unwrap();
-    assert_eq!(
-        graph
-            .syndic()
-            .input_gate(graph.home(), thread, limit)
-            .unwrap()
-            .unwrap()
-            .state(),
-        &InputGateState::Idle
-    );
-    assert!(
-        graph
-            .cas()
-            .accepted_input_scheduler_diagnostics()
-            .startup_terminal_convergences()
-            >= 1
-    );
-    close(&mut owner);
-    assert_reopens(&directory);
-}
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/unit/app_services/startup_history_convergence.rs"
+));

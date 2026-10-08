@@ -75,6 +75,7 @@ pub struct HomeGenerationIdentity {
 }
 
 pub(crate) struct StoreGeneration {
+    pub(crate) frozen_reads: Arc<crate::read::frozen::FrozenReadRegistry>,
     pub(crate) database: Database,
     pub(crate) control: HomeControl,
     pub(crate) registry: DomainRegistry,
@@ -93,6 +94,7 @@ impl StoreGeneration {
 
 impl Drop for StoreGeneration {
     fn drop(&mut self) {
+        self.frozen_reads.close();
         self.registry.retire_attachments();
     }
 }
@@ -251,6 +253,9 @@ impl HomeStore {
         );
         Ok(Self {
             generation: Arc::new(RwLock::new(Some(StoreGeneration {
+                frozen_reads: Arc::new(crate::read::frozen::FrozenReadRegistry::new(
+                    storage_profile.frozen_read_slots(),
+                )),
                 database: opened.database,
                 control: opened.control,
                 registry: DomainRegistry::default(),

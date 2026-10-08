@@ -21,6 +21,44 @@ fn published_creation_graph_retains_selection_fence_after_home_busy_then_retries
             let home = graph.home().service_reference();
             let generation = home.health().generation().unwrap();
             let mut command = beryl_home_store::HomeCommand::new(home.home_revision().unwrap());
+            let executable = AdmittedHostPath::from_admitted(
+                PathFlavor::Windows,
+                r"C:\Codex\blocked-command.exe",
+            )
+            .unwrap();
+            let native = |path| {
+                RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, path)
+                    .unwrap()
+            };
+            let available =
+                AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(4))
+                    .unwrap();
+            let registration = CreateRuntimeWithHomeRoot::new(
+                RuntimeRegistration::new(
+                    RuntimeId::from_bytes([153; 16]),
+                    executable,
+                    RuntimeMode::host(),
+                    RuntimeLaunchForm::CodexCli,
+                    native(r"C:\Codex\blocked-command.exe"),
+                    UnixMillis::new(4),
+                    available,
+                )
+                .unwrap(),
+                RootRegistration::new(
+                    RootId::from_bytes([154; 16]),
+                    native(r"C:\work\beryl"),
+                    AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\work\beryl").unwrap(),
+                    UnixMillis::new(4),
+                    available,
+                ),
+            )
+            .unwrap();
+            command
+                .add(graph.state().runtime_roots().create_runtime_with_home_root(
+                    graph.state().runtime_roots().revision(&home).unwrap(),
+                    registration,
+                ))
+                .unwrap();
             command
                 .add(
                     graph.syndic().create_thread(
@@ -46,8 +84,12 @@ fn published_creation_graph_retains_selection_fence_after_home_busy_then_retries
                 .unwrap();
             let pause = blocker_faults.block_next(FaultPoint::AfterCommitBeforePersist);
             let worker = std::thread::spawn(move || home.execute(command));
-            let command = BlockedHomeCommand::new(pause, worker);
-            assert!(command.reached());
+            let mut command = BlockedHomeCommand::new(pause, worker);
+            assert!(
+                command.reached(),
+                "blocking Home command did not reach AfterCommitBeforePersist: {:?}",
+                command.release_and_join(),
+            );
             *reached.borrow_mut() = Some((command, generation));
         }));
     let target = interrupt_committed_creation(&owner, window, faults, cx);

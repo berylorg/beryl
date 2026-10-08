@@ -72,6 +72,7 @@ mod control_work;
 mod flight_registry;
 mod graceful_shutdown;
 pub(crate) mod initial_preparation;
+mod mutation_wake;
 pub(crate) mod recovery_preparation;
 pub(crate) mod recovery_retirement;
 #[cfg(feature = "test-faults")]
@@ -141,6 +142,7 @@ pub struct ProjectionConnectionService {
     scheduler: Option<AcceptedInputScheduler>,
     scheduler_signal: AcceptedInputSchedulerSignal,
     mutation_observer: beryl_home_store::HomeMutationObserver,
+    mutation_wake: Arc<mutation_wake::HomeMutationWake>,
     native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
     runtime_interest: Option<Arc<super::runtime_interest::RuntimeInterestOwner>>,

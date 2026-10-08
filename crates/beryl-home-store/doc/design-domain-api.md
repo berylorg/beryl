@@ -100,8 +100,25 @@ bounded typed reads and results, and read-only proof composition. It is governed
 - Retention admission has an explicit finite slot limit. Identity exhaustion, saturation, released
   identity, foreign store and stale generation reject without replacement or identity reuse.
   Releasing a read closes new requests and drains its admitted requests before dropping its snapshot.
+  Closing slots remain charged until that drain and snapshot release complete.
   Generation retirement closes all such access, drains admitted reads and releases every retained
   snapshot before database-generation disposal. Surviving capabilities cannot delay retirement.
+- The retention limit belongs to the validated package storage profile. Admission reserves a slot
+  before snapshot construction and failure releases it. Typed requests retain only their admitted
+  bounded work; the snapshot registry remains inside the generation and is disposed before its
+  database. A capability contains no owning database, registry, snapshot or generation reference.
+- Explicit retention of an existing admitted read reserves a separate slot for the same exact
+  captured snapshot and Home revision; it never recaptures live state. Releasing either identity
+  leaves the other's independently admitted retention intact. All snapshot sharing remains inside
+  the Home generation, uses the same finite admission budget and drains before generation disposal.
+  Ordinary capability cloning creates no such retention.
+- `FrozenHomeRead` is the public opaque capability. `HomeStore::capture_frozen_read` admits a new
+  capture, `retain_frozen_read` independently admits its exact snapshot, and `release_frozen_read`
+  closes and drains one identity. `frozen_domain_revision`, `read_frozen_point` and
+  `read_frozen_cursor` expose the corresponding typed bounded read operations.
+  `FrozenReadAccessError` reports admission and capability refusals through `ReadError`.
+  `retained_frozen_read_count` is bounded lifecycle metadata; cleanup and metadata remain available
+  after health failure and grant no source-read admission.
 - Cancellation, supersession and consumer disposal release their exact retained read through the
   owning query service. A failed bounded request neither fabricates a complete page nor grants
   access to a fresh snapshot under the old identity. Recovery creates fresh read identities.

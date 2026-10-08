@@ -9,6 +9,7 @@ const MIB_U32: u32 = 1_024 * 1_024;
 const MIB_U64: u64 = 1_024 * 1_024;
 const RECONCILIATION_DESCRIPTOR_BYTES: usize = 64 * 1_024 * 1_024;
 const RECONCILIATION_RESERVED_BYTES: usize = 256 * 1_024 * 1_024;
+const FROZEN_READ_SLOTS: usize = 512;
 
 /// The one practical V1 storage profile retained across same-home generations.
 #[derive(Clone, Copy, Debug)]
@@ -16,6 +17,7 @@ pub(crate) struct StorageProfile {
     policy: StoragePolicy,
     reconciliation_descriptor_bytes: usize,
     reconciliation_reserved_bytes: usize,
+    frozen_read_slots: usize,
 }
 
 impl StorageProfile {
@@ -42,6 +44,7 @@ impl StorageProfile {
             policy: StoragePolicy::new(tree, database)?,
             reconciliation_descriptor_bytes: RECONCILIATION_DESCRIPTOR_BYTES,
             reconciliation_reserved_bytes: RECONCILIATION_RESERVED_BYTES,
+            frozen_read_slots: FROZEN_READ_SLOTS,
         })
     }
 
@@ -56,5 +59,9 @@ impl StorageProfile {
 
     pub(crate) const fn reconciliation_reserved_bytes(self) -> usize {
         self.reconciliation_reserved_bytes
+    }
+
+    pub(crate) const fn frozen_read_slots(self) -> usize {
+        self.frozen_read_slots
     }
 }

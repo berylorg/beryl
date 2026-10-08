@@ -42,6 +42,8 @@ pub(crate) enum AppServiceCloseError {
     Handoff(#[from] HandoffCoordinatorError),
     #[error(transparent)]
     Cas(#[from] ProjectionConnectionServiceCloseError),
+    #[error(transparent)]
+    Catalog(#[from] CatalogSourceCoordinatorError),
 }
 
 #[derive(Debug)]
@@ -227,6 +229,12 @@ impl ProcessServiceOwner {
             .take()
             .or_else(|| self.closing_graph.take())
             .expect("ready or retained closing graph");
+        if let Some(mut catalog) = graph.catalog_source.take() {
+            if let Err(error) = catalog.stop_and_join() {
+                assert!(self.closing_catalog_error.is_none());
+                self.closing_catalog_error = Some(error);
+            }
+        }
         graph.private_clipboard.retire();
         let handoff = graph
             .handoff
@@ -287,6 +295,9 @@ impl ProcessServiceOwner {
             return Err(AppServiceCloseError::PersistentFailure);
         }
         self.record_initial_retirement()?;
+        if let Some(error) = self.closing_catalog_error.take() {
+            return Err(error.into());
+        }
         Ok(())
     }
 

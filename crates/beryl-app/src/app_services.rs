@@ -12,6 +12,7 @@ use crate::{
         RuntimeInterestConfig, RuntimeSessionPreparationConfig, RuntimeTokenDirectory,
         ScheduledExecutionSessions, ScheduledOrdinaryRequestPolicy,
     },
+    catalog_readiness::{CatalogSourceCoordinator, CatalogSourceCoordinatorError},
     composer_marker_seal::{
         DraftMarkerSealService, DraftMarkerSealServiceLimits,
         initial_preparation::MarkerPreparationError,
@@ -102,6 +103,8 @@ pub(crate) enum AppServiceOpenError {
     #[error(transparent)]
     Cas(#[from] CasPreparationError),
     #[error(transparent)]
+    Catalog(#[from] CatalogSourceCoordinatorError),
+    #[error(transparent)]
     Enrollment(#[from] ActivityEnrollmentCustodyError),
     #[error(transparent)]
     Settlement(#[from] HandoffCandidateConvergenceError),
@@ -164,6 +167,7 @@ pub(crate) struct ProcessServiceOwner {
     closing_graph: Option<PublishedAppServices>,
     closing_handoff_error:
         Option<crate::discussion_settlement::coordinator::HandoffCoordinatorError>,
+    closing_catalog_error: Option<CatalogSourceCoordinatorError>,
     recovery_retirement: Option<recovery_retirement::ServiceGraphRetirement>,
     attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
@@ -193,6 +197,7 @@ pub(crate) struct PublishedAppServices {
     theme: Option<PreparedThemeRuntime>,
     loaded_theme: Option<crate::theme_runtime::ThemeRuntime>,
     cas: Option<ProjectionConnectionService>,
+    catalog_source: Option<CatalogSourceCoordinator>,
     sessions: ScheduledExecutionSessions,
     attention: Arc<ProcessLifecycleAttentionPool>,
     state: BerylState,
@@ -223,6 +228,7 @@ impl ProcessServiceOwner {
             failed_cas_close: None,
             closing_graph: None,
             closing_handoff_error: None,
+            closing_catalog_error: None,
             recovery_retirement: None,
             attempt: InitialServiceAttemptState::Initial,
             home_id,
@@ -254,13 +260,57 @@ impl ProcessServiceOwner {
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
     ) -> Result<(), AppServiceOpenFailure> {
+        self.open_initial_with_catalog_start(
+            candidate,
+            state,
+            syndic,
+            configuration,
+            at,
+            cancellation,
+            None,
+        )
+    }
+
+    pub(crate) fn open_initial_for_startup(
+        &mut self,
+        candidate: HomeOpenPublication,
+        state: BerylState,
+        syndic: SyndicStorage,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+    ) -> Result<crate::cas_projection::initial_start::InitialStartOwner, AppServiceOpenFailure>
+    {
+        let catalog_start = crate::cas_projection::initial_start::InitialStartOwner::new();
+        self.open_initial_with_catalog_start(
+            candidate,
+            state,
+            syndic,
+            configuration,
+            at,
+            cancellation,
+            Some(catalog_start.gate()),
+        )?;
+        Ok(catalog_start)
+    }
+
+    fn open_initial_with_catalog_start(
+        &mut self,
+        candidate: HomeOpenPublication,
+        state: BerylState,
+        syndic: SyndicStorage,
+        configuration: AppServiceConfiguration,
+        at: SyndicTimestamp,
+        cancellation: CommandCancellation,
+        catalog_start: Option<Arc<crate::cas_projection::initial_start::InitialStartGate>>,
+    ) -> Result<(), AppServiceOpenFailure> {
         if let Err(error) = self.admit_initial_attempt(&candidate) {
             return Err(AppServiceOpenFailure {
                 error,
                 rejected_candidate: Some(candidate),
             });
         }
-        let prepared = match preparation::PreparedAppServices::prepare(
+        let prepared = match preparation::PreparedAppServices::prepare_with_catalog_start(
             self,
             candidate,
             state,
@@ -268,6 +318,7 @@ impl ProcessServiceOwner {
             configuration,
             at,
             &cancellation,
+            catalog_start,
         ) {
             Ok(prepared) => prepared,
             Err(failure) => return Err(self.dispose_initial_failure(failure)),
@@ -307,6 +358,19 @@ impl ProcessServiceOwner {
         self.attempt = InitialServiceAttemptState::Published(None);
         Ok(())
     }
+
+    pub(crate) fn drain_initial_catalog_source(&mut self) {
+        if let Some(mut catalog) = self
+            .graph
+            .as_mut()
+            .and_then(|graph| graph.catalog_source.take())
+        {
+            if let Err(error) = catalog.stop_and_join() {
+                assert!(self.closing_catalog_error.is_none());
+                self.closing_catalog_error = Some(error);
+            }
+        }
+    }
 }
 
 impl Drop for PublishedAppServices {
@@ -318,6 +382,7 @@ impl Drop for PublishedAppServices {
 
 impl PublishedAppServices {
     fn join_components(&mut self) {
+        drop(self.catalog_source.take());
         self.private_clipboard.retire();
         drop(self.restore_lifetime.take());
         let _ = self.process.fence();

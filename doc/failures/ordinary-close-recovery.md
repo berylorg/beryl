@@ -682,8 +682,8 @@ reproduced it. The pending Catalog coordinator is therefore not a necessary caus
 
 First-chance CDB evidence in
 `.tmp/coherent-catalog-source-evidence/baseline-native-first-chance-stack.log` shows staging
-preparation retaining approximately 267 KiB and its generic typed participant preparation
-approximately 197 KiB above candidate-session decoding. The callback runs on the existing WinRT
+preparation retaining approximately 261 KiB (267,296 bytes) and its generic typed participant
+preparation approximately 193 KiB (197,328 bytes) above candidate-session decoding. The callback runs on the existing WinRT
 thread-pool worker; no recursive Catalog call appears in the captured stack. Large by-value private
 prepared custody crosses both frames. Phase 745 qualifies bounded heap custody while preserving
 public APIs, authentication and original outcomes on the unchanged production stack.
@@ -697,7 +697,7 @@ The corrected qualification rebuilds Home, State, Syndic and App before executin
 Fresh isolated-baseline qualification with the three-path staging correction completes dirty
 editing, then exposes failed-resident reconstruction stack pressure. CDB evidence in
 `.tmp/coherent-catalog-source-evidence/staging-box-baseline-first-chance-stack.log` shows the
-unchanged ordinary Home read path and an approximately 117-KiB reconstruction frame retaining
+unchanged ordinary Home read path and an approximately 114-KiB reconstruction frame retaining
 slot-construction storage above deep saved-candidate authentication. Keep authentication in the
 reconstruction body and move slot assembly into a private non-inlined helper, following the same
 frame-separation rule already qualified for the other recovery constructor below. Runtime
@@ -715,6 +715,101 @@ all-target checks on 2026-10-08. The original two-unsaved-editor case passes on 
 Windows worker stacks. [Qualification](../audits/native-editing-recovery-stack-qualification.md)
 records exact inputs, diagnostic exclusions and evidence reuse; Catalog source acceptance resumes
 separately on this prerequisite.
+
+Resumed Catalog qualification on the accepted correction passes the ten coordinator and nine
+lifecycle cases but still overflows during native resident save publication. First-chance evidence
+in `.tmp/coherent-catalog-source-evidence/catalog-resumed-first-chance-stack.log` shows large
+by-value `PublicationMutation::prepare` and generic typed participant frames above exact checkpoint
+decoding. Qualify bounded private publication heap custody under the active source integration
+boundary, preserving public commands, authentication, replay, writes and original outcomes.
+
+Publication boxing preserves writer semantics but the resumed native packet still fails during
+saved-candidate qualification. Fresh `publication-box-first-chance-stack.log` shows approximately
+171 KiB in the async task polling/result frame above the recovery-service future and deep decoding.
+The worker returns service owner, original session and settlement by value. Heap-own that single
+private result until the GUI continuation consumes it; preserve original cancellation and disposal
+branches. A boxed future alone does not bound the executor's by-value output frame.
+
+With that result boxed, unsaved-editor recovery passes and the remaining uncertain-enrollment
+native case times out during final cleanup without overflow. Its helper seeds a real populated
+Syndic thread without registering that fixture's Runtime 48/Root 49 binding. Correct the helper
+and all seven callers to publish the exact RuntimeRoot authority before canonical thread creation,
+retaining original indeterminate enrollment assertions and active coordinator execution.
+
+That correction exposes the fixture's second inconsistency: it uses a threadless window after
+configuring a runtime. The conversation-thread invariant requires every visible window to select a
+thread once any runtime exists; threadless recovery explicitly requires no configured runtime.
+Use one selected window for the uncertain-enrollment fixture and retain its complete original
+outcome and resident checks. Keep the separate zero-runtime threadless recovery case unchanged.
+Do not relax the production threadless validator to accommodate this invalid fixture envelope.
+
+## Catalog Source Integration Regression Findings
+
+The 2026-10-08 complete App packet distinguishes native worker stack failures from older fixture
+and continuation mismatches. The HomeBusy creation fixture reused onboarding's canonical executable,
+so State rejected the otherwise valid runtime/root command before its `AfterCommitBeforePersist`
+barrier. Give this separate blocker its own executable identity; preserve the Busy fence and retry
+of the same publication. Do not suppress Catalog work to make the barrier reachable.
+
+Older interrupted-Exit fixture expectations also disagreed with existing exact binding behavior.
+Repeated binding validates and reuses the installed same-generation command binding. Qualification
+must prove unchanged appearance, binding count and command identity with interaction still fenced.
+An intentionally failed Home can additionally leave a drained Catalog source read failure during
+teardown. Accept only the exact Failed-generation HealthGate classification and separately prove
+the attempt is Retired with no graph or retained close; other teardown errors remain failures.
+
+Abandoned resident preparation and refused current configuration expose an actual continuation
+precondition mismatch. Resident preparation owns the original graph while service settlement is
+Pending. The outer driver nevertheless performs a fresh New Thread classification that requires
+Services, preventing the existing authenticated preparation from resuming. Classify only fresh
+entries; retained preparation or attachment resumes its exact existing path with cancellation,
+window-set, request, generation and final publication validation unchanged. The existing abandoned
+and refused retry cases remain required runtime evidence.
+
+The complete App packet `ab6fb7ad-720b-4b69-b33b-dc3ba876b182` ran 555 cases in 2190.811
+seconds: 517 passed and 38 failed. It is completed diagnostic evidence, not a passing regression.
+First-chance `ordinary-read-first-chance-stack.log` captures saved-checkpoint startup authentication
+on a Windows thread-pool worker with the new ordinary `execute_read` closure and
+`execute_guarded_read` result wrapper in the overflowing stack. Restore the direct ordinary read
+body. Frozen retention and reads instead keep their admitted request guard outside the operation
+closure, drop it after confirmed execution returns on every outcome, and only then propagate the
+result or commit a retention reservation. This avoids duplicating generic ordinary results while
+preserving confirmation drainage, failure classification, exact snapshots and finite slot charging.
+The corrected frozen-read suite passed all ten cases (`21753726-bb69-4807-a749-74afbb861e97`,
+0.635 seconds); native stack qualification remains required.
+
+The direct-read correction passes all source, lifecycle, HomeBusy and corrected session/retry
+fixtures in the next packet, but does not alone eliminate two native stack overflows (32/34,
+166.772 seconds). Fresh `direct-read-first-chance-stack.log` confirms the wrapper is gone and
+measures a 136,544-byte async-task polling frame above saved-checkpoint startup authentication.
+The private startup worker returns its worker/preparation tuple by value. Heap-own that single
+handoff result and unpack it after awaiting on the GUI executor, preserving worker, cancellation,
+native preparation, startup fence and original failure custody. Do not claim the read wrapper was
+the sole cause or increase production thread-pool stacks.
+
+That handoff correction clears saved-checkpoint nonfinal close and both final-teardown cases.
+Additional-window creation still overflows. `additional-window-first-chance-stack.log` measures
+227,600 bytes in creation advancement above initial composer claim authentication. Move the
+failure-only unpublished-preparation conversion into a private non-inlined helper, preserving the
+original validation failure, cancellation, retained preparation and bounded advancement loop.
+Both created-window Exit and native-close cases then pass (`0076f718-79a2-4057-8c3c-2f21968c3bb5`).
+
+The combined affected packet `c9a60a03-83cf-45d9-ab3a-6ec571f47a69` passes 93 of 95 cases,
+including 37 of the original 38 failing cases. Two native final-close confirmation cases still
+time out. The bounded timeout observation reports no startup or selection gate, an enabled Exit
+command, no shutdown session, no native-close latch and no recorded ordinary-command failure.
+Callback mounting order places the running callback after initial startup release. A test-only
+delivery probe confirms first-request admission on both routes. Existing notice projection then
+reveals the exact refusal: `a home mutation is in progress`. The unchanged frozen artifact both
+passes and fails, distinguishing a race from a repaired route. The newly seeded unviewed canonical
+thread legitimately triggers background Catalog repair before work observation. Confirmation
+fixtures must establish an exact live certified source after that finite setup before activating
+close; observing an older published snapshot is insufficient. Preserve active maintenance, Busy
+refusal, fresh activation and the original confirmation deadline. Independent review cleared that
+bounded setup correction. The final affected packet `5ee6ce11-46a4-49d5-8797-0c48799563ab`
+passes 95/95 in 325.767 seconds, covering every original failed case; both native confirmation
+cases also pass an unchanged-artifact repeat. Current four-crate all-target checks pass. Earlier
+partial or broad failing packets remain diagnostic evidence, not fresh passing broad regressions.
 
 ## Ordinary Command Integration Acceptance
 

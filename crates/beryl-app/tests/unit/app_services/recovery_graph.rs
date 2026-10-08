@@ -31,6 +31,7 @@ fn recovery_service_graph_requires_retired_custody_and_preserves_private_retry()
             super::recovery_support::install_uncertain_enrollment(
                 &owner,
                 owner.graph().unwrap().home(),
+                owner.graph().unwrap().state(),
                 owner.graph().unwrap().syndic(),
                 &faults,
             );

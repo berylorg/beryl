@@ -1374,7 +1374,25 @@ async fn dispose_failed_fixture(
                 running.services.graph().unwrap().home().health().state(),
                 HomeHealthState::Failed
             );
-            running.services.retire_failed_startup().unwrap();
+            if let Err(error) = running.services.retire_failed_startup() {
+                match error {
+                    AppServiceCloseError::Catalog(
+                        crate::catalog_readiness::CatalogSourceCoordinatorError::Source(
+                            crate::catalog_readiness::CatalogSourceReadError::Read(
+                                beryl_home_store::ReadError::HealthGate(error),
+                            ),
+                        ),
+                    ) if error.state() == HomeHealthState::Failed
+                        && error.generation().get() == 1 => {}
+                    error => {
+                        panic!("failed fixture retirement returned an unexpected error: {error:?}")
+                    }
+                }
+            }
+            assert!(matches!(
+                running.services.attempt,
+                crate::app_services::InitialServiceAttemptState::Retired(_)
+            ));
             assert!(running.services.graph().is_none());
             assert!(running.services.retained_close().is_none());
         })

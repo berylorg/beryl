@@ -47,6 +47,77 @@ impl WindowClaimCatalogSource {
 }
 
 impl SessionState {
+    pub fn frozen_revision(
+        &self,
+        store: &HomeStore,
+        frozen: &beryl_home_store::FrozenHomeRead,
+    ) -> Result<DomainRevision, ReadError> {
+        store.frozen_domain_revision(frozen, &self.handle)
+    }
+
+    pub fn frozen_window_claim_catalog_source(
+        &self,
+        store: &HomeStore,
+        frozen: &beryl_home_store::FrozenHomeRead,
+        window_id: WindowId,
+    ) -> Result<WindowClaimCatalogSource, ThreadClaimCatalogSourceError> {
+        window_claim_source(
+            window_id,
+            || {
+                store.read_frozen_point::<SessionDomain, ClaimByWindowCodec>(
+                    frozen,
+                    &self.handle,
+                    &window_id,
+                    point_limit(),
+                )
+            },
+            |thread_id| {
+                store.read_frozen_point::<SessionDomain, ClaimByThreadCodec>(
+                    frozen,
+                    &self.handle,
+                    &thread_id,
+                    point_limit(),
+                )
+            },
+        )
+    }
+
+    pub fn frozen_thread_claim_catalog_source(
+        &self,
+        store: &HomeStore,
+        frozen: &beryl_home_store::FrozenHomeRead,
+        thread_id: SyndicThreadId,
+    ) -> Result<ThreadClaimCatalogSource, ThreadClaimCatalogSourceError> {
+        let claim = store.read_frozen_point::<SessionDomain, ClaimByThreadCodec>(
+            frozen,
+            &self.handle,
+            &thread_id,
+            point_limit(),
+        )?;
+        let Some(claim) = claim else {
+            return Ok(ThreadClaimCatalogSource {
+                thread_id,
+                claim: None,
+            });
+        };
+        if claim.thread_id() != thread_id {
+            return Err(ThreadClaimCatalogSourceError::ThreadCopyMismatch { thread_id });
+        }
+        let reverse = store.read_frozen_point::<SessionDomain, ClaimByWindowCodec>(
+            frozen,
+            &self.handle,
+            &claim.window_id(),
+            point_limit(),
+        )?;
+        if reverse != Some(claim) {
+            return Err(ThreadClaimCatalogSourceError::ReverseCopiesDisagree { thread_id });
+        }
+        Ok(ThreadClaimCatalogSource {
+            thread_id,
+            claim: Some(claim),
+        })
+    }
+
     pub fn window_claim_catalog_source(
         &self,
         store: &HomeStore,

@@ -14,6 +14,8 @@ impl ProcessServiceOwner {
             .ok_or("prepared recovery graph is unavailable")?;
         self.validate_retired_service_home_return(expected, Some(self.home_id))
             .map_err(|error| error.to_string())?;
+        self.require_catalog_recovery_settlement(expected)
+            .map_err(|error| error.to_string())?;
         if self.graph.is_some()
             || self.failed_close.is_some()
             || self.failed_retirement.is_some()
@@ -62,6 +64,7 @@ impl ProcessServiceOwner {
             theme: services.theme.take(),
             loaded_theme: None,
             cas: Some(cas),
+            catalog_source: services.catalog_source.take(),
             sessions: graph.sessions.clone(),
             attention: graph.attention.take().unwrap(),
             state: graph.state.clone(),

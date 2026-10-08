@@ -167,6 +167,20 @@ durable job records and transitions plus compact catalog schema, normalization, 
   inserts a rebuilt live row into an existing frozen collection. Exact source-coupled publication
   or source-witness invalidation and full composed source agreement are required; a stored Current
   flag alone never certifies this readiness.
+- Bounded retained-read primary identity pages and recency pages expose only typed compact rows.
+  Coverage authenticates key/value identity and both exact copies, including primary-only or
+  recency-only orphan projections, without assuming canonical source completeness. The composing
+  source coordinator separately supplies exhaustive Syndic and exact runtime/root/claim agreement
+  on that same Home read. Missing source-derived rows and structural disagreement cannot become a
+  smaller complete collection. Retained typed source reads own their ordinary provenance checks
+  and grant no mutation or claim permission.
+- A separately typed exact projection rebuild consumes the full expected paired row or proven
+  absence and fresh source facts. It preserves immutable execution, advances the Catalog row
+  revision and replaces both copies atomically. Recreated Syndic summary or Session claim witnesses
+  may have lower local scalar revisions; full source authentication and matching Home validation
+  participants remain the composing owner's responsibility. Runtime/root source revision regression
+  still rejects. Ordinary Catalog publication retains its source monotonicity checks. Rebuild grants
+  no source mutation, claim acquisition or general overwrite capability.
 - Evaluation may walk the complete durable compact catalog to count and filter matches. It retains
   only bounded row/index pages, checked totals and compact continuation state, never all matching
   rows or a thread-sized presentation model. Scope and substring filtering use the existing

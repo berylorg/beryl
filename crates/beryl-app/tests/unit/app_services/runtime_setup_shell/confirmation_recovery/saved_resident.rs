@@ -143,6 +143,14 @@ pub(super) fn reopen(
                 CommandCancellation::new(),
             )
             .unwrap();
+        process
+            .graph_mut()
+            .unwrap()
+            .catalog_source
+            .as_mut()
+            .unwrap()
+            .stop_and_join()
+            .unwrap();
         process.graph_mut().unwrap().release_theme().unwrap();
         let appearance = process
             .graph_mut()
