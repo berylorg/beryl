@@ -60,6 +60,21 @@ only context needed for remaining work, with links to prior evidence instead of 
 
 ## Efficient Operations and Cleanup
 
-Read governing instructions when required; otherwise reuse established findings and retrieve only the relevant changed section. Emit compact tool output: narrow excerpts and decision-relevant fields, with one representation when a tool duplicates text and structured results. Keep complete logs available when needed to diagnose failures. Where tools permit, wait 30–60 seconds for active work before checking again; preserve communication and resource-monitoring deadlines, and do not spawn a polling-only agent. Before repeating a test, inspect the effective changed inputs and prior failure or result. Retain all required checks; repeat them when inputs or evidence warrant it.
+Read governing instructions when required; otherwise reuse established findings and retrieve only
+the relevant changed section. Emit compact tool output: narrow excerpts and decision-relevant
+fields, with one representation when a tool duplicates text and structured results. Keep complete
+logs available through `agent-environment-health`'s task artifact lifecycle when later diagnosis
+or review needs them.
+
+When Code Mode or equivalent orchestration is available, batch independent calls and filter their
+results inside it. Keep routine polling in a bounded loop that returns on completion, a meaningful
+state change, an error or decision requiring judgment, or the next communication/resource-monitoring
+deadline. Keep dependent operations and approval boundaries sequential. Do not return to model
+reasoning for every unchanged status, hide failures in filtered output, or wait beyond those
+deadlines. Where tools permit, wait 30–60 seconds for active work before checking again; do not
+spawn a polling-only agent.
+
+Before repeating a test, inspect the effective changed inputs and prior failure or result. Retain
+all required checks; repeat them when inputs or evidence warrant it.
 
 Close or terminate each subagent promptly after its completed handoff is consumed. Keep its identifier until termination is confirmed. If a handoff is incomplete, obtain missing task-local evidence from the same worker, then close it.

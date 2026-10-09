@@ -34,6 +34,12 @@ Environment-specific facts that are only true for one local agent or machine go 
 
 Respect generated code, vendored code, lockfiles, and ignored paths according to project policy.
 
+For temporary execution files, follow `agent-environment-health`'s task artifact layout and
+lifecycle: default to `.aipm/tasks/<name>/` unless the project declares another location. Ensure
+`.aipm/tasks/` is ignored by version control and excluded from project documentation indexing when
+creating or integrating this storage. Do not ignore the whole `.aipm/` root if it contains durable
+project material, or relocate existing artifacts merely to adopt the default.
+
 ## Package-Level Design
 
 When package design docs are required, keep them focused on the package boundary:

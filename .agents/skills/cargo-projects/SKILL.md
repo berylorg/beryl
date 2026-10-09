@@ -49,6 +49,17 @@ Match test coverage to risk:
 - Broaden tests for shared behavior, public APIs, cross-crate contracts, persistence, async behavior, or user-visible workflows.
 - Keep tests in the crate that owns the behavior unless a workspace boundary requires a broader test.
 
+Select the smallest package set, Cargo target set, and feature configuration that cover the affected
+behavior during development. A test-name or nextest expression filter selects cases but may still
+compile unrelated test targets. Use explicit package and target selectors, such as `-p <package>`
+with `--test <target>` for a relevant integration target, or `--lib` when the project has applicable
+library tests. Target selection does not change the project's test-placement policy.
+
+Run broader workspace, all-target, or feature-matrix checks when the acceptance contract requires
+them or affected interactions warrant them. Keep build scope and executed-case scope explicit when
+recording verification; a narrow run does not establish broader coverage. Apply `engineering-rigor`
+for evidence reuse and reruns after changed inputs.
+
 ## Exploration Memory
 
 For expensive third-party dependency exploration:

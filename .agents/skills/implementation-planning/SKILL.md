@@ -29,9 +29,14 @@ Track readiness and the latest resumable milestone so later sessions can continu
 Treat `doc/plan.md` as a sliding execution window, not a historical ledger:
 
 - Keep the active `wip` phase detailed enough to execute and verify.
+- During long phases, replace the resumable milestone when it changes. Keep the current objective,
+  remaining work, unresolved findings, blockers, and relevant verification references; remove
+  superseded diagnostic narrative instead of waiting for phase completion. Preserve run-specific
+  inputs and outputs through `agent-environment-health`'s task artifact lifecycle when needed by
+  later consumers, and lasting findings through the applicable memory or failure authority.
 - Keep every known future acceptance boundary as a `pending` phase. Detail only the few near-term phases; until activation approaches, later phases need only a heading and concise boundary summary.
 - Retain at most the immediately preceding `finished` phase as a short outcome.
-- Immediately after successful completion review and before more implementation, compact the phase: remove its checklist, investigation narrative, incremental results, and test history, retaining a concise verification result or durable evidence link.
+- Immediately after successful completion review and before more implementation, compact the phase: remove its checklist, investigation narrative, incremental results, and test history, retaining a concise verification result or durable evidence link. Temporary run references remain only while their consumers still need those artifacts; update the plan before cleanup removes them.
 - Remove any older finished-phase outcome when a newer phase finishes.
 - Before compaction deletes material investigation or invalidated-approach history, preserve it through the applicable project research-memory or failure-record authority. Link it when useful; do not duplicate it in the plan.
 

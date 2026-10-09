@@ -40,6 +40,12 @@ Provide every subagent an explicit task packet containing:
 
 For editing work, tell workers they are not alone in the workspace, must not revert others' edits, and must adjust to concurrent or existing changes.
 
+For a correction review, supply the changed paths or artifacts, changed verification inputs,
+affected guarantees and interactions, and references to earlier qualified evidence. Include enough
+surrounding context to judge those guarantees; avoid repeating the whole investigation or supplying
+an expected verdict. Broaden the packet when the change invalidates earlier evidence or affects a
+wider acceptance boundary. Identify relevant task/run locations when temporary artifacts are needed.
+
 Use the packet as the subagent's complete context when spawning with a fresh context. If a bounded conversational fork is justified by the model-routing reference, ensure the packet still states the deliverable, authority, ownership, completion, and handoff requirements explicitly.
 
 ## Active-Agent Handling

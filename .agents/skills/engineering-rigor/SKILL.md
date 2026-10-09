@@ -107,6 +107,13 @@ where relevant code, dependencies, configuration and assumptions remain unchange
 failures or unresolved concerns require affected checks again. Reuse never replaces missing
 integration evidence or an explicitly required acceptance check.
 
+Make reuse assessable without rereading the full investigation: identify the earlier result,
+relevant input identities and assumptions, and guarantees it covers. Use task/run manifests when
+needed under `agent-environment-health`; do not require one for every low-impact check. Correction
+reviews receive the changed inputs and affected guarantees plus references to still-qualified
+evidence. Broaden verification or review only when changed interactions, invalidated assumptions,
+failures, unresolved concerns, or explicit acceptance requirements justify it.
+
 Classify a review finding as blocking only when it identifies one of:
 
 - An unmet applicable profile criterion, modifier, or scope-specific guarantee.

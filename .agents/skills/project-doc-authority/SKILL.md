@@ -107,6 +107,9 @@ Place each contract by asking who owns the fact:
 - Bounded non-product, non-architecture truth that no package can own belongs to a declared additional authority.
 - Temporary replacement progress belongs to the rework tracker, which points to target-state design authority.
 - Implementation order belongs to root `doc/plan.md`, derived from design authority.
+- Temporary execution inputs, outputs, logs, and artifacts follow `agent-environment-health`'s task
+  artifact lifecycle, defaulting to `.aipm/tasks/<name>/`. They supply evidence, not authoritative
+  decisions. Preserve lasting knowledge in established design, memory, or failure locations.
 - Root or parent docs own a contract only when the project explicitly assigns them that role.
 
 Do not duplicate shared rules in child docs unless needed to define child-owned behavior.
