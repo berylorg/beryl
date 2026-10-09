@@ -34,10 +34,34 @@ The shared New Thread fixture also treated a settled durable lease and runtime p
 GUI readiness. Consecutive creation/reuse tests could inject their next fixture lease while the
 matching terminal wake still owned activation custody; the real command correctly refused before
 consuming that lease. Diagnostic run `40198238-7b16-4bbc-9027-3963a89a360a` retained the injected
-lease with no original operation. The fixture now waits for its existing real read/activation
+lease with no original operation. The fixture was strengthened to wait for its real read/activation
 drain predicate under the unchanged deadline. Run `377a641a-b573-4c96-928b-36f56d6b01cb` records
 the precise incomplete-ready cut and passes original pristine-root reuse without a command retry
 or production admission change. All 55 original runtime-setup and history cases pass in that run.
+
+That predicate also counted unrelated periodic inspection workers. Navigation regression run
+`dfe3fad9-14c8-424d-9dea-11d905f418a5` exposed a completed creation with no original operation,
+lease or activation task, while continuous inspection prevented an all-reader idle sample.
+Confirmation readiness now uses the exact original activation-custody predicate, including its
+terminal GUI task, alongside the unchanged process/runtime predicates and twenty-second deadline.
+Read drainage remains a separate retirement requirement. Run
+`62145818-6e6a-4d10-a983-ec5d4a5e717f` passes all sixty runtime/setup and ordinary-control cases
+and records the incomplete original-custody cut before subsequent commands become eligible.
+
+## Simulated Pointer Input Outran Its Fixture Lease
+
+The isolated navigation fixture installed its original selection lease after simulated pointer
+input. GPUI drains background work between mouse events, allowing original preparation to reach
+admitted startup before that assignment. The same regression run failed the first pointer move;
+the late fixture lease then retained custody without an operation.
+
+Reserve one exact target-qualified lease before input in the existing test-only fixture reader.
+Original admitted startup consumes it and still validates the invoking window. Refusal, failure,
+stale completion, retirement and teardown release unused reservations. The reservation is excluded
+from production custody; production admission is unchanged. Normal frame drawing precedes actual
+pointer/Enter/Space input. The corrected round trip passes in 2.80 seconds in the sixty-case run,
+retaining exact selected claim, title, transcript, history, geometry and focus assertions without
+retrying commands or extending the original deadline.
 
 ## Renderer-owned admission boundary failure
 

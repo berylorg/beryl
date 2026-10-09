@@ -32,6 +32,11 @@ pub(super) struct RunningThreadsContribution {
     #[cfg(all(test, feature = "test-faults"))]
     fixture_reader: Option<std::sync::Weak<PublishedRunningThreadsReader>>,
     #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_selection_lease: Option<(
+        beryl_model::SyndicThreadId,
+        Arc<crate::window_acquisition::WindowSelectionLease>,
+    )>,
+    #[cfg(all(test, feature = "test-faults"))]
     fixture_windows: Vec<WindowHandle<MainWindowShellRoot>>,
     #[cfg(all(test, feature = "test-faults"))]
     fixture_activation_hooks: Option<activation::RunningActivationFixtureHooks>,
@@ -86,7 +91,7 @@ pub(super) struct RunningThreadsContribution {
     )>,
     pub(super) pending_activation: Option<beryl_model::SyndicThreadId>,
     ordinary_activation: bool,
-    navigation_history: activation::ThreadNavigationHistory,
+    pub(super) navigation_history: activation::ThreadNavigationHistory,
     pub(super) selected_title: Option<(
         crate::main_window::MainWindowComposerSelectionIdentity,
         beryl_state::CatalogResolvedTitle,
@@ -121,6 +126,8 @@ impl RunningThreadsContribution {
             reader: None,
             #[cfg(all(test, feature = "test-faults"))]
             fixture_reader: None,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_selection_lease: None,
             #[cfg(all(test, feature = "test-faults"))]
             fixture_windows: Vec::new(),
             #[cfg(all(test, feature = "test-faults"))]
@@ -189,6 +196,8 @@ impl RunningThreadsContribution {
         if self.has_activation_custody() || self.workers.retained() != 0 {
             return Err("Running threads still owns unsettled read or activation work.".into());
         }
+        #[cfg(all(test, feature = "test-faults"))]
+        self.fixture_selection_lease.take();
         if self.reader.is_none()
             && self.transcript_provider.is_none()
             && self.source_revision.is_none()
@@ -277,6 +286,7 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.running_threads.reads_suspended = true;
+        self.thread_navigation.status = [None, None];
         self.running_threads.cancellation.cancel();
         self.running_threads.poll = None;
         self.running_threads
@@ -477,7 +487,7 @@ impl MainWindowShellRoot {
                     executor.timer(Duration::from_millis(50)).await;
                     continue;
                 }
-                let Some((query, query_revision, focused, focused_position)) = this
+                let Some((query, query_revision, focused, focused_position, navigation)) = this
                     .update_in(cx, |root, _, cx| {
                         let picker = root
                             .running_threads
@@ -491,6 +501,17 @@ impl MainWindowShellRoot {
                                 .and_then(|picker| picker.focused_key())
                                 .and_then(|key| key.0.parse::<beryl_model::SyndicThreadId>().ok()),
                             picker.and_then(|picker| picker.focused_position()),
+                            root.controller.as_ref().map(|controller| {
+                                (
+                                    controller.window_id(),
+                                    root.cached_running_selection(cx)
+                                        .map(|(selection, _)| selection.claim()),
+                                    [
+                                        root.running_threads.navigation_history.target(false),
+                                        root.running_threads.navigation_history.target(true),
+                                    ],
+                                )
+                            }),
                         )
                     })
                     .ok()
@@ -507,7 +528,29 @@ impl MainWindowShellRoot {
                             .map(|thread| source.position(page.revision(), &query, thread, &cancel))
                             .transpose()?
                             .flatten();
-                        Ok::<_, crate::cas_projection::ProcessWorkError>((page, focus_position))
+                        let navigation_status = navigation.map(|(window, prior, targets)| {
+                            targets.map(|thread| {
+                                thread.and_then(|thread| {
+                                    source
+                                        .ordinary_thread_unavailability(
+                                            window, prior, thread, &cancel,
+                                        )
+                                        .ok()
+                                        .map(|(observation, reason)| {
+                                            super::thread_navigation::NavigationAvailability {
+                                                thread,
+                                                observation,
+                                                reason,
+                                            }
+                                        })
+                                })
+                            })
+                        });
+                        Ok::<_, crate::cas_projection::ProcessWorkError>((
+                            page,
+                            focus_position,
+                            navigation_status,
+                        ))
                     })();
                     RunningReadOutput {
                         result,
@@ -531,7 +574,31 @@ impl MainWindowShellRoot {
                             return true;
                         }
                         match result {
-                            Ok((page, position)) => {
+                            Ok((page, position, navigation_status)) => {
+                                if let (Some((invoking, prior, _)), Some(status)) =
+                                    (navigation, navigation_status)
+                                {
+                                    if root.controller.as_ref().is_some_and(|controller| {
+                                        controller.window_id() == invoking
+                                    }) && root
+                                        .cached_running_selection(cx)
+                                        .map(|(selection, _)| selection.claim())
+                                        == prior
+                                    {
+                                        for (index, status) in status.into_iter().enumerate() {
+                                            root.thread_navigation.status[index] =
+                                                status.filter(|status| {
+                                                    root.running_threads
+                                                        .navigation_history
+                                                        .target(index == 1)
+                                                        == Some(status.thread)
+                                                        && reader
+                                                            .elect(&status.observation, || ())
+                                                            .is_ok()
+                                                });
+                                        }
+                                    }
+                                }
                                 root.running_threads.count = Some(page.total_threads());
                                 root.running_threads.attention = page.attention_threads();
                                 root.running_threads.failure = None;

@@ -44,7 +44,7 @@ pub(crate) use running_threads::{
     PublishedSameWindowThreadOperation, PublishedSameWindowThreadPreparation,
     PublishedSameWindowThreadPreparationFailure, RetiredClaimCommit, RetiredClaimOperation,
     RetiredOrdinaryClaimAdmission, RetiredOrdinarySelectionOperation,
-    RetiredSameWindowThreadOperation,
+    RetiredSameWindowThreadOperation, RunningThreadsObservation,
 };
 pub(crate) use runtime_setup::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 pub(crate) mod recovery_composer;

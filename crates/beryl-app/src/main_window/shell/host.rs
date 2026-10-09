@@ -24,6 +24,7 @@ mod selected;
 mod shutdown;
 mod shutdown_draft;
 mod status_controls;
+mod thread_navigation;
 mod thread_switcher;
 pub use shutdown_draft::{
     MainWindowShutdownDraft, MainWindowShutdownDraftAdvance, MainWindowShutdownDraftRelease,
@@ -663,6 +664,7 @@ impl MainWindowShell {
 
 pub struct MainWindowShellRoot {
     thread_switcher: thread_switcher::ThreadSwitcherContribution,
+    thread_navigation: thread_navigation::ThreadNavigationControls,
     runtime_setup: runtime_setup::RuntimeSetupContribution,
     running_threads: running_threads::RunningThreadsContribution,
     status_controls: status_controls::ExactStatusControls,

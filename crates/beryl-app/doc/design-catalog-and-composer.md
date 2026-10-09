@@ -535,6 +535,22 @@ governed by [design.md](design.md). It does not independently declare engineerin
   allocator across activation generations. The package adds no last-seen sequence authority.
 - Activation history updates only after coherent promotion. Failed, cancelled, stale,
   already-selected, or restore-time activation invents no navigation entry.
+- Each main window owns finite compact thread-navigation entries, its recorded position, its
+  independently coherent active thread and at most one exact pending selection or navigation
+  intent. Original coherent activation or recovery settles that intent. Creation, restoration
+  and background rebinding synchronize active identity without inventing entries; a successful
+  new user branch clears its superseded forward tail. These values retain no Home, service,
+  editor or source capability.
+- Backward/forward availability presentation shares the existing weak published Running-thread
+  reader and its tracked periodic worker. Each read captures at most two exact recorded targets,
+  the invoking window and current selected claim, and uses existing ordinary read-only source
+  preparation under Home coherence observation. Prepared selection objects are reduced and
+  dropped within the worker; only bounded pure status and observation metadata reach the GUI.
+  Existing read capacity, cancellation, window/generation/publication fences and retirement
+  drainage apply. GUI election checks exact observation currentness without source queries;
+  changed or unavailable sources disable the control until a matching refresh. Presentation
+  grants no activation permission: each click prepares and admits its exact target afresh through
+  the original ordinary selection flight.
 - The title adapter consumes exact Syndic eligibility and bounded source facts, uses one bounded
   maintenance backend session, validates the typed result, and submits one one-way Syndic attribute
   mutation. It never reads CAS thread names or history or occupies a selected foreground stream.

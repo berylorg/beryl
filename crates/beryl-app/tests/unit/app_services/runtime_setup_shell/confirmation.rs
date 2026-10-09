@@ -109,7 +109,7 @@ pub(super) fn settled_confirmation(
                         .read_with(cx, |root, app| (
                             root.test_thread_confirmation_diagnostics(),
                             root.test_runtime_setup_state(),
-                            root.running_thread_reads_drained(),
+                            root.test_running_thread_activation_pending(),
                             root.test_primary_thread_reason(app),
                             root.test_thread_creation_picker_open_diagnostics(),
                         ))
@@ -120,23 +120,23 @@ pub(super) fn settled_confirmation(
                 && window
                     .read_with(cx, |root, _| !root.test_runtime_setup_state().0)
                     .unwrap();
-            let custody_drained = window
-                .read_with(cx, |root, _| root.running_thread_reads_drained())
+            let custody_settled = window
+                .read_with(cx, |root, _| !root.test_running_thread_activation_pending())
                 .unwrap();
-            if ready && !custody_drained && !reported_incomplete_ready_cut {
+            if ready && !custody_settled && !reported_incomplete_ready_cut {
                 reported_incomplete_ready_cut = true;
                 eprintln!(
-                    "confirmation phase settled before activation custody drained: {:?}",
+                    "confirmation phase settled before original activation custody settled: {:?}",
                     window
                         .read_with(cx, |root, app| (
-                            root.running_thread_reads_drained(),
+                            root.test_running_thread_activation_pending(),
                             root.test_primary_thread_reason(app),
                             root.test_thread_confirmation_diagnostics(),
                         ))
                         .unwrap()
                 );
             }
-            ready && custody_drained
+            ready && custody_settled
         },
         "root confirmation did not settle",
     );

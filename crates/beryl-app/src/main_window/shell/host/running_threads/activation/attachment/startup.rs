@@ -46,8 +46,11 @@ impl MainWindowShellRoot {
         let fixture_lease = if self.running_threads.fixture_reader.is_some() {
             Some(
                 self.running_threads
-                    .selection_lease
+                    .fixture_selection_lease
                     .take()
+                    .filter(|(thread, _)| *thread == target.thread_id())
+                    .map(|(_, lease)| lease)
+                    .or_else(|| self.running_threads.selection_lease.take())
                     .ok_or("Fixture selection lease is missing")?,
             )
         } else {

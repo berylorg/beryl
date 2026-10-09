@@ -94,34 +94,10 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 741: Mount The Thread Switcher (finished)
+# Phase 742: Mount Backward And Forward Thread Navigation (finished)
 
-Accepted the actual immediate frozen Thread Switcher, original runtime/root configuration flight,
-exact live current/no-op and elsewhere refusal, coherent title/history transfer and same-window
-ordinary failed-Home/Page recovery with restored selector focus. All 158 distinct affected App
-cases and 25 query/option cases pass with current checks, matching inputs and independent semantic
-completion review. See [qualification](audits/thread-switcher-mount-qualification.md).
-
-# Phase 742: Mount Backward And Forward Thread Navigation (pending)
-
-After the Thread Switcher mount passes completion review, mount the two compact command buttons
-in their declared toolbar order. Derive exact per-window navigation from
-[thread navigation history](features/conversation-threads/design.md#thread-navigation-history),
-[toolbar composition](features/conversation-threads/gui.md#thread-toolbar-controls) and
-[coherent activation settlement](../crates/beryl-app/doc/design-catalog-and-composer.md#activation-and-title-adapters).
-Extend the existing finite private history with its current position and exact pending navigation
-intent; commit history movement only after the original ordinary activation coherently promotes
-or successfully recovers. New successful activation from a backward position clears forward
-history. Failed, cancelled, stale, already-selected and background activation preserve history.
-Track the coherent active thread independently when creation or restoration does not add an
-entry, so Back targets the most recent recorded thread rather than skipping it; successful new
-user selection after Back discards the old forward branch without inventing an acquisition entry.
-
-Reuse the original live ordinary-selection admission, flush, claim, mount and recovery flight.
-Do not redirect an unavailable exact recorded thread. Keep both controls visible with the closest
-disabled explanation, independent focus, pointer and focused Enter/Space activation. Qualify
-backward/forward round trips, duplicate thread visits, capacity expiration, forward clearing,
-window isolation, pending exclusion, unavailable/elsewhere refusal and original dirty or failed-Home
-recovery through actual controls. Run affected history/activation/switcher regressions, current
-checks and independent completion review. Read-only readiness finds no product or architectural
-blocker; lineage, transcript links and other shell contributions remain separate tracker slices.
+Accepted exact per-window Back/Forward toolbar commands with bounded coherent history,
+source-fenced availability, actual pointer/Enter/Space activation and original same-window
+failed-Home recovery. All 102 distinct affected App cases, current checks, scoped formatting and
+independent completion review pass; final fixture Homes are absent. See
+[qualification](audits/thread-navigation-mount-qualification.md).

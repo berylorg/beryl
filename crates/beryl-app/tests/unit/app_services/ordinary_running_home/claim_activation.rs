@@ -22,6 +22,8 @@ mod durable_evidence;
 mod fixture;
 #[path = "claim_activation/marker_origin.rs"]
 mod marker_origin;
+#[path = "claim_activation/navigation_entry.rs"]
+mod navigation_entry;
 #[path = "claim_activation/outcome_evidence.rs"]
 mod outcome_evidence;
 #[path = "claim_activation/page_custody.rs"]

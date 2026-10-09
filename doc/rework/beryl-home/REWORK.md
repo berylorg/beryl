@@ -516,6 +516,7 @@
   and visible Thread Switcher mounting remain separate gates.
 - [x] Accepted State-owned complete frozen Catalog queries through the finite published App reader with exact retirement custody; [qualification](../../audits/frozen-catalog-query-qualification.md).
 - [x] Accepted the immediate frozen Thread Switcher with exact live admission, original configuration custody and coherent same-window recovery; [qualification](../../audits/thread-switcher-mount-qualification.md).
+- [x] Mounted exact per-window Back/Forward controls with coherent history settlement, bounded availability and original same-window recovery; [qualification](../../audits/thread-navigation-mount-qualification.md).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.

@@ -209,6 +209,8 @@ impl MainWindowShellRoot {
         self.running_threads.prepared_activation = None;
         self.running_threads.activation_attention.clear();
         self.running_threads.selection_lease = None;
+        #[cfg(all(test, feature = "test-faults"))]
+        self.running_threads.fixture_selection_lease.take();
         if let Err(error) = result {
             self.running_threads.navigation_history.cancel();
             let previous = self.running_threads.failure_notice.take();

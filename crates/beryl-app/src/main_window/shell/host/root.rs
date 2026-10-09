@@ -13,6 +13,7 @@ impl MainWindowShellRoot {
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
             thread_switcher: thread_switcher::ThreadSwitcherContribution::new(cx),
+            thread_navigation: thread_navigation::ThreadNavigationControls::new(cx),
             runtime_setup: runtime_setup::RuntimeSetupContribution::new(cx),
             running_threads: running_threads::RunningThreadsContribution::new(cx),
             status_controls: status_controls::ExactStatusControls::new(cx),
@@ -223,6 +224,8 @@ impl Render for MainWindowShellRoot {
         let setup_picker = runtime_setup::render_picker(self, window);
         let running_picker = running_threads::render_picker(self, window);
         let switcher = thread_switcher::render_command(self, window, cx);
+        let back = thread_navigation::render(self, false, cx);
+        let forward = thread_navigation::render(self, true, cx);
         let switcher_picker = thread_switcher::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
@@ -263,6 +266,8 @@ impl Render for MainWindowShellRoot {
                     .flex_none()
                     .bg(appearance.toolbar)
                     .child(setup)
+                    .child(back)
+                    .child(forward)
                     .child(switcher)
                     .child(running)
                     .children(command)

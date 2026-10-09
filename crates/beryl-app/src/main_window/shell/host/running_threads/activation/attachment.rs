@@ -386,6 +386,14 @@ impl MainWindowShellRoot {
             let creation = source.creation.is_some();
             drop(source);
             self.running_threads.activation_operation = None;
+            if success && creation {
+                let selected = self
+                    .cached_running_selection(cx)
+                    .map(|(selection, _)| selection.claim().thread_id());
+                self.running_threads
+                    .navigation_history
+                    .settle_acquisition(selected);
+            }
             if success {
                 if !creation && !self.running_threads.ordinary_activation {
                     self.acknowledge_running_activation(&reader);

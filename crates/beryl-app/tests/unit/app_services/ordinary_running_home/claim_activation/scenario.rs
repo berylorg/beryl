@@ -4,6 +4,7 @@ use super::*;
 pub(super) enum Entry {
     Prepared,
     Switcher,
+    Navigation,
 }
 
 pub(super) async fn recover(
@@ -36,6 +37,9 @@ pub(super) async fn recover_with_entry(
 ) {
     let original_windows = windows(&owner);
     let invoking = original_windows[0];
+    if matches!(entry, Entry::Navigation) {
+        navigation_entry::prepare(invoking, cx).await;
+    }
     let unrelated_window = original_windows[1];
     let dirty = !matches!(save, SaveExpectation::SavedNoop);
     let mut prior = preservation::capture_resident(&owner, invoking, 0, dirty, cx).await;
@@ -163,6 +167,17 @@ pub(super) async fn recover_with_entry(
             prior.expect_restored_focus(owner_focus);
             Some(picker)
         }
+        Entry::Navigation => {
+            navigation_entry::ready(invoking, true, cx).await;
+            let focus = invoking
+                .read_with(cx, |root, _| root.test_thread_navigation_focus(true))
+                .unwrap();
+            invoking
+                .update(cx, |_, window, _| focus.focus(window))
+                .unwrap();
+            prior.expect_restored_focus(focus);
+            None
+        }
     };
     let failed_generation = home.health().generation().unwrap();
     control::install(&owner, invoking, control, cx).await;
@@ -222,7 +237,10 @@ pub(super) async fn recover_with_entry(
                                 outcome_evidence::fail_original_confirmed_read(&claim_failure_home, &fail_faults, &fail_reached);
                             }
                         }));
-                        if let Some((picker, key)) = picker {
+                        if matches!(entry, Entry::Navigation) {
+                            drop((prepared, duplicate));
+                            navigation_entry::post_space(native_handles[0]);
+                        } else if let Some((picker, key)) = picker {
                             drop((prepared, duplicate));
                             picker.update(app, |picker, pcx| picker.activate(&key, pcx));
                         } else {
@@ -443,6 +461,16 @@ pub(super) async fn recover_with_entry(
                 Vec::new()
             };
             assert_eq!(root.test_thread_navigation_history(), expected_history);
+        })
+        .unwrap();
+    }
+    if matches!(entry, Entry::Navigation) {
+        cx.update(|app| {
+            let root = invoking.read(app).unwrap();
+            assert_eq!(
+                root.test_thread_navigation_history(),
+                vec![original_claim.thread_id(), target]
+            );
         })
         .unwrap();
     }

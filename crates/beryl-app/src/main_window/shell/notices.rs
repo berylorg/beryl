@@ -249,6 +249,7 @@ impl MainWindowShellRoot {
         input
             .filter(|focus| focus.is_focused(window))
             .or_else(|| self.focused_thread_switcher_owner(window))
+            .or_else(|| self.focused_thread_navigation_owner(window))
             .or_else(|| {
                 self.shell_focus
                     .is_focused(window)

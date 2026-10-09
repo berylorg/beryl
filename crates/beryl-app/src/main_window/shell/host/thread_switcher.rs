@@ -206,7 +206,7 @@ impl MainWindowShellRoot {
             .and_then(|owner| owner.upgrade())
             .and_then(|owner| owner.borrow().catalog_query_reader())
     }
-    fn switcher_disabled_reason(&self, cx: &Context<Self>) -> Option<String> {
+    pub(super) fn switcher_disabled_reason(&self, cx: &App) -> Option<String> {
         if self.startup_interaction_gated() {
             return Some("Beryl is preparing its windows.".into());
         }
@@ -236,6 +236,14 @@ impl MainWindowShellRoot {
             return;
         }
         self.thread_switcher.reader = self.switcher_reader(cx);
+        if !self.running_threads.has_activation_custody() {
+            let selected = self
+                .cached_running_selection(cx)
+                .map(|(selection, _)| selection.claim().thread_id());
+            self.running_threads
+                .navigation_history
+                .synchronize(selected);
+        }
         let title = self.coherent_selected_thread_title(cx);
         self.thread_switcher.title_thread =
             title.as_ref().map(|(selection, _)| selection.thread_id());

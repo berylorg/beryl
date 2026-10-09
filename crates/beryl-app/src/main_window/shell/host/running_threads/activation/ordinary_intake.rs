@@ -8,6 +8,11 @@ pub(crate) enum OrdinaryThreadActivationAcceptance {
 
 impl MainWindowShellRoot {
     #[cfg(test)]
+    pub(crate) fn test_running_thread_activation_pending(&self) -> bool {
+        self.running_threads.has_activation_custody()
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_thread_navigation_history(&self) -> Vec<beryl_model::SyndicThreadId> {
         self.running_threads.navigation_history.test_entries()
     }
@@ -67,6 +72,11 @@ impl MainWindowShellRoot {
                 if root.running_threads.generation.load(Ordering::Acquire) != generation
                     || root.running_threads.pending_activation != Some(thread)
                 {
+                    if root.running_threads.pending_activation == Some(thread) {
+                        root.running_threads.navigation_history.cancel();
+                        #[cfg(all(test, feature = "test-faults"))]
+                        root.running_threads.fixture_selection_lease.take();
+                    }
                     accepted(Err("The invoking view changed.".into()), window, cx);
                     return;
                 }
@@ -111,6 +121,9 @@ impl MainWindowShellRoot {
                     Ok(acceptance)
                 });
                 if !matches!(result, Ok(OrdinaryThreadActivationAcceptance::Admitted)) {
+                    if matches!(result, Ok(OrdinaryThreadActivationAcceptance::Current)) {
+                        root.running_threads.navigation_history.cancel();
+                    }
                     root.finish_running_activation(
                         result.as_ref().map(|_| ()).map_err(Clone::clone),
                         window,
@@ -133,5 +146,8 @@ impl MainWindowShellRoot {
             .cached_running_selection(cx)
             .map(|(selection, _)| selection.claim().thread_id());
         self.running_threads.navigation_history.settle(selected);
+        self.running_threads
+            .navigation_history
+            .synchronize(selected);
     }
 }
