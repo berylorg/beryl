@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 mod activation;
+pub(crate) use activation::OrdinaryThreadActivationAcceptance;
 pub(in crate::main_window::shell::host) use activation::{
     CapturedClaimOperation, RetiringClaimOperation,
 };
@@ -83,7 +84,13 @@ pub(super) struct RunningThreadsContribution {
         ProjectionCancellationToken,
         gpui::Task<()>,
     )>,
-    pub(super) pending_activation: Option<ProcessWorkQueryRecord>,
+    pub(super) pending_activation: Option<beryl_model::SyndicThreadId>,
+    ordinary_activation: bool,
+    navigation_history: activation::ThreadNavigationHistory,
+    pub(super) selected_title: Option<(
+        crate::main_window::MainWindowComposerSelectionIdentity,
+        beryl_state::CatalogResolvedTitle,
+    )>,
     activation_task: Option<gpui::Task<()>>,
     activation_wake: Option<Arc<()>>,
     activation_operation: Option<activation::UnviewedRunningActivation>,
@@ -156,6 +163,9 @@ impl RunningThreadsContribution {
             query_revision: 1,
             page_jobs: Vec::new(),
             pending_activation: None,
+            ordinary_activation: false,
+            navigation_history: Default::default(),
+            selected_title: None,
             activation_task: None,
             activation_wake: None,
             activation_operation: None,
@@ -208,6 +218,21 @@ impl RunningThreadsContribution {
 }
 
 impl MainWindowShellRoot {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_running_thread_reader(
+        &mut self,
+        reader: &Arc<PublishedRunningThreadsReader>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if !reader.current() {
+            return Err("Running threads source retired".into());
+        }
+        self.running_threads.fixture_reader = Some(Arc::downgrade(reader));
+        self.sync_running_threads(window, cx);
+        Ok(())
+    }
+
     pub(crate) fn running_thread_reads_drained(&self) -> bool {
         self.running_threads.workers.retained() == 0
             && !self.running_threads.has_activation_custody()
@@ -302,6 +327,7 @@ impl MainWindowShellRoot {
         }
         self.running_threads.reads_suspended = false;
         self.running_threads.read_drain_task = None;
+        self.settle_thread_navigation_history(cx);
         self.sync_running_threads(window, cx);
         if let Some(picker) = self.running_threads.picker.clone() {
             picker.update(cx, |picker, picker_cx| {
@@ -385,6 +411,7 @@ impl MainWindowShellRoot {
             }
             self.running_threads.reads_suspended = false;
             self.running_threads.read_drain_task = None;
+            self.settle_thread_navigation_history(cx);
         }
         #[cfg(target_os = "windows")]
         let reader = crate::running_owner::RunningProcessOwner::mounted_owner(cx)

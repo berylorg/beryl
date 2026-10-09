@@ -138,7 +138,7 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         if let (Some(picker), Some(command)) =
-            (&self.runtime_setup.picker, &self.runtime_setup.command)
+            (self.setup_command_picker(), &self.runtime_setup.command)
         {
             let state = if terminal {
                 PickerCommandState::unavailable(

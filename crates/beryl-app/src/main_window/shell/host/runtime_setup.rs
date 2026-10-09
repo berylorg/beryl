@@ -8,6 +8,7 @@ use crate::{
 use std::{collections::VecDeque, time::Duration};
 
 mod commands;
+mod configuration;
 mod confirmation;
 mod pages;
 mod primary;
@@ -39,6 +40,12 @@ pub(super) struct RuntimeSetupContribution {
     pub(super) native_dialog: bool,
     pub(super) native_task: Option<gpui::Task<()>>,
     pub(super) command: Option<PickerCommand>,
+    pub(super) switcher_command_picker: Option<gpui::WeakEntity<ThreadRootPicker>>,
+    pub(super) switcher_refresh_target: Option<(
+        beryl_model::RuntimeId,
+        Option<beryl_model::RootId>,
+        Option<beryl_model::HomeRevision>,
+    )>,
     pub(super) primary_command: bool,
     pub(super) primary_task: Option<gpui::Task<()>>,
     pub(super) unavailable: Option<String>,
@@ -108,6 +115,8 @@ impl RuntimeSetupContribution {
             native_dialog: false,
             native_task: None,
             command: None,
+            switcher_command_picker: None,
+            switcher_refresh_target: None,
             primary_command: false,
             primary_task: None,
             unavailable: None,
@@ -455,7 +464,7 @@ impl MainWindowShellRoot {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(picker) = &self.runtime_setup.picker {
+        if let Some(picker) = self.setup_command_picker() {
             picker.update(cx, |picker, cx| {
                 picker.set_pending_page_retry_allowed(false, cx)
             });
@@ -481,7 +490,7 @@ impl MainWindowShellRoot {
         let command = self.runtime_setup.command.take();
         let primary = std::mem::take(&mut self.runtime_setup.primary_command);
         self.runtime_setup.native_dialog = false;
-        if let Some(picker) = &self.runtime_setup.picker {
+        if let Some(picker) = self.setup_command_picker() {
             picker.update(cx, |picker, cx| {
                 if primary {
                     picker.set_external_command_reason(None, cx);
@@ -495,6 +504,10 @@ impl MainWindowShellRoot {
         }
         if primary {
             window.focus(&self.runtime_setup.primary_focus);
+        }
+        if self.runtime_setup.switcher_command_picker.take().is_some() {
+            self.runtime_setup.switcher_refresh_target = None;
+            self.finish_switcher_configuration(false, window, cx);
         }
         cx.notify();
     }

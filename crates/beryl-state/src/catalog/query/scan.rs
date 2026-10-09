@@ -97,10 +97,17 @@ impl CatalogQueryOwner {
                     return Ok(false);
                 }
                 let runtime_root = self.presentation_source(store, entry, &row)?;
+                let runtime_environment_count = self.runtime_environment_count(
+                    store,
+                    entry,
+                    runtime_root.runtime().environment_label(),
+                    cancel,
+                )?;
                 last = Some(row.recency_cursor());
                 rows.push(CatalogQueryRow {
                     catalog: row,
                     runtime_root,
+                    runtime_environment_count,
                 });
                 bytes = charged;
                 Ok(true)

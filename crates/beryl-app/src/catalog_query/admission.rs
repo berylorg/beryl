@@ -70,6 +70,41 @@ fn admit(
 }
 
 impl PublishedCatalogQueryReader {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_pause_next_request(
+        &self,
+    ) -> Result<CatalogQueryTestPause, CatalogQueryRequestError> {
+        let signal = self
+            .signal
+            .upgrade()
+            .ok_or(CatalogQueryRequestError::Retired)?;
+        let mut state = signal.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.stopped {
+            return Err(CatalogQueryRequestError::Retired);
+        }
+        if !state.published {
+            return Err(CatalogQueryRequestError::NotPublished);
+        }
+        if state.pause.is_some() || state.active_pause.is_some() {
+            return Err(CatalogQueryRequestError::RequestLimit);
+        }
+        let pause = tests::RequestPause::new();
+        state.pause = Some(Arc::clone(&pause));
+        Ok(CatalogQueryTestPause {
+            signal: Arc::downgrade(&signal),
+            pause,
+        })
+    }
+    pub fn is_ready(&self) -> bool {
+        let Some(signal) = self.signal.upgrade() else {
+            return false;
+        };
+        let current = {
+            let state = signal.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.published && !state.stopped
+        };
+        current && signal.source.certified_threads().is_ok()
+    }
     pub fn open(
         &self,
         criteria: CatalogQueryCriteria,
@@ -86,6 +121,116 @@ impl PublishedCatalogQueryReader {
 }
 
 impl PublishedCatalogCollection {
+    pub fn refine(
+        &self,
+        criteria: CatalogQueryCriteria,
+        limit: CatalogQueryPageLimit,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::Refine {
+                token: self.token.clone(),
+                criteria,
+                limit,
+            },
+            cancellation,
+        )
+    }
+    pub fn page_at(
+        &self,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::PageAt {
+                token: self.token.clone(),
+                start,
+                limit,
+            },
+            cancellation,
+        )
+    }
+    pub fn runtime_page(
+        &self,
+        search: CatalogNormalizedQuery,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::Runtimes {
+                token: self.token.clone(),
+                search,
+                start,
+                limit,
+            },
+            cancellation,
+        )
+    }
+    pub fn root_page(
+        &self,
+        runtime: RuntimeId,
+        search: CatalogNormalizedQuery,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::Roots {
+                token: self.token.clone(),
+                runtime,
+                search,
+                start,
+                limit,
+            },
+            cancellation,
+        )
+    }
+    pub fn runtime_position(
+        &self,
+        search: CatalogNormalizedQuery,
+        runtime: RuntimeId,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::RuntimePosition {
+                token: self.token.clone(),
+                search,
+                runtime,
+            },
+            cancellation,
+        )
+    }
+    pub fn root_position(
+        &self,
+        runtime: RuntimeId,
+        search: CatalogNormalizedQuery,
+        root: RootId,
+        cancellation: CommandCancellation,
+    ) -> Result<PublishedCatalogQueryRequest, CatalogQueryRequestError> {
+        admit(
+            &self.signal,
+            Some(self.token.clone()),
+            QueryOperation::RootPosition {
+                token: self.token.clone(),
+                runtime,
+                search,
+                root,
+            },
+            cancellation,
+        )
+    }
     pub fn page(
         &self,
         cursor: Option<CatalogQueryCursor>,

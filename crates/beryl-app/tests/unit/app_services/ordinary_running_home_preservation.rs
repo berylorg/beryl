@@ -13,6 +13,12 @@ pub(super) struct ResidentSnapshot {
     focus: Option<gpui::FocusHandle>,
 }
 
+impl ResidentSnapshot {
+    pub(super) fn expect_restored_focus(&mut self, focus: gpui::FocusHandle) {
+        self.focus = Some(focus);
+    }
+}
+
 pub(super) async fn capture_resident(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     window: WindowHandle<MainWindowShellRoot>,

@@ -115,6 +115,9 @@ impl MainWindowShellRoot {
                 panel_cx.notify();
             });
         self.running_threads.transcript_claim = Some(selection.claim());
+        self.running_threads.selected_title = preparation
+            .qualified_selected_title()
+            .map(|title| (selection, title.clone()));
         cx.notify();
         Ok(close)
     }

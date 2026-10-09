@@ -80,6 +80,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
   count and bounded first presentation page under one query identity. It does not construct all
   result rows, load transcripts or enumerate CAS. Runtime/root presentation facts belong to the
   same coherent frozen source as the rows and cannot be substituted from a later live revision.
+- A flyout's original collection anchors its opening source. Scope/search refinement opens bounded
+  independently owned collections from that exact retained snapshot, rather than consulting the
+  latest coordinator publication. Runtime/root option pages and positions use the anchor's source,
+  including configured options with zero threads. Each refined collection retains its own release
+  duty; releasing a superseded refinement does not release the opening or another refinement.
+  Arbitrary logical page offsets walk compact frozen facts without constructing intervening
+  presentation rows. These operations share the existing finite owner and worker admission limits.
 - Every request has a non-reused identity sealed to its query and published Home generation. GUI
   publication rechecks that exact service, selected request and query before accepting a response.
   Late completion after supersession, cancellation, dismissal or recovery is discarded with its

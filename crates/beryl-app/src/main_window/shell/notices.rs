@@ -246,11 +246,14 @@ impl MainWindowShellRoot {
             .and_then(|mount| mount.read(app).contribution())
             .map(|composer| composer.read(app).gpui_input())
             .map(|input| input.read(app).focus_handle(app));
-        input.filter(|focus| focus.is_focused(window)).or_else(|| {
-            self.shell_focus
-                .is_focused(window)
-                .then(|| self.shell_focus.clone())
-        })
+        input
+            .filter(|focus| focus.is_focused(window))
+            .or_else(|| self.focused_thread_switcher_owner(window))
+            .or_else(|| {
+                self.shell_focus
+                    .is_focused(window)
+                    .then(|| self.shell_focus.clone())
+            })
     }
 
     pub(super) fn replace_recovered_notices(
@@ -269,6 +272,7 @@ impl MainWindowShellRoot {
             cx,
         );
         self.reset_recovered_runtime_setup(cx);
+        self.reset_recovered_thread_switcher(cx);
         self.set_notices_inert(true, window, cx);
         self.subscribe_notices(window, cx);
     }
@@ -351,6 +355,7 @@ impl MainWindowShellRoot {
             return;
         }
         self.retire_runtime_setup(window, cx);
+        self.retire_thread_switcher(window, cx);
         self.refresh_notice_safe_focus(cx);
         self.notices.retired = true;
         self.notices.home_warning = home_warning::HomeWarning::default();
@@ -432,12 +437,7 @@ impl MainWindowShellRoot {
     }
 
     pub(super) fn notice_chrome_height(&self) -> f32 {
-        if self.creation.is_some()
-            || self
-                .controller
-                .as_ref()
-                .is_some_and(|controller| controller.is_threadless())
-        {
+        if self.creation.is_some() || self.controller.is_some() {
             44.
         } else {
             0.

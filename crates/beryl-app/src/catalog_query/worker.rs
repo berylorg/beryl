@@ -246,6 +246,130 @@ fn perform(
                 opened,
             })
         }
+        QueryOperation::Refine {
+            token,
+            criteria,
+            limit,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            let opened =
+                match owner.refine(home, token, criteria.clone(), *limit, &request.cancellation) {
+                    Ok(opened) => opened,
+                    Err(error) => {
+                        let (error, retained) = error.into_parts();
+                        custody.unadmitted = retained;
+                        if let Err(release) = custody.release_unadmitted(home) {
+                            custody.failure = Some(release);
+                        }
+                        return Err(CatalogQueryRequestError::Query(Box::new(error)));
+                    }
+                };
+            let token = opened.token().clone();
+            signal
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .collections
+                .push(token.clone());
+            PublishedCatalogQueryResult::Opened(PublishedCatalogOpened {
+                collection: PublishedCatalogCollection {
+                    signal: Arc::downgrade(signal),
+                    generation: request.identity.generation,
+                    token,
+                },
+                opened,
+            })
+        }
+        QueryOperation::PageAt {
+            token,
+            start,
+            limit,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            PublishedCatalogQueryResult::Page(
+                owner
+                    .page_at(home, token, *start, *limit, &request.cancellation)
+                    .map_err(|error| CatalogQueryRequestError::Query(Box::new(error)))?,
+            )
+        }
+        QueryOperation::Runtimes {
+            token,
+            search,
+            start,
+            limit,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            PublishedCatalogQueryResult::Runtimes(
+                owner
+                    .runtime_page(home, token, search, *start, *limit, &request.cancellation)
+                    .map_err(|error| CatalogQueryRequestError::Query(Box::new(error)))?,
+            )
+        }
+        QueryOperation::Roots {
+            token,
+            runtime,
+            search,
+            start,
+            limit,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            PublishedCatalogQueryResult::Roots(
+                owner
+                    .root_page(
+                        home,
+                        token,
+                        *runtime,
+                        search,
+                        *start,
+                        *limit,
+                        &request.cancellation,
+                    )
+                    .map_err(|error| CatalogQueryRequestError::Query(Box::new(error)))?,
+            )
+        }
+        QueryOperation::RuntimePosition {
+            token,
+            search,
+            runtime,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            PublishedCatalogQueryResult::OptionPosition(
+                owner
+                    .runtime_position(home, token, search, *runtime, &request.cancellation)
+                    .map_err(|error| CatalogQueryRequestError::Query(Box::new(error)))?,
+            )
+        }
+        QueryOperation::RootPosition {
+            token,
+            runtime,
+            search,
+            root,
+        } => {
+            let owner = custody
+                .owner
+                .as_mut()
+                .ok_or(CatalogQueryRequestError::Foreign)?;
+            PublishedCatalogQueryResult::OptionPosition(
+                owner
+                    .root_position(home, token, *runtime, search, *root, &request.cancellation)
+                    .map_err(|error| CatalogQueryRequestError::Query(Box::new(error)))?,
+            )
+        }
         QueryOperation::Page {
             token,
             cursor,

@@ -94,55 +94,34 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 740: Qualify Ordinary Selection Failed-Home Custody (finished)
+# Phase 741: Mount The Thread Switcher (finished)
 
-Accepted actual ordinary selection through process-owned same-home recovery in surviving native
-windows, retaining original save/claim/disposal/Page custody and exact fresh nonempty bindings.
-Healthy final Exit and shared nonfinal close require real native destruction and positive original
-Page acknowledgements. Final native/integration cases pass 65/65, corrected close consumers 32/32
-and refusal guards 2/2; unchanged support evidence, current checks, hashes and independent semantic
-review pass. See [qualification](audits/ordinary-selection-recovery-qualification.md).
+Accepted the actual immediate frozen Thread Switcher, original runtime/root configuration flight,
+exact live current/no-op and elsewhere refusal, coherent title/history transfer and same-window
+ordinary failed-Home/Page recovery with restored selector focus. All 158 distinct affected App
+cases and 25 query/option cases pass with current checks, matching inputs and independent semantic
+completion review. See [qualification](audits/thread-switcher-mount-qualification.md).
 
-# Phase 741: Mount The Thread Switcher (pending)
+# Phase 742: Mount Backward And Forward Thread Navigation (pending)
 
-Mount the exhaustive stable catalog, bounded frozen runtime/root option browsing, search and exact available
-thread activation after its reader and ordinary-selection recovery prerequisites pass. Keep
-current-thread no-op and open-elsewhere unavailability; remaining navigation and shell mounts
-continue through later bounded tracker slices.
+After the Thread Switcher mount passes completion review, mount the two compact command buttons
+in their declared toolbar order. Derive exact per-window navigation from
+[thread navigation history](features/conversation-threads/design.md#thread-navigation-history),
+[toolbar composition](features/conversation-threads/gui.md#thread-toolbar-controls) and
+[coherent activation settlement](../crates/beryl-app/doc/design-catalog-and-composer.md#activation-and-title-adapters).
+Extend the existing finite private history with its current position and exact pending navigation
+intent; commit history movement only after the original ordinary activation coherently promotes
+or successfully recovers. New successful activation from a backward position clears forward
+history. Failed, cancelled, stale, already-selected and background activation preserve history.
+Track the coherent active thread independently when creation or restoration does not add an
+entry, so Back targets the most recent recorded thread rather than skipping it; successful new
+user selection after Back discards the old forward branch without inventing an acquisition entry.
 
-Derive this mount from [conversation threads](features/conversation-threads/design.md#thread-switcher),
-its [GUI composition](features/conversation-threads/gui.md#thread-switcher-flyout), the
-[thread-root picker](gui/widgets/thread-root-picker/spec.md) and the
-[published frozen reader](../crates/beryl-app/doc/design-catalog-and-composer.md#published-frozen-catalog-reader).
-The actual main-window toolbar selector opens one immediate-selection picker in the overlay slot.
-Use its existing bounded fixed-height realization, stable identities, keyboard navigation,
-scope restoration and content-free diagnostics; do not build an unbounded presentation model.
-
-Keep one opening's coherent source across thread search, root scope and runtime/root browsing.
-Extend the existing serialized query owner and worker with bounded frozen option transport and
-query refinement under that original source, including configured runtimes/roots with zero
-threads. Existing live runtime-setup scans cannot supply these presentation facts. Every request
-retains exact service/generation/collection/query/range identity; dismissal, supersession and
-graph retirement cancel and drain original custody. First coherent visible rows enable the
-selector without waiting for all presentation rows, transcript readiness or CAS enumeration.
-
-Wire all-roots opening, complete-collection search including exact executable paths, root browse,
-Back, root choice and scope clearing with the specified search reset. Preserve stable ordering,
-offscreen navigation and completed empty results. Reuse existing runtime-setup native dialogs and
-exact mutation/reconciliation mechanics; cancellation/noncommit preserves the current picker and
-selection, while an acknowledged mutation refreshes coherently under the owning contract.
-
-Admit an available exact ordinary thread through the existing selection operation, retaining
-the original durable draft flush, claim/source validation, mount and failure custody accepted by
-ordinary recovery. Frozen rows confer no permission. The current row closes without reload or
-history change; open-elsewhere rows remain explained and unavailable through every acceptance
-path. Close the picker after exact request acceptance and preserve the established per-window
-failure presentation. This phase does not mount unrelated navigation commands.
-
-Qualify the actual toolbar and picker with large frozen collections, zero-thread options,
-search/scope changes under concurrent publication, offscreen focus/scroll and stale replies,
-configuration cancellation/reconciliation, current/no-op and elsewhere refusal, plus dirty
-ordinary activation and real failed-Home/Page recovery. Run focused query/widget/activation tests,
-affected lifecycle regressions, current checks and independent semantic completion review.
-Read-only readiness finds the controlling product/GUI decisions complete. Source work waits for
-the preceding phase's accepted and compacted outcome; no product blocker is recorded.
+Reuse the original live ordinary-selection admission, flush, claim, mount and recovery flight.
+Do not redirect an unavailable exact recorded thread. Keep both controls visible with the closest
+disabled explanation, independent focus, pointer and focused Enter/Space activation. Qualify
+backward/forward round trips, duplicate thread visits, capacity expiration, forward clearing,
+window isolation, pending exclusion, unavailable/elsewhere refusal and original dirty or failed-Home
+recovery through actual controls. Run affected history/activation/switcher regressions, current
+checks and independent completion review. Read-only readiness finds no product or architectural
+blocker; lineage, transcript links and other shell contributions remain separate tracker slices.

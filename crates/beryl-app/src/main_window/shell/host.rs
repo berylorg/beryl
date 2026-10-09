@@ -19,10 +19,12 @@ mod selection_invocation;
 #[cfg(target_os = "windows")]
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
+pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
 mod status_controls;
+mod thread_switcher;
 pub use shutdown_draft::{
     MainWindowShutdownDraft, MainWindowShutdownDraftAdvance, MainWindowShutdownDraftRelease,
 };
@@ -660,6 +662,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    thread_switcher: thread_switcher::ThreadSwitcherContribution,
     runtime_setup: runtime_setup::RuntimeSetupContribution,
     running_threads: running_threads::RunningThreadsContribution,
     status_controls: status_controls::ExactStatusControls,

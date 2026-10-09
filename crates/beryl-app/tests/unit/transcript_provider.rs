@@ -1,6 +1,10 @@
 use super::*;
 #[path = "transcript_provider/candidate_activation.rs"]
 mod candidate_activation;
+#[path = "transcript_provider/selected_title.rs"]
+mod selected_title;
+#[path = "transcript_provider/selected_title_history.rs"]
+mod selected_title_history;
 use crate::cas_projection::{
     MinimumTurnCaptureReserve, ProcessScheduledExecutionProvider, ProjectionConnectionService,
     ProjectionServiceConfig,

@@ -1,5 +1,63 @@
 use super::*;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogRuntimeRow {
+    pub(super) runtime: RuntimeRecord,
+    pub(super) root_count: u64,
+}
+impl CatalogRuntimeRow {
+    pub fn runtime(&self) -> &RuntimeRecord {
+        &self.runtime
+    }
+    pub const fn root_count(&self) -> u64 {
+        self.root_count
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogRootRow {
+    pub(super) runtime: RuntimeRecord,
+    pub(super) root: RootRecord,
+    pub(super) thread_count: u64,
+}
+impl CatalogRootRow {
+    pub fn runtime(&self) -> &RuntimeRecord {
+        &self.runtime
+    }
+    pub fn root(&self) -> &RootRecord {
+        &self.root
+    }
+    pub const fn thread_count(&self) -> u64 {
+        self.thread_count
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogOptionPage<T> {
+    pub(super) revision: HomeRevision,
+    pub(super) count: u64,
+    pub(super) offset: u64,
+    pub(super) rows: Vec<T>,
+    pub(super) bytes: usize,
+}
+impl<T> CatalogOptionPage<T> {
+    pub const fn home_revision(&self) -> HomeRevision {
+        self.revision
+    }
+    pub const fn count(&self) -> u64 {
+        self.count
+    }
+    pub const fn offset(&self) -> u64 {
+        self.offset
+    }
+    pub fn rows(&self) -> &[T] {
+        &self.rows
+    }
+    pub const fn charged_bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CatalogQueryScope {
     All,
@@ -92,8 +150,12 @@ impl CatalogQueryPageLimit {
 pub struct CatalogQueryRow {
     pub(super) catalog: CatalogRow,
     pub(super) runtime_root: RuntimeRootCatalogSource,
+    pub(super) runtime_environment_count: u64,
 }
 impl CatalogQueryRow {
+    pub const fn runtime_environment_count(&self) -> u64 {
+        self.runtime_environment_count
+    }
     pub const fn catalog(&self) -> &CatalogRow {
         &self.catalog
     }

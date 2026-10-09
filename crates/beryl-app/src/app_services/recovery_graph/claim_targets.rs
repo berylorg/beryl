@@ -124,7 +124,7 @@ impl PreparedRecoveryServiceGraph {
                     MainWindowFreshComposerPreparation::new_ordinary_claim
                 }
             };
-            let composer = prepare(
+            let mut composer = prepare(
                 candidate,
                 &self.state,
                 self.syndic.clone(),
@@ -133,6 +133,9 @@ impl PreparedRecoveryServiceGraph {
                 draft,
                 MainWindowComposerMarkerMetadataAuthority::new(self.state.assets()),
             )?;
+            let title =
+                candidate_selected_title(candidate, &self.state, window, commit.selection())?;
+            composer.set_qualified_selected_title(commit.selection(), title)?;
             self.claim_targets.push(PreparedClaimTarget {
                 window,
                 composer,
@@ -229,6 +232,15 @@ impl PreparedRecoveryServiceGraph {
         }
         drop(access);
         for prepared in &self.claim_targets {
+            let title = candidate_selected_title(
+                candidate,
+                &self.state,
+                prepared.window,
+                prepared.composer.window().selected_thread().unwrap(),
+            )?;
+            if prepared.composer.qualified_selected_title() != Some(&title) {
+                return Err("fresh candidate title changed before publication".into());
+            }
             if prepared.widget_reply.is_some() {
                 return Err("fresh claim widget batch still retains candidate custody".into());
             }
@@ -292,6 +304,37 @@ impl PreparedRecoveryServiceGraph {
         }
         Ok(())
     }
+}
+
+fn candidate_selected_title(
+    candidate: &mut beryl_home_store::HomeRecoveryCandidate,
+    state: &beryl_state::BerylState,
+    window: beryl_model::WindowId,
+    selection: beryl_state::WindowClaimSelection,
+) -> Result<beryl_state::CatalogResolvedTitle, String> {
+    let access = candidate
+        .recovery_access()
+        .map_err(|error| error.to_string())?;
+    let revision = access.home_revision().map_err(|error| error.to_string())?;
+    let row = state
+        .catalog()
+        .current_row_source_candidate(
+            &access,
+            selection.thread_id(),
+            beryl_state::CatalogPointReadLimit::schema_maximum(),
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or("fresh candidate title row is missing")?;
+    if row.row().facts().claim()
+        != beryl_state::CatalogClaimSummary::claimed(window, beryl_state::CatalogClaimKind::Active)
+        || row.row().sources().claim() != Some(selection.revision())
+    {
+        return Err("fresh candidate title claim differs from the qualified selection".into());
+    }
+    if access.home_revision().map_err(|error| error.to_string())? != revision {
+        return Err("fresh candidate title source changed".into());
+    }
+    Ok(row.row().title().clone())
 }
 
 impl ProcessServiceOwner {

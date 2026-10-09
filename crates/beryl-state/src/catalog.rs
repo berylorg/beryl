@@ -64,10 +64,10 @@ pub use normalization::{
 };
 pub use query::{
     CATALOG_QUERY_COLLECTION_LIMIT, CATALOG_QUERY_PAGE_MAX_BYTES, CATALOG_QUERY_PAGE_MAX_ITEMS,
-    CatalogQueryCriteria, CatalogQueryCursor, CatalogQueryError, CatalogQueryOpenError,
-    CatalogQueryOpened, CatalogQueryOwner, CatalogQueryPage, CatalogQueryPageLimit,
-    CatalogQueryPosition, CatalogQueryRow, CatalogQueryScope, CatalogQueryScopePresentation,
-    CatalogQueryToken,
+    CatalogOptionPage, CatalogQueryCriteria, CatalogQueryCursor, CatalogQueryError,
+    CatalogQueryOpenError, CatalogQueryOpened, CatalogQueryOwner, CatalogQueryPage,
+    CatalogQueryPageLimit, CatalogQueryPosition, CatalogQueryRow, CatalogQueryScope,
+    CatalogQueryScopePresentation, CatalogQueryToken, CatalogRootRow, CatalogRuntimeRow,
 };
 pub use rebuild::RebuildCatalogRow;
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};

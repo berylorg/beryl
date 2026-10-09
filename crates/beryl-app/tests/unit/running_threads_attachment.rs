@@ -78,3 +78,6 @@ fn unviewed_callback_preserves_exact_checked_out_execution_session(cx: &mut gpui
 #[path = "running_threads_attachment/fixture.rs"]
 mod fixture;
 use fixture::activate;
+
+#[path = "running_threads_attachment/ordinary_intake.rs"]
+mod ordinary_intake;

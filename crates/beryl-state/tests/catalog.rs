@@ -1,6 +1,7 @@
 pub use beryl_state::{RecordRevision, UnixMillis};
 use beryl_state::{
-    RuntimeRecord, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError, RuntimeRootState,
+    RootRecord, RuntimeRecord, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError,
+    RuntimeRootState,
 };
 
 #[path = "catalog/page_context.rs"]

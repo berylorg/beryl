@@ -76,6 +76,59 @@ impl CatalogQueryOwner {
         }
     }
 
+    pub fn refine(
+        &mut self,
+        store: &HomeStore,
+        source: &CatalogQueryToken,
+        criteria: CatalogQueryCriteria,
+        limit: CatalogQueryPageLimit,
+        cancel: &CommandCancellation,
+    ) -> Result<CatalogQueryOpened, CatalogQueryOpenError> {
+        let (retained, next) = (|| {
+            if self.retired {
+                return Err(CatalogQueryError::Retired);
+            }
+            let index = self.entry_index(source)?;
+            if self.entries.len() >= CATALOG_QUERY_COLLECTION_LIMIT {
+                return Err(CatalogQueryError::CollectionLimit);
+            }
+            let next = self
+                .next_query
+                .checked_add(1)
+                .ok_or(CatalogQueryError::IdentityExhausted)?;
+            self.request(store)?;
+            check_cancel(cancel)?;
+            let retained = store
+                .retain_frozen_read(&self.entries[index].frozen, cancel)
+                .map_err(CatalogQueryError::from)?;
+            Ok((retained, next))
+        })()
+        .map_err(|error| CatalogQueryOpenError::new(error, None))?;
+        let token = CatalogQueryToken {
+            owner: self.id,
+            generation: self.generation,
+            id: self.next_query,
+        };
+        self.next_query = next;
+        self.entries.push(Entry {
+            token,
+            frozen: retained,
+            criteria,
+            revision: None,
+            count: 0,
+            retiring: false,
+        });
+        let index = self.entries.len() - 1;
+        match self.prepare(store, index, limit, cancel) {
+            Ok(opened) => Ok(opened),
+            Err(error) => {
+                self.entries[index].retiring = true;
+                let _ = self.release_index(store, index);
+                Err(CatalogQueryOpenError::new(error, None))
+            }
+        }
+    }
+
     pub fn page(
         &mut self,
         store: &HomeStore,
@@ -97,6 +150,40 @@ impl CatalogQueryOwner {
             }
         }
         self.collect_page(store, &self.entries[index], cursor, limit, cancel)
+    }
+
+    pub fn page_at(
+        &mut self,
+        store: &HomeStore,
+        token: &CatalogQueryToken,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+        cancel: &CommandCancellation,
+    ) -> Result<CatalogQueryPage, CatalogQueryError> {
+        self.request(store)?;
+        let entry = &self.entries[self.entry_index(token)?];
+        if start > entry.count {
+            return Err(CatalogQueryError::Limit);
+        }
+        let mut offset = 0u64;
+        let mut before = None;
+        if start != 0 {
+            self.walk_recency(store, entry, None, cancel, |row| {
+                if !entry.criteria.matches(&row) {
+                    return Ok(true);
+                }
+                offset = offset
+                    .checked_add(1)
+                    .ok_or(CatalogQueryError::CountExhausted)?;
+                before = Some(CatalogQueryCursor {
+                    token: token.clone(),
+                    after: row.recency_cursor(),
+                    offset,
+                });
+                Ok(offset < start)
+            })?;
+        }
+        self.collect_page(store, entry, before.as_ref(), limit, cancel)
     }
 
     pub fn position(
@@ -160,7 +247,7 @@ impl CatalogQueryOwner {
         self.entries.len()
     }
 
-    fn request(&mut self, store: &HomeStore) -> Result<(), CatalogQueryError> {
+    pub(super) fn request(&mut self, store: &HomeStore) -> Result<(), CatalogQueryError> {
         if self.retired {
             return Err(CatalogQueryError::Retired);
         }
@@ -187,7 +274,10 @@ impl CatalogQueryOwner {
             .ok_or(CatalogQueryError::Released)
     }
 
-    fn entry_index(&self, token: &CatalogQueryToken) -> Result<usize, CatalogQueryError> {
+    pub(super) fn entry_index(
+        &self,
+        token: &CatalogQueryToken,
+    ) -> Result<usize, CatalogQueryError> {
         let index = self.owned_index(token)?;
         if self.entries[index].retiring {
             return Err(CatalogQueryError::Released);

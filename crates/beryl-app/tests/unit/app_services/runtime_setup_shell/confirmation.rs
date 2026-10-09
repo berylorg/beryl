@@ -96,22 +96,47 @@ pub(super) fn settled_confirmation(
 ) {
     let diagnostic_deadline = Instant::now() + Duration::from_secs(3);
     let mut reported = false;
+    let mut reported_incomplete_ready_cut = false;
     wait(
         cx,
         |cx| {
             if !reported && Instant::now() >= diagnostic_deadline {
                 reported = true;
                 eprintln!(
-                    "retained confirmation: {:?}",
+                    "retained confirmation: owner_selection_pending={} root={:?}",
+                    owner.borrow().test_services().running_selection_pending(),
                     window
-                        .read_with(cx, |root, _| root.test_thread_confirmation_diagnostics())
+                        .read_with(cx, |root, app| (
+                            root.test_thread_confirmation_diagnostics(),
+                            root.test_runtime_setup_state(),
+                            root.running_thread_reads_drained(),
+                            root.test_primary_thread_reason(app),
+                            root.test_thread_creation_picker_open_diagnostics(),
+                        ))
                         .unwrap()
                 );
             }
-            !owner.borrow().test_services().running_selection_pending()
+            let ready = !owner.borrow().test_services().running_selection_pending()
                 && window
                     .read_with(cx, |root, _| !root.test_runtime_setup_state().0)
-                    .unwrap()
+                    .unwrap();
+            let custody_drained = window
+                .read_with(cx, |root, _| root.running_thread_reads_drained())
+                .unwrap();
+            if ready && !custody_drained && !reported_incomplete_ready_cut {
+                reported_incomplete_ready_cut = true;
+                eprintln!(
+                    "confirmation phase settled before activation custody drained: {:?}",
+                    window
+                        .read_with(cx, |root, app| (
+                            root.running_thread_reads_drained(),
+                            root.test_primary_thread_reason(app),
+                            root.test_thread_confirmation_diagnostics(),
+                        ))
+                        .unwrap()
+                );
+            }
+            ready && custody_drained
         },
         "root confirmation did not settle",
     );

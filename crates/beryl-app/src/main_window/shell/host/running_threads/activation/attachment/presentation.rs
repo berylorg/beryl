@@ -166,6 +166,7 @@ impl MainWindowShellRoot {
                     .take()
                     .ok_or("Prepared transcript is missing")?;
                 let identity = prepared.source_identity();
+                let title = prepared.resolved_title().clone();
                 let mut prepared = Some(prepared);
                 let result = publication.try_elect_current(|| {
                     provider.publish_if_current(
@@ -193,6 +194,8 @@ impl MainWindowShellRoot {
                         self.running_threads.transcript_provider = Some(provider.clone());
                         self.running_threads.transcript_claim = Some(committed);
                         self.running_threads.transcript_source = Some(identity);
+                        self.running_threads.selected_title =
+                            Some((publication.selection(), title));
                         source.error = None;
                         source.gui_published = true;
                         source.stage = Stage::Finalize;

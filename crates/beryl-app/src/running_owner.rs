@@ -10,6 +10,7 @@ use crate::{
 };
 
 mod admission;
+mod catalog_queries;
 mod confirmation;
 mod exit_attempt;
 mod exit_availability;

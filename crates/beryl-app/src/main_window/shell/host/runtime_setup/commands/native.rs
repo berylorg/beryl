@@ -21,7 +21,7 @@ impl MainWindowShellRoot {
     ) {
         self.runtime_setup.native_dialog = true;
         self.setup_command_state("Add runtime", false, cx);
-        if let Some(picker) = &self.runtime_setup.picker {
+        if let Some(picker) = self.setup_command_picker() {
             picker.update(cx, |picker, pcx| picker.set_native_dialog_open(true, pcx));
         }
         let choice = window.prompt(
@@ -64,7 +64,7 @@ impl MainWindowShellRoot {
             false,
             cx,
         );
-        if let Some(picker) = &self.runtime_setup.picker {
+        if let Some(picker) = self.setup_command_picker() {
             picker.update(cx, |picker, pcx| picker.set_native_dialog_open(true, pcx));
         }
         let options = gpui::PathPromptOptions {
@@ -124,7 +124,7 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.runtime_setup.native_dialog = false;
-        if let Some(picker) = &self.runtime_setup.picker {
+        if let Some(picker) = self.setup_command_picker() {
             picker.update(cx, |picker, pcx| picker.set_native_dialog_open(false, pcx));
         }
         if !self.setup_enabled() {

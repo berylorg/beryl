@@ -190,6 +190,13 @@ durable job records and transitions plus compact catalog schema, normalization, 
   collection. Later page and exact-thread position/reveal requests share the same criteria and
   revision. Missing identities return absence; limit, stale capability and structural failures
   remain distinct from an empty complete result.
+- An existing immutable collection may anchor separately admitted criteria refinements on the same
+  captured snapshot. Each refinement enters the existing finite collection owner before fallible
+  evaluation and independently retains its exact release custody. Frozen runtime/root option
+  pages and positions use that collection's original source, canonical search and bounded scans,
+  including configured options with zero threads. Runtime root counts, root thread counts and
+  runtime-environment disambiguation come from the same snapshot; they grant no activation right.
+  Logical offset requests skip compact facts without retaining skipped presentation rows.
 - Page validation accommodates the full admitted 256-KiB catalog record, its encoded key and
   checked cumulative overhead. A smaller unrelated widget page budget cannot make an otherwise
   valid catalog row unreachable. Item and byte ceilings remain finite and explicit.

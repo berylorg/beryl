@@ -1,5 +1,24 @@
 # Thread Catalog Currentness
 
+## Consumed Request Cancellation Is Not Response Currentness
+
+The mounted Switcher initially checked its workload cancellation token after awaiting
+`PublishedCatalogQueryRequest::receive`. That method consumes the request; request destruction
+cancels the token even after successful delivery. The GUI consequently discarded every authentic
+completion, leaving initial visible pages pending. Canonical run
+`b1f3cb93-c313-4636-8a52-0ccf22671915` reproduces the common opening failure before configuration
+commands, search or row activation can execute.
+
+The correction retains original worker cancellation and authenticates delivered results with the
+exact query response identity plus current opening, picker, mode and query-revision fences.
+Dismissal and supersession cancel original jobs and invalidate those fences. Do not infer user
+cancellation from a consumed request's cleanup token. All ten corrected mounted Switcher cases
+pass in canonical run `ea7260dc-2709-4b00-8237-67d8b76a5c70`, including real paused-worker stale
+responses, original native configuration outcomes and exact current-thread no-ops. That broader
+run's two sequential New Thread fixtures are separately corrected and pass with all 55 runtime
+and history cases in `377a641a-b573-4c96-928b-36f56d6b01cb`. The request API and frozen-source
+custody are unchanged.
+
 ## Stored Current Flags Do Not Establish Query Readiness
 
 On 2026-10-08 source-backed frozen-query readiness invalidated the assumption that existing

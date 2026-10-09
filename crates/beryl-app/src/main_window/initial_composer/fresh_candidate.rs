@@ -21,6 +21,7 @@ pub struct MainWindowFreshComposerPreparation {
     window: SessionWindowRecord,
     current: SyndicCurrentDraft,
     kind: FreshComposerKind,
+    selected_title: Option<beryl_state::CatalogResolvedTitle>,
 }
 mod requests;
 
@@ -76,6 +77,7 @@ impl MainWindowFreshComposerPreparation {
             window,
             current,
             kind: FreshComposerKind::CreationEmpty,
+            selected_title: None,
         })
     }
 
@@ -115,6 +117,22 @@ impl MainWindowFreshComposerPreparation {
 
     pub fn window(&self) -> &SessionWindowRecord {
         &self.window
+    }
+
+    pub(crate) fn set_qualified_selected_title(
+        &mut self,
+        selection: WindowClaimSelection,
+        title: beryl_state::CatalogResolvedTitle,
+    ) -> Result<(), String> {
+        if self.window.selected_thread() != Some(selection) {
+            return Err("fresh title selection differs from its qualified window".into());
+        }
+        self.selected_title = Some(title);
+        Ok(())
+    }
+
+    pub(crate) fn qualified_selected_title(&self) -> Option<&beryl_state::CatalogResolvedTitle> {
+        self.selected_title.as_ref()
     }
 
     pub fn selection(&self) -> Option<MainWindowComposerSelectionIdentity> {

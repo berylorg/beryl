@@ -6,6 +6,8 @@ mod evaluation;
 mod integrity;
 #[path = "frozen_catalog_queries/lifecycle.rs"]
 mod lifecycle;
+#[path = "frozen_catalog_queries/options.rs"]
+mod options;
 #[path = "frozen_catalog_queries/support.rs"]
 mod query_support;
 mod support;

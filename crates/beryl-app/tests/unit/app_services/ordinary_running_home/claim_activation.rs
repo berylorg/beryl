@@ -28,6 +28,8 @@ mod outcome_evidence;
 mod page_custody;
 #[path = "claim_activation/scenario.rs"]
 mod scenario;
+#[path = "claim_activation/switcher_entry.rs"]
+mod switcher_entry;
 #[path = "claim_activation/transcript.rs"]
 mod transcript;
 

@@ -4,12 +4,16 @@ use crate::main_window::running_threads::activation::{
 };
 
 mod attachment;
+mod navigation_history;
+mod ordinary_intake;
 #[cfg(all(test, feature = "test-faults"))]
 pub(super) use attachment::RunningActivationFixtureHooks;
 pub(super) use attachment::UnviewedRunningActivation;
 pub(in crate::main_window::shell::host) use attachment::{
     CapturedClaimOperation, RetiringClaimOperation,
 };
+pub(super) use navigation_history::ThreadNavigationHistory;
+pub(crate) use ordinary_intake::OrdinaryThreadActivationAcceptance;
 
 impl MainWindowShellRoot {
     pub(super) fn begin_running_activation(
@@ -40,7 +44,7 @@ impl MainWindowShellRoot {
             .iter()
             .map(|record| record.token().clone())
             .collect();
-        self.running_threads.pending_activation = Some(target);
+        self.running_threads.pending_activation = Some(thread);
         self.running_threads.activation_cancel = beryl_home_store::CommandCancellation::new();
         let cancel = self.running_threads.activation_cancel.clone();
         let source = reader.clone();
@@ -153,7 +157,8 @@ impl MainWindowShellRoot {
                             }
                         }
                         RunningThreadActivationPreparation::Prepared(prepared) => {
-                            root.running_threads.pending_activation = Some(row);
+                            let _ = row;
+                            root.running_threads.pending_activation = Some(thread);
                             root.running_threads.prepared_activation = Some(prepared);
                             Ok(false)
                         }
@@ -200,16 +205,19 @@ impl MainWindowShellRoot {
             return;
         }
         self.running_threads.pending_activation = None;
+        self.running_threads.ordinary_activation = false;
         self.running_threads.prepared_activation = None;
         self.running_threads.activation_attention.clear();
         self.running_threads.selection_lease = None;
         if let Err(error) = result {
+            self.running_threads.navigation_history.cancel();
             let previous = self.running_threads.failure_notice.take();
             self.running_threads.failure_notice =
                 self.publish_running_activation_failure(previous, &error);
             self.running_threads.failure = Some(error);
             self.sync_notices(window, cx);
         } else {
+            self.settle_thread_navigation_history(cx);
             let previous = self.running_threads.failure_notice.take();
             self.remove_running_activation_failure(previous);
             self.running_threads.failure = None;

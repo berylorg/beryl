@@ -7,11 +7,12 @@ use std::{
 use beryl_home_store::{
     CommandCancellation, FrozenHomeRead, HomeGeneration, HomeServiceReference, ReadError,
 };
-use beryl_model::SyndicThreadId;
+use beryl_model::{RootId, RuntimeId, SyndicThreadId};
 use beryl_state::{
-    BerylState, CatalogQueryCriteria, CatalogQueryCursor, CatalogQueryError, CatalogQueryOpened,
-    CatalogQueryOwner, CatalogQueryPage, CatalogQueryPageLimit, CatalogQueryPosition,
-    CatalogQueryToken,
+    BerylState, CatalogNormalizedQuery, CatalogOptionPage, CatalogQueryCriteria,
+    CatalogQueryCursor, CatalogQueryError, CatalogQueryOpened, CatalogQueryOwner, CatalogQueryPage,
+    CatalogQueryPageLimit, CatalogQueryPosition, CatalogQueryToken, CatalogRootRow,
+    CatalogRuntimeRow,
 };
 use futures_channel::oneshot;
 
@@ -79,6 +80,39 @@ pub struct PublishedCatalogQueryReader {
     signal: Weak<QuerySignal>,
 }
 
+#[cfg(all(test, feature = "test-faults"))]
+pub(crate) struct CatalogQueryTestPause {
+    signal: Weak<QuerySignal>,
+    pause: Arc<tests::RequestPause>,
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+impl CatalogQueryTestPause {
+    pub(crate) fn has_entered(&self) -> bool {
+        self.pause.has_entered()
+    }
+    pub(crate) fn release(&self) {
+        self.pause.release();
+    }
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+impl Drop for CatalogQueryTestPause {
+    fn drop(&mut self) {
+        self.pause.release();
+        if let Some(signal) = self.signal.upgrade() {
+            let mut state = signal.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state
+                .pause
+                .as_ref()
+                .is_some_and(|pause| Arc::ptr_eq(pause, &self.pause))
+            {
+                state.pause = None;
+            }
+        }
+    }
+}
+
 pub struct PublishedCatalogCollection {
     signal: Weak<QuerySignal>,
     generation: HomeGeneration,
@@ -106,6 +140,9 @@ pub enum PublishedCatalogQueryResult {
     Opened(PublishedCatalogOpened),
     Page(CatalogQueryPage),
     Position(Option<CatalogQueryPosition>),
+    Runtimes(CatalogOptionPage<CatalogRuntimeRow>),
+    Roots(CatalogOptionPage<CatalogRootRow>),
+    OptionPosition(Option<u64>),
 }
 
 pub struct PublishedCatalogQueryResponse {
@@ -178,6 +215,40 @@ enum QueryOperation {
         token: CatalogQueryToken,
         thread: SyndicThreadId,
     },
+    Refine {
+        token: CatalogQueryToken,
+        criteria: CatalogQueryCriteria,
+        limit: CatalogQueryPageLimit,
+    },
+    PageAt {
+        token: CatalogQueryToken,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+    },
+    Runtimes {
+        token: CatalogQueryToken,
+        search: CatalogNormalizedQuery,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+    },
+    Roots {
+        token: CatalogQueryToken,
+        runtime: RuntimeId,
+        search: CatalogNormalizedQuery,
+        start: u64,
+        limit: CatalogQueryPageLimit,
+    },
+    RuntimePosition {
+        token: CatalogQueryToken,
+        search: CatalogNormalizedQuery,
+        runtime: RuntimeId,
+    },
+    RootPosition {
+        token: CatalogQueryToken,
+        runtime: RuntimeId,
+        search: CatalogNormalizedQuery,
+        root: RootId,
+    },
 }
 
 struct QueryRequest {
@@ -208,6 +279,7 @@ struct QueryState {
 }
 
 struct QuerySignal {
+    source: CatalogSourceReader,
     state: Mutex<QueryState>,
     changed: Condvar,
 }
@@ -232,6 +304,7 @@ impl CatalogQueryService {
         source: CatalogSourceReader,
     ) -> Result<Self, CatalogQueryServiceError> {
         let signal = Arc::new(QuerySignal {
+            source: source.clone(),
             state: Mutex::new(QueryState {
                 published: false,
                 stopped: false,

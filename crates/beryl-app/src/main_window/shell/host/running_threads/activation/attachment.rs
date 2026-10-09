@@ -387,7 +387,7 @@ impl MainWindowShellRoot {
             drop(source);
             self.running_threads.activation_operation = None;
             if success {
-                if !creation {
+                if !creation && !self.running_threads.ordinary_activation {
                     self.acknowledge_running_activation(&reader);
                     self.dismiss_running_picker(window, cx);
                 }
@@ -530,22 +530,25 @@ impl MainWindowShellRoot {
         self.running_threads.activation_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
             let _ = this.update_in(cx, |root, window, cx| {
+                if !root
+                    .running_threads
+                    .activation_wake
+                    .as_ref()
+                    .is_some_and(|current| Arc::ptr_eq(current, &wake))
+                {
+                    return;
+                }
+                root.running_threads.activation_wake = None;
+                root.running_threads.activation_task = None;
                 if suspended.load(Ordering::Acquire)
                     || !root
                         .running_threads
                         .activation_operation
                         .as_ref()
                         .is_some_and(|current| Arc::ptr_eq(&current.suspended, &suspended))
-                    || !root
-                        .running_threads
-                        .activation_wake
-                        .as_ref()
-                        .is_some_and(|current| Arc::ptr_eq(current, &wake))
                 {
                     return;
                 }
-                root.running_threads.activation_wake = None;
-                root.running_threads.activation_task = None;
                 root.resume_running_activation(window, cx);
             });
         }));

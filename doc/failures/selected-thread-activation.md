@@ -1,5 +1,44 @@
 # Selected-thread activation
 
+## Mounted Selector Focus Was Missing From Recovery Capture
+
+The picker returns focus to its owning Thread Switcher trigger when it closes. Same-home
+ordinary recovery captured only composer-input or shell focus, so it omitted this still-live
+trigger handle. Native run `d3e0fe28-7f48-400d-b83d-f9f94f0401da` aborts the original save-noncommit
+preservation assertion after fresh prior recovery: the selected editor and original Page custody
+survive, but focus returns to the input instead of the selector.
+
+Recognize the exact currently focused selector in the existing recovery focus capture. Preserve
+the same handle through the existing switcher reset and original recovery completion; do not
+introduce another focus owner or broaden resource custody. The native scenario retains its exact
+owner-focus expectation and original durable, selection, editor and positive Page-release checks.
+The corrected original two-round native scenario passes in 7.391 seconds in canonical run
+`1a007691-24e7-4fdd-905a-47f664266cfc`; the broader run's separate Current fixture baseline
+correction is not a production focus defect.
+
+## Completed Pure Wake Retained Its Task Slot
+
+The activation timer returned for an absent or suspended operation before clearing its own task
+slot. Render-driven completion could finish the operation while its scheduled pure wake remained;
+the later callback then retained a completed task indefinitely. Canonical run
+`b1f3cb93-c313-4636-8a52-0ccf22671915` exposes this through six actual mounted activation cases:
+the operation and failure are absent, but terminal activation custody never clears.
+
+The callback now authenticates its exact wake identity first, clears only that matching wake and
+task, then checks whether the same live operation may resume. A stale callback cannot clear a
+replacement task. Worker, source, lease and disposal ownership are unchanged. Corrected mounted
+activation passes all eleven focused cases in canonical run
+`4a1b15f4-be77-486a-acbb-b4f2d97a43e7`, including cancellation and indeterminate reconciliation.
+
+The shared New Thread fixture also treated a settled durable lease and runtime phase as complete
+GUI readiness. Consecutive creation/reuse tests could inject their next fixture lease while the
+matching terminal wake still owned activation custody; the real command correctly refused before
+consuming that lease. Diagnostic run `40198238-7b16-4bbc-9027-3963a89a360a` retained the injected
+lease with no original operation. The fixture now waits for its existing real read/activation
+drain predicate under the unchanged deadline. Run `377a641a-b573-4c96-928b-36f56d6b01cb` records
+the precise incomplete-ready cut and passes original pristine-root reuse without a command retry
+or production admission change. All 55 original runtime-setup and history cases pass in that run.
+
 ## Renderer-owned admission boundary failure
 
 - Scope: startup restore and explicit existing-thread activation after sliding-window transcript residency, prepublication preparation, and media admission were introduced.

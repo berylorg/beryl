@@ -18,6 +18,7 @@ use crate::{
     syndic_transcript::{PreparedTranscriptActivation, TranscriptActivationPlacement},
 };
 
+mod selected_title;
 mod source;
 pub(crate) use source::prepare_candidate_activation;
 
@@ -46,6 +47,7 @@ pub(crate) struct PreparedTranscriptAttachment {
     pub(crate) authority: TranscriptAttachmentAuthority,
     pub(crate) range: Range<u64>,
     activation: PreparedTranscriptActivation,
+    title: beryl_state::CatalogResolvedTitle,
     observation: HomeMutationObservation,
     owner: Weak<TranscriptProviderState>,
     _reservation: PendingRead,
@@ -82,14 +84,19 @@ pub(crate) struct TranscriptAttachmentSourceIdentity {
     authority: TranscriptAttachmentAuthority,
     range: Range<u64>,
     placement: TranscriptActivationPlacement,
+    title: beryl_state::CatalogResolvedTitle,
 }
 
 impl PreparedTranscriptAttachment {
+    pub(crate) fn resolved_title(&self) -> &beryl_state::CatalogResolvedTitle {
+        &self.title
+    }
     pub(crate) fn source_identity(&self) -> TranscriptAttachmentSourceIdentity {
         TranscriptAttachmentSourceIdentity {
             authority: self.authority.clone(),
             range: self.range.clone(),
             placement: self.request.placement,
+            title: self.title.clone(),
         }
     }
 }
@@ -191,6 +198,7 @@ impl TranscriptProviderReader {
             .observe()
             .map_err(|_| TranscriptAttachmentError::Stale)?;
         let (authority, range, activation) = self.read_activation(&request, cancelled)?;
+        let title = self.prepare_selected_title(&request, cancelled)?;
         self.check_request(&request, cancelled)?;
         self.home
             .try_elect_observed_coherent(&observation, self.home_generation, || ())
@@ -200,6 +208,7 @@ impl TranscriptProviderReader {
             authority,
             range,
             activation,
+            title,
             observation,
             owner: Arc::downgrade(&self.state),
             _reservation: reservation,
@@ -245,9 +254,11 @@ impl TranscriptProviderReader {
             .observe()
             .map_err(|_| TranscriptAttachmentError::Stale)?;
         let (authority, range, activation) = self.read_activation(expected, cancelled)?;
+        let title = self.prepare_selected_title(expected, cancelled)?;
         if authority != prepared.authority
             || range != prepared.range
             || activation != prepared.activation
+            || title != prepared.title
         {
             return Err(TranscriptAttachmentError::Stale);
         }

@@ -11,11 +11,14 @@ use super::{
     CatalogRecencyCursor, CatalogRow, CatalogState,
 };
 use crate::{
-    RuntimeRecord, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError, RuntimeRootState,
+    RootRecord, RuntimeRecord, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError,
+    RuntimeRootState,
 };
 
 #[path = "query/error.rs"]
 mod error;
+#[path = "query/options.rs"]
+mod options;
 #[path = "query/owner.rs"]
 mod owner;
 #[path = "query/scan.rs"]

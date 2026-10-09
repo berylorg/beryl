@@ -12,6 +12,8 @@ use std::{
 #[path = "../catalog_projection_support/mod.rs"]
 mod support;
 
+#[path = "catalog_query/opening.rs"]
+mod opening;
 #[path = "catalog_query/reply_delivery.rs"]
 mod reply_delivery;
 
@@ -22,7 +24,7 @@ pub(super) struct RequestPause {
 }
 
 impl RequestPause {
-    fn new() -> Arc<Self> {
+    pub(super) fn new() -> Arc<Self> {
         Self::with_panic(false)
     }
     fn with_panic(panic_after_wait: bool) -> Arc<Self> {
@@ -45,6 +47,9 @@ impl RequestPause {
     pub(super) fn release(&self) {
         self.flags.lock().unwrap().1 = true;
         self.changed.notify_all();
+    }
+    pub(super) fn has_entered(&self) -> bool {
+        self.flags.lock().unwrap().0
     }
     fn entered(&self) {
         until(|| self.flags.lock().unwrap().0);
@@ -134,6 +139,51 @@ fn pause(service: &CatalogQueryService) -> Arc<RequestPause> {
     let pause = RequestPause::new();
     service.signal.state.lock().unwrap().pause = Some(Arc::clone(&pause));
     pause
+}
+
+#[test]
+fn reader_pause_guards_observe_real_requests_and_drop_releases_original_worker() {
+    let fixture = support::Fixture::new(r"C:\Work\Beryl");
+    let (mut query, mut source) = service(&fixture);
+    query.publish();
+    let reader = query.reader();
+    let unused = reader.test_pause_next_request().unwrap();
+    assert!(!unused.has_entered());
+    assert!(matches!(
+        reader.test_pause_next_request(),
+        Err(CatalogQueryRequestError::RequestLimit)
+    ));
+    drop(unused);
+    let paused = reader.test_pause_next_request().unwrap();
+    let request = reader
+        .open(
+            criteria(),
+            CatalogQueryPageLimit::maximum(),
+            CommandCancellation::new(),
+        )
+        .unwrap();
+    until(|| paused.has_entered());
+    assert!(matches!(
+        reader.test_pause_next_request(),
+        Err(CatalogQueryRequestError::RequestLimit)
+    ));
+    request.cancel();
+    drop(paused);
+    assert!(matches!(
+        receive(request),
+        Err(CatalogQueryRequestError::Cancelled)
+    ));
+    until(|| query.signal.state.lock().unwrap().active_pause.is_none());
+    let opened = open(&reader);
+    assert_eq!(opened.metadata().count(), 1);
+    drop(opened);
+    query.stop_and_join().unwrap();
+    source.stop_and_join().unwrap();
+    assert_eq!(fixture.store.retained_frozen_read_count().unwrap(), 0);
+    assert!(matches!(
+        reader.test_pause_next_request(),
+        Err(CatalogQueryRequestError::Retired)
+    ));
 }
 
 #[test]
@@ -388,6 +438,38 @@ fn existing_collection_survives_live_source_replacement_without_recapture() {
     assert_ne!(fresh.metadata().home_revision(), revision);
     let response = receive(
         old.collection()
+            .refine(
+                criteria(),
+                CatalogQueryPageLimit::maximum(),
+                CommandCancellation::new(),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let PublishedCatalogQueryResult::Opened(refined) = response.into_result() else {
+        panic!("refined")
+    };
+    assert_eq!(refined.metadata().home_revision(), revision);
+    assert_eq!(refined.metadata().count(), 1);
+    let response = receive(
+        old.collection()
+            .root_page(
+                fixture.runtime_id,
+                CatalogNormalizedQuery::new("").unwrap(),
+                0,
+                CatalogQueryPageLimit::maximum(),
+                CommandCancellation::new(),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let PublishedCatalogQueryResult::Roots(roots) = response.into_result() else {
+        panic!("roots")
+    };
+    assert_eq!(roots.home_revision(), revision);
+    assert_eq!(roots.rows()[0].thread_count(), 1);
+    let response = receive(
+        old.collection()
             .page(
                 None,
                 CatalogQueryPageLimit::maximum(),
@@ -412,6 +494,7 @@ fn existing_collection_survives_live_source_replacement_without_recapture() {
     ));
     drop(old);
     drop(fresh);
+    drop(refined);
     query.stop_and_join().unwrap();
     source.stop_and_join().unwrap();
     assert_eq!(fixture.store.retained_frozen_read_count().unwrap(), 0);

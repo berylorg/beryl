@@ -41,6 +41,8 @@ mod lifecycle;
 mod native;
 #[path = "runtime_setup_shell/primary.rs"]
 mod primary;
+#[path = "runtime_setup_shell/thread_switcher.rs"]
+mod thread_switcher;
 
 fn mounted(
     cx: &mut TestAppContext,

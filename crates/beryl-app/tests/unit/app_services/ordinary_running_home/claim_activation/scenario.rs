@@ -1,4 +1,11 @@
 use super::*;
+
+#[derive(Clone, Copy)]
+pub(super) enum Entry {
+    Prepared,
+    Switcher,
+}
+
 pub(super) async fn recover(
     owner: Rc<RefCell<RunningProcessOwner>>,
     faults: FaultController,
@@ -11,11 +18,27 @@ pub(super) async fn recover(
     beryl_model::WindowId,
     beryl_state::WindowClaimSelection,
 ) {
+    recover_with_entry(owner, faults, cut, control, save, Entry::Prepared, cx).await
+}
+
+pub(super) async fn recover_with_entry(
+    owner: Rc<RefCell<RunningProcessOwner>>,
+    faults: FaultController,
+    cut: Cut,
+    control: control::Control,
+    save: SaveExpectation,
+    entry: Entry,
+    cx: &mut gpui::AsyncApp,
+) -> (
+    WindowHandle<MainWindowShellRoot>,
+    beryl_model::WindowId,
+    beryl_state::WindowClaimSelection,
+) {
     let original_windows = windows(&owner);
     let invoking = original_windows[0];
     let unrelated_window = original_windows[1];
     let dirty = !matches!(save, SaveExpectation::SavedNoop);
-    let prior = preservation::capture_resident(&owner, invoking, 0, dirty, cx).await;
+    let mut prior = preservation::capture_resident(&owner, invoking, 0, dirty, cx).await;
     let unrelated = preservation::capture_resident(&owner, unrelated_window, 1, dirty, cx).await;
     let mut marker = if matches!(save, SaveExpectation::DirtyMarker) {
         assert!(matches!(cut, Cut::DisposalCommitted));
@@ -130,6 +153,17 @@ pub(super) async fn recover(
             )
         })
         .await;
+    let picker = match entry {
+        Entry::Prepared => None,
+        Entry::Switcher => {
+            let picker = switcher_entry::open(invoking, target, cx).await;
+            let owner_focus = invoking
+                .read_with(cx, |root, _| root.test_thread_switcher_focus())
+                .unwrap();
+            prior.expect_restored_focus(owner_focus);
+            Some(picker)
+        }
+    };
     let failed_generation = home.health().generation().unwrap();
     control::install(&owner, invoking, control, cx).await;
     let reached = Arc::new(AtomicBool::new(false));
@@ -188,13 +222,18 @@ pub(super) async fn recover(
                                 outcome_evidence::fail_original_confirmed_read(&claim_failure_home, &fail_faults, &fail_reached);
                             }
                         }));
-                        root.test_begin_original_ordinary_selection(*prepared, window, app)
-                            .unwrap();
-                        assert_eq!(
-                            root.test_begin_original_ordinary_selection(*duplicate, window, app)
-                                .unwrap_err(),
-                            "original ordinary selection fixture window changed"
-                        );
+                        if let Some((picker, key)) = picker {
+                            drop((prepared, duplicate));
+                            picker.update(app, |picker, pcx| picker.activate(&key, pcx));
+                        } else {
+                            root.test_begin_original_ordinary_selection(*prepared, window, app)
+                                .unwrap();
+                            assert_eq!(
+                                root.test_begin_original_ordinary_selection(*duplicate, window, app)
+                                    .unwrap_err(),
+                                "original ordinary selection fixture window changed"
+                            );
+                        }
                     })
                     .unwrap();
     drop(home);
@@ -394,5 +433,18 @@ pub(super) async fn recover(
         assert!(unsafe { IsWindow(Some(*handle)).as_bool() });
     }
     native_support::wait_for_notice(&original_windows, true, cx).await;
+    if matches!(entry, Entry::Switcher) {
+        cx.update(|app| {
+            let root = invoking.read(app).unwrap();
+            assert!(root.test_thread_switcher_picker().is_none());
+            let expected_history = if cut.committed() {
+                vec![original_claim.thread_id(), target]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(root.test_thread_navigation_history(), expected_history);
+        })
+        .unwrap();
+    }
     (invoking, settled_window, settled_claim)
 }

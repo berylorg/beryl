@@ -12,6 +12,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            thread_switcher: thread_switcher::ThreadSwitcherContribution::new(cx),
             runtime_setup: runtime_setup::RuntimeSetupContribution::new(cx),
             running_threads: running_threads::RunningThreadsContribution::new(cx),
             status_controls: status_controls::ExactStatusControls::new(cx),
@@ -189,6 +190,7 @@ impl Render for MainWindowShellRoot {
         self.sync_status_controls(window, cx);
         self.sync_running_threads(window, cx);
         self.sync_runtime_setup(window, cx);
+        self.sync_thread_switcher(window, cx);
         self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
@@ -220,6 +222,8 @@ impl Render for MainWindowShellRoot {
         let setup = runtime_setup::render_command(self, window, cx);
         let setup_picker = runtime_setup::render_picker(self, window);
         let running_picker = running_threads::render_picker(self, window);
+        let switcher = thread_switcher::render_command(self, window, cx);
+        let switcher_picker = thread_switcher::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
         let input_panel = composer.map(|composer| {
@@ -259,7 +263,7 @@ impl Render for MainWindowShellRoot {
                     .flex_none()
                     .bg(appearance.toolbar)
                     .child(setup)
-                    .child(div().flex_1())
+                    .child(switcher)
                     .child(running)
                     .children(command)
                     .child(exit),
@@ -289,6 +293,7 @@ impl Render for MainWindowShellRoot {
             .children(stop_menu)
             .children(running_picker)
             .children(setup_picker)
+            .children(switcher_picker)
             .child(self.notices.widget.clone())
             .into_any_element()
     }

@@ -191,7 +191,11 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         match outcome {
-            RuntimeAdmissionOutcome::Existing { .. } => {
+            outcome @ RuntimeAdmissionOutcome::Existing { .. } => {
+                if self.runtime_setup.switcher_command_picker.is_some() {
+                    self.refresh_switcher_setup_outcome(outcome, window, cx);
+                    return;
+                }
                 self.runtime_setup.flight = None;
                 self.runtime_setup.refresh_command = true;
                 if let Some(picker) = &self.runtime_setup.picker {
@@ -222,6 +226,10 @@ impl MainWindowShellRoot {
                             self.setup_command_state("Unavailable", true, cx);
                             return;
                         }
+                    }
+                    if self.runtime_setup.switcher_command_picker.is_some() {
+                        self.refresh_switcher_setup_outcome(outcome, window, cx);
+                        return;
                     }
                     flight.retain_outcome(outcome);
                     self.runtime_setup.refresh_command = true;
