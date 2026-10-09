@@ -258,6 +258,19 @@ struct DisposalMutation {
     prepared: PreparedDraftEditorCandidateSessionDisposeV1,
 }
 
+#[cfg(feature = "test-faults")]
+impl SyndicStorage {
+    pub(crate) fn draft_candidate_publication_fault_scope()
+    -> beryl_home_store::test_faults::FaultScope {
+        beryl_home_store::test_faults::FaultScope::of::<PublicationMutation>()
+    }
+
+    pub(crate) fn draft_candidate_session_disposal_fault_scope()
+    -> beryl_home_store::test_faults::FaultScope {
+        beryl_home_store::test_faults::FaultScope::of::<DisposalMutation>()
+    }
+}
+
 fn publication_key(
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> DraftEditorCandidateSessionRecordKeyV1 {

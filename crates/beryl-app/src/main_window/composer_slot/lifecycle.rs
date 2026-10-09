@@ -246,7 +246,7 @@ impl MainWindowComposerSlot {
         })
     }
 
-    fn selected_mut(
+    pub(super) fn selected_mut(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,
     ) -> Result<&mut super::state::SelectedComposer, MainWindowComposerDispatchError> {

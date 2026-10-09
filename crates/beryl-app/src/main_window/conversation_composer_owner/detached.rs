@@ -17,6 +17,46 @@ impl Drop for DetachedComposer {
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn validate_destroyed_detached_source(
+        &self,
+        close: super::super::MainWindowConversationComposerCloseTicket,
+        cx: &App,
+    ) -> Result<MainWindowComposerSelectionIdentity, String> {
+        let selected = self.validate_installed_detached_source(close, cx)?;
+        if self.active_flight.is_some() || !self.detached.as_ref().unwrap().disposing {
+            return Err("destroyed detached reader custody is not drained".into());
+        }
+        Ok(selected)
+    }
+
+    pub(in crate::main_window) fn validate_installed_detached_source(
+        &self,
+        close: super::super::MainWindowConversationComposerCloseTicket,
+        cx: &App,
+    ) -> Result<MainWindowComposerSelectionIdentity, String> {
+        let source = self
+            .detached
+            .as_ref()
+            .ok_or("final resident has no detached source")?;
+        if !matches!(self.phase, MainWindowConversationComposerPhase::Detached)
+            || !self.shutdown_interaction_gated
+            || self.service.is_some()
+            || self.window_close != Some(close)
+            || !close.matches_editor(self.selection)
+            || self.recovery_snapshot.is_some()
+            || source.source.binding() != self.selection.binding().candidate()
+            || source.source.root() != self.selection.binding().root()
+            || self.input.read(cx).history_frontier()
+                != self.selection.binding().range_history_frontier()
+            || !self.input.read(cx).surface().is_some_and(|surface| {
+                surface.binding() == self.selection.binding().range_binding()
+            })
+        {
+            return Err("final installed detached resident changed".into());
+        }
+        Ok(self.selection)
+    }
+
     pub(in crate::main_window) fn validate_detached_install(
         &self,
         close: super::super::MainWindowConversationComposerCloseTicket,

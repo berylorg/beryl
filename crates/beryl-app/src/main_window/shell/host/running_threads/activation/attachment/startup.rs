@@ -1,6 +1,30 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_begin_original_ordinary_selection(
+        &mut self,
+        prepared: RunningThreadActivation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.running_threads.has_activation_custody()
+            || self.controller.as_ref().is_none_or(|controller| {
+                controller.window_id() != prepared.future_window().window_id()
+            })
+        {
+            return Err("original ordinary selection fixture window changed".into());
+        }
+        let reader = self
+            .running_threads
+            .reader
+            .clone()
+            .ok_or("published ordinary selection source is missing")?;
+        self.running_threads.prepared_activation = Some(prepared);
+        self.running_threads.activation_cancel = beryl_home_store::CommandCancellation::new();
+        self.start_unviewed_running_activation(reader, window, cx)
+    }
+
     pub(in crate::main_window::shell::host) fn start_unviewed_running_activation(
         &mut self,
         reader: PublishedRunningThreadsReader,
@@ -31,12 +55,16 @@ impl MainWindowShellRoot {
         };
         #[cfg(target_os = "windows")]
         let admit = || {
+            let invocation = self.running_selection_invocation(cx)?;
+            if invocation.window_id() != invoking {
+                return Err("Running threads original invoking controller changed".into());
+            }
             Ok::<_, String>(Arc::new(
                 crate::running_owner::RunningProcessOwner::mounted_owner(cx)
                     .and_then(|owner| owner.upgrade())
                     .ok_or("Running threads process owner is unavailable")?
                     .borrow()
-                    .admit_running_selection(invoking, cx)?,
+                    .admit_running_selection(invocation, cx)?,
             ))
         };
         #[cfg(all(target_os = "windows", test, feature = "test-faults"))]
@@ -88,14 +116,11 @@ impl MainWindowShellRoot {
         };
         self.running_threads.selection_lease = Some(lease.clone());
         #[cfg(all(test, feature = "test-faults"))]
-        let mut fixture_hooks = if self.running_threads.fixture_reader.is_some() {
-            self.running_threads
-                .fixture_activation_hooks
-                .take()
-                .unwrap_or_default()
-        } else {
-            RunningActivationFixtureHooks::default()
-        };
+        let mut fixture_hooks = self
+            .running_threads
+            .fixture_activation_hooks
+            .take()
+            .unwrap_or_default();
         self.running_threads.activation_operation = Some(UnviewedRunningActivation {
             creation: false,
             source: Arc::new(Mutex::new(ActivationSource {
@@ -123,6 +148,7 @@ impl MainWindowShellRoot {
                 release: None,
                 publication: None,
                 completed_predecessor: None,
+                ordinary_save: None,
                 completed_successor: None,
                 completed_successor_progress: None,
                 autosave: None,
@@ -147,6 +173,8 @@ impl MainWindowShellRoot {
                 before_save: fixture_hooks.save.take(),
                 #[cfg(all(test, feature = "test-faults"))]
                 before_disposal: fixture_hooks.disposal.take(),
+                #[cfg(all(test, feature = "test-faults"))]
+                after_claim_outcome: fixture_hooks.outcome.take(),
             })),
             active: Arc::new(AtomicBool::new(false)),
             suspended: Arc::new(AtomicBool::new(false)),

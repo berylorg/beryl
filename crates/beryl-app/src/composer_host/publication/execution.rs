@@ -34,10 +34,27 @@ impl SyndicComposerHost {
         };
 
         #[cfg(feature = "test-faults")]
+        let command = command.with_test_fault_scope(
+            syndic_storage::test_faults::draft_candidate_publication_fault_scope(),
+        );
+        #[cfg(feature = "test-faults")]
         if let Some(fault) = self.publication_before_execute_fault.take() {
             fault(store, self.storage.clone());
         }
+        #[cfg(test)]
+        if let Some(observation) = &self.publication_execution_observation {
+            let request = prepared.syndic.request();
+            observation.record(super::super::ComposerHostPublicationExecutionIdentity {
+                draft_id: request.selector().draft_id(),
+                session_id: request.session_id(),
+                operation_id: request.operation_id(),
+            });
+        }
         let outcome = store.execute(command);
+        #[cfg(all(test, feature = "test-faults"))]
+        if let Some(hook) = self.publication_after_execute.take() {
+            hook(store, &outcome);
+        }
         self.retain_publication_command(binding, prepared.clone(), outcome);
         match &self.publication.retained.as_ref().unwrap().outcome {
             RetainedComposerCommandOutcome::Indeterminate { handle, .. } => {

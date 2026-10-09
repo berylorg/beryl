@@ -544,6 +544,13 @@ and `has_more` semantics remain shared. An ordinal is a position, not a revision
 consumers retain their existing surrounding state confirmation. Old or foreign storage handles
 remain invalid, and the read does not release ordinary admission.
 
+`transcript_entries_candidate` and `projection_candidate` supply the ordinary bounded transcript
+entry page and exact projection read through borrowed candidate recovery access. They share the
+ordinary family, codec, item/encoded-byte accounting, cursor and typed absence/error semantics.
+Fresh storage handles authenticate the same candidate; these reads do not publish ordinary
+admission, stabilize multiple reads, or grant editor/claim/dispatch authority. The composing
+candidate transcript reader retains its existing exact source and Home-revision confirmation.
+
 `history_summary_candidate` reads the ordinary exact bounded history summary through borrowed
 candidate access for source-less recovery publication. It preserves the typed point-read contract;
 the app owns surrounding turn/gate/summary stabilization and event eligibility.

@@ -10,6 +10,14 @@ pub fn lifecycle_compaction_settlement_fault_scope() -> beryl_home_store::test_f
     crate::mutation::lifecycle_compaction_settlement_fault_scope()
 }
 
+pub fn draft_candidate_publication_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    SyndicStorage::draft_candidate_publication_fault_scope()
+}
+
+pub fn draft_candidate_session_disposal_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    SyndicStorage::draft_candidate_session_disposal_fault_scope()
+}
+
 pub fn pending_dispatch_evidence_with_confirmation_hook(
     storage: &SyndicStorage,
     store: &beryl_home_store::HomeStore,

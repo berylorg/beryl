@@ -9,6 +9,9 @@ use gpui_text_input::*;
 #[path = "../../pending_composer_activation/support.rs"]
 mod widget_support;
 
+#[path = "prepublication_cleanup/healthy_handoff.rs"]
+mod healthy_handoff;
+
 struct View;
 impl gpui::Render for View {
     fn render(
@@ -228,14 +231,14 @@ fn prepublication_transfer_refuses_later_foreign_source_without_consuming_origin
         let before = ledger.ownership();
         assert!(
             composer_service
-                .take_failed_thread_creation_prepublication_cleanup(&original)
+                .take_failed_claim_prepublication_cleanup(&original)
                 .is_err()
         );
         assert!(weak_original.upgrade().is_some());
         drop(weak_original);
         assert!(
             composer_service
-                .take_failed_thread_creation_prepublication_cleanup(&original)
+                .take_failed_claim_prepublication_cleanup(&original)
                 .is_err()
         );
         let sources = composer_service.native_lineage_sources.lock().unwrap();

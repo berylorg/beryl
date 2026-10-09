@@ -17,6 +17,81 @@ pub struct MainWindowFailedResidentCandidateSource {
 }
 
 impl MainWindowFailedResidentCandidateSource {
+    pub(in crate::main_window) fn authenticate_adopted_return(
+        candidate: &mut HomeRecoveryCandidate,
+        retained: &MainWindowFailedComposerRetirement,
+        service: &MainWindowConversationComposerService,
+        selection: MainWindowComposerSelectionIdentity,
+        storage: &syndic_storage::SyndicStorage,
+        state: &beryl_state::BerylState,
+        predecessor: RangeRestorationSeed,
+    ) -> Result<
+        (
+            beryl_state::SessionWindowRecord,
+            syndic_storage::DraftEditorCurrentSelectorV1,
+        ),
+        String,
+    > {
+        retained.qualify_adopted_return(selection)?;
+        if predecessor.binding != retained.selection().binding().range_binding()
+            || predecessor.history != Some(retained.selection().binding().range_history_frontier())
+        {
+            return Err("adopted return original predecessor seed changed".into());
+        }
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        if access.home_id() != selection.binding().home_id()
+            || access.generation() != selection.binding().home_generation()
+            || service.selected_identity() != Some(selection)
+        {
+            return Err("adopted return current candidate identity changed".into());
+        }
+        let window = selection
+            .validate_candidate_claim(&access, state)
+            .map_err(|error| error.to_string())?;
+        let selector = retained.saved_selector()?;
+        if !storage
+            .draft_editor_candidate_is_saved_candidate(
+                &access,
+                selection.binding().candidate(),
+                selector,
+            )
+            .map_err(|error| error.to_string())?
+        {
+            return Err("adopted return current saved source changed".into());
+        }
+        Ok((window, selector))
+    }
+
+    #[inline(never)]
+    pub(in crate::main_window) fn from_adopted(
+        retained: Box<MainWindowFailedComposerRetirement>,
+        service: Arc<MainWindowConversationComposerService>,
+        selection: MainWindowComposerSelectionIdentity,
+        storage: syndic_storage::SyndicStorage,
+        state: beryl_state::BerylState,
+        predecessor: RangeRestorationSeed,
+        window: beryl_state::SessionWindowRecord,
+        selector: syndic_storage::DraftEditorCurrentSelectorV1,
+    ) -> Box<Self> {
+        Box::new(Self {
+            service,
+            storage,
+            state,
+            retained: *retained,
+            selection,
+            window,
+            selector,
+            seed: RangeRestorationSeed {
+                binding: selection.binding().range_binding(),
+                history: Some(selection.binding().range_history_frontier()),
+                ..predecessor
+            },
+            predecessor,
+        })
+    }
+
     pub fn new(
         candidate: &mut HomeRecoveryCandidate,
         retired: MainWindowFailedComposerRetirement,
@@ -98,10 +173,61 @@ impl MainWindowFailedResidentCandidateSource {
     }
 
     pub(crate) async fn dispose_cancelled_service(
-        mut self,
+        mut self: Box<Self>,
         candidate: &mut HomeRecoveryCandidate,
         executor: gpui::BackgroundExecutor,
-    ) -> Result<MainWindowFailedComposerRetirement, (Self, String)> {
+    ) -> Result<Box<MainWindowFailedComposerRetirement>, (Box<Self>, String)> {
+        if let Err(error) = self.settle_cancelled_service(candidate, executor).await {
+            return Err((self, error));
+        }
+        Ok(self.take_cancelled_retirement())
+    }
+
+    pub(crate) fn take_adopted_cleanup(
+        &self,
+        candidate: &mut HomeRecoveryCandidate,
+    ) -> Result<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>, String>
+    {
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        self.validate_source(&access)?;
+        self.service
+            .take_adopted_prepublication_cleanup(&self.retained, self.selection)
+    }
+
+    pub(crate) async fn settle_adopted_service(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        capsules: &[crate::main_window::MainWindowRetiredPrepublicationCleanup],
+        executor: gpui::BackgroundExecutor,
+    ) -> Result<(), String> {
+        let access = candidate
+            .recovery_access()
+            .map_err(|error| error.to_string())?;
+        self.validate_source(&access)?;
+        self.retained.qualify_adopted_return(self.selection)?;
+        if capsules
+            .iter()
+            .any(|capsule| capsule.selection() != self.selection)
+        {
+            return Err("adopted cleanup capsule source changed".into());
+        }
+        drop(access);
+        if !self
+            .service
+            .request_native_lineage_cleanup_driver_stop_after_handoff()
+        {
+            return Err("adopted cleanup driver stop custody is still retained".into());
+        }
+        self.settle_cancelled_service(candidate, executor).await
+    }
+
+    pub(crate) async fn settle_cancelled_service(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        executor: gpui::BackgroundExecutor,
+    ) -> Result<(), String> {
         loop {
             self.service.drive_native_lineage_cleanup_sources();
             let drained = self
@@ -148,12 +274,18 @@ impl MainWindowFailedResidentCandidateSource {
                 slot,
             )
         })();
-        if let Err(error) = settled {
-            return Err((self, error));
-        }
-        let (service, retained) = self.into_resources();
+        settled
+    }
+
+    #[inline(never)]
+    pub(crate) fn take_cancelled_retirement(
+        self: Box<Self>,
+    ) -> Box<MainWindowFailedComposerRetirement> {
+        let Self {
+            service, retained, ..
+        } = *self;
         drop(service);
-        Ok(retained)
+        Box::new(retained)
     }
 
     fn validate_source(&self, access: &HomeCandidateRecoveryAccess<'_>) -> Result<(), String> {

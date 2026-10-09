@@ -59,10 +59,9 @@ pub(super) struct FailedResidentSource {
     operation: Option<DraftPieceOperationIdV1>,
 }
 
-pub(super) struct FailedThreadCreationSource {
-    pub(super) operation: Box<RetiredSameWindowThreadOperation>,
-    pub(super) retirement:
-        Option<Box<crate::main_window::MainWindowFailedThreadCreationRetirement>>,
+pub(super) struct FailedClaimSource {
+    pub(super) operation: Box<RetiredClaimOperation>,
+    pub(super) retirement: Option<Box<crate::main_window::MainWindowFailedClaimRetirement>>,
     pub(super) window: beryl_model::WindowId,
     pub(super) seed: Option<RangeRestorationSeed>,
     pub(super) prior: crate::main_window::MainWindowComposerSelectionIdentity,
@@ -88,59 +87,58 @@ impl FailedResidentSource {
 }
 
 impl ProcessServiceOwner {
-    pub(crate) fn retain_failed_thread_creation(
+    pub(crate) fn retain_failed_claim(
         &mut self,
-        operation: Box<RetiredSameWindowThreadOperation>,
-        retirement: Box<crate::main_window::MainWindowFailedThreadCreationRetirement>,
+        operation: Box<RetiredClaimOperation>,
+        retirement: Box<crate::main_window::MainWindowFailedClaimRetirement>,
         seed: Option<RangeRestorationSeed>,
     ) -> Result<
         (),
         (
-            Box<RetiredSameWindowThreadOperation>,
-            Box<crate::main_window::MainWindowFailedThreadCreationRetirement>,
+            Box<RetiredClaimOperation>,
+            Box<crate::main_window::MainWindowFailedClaimRetirement>,
         ),
     > {
         let window = retirement.prior_selection().window_id();
         if self
-            .failed_thread_creations
+            .failed_claims
             .iter()
             .any(|source| source.window == window)
-            || self.failed_thread_creations.len() >= beryl_state::MAX_RESTORABLE_WINDOWS
+            || self.failed_claims.len() >= beryl_state::MAX_RESTORABLE_WINDOWS
         {
             return Err((operation, retirement));
         }
-        self.failed_thread_creations
-            .push(FailedThreadCreationSource {
-                operation,
-                prior: retirement.prior_selection(),
-                retirement: Some(retirement),
-                window,
-                seed,
-                qualified: false,
-                committed: false,
-            });
+        self.failed_claims.push(FailedClaimSource {
+            operation,
+            prior: retirement.prior_selection(),
+            retirement: Some(retirement),
+            window,
+            seed,
+            qualified: false,
+            committed: false,
+        });
         Ok(())
     }
 
-    pub(crate) fn prepare_failed_thread_creations(
+    pub(crate) fn prepare_failed_claims(
         &mut self,
         candidate: &mut HomeRecoveryCandidate,
         original: &mut crate::running_owner::RunningShutdownSession,
         cancellation: &CommandCancellation,
     ) -> Result<(), String> {
-        if self.has_returned_thread_creation_graph() {
+        if self.has_returned_claim_graph() {
             return Err(
                 "original New Thread candidate graph must return before fresh preparation".into(),
             );
         }
-        if self.failed_thread_creations.is_empty() {
+        if self.failed_claims.is_empty() {
             return Ok(());
         }
         let storage =
             SyndicStorage::reacquire_candidate(candidate).map_err(|error| error.to_string())?;
         let state =
             BerylState::reacquire_candidate(candidate).map_err(|error| error.to_string())?;
-        for source in &mut self.failed_thread_creations {
+        for source in &mut self.failed_claims {
             if cancellation.is_cancelled() {
                 return Err("original thread creation recovery was cancelled".into());
             }
@@ -173,7 +171,7 @@ impl ProcessServiceOwner {
             }
             drop(access);
             if !source.qualified {
-                original.accept_thread_creation_candidate(
+                original.accept_original_claim_candidate(
                     source.window,
                     source.operation.committed(),
                     candidate,
@@ -185,13 +183,20 @@ impl ProcessServiceOwner {
                 return Err("original thread creation settlement changed".into());
             }
             if committed {
-                retirement.accept_committed_claim(
-                    source.operation.committed().unwrap(),
-                    candidate,
-                    &state,
-                )?;
+                match source.operation.committed().unwrap() {
+                    RetiredClaimCommit::Creation(commit) => {
+                        retirement.accept_committed_claim(commit, candidate, &state)?
+                    }
+                    RetiredClaimCommit::Ordinary(commit) => {
+                        retirement.accept_ordinary_committed_claim(commit, candidate, &state)?
+                    }
+                }
                 retirement.settle_remaining_cleanup(candidate, &storage)?;
             } else {
+                if let RetiredClaimOperation::Ordinary(original) = source.operation.as_ref() {
+                    retirement
+                        .settle_ordinary_noncommit_target(original, candidate, &state, &storage)?;
+                }
                 let seed = source
                     .seed
                     .ok_or("original noncommit prior editor protection is missing")?;
@@ -203,7 +208,15 @@ impl ProcessServiceOwner {
                     return Err("original noncommit prior reconstruction is duplicated".into());
                 }
                 let retirement = source.retirement.take().unwrap();
-                match retirement.into_prior_after_proven_noncommit() {
+                let prior = match source.operation.as_ref() {
+                    RetiredClaimOperation::Creation(_) => {
+                        retirement.into_prior_after_proven_noncommit()
+                    }
+                    RetiredClaimOperation::Ordinary(_) => {
+                        retirement.into_prior_after_ordinary_noncommit()
+                    }
+                };
+                match prior {
                     Ok(retired) => {
                         self.failed_residents
                             .push(FailedResidentSource::new(retired, seed));
@@ -229,8 +242,7 @@ impl ProcessServiceOwner {
                 .any(|retained| retained.window == source.window)
         }));
         self.failed_residents.append(&mut graph.failed_residents);
-        self.failed_thread_creations
-            .append(&mut graph.failed_thread_creations);
+        self.failed_claims.append(&mut graph.failed_claims);
     }
 
     pub(crate) fn capture_failed_markers(&mut self) -> Result<(), String> {

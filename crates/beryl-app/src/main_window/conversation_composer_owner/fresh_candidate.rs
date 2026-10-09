@@ -1,9 +1,15 @@
 use super::*;
 use crate::main_window::MainWindowConversationComposerCloseTicket;
+mod requests;
+pub(crate) use requests::{MainWindowFreshClaimWidgetBatch, MainWindowFreshClaimWidgetReply};
 
 pub(super) struct FreshRecoveryGuiPreparation {
     fenced_frame: u64,
     protection_confirmed: bool,
+    ordinary_claim: bool,
+    request_sequence: u64,
+    batch: Option<Arc<MainWindowFreshClaimWidgetBatch>>,
+    reply: Option<Box<MainWindowFreshClaimWidgetReply>>,
 }
 
 impl MainWindowConversationComposer {
@@ -66,10 +72,12 @@ impl MainWindowConversationComposer {
     pub(in crate::main_window) fn fence_fresh_recovery(
         &mut self,
         close: MainWindowConversationComposerCloseTicket,
+        preparation: &crate::main_window::MainWindowFreshComposerPreparation,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if !close.matches_editor(self.selection)
+        if preparation.selection() != Some(self.selection)
+            || !close.matches_editor(self.selection)
             || self.window_close.is_some()
             || self.active_flight.is_some()
             || self.pending_dispatch.is_some()
@@ -90,6 +98,10 @@ impl MainWindowConversationComposer {
                 .realization_diagnostics()
                 .frame_generation,
             protection_confirmed: false,
+            ordinary_claim: preparation.is_ordinary_claim(),
+            request_sequence: 0,
+            batch: None,
+            reply: None,
         });
         self.input.update(cx, |input, cx| {
             input.set_read_only(true, cx);
@@ -152,7 +164,11 @@ impl MainWindowConversationComposer {
                 .protection_confirmed = true;
             return Ok(true);
         }
-        for _ in 0..16 {
+        let ordinary_claim = self.fresh_recovery_gui.as_ref().unwrap().ordinary_claim;
+        if ordinary_claim && !self.advance_ordinary_fresh_requests(close, window, cx)? {
+            return Ok(false);
+        }
+        for _ in 0..if ordinary_claim { 0 } else { 16 } {
             let Some(request) = self.input.update(cx, |input, _| input.take_request()) else {
                 break;
             };
@@ -182,30 +198,45 @@ impl MainWindowConversationComposer {
                 MainWindowConversationComposerActivationSeed::Page(response)
                 | MainWindowConversationComposerActivationSeed::ObjectPage(response) => response,
             };
-            if self
-                .selection
-                .binding()
-                .logical_extent()
-                .logical_utf8_bytes()
-                != 0
-                || self
+            if !self.fresh_recovery_gui.as_ref().unwrap().ordinary_claim
+                && (self
                     .selection
                     .binding()
-                    .root()
-                    .marker_commitment()
-                    .marker_count()
+                    .logical_extent()
+                    .logical_utf8_bytes()
                     != 0
+                    || self
+                        .selection
+                        .binding()
+                        .root()
+                        .marker_commitment()
+                        .marker_count()
+                        != 0)
             {
                 return Err(
                     "fresh first conversation widget requires its empty admitted draft".into(),
                 );
             }
+            #[cfg(test)]
+            let request_diagnostic = format!("{request:?}");
             let outcome = super::super::translate_initial_composer_response(
                 self.selection,
                 request,
                 response,
             )
-            .map_err(|_| "fresh recovery initial response was refused")?;
+            .map_err(|error| {
+                #[cfg(test)]
+                {
+                    format!(
+                        "fresh recovery initial response was refused: {error:?}; request={request_diagnostic}; seed={:?}",
+                        response.key()
+                    )
+                }
+                #[cfg(not(test))]
+                {
+                    format!("fresh recovery initial response was refused: {error:?}")
+                }
+            })?;
             self.input
                 .update(cx, |input, cx| match outcome {
                     MainWindowComposerDispatchOutcome::Page(page) => {
@@ -257,8 +288,10 @@ impl MainWindowConversationComposer {
             PresentationGeneration, RangeResidency, ResidencyLimits,
         };
         let binding = self.selection.binding();
-        if binding.logical_extent().logical_utf8_bytes() != 0
-            || binding.root().marker_commitment().marker_count() != 0
+        let ordinary_claim = self.fresh_recovery_gui.as_ref().unwrap().ordinary_claim;
+        if !ordinary_claim
+            && (binding.logical_extent().logical_utf8_bytes() != 0
+                || binding.root().marker_commitment().marker_count() != 0)
         {
             return Err("fresh origin proof requires its authenticated empty draft".into());
         }
@@ -282,9 +315,10 @@ impl MainWindowConversationComposer {
             || result.scope()
                 != (syndic_storage::DraftPieceMarkerScopeV1::InclusiveRange { start: 0, end: 0 })
             || result.direction() != syndic_storage::DraftPieceMarkerDirectionV1::Forward
-            || !result.markers().is_empty()
-            || result.continuation().is_some()
-            || !result.requested_side_complete()
+            || (!ordinary_claim
+                && (!result.markers().is_empty()
+                    || result.continuation().is_some()
+                    || !result.requested_side_complete()))
         {
             return Err(
                 "fresh origin proof marker response is not its exact closed empty origin".into(),
@@ -352,7 +386,9 @@ impl MainWindowConversationComposer {
                 surface.selection().head,
                 surface.scroll_position(),
             ] {
-                if position.byte_offset.get() != 0 || position.gap != InlineObjectGap::NoObjects {
+                if position.byte_offset.get() != 0
+                    || (!ordinary_claim && position.gap != InlineObjectGap::NoObjects)
+                {
                     return Err(
                         "fresh origin proof surface position differs from empty origin".into(),
                     );

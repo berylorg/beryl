@@ -7,10 +7,13 @@ use crate::{
     },
 };
 
+mod adopted_return;
 mod appearance;
 mod bindings;
+#[cfg(all(test, feature = "test-faults"))]
+mod claim_evidence;
+mod claim_targets;
 mod first_conversation;
-mod thread_creation;
 
 impl MainWindowShellRoot {
     pub(crate) fn adopt_failed_interrupted_exit_shell<C: Send + 'static>(
@@ -78,8 +81,11 @@ impl MainWindowShellRoot {
             || record.selected_thread() != Some(selection.claim())
             || record.remembered_target().is_none()
             || close.selection().binding().home_id() != selection.binding().home_id()
-            || close.selection().binding().home_generation()
-                == selection.binding().home_generation()
+            || preparation.capture().is_none_or(|capture| {
+                capture.native_selection() != close.selection()
+                    || capture.selection().binding().home_generation()
+                        == selection.binding().home_generation()
+            })
         {
             return Err("failed shell fresh window and resident correspondence changed".into());
         }

@@ -2,6 +2,69 @@ use super::*;
 use syndic_storage::DetachedDraftReadSourceV1;
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn final_cleanup_selection(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        resources: &MainWindowComposerMountRecoveryResources,
+        cx: &Context<Self>,
+    ) -> Result<MainWindowComposerSelectionIdentity, String> {
+        self.validate_final_close(close, cx)?;
+        if !self.window_close.unwrap().resources_detached
+            || resources.close != close
+            || self.window_close.unwrap().flush != Some(resources.flush)
+            || self.service.is_some()
+            || self.configurator.is_some()
+            || self.native_lineage_recovery.is_some()
+            || self.native_lineage_refresh_task.is_some()
+            || self.autosave.recovery_adapters()?.is_some()
+            || self.submission.recovery_source()?.is_some()
+        {
+            return Err("final cleanup mount resources changed".into());
+        }
+        if let (Some(mount), Some(resident)) = (&resources.service, &resources.resident.service)
+            && !Arc::ptr_eq(mount, resident)
+        {
+            return Err("final cleanup service aliases changed".into());
+        }
+        self.contribution
+            .as_ref()
+            .ok_or("final cleanup resident is missing")?
+            .read(cx)
+            .validate_installed_detached_source(close, cx)
+    }
+
+    pub(in crate::main_window) fn take_final_prepublication_cleanup(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        resources: &MainWindowComposerMountRecoveryResources,
+        cx: &Context<Self>,
+    ) -> Result<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>, String>
+    {
+        let selected = self.final_cleanup_selection(close, resources, cx)?;
+        resources
+            .service
+            .as_ref()
+            .or(resources.resident.service.as_ref())
+            .ok_or("final cleanup service is missing")?
+            .take_final_prepublication_cleanup(close, resources.flush, selected)
+    }
+
+    pub(in crate::main_window) fn stop_final_prepublication_cleanup(
+        &mut self,
+        close: MainWindowConversationComposerCloseTicket,
+        resources: &MainWindowComposerMountRecoveryResources,
+        capsules: &[crate::main_window::MainWindowRetiredPrepublicationCleanup],
+        cx: &Context<Self>,
+    ) -> Result<bool, String> {
+        let selected = self.final_cleanup_selection(close, resources, cx)?;
+        resources
+            .service
+            .as_ref()
+            .or(resources.resident.service.as_ref())
+            .ok_or("final cleanup service is missing")?
+            .stop_final_prepublication_cleanup(close, resources.flush, selected, capsules)
+    }
+
     fn validate_final_close(
         &self,
         ticket: MainWindowConversationComposerCloseTicket,

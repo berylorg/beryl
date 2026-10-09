@@ -138,6 +138,18 @@ impl MainWindowNativeLineagePrepublicationSource {
 
 impl MainWindowRetiredPrepublicationCleanup {
     #[cfg(test)]
+    pub(crate) fn test_page_release_evidence(
+        &self,
+    ) -> (MainWindowComposerSelectionIdentity, u64, u64, usize) {
+        (
+            self.selection,
+            self.environment_id,
+            self.generation.get(),
+            self.accepted_page_releases,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn accepted_page_release_acknowledgements(&self) -> usize {
         self.accepted_page_releases
     }

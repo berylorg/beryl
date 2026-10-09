@@ -44,12 +44,14 @@ pub(super) fn fail(fixture: &support::Fixture) {
 
 pub(super) fn source(
     prior: MainWindowComposerSelectionIdentity,
-) -> Box<MainWindowThreadCreationRetirementSource> {
-    Box::new(MainWindowThreadCreationRetirementSource {
+) -> Box<MainWindowClaimRetirementSource> {
+    Box::new(MainWindowClaimRetirementSource {
+        kind: crate::main_window::MainWindowClaimRetirementKind::ThreadCreation,
         prior,
         selected: prior,
         saved: None,
         committed_target: None,
+        planned_target: prior.claim(),
         receipt: None,
         completed_predecessor: None,
         completed_successor: None,
@@ -57,6 +59,7 @@ pub(super) fn source(
         mounted_successor: None,
         widget_work: None,
         release: None,
+        successor_release: None,
     })
 }
 

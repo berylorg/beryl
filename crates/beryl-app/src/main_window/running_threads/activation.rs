@@ -20,6 +20,8 @@ use crate::catalog_projection::{
     CatalogProjectionBuildError, project_facts, validate_execution_binding,
 };
 
+mod recovery;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RunningThreadActivationError {
     #[error(transparent)]
@@ -73,6 +75,8 @@ pub struct RunningThreadActivation {
 
 #[derive(Debug)]
 pub struct RunningThreadActivationCommit {
+    prepared: PreparedWindowClaimReplacement,
+    rows: CatalogClaimReplacementAudit,
     pub window: SessionWindowRecord,
     pub selection: WindowClaimSelection,
     pub claim: ThreadClaimRecord,
@@ -84,8 +88,22 @@ pub struct RunningThreadActivationCommit {
 #[derive(Debug)]
 pub enum RunningThreadActivationOutcome {
     Settled(RunningThreadActivationCommit),
-    NotCommitted(RunningThreadActivationError),
+    NotCommitted(RunningThreadActivationRejected),
     Pending(RunningThreadActivationPending),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{problem}")]
+pub struct RunningThreadActivationRejected {
+    activation: RunningThreadActivation,
+    rows: Option<CatalogClaimReplacementAudit>,
+    problem: RunningThreadActivationError,
+}
+
+impl RunningThreadActivationRejected {
+    pub fn problem(&self) -> &RunningThreadActivationError {
+        &self.problem
+    }
 }
 
 #[derive(Debug)]
@@ -163,11 +181,23 @@ impl RunningThreadActivation {
     ) -> RunningThreadActivationOutcome {
         let (command, rows) = match self.command(store, state, syndic, cancellation) {
             Ok(prepared) => prepared,
-            Err(error) => return RunningThreadActivationOutcome::NotCommitted(error),
+            Err(problem) => {
+                return RunningThreadActivationOutcome::NotCommitted(
+                    RunningThreadActivationRejected {
+                        activation: self,
+                        rows: None,
+                        problem,
+                    },
+                );
+            }
         };
         match store.execute(command) {
             CommandOutcome::NotCommitted { evidence } => {
-                RunningThreadActivationOutcome::NotCommitted(evidence.into())
+                RunningThreadActivationOutcome::NotCommitted(RunningThreadActivationRejected {
+                    activation: self,
+                    rows: Some(rows),
+                    problem: evidence.into(),
+                })
             }
             CommandOutcome::Committed {
                 receipt,
@@ -259,6 +289,13 @@ impl RunningThreadActivation {
                 .runtime_roots()
                 .validate_catalog_source(runtime_revision, target_runtime),
         )?;
+        #[cfg(feature = "test-faults")]
+        {
+            command =
+                command.with_test_fault_scope(beryl_home_store::test_faults::FaultScope::of::<
+                    beryl_state::ReplaceWindowClaim,
+                >());
+        }
         if store.home_revision()? != revision {
             return Err(RunningThreadActivationError::SourceChanged);
         }
@@ -267,6 +304,11 @@ impl RunningThreadActivation {
 }
 
 impl RunningThreadActivationPending {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_original_commit_receipt(&self) -> Option<&CommitReceipt> {
+        self.receipt.as_ref()
+    }
+
     pub fn problem(&self) -> &RunningThreadActivationError {
         &self.problem
     }
@@ -285,7 +327,11 @@ impl RunningThreadActivationPending {
                     {
                         Ok(WindowClaimReplacementState::Original) => {
                             RunningThreadActivationOutcome::NotCommitted(
-                                RunningThreadActivationError::ReconciledOld,
+                                RunningThreadActivationRejected {
+                                    activation: self.activation,
+                                    rows: Some(self.rows),
+                                    problem: RunningThreadActivationError::ReconciledOld,
+                                },
                             )
                         }
                         Ok(_) => {
@@ -352,6 +398,8 @@ impl RunningThreadActivationPending {
             receipt: self.receipt.take().expect("audited commit receipt"),
             later_failure: self.later_failure,
             local_finalization: self.local_finalization,
+            prepared: self.activation.prepared,
+            rows: self.rows,
         })
     }
 }

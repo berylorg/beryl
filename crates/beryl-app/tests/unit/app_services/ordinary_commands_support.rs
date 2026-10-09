@@ -37,6 +37,34 @@ pub(super) fn run_mounted_with_faults(
     run_mounted_case(
         count,
         chunks,
+        None,
+        None,
+        scenario,
+        expect_shutdown,
+        Some(restored_count),
+    )
+    .unwrap()
+}
+
+pub(super) fn run_mounted_with_prepared_home(
+    count: u8,
+    chunks: usize,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    final_selection: Rc<RefCell<Option<(WindowId, beryl_model::SyndicThreadId)>>>,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: usize,
+) -> MinimalSessionBootstrap {
+    run_mounted_case(
+        count,
+        chunks,
+        Some(Box::new(prepare)),
+        Some(final_selection),
         scenario,
         expect_shutdown,
         Some(restored_count),
@@ -54,12 +82,39 @@ pub(super) fn run_mounted_retained(
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
     + 'static,
 ) {
-    assert!(run_mounted_case(count, chunks, scenario, false, None).is_none());
+    assert!(run_mounted_case(count, chunks, None, None, scenario, false, None).is_none());
+}
+
+pub(super) fn run_mounted_with_prepared_home_retained(
+    count: u8,
+    chunks: usize,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    assert!(
+        run_mounted_case(
+            count,
+            chunks,
+            Some(Box::new(prepare)),
+            None,
+            scenario,
+            false,
+            None
+        )
+        .is_none()
+    );
 }
 
 fn run_mounted_case(
     count: u8,
     chunks: usize,
+    prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
+    final_selection: Option<Rc<RefCell<Option<(WindowId, beryl_model::SyndicThreadId)>>>>,
     scenario: impl for<'a> FnOnce(
         Owner,
         FaultController,
@@ -78,6 +133,9 @@ fn run_mounted_case(
         "mounted ordinary command fixture: {}",
         directory.path().display()
     );
+    if let Some(prepare) = prepare {
+        prepare(directory.path());
+    }
     let faults = FaultController::new();
     let opening_faults = faults.clone();
     let mut input = input(directory.path(), move |path, _| {
@@ -201,6 +259,18 @@ fn run_mounted_case(
                                 diagnostic_owner.borrow().test_ordinary_command_status(),
                                 diagnostic_owner.borrow().shutdown_status()
                             );
+                            {
+                                let owner = diagnostic_owner.borrow();
+                                eprintln!(
+                                    "mounted fixture Exit pending: session={:?},waiting_passes={},teardown={:?},teardown_state=({}),failure={:?},{}",
+                                    owner.shutdown_session(),
+                                    owner.test_exit_waiting_passes(),
+                                    owner.test_final_teardown_detail(),
+                                    owner.test_final_teardown_diagnostics(),
+                                    owner.test_last_ordinary_command_failure(),
+                                    owner.test_shutdown_draft_diagnostics()
+                                );
+                            }
                             cx.update(|app| {
                                 for window in windows(&diagnostic_owner) {
                                     if let Ok(root) = window.read(app) {
@@ -256,6 +326,15 @@ fn run_mounted_case(
     let home = candidate.publish().unwrap();
     let restored = state.session().minimal_bootstrap(&home).unwrap().unwrap();
     assert_eq!(restored.windows().len(), restored_count);
+    let final_selection = final_selection.map(|expected| {
+        expected
+            .borrow()
+            .expect("prepared Home scenario must qualify its final selection")
+    });
+    if let Some((id, _)) = final_selection {
+        assert!(initial.borrow().iter().any(|row| row.window_id() == id));
+        assert!(restored.windows().iter().any(|row| row.window_id() == id));
+    }
     for record in restored.windows() {
         let before = initial.borrow();
         if let Some(original) = before
@@ -264,7 +343,10 @@ fn run_mounted_case(
         {
             assert_eq!(
                 record.selected_thread().map(|claim| claim.thread_id()),
-                original.selected_thread().map(|claim| claim.thread_id())
+                match final_selection {
+                    Some((id, thread)) if id == record.window_id() => Some(thread),
+                    _ => original.selected_thread().map(|claim| claim.thread_id()),
+                }
             );
         }
         if let Some((_, placement)) = captured

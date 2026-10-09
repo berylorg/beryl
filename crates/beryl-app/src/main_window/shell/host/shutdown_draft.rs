@@ -4,14 +4,14 @@ use crate::main_window::{
     MainWindowConversationComposerCloseTicket, MainWindowConversationComposerMount,
 };
 
+mod claim_retirement;
 mod detached;
 pub(super) mod recovery;
-mod thread_creation;
-pub(crate) use thread_creation::{FailedShutdownThreadCreation, RetainedThreadCreationMount};
+pub(crate) use claim_retirement::{FailedShutdownClaim, RetainedClaimMount};
 
 pub struct MainWindowShutdownDraft {
     pub(crate) failed: Option<FailedShutdownResident>,
-    pub(crate) thread_creation: Option<Box<FailedShutdownThreadCreation>>,
+    pub(crate) claim_operation: Option<Box<FailedShutdownClaim>>,
     pub(super) prepublication_cleanup:
         std::cell::RefCell<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>>,
     pub(super) root: gpui::EntityId,
@@ -26,6 +26,8 @@ pub struct MainWindowShutdownDraft {
 }
 
 pub(crate) struct FailedShutdownResident {
+    pub(crate) prepublication_cleanup:
+        std::cell::RefCell<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>>,
     pub(crate) adoption: Option<crate::main_window::MainWindowFailedResidentAdoption>,
     pub(crate) capture: Option<crate::main_window::MainWindowFailedResidentCapture>,
     pub(crate) ticket: crate::main_window::MainWindowFailedResidentTicket,
@@ -105,7 +107,7 @@ impl MainWindowShellRoot {
         };
         Ok(MainWindowShutdownDraft {
             failed: None,
-            thread_creation: None,
+            claim_operation: None,
             prepublication_cleanup: std::cell::RefCell::new(None),
             root: cx.entity_id(),
             retirement: None,

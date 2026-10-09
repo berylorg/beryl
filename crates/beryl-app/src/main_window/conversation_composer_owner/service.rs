@@ -24,23 +24,25 @@ use crate::main_window::MainWindowComposerSlot;
 
 mod candidate_source;
 mod candidate_worker;
+mod claim_cleanup;
 mod claim_publication;
-mod failed_thread_creation;
 mod thread_creation;
 pub(crate) use crate::main_window::composer_slot::{
     MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
-    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedThreadCreationRetirement,
+    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedClaimRetirement,
 };
+pub(crate) use claim_cleanup::{MainWindowClaimRetirementKind, MainWindowClaimRetirementSource};
 pub(in crate::main_window) use claim_publication::*;
-pub(crate) use failed_thread_creation::MainWindowThreadCreationRetirementSource;
 pub(crate) use thread_creation::{
-    MainWindowRetiredThreadPredecessorSave, MainWindowThreadPredecessorSave,
+    MainWindowClaimSaveOrigin, MainWindowRetiredClaimPredecessorSave,
+    MainWindowThreadPredecessorSave,
 };
 mod close;
 mod close_cleanup;
 mod failed_candidate_source;
 mod failed_resident;
 mod fresh_candidate;
+mod ordinary_selection;
 pub use failed_candidate_source::MainWindowFailedResidentCandidateSource;
 mod native_disposal;
 mod retirement;
@@ -52,6 +54,145 @@ pub use candidate_worker::*;
 pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
     CapacityFull { epoch: u64 },
     Failed(String),
+}
+
+#[derive(Default)]
+struct NativeLineageCleanupDriverState {
+    closed_handoff: bool,
+    current: Option<NativeLineageCleanupDriverRun>,
+}
+
+struct NativeLineageCleanupDriverRun {
+    identity: Arc<()>,
+    task: Option<gpui::Task<()>>,
+}
+
+struct NativeLineageCleanupDriverOwner {
+    service: Arc<MainWindowConversationComposerService>,
+    executor: BackgroundExecutor,
+    identity: Arc<()>,
+    completed: bool,
+}
+
+impl Drop for NativeLineageCleanupDriverOwner {
+    fn drop(&mut self) {
+        let (previous, restart) = {
+            let Ok(sources) = self.service.native_lineage_sources.lock() else {
+                return;
+            };
+            let Ok(mut state) = self.service.native_lineage_driver_task.lock() else {
+                return;
+            };
+            if !state
+                .current
+                .as_ref()
+                .is_some_and(|run| Arc::ptr_eq(&run.identity, &self.identity))
+            {
+                return;
+            }
+            let previous = state.current.take();
+            self.service
+                .native_lineage_driver_started
+                .store(false, Ordering::Release);
+            (
+                previous,
+                self.completed && !state.closed_handoff && !sources.is_empty(),
+            )
+        };
+        drop(previous);
+        self.service
+            .update_native_lineage_cleanup_witness_after_driver_drop(&self.identity);
+        if restart {
+            // An append after the final empty recheck belongs to a successor driver.
+            let _ = self
+                .service
+                .start_native_lineage_cleanup_driver(self.executor.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct NativeLineageDriverProgress {
+    phase: AtomicU64,
+    iterations: AtomicU64,
+    starts: AtomicU64,
+    active: AtomicU64,
+    last_drop: AtomicU64,
+}
+
+#[cfg(test)]
+struct NativeLineageDriverDropWitness {
+    progress: Arc<NativeLineageDriverProgress>,
+    completed: bool,
+}
+
+#[cfg(test)]
+impl NativeLineageDriverDropWitness {
+    fn new(progress: &Arc<NativeLineageDriverProgress>) -> Self {
+        progress.starts.fetch_add(1, Ordering::Relaxed);
+        progress.active.fetch_add(1, Ordering::Relaxed);
+        progress.last_drop.store(0, Ordering::Release);
+        Self {
+            progress: progress.clone(),
+            completed: false,
+        }
+    }
+
+    fn phase(&self, phase: u64) {
+        self.progress.phase.store(phase, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+impl Drop for NativeLineageDriverDropWitness {
+    fn drop(&mut self) {
+        let state = if std::thread::panicking() {
+            2
+        } else if self.completed {
+            1
+        } else {
+            3
+        };
+        self.progress.last_drop.store(state, Ordering::Release);
+        self.progress.active.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+impl NativeLineageDriverProgress {
+    fn snapshot(&self) -> String {
+        let phase = match self.phase.load(Ordering::Acquire) {
+            0 => "not_polled",
+            1 => "before_timer",
+            2 => "awaiting_timer",
+            3 => "after_timer",
+            4 => "before_drive",
+            5 => "after_drive",
+            6 => "before_empty_lock",
+            7 => "after_empty_lock",
+            8 => "before_exit_flag",
+            9 => "before_exit_witness",
+            10 => "before_recheck_lock",
+            11 => "after_recheck_lock",
+            12 => "before_exit",
+            13 => "before_restart_witness",
+            _ => "unknown",
+        };
+        let dropped = match self.last_drop.load(Ordering::Acquire) {
+            0 => "none",
+            1 => "completed",
+            2 => "unwinding",
+            3 => "task_dropped",
+            _ => "unknown",
+        };
+        format!(
+            "phase={phase},iterations={},starts={},active={},scope_drop={dropped}",
+            self.iterations.load(Ordering::Acquire),
+            self.starts.load(Ordering::Acquire),
+            self.active.load(Ordering::Acquire),
+        )
+    }
 }
 
 #[cfg(feature = "test-faults")]
@@ -221,6 +362,9 @@ pub struct MainWindowConversationComposerService {
     window_close: Mutex<Option<crate::main_window::MainWindowConversationComposerCloseTicket>>,
     native_lineage_sources: Mutex<Vec<Arc<MainWindowNativeLineagePrepublicationSource>>>,
     native_lineage_driver_started: AtomicBool,
+    native_lineage_driver_task: Mutex<NativeLineageCleanupDriverState>,
+    #[cfg(test)]
+    native_lineage_driver_progress: Arc<NativeLineageDriverProgress>,
     native_lineage_capacity_epoch: AtomicU64,
     #[cfg(feature = "test-faults")]
     native_lineage_cleanup_witness: Arc<Mutex<MainWindowNativeLineageCleanupTestWitnessState>>,
@@ -352,6 +496,9 @@ impl MainWindowConversationComposerService {
             window_close: Mutex::new(None),
             native_lineage_sources: Mutex::new(Vec::with_capacity(2)),
             native_lineage_driver_started: AtomicBool::new(false),
+            native_lineage_driver_task: Mutex::new(NativeLineageCleanupDriverState::default()),
+            #[cfg(test)]
+            native_lineage_driver_progress: Arc::new(NativeLineageDriverProgress::default()),
             native_lineage_capacity_epoch: AtomicU64::new(0),
             #[cfg(feature = "test-faults")]
             native_lineage_cleanup_witness: Arc::new(Mutex::new(
@@ -466,6 +613,16 @@ impl MainWindowConversationComposerService {
                 "conversation composer prepublication source lock failed".to_owned(),
             )
         })?;
+        let driver = self.native_lineage_driver_task.lock().map_err(|_| {
+            MainWindowNativeLineageSourceRetentionError::Failed(
+                "conversation composer cleanup driver custody is poisoned".to_owned(),
+            )
+        })?;
+        if driver.closed_handoff {
+            return Err(MainWindowNativeLineageSourceRetentionError::Failed(
+                "conversation composer prepublication cleanup has transferred".to_owned(),
+            ));
+        }
         let previous_len = sources.len();
         sources.retain(|source| !source.drained());
         if sources.len() != previous_len {
@@ -481,9 +638,11 @@ impl MainWindowConversationComposerService {
             });
         }
         sources.push(source);
+        drop(driver);
         drop(sources);
         self.update_native_lineage_cleanup_witness(true);
-        self.start_native_lineage_cleanup_driver(executor);
+        self.start_native_lineage_cleanup_driver(executor)
+            .map_err(MainWindowNativeLineageSourceRetentionError::Failed)?;
         Ok(())
     }
 
@@ -501,47 +660,146 @@ impl MainWindowConversationComposerService {
         );
     }
 
-    fn start_native_lineage_cleanup_driver(self: &Arc<Self>, executor: BackgroundExecutor) {
-        if self
-            .native_lineage_driver_started
-            .swap(true, Ordering::AcqRel)
-        {
-            return;
-        }
-        let service = self.clone();
+    fn start_native_lineage_cleanup_driver(
+        self: &Arc<Self>,
+        executor: BackgroundExecutor,
+    ) -> Result<(), String> {
+        let identity = Arc::new(());
+        let previous = {
+            let mut state = self
+                .native_lineage_driver_task
+                .lock()
+                .map_err(|_| "conversation composer cleanup driver custody is poisoned")?;
+            if state.closed_handoff
+                || self
+                    .native_lineage_driver_started
+                    .swap(true, Ordering::AcqRel)
+            {
+                return Ok(());
+            }
+            state.current.replace(NativeLineageCleanupDriverRun {
+                identity: identity.clone(),
+                task: None,
+            })
+        };
+        drop(previous);
+        let owner = NativeLineageCleanupDriverOwner {
+            service: self.clone(),
+            executor: executor.clone(),
+            identity: identity.clone(),
+            completed: false,
+        };
         let timer_executor = executor.clone();
-        executor
-            .spawn(async move {
-                loop {
-                    timer_executor.timer(Duration::from_millis(50)).await;
-                    service.drive_native_lineage_cleanup_sources();
-                    let empty = service
+        #[cfg(test)]
+        let driver_witness =
+            NativeLineageDriverDropWitness::new(&self.native_lineage_driver_progress);
+        // Scheduling may synchronously destroy the future before returning its handle.
+        let mut task = Some(executor.spawn(async move {
+            let mut owner = owner;
+            #[cfg(test)]
+            let mut driver_witness = driver_witness;
+            loop {
+                #[cfg(test)]
+                {
+                    driver_witness
+                        .progress
+                        .iterations
+                        .fetch_add(1, Ordering::Relaxed);
+                    driver_witness.phase(1);
+                }
+                let timer = timer_executor.timer(Duration::from_millis(50));
+                #[cfg(test)]
+                driver_witness.phase(2);
+                timer.await;
+                #[cfg(test)]
+                driver_witness.phase(3);
+                #[cfg(test)]
+                driver_witness.phase(4);
+                owner.service.drive_native_lineage_cleanup_sources();
+                #[cfg(test)]
+                driver_witness.phase(5);
+                #[cfg(test)]
+                driver_witness.phase(6);
+                let empty = owner
+                    .service
+                    .native_lineage_sources
+                    .lock()
+                    .map(|sources| sources.is_empty())
+                    .unwrap_or(false);
+                #[cfg(test)]
+                driver_witness.phase(7);
+                if empty {
+                    #[cfg(test)]
+                    driver_witness.phase(8);
+                    #[cfg(test)]
+                    driver_witness.phase(9);
+                    #[cfg(test)]
+                    driver_witness.phase(10);
+                    let still_empty = owner
+                        .service
                         .native_lineage_sources
                         .lock()
                         .map(|sources| sources.is_empty())
                         .unwrap_or(false);
-                    if empty {
-                        service
-                            .native_lineage_driver_started
-                            .store(false, Ordering::Release);
-                        service.update_native_lineage_cleanup_witness(false);
-                        let still_empty = service
-                            .native_lineage_sources
-                            .lock()
-                            .map(|sources| sources.is_empty())
-                            .unwrap_or(false);
-                        if still_empty
-                            || service
-                                .native_lineage_driver_started
-                                .swap(true, Ordering::AcqRel)
+                    #[cfg(test)]
+                    driver_witness.phase(11);
+                    if still_empty {
+                        owner.completed = true;
+                        #[cfg(test)]
                         {
-                            return;
+                            driver_witness.phase(12);
+                            driver_witness.completed = true;
                         }
-                        service.update_native_lineage_cleanup_witness(true);
+                        return;
                     }
+                    #[cfg(test)]
+                    driver_witness.phase(13);
+                    owner.service.update_native_lineage_cleanup_witness(true);
                 }
-            })
-            .detach();
+            }
+        }));
+        let installed = match self.native_lineage_driver_task.lock() {
+            Ok(mut state) => {
+                let closed_handoff = state.closed_handoff;
+                match state.current.as_mut() {
+                    Some(run) if Arc::ptr_eq(&run.identity, &identity) => {
+                        if !closed_handoff {
+                            run.task = task.take();
+                        }
+                        Ok(())
+                    }
+                    _ => Err(
+                        "conversation composer cleanup driver ended before installation".to_owned(),
+                    ),
+                }
+            }
+            Err(_) => Err("conversation composer cleanup driver custody is poisoned".to_owned()),
+        };
+        drop(task);
+        installed
+    }
+
+    pub(super) fn request_native_lineage_cleanup_driver_stop_after_handoff(&self) -> bool {
+        let task = {
+            let Ok(sources) = self.native_lineage_sources.lock() else {
+                return false;
+            };
+            if !sources.is_empty() {
+                return false;
+            }
+            let Ok(mut state) = self.native_lineage_driver_task.lock() else {
+                return false;
+            };
+            state.closed_handoff = true;
+            state.current.as_mut().and_then(|run| run.task.take())
+        };
+        drop(task);
+        true
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_native_lineage_driver_progress(&self) -> String {
+        self.native_lineage_driver_progress.snapshot()
     }
 
     pub(in crate::main_window) fn drive_native_lineage_cleanup_sources(&self) {
@@ -582,6 +840,31 @@ impl MainWindowConversationComposerService {
 
     #[cfg(not(feature = "test-faults"))]
     fn update_native_lineage_cleanup_witness(&self, _driver_alive: bool) {}
+
+    #[cfg(feature = "test-faults")]
+    fn update_native_lineage_cleanup_witness_after_driver_drop(&self, identity: &Arc<()>) {
+        let diagnostics = self.test_native_lineage_cleanup_diagnostics();
+        let Ok(state) = self.native_lineage_driver_task.lock() else {
+            return;
+        };
+        if state
+            .current
+            .as_ref()
+            .is_some_and(|run| !Arc::ptr_eq(&run.identity, identity))
+        {
+            return;
+        }
+        if let Ok(mut witness) = self.native_lineage_cleanup_witness.lock() {
+            witness.snapshot = MainWindowNativeLineageCleanupTestWitnessSnapshot {
+                diagnostics,
+                driver_alive: self.native_lineage_driver_started.load(Ordering::Acquire),
+                capacity_epoch: self.native_lineage_capacity_epoch(),
+            };
+        }
+    }
+
+    #[cfg(not(feature = "test-faults"))]
+    fn update_native_lineage_cleanup_witness_after_driver_drop(&self, _identity: &Arc<()>) {}
 
     #[cfg(feature = "test-faults")]
     pub fn test_native_lineage_cleanup_diagnostics(

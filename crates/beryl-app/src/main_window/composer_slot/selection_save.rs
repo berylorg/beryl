@@ -1,6 +1,36 @@
 use super::*;
 
 impl MainWindowComposerSlot {
+    pub(crate) fn capture_ordinary_claim_save(
+        &self,
+        store: &HomeStore,
+        receipt: MainWindowComposerActivationReceipt,
+        expected: MainWindowComposerSelectionIdentity,
+    ) -> Result<crate::main_window::MainWindowRetiredClaimPredecessorSave, String> {
+        self.ensure_receipt(receipt)
+            .map_err(|error| error.to_string())?;
+        if self.selected_identity() != Some(expected)
+            || !same_selected_host(Some(expected), receipt.expected_prior)
+            || self.thread_predecessor_save.is_some()
+        {
+            return Err("ordinary selection receipt or predecessor changed".into());
+        }
+        let saved = match self.pending.as_ref().unwrap().stage {
+            PendingStage::SelectionSaved(saved) => saved,
+            _ => return Err("ordinary selection original save has not settled".into()),
+        };
+        self.selected
+            .as_ref()
+            .unwrap()
+            .host
+            .validate_selection_save(store, saved)
+            .map_err(|error| error.to_string())?;
+        Ok(crate::main_window::MainWindowRetiredClaimPredecessorSave {
+            selected: expected,
+            saved,
+            origin: crate::main_window::MainWindowClaimSaveOrigin::OrdinarySelection(receipt),
+        })
+    }
     pub(crate) fn validate_failed_thread_predecessor_save(
         &self,
         expected: MainWindowComposerSelectionIdentity,
@@ -157,7 +187,17 @@ impl MainWindowComposerSlot {
             }
             _ => return Err(MainWindowComposerSlotError::TargetNotReady),
         };
-        match self.advance_slot_flush(store, ticket)? {
+        let advance = self.advance_slot_flush(store, ticket)?;
+        #[cfg(all(test, feature = "test-faults"))]
+        if !matches!(
+            advance,
+            ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::ThreadSwitch)
+                | ComposerHostFlushAdvance::Progress(_)
+                | ComposerHostFlushAdvance::ReconciliationPending
+        ) {
+            eprintln!("original committed disposal flush classification: {advance:?}");
+        }
+        match advance {
             ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::ThreadSwitch) => {
                 self.pending.as_mut().unwrap().stage = PendingStage::AwaitingWidgetRelease;
                 Ok(MainWindowComposerPublishAdvance::WidgetReleaseRequired(

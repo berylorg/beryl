@@ -283,7 +283,12 @@ fn confirmed(toolbar: bool, count: u8) {
                 choose(confirmation, IDOK.0);
                 wait_until(
                     cx,
-                    || owner.borrow().shutdown_status().is_some(),
+                    || {
+                        matches!(
+                            owner.borrow().shutdown_status(),
+                            Some((_, _, RunningShutdownStatus::Admitted))
+                        )
+                    },
                     "confirmed mounted barrier admission",
                 )
                 .await;

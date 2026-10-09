@@ -204,6 +204,7 @@ pub(super) fn activate(cx: &mut gpui::TestAppContext, seed: u8, mode: Completion
                 disposal_faults.fail_next(FaultPoint::BeforeCommit)
             }) as _
         }),
+        outcome: None,
     };
     mounted
         .window

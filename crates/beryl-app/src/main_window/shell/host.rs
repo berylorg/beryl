@@ -14,6 +14,10 @@ mod pre_native_close;
 mod recovery;
 mod restored;
 mod running_selection;
+#[cfg(target_os = "windows")]
+mod selection_invocation;
+#[cfg(target_os = "windows")]
+pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 mod selected;
 mod shutdown;

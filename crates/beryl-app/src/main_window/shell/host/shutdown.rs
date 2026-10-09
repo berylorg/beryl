@@ -113,13 +113,13 @@ impl MainWindowShellRoot {
                 && controller
                     .composer_mount
                     .as_ref()
-                    .is_some_and(|mount| self.failed_thread_creation_mount_matches(mount))
+                    .is_some_and(|mount| self.failed_claim_mount_matches(mount))
             {
                 controller
                     .composer_mount
                     .as_ref()
                     .unwrap()
-                    .update(cx, |mount, cx| mount.gate_failed_thread_creation(cx))?;
+                    .update(cx, |mount, cx| mount.gate_failed_claim_cleanup(cx))?;
                 return Ok(());
             }
             let composer = controller

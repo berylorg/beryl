@@ -11,7 +11,7 @@ use std::time::Duration;
 
 mod activation;
 pub(in crate::main_window::shell::host) use activation::{
-    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+    CapturedClaimOperation, RetiringClaimOperation,
 };
 mod command;
 mod transcript;
@@ -40,6 +40,18 @@ pub(super) struct RunningThreadsContribution {
     pub(super) fixture_creation_release_counts: (usize, usize),
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fixture_creation_page_release_acknowledgements: usize,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_claim_page_release_evidence: Vec<(
+        crate::main_window::MainWindowComposerSelectionIdentity,
+        u64,
+        u64,
+        usize,
+    )>,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_claim_widget_release: Option<(
+        crate::main_window::MainWindowClaimRetirementKind,
+        crate::main_window::MainWindowComposerWidgetRelease,
+    )>,
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fixture_reject_creation_recovery_mount: bool,
     generation: Arc<AtomicU64>,
@@ -73,6 +85,7 @@ pub(super) struct RunningThreadsContribution {
     )>,
     pub(super) pending_activation: Option<ProcessWorkQueryRecord>,
     activation_task: Option<gpui::Task<()>>,
+    activation_wake: Option<Arc<()>>,
     activation_operation: Option<activation::UnviewedRunningActivation>,
     activation_cancel: beryl_home_store::CommandCancellation,
     prepared_activation:
@@ -112,6 +125,10 @@ impl RunningThreadsContribution {
             #[cfg(all(test, feature = "test-faults"))]
             fixture_creation_page_release_acknowledgements: 0,
             #[cfg(all(test, feature = "test-faults"))]
+            fixture_claim_page_release_evidence: Vec::new(),
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_claim_widget_release: None,
+            #[cfg(all(test, feature = "test-faults"))]
             fixture_reject_creation_recovery_mount: false,
             generation: Arc::new(AtomicU64::new(1)),
             cancellation: ProjectionCancellationToken::new(),
@@ -140,6 +157,7 @@ impl RunningThreadsContribution {
             page_jobs: Vec::new(),
             pending_activation: None,
             activation_task: None,
+            activation_wake: None,
             activation_operation: None,
             activation_cancel: beryl_home_store::CommandCancellation::new(),
             prepared_activation: None,

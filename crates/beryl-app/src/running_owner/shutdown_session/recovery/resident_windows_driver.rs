@@ -20,6 +20,7 @@ pub(crate) struct ResidentRecoveryWindow {
     pub(super) configurator: Option<MainWindowConversationComposerConfigurator>,
     configuration: Rc<RefCell<ResidentWindowConfiguration>>,
     pub(super) retirement: Option<crate::main_window::MainWindowComposerRetiredClose>,
+    pub(super) adopted_return: Option<selected_windows::adopted_return::AdoptedReturnCustody>,
     pub(super) attached: Option<(
         MainWindowConversationComposerCloseTicket,
         beryl_state::SessionWindowRecord,
@@ -28,7 +29,7 @@ pub(crate) struct ResidentRecoveryWindow {
 }
 
 impl ResidentRecoveryWindow {
-    pub(super) fn retain_creation_configuration_after_detach(&mut self) {
+    pub(super) fn retain_configuration_after_detach(&mut self) {
         self.attached.take();
         self.bound = false;
         self.configurator = Some(ResidentWindowConfiguration::mount_configurator(
@@ -48,6 +49,7 @@ impl ResidentRecoveryWindow {
             configurator: Some(configurator),
             configuration,
             retirement: None,
+            adopted_return: None,
             attached: None,
             bound: false,
         }
@@ -418,7 +420,7 @@ impl RunningProcessOwner {
                     owner
                         .recovery_owner()?
                         .borrow()
-                        .committed_thread_creation_window(request, window)
+                        .committed_claim_window(request, window)
                 })
                 .map_err(|error| error.to_string())??
             } else {
@@ -426,7 +428,7 @@ impl RunningProcessOwner {
             };
             if creation && entry.attached.is_none() {
                 entry.attached = Some(
-                    Self::attach_recovered_thread_creation_pass(
+                    Self::attach_recovered_claim_target_pass(
                         owner,
                         request,
                         entry.window,

@@ -1,7 +1,9 @@
 use super::*;
+mod adopted_return;
+mod claim_widgets;
 use std::sync::Arc;
 
-pub(super) struct NoncommittedThreadCreationProvenance {
+pub(super) struct NoncommittedClaimProvenance {
     window: gpui::WindowHandle<MainWindowShellRoot>,
     selection: crate::main_window::MainWindowComposerSelectionIdentity,
     ticket: crate::main_window::MainWindowFailedResidentTicket,
@@ -19,25 +21,39 @@ impl RunningProcessOwner {
 
 impl RunningShutdownDrafts {
     #[cfg(test)]
-    pub(crate) fn test_thread_creation_retirement_diagnostics(&self) -> Vec<String> {
+    pub(crate) fn test_claim_retirement_diagnostics(&self) -> Vec<String> {
         self.windows
             .iter()
-            .filter_map(|(_, draft)| {
-                draft
-                    .as_ref()
-                    .ok()?
-                    .thread_creation
-                    .as_ref()
-                    .map(|creation| creation.retirement_diagnostic.clone())
+            .map(|(window, draft)| match draft {
+                Err(error) => format!("window={window:?};capture_error={error}"),
+                Ok(draft) => {
+                    let claim = draft.claim_operation.as_ref().map(|claim| claim.test_retirement_state());
+                    let failed = draft.failed.as_ref().map(|failed| {
+                        let service = failed.resources.as_ref().and_then(|resources| {
+                            resources.service.as_ref().or(resources.resident.service.as_ref())
+                        }).map(|service| service.test_failed_claim_retirement_diagnostics());
+                        format!(
+                            "ticket={:?},retired={},capture={},resources={},adoption={},captured_selection={:?},captured_protection={:?},service={service:?}",
+                            failed.ticket,
+                            failed.retired,
+                            failed.capture.is_some(),
+                            failed.resources.is_some(),
+                            failed.adoption.is_some(),
+                            failed.capture.as_ref().map(|capture| capture.selection()),
+                            failed.capture.as_ref().map(|capture| capture.protection())
+                        )
+                    });
+                    format!("window={window:?};claim={claim:?};failed_resident={failed:?}")
+                }
             })
             .collect()
     }
 
-    pub(crate) fn has_captured_thread_creation_window(
+    pub(crate) fn has_captured_claim_operation_window(
         &self,
         window: gpui::WindowHandle<MainWindowShellRoot>,
     ) -> Result<bool, String> {
-        self.has_captured_thread_creation()?;
+        self.has_captured_claim_operation()?;
         let draft = self
             .windows
             .iter()
@@ -46,16 +62,16 @@ impl RunningShutdownDrafts {
             .1
             .as_ref()
             .map_err(Clone::clone)?;
-        Ok(draft.thread_creation.is_some()
+        Ok(draft.claim_operation.is_some()
             || self
-                .noncommitted_creations
+                .noncommitted_claims
                 .iter()
                 .any(|prior| prior.window == window))
     }
 
-    pub(crate) fn has_captured_thread_creation(&self) -> Result<bool, String> {
+    pub(crate) fn has_captured_claim_operation(&self) -> Result<bool, String> {
         self.require_complete_capture()?;
-        for prior in &self.noncommitted_creations {
+        for prior in &self.noncommitted_claims {
             let draft = self
                 .windows
                 .iter()
@@ -77,15 +93,15 @@ impl RunningShutdownDrafts {
                 return Err("noncommitted New Thread original resident identity changed".into());
             }
         }
-        Ok(!self.noncommitted_creations.is_empty()
+        Ok(!self.noncommitted_claims.is_empty()
             || self.windows.iter().any(|(_, draft)| {
                 draft
                     .as_ref()
-                    .is_ok_and(|draft| draft.thread_creation.is_some())
+                    .is_ok_and(|draft| draft.claim_operation.is_some())
             }))
     }
 
-    pub(crate) fn detach_recovered_thread_creation_window(
+    pub(crate) fn detach_recovered_claim_target_window(
         &mut self,
         handle: gpui::WindowHandle<MainWindowShellRoot>,
         home: beryl_model::BerylHomeId,
@@ -103,22 +119,22 @@ impl RunningShutdownDrafts {
             .1
             .as_mut()
             .map_err(|error| error.clone())?;
-        if draft.thread_creation.is_none() {
+        if draft.claim_operation.is_none() {
             return Ok(None);
         }
         handle
             .update(app, |root, window, cx| {
-                root.detach_recovered_thread_creation_shell(draft, home, generation, window, cx)
+                root.detach_recovered_claim_target_shell(draft, home, generation, window, cx)
             })
             .map_err(|error| error.to_string())?
             .map(Some)
     }
 
-    pub(crate) fn adopt_recovered_thread_creation(
+    pub(crate) fn adopt_recovered_claim_target(
         &mut self,
         root: &mut MainWindowShellRoot,
         preparation: &mut crate::main_window::MainWindowFreshComposerPreparation,
-        retirement: &mut crate::main_window::MainWindowFailedThreadCreationRetirement,
+        retirement: &mut crate::main_window::MainWindowFailedClaimRetirement,
         adapters: crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
         configure: crate::main_window::MainWindowShellComposerConfigurator,
         transcript: crate::syndic_transcript::PreparedTranscriptActivation,
@@ -136,7 +152,7 @@ impl RunningShutdownDrafts {
             .1
             .as_mut()
             .map_err(|error| error.clone())?;
-        let close = root.adopt_recovered_thread_creation_shell(
+        let close = root.adopt_recovered_claim_target_shell(
             draft,
             preparation,
             retirement,
@@ -150,7 +166,7 @@ impl RunningShutdownDrafts {
         Ok(close)
     }
 
-    pub(crate) fn advance_recovered_thread_creation(
+    pub(crate) fn advance_recovered_claim_target(
         &self,
         root: &mut MainWindowShellRoot,
         home: beryl_model::BerylHomeId,
@@ -502,7 +518,7 @@ impl RunningShutdownDrafts {
     ) -> Self {
         Self {
             windows: vec![(window, Ok(draft))],
-            noncommitted_creations: Vec::new(),
+            noncommitted_claims: Vec::new(),
             driving: false,
             prepared: true,
             releasing: false,
@@ -510,6 +526,8 @@ impl RunningShutdownDrafts {
             ready: true,
             detached_preparing: false,
             detached_prepared: false,
+            #[cfg(test)]
+            last_poll: None,
         }
     }
 
@@ -564,11 +582,26 @@ impl RunningShutdownDrafts {
         let mut ready = true;
         for (window, draft) in &mut self.windows {
             let draft = draft.as_mut().map_err(|e| e.clone())?;
-            ready &= window
-                .update(app, |root, _, cx| {
-                    root.retire_failed_shutdown_draft(draft, services, cx)
+            let retirement = window
+                .update(app, |root, window, cx| {
+                    root.retire_failed_shutdown_draft(draft, services, window, cx)
                 })
-                .map_err(|e| e.to_string())??;
+                .map_err(|e| e.to_string())
+                .and_then(|result| result);
+            #[cfg(test)]
+            if let Some(claim) = draft.claim_operation.as_mut() {
+                claim.retirement_return_error = retirement.as_ref().err().cloned();
+                claim.retirement_returned = retirement.as_ref().ok().copied();
+            }
+            ready &= retirement?;
+        }
+        #[cfg(test)]
+        for (_, draft) in &mut self.windows {
+            if let Ok(draft) = draft
+                && let Some(claim) = draft.claim_operation.as_mut()
+            {
+                claim.retirement_set_ready = Some(ready);
+            }
         }
         Ok(ready)
     }
@@ -585,13 +618,12 @@ impl RunningShutdownDrafts {
             .1
             .as_mut()
             .map_err(|e| e.clone())?;
-        if let Some((selection, ticket)) = draft.adopt_noncommitted_thread_creation_capture()? {
-            self.noncommitted_creations
-                .push(NoncommittedThreadCreationProvenance {
-                    window,
-                    selection,
-                    ticket,
-                });
+        if let Some((selection, ticket)) = draft.adopt_noncommitted_claim_capture()? {
+            self.noncommitted_claims.push(NoncommittedClaimProvenance {
+                window,
+                selection,
+                ticket,
+            });
         }
         Ok(draft
             .failed
@@ -609,7 +641,7 @@ impl RunningShutdownDrafts {
         self.windows.iter().any(|(_, draft)| {
             draft
                 .as_ref()
-                .is_ok_and(|draft| draft.failed.is_some() || draft.thread_creation.is_some())
+                .is_ok_and(|draft| draft.failed.is_some() || draft.claim_operation.is_some())
         })
     }
     pub(in crate::running_owner) fn return_failed_capture(

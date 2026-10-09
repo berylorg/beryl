@@ -263,7 +263,7 @@ fn run(cx: &mut TestAppContext, refuse: bool, aggregate: bool, bindings: Appeara
             .update(cx, |root, _, cx| {
                 let wrong = MainWindowShutdownDraft {
                     failed: None,
-                    thread_creation: None,
+                    claim_operation: None,
                     prepublication_cleanup: std::cell::RefCell::new(None),
                     root: other.entity_id(),
                     retirement: None,

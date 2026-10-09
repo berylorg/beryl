@@ -5,6 +5,7 @@ use beryl_home_store::{CommandCancellation, HomeGeneration};
 use gpui::{AsyncApp, Entity, WindowHandle};
 use resident_windows_driver::ResidentRecoveryConfigurator;
 use syndic_storage::SyndicTimestamp;
+pub(super) mod adopted_return;
 
 pub(super) struct SelectedWindowRecovery {
     windows: Vec<ResidentRecoveryWindow>,
@@ -20,12 +21,6 @@ impl SelectedWindowRecovery {
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
         for entry in &mut self.windows {
-            let original_creation = owner
-                .recovery_owner()?
-                .borrow()
-                .recovery_drafts()?
-                .borrow()
-                .has_captured_thread_creation_window(entry.window)?;
             if entry.preparation.is_some() {
                 if owner
                     .recovery_owner()?
@@ -51,35 +46,44 @@ impl SelectedWindowRecovery {
                     }
                 }
             }
-            let creation = loop {
-                let handled = cx
-                    .update(|app| {
-                        owner
-                            .recovery_owner()?
-                            .borrow()
-                            .recovery_drafts()?
-                            .borrow_mut()
-                            .detach_recovered_thread_creation_window(
-                                entry.window,
-                                home,
-                                generation,
-                                app,
-                            )
-                    })
-                    .map_err(|error| error.to_string())??;
-                match handled {
-                    Some(false) => {
-                        cx.background_executor()
-                            .timer(std::time::Duration::from_millis(50))
-                            .await
+        }
+        for entry in &mut self.windows {
+            let adopted =
+                adopted_return::return_adopted_resident(owner, entry, home, generation, cx).await?;
+            let creation = if adopted {
+                false
+            } else {
+                loop {
+                    let handled = cx
+                        .update(|app| {
+                            owner
+                                .recovery_owner()?
+                                .borrow()
+                                .recovery_drafts()?
+                                .borrow_mut()
+                                .detach_recovered_claim_target_window(
+                                    entry.window,
+                                    home,
+                                    generation,
+                                    app,
+                                )
+                        })
+                        .map_err(|error| error.to_string())??;
+                    match handled {
+                        Some(false) => {
+                            cx.background_executor()
+                                .timer(std::time::Duration::from_millis(50))
+                                .await
+                        }
+                        Some(true) => break true,
+                        None => break false,
                     }
-                    Some(true) => break true,
-                    None => break false,
                 }
             };
-            if creation {
-                entry.retain_creation_configuration_after_detach();
-            } else if let Some((close, _)) = entry.attached {
+            if !adopted
+                && !creation
+                && let Some((close, _)) = entry.attached
+            {
                 loop {
                     let detached = cx
                         .update(|app| {
@@ -105,11 +109,7 @@ impl SelectedWindowRecovery {
                 }
             }
             entry.adapters.take();
-            if original_creation {
-                entry.retain_creation_configuration_after_detach();
-            } else {
-                entry.configurator.take();
-            }
+            entry.retain_configuration_after_detach();
         }
         if let Some(appearance) = self.appearance.take() {
             cx.update(|app| appearance.update(app, |appearance, _| appearance.retire()))

@@ -17,6 +17,137 @@ mod evidence;
 mod worker;
 pub(super) use evidence::ActiveComposerMutationEvidence;
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+enum DispatchFlightRequestKey {
+    Page(PageRequestKey),
+    ObjectPage(ObjectRequestKey),
+}
+
+#[cfg(test)]
+pub(super) struct DispatchFlightObservation {
+    flight: u64,
+    kind: &'static str,
+    key: Option<DispatchFlightRequestKey>,
+    stage: std::sync::atomic::AtomicU8,
+    worker_panicked: std::sync::atomic::AtomicBool,
+    object_response: std::sync::Mutex<Option<DispatchObjectResponseObservation>>,
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+struct DispatchObjectResponseObservation {
+    key: ObjectRequestKey,
+    objects: usize,
+    complete: bool,
+    continuation: Option<gpui_text_input::ObjectCursor>,
+    preceding: gpui_text_input::ObjectPageEdgeFact,
+    following: gpui_text_input::ObjectPageEdgeFact,
+}
+
+#[cfg(test)]
+impl DispatchObjectResponseObservation {
+    fn from_page(page: &gpui_text_input::ObjectPage) -> Self {
+        Self {
+            key: page.key(),
+            objects: page.objects().len(),
+            complete: page.complete(),
+            continuation: page.continuation(),
+            preceding: page.preceding(),
+            following: page.following(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+pub(super) struct DispatchObjectDeliveryObservation {
+    flight: Option<u64>,
+    deliveries: u64,
+    response: DispatchObjectResponseObservation,
+    result: &'static str,
+}
+
+#[cfg(test)]
+impl DispatchFlightObservation {
+    fn new(flight: u64, request: &RangeTextInputRequest) -> Self {
+        let (kind, key) = match request {
+            RangeTextInputRequest::Page(request) => {
+                ("Page", Some(DispatchFlightRequestKey::Page(request.key())))
+            }
+            RangeTextInputRequest::ObjectPage(request) => (
+                "ObjectPage",
+                Some(DispatchFlightRequestKey::ObjectPage(request.key())),
+            ),
+            RangeTextInputRequest::CancelPage(_) => ("CancelPage", None),
+            RangeTextInputRequest::ReleasePage(_) => ("ReleasePage", None),
+            RangeTextInputRequest::CancelObjectPage(_) => ("CancelObjectPage", None),
+            RangeTextInputRequest::ReleaseObjectPage(_) => ("ReleaseObjectPage", None),
+            RangeTextInputRequest::MutationCommit(_) => ("MutationCommit", None),
+            RangeTextInputRequest::MutationSourcePage(_) => ("MutationSourcePage", None),
+            RangeTextInputRequest::MutationProposalPage(_) => ("MutationProposalPage", None),
+            _ => ("Other", None),
+        };
+        Self {
+            flight,
+            kind,
+            key,
+            stage: std::sync::atomic::AtomicU8::new(0),
+            worker_panicked: std::sync::atomic::AtomicBool::new(false),
+            object_response: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn advance(&self, stage: u8) {
+        self.stage
+            .store(stage, std::sync::atomic::Ordering::Release);
+    }
+
+    fn observe_response(&self, outcome: &MainWindowComposerDispatchOutcome) {
+        if let MainWindowComposerDispatchOutcome::ObjectPage(page) = outcome
+            && let Ok(mut response) = self.object_response.lock()
+        {
+            *response = Some(DispatchObjectResponseObservation::from_page(page));
+        }
+    }
+
+    pub(super) fn diagnostics(&self) -> String {
+        let stage = match self.stage.load(std::sync::atomic::Ordering::Acquire) {
+            0 => "spawned",
+            1 => "worker_entered",
+            2 => "slot_acquired",
+            3 => "work_returned",
+            4 => "gui_callback_entered",
+            5 => "settled",
+            _ => "unknown",
+        };
+        format!(
+            "id={},kind={},key={:?},stage={},worker_panicked={},object_response={:?}",
+            self.flight,
+            self.kind,
+            self.key,
+            stage,
+            self.worker_panicked
+                .load(std::sync::atomic::Ordering::Acquire),
+            self.object_response.lock().as_deref(),
+        )
+    }
+}
+
+#[cfg(test)]
+struct DispatchFlightWorkerObservation(std::sync::Arc<DispatchFlightObservation>);
+
+#[cfg(test)]
+impl Drop for DispatchFlightWorkerObservation {
+    fn drop(&mut self) {
+        self.0.worker_panicked.store(
+            std::thread::panicking(),
+            std::sync::atomic::Ordering::Release,
+        );
+        self.0.advance(3);
+    }
+}
+
 #[derive(Clone)]
 enum PendingComposerMutationRequest {
     SourcePage(gpui_text_input::MutationPageRequest),
@@ -289,6 +420,24 @@ impl MainWindowConversationComposer {
         let mutation_key =
             PendingComposerMutationRequest::retain(&request).map(|request| request.key());
         let proof_limits = self.proof_limits;
+        #[cfg(test)]
+        let test_flight = {
+            let observation = std::sync::Arc::new(DispatchFlightObservation::new(flight, &request));
+            self.test_dispatch_flight = Some(observation.clone());
+            observation
+        };
+        let work = Box::new(worker::DispatchWork {
+            selection,
+            route,
+            request: Some(request),
+            marker_metadata,
+            cancellation,
+            proof_limits,
+            settlement,
+            mutation_key,
+            #[cfg(test)]
+            test_flight: test_flight.clone(),
+        });
         let task = cx.background_executor().spawn(async move {
             #[cfg(feature = "test-faults")]
             if matches!(route, MainWindowConversationComposerRoute::Pending(_))
@@ -305,24 +454,14 @@ impl MainWindowConversationComposer {
             #[cfg(feature = "test-faults")]
             if matches!(route, MainWindowConversationComposerRoute::Selected)
                 && matches!(
-                    request,
-                    RangeTextInputRequest::Page(_) | RangeTextInputRequest::ObjectPage(_)
+                    work.request.as_ref(),
+                    Some(RangeTextInputRequest::Page(_) | RangeTextInputRequest::ObjectPage(_))
                 )
                 && let Some(gate) = service.take_test_selected_page_dispatch_gate()
             {
                 gate.await;
             }
-            let completed = worker::DispatchWork {
-                selection,
-                route,
-                request,
-                marker_metadata,
-                cancellation,
-                proof_limits,
-                settlement,
-                mutation_key,
-            }
-            .run(&service)?;
+            let completed = work.run(&service)?;
             #[cfg(feature = "test-faults")]
             if matches!(route, MainWindowConversationComposerRoute::Pending(_))
                 && let Some(gate) = service.take_test_pending_completion_gate()
@@ -337,10 +476,14 @@ impl MainWindowConversationComposer {
         });
         cx.spawn_in(window, async move |this, cx| {
             let result = task.await;
+            #[cfg(test)]
+            test_flight.advance(4);
             let _ = this.update_in(cx, |this, window, cx| {
                 if !this.settle_flight(flight) {
                     return;
                 }
+                #[cfg(test)]
+                test_flight.advance(5);
                 if this.pending_dispatch.as_ref().is_some_and(|pending| {
                     pending.cancelled_staging()
                         && result.as_ref().is_ok_and(|result| {
@@ -869,9 +1012,36 @@ impl MainWindowConversationComposer {
                 }
             }
             MainWindowComposerDispatchOutcome::ObjectPage(page) => {
-                match self.input.update(cx, |input, cx| {
+                #[cfg(test)]
+                let mut observation = DispatchObjectDeliveryObservation {
+                    flight: self.test_dispatch_flight.as_ref().and_then(|flight| {
+                        matches!(flight.key, Some(DispatchFlightRequestKey::ObjectPage(key)) if key == page.key())
+                            .then_some(flight.flight)
+                    }),
+                    deliveries: self.test_object_delivery.as_ref().map_or(1, |last| last.deliveries.saturating_add(1)),
+                    response: DispatchObjectResponseObservation::from_page(&page),
+                    result: "not_delivered",
+                };
+                let delivery = self.input.update(cx, |input, cx| {
                     input.deliver_object_page_in_window(page, window, cx)
-                }) {
+                });
+                #[cfg(test)]
+                {
+                    observation.result = match &delivery {
+                        Ok(()) => "Ok",
+                        Err(RangeTextInputError::ObjectResponseRejected(_)) => {
+                            "ObjectResponseRejected"
+                        }
+                        Err(RangeTextInputError::Pending) => "Pending",
+                        Err(RangeTextInputError::SurfaceCapacity) => "SurfaceCapacity",
+                        Err(RangeTextInputError::Stale) => "Stale",
+                        Err(RangeTextInputError::Busy) => "Busy",
+                        Err(RangeTextInputError::Geometry(_)) => "Geometry",
+                        Err(_) => "OtherError",
+                    };
+                    self.test_object_delivery = Some(Box::new(observation));
+                }
+                match delivery {
                     Ok(())
                     | Err(RangeTextInputError::ObjectResponseRejected(_))
                     | Err(RangeTextInputError::Pending | RangeTextInputError::SurfaceCapacity) => {

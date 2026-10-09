@@ -165,6 +165,7 @@ impl HomeStore {
             Ok(reservation) => reservation,
             Err(error) => return not_committed(error),
         };
+        let fault_context = CommandFaultContext::ordinary(&command);
         self.execute_serialized(
             access,
             || cancellation.is_cancelled(),
@@ -174,7 +175,7 @@ impl HomeStore {
                     generation,
                     health_generation,
                     command,
-                    CommandFaultContext::unscoped(),
+                    fault_context,
                     reservation,
                 )
             },
@@ -429,6 +430,8 @@ impl HomeStore {
                     expected_revision: metadata.revision,
                 })],
                 sidecars: Vec::new(),
+                #[cfg(feature = "test-faults")]
+                test_fault_scope: None,
             })
         })();
         let command = match prepared {

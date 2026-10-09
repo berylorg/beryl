@@ -33,7 +33,7 @@ impl ProcessServiceOwner {
         self.require_settled_custody()
             .map_err(|error| error.to_string())?;
         check_cancellation(cancellation).map_err(|error| error.to_string())?;
-        graph.validate_thread_creations()?;
+        graph.validate_claim_targets()?;
         let services = graph.services.as_mut().expect("complete recovery services");
         assert!(
             services.marker.is_some() && services.activity.is_some() && services.theme.is_some()
@@ -84,11 +84,10 @@ impl ProcessServiceOwner {
             );
         }
         assert!(
-            graph.release_thread_creation_publications().is_ok(),
+            graph.release_claim_publications().is_ok(),
             "qualified New Thread editor transfers with whole graph publication"
         );
-        self.failed_thread_creations
-            .append(&mut graph.failed_thread_creations);
+        self.failed_claims.append(&mut graph.failed_claims);
         let retirement = self.recovery_retirement.take().unwrap();
         self.attempt = InitialServiceAttemptState::Published(Some(retirement.fence));
         drop(prepared.take());
@@ -109,13 +108,8 @@ impl ProcessServiceOwner {
         if graph.home().health().generation() != Some(generation) {
             return Err("Published recovery generation changed".into());
         }
-        for source in &self.failed_thread_creations {
-            source
-                .operation
-                .exclusion
-                .as_ref()
-                .ok_or("original New Thread exclusion is missing")?
-                .validate_owner()?;
+        for source in &self.failed_claims {
+            source.operation.exclusion()?.validate_owner()?;
             if source.committed {
                 source
                     .retirement
@@ -124,7 +118,7 @@ impl ProcessServiceOwner {
                     .validate_complete_retirement()?;
             }
         }
-        if self.failed_thread_creations.is_empty() {
+        if self.failed_claims.is_empty() {
             graph
                 .cas()
                 .try_reopen_shutdown_admission(fence)
@@ -135,16 +129,9 @@ impl ProcessServiceOwner {
                 .try_reopen_shutdown_admission_with(
                     fence,
                     || {
-                        self.failed_thread_creations
+                        self.failed_claims
                             .iter()
-                            .map(|source| {
-                                source
-                                    .operation
-                                    .exclusion
-                                    .as_ref()
-                                    .ok_or("original New Thread exclusion is missing".to_owned())?
-                                    .prepare_coherent_release()
-                            })
+                            .map(|source| source.operation.exclusion()?.prepare_coherent_release())
                             .collect::<Result<Vec<_>, String>>()
                     },
                     |releases| {
@@ -156,7 +143,7 @@ impl ProcessServiceOwner {
                 .map_err(|error| error.to_string())??;
         }
         self.attempt = InitialServiceAttemptState::Published(None);
-        self.failed_thread_creations.clear();
+        self.failed_claims.clear();
         Ok(())
     }
 }

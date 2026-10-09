@@ -530,6 +530,8 @@ pub struct HomeCommand {
     pub(crate) cancellation: CommandCancellation,
     pub(crate) participants: Vec<DomainParticipant>,
     pub(crate) sidecars: Vec<AdmittedSidecar>,
+    #[cfg(feature = "test-faults")]
+    pub(crate) test_fault_scope: Option<crate::fault::FaultScope>,
 }
 
 impl HomeCommand {
@@ -541,7 +543,16 @@ impl HomeCommand {
             cancellation: CommandCancellation::new(),
             participants: Vec::new(),
             sidecars: Vec::new(),
+            #[cfg(feature = "test-faults")]
+            test_fault_scope: None,
         }
+    }
+
+    #[cfg(feature = "test-faults")]
+    #[must_use]
+    pub fn with_test_fault_scope(mut self, scope: crate::fault::FaultScope) -> Self {
+        self.test_fault_scope = Some(scope);
+        self
     }
 
     /// Associates a cooperative pre-admission cancellation signal.

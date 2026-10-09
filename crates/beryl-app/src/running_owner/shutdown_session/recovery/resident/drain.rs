@@ -1,5 +1,13 @@
 use super::*;
 
+#[inline(never)]
+fn return_cancelled_failed_resident(
+    graph: &mut crate::app_services::recovery_graph::PreparedRecoveryServiceGraph,
+    retired: Box<crate::main_window::MainWindowFailedComposerRetirement>,
+) {
+    graph.return_failed_resident_source(*retired);
+}
+
 impl RunningProcessOwner {
     pub(in crate::running_owner) fn failed_resident_preparation(
         &self,
@@ -82,23 +90,26 @@ impl RunningProcessOwner {
                 .timer(std::time::Duration::from_millis(50))
                 .await;
         };
+        let mut graph = Box::new(graph);
+        let source = source
+            .map(Box::new)
+            .map_err(|(retired, error)| (Box::new(retired), error));
         let cleanup_executor = cx.background_executor().clone();
-        let (graph, failure) = cx
+        let (graph, failure) = *cx
             .background_executor()
             .spawn(async move {
-                let mut graph = graph;
                 let retired = match source {
                     Ok(source) => match graph
                         .dispose_cancelled_failed_resident_source(source, cleanup_executor)
                         .await
                     {
                         Ok(retired) => retired,
-                        Err((source, error)) => return (graph, Some((source, error))),
+                        Err((source, error)) => return Box::new((graph, Some((source, error)))),
                     },
                     Err((retired, _)) => retired,
                 };
-                graph.return_failed_resident_source(retired);
-                (graph, None)
+                return_cancelled_failed_resident(&mut graph, retired);
+                Box::new((graph, None))
             })
             .await;
         cx.update(|_| {
@@ -113,8 +124,8 @@ impl RunningProcessOwner {
                     .as_mut()
                     .unwrap();
                 flight.returned = Some(ReturnedPreparation::Failed(Box::new((
-                    graph,
-                    Ok(source),
+                    *graph,
+                    Ok(*source),
                     capture,
                 ))));
                 flight.cleanup_failed = true;
@@ -131,7 +142,7 @@ impl RunningProcessOwner {
                 recovery.settlement.borrow().as_ref(),
                 Some(CandidateSettlement::Pending)
             ));
-            *recovery.settlement.borrow_mut() = Some(CandidateSettlement::Services(Ok(graph)));
+            *recovery.settlement.borrow_mut() = Some(CandidateSettlement::Services(Ok(*graph)));
             recovery.resident.take();
             Ok(())
         })

@@ -90,6 +90,8 @@ impl MainWindowShellRoot {
             self.running_threads
                 .fixture_creation_page_release_acknowledgements =
                 draft.accepted_prepublication_page_release_acknowledgements()?;
+            self.running_threads.fixture_claim_page_release_evidence =
+                draft.test_original_page_release_evidence()?;
         }
         Ok(drained)
     }

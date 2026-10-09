@@ -82,8 +82,21 @@ impl SyndicComposerHost {
             prepared.clone(),
         ))?;
         #[cfg(feature = "test-faults")]
+        let command = command.with_test_fault_scope(
+            syndic_storage::test_faults::draft_candidate_session_disposal_fault_scope(),
+        );
+        #[cfg(feature = "test-faults")]
         if let Some(fault) = self.publication_before_execute_fault.take() {
             fault(store, self.storage.clone());
+        }
+        #[cfg(test)]
+        if let Some(observation) = &self.disposal_execution_observation {
+            let request = prepared.request();
+            observation.record(super::super::ComposerHostDisposalExecutionIdentity {
+                draft_id: request.draft_id(),
+                session_id: request.session_id(),
+                operation_id: request.operation_id(),
+            });
         }
         let outcome = RetainedComposerCommandOutcome::new(store.execute(command));
         self.publication.retained_disposal = Some(Box::new(RetainedComposerDisposal {
@@ -167,6 +180,12 @@ impl SyndicComposerHost {
                 evidence: CommandError::CancelledBeforeAdmission
             }
         );
+        #[cfg(all(test, feature = "test-faults"))]
+        let original_classification = match &command_outcome {
+            CommandOutcome::NotCommitted { .. } => "NotCommitted",
+            CommandOutcome::Committed { .. } => "Committed",
+            CommandOutcome::Indeterminate { .. } => "Indeterminate",
+        };
         let outcome = self
             .storage
             .reconcile_draft_editor_candidate_session_disposal(store, &prepared, command_outcome);
@@ -181,6 +200,25 @@ impl SyndicComposerHost {
                 });
             }
             Err(error) => {
+                #[cfg(all(test, feature = "test-faults"))]
+                {
+                    use syndic_storage::DraftEditorCandidatePublicationCommandErrorV1 as Error;
+                    let classification = match &error {
+                        Error::Read(_) => "Read",
+                        Error::Reconciliation(_) => "Reconciliation",
+                        Error::ReconciliationCollision => "ReconciliationCollision",
+                        Error::UnauthorizedReconciliationSuccessor => {
+                            "UnauthorizedReconciliationSuccessor"
+                        }
+                        Error::NotCommitted => "NotCommitted",
+                        Error::ActiveOperation => "ActiveOperation",
+                        Error::Invariant => "Invariant",
+                    };
+                    eprintln!(
+                        "original disposal reconciliation refused: original={original_classification} error={classification} health={:?}",
+                        store.health().state()
+                    );
+                }
                 self.make_disposal_terminal(
                     ticket,
                     ComposerHostPublicationUnavailable::ReconciliationCollision,

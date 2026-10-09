@@ -119,7 +119,7 @@ impl RunningProcessOwner {
         generation: HomeGeneration,
         app: &mut App,
     ) -> Result<Option<OrdinaryHomeRecoveryKey>, String> {
-        let (home, path, windows, members, thread_creations) = {
+        let (home, path, windows, members, claim_targets) = {
             let retained = owner.borrow();
             if retained.interrupted_exit.is_some() {
                 return Ok(None);
@@ -180,12 +180,13 @@ impl RunningProcessOwner {
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
-            let thread_creations = windows
+            let claim_targets = windows
                 .iter()
                 .filter_map(|window| {
                     let root = window.read(app).ok()?;
-                    root.has_failed_thread_creation_entrance()
-                        .then(|| root.controller().unwrap().window_id())
+                    (root.has_failed_thread_creation_entrance()
+                        || root.has_failed_ordinary_selection_entrance())
+                    .then(|| root.controller().unwrap().window_id())
                 })
                 .collect::<Vec<_>>();
             (
@@ -193,7 +194,7 @@ impl RunningProcessOwner {
                 graph.home().canonical_path().to_owned(),
                 windows,
                 members,
-                thread_creations,
+                claim_targets,
             )
         };
         let identity = Rc::new(());
@@ -249,7 +250,7 @@ impl RunningProcessOwner {
                     RunningShutdownSession::UnchangedRunning(
                         UnchangedRunning::new(home, generation, path, members)
                             .with_first(first)
-                            .with_thread_creations(thread_creations),
+                            .with_claim_targets(claim_targets),
                     ),
                 ))),
                 previous_resume: Rc::new(RefCell::new(None)),
@@ -336,8 +337,44 @@ impl RunningProcessOwner {
             .resident
             .as_ref()
             .map(|_| self.test_resident_preparation_state());
+        let retirement = match recovery.retirement.borrow().as_ref() {
+            None => "none".into(),
+            Some(super::retirement::GraphRetirement::Pending) => "pending worker".into(),
+            Some(super::retirement::GraphRetirement::Returned(result)) => {
+                format!("returned {result:?}")
+            }
+        };
+        let failure = self.automatic_recovery_failure().and_then(|failure| {
+            use super::preparation_retry::RecoveryPreparationFailure;
+            use crate::app_services::recovery_graph::RecoveryServicePreparationError;
+            failure.as_ref().map(|failure| match failure {
+                RecoveryPreparationFailure::Candidate(error) => format!("Candidate({error})"),
+                RecoveryPreparationFailure::Services(error) => match error {
+                    RecoveryServicePreparationError::Refused(error) => {
+                        format!("Services::Refused({error})")
+                    }
+                    RecoveryServicePreparationError::Cas(failure) => {
+                        format!("Services::Cas({})", failure.error())
+                    }
+                    RecoveryServicePreparationError::App(failure) => {
+                        format!("Services::App({})", failure.error())
+                    }
+                },
+                RecoveryPreparationFailure::Resume(outcome) => {
+                    format!("Resume(known_commit={:?})", outcome.known_commit())
+                }
+                RecoveryPreparationFailure::ResumeReconciliation(error) => {
+                    format!("ResumeReconciliation({error})")
+                }
+            })
+        });
         format!(
-            "settlement={stage}; original={}; driver={}; resident={resident:?}; validation={:?}; publication={:?}; retry={}; creation_retirement={:?}",
+            "failure={failure:?}; graph_retirement={retirement}; services_worker={}; graph_present={}; settlement={stage}; original={}; driver={}; resident={resident:?}; validation={:?}; publication={:?}; retry={}; creation_retirement={:?}",
+            self.process.services.is_none(),
+            self.process
+                .services
+                .as_ref()
+                .is_some_and(|services| services.graph().is_some()),
             recovery.session.borrow().is_some(),
             recovery.driver.upgrade().is_some(),
             recovery.service_validation.borrow().as_ref(),
@@ -347,9 +384,10 @@ impl RunningProcessOwner {
                 .as_ref()
                 .map(|result| result.as_ref().map(|_| ())),
             recovery.reopen_deadline.is_some(),
-            recovery.drafts.as_ref().map(|drafts| drafts
-                .borrow()
-                .test_thread_creation_retirement_diagnostics())
+            recovery
+                .drafts
+                .as_ref()
+                .map(|drafts| drafts.borrow().test_claim_retirement_diagnostics())
         )
     }
 
@@ -459,7 +497,10 @@ impl RunningProcessOwner {
                 .test_running_home_recovery_identity()
                 .ok_or("original ordinary recovery identity is unavailable")?,
         );
-        Self::recover_owned_thread_creation(
+        let observation = owner
+            .borrow()
+            .test_ordinary_continuation_observation(&key.0)?;
+        Self::recover_owned_claim_operation(
             owner,
             &key,
             syndic_storage::SyndicTimestamp::from_unix_millis(3),
@@ -468,7 +509,10 @@ impl RunningProcessOwner {
             |_| {},
             cx,
         )
-        .await
+        .await?;
+        owner
+            .borrow()
+            .test_complete_ordinary_continuation(observation)
     }
 
     #[cfg(test)]

@@ -120,7 +120,7 @@ pub(crate) struct RunningProcessOwner {
     #[cfg(test)]
     drop_thread_creation_graph: bool,
     #[cfg(test)]
-    returned_thread_creation_graphs: usize,
+    returned_claim_graphs: usize,
     #[cfg(test)]
     before_thread_creation_reopen: Option<Box<dyn FnOnce(&ProcessServiceOwner)>>,
     #[cfg(test)]
@@ -305,7 +305,7 @@ impl RunningProcessOwner {
             #[cfg(test)]
             drop_thread_creation_graph: false,
             #[cfg(test)]
-            returned_thread_creation_graphs: 0,
+            returned_claim_graphs: 0,
             #[cfg(test)]
             before_thread_creation_reopen: None,
             #[cfg(test)]

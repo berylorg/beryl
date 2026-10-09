@@ -29,22 +29,15 @@ impl RunningProcessOwner {
     }
     pub(crate) fn admit_running_selection(
         &self,
-        invoking: beryl_model::WindowId,
+        invoking: crate::main_window::MainWindowSelectionInvocation,
         app: &App,
     ) -> Result<crate::window_acquisition::WindowSelectionLease, String> {
-        let members = self
-            .process
-            .windows
-            .shells()
-            .iter()
-            .filter(|shell| shell.is_published())
-            .map(|shell| shell.retained_window_id(app))
-            .collect::<Result<Vec<_>, _>>()?;
+        let members = invoking.published_members(self.process.windows.shells(), app)?;
         self.process
             .services
             .as_ref()
             .ok_or("Running threads services unavailable")?
-            .admit_running_selection(&members, invoking)
+            .admit_running_selection(&members, invoking.window_id())
     }
     pub(crate) fn reveal_running_claim(
         owner: &Rc<RefCell<Self>>,

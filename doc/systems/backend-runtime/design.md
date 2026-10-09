@@ -385,6 +385,57 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   persistence identity and lifecycle custody. App-local capture and attachment obey
   [shell lifecycle](../../../crates/beryl-app/doc/design-shell-lifecycle.md#failed-home-new-thread-recovery).
 
+### Interrupted Ordinary Thread Selection During Same-Home Recovery
+
+- An admitted ordinary exact-thread claim replacement has its own move-only interrupted-operation
+  bundle. The process supervisor preserves the surviving window/native reservation, protected
+  predecessor, original source preparation, save and claim outcomes, selection exclusion,
+  unpublished target cleanup and completed cleanup stages after original workers and deliveries
+  drain. This is ordinary selection authority; New Thread's creation-specific permission cannot
+  classify or publish it. The target may have a nonempty durable draft and transcript.
+- Source owners consume old-generation capabilities into bounded reference-free original evidence.
+  Preserve the exact prepared State replacement, joined Catalog audit, original command receipt or
+  reconciliation handle, and receipt-bound predecessor saved checkpoint. Copied ids, reconstructed
+  receipts, dropped providers or fresh observations cannot replace those owners. Failed conversion
+  returns or retains actual custody and blocks replacement. No old Home/service, worker, dispatch
+  or editor adapter accompanies the fresh candidate.
+- Settle original predecessor publication before claim outcome and dependent qualification. Typed
+  never-admitted custody and proven original noncommit permit the same protected predecessor only
+  after exact candidate-generation authentication of its complete window and paired claims. Keep
+  newer edits, history, caret and selection; do not issue a second save or infer claim commitment
+  from successful cleanup. Terminal uncertainty retains unavailable intent and duplicate suppression.
+- Ordinary target preparation can precede claim admission. Never-admitted or proven noncommit
+  therefore may retain an unpublished nonempty target editor. Its original opening/disposal
+  custody must settle through authenticated candidate cleanup before protected-prior conversion
+  and graph reopening. It cannot be dropped because the claim did not commit. New Thread's
+  no-successor noncommit guard remains specific to its later target-preparation ordering.
+- Proven original commitment authenticates the exact replacement window, paired Active claims,
+  runtime/root, remembered target and joined Catalog facts using the retained original witnesses.
+  Old predecessor and unpublished target preparations contribute cleanup custody only. Preserve
+  the original saved checkpoint and remaining canonical disposal/widget-release progress; never
+  repeat a completed stage, roll back the claim or resume the predecessor as selected authority.
+- Already delivered original Page cleanup follows the source-owned bounded cleanup capsule
+  contract. Source transfer must positively drain its old driver and retain matching token/ledger
+  effects through actual widget release or checked prior rebinding. It grants no new reads or
+  dispatch, and no empty collection or synthetic acknowledgement proves cleanup complete.
+- Fresh candidate services prepare the committed target's exact durable draft and bounded ordinary
+  transcript/projection pages through typed candidate reads and their existing source confirmation.
+  An empty-transcript substitute is invalid for a nonempty target. Fresh preparation/publication
+  receipts belong to that candidate generation and do not recreate the original claim receipt or
+  authorize another claim command, session mutation, save, turn or provider-history enumeration.
+- One original bundle and at most one candidate preparation flight per affected window remain
+  under the existing bounded process window set and ordinary attempt identity. Cancellation, stale
+  completion, failed preparation or graph disposal returns actual original/candidate cleanup custody.
+  Complete old-service retirement, original outcome settlement, exact predecessor cleanup and fresh
+  shell/editor/transcript bindings precede the established atomic whole-graph reopening cut.
+  Unchanged-resident checks remain strict for windows without this authenticated operation.
+- Qualify failed save, never-admitted claim, exact old/new reconciliation and collision, nonempty
+  idle targets, each postcommit cleanup stage, Page acknowledgement, cancellation/stale delivery,
+  publication refusal and same-owner continuation. Prove the same native window, no repeated save
+  or claim, exact remembered target and coherent editor/transcript publication. Independently review
+  persistence identity and lifecycle custody through the actual process recovery entry. App-local
+  composition obeys [ordinary selection recovery](../../../crates/beryl-app/doc/design-shell-lifecycle.md#failed-home-ordinary-selection-recovery).
+
 ### Interrupted Exit During Same-Home Recovery
 
 - The process supervisor retains the reported-failed Exit's identity and bounded immutable session

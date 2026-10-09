@@ -111,3 +111,16 @@ Formatting and whitespace checks passed. Known failed homes and the isolated che
 live fixture server shutdown joined, and no task-owned build/test worker remains. Only bounded
 evidence logs and shared Cargo artifacts are retained. Complete transcript and other toolbar
 mounts remain separate rework boundaries.
+## Admission From The Updating Native Root
+
+Actual process-owned ordinary selection in run `deff79d6-fbec-4dc7-a665-f382daf82a01`
+reentered the invoking `MainWindowShellRoot`: the attachment callback already owned its GPUI
+update borrow, while process membership enumeration read that same root again. All ten native
+fixtures aborted before their recovery scenarios. Virtual fixture leases did not exercise this
+production admission path. The downstream native callback panic is not stack-exhaustion evidence.
+
+Carry the current root's entity identity and authenticated controller window identity into exact
+published-process membership validation. Require exactly one matching published root; use that
+current identity only for that root and validate every other shell normally. Preserve Home,
+native reservation and selection-lease guards; do not introduce a cached membership registry or
+substitute a fixture lease. The bounded correction and actual native qualification remain open.

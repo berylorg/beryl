@@ -6,6 +6,9 @@ use gpui_text_input::{
     RangePrepublicationSession, RangePrepublicationStatus, RangeResidentReservation,
     RangeSurfaceCharge,
 };
+mod adopted_return;
+pub use adopted_return::MainWindowFailedResidentAdoption;
+pub(crate) use adopted_return::MainWindowFailedResidentAdoptionReturn;
 
 type Worker<C> = MainWindowComposerCandidateWorker<
     C,
@@ -28,27 +31,6 @@ pub struct MainWindowFailedResidentPreparation<C = HomeRecoveryCandidate> {
     candidate: Option<RangePrepublicationCandidate>,
     effects: VecDeque<RangePrepublicationEffect>,
     text_system: Option<Weak<gpui::WindowTextSystem>>,
-}
-
-pub struct MainWindowFailedResidentAdoption {
-    ticket: MainWindowFailedResidentTicket,
-    protection: RangeResidentProtection,
-    retained: MainWindowFailedComposerRetirement,
-}
-
-impl MainWindowFailedResidentAdoption {
-    pub fn selection(&self) -> MainWindowComposerSelectionIdentity {
-        self.ticket.selection
-    }
-    pub fn protection(&self) -> RangeResidentProtection {
-        self.protection
-    }
-    pub fn original_known_commit(&self) -> Option<bool> {
-        self.retained.original_known_commit()
-    }
-    pub fn recovery_known_commit(&self) -> Option<bool> {
-        self.retained.recovery_known_commit()
-    }
 }
 
 impl MainWindowFailedResidentPreparation {
@@ -400,7 +382,8 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
             .expect("checked failed resident adoption retains exact source custody");
         let selection = source.selection();
         let (service, retained) = source.into_resources();
-        let old = self.capture.take().unwrap().ticket;
+        let capture = Box::new(self.capture.take().unwrap());
+        let old = capture.ticket;
         let ticket = MainWindowFailedResidentTicket { selection, ..old };
         resident.selection = selection;
         resident.service = Some(service.clone());
@@ -426,6 +409,7 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
                 ticket,
                 protection,
                 retained,
+                capture,
             },
         ))
     }

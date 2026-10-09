@@ -68,11 +68,11 @@ fn healthy_completed_successor_settles_exact_receipt_before_one_new_editor_attem
     source.saved = Some(saved);
     source.receipt = Some(receipt);
     source.committed_target = Some(committed.selection);
+    source.planned_target = committed.selection;
     source.completed_progress = Some(progress);
     let mut retirement = service
-        .retire_failed_thread_creation(source, &markers)
-        .ok()
-        .unwrap();
+        .retire_failed_claim_cleanup(source, &markers)
+        .unwrap_or_else(|(_, _, error)| panic!("original completed cleanup retirement: {error}"));
     drop(markers);
     drop(seals);
     let (_directory, store, _) = fixture.into_store();
@@ -163,11 +163,11 @@ fn failed_generation_preserves_unsettled_completed_successor_cap_for_candidate_v
     let mut source = source(prior);
     source.saved = Some(saved);
     source.committed_target = Some(committed.selection);
+    source.planned_target = committed.selection;
     source.completed_successor = Some(completed);
     let mut retirement = service
-        .retire_failed_thread_creation(source, &markers)
-        .ok()
-        .unwrap();
+        .retire_failed_claim_cleanup(source, &markers)
+        .unwrap_or_else(|(_, _, error)| panic!("original completed cleanup retirement: {error}"));
     drop(markers);
     drop(seals);
     let (_directory, store, _) = fixture.into_store();

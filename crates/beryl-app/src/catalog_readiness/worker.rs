@@ -24,7 +24,10 @@ pub(super) fn run(
     signal: Arc<SourceSignal>,
     cancellation: CommandCancellation,
 ) -> Result<(), CatalogSourceCoordinatorError> {
-    let result = maintain(&home, &syndic, &state, &signal, &cancellation);
+    let result = settle_worker_cancellation(
+        maintain(&home, &syndic, &state, &signal, &cancellation),
+        &cancellation,
+    );
     let published = {
         let mut state = signal.state.lock().unwrap_or_else(|e| e.into_inner());
         state.stopped = true;
@@ -34,6 +37,18 @@ pub(super) fn run(
         let _ = home.release_frozen_read(&published);
     }
     result
+}
+
+pub(super) fn settle_worker_cancellation(
+    result: Result<(), CatalogSourceCoordinatorError>,
+    cancellation: &CommandCancellation,
+) -> Result<(), CatalogSourceCoordinatorError> {
+    match result {
+        Err(CatalogSourceCoordinatorError::Source(CatalogSourceReadError::Read(
+            ReadError::FrozenRead(beryl_home_store::FrozenReadAccessError::Cancelled),
+        ))) if cancellation.is_cancelled() => Ok(()),
+        other => other,
+    }
 }
 
 fn maintain(

@@ -133,6 +133,48 @@ Complete graph bindings and every original outcome/cleanup settle before the ord
 reopening boundary. Qualification includes actual recovery from save/claim and postcommit cleanup
 failures alongside terminal refusal, preserving native identity and exact remembered target.
 
+## Failed-Home Ordinary Selection Recovery
+
+The process owner captures an interrupted ordinary claim activation under
+[ordinary selection recovery](../../../doc/systems/backend-runtime/design.md#interrupted-ordinary-thread-selection-during-same-home-recovery).
+It fences admission and drains the original workers/deliveries before consuming the exact window,
+predecessor mount/resident, original source/save/claim custody, process selection exclusion,
+optional unpublished target and completed cleanup progress. Capture failure preserves those
+owners. This branch uses ordinary selection's own receipt-bound saved checkpoint and original
+State/Catalog witnesses; creation-specific save proofs or captured ids cannot substitute.
+
+Original predecessor publication settles before original claim classification. Never-admitted or
+proven original noncommit follows exact protected-resident recovery after candidate State
+authentication and settlement of any original unpublished target opening/disposal. Ordinary target
+preparation precedes claim admission, so noncommit cannot discard that nonempty cleanup custody;
+creation's no-successor noncommit guard remains distinct. Known commitment authenticates the same
+window and paired replacement claims,
+runtime/root, remembered target, Catalog witnesses and exact Syndic target draft/history facts.
+The old predecessor and any partial successor are cleanup custody, and completed canonical disposal
+or widget release is never repeated. The common source-owned Page capsule retains actual original
+cleanup effects and must positively drain before old service-reference retirement.
+
+Fresh candidate-generation preparation uses the target's bounded ordinary draft and transcript
+source, including nonempty history, through typed candidate access. All source confirmation,
+construction, realization and adapter binding precede coherent editor/transcript adoption in the
+same surviving native reservation. Candidate receipts grant only fresh preparation/publication.
+No startup admission, native window creation, second predecessor save, replacement claim command,
+turn launch or CAS enumeration is introduced by this recovery branch.
+
+The existing process owner retains one original bundle and one preparation flight per affected
+window, keyed by ordinary attempt identity and fresh generation. Refusal, cancellation, stale
+completion and incomplete cleanup preserve custody and fencing. Original outcomes, exact cleanup,
+fresh bindings and renewed close tickets must settle before whole-graph interaction reopening.
+Terminal uncertainty remains Unavailable. Unchanged-resident admission remains strict for other
+windows; this supported committed target change grants no general source/history relaxation.
+
+Qualify actual ordinary activation through failed save, exact-old/exact-new/collision claim
+settlement, nonempty target preparation and each postcommit cleanup stage, plus Page effects,
+cancellation/stale delivery, graph disposal, publication-election refusal and same-owner continuation.
+Prove native identity/placement, preserved prior state for noncommit and exact coherent target state
+for commitment, without another save or claim. Independent review covers original persistence,
+worker/native cleanup and complete graph publication.
+
 ## Running-Thread Selection Contribution
 
 The published graph exposes a narrow weak process-work reader with revision-bound searchable pages,
@@ -713,6 +755,10 @@ by the executable composition root.
   successor is an explicitly supported selected-target change; the ordinary unchanged-resident
   route still rejects changed claims and source/history. Original operation settlement determines
   which typed route is admissible before resident or target qualification.
+- An interrupted ordinary claim activation uses its own
+  [ordinary selection capture](#failed-home-ordinary-selection-recovery). Its original exact
+  committed replacement is separately supported; creation-specific custody cannot authorize it.
+  Windows without an authenticated original operation retain unchanged selected-source admission.
 - Every surviving shell requires fresh candidate-generation appearance, notice, subscription and
   native-release ownership. Registration uses the existing preserved-shell validation and one GUI
   commit; all fallible preparation precedes adoption. Complete binding validation matches each
@@ -770,6 +816,14 @@ by the executable composition root.
   pending destruction can later consume it. Handle absence or an error string is not proof.
   Proven destruction releases retained custody once; uncertainty keeps custody and dependent
   actions fenced. Failure never starts another native destruction operation automatically.
+- After this exact nonfinal attempt proves destruction, any delivered prepublication Page cleanup
+  transferred during Healthy service retirement remains in the original close draft. Apply the
+  [detached composer cleanup contract](design-catalog-and-composer.md#detached-read-only-composer)
+  under this request's settled native attempt, original close/editor/source and Healthy service
+  correspondence. Release the actual retained editor Entities only after that destruction proof,
+  and positively drain the original bounded cleanup group before releasing its environment or
+  completing ordinary close. Pending acknowledgement or failed retirement retains that draft
+  and closing-shell custody. Survival and unresolved destruction grant no such release.
 - Consume GPUI's owned recoverable native-destruction attempt, which retains the exact window
   slot/root/wrapper until settlement. Its settled surviving-failure result supplies native survival
   proof; the irreversible `remove_window` path and its observation receipt cannot supply that proof.

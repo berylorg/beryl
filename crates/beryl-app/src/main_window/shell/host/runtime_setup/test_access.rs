@@ -1,6 +1,96 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(crate) fn test_observe_selected_disposal_execution(
+        &self,
+        expected: crate::main_window::MainWindowComposerSelectionIdentity,
+        observation: crate::composer_host::ComposerHostDisposalExecutionObservation,
+        app: &App,
+    ) -> Result<(), String> {
+        let controller = self
+            .controller
+            .as_ref()
+            .ok_or("original controller is missing")?;
+        if controller.window_id() != expected.window_id() {
+            return Err("original disposal observation window differs".into());
+        }
+        let mount = controller
+            .composer_mount
+            .as_ref()
+            .ok_or("original mount is missing")?
+            .read(app);
+        let resident = mount.contribution().ok_or("original editor is missing")?;
+        if resident.read(app).selection_identity() != expected {
+            return Err("original disposal observation selection differs".into());
+        }
+        mount
+            .claim_publication_service()?
+            .test_observe_selected_disposal_execution(expected, observation)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn test_after_selected_publication_execute(
+        &self,
+        expected: crate::main_window::MainWindowComposerSelectionIdentity,
+        hook: Box<
+            dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send,
+        >,
+        app: &App,
+    ) -> Result<(), String> {
+        let controller = self
+            .controller
+            .as_ref()
+            .ok_or("original controller is missing")?;
+        if controller.window_id() != expected.window_id() {
+            return Err("original publication outcome window differs".into());
+        }
+        let mount = controller
+            .composer_mount
+            .as_ref()
+            .ok_or("original mount is missing")?
+            .read(app);
+        let resident = mount.contribution().ok_or("original editor is missing")?;
+        if resident.read(app).selection_identity() != expected {
+            return Err("original publication outcome selection differs".into());
+        }
+        mount
+            .claim_publication_service()?
+            .test_after_selected_publication_execute(expected, hook)
+    }
+    pub(crate) fn test_observe_selected_publication_execution(
+        &self,
+        expected: crate::main_window::MainWindowComposerSelectionIdentity,
+        observation: crate::composer_host::ComposerHostPublicationExecutionObservation,
+        app: &App,
+    ) -> Result<(), String> {
+        let controller = self
+            .controller
+            .as_ref()
+            .ok_or("original controller is missing")?;
+        if controller.window_id() != expected.window_id() {
+            return Err("original publication observation window differs".into());
+        }
+        let mount = controller
+            .composer_mount
+            .as_ref()
+            .ok_or("original mount is missing")?;
+        let mount = mount.read(app);
+        let resident = mount.contribution().ok_or("original editor is missing")?;
+        if resident.read(app).selection_identity() != expected {
+            return Err("original publication observation selection differs".into());
+        }
+        mount
+            .claim_publication_service()?
+            .test_observe_selected_publication_execution(expected, observation)
+    }
+
+    pub(crate) fn test_running_transcript_snapshot(
+        &self,
+        app: &App,
+    ) -> Arc<crate::syndic_transcript::ResidentTranscriptSnapshot> {
+        self.running_threads.transcript.read(app).snapshot()
+    }
+
     pub(crate) fn test_primary_thread_command(
         &mut self,
         window: &mut Window,

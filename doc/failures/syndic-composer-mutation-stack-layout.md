@@ -1,5 +1,65 @@
 # Syndic Composer Mutation Stack Layout
 
+## Ordinary Selection Native Worker Recurrence
+
+On 2026-10-09, the actual ordinary-selection failed-Home fixture reached the native worker and
+overflowed its default approximately 1 MiB stack. First-chance CDB evidence identifies bounded
+production frames, rather than fixture setup or recursion: activation source dispatch allocated
+273,320 bytes and temporary composer preparation allocated 178,592 bytes above target session
+authentication. A larger Rust test-thread stack does not enlarge this GPUI WinRT worker stack.
+
+The private correction separates initial target preparation from unrelated activation stages and
+keeps the temporary host boxed through deep activation. The next trace passed that boundary and
+exposed predecessor publication preparation beneath a 194,056-byte remaining-stage dispatcher,
+with additional 65,504-byte publication preparation and 87,952-byte capture frames. Separate the
+original predecessor-save stage from that dispatcher while preserving exact receipts, read order,
+typed failures, cancellation and owned cleanup. Do not substitute a larger production stack or a
+new lifecycle worker for measured frame reduction.
+
+Evidence is under `.tmp/ordinary-selection-recovery-evidence` in
+`ordinary-stack-after-split-cdb.log` and `ordinary-save-frame-cdb.log`. Independent source review
+clears the private ownership changes and save extraction. Default native execution and remaining
+ordinary recovery evidence are still under qualification; debugger quit is not a test pass.
+
+The noncommit resident-refusal cut in run `44212f63-404f-44c3-9105-a482a8fbf9b0` exposed
+another native overflow during cancelled candidate drainage. First-chance evidence in
+`ordinary-prior-refusal-stack-cdb.log` and unwind records in
+`ordinary-prior-refusal-frame-cdb.log` identify a 100,848-byte process drain closure returning
+the prepared graph by value, a 58,080-byte graph disposal closure, a 27,200-byte candidate service
+closure, a 59,352-byte slot settlement frame and a 132,640-byte folded host settlement frame
+above existing exact Syndic publication/checkpoint decoding. Public-symbol folding alone does
+not identify the host method; its actual entry is recorded separately.
+
+Keep the actual graph and candidate source boxed through cancellation and returned ownership;
+avoid unrelated by-value result copies above deep settlement. Preserve outcome/cleanup custody,
+worker joining and retry exclusion. Enlarging the production worker stack or replacing bounded
+codec semantics is not justified by this App composition evidence.
+
+The boxed correction advances native run `a82890aa-3162-43ad-8b6f-1500f9a552d8` through
+that drainage without the former stack overflow. The run then rejects the fixture's continuation
+because selected recovery inputs are already retained. This is partial stack evidence, not
+acceptance of the refusal/continuation cut; its authentic continuation protocol remains open.
+
+Completed original disposal in combined run `c64170b8-8082-4f5d-b401-a46d423345f8` exposed
+a separate native overflow after the genuine committed claim. First-chance evidence in
+`ordinary-completed-disposal-stack-cdb.log` and unwind evidence in
+`ordinary-completed-disposal-frame-cdb.log` identify the remaining activation-stage dispatcher
+at RVA `020098b0`, allocating 169,088 bytes above original disposal and exact Syndic validation.
+Its nearby folded public symbol names `is_thread_creation` and is not the executing method.
+Dispatch original disposal directly through a responsibility-specific method, retaining the
+same prechecks, hook, operation, receipt and stage transition. Corrected native run
+`d9a31af4-69fc-4bc1-8599-18fe0665b07c` passes completed original disposal with exact operation,
+disposed head and no repeated claim. The positive original Page case retains its separate gate.
+
+Actual checked PNG paste before original claim in run `d0a9feb2-f357-4d90-8662-9e361c01f2f4`
+exposes another default-native overflow above Syndic staging/session decoding. Evidence in
+`ordinary-marker-origin-stack-cdb.log` and `ordinary-marker-origin-frame-cdb.log` measures the
+selected dispatcher at 59,864 bytes and its owner dispatch future at 18,240 bytes. Folded public
+labels do not identify these executing methods. Separate selected preflight and postbinding
+adoption from deep dispatch, and retain one bounded boxed work item through the existing worker.
+Preserve exact request consumption, busy checks, dispatch state and successor-proof timing.
+Native marker qualification remains open; do not enlarge the native stack or change the codec.
+
 ## Scope
 
 Range-backed composer settlement and candidate-session authentication through `syndic-storage`,

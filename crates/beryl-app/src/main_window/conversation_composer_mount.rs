@@ -27,10 +27,10 @@ use super::{
 
 pub(super) mod autosave;
 mod close;
+mod failed_claim_capture;
 mod failed_resident;
-mod failed_thread_creation;
+pub(crate) use failed_claim_capture::MainWindowFailedClaimMountCapture;
 pub use failed_resident::MainWindowFailedResidentMountResources;
-pub(crate) use failed_thread_creation::MainWindowFailedThreadCreationMountCapture;
 mod native_disposal;
 mod native_lineage;
 mod pending_presentation;

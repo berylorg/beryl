@@ -96,6 +96,82 @@ impl MainWindowFailedResidentMountResources {
 }
 
 impl MainWindowConversationComposerMount {
+    fn failed_resident_cleanup_service<'a>(
+        &self,
+        capture: &MainWindowFailedResidentCapture,
+        resources: &'a MainWindowFailedResidentMountResources,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+        cx: &gpui::App,
+    ) -> Result<&'a Arc<MainWindowConversationComposerService>, String> {
+        self.validate_failed_mount(capture.ticket())?;
+        if !self.failed_resident_detached || !self.failed_mount_drained() {
+            return Err("failed resident cleanup mount custody is not drained".into());
+        }
+        self.validate_failed_native_resources()?;
+        self.contribution
+            .as_ref()
+            .unwrap()
+            .read(cx)
+            .validate_failed_capture(capture, cx)?;
+        match (&resources.service, &resources.resident.service) {
+            (None, None) => return Err("failed resident cleanup service custody is missing".into()),
+            (Some(mount), Some(resident)) if !Arc::ptr_eq(mount, resident) => {
+                return Err("failed resident cleanup service identities differ".into());
+            }
+            _ => {}
+        }
+        let service = resources
+            .service
+            .as_ref()
+            .or(resources.resident.service.as_ref())
+            .unwrap();
+        if !service.failed_resident_marker_custody_matches(custody) {
+            return Err("failed resident cleanup original marker authority changed".into());
+        }
+        Ok(service)
+    }
+
+    pub(in crate::main_window) fn take_failed_resident_prepublication_cleanup(
+        &self,
+        capture: &MainWindowFailedResidentCapture,
+        resources: &MainWindowFailedResidentMountResources,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+        cx: &gpui::App,
+    ) -> Result<Option<Vec<crate::main_window::MainWindowRetiredPrepublicationCleanup>>, String>
+    {
+        self.failed_resident_cleanup_service(capture, resources, custody, cx)?
+            .take_failed_resident_prepublication_cleanup(capture.native_selection())
+    }
+
+    pub(in crate::main_window) fn stop_failed_resident_prepublication_cleanup(
+        &self,
+        capture: &MainWindowFailedResidentCapture,
+        resources: &MainWindowFailedResidentMountResources,
+        custody: &crate::composer_marker_seal::DraftMarkerSealRetainedFlights,
+        capsules: &[crate::main_window::MainWindowRetiredPrepublicationCleanup],
+        cx: &gpui::App,
+    ) -> Result<bool, String> {
+        self.failed_resident_cleanup_service(capture, resources, custody, cx)?
+            .stop_failed_resident_prepublication_cleanup(capture.native_selection(), capsules)
+    }
+
+    pub(in crate::main_window) fn detach_adopted_resident_return(
+        &mut self,
+        close: crate::main_window::MainWindowConversationComposerCloseTicket,
+        home: beryl_model::BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        if self.failed_recovery_close != Some(close) || !self.failed_resident_detached {
+            return Err("adopted return original close custody changed".into());
+        }
+        let detached = self.detach_unpublished_recovery(close, home, generation, cx)?;
+        if detached {
+            self.failed_recovery_close = None;
+        }
+        Ok(detached)
+    }
+
     pub(crate) fn adopt_failed_recovery<C: Send + 'static>(
         &mut self,
         close: crate::main_window::MainWindowConversationComposerCloseTicket,

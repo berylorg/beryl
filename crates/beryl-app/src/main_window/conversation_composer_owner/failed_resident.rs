@@ -18,6 +18,8 @@ pub struct MainWindowFailedResidentCapture {
     ticket: MainWindowFailedResidentTicket,
     selection: MainWindowComposerSelectionIdentity,
     protection: RangeResidentProtection,
+    restoration: RangeRestorationSeed,
+    current_ticket: Option<MainWindowFailedResidentTicket>,
 }
 
 impl MainWindowFailedResidentCapture {
@@ -31,7 +33,11 @@ impl MainWindowFailedResidentCapture {
         self.protection
     }
     pub fn restoration(&self) -> RangeRestorationSeed {
-        self.protection.seed()
+        self.restoration
+    }
+
+    pub(in crate::main_window) fn native_selection(&self) -> MainWindowComposerSelectionIdentity {
+        self.current_ticket.unwrap_or(self.ticket).selection
     }
 }
 
@@ -112,6 +118,8 @@ impl MainWindowConversationComposer {
             ticket,
             selection: self.selection,
             protection,
+            restoration: protection.seed(),
+            current_ticket: None,
         }))
     }
 
@@ -136,8 +144,9 @@ impl MainWindowConversationComposer {
         capture: &MainWindowFailedResidentCapture,
         cx: &App,
     ) -> Result<(), String> {
-        self.validate_failed_ticket(capture.ticket, cx)?;
-        if self.selection != capture.selection
+        let current = capture.current_ticket.unwrap_or(capture.ticket);
+        self.validate_failed_ticket(current, cx)?;
+        if self.selection != current.selection
             || !self.failed_resident.as_ref().unwrap().capture_taken
             || !self
                 .input
@@ -166,6 +175,10 @@ impl MainWindowConversationComposer {
     }
 
     pub(super) fn failed_editor_drained(&self, cx: &App) -> bool {
+        self.failed_editor_work_drained() && self.input.read(cx).is_quiescent()
+    }
+
+    pub(super) fn failed_editor_work_drained(&self) -> bool {
         self.active_flight.is_none()
             && self.pending_dispatch.is_none()
             && self.pending_realizer.is_none()
@@ -177,7 +190,34 @@ impl MainWindowConversationComposer {
             && self.pending_marker_removal.is_none()
             && self.image_surface_attachment.is_none()
             && self.startup_release_completion.is_none()
-            && self.input.read(cx).is_quiescent()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_failed_editor_drain_diagnostics(&self, cx: &App) -> String {
+        format!(
+            "drained={},pending_target={},active_flight={},flight_id={:?},dispatch_flight={:?},last_object_delivery={:?},pending_dispatch={},pending_realizer={},activation_seeds={},clipboard={},cut={},marker_metadata={},mutation_evidence={},marker_removal={},image_surface={},startup_release={},input_quiescent={},pending_surface_ready={},last_error={:?}",
+            self.failed_editor_drained(cx),
+            self.is_pending_target(),
+            self.active_flight.is_some(),
+            self.active_flight,
+            self.test_dispatch_flight
+                .as_ref()
+                .map(|flight| flight.diagnostics()),
+            self.test_object_delivery,
+            self.pending_dispatch.is_some(),
+            self.pending_realizer.is_some(),
+            self.activation_seeds.len(),
+            self.propagated_clipboard.is_some(),
+            self.propagated_cut.is_some(),
+            self.pending_marker_metadata.is_some(),
+            self.mutation_evidence.is_some(),
+            self.pending_marker_removal.is_some(),
+            self.image_surface_attachment.is_some(),
+            self.startup_release_completion.is_some(),
+            self.input.read(cx).is_quiescent(),
+            self.pending_surface_ready(cx),
+            self.last_error,
+        )
     }
 }
 

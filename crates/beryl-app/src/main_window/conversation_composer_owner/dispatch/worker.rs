@@ -15,93 +15,109 @@ use crate::{
 pub(super) struct DispatchWork {
     pub(super) selection: MainWindowComposerSelectionIdentity,
     pub(super) route: MainWindowConversationComposerRoute,
-    pub(super) request: RangeTextInputRequest,
+    pub(super) request: Option<RangeTextInputRequest>,
     pub(super) marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
     pub(super) cancellation: CommandCancellation,
     pub(super) proof_limits: MainWindowComposerSuccessorProofLimits,
     pub(super) settlement: Option<MainWindowConversationComposerFailureSettlement>,
     pub(super) mutation_key: Option<gpui_text_input::MutationKey>,
+    #[cfg(test)]
+    pub(super) test_flight: std::sync::Arc<super::DispatchFlightObservation>,
 }
 
 impl DispatchWork {
+    #[inline(never)]
     pub(super) fn run(
-        self,
+        mut self: Box<Self>,
         service: &MainWindowConversationComposerService,
     ) -> MainWindowConversationComposerTaskResult {
-        let Self {
-            selection,
-            route,
-            request,
-            marker_metadata,
-            cancellation,
-            proof_limits,
-            settlement,
-            mutation_key,
-        } = self;
+        #[cfg(test)]
+        let _test_work_return = {
+            self.test_flight.advance(1);
+            super::DispatchFlightWorkerObservation(self.test_flight.clone())
+        };
         let mut slot = service.slot.lock().map_err(|_| {
             MainWindowConversationComposerTaskError::exact(
                 "conversation composer service lock failed".to_owned(),
-                settlement,
+                self.settlement,
             )
         })?;
-        let admitted = match route {
+        #[cfg(test)]
+        self.test_flight.advance(2);
+        let admitted = match self.route {
             MainWindowConversationComposerRoute::Selected => {
-                slot.selected_identity() == Some(selection)
+                slot.selected_identity() == Some(self.selection)
             }
             MainWindowConversationComposerRoute::Pending(receipt) => {
-                slot.pending_request_is_admitted(receipt, selection)
+                slot.pending_request_is_admitted(receipt, self.selection)
             }
         };
         if !admitted {
             return Err(
-                MainWindowConversationComposerTaskError::CustodyNotDispatched { settlement },
+                MainWindowConversationComposerTaskError::CustodyNotDispatched {
+                    settlement: self.settlement,
+                },
             );
         }
         #[cfg(feature = "test-faults")]
-        if matches!(request, RangeTextInputRequest::MutationCommit(_))
-            && let Some(error) = service.take_test_mutation_dispatch_error()
+        if matches!(
+            self.request.as_ref(),
+            Some(RangeTextInputRequest::MutationCommit(_))
+        ) && let Some(error) = service.take_test_mutation_dispatch_error()
         {
             return Err(MainWindowConversationComposerTaskError::Dispatch {
                 error: Box::new(crate::main_window::MainWindowComposerDispatchError::Host(
                     error,
                 )),
-                selection,
-                mutation_key,
-                settlement,
+                selection: self.selection,
+                mutation_key: self.mutation_key,
+                settlement: self.settlement,
             });
         }
-        let outcome = match route {
+        let request = self
+            .request
+            .take()
+            .expect("composer dispatch owns its request");
+        let outcome = match self.route {
             MainWindowConversationComposerRoute::Selected => slot.dispatch_selected_request(
                 &service.store,
-                selection,
+                self.selection,
                 request,
-                marker_metadata,
-                &cancellation,
+                std::mem::take(&mut self.marker_metadata),
+                &self.cancellation,
             ),
             MainWindowConversationComposerRoute::Pending(receipt) => slot.dispatch_pending_request(
                 &service.store,
                 receipt,
-                selection,
+                self.selection,
                 request,
-                &cancellation,
+                &self.cancellation,
             ),
         }
         .map_err(|error| MainWindowConversationComposerTaskError::Dispatch {
             error: Box::new(error),
-            selection,
-            mutation_key,
-            settlement,
+            selection: self.selection,
+            mutation_key: self.mutation_key,
+            settlement: self.settlement,
         })?;
-        let mut completed = dispatch_completion(selection, outcome);
-        populate_successor_proof(service, &mut slot, &mut completed, proof_limits, settlement)?;
-        completed.settled_selection = match route {
+        let mut completed = dispatch_completion(self.selection, outcome);
+        #[cfg(test)]
+        self.test_flight.observe_response(&completed.outcome);
+        populate_successor_proof(
+            service,
+            &mut slot,
+            &mut completed,
+            self.proof_limits,
+            self.settlement,
+        )?;
+        completed.settled_selection = match self.route {
             MainWindowConversationComposerRoute::Selected => slot.selected_identity(),
             MainWindowConversationComposerRoute::Pending(receipt) => slot.pending_identity(receipt),
         }
         .ok_or_else(|| {
             MainWindowConversationComposerTaskError::exact(
                 "composer selection disappeared after dispatch".to_owned(),
-                settlement,
+                self.settlement,
             )
         })?;
         Ok(completed)
@@ -124,6 +140,7 @@ fn dispatch_completion(
     })
 }
 
+#[inline(never)]
 fn populate_successor_proof(
     service: &MainWindowConversationComposerService,
     slot: &mut MainWindowComposerSlot,

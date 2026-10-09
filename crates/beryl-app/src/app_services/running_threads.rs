@@ -1,11 +1,15 @@
 use super::*;
 
+mod claim_recovery;
+mod ordinary_selection_recovery;
 mod thread_creation_recovery;
 use crate::cas_projection::{
     ProcessWorkError, ProcessWorkPageLimits, ProcessWorkQueryPage, ProcessWorkQueryRevision,
     ProcessWorkReader, ProjectionCancellationToken,
 };
 use crate::lifecycle_attention::{LifecycleAttentionToken, ProcessLifecycleAttentionPool};
+pub(crate) use claim_recovery::*;
+pub(crate) use ordinary_selection_recovery::*;
 use std::sync::Weak;
 pub(crate) use thread_creation_recovery::*;
 
@@ -381,7 +385,7 @@ pub(crate) struct PublishedSameWindowThreadOperation {
     saved: Option<crate::main_window::MainWindowThreadPredecessorSave>,
     prepared: Option<crate::same_window_thread_acquisition::SameWindowThreadAcquisition>,
     outcome: Option<crate::same_window_thread_acquisition::SameWindowThreadOutcome>,
-    adopted_save: Option<crate::main_window::MainWindowRetiredThreadPredecessorSave>,
+    adopted_save: Option<crate::main_window::MainWindowRetiredClaimPredecessorSave>,
 }
 
 impl PublishedSameWindowThreadOperation {

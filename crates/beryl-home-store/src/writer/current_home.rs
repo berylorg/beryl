@@ -111,6 +111,8 @@ impl HomeStore {
                 cancellation: command.cancellation,
                 participants,
                 sidecars: Vec::new(),
+                #[cfg(feature = "test-faults")]
+                test_fault_scope: None,
             })
         })();
         match prepared {

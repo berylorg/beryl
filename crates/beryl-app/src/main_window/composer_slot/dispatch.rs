@@ -13,6 +13,7 @@ use super::{MainWindowComposerSelectionIdentity, MainWindowComposerSlot};
 
 mod evidence;
 mod proof;
+mod selected_request;
 mod terminal;
 pub(in crate::main_window) mod translate;
 
@@ -111,6 +112,26 @@ pub(super) struct MainWindowComposerDispatcher {
 }
 
 impl MainWindowComposerDispatcher {
+    pub(super) fn take_failed_claim_publication_capture(
+        &mut self,
+        selected: crate::composer_host::ComposerHostBinding,
+        adopted: crate::composer_host::ComposerHostBinding,
+    ) -> Result<Option<crate::composer_host::ComposerHostBinding>, String> {
+        if self.binding != selected
+            || adopted != selected
+            || self.in_dispatch
+            || self.mutation_begin.is_some()
+            || self.mutation_finish.is_some()
+            || self.early_terminal.is_some()
+            || self
+                .publication_capture
+                .is_some_and(|capture| capture != adopted)
+        {
+            return Err("failed claim publication capture or dispatcher changed".into());
+        }
+        Ok(self.publication_capture.take())
+    }
+
     pub(super) fn is_drained(&self) -> bool {
         !self.in_dispatch
             && self.mutation_begin.is_none()
@@ -233,37 +254,8 @@ impl MainWindowComposerSlot {
         marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
         cancellation: &CommandCancellation,
     ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|pending| !matches!(pending.stage, super::PendingStage::Ready))
-            && matches!(
-                request,
-                RangeTextInputRequest::MutationBegin(_) | RangeTextInputRequest::HistoryIntent(_)
-            )
-        {
-            return Err(MainWindowComposerDispatchError::PendingInteractionRejected);
-        }
-        let authenticated = self
-            .marker_authority
-            .authenticate(store, selection, &request, marker_metadata)
-            .map_err(MainWindowComposerDispatchError::MarkerMetadata)?;
-        let marker_metadata = authenticated
-            .into_metadata(selection, &request)
-            .map_err(MainWindowComposerDispatchError::MarkerMetadata)?;
-        let selected = self
-            .selected
-            .as_mut()
-            .filter(|selected| selected.identity == selection)
-            .ok_or(MainWindowComposerDispatchError::StaleSelection)?;
-        if selected.dispatcher.binding != selection.binding()
-            || selected.host.binding() != Some(selection.binding())
-        {
-            return Err(MainWindowComposerDispatchError::StaleSelection);
-        }
-        if selected.dispatcher.in_dispatch {
-            return Err(MainWindowComposerDispatchError::Busy);
-        }
+        let (selected, marker_metadata) =
+            selected_request::authenticate(self, store, &selection, &request, marker_metadata)?;
         selected.dispatcher.in_dispatch = true;
         let result = dispatch(
             &mut selected.host,
@@ -275,17 +267,7 @@ impl MainWindowComposerSlot {
         );
         selected.dispatcher.in_dispatch = false;
         if result.is_ok() {
-            if let Some(binding) = selected.host.binding()
-                && binding != selected.identity.binding
-            {
-                let predecessor = selected.identity.binding;
-                selected
-                    .draft_state
-                    .adopt(predecessor, binding)
-                    .map_err(|_| MainWindowComposerDispatchError::StaleSelection)?;
-                selected.identity.binding = binding;
-                selected.dispatcher.replace_binding(binding);
-            }
+            selected_request::adopt_binding(selected)?;
         }
         result
     }

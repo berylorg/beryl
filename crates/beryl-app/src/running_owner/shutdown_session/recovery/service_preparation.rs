@@ -156,7 +156,7 @@ impl RunningProcessOwner {
             let mut original = original;
             let mut candidate = candidate;
             let settled = match services
-                .prepare_failed_thread_creations(
+                .prepare_failed_claims(
                     &mut candidate.candidate,
                     &mut original,
                     &worker_cancellation,
@@ -274,7 +274,7 @@ impl RunningProcessOwner {
         let work = app.background_executor().spawn(async move {
             let mut services = services;
             let mut prepared = prepared;
-            if let Err(error) = services.retain_cancelled_thread_creation_editors(&mut prepared) {
+            if let Err(error) = services.retain_cancelled_claim_editors(&mut prepared) {
                 return (services, original, Err((prepared, error)));
             }
             services.retain_cancelled_failed_residents(&mut prepared);
@@ -307,7 +307,7 @@ impl RunningProcessOwner {
         self.interrupted_exit_graph_retirement_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
         if let Some(services) = self.process.services.as_ref() {
-            if services.has_returned_thread_creation_graph() {
+            if services.has_returned_claim_graph() {
                 let mut slot = recovery.settlement.borrow_mut();
                 if !matches!(slot.as_ref(), None | Some(CandidateSettlement::Pending))
                     || recovery.session.borrow().is_none()
@@ -317,7 +317,7 @@ impl RunningProcessOwner {
                         "returned New Thread graph cannot replace active recovery custody".into(),
                     );
                 }
-                if let Some(graph) = services.take_returned_thread_creation_graph() {
+                if let Some(graph) = services.take_returned_claim_graph() {
                     *slot = Some(CandidateSettlement::Services(Ok(graph)));
                 }
             }

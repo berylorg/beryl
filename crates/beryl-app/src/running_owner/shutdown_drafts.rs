@@ -20,7 +20,7 @@ mod recovery;
 pub(crate) use driver::RunningShutdownDraftAction;
 
 pub(crate) struct RunningShutdownDrafts {
-    noncommitted_creations: Vec<recovery::NoncommittedThreadCreationProvenance>,
+    noncommitted_claims: Vec<recovery::NoncommittedClaimProvenance>,
     windows: Vec<(
         WindowHandle<MainWindowShellRoot>,
         Result<MainWindowShutdownDraft, String>,
@@ -32,12 +32,14 @@ pub(crate) struct RunningShutdownDrafts {
     ready: bool,
     detached_preparing: bool,
     detached_prepared: bool,
+    #[cfg(test)]
+    last_poll: Option<(&'static str, Vec<String>)>,
 }
 
 impl RunningShutdownDrafts {
     pub(super) fn empty_recovery() -> Self {
         Self {
-            noncommitted_creations: Vec::new(),
+            noncommitted_claims: Vec::new(),
             windows: Vec::new(),
             driving: false,
             prepared: true,
@@ -46,6 +48,8 @@ impl RunningShutdownDrafts {
             ready: false,
             detached_preparing: false,
             detached_prepared: false,
+            #[cfg(test)]
+            last_poll: None,
         }
     }
 
@@ -90,7 +94,7 @@ impl RunningShutdownDrafts {
             if entry
                 .1
                 .as_ref()
-                .is_ok_and(|draft| draft.failed.is_some() || draft.thread_creation.is_some())
+                .is_ok_and(|draft| draft.failed.is_some() || draft.claim_operation.is_some())
             {
                 return;
             }
@@ -138,6 +142,32 @@ impl RunningShutdownDrafts {
 }
 
 impl RunningProcessOwner {
+    #[cfg(test)]
+    pub(crate) fn test_shutdown_draft_diagnostics(&self) -> String {
+        let Some(drafts) = self
+            .shutdown
+            .as_ref()
+            .and_then(|attempt| attempt.drafts.as_ref())
+        else {
+            return "drafts=none".into();
+        };
+        let Ok(drafts) = drafts.try_borrow() else {
+            return "drafts=borrowed".into();
+        };
+        format!(
+            "windows={},driving={},prepared={},ready={},releasing={},released={},detached_preparing={},detached_prepared={},last_poll={:?}",
+            drafts.windows.len(),
+            drafts.driving,
+            drafts.prepared,
+            drafts.ready,
+            drafts.releasing,
+            drafts.released,
+            drafts.detached_preparing,
+            drafts.detached_prepared,
+            drafts.last_poll
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn test_add_shutdown_draft_window(
         owner: &Rc<RefCell<Self>>,
@@ -195,7 +225,7 @@ impl RunningProcessOwner {
             return Err("shutdown drafts have no published windows".into());
         }
         let drafts = Rc::new(RefCell::new(RunningShutdownDrafts {
-            noncommitted_creations: Vec::new(),
+            noncommitted_claims: Vec::new(),
             windows,
             driving: false,
             prepared: false,
@@ -204,6 +234,8 @@ impl RunningProcessOwner {
             ready: false,
             detached_preparing: false,
             detached_prepared: false,
+            #[cfg(test)]
+            last_poll: None,
         }));
         owner.shutdown.as_mut().unwrap().drafts = Some(drafts.clone());
         Ok(drafts)
@@ -269,6 +301,8 @@ impl RunningProcessOwner {
         }
         let mut failure = None;
         let mut pending = false;
+        #[cfg(test)]
+        let mut last_poll = Vec::with_capacity(drafts.windows.len());
         for (window, preparation) in &drafts.windows {
             let result = match preparation {
                 Ok(preparation) => window
@@ -279,6 +313,8 @@ impl RunningProcessOwner {
                     .and_then(|result| result),
                 Err(error) => Err(error.clone()),
             };
+            #[cfg(test)]
+            last_poll.push(format!("window={window:?},result={result:?}"));
             match result {
                 Ok(
                     MainWindowShutdownDraftAdvance::Threadless
@@ -300,6 +336,10 @@ impl RunningProcessOwner {
                     failure.get_or_insert(error);
                 }
             }
+        }
+        #[cfg(test)]
+        {
+            drafts.last_poll = Some(("Prepare", last_poll));
         }
         drafts.ready = failure.is_none() && !pending;
         match failure {
@@ -338,8 +378,12 @@ impl RunningProcessOwner {
         drafts.released = false;
         let mut failure = None;
         let mut pending = false;
+        #[cfg(test)]
+        let mut last_poll = Vec::with_capacity(drafts.windows.len());
         for (window, preparation) in &drafts.windows {
             let Ok(preparation) = preparation else {
+                #[cfg(test)]
+                last_poll.push(format!("window={window:?},result=NotPrepared"));
                 continue;
             };
             let result = window
@@ -348,6 +392,8 @@ impl RunningProcessOwner {
                 })
                 .map_err(|error| format!("shutdown draft window is unavailable: {error}"))
                 .and_then(|result| result);
+            #[cfg(test)]
+            last_poll.push(format!("window={window:?},result={result:?}"));
             match result {
                 Ok(MainWindowShutdownDraftRelease::Released) => {}
                 Ok(MainWindowShutdownDraftRelease::Pending) => pending = true,
@@ -355,6 +401,10 @@ impl RunningProcessOwner {
                     failure.get_or_insert(error);
                 }
             }
+        }
+        #[cfg(test)]
+        {
+            drafts.last_poll = Some(("Release", last_poll));
         }
         match failure {
             Some(error) => Err(error),

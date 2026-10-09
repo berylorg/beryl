@@ -80,7 +80,7 @@ impl MainWindowComposerSlot {
 }
 
 impl MainWindowFailedComposerRetirement {
-    pub(crate) fn from_failed_thread_creation(
+    pub(crate) fn from_failed_claim_cleanup(
         selection: MainWindowComposerSelectionIdentity,
         host: ComposerHostFailedResident,
         last_activation_generation: u64,
@@ -98,6 +98,27 @@ impl MainWindowFailedComposerRetirement {
 
     pub fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
+    }
+    pub(crate) fn qualify_adopted_return(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        if self.reconstructed != Some(selection)
+            || selection.window_id() != self.selection.window_id()
+            || selection.claim() != self.selection.claim()
+            || selection.binding().home_id() != self.selection.binding().home_id()
+        {
+            return Err("adopted resident original reconstruction changed".into());
+        }
+        let (binding, _) = self
+            .host
+            .as_ref()
+            .ok_or("adopted resident original host is unavailable")?
+            .reconstruction_facts()?;
+        if binding != selection.binding() {
+            return Err("adopted resident original saved binding changed".into());
+        }
+        Ok(())
     }
     pub fn original_known_commit(&self) -> Option<bool> {
         self.host.as_ref().unwrap().original_known_commit()

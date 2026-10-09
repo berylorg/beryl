@@ -94,20 +94,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 739: Implement Published Frozen Thread Catalog Queries (finished)
+# Phase 740: Qualify Ordinary Selection Failed-Home Custody (finished)
 
-Accepted State-owned complete immutable queries through the actual published App reader and
-background worker, with finite admission and exact cancellation/retirement custody. Combined
-qualification covers 268 State and 412 distinct App cases, including all corrected earlier failures
-and actual first-reply waker panic. Final checks, hashes and independent review pass; see
-[qualification](audits/frozen-catalog-query-qualification.md). Ordinary selection recovery and
-visible Thread Switcher mounting remain separate boundaries.
-
-# Phase 740: Qualify Ordinary Selection Failed-Home Custody (pending)
-
-Establish and qualify original ordinary claim-activation save/outcome/cleanup custody across failed
-home retirement and fresh graph publication before using that route for idle catalog selection.
-Do not reuse the creation-specific exception as ordinary activation authority.
+Accepted actual ordinary selection through process-owned same-home recovery in surviving native
+windows, retaining original save/claim/disposal/Page custody and exact fresh nonempty bindings.
+Healthy final Exit and shared nonfinal close require real native destruction and positive original
+Page acknowledgements. Final native/integration cases pass 65/65, corrected close consumers 32/32
+and refusal guards 2/2; unchanged support evidence, current checks, hashes and independent semantic
+review pass. See [qualification](audits/ordinary-selection-recovery-qualification.md).
 
 # Phase 741: Mount The Thread Switcher (pending)
 
@@ -115,3 +109,40 @@ Mount the exhaustive stable catalog, bounded frozen runtime/root option browsing
 thread activation after its reader and ordinary-selection recovery prerequisites pass. Keep
 current-thread no-op and open-elsewhere unavailability; remaining navigation and shell mounts
 continue through later bounded tracker slices.
+
+Derive this mount from [conversation threads](features/conversation-threads/design.md#thread-switcher),
+its [GUI composition](features/conversation-threads/gui.md#thread-switcher-flyout), the
+[thread-root picker](gui/widgets/thread-root-picker/spec.md) and the
+[published frozen reader](../crates/beryl-app/doc/design-catalog-and-composer.md#published-frozen-catalog-reader).
+The actual main-window toolbar selector opens one immediate-selection picker in the overlay slot.
+Use its existing bounded fixed-height realization, stable identities, keyboard navigation,
+scope restoration and content-free diagnostics; do not build an unbounded presentation model.
+
+Keep one opening's coherent source across thread search, root scope and runtime/root browsing.
+Extend the existing serialized query owner and worker with bounded frozen option transport and
+query refinement under that original source, including configured runtimes/roots with zero
+threads. Existing live runtime-setup scans cannot supply these presentation facts. Every request
+retains exact service/generation/collection/query/range identity; dismissal, supersession and
+graph retirement cancel and drain original custody. First coherent visible rows enable the
+selector without waiting for all presentation rows, transcript readiness or CAS enumeration.
+
+Wire all-roots opening, complete-collection search including exact executable paths, root browse,
+Back, root choice and scope clearing with the specified search reset. Preserve stable ordering,
+offscreen navigation and completed empty results. Reuse existing runtime-setup native dialogs and
+exact mutation/reconciliation mechanics; cancellation/noncommit preserves the current picker and
+selection, while an acknowledged mutation refreshes coherently under the owning contract.
+
+Admit an available exact ordinary thread through the existing selection operation, retaining
+the original durable draft flush, claim/source validation, mount and failure custody accepted by
+ordinary recovery. Frozen rows confer no permission. The current row closes without reload or
+history change; open-elsewhere rows remain explained and unavailable through every acceptance
+path. Close the picker after exact request acceptance and preserve the established per-window
+failure presentation. This phase does not mount unrelated navigation commands.
+
+Qualify the actual toolbar and picker with large frozen collections, zero-thread options,
+search/scope changes under concurrent publication, offscreen focus/scroll and stale replies,
+configuration cancellation/reconciliation, current/no-op and elsewhere refusal, plus dirty
+ordinary activation and real failed-Home/Page recovery. Run focused query/widget/activation tests,
+affected lifecycle regressions, current checks and independent semantic completion review.
+Read-only readiness finds the controlling product/GUI decisions complete. Source work waits for
+the preceding phase's accepted and compacted outcome; no product blocker is recorded.

@@ -158,6 +158,29 @@ impl MainWindowComposerSelectionIdentity {
 }
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn final_cleanup_close_is_current(
+        &self,
+        close: MainWindowConversationComposerCloseTicket,
+        flush: ComposerHostFlushTicket,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        !self.disposed
+            && self.window_close_is_current(close)
+            && self.pending.is_none()
+            && self.disposal_stage.is_none()
+            && self.submission_successor.is_none()
+            && self.native_lineage_suspension.is_none()
+            && self.selected.as_ref().is_some_and(|selected| {
+                selected.identity == selection
+                    && selected.dispatcher.is_drained()
+                    && selected.dispatcher.binding == selection.binding()
+                    && selected.host.binding() == Some(selection.binding())
+                    && selected.host.window_close_ticket() == Some(flush)
+                    && selected.host.flush_state(flush).ok()
+                        == Some(crate::composer_host::ComposerHostFlushState::CloseReady)
+            })
+    }
+
     pub(in crate::main_window) fn export_detached_source(
         &self,
         store: &beryl_home_store::HomeStore,

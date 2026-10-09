@@ -172,6 +172,20 @@ governed by [design.md](design.md). It does not independently declare engineerin
   acknowledgements after actual widget release or checked rebinding. Every refusal preserves actual
   source and capsule custody; zero collections or dropped handles cannot certify drainage.
 
+- Failed-home ordinary claim activation has its own consuming retirement of the original
+  receipt-bound selection save and prepared State/Catalog replacement witnesses. Pending save,
+  indeterminate claim, known commitment and completed predecessor cleanup remain distinct owned
+  stages. Conversion retains bounded exact outcome, draft-candidate and cleanup evidence while
+  removing old service references; failure preserves original custody. Proven prior state renews
+  the protected resident only after original publication settles and fresh State authenticates it.
+  Proven commitment completes remaining canonical predecessor disposal and widget release before
+  exact fresh target promotion. It cannot issue another save/claim or reconstruct the old receipt.
+  The source-owned Page cleanup capsule follows the same closed original-token/ledger contract;
+  neither creation-specific permission nor a fresh source read grants ordinary selection recovery.
+  Fresh target preparation preserves the bounded ordinary draft/transcript source, including
+  nonempty history, through candidate-generation typed reads. All fallible preparation and binding
+  precede coherent publication under [ordinary selection recovery](design-shell-lifecycle.md#failed-home-ordinary-selection-recovery).
+
 - Marker sealing consumes the single injected home-generation service owned by the
   [process service graph](design-shell-lifecycle.md#process-service-graph-and-windows); a host or
   window never constructs independent flight capacity.
@@ -217,6 +231,22 @@ governed by [design.md](design.md). It does not independently declare engineerin
   the detached source and bounded request/result custody; disposal cancels and joins them before
   releasing their source ownership. A read failure preserves coherent paint and reports failure
   without globally disabling subsequent read-only interaction.
+- After final Exit settles its work, draft and session obligations and installs the complete
+  detached source set, already delivered prepublication Page obligations may move into bounded
+  cleanup-only custody. Authenticate the original final request, window/root/controller, close
+  ticket, settled selected editor/candidate, installed detached source and actual retained service
+  under its original Healthy Home identity/generation, preserving each source's original
+  environment, session, key, token and ledger correspondence. Drained producers and admitted native
+  work are required; pending or undelivered work refuses handoff. Qualify the complete source set
+  before consuming it, retain every capsule before any fallible driver stop or service conversion,
+  and preserve the same group through retry. Capsules retain immutable protocol facts and pure
+  cleanup coordination, with no Home, service, provider, worker or dispatch authority. Complete
+  actual driver retirement and preserve exclusive service/store retirement checks. The same
+  enabled read-only widget and detached source survive Home retirement; only genuine later widget
+  release or native destruction makes their original obligations ready. Final-teardown custody
+  survives through that destruction and drains actual acknowledgements before releasing the
+  original environment or reporting completion. Refusal or incomplete cleanup retains actual
+  resources and capsules without granting recovery or reopening.
 - The local clipboard writer survives service retirement. Copy uses the unchanged bounded widget
   coordinator and configured contiguous clipboard limit, validating completion against the exact
   detached binding rather than live service identity. Preserve the currently supported provenance

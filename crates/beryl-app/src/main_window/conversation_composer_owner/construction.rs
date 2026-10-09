@@ -242,6 +242,10 @@ impl MainWindowConversationComposer {
             admitted_positions: None,
             next_flight: 1,
             active_flight: None,
+            #[cfg(test)]
+            test_dispatch_flight: None,
+            #[cfg(test)]
+            test_object_delivery: None,
             pending_dispatch: None,
             phase: MainWindowConversationComposerPhase::Live,
             release_fence_requires_restoration: false,

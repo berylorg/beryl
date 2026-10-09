@@ -145,6 +145,23 @@ pub(super) async fn verify_resident(
     before: ResidentSnapshot,
     cx: &mut AsyncApp,
 ) {
+    verify_preserved_resident(owner, before, false, cx).await;
+}
+
+pub(super) async fn verify_resident_preserving_page_custody(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    before: ResidentSnapshot,
+    cx: &mut AsyncApp,
+) {
+    verify_preserved_resident(owner, before, true, cx).await;
+}
+
+async fn verify_preserved_resident(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    before: ResidentSnapshot,
+    preserve_page_custody: bool,
+    cx: &mut AsyncApp,
+) {
     let resident = composer(before.window, cx).await;
     assert_eq!(resident, before.resident);
     let fresh = cx
@@ -223,7 +240,33 @@ pub(super) async fn verify_resident(
         before.history.retained_encoded_bytes()
     );
     if before.dirty {
-        assert_eq!(copy_all(before.window, &resident, cx).await, before.text);
+        if preserve_page_custody {
+            cx.update(|app| {
+                let input = before.input.read(app);
+                let surface = input.surface().unwrap();
+                let page = surface
+                    .pages()
+                    .iter()
+                    .find(|page| {
+                        page.range().start().get() == 0
+                            && page.range().end().get() == before.text.len() as u64
+                    })
+                    .expect("coherent preserved resident has no exact complete text Page");
+                assert_eq!(
+                    page.key().binding(),
+                    fresh.binding().range_binding().binding()
+                );
+                assert_eq!(
+                    page.key().revision(),
+                    fresh.binding().range_binding().revision()
+                );
+                assert_eq!(page.text(), before.text);
+                assert!(page.end_of_source());
+            })
+            .unwrap();
+        } else {
+            assert_eq!(copy_all(before.window, &resident, cx).await, before.text);
+        }
         assert_candidate_saved(owner, fresh.claim().thread_id(), fresh.binding(), true);
     }
 }

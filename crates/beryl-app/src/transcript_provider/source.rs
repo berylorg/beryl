@@ -15,13 +15,15 @@ use crate::syndic_transcript::{
     TranscriptViewRecord, TranscriptViewRecordId,
 };
 
+mod access;
 use super::{
     ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_RECORDS, TranscriptAttachmentAuthority,
     TranscriptAttachmentError, TranscriptAttachmentPurpose, TranscriptAttachmentRequest,
     TranscriptProviderReader,
 };
+pub(crate) use access::prepare_candidate_activation;
 
-impl TranscriptProviderReader {
+impl access::ActivationReadSource<'_> {
     pub(super) fn read_activation(
         &self,
         request: &TranscriptAttachmentRequest,
@@ -34,6 +36,7 @@ impl TranscriptProviderReader {
         ),
         TranscriptAttachmentError,
     > {
+        self.check_request(request, cancelled)?;
         match self.read_bounded_activation(request, cancelled) {
             Err(TranscriptAttachmentError::Capacity)
                 if request.purpose == TranscriptAttachmentPurpose::Attach =>
@@ -59,13 +62,12 @@ impl TranscriptProviderReader {
         let point = SyndicPointReadLimit::new(ATTACHMENT_MAX_BYTES)
             .map_err(|_| TranscriptAttachmentError::Capacity)?;
         let thread = self
-            .syndic
-            .thread(&self.home, request.thread_id, point)
+            .thread(request.thread_id, point)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?
             .ok_or(TranscriptAttachmentError::Unavailable)?;
+        self.check_request(request, cancelled)?;
         let head = self
-            .syndic
-            .transcript_view_head(&self.home, request.thread_id, point)
+            .transcript_view_head(request.thread_id, point)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
         if head
             .as_ref()
@@ -74,9 +76,9 @@ impl TranscriptProviderReader {
             if request.purpose == TranscriptAttachmentPurpose::Refresh {
                 return Err(TranscriptAttachmentError::Stale);
             }
+            self.check_request(request, cancelled)?;
             let summary = self
-                .syndic
-                .history_summary(&self.home, request.thread_id, point)
+                .history_summary(request.thread_id, point)
                 .map_err(|_| TranscriptAttachmentError::Unavailable)?;
             if head
                 .as_ref()
@@ -150,15 +152,9 @@ impl TranscriptProviderReader {
         };
         let limits = CursorReadLimits::new(ATTACHMENT_MAX_RECORDS, ATTACHMENT_MAX_BYTES)
             .map_err(|_| TranscriptAttachmentError::Capacity)?;
+        self.check_request(request, cancelled)?;
         let page = self
-            .syndic
-            .transcript_entries(
-                &self.home,
-                request.thread_id,
-                head.generation(),
-                after,
-                limits,
-            )
+            .transcript_entries(request.thread_id, head.generation(), after, limits)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
         let mut entries = page.into_records();
         let tail = request.placement == TranscriptActivationPlacement::Tail;
@@ -184,13 +180,12 @@ impl TranscriptProviderReader {
                 return Err(TranscriptAttachmentError::Identity);
             }
             let projection = self
-                .syndic
-                .projection(&self.home, entry.projection_id(), point)
+                .projection(entry.projection_id(), point)
                 .map_err(attachment_read_error)?
                 .ok_or(TranscriptAttachmentError::Unavailable)?;
+            self.check_request(request, cancelled)?;
             let item = self
-                .syndic
-                .canonical_item(&self.home, entry.item_id(), point)
+                .canonical_item(entry.item_id(), point)
                 .map_err(attachment_read_error)?
                 .ok_or(TranscriptAttachmentError::Unavailable)?;
             if projection.id() != entry.projection_id()
@@ -234,9 +229,9 @@ impl TranscriptProviderReader {
                     source_range,
                     ..
                 } => {
+                    self.check_request(request, cancelled)?;
                     let resource = self
-                        .syndic
-                        .resource(&self.home, *resource_id, point)
+                        .resource(*resource_id, point)
                         .map_err(attachment_read_error)?
                         .ok_or(TranscriptAttachmentError::Unavailable)?;
                     if resource.item_id() != entry.item_id()
@@ -349,9 +344,9 @@ impl TranscriptProviderReader {
         if count != 0 && views.is_empty() {
             return Err(TranscriptAttachmentError::Unavailable);
         }
+        self.check_request(request, cancelled)?;
         let summary = self
-            .syndic
-            .history_summary(&self.home, request.thread_id, point)
+            .history_summary(request.thread_id, point)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?
             .ok_or(TranscriptAttachmentError::Unavailable)?;
         if summary.committed_tail() != head.committed_tail()
@@ -397,8 +392,7 @@ impl TranscriptProviderReader {
         };
         self.check_request(request, cancelled)?;
         let confirmed = self
-            .syndic
-            .transcript_view_head(&self.home, request.thread_id, point)
+            .transcript_view_head(request.thread_id, point)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
         if confirmed.as_ref() != Some(&head) {
             return Err(TranscriptAttachmentError::Stale);
@@ -433,18 +427,17 @@ impl TranscriptProviderReader {
         let point = SyndicPointReadLimit::new(ATTACHMENT_MAX_BYTES)
             .map_err(|_| TranscriptAttachmentError::Capacity)?;
         let thread = self
-            .syndic
-            .thread(&self.home, request.thread_id, point)
+            .thread(request.thread_id, point)
             .map_err(attachment_read_error)?
             .ok_or(TranscriptAttachmentError::Unavailable)?;
+        self.check_request(request, cancelled)?;
         let head = self
-            .syndic
-            .transcript_view_head(&self.home, request.thread_id, point)
+            .transcript_view_head(request.thread_id, point)
             .map_err(attachment_read_error)?
             .ok_or(TranscriptAttachmentError::Stale)?;
+        self.check_request(request, cancelled)?;
         let summary = self
-            .syndic
-            .history_summary(&self.home, request.thread_id, point)
+            .history_summary(request.thread_id, point)
             .map_err(attachment_read_error)?
             .ok_or(TranscriptAttachmentError::Unavailable)?;
         if head.lifecycle() != ProjectionLifecycle::Current

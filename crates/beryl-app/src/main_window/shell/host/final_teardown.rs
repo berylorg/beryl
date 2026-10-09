@@ -97,4 +97,18 @@ impl MainWindowShell {
         }
         Ok(())
     }
+
+    pub(crate) fn settle_destroyed_final_shutdown_resident(
+        &mut self,
+        draft: &mut MainWindowShutdownDraft,
+        app: &mut App,
+    ) -> Result<(), String> {
+        if !self.published || app.windows().contains(&self.window.into()) {
+            return Err("final resident release requires its destroyed native window".into());
+        }
+        self.root.update(app, |root, cx| {
+            root.release_destroyed_final_shutdown_resident(draft, cx)
+        })?;
+        self.settle_final_native_cleanup(app)
+    }
 }

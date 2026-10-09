@@ -21,20 +21,20 @@ use super::{
 
 mod autosave;
 mod close;
+mod failed_claim_cleanup;
 mod failed_resident;
 mod failed_resident_reconstruction;
-mod failed_thread_creation;
 mod flush;
 mod retirement;
 mod selection_save;
 mod service;
 mod settlement;
 
-pub use failed_resident::ComposerHostFailedResident;
-pub(crate) use failed_thread_creation::{
-    ComposerHostCompletedThreadSuccessorProgress, ComposerHostFailedThreadCreation,
-    ComposerHostFailedThreadSuccessor,
+pub(crate) use failed_claim_cleanup::{
+    ComposerHostCompletedThreadSuccessorProgress, ComposerHostFailedThreadSuccessor,
+    ComposerHostRetiredClaimPredecessor,
 };
+pub use failed_resident::ComposerHostFailedResident;
 pub use retirement::ComposerHostRetiredClose;
 pub(crate) use selection_save::ComposerHostSelectionSave;
 

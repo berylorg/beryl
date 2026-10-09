@@ -27,6 +27,8 @@ mod resident_fixture;
 use mounted_support::*;
 #[path = "ordinary_running_home_cancellation.rs"]
 mod cancellation;
+#[path = "ordinary_running_home/claim_activation.rs"]
+mod claim_activation;
 #[path = "ordinary_running_home_native_support.rs"]
 mod native_support;
 #[path = "ordinary_running_home_preservation.rs"]

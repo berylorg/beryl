@@ -24,6 +24,12 @@ pub(in crate::running_owner) struct AutomaticInterruptedExitRecovery {
     _task: Task<()>,
 }
 
+#[cfg(test)]
+pub(super) struct OrdinaryContinuationObservation {
+    request: Rc<()>,
+    outcome: Rc<RefCell<InterruptedExitRecoveryOutcome>>,
+}
+
 impl Drop for AutomaticInterruptedExitRecovery {
     fn drop(&mut self) {
         self.cancellation.cancel();
@@ -31,6 +37,46 @@ impl Drop for AutomaticInterruptedExitRecovery {
 }
 
 impl RunningProcessOwner {
+    #[cfg(test)]
+    pub(super) fn test_ordinary_continuation_observation(
+        &self,
+        request: &Rc<()>,
+    ) -> Result<OrdinaryContinuationObservation, String> {
+        let original = self
+            .automatic_recovery
+            .as_ref()
+            .ok_or("original ordinary recovery outcome is unavailable")?;
+        if !self.active_recovery_identity(request) || !Rc::ptr_eq(&original.request, request) {
+            return Err("original ordinary recovery continuation identity changed".into());
+        }
+        Ok(OrdinaryContinuationObservation {
+            request: original.request.clone(),
+            outcome: original.outcome.clone(),
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_complete_ordinary_continuation(
+        &self,
+        observed: OrdinaryContinuationObservation,
+    ) -> Result<(), String> {
+        let original = self
+            .automatic_recovery
+            .as_ref()
+            .ok_or("original ordinary recovery outcome is unavailable")?;
+        if self
+            .interrupted_exit
+            .as_ref()
+            .is_some_and(|recovery| !Rc::ptr_eq(&recovery.request, &observed.request))
+            || !Rc::ptr_eq(&original.request, &observed.request)
+            || !Rc::ptr_eq(&original.outcome, &observed.outcome)
+        {
+            return Err("original ordinary recovery completion identity changed".into());
+        }
+        *observed.outcome.borrow_mut() = InterruptedExitRecoveryOutcome::Completed;
+        Ok(())
+    }
+
     pub(in crate::running_owner) fn start_reported_exit_recovery(
         owner: &Rc<RefCell<Self>>,
         request: &RunningExitRequest,
@@ -148,7 +194,7 @@ impl RunningProcessOwner {
                         .borrow_mut()
                         .retain_interrupted_exit_session(lifecycle)?;
                 }
-                Self::recover_owned_thread_creation(
+                Self::recover_owned_claim_operation(
                     &weak,
                     &request,
                     SyndicTimestamp::from_unix_millis(millis),

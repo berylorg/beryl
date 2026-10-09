@@ -124,6 +124,38 @@ impl RunningProcessOwner {
 }
 
 impl RunningShutdownDrafts {
+    pub(in crate::running_owner) fn settle_destroyed_final_resident(
+        &mut self,
+        shell: &mut crate::main_window::MainWindowShell,
+        app: &mut App,
+    ) -> Result<(), String> {
+        let (_, draft) = self
+            .windows
+            .iter_mut()
+            .find(|(window, _)| *window == shell.window())
+            .ok_or("destroyed final shell has no original draft")?;
+        shell.settle_destroyed_final_shutdown_resident(
+            draft.as_mut().map_err(|error| error.clone())?,
+            app,
+        )
+    }
+
+    pub(in crate::running_owner) fn advance_destroyed_final_cleanup(
+        &self,
+        native_window: WindowHandle<MainWindowShellRoot>,
+        window: beryl_model::WindowId,
+    ) -> Result<bool, String> {
+        let (_, draft) = self
+            .windows
+            .iter()
+            .find(|(current, _)| *current == native_window)
+            .ok_or("destroyed final cleanup has no original draft")?;
+        draft
+            .as_ref()
+            .map_err(Clone::clone)?
+            .advance_destroyed_final_cleanup(window)
+    }
+
     pub(super) fn discard_detached_sources(&mut self) {
         for (_, draft) in &mut self.windows {
             if let Ok(draft) = draft {
@@ -164,13 +196,31 @@ impl RunningShutdownDrafts {
         app: &mut App,
     ) -> Result<bool, String> {
         let mut ready = true;
+        #[cfg(test)]
+        let mut last_poll = Vec::with_capacity(self.windows.len());
         for (window, draft) in &mut self.windows {
             let draft = draft.as_mut().map_err(|error| error.clone())?;
-            ready &= window
+            #[cfg(test)]
+            let mut diagnostic = None;
+            let retired = window
                 .update(app, |root, _, cx| {
-                    root.retire_final_shutdown_draft(draft, cx)
+                    let result = root.retire_final_shutdown_draft(draft, cx);
+                    #[cfg(test)]
+                    if matches!(&result, Ok(false)) {
+                        diagnostic = Some(draft.test_final_retirement_diagnostics());
+                    }
+                    result
                 })
                 .map_err(|error| error.to_string())??;
+            #[cfg(test)]
+            last_poll.push(format!(
+                "window={window:?},retired={retired},resources={diagnostic:?}"
+            ));
+            ready &= retired;
+        }
+        #[cfg(test)]
+        {
+            self.last_poll = Some(("RetireFinal", last_poll));
         }
         Ok(ready)
     }

@@ -8,7 +8,7 @@ mod attachment;
 pub(super) use attachment::RunningActivationFixtureHooks;
 pub(super) use attachment::UnviewedRunningActivation;
 pub(in crate::main_window::shell::host) use attachment::{
-    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+    CapturedClaimOperation, RetiringClaimOperation,
 };
 
 impl MainWindowShellRoot {
@@ -92,6 +92,7 @@ impl MainWindowShellRoot {
             Ok::<_, String>((prepared, observed, row))
         });
         let job = cx.background_executor().spawn(async move { work.run() });
+        self.running_threads.activation_wake.take();
         self.running_threads.activation_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = job.await;
             let _ = this.update_in(cx, |root, window, cx| {

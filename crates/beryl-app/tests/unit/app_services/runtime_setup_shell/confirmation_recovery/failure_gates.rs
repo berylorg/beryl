@@ -379,7 +379,7 @@ fn dropped_ready_creation_graph_returns_same_editor_and_original_exclusion_befor
     owner.borrow_mut().test_drop_ready_thread_creation_graph();
     let target = interrupt_committed_creation(&owner, window, faults, cx);
     recover_creation(&owner, window, cx);
-    assert_eq!(owner.borrow().test_returned_thread_creation_graphs(), 1);
+    assert_eq!(owner.borrow().test_returned_claim_graphs(), 1);
     assert_eq!(window.window_id(), native);
     assert_eq!(cx.windows().len(), 1);
     assert_original_committed_target(&owner, window, target.lock().unwrap().as_ref().unwrap(), cx);

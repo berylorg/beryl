@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod source;
+pub(crate) use source::prepare_candidate_activation;
 
 pub(crate) const ATTACHMENT_MAX_RECORDS: usize = 64;
 pub(crate) const ATTACHMENT_MAX_BYTES: usize = 65_536;

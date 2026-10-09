@@ -70,7 +70,18 @@ impl MainWindowShellRoot {
             commit,
             save,
             disposal,
+            outcome: None,
         });
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_original_ordinary_claim_outcome_hook(&mut self, hook: FixtureOutcomeHook) {
+        let hooks = self
+            .running_threads
+            .fixture_activation_hooks
+            .get_or_insert_with(Default::default);
+        assert!(hooks.outcome.is_none());
+        hooks.outcome = Some(hook);
     }
 
     #[cfg(all(test, feature = "test-faults"))]
@@ -79,6 +90,11 @@ impl MainWindowShellRoot {
             .activation_operation
             .as_ref()
             .map(|operation| operation.diagnostics())
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_running_activation_failure(&self) -> Option<String> {
+        self.running_threads.failure.clone()
     }
 
     #[cfg(all(test, feature = "test-faults"))]
@@ -222,6 +238,7 @@ impl MainWindowShellRoot {
                 release: None,
                 publication: None,
                 completed_predecessor: None,
+                ordinary_save: None,
                 completed_successor: None,
                 completed_successor_progress: None,
                 autosave: None,
@@ -246,6 +263,8 @@ impl MainWindowShellRoot {
                 before_save: hooks.save.take(),
                 #[cfg(all(test, feature = "test-faults"))]
                 before_disposal: hooks.disposal.take(),
+                #[cfg(all(test, feature = "test-faults"))]
+                after_claim_outcome: None,
             })),
             active: Arc::new(AtomicBool::new(false)),
             suspended: Arc::new(AtomicBool::new(false)),

@@ -12,13 +12,14 @@ use crate::composer_host::{
 };
 use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
+mod activation_preparation;
 mod close;
 mod close_retirement;
+mod failed_claim_cleanup;
 mod failed_resident;
-mod failed_thread_creation;
-pub(crate) use failed_thread_creation::{
+pub(crate) use failed_claim_cleanup::{
     MainWindowCompletedThreadPredecessorDisposal, MainWindowCompletedThreadSuccessorCleanup,
-    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedThreadCreationRetirement,
+    MainWindowCompletedThreadSuccessorProgress, MainWindowFailedClaimRetirement,
 };
 mod fresh_candidate;
 mod surviving_native_close;
@@ -27,6 +28,8 @@ pub(in crate::main_window) mod dispatch;
 mod lifecycle;
 mod model;
 pub(in crate::main_window) mod native_lineage;
+#[cfg(test)]
+mod publication_observation;
 mod retirement;
 mod selection_save;
 mod state;
@@ -54,10 +57,10 @@ pub struct MainWindowComposerSlot {
     disposal_stage: Option<DisposalStage>,
     submission_successor: Option<MainWindowComposerActivationReceipt>,
     thread_predecessor_save: Option<crate::composer_host::ComposerHostFlushTicket>,
-    failed_thread_successor: Option<failed_thread_creation::RetiredThreadSuccessor>,
+    failed_thread_successor: Option<failed_claim_cleanup::RetiredThreadSuccessor>,
     capture_thread_cleanup: bool,
     completed_thread_successor:
-        Option<failed_thread_creation::MainWindowCompletedThreadSuccessorCleanup>,
+        Option<failed_claim_cleanup::MainWindowCompletedThreadSuccessorCleanup>,
     native_lineage_suspension: Option<MainWindowComposerSelectionIdentity>,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     #[cfg(feature = "test-faults")]
@@ -308,7 +311,9 @@ impl MainWindowComposerSlot {
         Ok(MainWindowComposerWidgetRelease::new(selection))
     }
 
-    fn widget_release_request_is_settled(request: &gpui_text_input::RangeTextInputRequest) -> bool {
+    pub(in crate::main_window) fn widget_release_request_is_settled(
+        request: &gpui_text_input::RangeTextInputRequest,
+    ) -> bool {
         matches!(
             request,
             gpui_text_input::RangeTextInputRequest::CancelPage(_)
@@ -448,7 +453,7 @@ impl MainWindowComposerSlot {
             presentation_generation: request.presentation_generation(),
             expected_prior,
         };
-        let mut host = SyndicComposerHost::new(self.storage.clone());
+        let mut host = Self::prepare_activation_host(self.storage.clone());
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_open_fault.take() {
             host.test_arm_activation_after_open_fault(fault);
@@ -457,30 +462,20 @@ impl MainWindowComposerSlot {
         self.last_activation_generation = generation;
         match activation {
             Ok(ComposerHostActivationOutcome::Activated { .. }) => {
-                let binding = host
-                    .binding()
-                    .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
-                let dispatcher = MainWindowComposerDispatcher::new(binding);
-                self.pending = Some(PendingComposer {
+                self.install_prepared_activation(
                     receipt,
                     claim,
                     retirement_operation_id,
                     host,
-                    dispatcher,
-                    source_selector: Some(source_selector),
-                    stage: PendingStage::Ready,
-                    abandonment: None,
-                    abandonment_outcome: None,
-                    retain_thread_cleanup: self.capture_thread_cleanup,
-                    abandonment_canonical_home: None,
-                });
+                    source_selector,
+                )?;
                 Ok(MainWindowComposerActivationAdvance::Ready(receipt))
             }
             Ok(ComposerHostActivationOutcome::Cancelled) if host.binding().is_none() => {
                 Ok(MainWindowComposerActivationAdvance::Cancelled)
             }
             Ok(ComposerHostActivationOutcome::Cancelled) => {
-                self.install_retiring(receipt, claim, retirement_operation_id, host);
+                self.install_prepared_retirement(receipt, claim, retirement_operation_id, host);
                 match self.drive_retirement(store, receipt)? {
                     MainWindowComposerRetirementAdvance::Retired => {
                         Ok(MainWindowComposerActivationAdvance::Cancelled)
@@ -493,7 +488,7 @@ impl MainWindowComposerSlot {
             Ok(outcome) => Ok(MainWindowComposerActivationAdvance::Rejected(outcome)),
             Err(error) if host.binding().is_none() => Err(error.into()),
             Err(error) => {
-                self.install_retiring(receipt, claim, retirement_operation_id, host);
+                self.install_prepared_retirement(receipt, claim, retirement_operation_id, host);
                 match self.drive_retirement(store, receipt)? {
                     MainWindowComposerRetirementAdvance::Retired => {
                         Ok(MainWindowComposerActivationAdvance::FailureRetired(error))

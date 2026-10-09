@@ -10,9 +10,16 @@ pub(crate) struct MainWindowThreadPredecessorSave {
     saved: ComposerHostSelectionSave,
 }
 
-pub(crate) struct MainWindowRetiredThreadPredecessorSave {
+pub(crate) struct MainWindowRetiredClaimPredecessorSave {
     pub(crate) selected: MainWindowComposerSelectionIdentity,
     pub(crate) saved: ComposerHostSelectionSave,
+    pub(crate) origin: MainWindowClaimSaveOrigin,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MainWindowClaimSaveOrigin {
+    ThreadCreation,
+    OrdinarySelection(crate::main_window::MainWindowComposerActivationReceipt),
 }
 
 impl MainWindowConversationComposerService {
@@ -105,7 +112,7 @@ impl MainWindowConversationComposerService {
 impl MainWindowThreadPredecessorSave {
     pub(crate) fn retire_failed_home(
         self,
-    ) -> Result<MainWindowRetiredThreadPredecessorSave, (Self, String)> {
+    ) -> Result<MainWindowRetiredClaimPredecessorSave, (Self, String)> {
         let validation = (|| {
             self.service.qualify_failed_resident_home(self.selected)?;
             self.service
@@ -116,9 +123,10 @@ impl MainWindowThreadPredecessorSave {
                 .map_err(|error| error.to_string())
         })();
         match validation {
-            Ok(()) => Ok(MainWindowRetiredThreadPredecessorSave {
+            Ok(()) => Ok(MainWindowRetiredClaimPredecessorSave {
                 selected: self.selected,
                 saved: self.saved,
+                origin: MainWindowClaimSaveOrigin::ThreadCreation,
             }),
             Err(error) => Err((self, error)),
         }
@@ -139,7 +147,7 @@ impl MainWindowThreadPredecessorSave {
         self,
         receipt: super::super::MainWindowComposerActivationReceipt,
         target: beryl_state::WindowClaimSelection,
-    ) -> Result<MainWindowRetiredThreadPredecessorSave, (Self, String)> {
+    ) -> Result<MainWindowRetiredClaimPredecessorSave, (Self, String)> {
         let result = (|| {
             self.service
                 .slot
@@ -155,9 +163,10 @@ impl MainWindowThreadPredecessorSave {
                 .map_err(|error| error.to_string())
         })();
         match result {
-            Ok(()) => Ok(MainWindowRetiredThreadPredecessorSave {
+            Ok(()) => Ok(MainWindowRetiredClaimPredecessorSave {
                 selected: self.selected,
                 saved: self.saved,
+                origin: MainWindowClaimSaveOrigin::ThreadCreation,
             }),
             Err(error) => Err((self, error)),
         }

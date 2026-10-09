@@ -67,8 +67,10 @@ impl MainWindowShellRoot {
             return Err("original first conversation widget release is still settling".into());
         }
         self.suspend_running_thread_reads(window, cx);
-        if self.has_failed_thread_creation_entrance() {
-            return self.begin_failed_thread_creation_shutdown_draft(cx);
+        if self.has_failed_thread_creation_entrance()
+            || self.has_failed_ordinary_selection_entrance()
+        {
+            return self.begin_failed_claim_shutdown_draft(cx);
         }
         if self.running_threads.has_activation_custody() {
             return Err("running thread selection custody prevents failed-home capture".into());
@@ -103,6 +105,7 @@ impl MainWindowShellRoot {
             (
                 Some((mount, resident, close)),
                 Some(super::FailedShutdownResident {
+                    prepublication_cleanup: std::cell::RefCell::new(None),
                     adoption: None,
                     capture: None,
                     ticket,
@@ -114,7 +117,7 @@ impl MainWindowShellRoot {
             (None, None)
         };
         Ok(MainWindowShutdownDraft {
-            thread_creation: None,
+            claim_operation: None,
             prepublication_cleanup: std::cell::RefCell::new(None),
             root: cx.entity_id(),
             failed,
@@ -129,6 +132,7 @@ impl MainWindowShellRoot {
         &mut self,
         draft: &mut MainWindowShutdownDraft,
         services: &mut crate::app_services::ProcessServiceOwner,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
         if draft.root != cx.entity_id()
@@ -137,8 +141,8 @@ impl MainWindowShellRoot {
         {
             return Err("failed shutdown draft lost its exact gated shell".into());
         }
-        if draft.thread_creation.is_some() {
-            return self.retire_failed_thread_creation_shutdown_draft(draft, services, cx);
+        if draft.claim_operation.is_some() {
+            return self.retire_failed_claim_shutdown_draft(draft, services, window, cx);
         }
         if !self.running_thread_reads_drained() || !self.release_suspended_running_thread_sources()
         {
@@ -205,6 +209,26 @@ impl MainWindowShellRoot {
             }
             ShellContent::Selected { .. } => {}
             _ => return Err("failed selected construction custody changed".into()),
+        }
+        let capture = failed.capture.as_ref().unwrap();
+        let resources = failed.resources.as_ref().unwrap();
+        if failed.prepublication_cleanup.get_mut().is_none() {
+            let Some(capsules) = mount
+                .read(cx)
+                .take_failed_resident_prepublication_cleanup(capture, resources, custody, cx)?
+            else {
+                return Ok(false);
+            };
+            *failed.prepublication_cleanup.get_mut() = Some(capsules);
+        }
+        if !mount.read(cx).stop_failed_resident_prepublication_cleanup(
+            capture,
+            resources,
+            custody,
+            failed.prepublication_cleanup.get_mut().as_ref().unwrap(),
+            cx,
+        )? {
+            return Ok(false);
         }
         let resources = *failed.resources.take().unwrap();
         match resources.retire_with_marker_custody(custody) {

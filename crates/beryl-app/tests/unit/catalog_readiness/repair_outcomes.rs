@@ -1,6 +1,53 @@
 use super::*;
 
 #[test]
+fn nested_capture_cancellation_settles_only_the_cancelled_worker() {
+    let fixture = Fixture::new(r"C:\Work\Beryl");
+    let cancellation = CommandCancellation::new();
+    cancellation.cancel();
+    let failure = || {
+        fixture
+            .store
+            .capture_frozen_read(&cancellation)
+            .map(|_| ())
+            .map_err(CatalogSourceReadError::from)
+            .map_err(CatalogSourceCoordinatorError::from)
+    };
+    assert!(matches!(
+        worker::settle_worker_cancellation(failure(), &CommandCancellation::new()),
+        Err(CatalogSourceCoordinatorError::Source(
+            CatalogSourceReadError::Read(beryl_home_store::ReadError::FrozenRead(
+                beryl_home_store::FrozenReadAccessError::Cancelled
+            ))
+        ))
+    ));
+    worker::settle_worker_cancellation(failure(), &cancellation).unwrap();
+    assert_eq!(fixture.store.retained_frozen_read_count().unwrap(), 0);
+}
+
+#[test]
+fn independent_source_read_failure_survives_cancelled_worker_drain() {
+    use beryl_home_store::test_faults::{FaultController, FaultPoint};
+    let faults = FaultController::new();
+    let fixture = Fixture::new_with_faults(r"C:\Work\Beryl", faults.clone());
+    let (mut service, reader, start) = coordinator(&fixture);
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    start.release();
+    finished(&service);
+    assert!(matches!(
+        service.stop_and_join(),
+        Err(CatalogSourceCoordinatorError::Source(
+            CatalogSourceReadError::Read(beryl_home_store::ReadError::Storage { .. })
+        ))
+    ));
+    assert!(matches!(
+        reader.certified_threads(),
+        Err(CatalogSourceReadError::Retired)
+    ));
+    assert_eq!(fixture.store.retained_frozen_read_count().unwrap(), 0);
+}
+
+#[test]
 fn cancellation_drains_an_admitted_coordinator_capture_before_returning() {
     use beryl_home_store::test_faults::{FaultController, FaultPoint};
     let faults = FaultController::new();

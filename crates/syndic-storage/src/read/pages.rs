@@ -200,6 +200,40 @@ impl SyndicStorage {
         after: Option<crate::TranscriptPosition>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::TranscriptViewEntryRecord>, SyndicReadError> {
+        self.transcript_entries_with_access(
+            super::access::ReadAccess::Ordinary(store),
+            thread,
+            generation,
+            after,
+            limits,
+        )
+    }
+
+    pub fn transcript_entries_candidate(
+        &self,
+        store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        thread: SyndicThreadId,
+        generation: crate::TranscriptGeneration,
+        after: Option<crate::TranscriptPosition>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<crate::TranscriptViewEntryRecord>, SyndicReadError> {
+        self.transcript_entries_with_access(
+            super::access::ReadAccess::Candidate(store),
+            thread,
+            generation,
+            after,
+            limits,
+        )
+    }
+
+    fn transcript_entries_with_access(
+        &self,
+        store: super::access::ReadAccess<'_>,
+        thread: SyndicThreadId,
+        generation: crate::TranscriptGeneration,
+        after: Option<crate::TranscriptPosition>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<crate::TranscriptViewEntryRecord>, SyndicReadError> {
         let limits = clamp_page_limits(limits);
         let first = ThreadTranscriptKey {
             thread,
@@ -222,7 +256,7 @@ impl SyndicStorage {
             ),
             None => CursorRange::closed(first, last),
         };
-        self.page::<TranscriptEntriesFamily>(store, range, limits)
+        self.page_with_access::<TranscriptEntriesFamily>(store, range, limits)
     }
 
     pub fn transcript_path_turns(

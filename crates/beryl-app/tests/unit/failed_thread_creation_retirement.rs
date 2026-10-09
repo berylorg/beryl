@@ -65,7 +65,7 @@ fn partial_failed_creation_conversion_retains_actual_prior_and_retired_successor
     source.receipt = Some(receipt);
     source.committed_target = Some(committed.selection);
     let (service, source, _) = service
-        .retire_failed_thread_creation(source, &markers)
+        .retire_failed_claim_cleanup(source, &markers)
         .err()
         .unwrap();
     assert_eq!(service.selected_identity(), Some(prior));
@@ -80,7 +80,7 @@ fn partial_failed_creation_conversion_retains_actual_prior_and_retired_successor
             .cancel_request(key)
     );
     let mut retirement = service
-        .retire_failed_thread_creation(source, &markers)
+        .retire_failed_claim_cleanup(source, &markers)
         .ok()
         .unwrap();
     drop(markers);
@@ -136,7 +136,7 @@ fn retained_original_successor_abandonment_settles_before_remaining_candidate_cl
         source.receipt = Some(receipt);
         source.committed_target = Some(committed.selection);
         let mut retirement = service
-            .retire_failed_thread_creation(source, &markers)
+            .retire_failed_claim_cleanup(source, &markers)
             .ok()
             .unwrap();
         drop(markers);
@@ -188,13 +188,13 @@ fn failed_creation_rejects_foreign_original_source_without_consuming_its_residen
     fail(&fixture);
     let markers = seals.capture_failed_home(&fixture.store).unwrap();
     let (service, mut source, _) = service
-        .retire_failed_thread_creation(source, &markers)
+        .retire_failed_claim_cleanup(source, &markers)
         .err()
         .unwrap();
     assert_eq!(service.selected_identity(), Some(prior));
     source.prior = prior;
     let mut retirement = service
-        .retire_failed_thread_creation(source, &markers)
+        .retire_failed_claim_cleanup(source, &markers)
         .ok()
         .unwrap();
     let other_seals = foreign.marker_seals();
@@ -221,14 +221,14 @@ fn failed_creation_conversion_refuses_service_alias_and_returns_original_source(
     fail(&fixture);
     let markers = seals.capture_failed_home(&fixture.store).unwrap();
     let (service, retained, _) = service
-        .retire_failed_thread_creation(source(prior), &markers)
+        .retire_failed_claim_cleanup(source(prior), &markers)
         .err()
         .unwrap();
     assert_eq!(retained.prior, prior);
     assert_eq!(service.selected_identity(), Some(prior));
     drop(alias);
     let retirement = service
-        .retire_failed_thread_creation(retained, &markers)
+        .retire_failed_claim_cleanup(retained, &markers)
         .ok()
         .unwrap();
     assert_eq!(retirement.prior_selection(), prior);
@@ -244,7 +244,7 @@ fn never_admitted_failed_creation_retains_newer_unsaved_candidate_for_prior_reco
     fail(&fixture);
     let markers = seals.capture_failed_home(&fixture.store).unwrap();
     let mut retirement = service
-        .retire_failed_thread_creation(source(prior), &markers)
+        .retire_failed_claim_cleanup(source(prior), &markers)
         .ok()
         .unwrap();
     drop(markers);
@@ -306,7 +306,7 @@ fn committed_creation_retirement_requires_original_claim_and_disposes_each_sessi
         source.receipt = Some(receipt);
         source.committed_target = Some(committed.selection);
         let mut retirement = service
-            .retire_failed_thread_creation(source, &markers)
+            .retire_failed_claim_cleanup(source, &markers)
             .ok()
             .unwrap();
         drop(markers);
@@ -410,7 +410,7 @@ fn completed_predecessor_custody_survives_target_promotion_without_repeating_dis
     source.mounted_successor = Some(selected);
     source.release = Some(release);
     let mut retirement = service
-        .retire_failed_thread_creation(source, &markers)
+        .retire_failed_claim_cleanup(source, &markers)
         .ok()
         .unwrap();
     drop(markers);

@@ -1,10 +1,10 @@
-mod failed_thread_creation;
+mod failed_claim_capture;
 mod presentation;
 mod source;
 mod startup;
 mod thread_creation;
-pub(in crate::main_window::shell::host) use failed_thread_creation::{
-    CapturedThreadCreationOperation, RetiringThreadCreationOperation,
+pub(in crate::main_window::shell::host) use failed_claim_capture::{
+    CapturedClaimOperation, RetiringClaimOperation,
 };
 
 use super::*;
@@ -36,6 +36,94 @@ use crate::transcript_provider::{
     TranscriptProviderReader,
 };
 use std::sync::{Mutex, atomic::AtomicBool};
+
+#[cfg(test)]
+mod owner_diagnostics {
+    use super::*;
+
+    #[derive(Clone, Copy)]
+    struct Entry {
+        key: usize,
+        owners: [usize; 3],
+    }
+
+    static ENTRIES: Mutex<[Entry; 64]> = Mutex::new(
+        [Entry {
+            key: 0,
+            owners: [0; 3],
+        }; 64],
+    );
+    static UNTRACKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    pub(super) enum Owner {
+        Resume,
+        Worker,
+        Completion,
+    }
+
+    pub(super) struct Witness {
+        key: usize,
+        owner: usize,
+        tracked: bool,
+    }
+
+    impl Witness {
+        pub(super) fn new(source: &Arc<Mutex<ActivationSource>>, owner: Owner) -> Self {
+            let key = Arc::as_ptr(source) as usize;
+            let owner = owner as usize;
+            let mut entries = ENTRIES.lock().unwrap_or_else(|error| error.into_inner());
+            let index = entries
+                .iter()
+                .position(|entry| entry.key == key)
+                .or_else(|| entries.iter().position(|entry| entry.key == 0));
+            let tracked = if let Some(index) = index {
+                entries[index].key = key;
+                entries[index].owners[owner] += 1;
+                true
+            } else {
+                UNTRACKED.fetch_add(1, Ordering::Relaxed);
+                false
+            };
+            Self {
+                key,
+                owner,
+                tracked,
+            }
+        }
+    }
+
+    impl Drop for Witness {
+        fn drop(&mut self) {
+            if !self.tracked {
+                UNTRACKED.fetch_sub(1, Ordering::Relaxed);
+                return;
+            }
+            let mut entries = ENTRIES.lock().unwrap_or_else(|error| error.into_inner());
+            if let Some(entry) = entries.iter_mut().find(|entry| entry.key == self.key) {
+                entry.owners[self.owner] -= 1;
+                if entry.owners == [0; 3] {
+                    entry.key = 0;
+                }
+            }
+        }
+    }
+
+    pub(super) fn snapshot(source: &Arc<Mutex<ActivationSource>>) -> String {
+        let key = Arc::as_ptr(source) as usize;
+        let entries = ENTRIES.lock().unwrap_or_else(|error| error.into_inner());
+        let owners = entries
+            .iter()
+            .find(|entry| entry.key == key)
+            .map_or([0; 3], |entry| entry.owners);
+        format!(
+            "resume={}; worker={}; completion={}; registry_untracked={}",
+            owners[0],
+            owners[1],
+            owners[2],
+            UNTRACKED.load(Ordering::Relaxed)
+        )
+    }
+}
 
 #[derive(Clone)]
 pub(in crate::main_window::shell::host) struct UnviewedRunningActivation {
@@ -108,6 +196,7 @@ struct ActivationSource {
     release: Option<Release>,
     publication: Option<Publication>,
     completed_predecessor: Option<crate::main_window::MainWindowCompletedThreadPredecessorDisposal>,
+    ordinary_save: Option<crate::main_window::MainWindowRetiredClaimPredecessorSave>,
     completed_successor: Option<crate::main_window::MainWindowCompletedThreadSuccessorCleanup>,
     completed_successor_progress:
         Option<crate::main_window::MainWindowCompletedThreadSuccessorProgress>,
@@ -133,10 +222,15 @@ struct ActivationSource {
     before_save: Option<FixtureHook>,
     #[cfg(all(test, feature = "test-faults"))]
     before_disposal: Option<FixtureHook>,
+    #[cfg(all(test, feature = "test-faults"))]
+    after_claim_outcome: Option<FixtureOutcomeHook>,
 }
 
 #[cfg(all(test, feature = "test-faults"))]
 type FixtureHook = Box<dyn FnOnce(&beryl_home_store::CommandCancellation) + Send>;
+
+#[cfg(all(test, feature = "test-faults"))]
+type FixtureOutcomeHook = Box<dyn FnOnce(&Outcome) + Send>;
 
 #[cfg(all(test, feature = "test-faults"))]
 #[derive(Default)]
@@ -144,6 +238,7 @@ pub(in crate::main_window::shell::host) struct RunningActivationFixtureHooks {
     pub(super) commit: Option<FixtureHook>,
     pub(super) save: Option<FixtureHook>,
     pub(super) disposal: Option<FixtureHook>,
+    pub(super) outcome: Option<FixtureOutcomeHook>,
 }
 
 impl UnviewedRunningActivation {
@@ -214,6 +309,9 @@ impl MainWindowShellRoot {
         let Some(operation) = self.running_threads.activation_operation.clone() else {
             return;
         };
+        #[cfg(test)]
+        let _resume_owner =
+            owner_diagnostics::Witness::new(&operation.source, owner_diagnostics::Owner::Resume);
         if operation.active.load(Ordering::Acquire) {
             return;
         }
@@ -333,9 +431,14 @@ impl MainWindowShellRoot {
             return;
         }
         let worker_source = operation.source.clone();
+        #[cfg(test)]
+        let worker_owner =
+            owner_diagnostics::Witness::new(&worker_source, owner_diagnostics::Owner::Worker);
         let active = ActiveJob(operation.active.clone());
         let suspended = operation.suspended.clone();
         let work = self.running_threads.workers.track(move || {
+            #[cfg(test)]
+            let _worker_owner = worker_owner;
             let _active = active;
             if suspended.load(Ordering::Acquire) {
                 return;
@@ -386,7 +489,15 @@ impl MainWindowShellRoot {
         };
         #[cfg(not(all(test, feature = "test-faults")))]
         let job = cx.background_executor().spawn(async move { work.run() });
+        #[cfg(test)]
+        let completion_owner = owner_diagnostics::Witness::new(
+            &operation.source,
+            owner_diagnostics::Owner::Completion,
+        );
+        self.running_threads.activation_wake.take();
         self.running_threads.activation_task = Some(cx.spawn_in(window, async move |this, cx| {
+            #[cfg(test)]
+            let _completion_owner = completion_owner;
             job.await;
             let _ = this.update_in(cx, |root, window, cx| {
                 root.running_threads.activation_task = None;
@@ -412,18 +523,30 @@ impl MainWindowShellRoot {
         if self.running_threads.activation_task.is_some() {
             return;
         }
+        let suspended = operation.suspended.clone();
+        drop(operation);
+        let wake = Arc::new(());
+        self.running_threads.activation_wake = Some(wake.clone());
         self.running_threads.activation_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
             let _ = this.update_in(cx, |root, window, cx| {
-                root.running_threads.activation_task = None;
-                if root
-                    .running_threads
-                    .activation_operation
-                    .as_ref()
-                    .is_some_and(|current| Arc::ptr_eq(&current.source, &operation.source))
+                if suspended.load(Ordering::Acquire)
+                    || !root
+                        .running_threads
+                        .activation_operation
+                        .as_ref()
+                        .is_some_and(|current| Arc::ptr_eq(&current.suspended, &suspended))
+                    || !root
+                        .running_threads
+                        .activation_wake
+                        .as_ref()
+                        .is_some_and(|current| Arc::ptr_eq(current, &wake))
                 {
-                    root.resume_running_activation(window, cx);
+                    return;
                 }
+                root.running_threads.activation_wake = None;
+                root.running_threads.activation_task = None;
+                root.resume_running_activation(window, cx);
             });
         }));
     }

@@ -22,9 +22,8 @@ pub(crate) struct PreparedRecoveryServiceGraph {
     pub(super) runtime_setup: Option<Arc<super::runtime_setup::RuntimeSetupService>>,
     private_clipboard: Option<crate::main_window::MainWindowPrivateClipboardOwner>,
     pub(super) failed_residents: Vec<super::recovery_failed_residents::FailedResidentSource>,
-    pub(super) failed_thread_creations:
-        Vec<super::recovery_failed_residents::FailedThreadCreationSource>,
-    thread_creations: Vec<thread_creation::PreparedThreadCreation>,
+    pub(super) failed_claims: Vec<super::recovery_failed_residents::FailedClaimSource>,
+    claim_targets: Vec<claim_targets::PreparedClaimTarget>,
     return_slot: std::sync::Weak<RecoveryGraphReturnSlot>,
     process: ProcessAdmissionGate,
     pub(super) services: Option<PreparedRecoveryAppServices>,
@@ -61,7 +60,7 @@ impl ProcessServiceOwner {
         )
     }
 
-    pub(crate) fn has_returned_thread_creation_graph(&self) -> bool {
+    pub(crate) fn has_returned_claim_graph(&self) -> bool {
         self.failed_thread_creation_graph_return
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -70,9 +69,7 @@ impl ProcessServiceOwner {
             .is_some()
     }
 
-    pub(crate) fn take_returned_thread_creation_graph(
-        &self,
-    ) -> Option<PreparedRecoveryServiceGraph> {
+    pub(crate) fn take_returned_claim_graph(&self) -> Option<PreparedRecoveryServiceGraph> {
         let mut current_slot = self
             .failed_thread_creation_graph_return
             .lock()
@@ -109,7 +106,7 @@ impl ProcessServiceOwner {
         cancellation: &CommandCancellation,
     ) -> Result<PreparedRecoveryServiceGraph, RecoveryServicePreparationError> {
         let reject = |error: String| RecoveryServicePreparationError::Refused(error);
-        if self.has_returned_thread_creation_graph() {
+        if self.has_returned_claim_graph() {
             return Err(reject(
                 "original New Thread candidate graph retains exclusive recovery custody".into(),
             ));
@@ -159,8 +156,8 @@ impl ProcessServiceOwner {
                 ),
             ),
             failed_residents: Vec::new(),
-            failed_thread_creations: Vec::new(),
-            thread_creations: Vec::new(),
+            failed_claims: Vec::new(),
+            claim_targets: Vec::new(),
             return_slot: self.recovery_graph_return_slot(),
             process: self.process.clone(),
             services: None,
@@ -228,7 +225,7 @@ impl ProcessServiceOwner {
             .map_err(RecoveryServicePreparationError::App)?,
         );
         prepared.failed_residents = std::mem::take(&mut self.failed_residents);
-        prepared.failed_thread_creations = std::mem::take(&mut self.failed_thread_creations);
+        prepared.failed_claims = std::mem::take(&mut self.failed_claims);
         Ok(prepared)
     }
 }
@@ -272,7 +269,7 @@ impl PreparedRecoveryServiceGraph {
             _ => None,
         };
         self.validate_first_conversation()?;
-        self.validate_thread_creations()
+        self.validate_claim_targets()
     }
 
     pub(crate) fn composer_recovery_read(
@@ -366,7 +363,7 @@ impl PreparedRecoveryServiceGraph {
 
 impl Drop for PreparedRecoveryServiceGraph {
     fn drop(&mut self) {
-        if !self.failed_thread_creations.is_empty() {
+        if !self.failed_claims.is_empty() {
             if let Some(slot) = self.return_slot.upgrade() {
                 let retained = Box::new(Self {
                     first_composer: self.first_composer.take(),
@@ -375,8 +372,8 @@ impl Drop for PreparedRecoveryServiceGraph {
                     runtime_setup: self.runtime_setup.take(),
                     private_clipboard: self.private_clipboard.take(),
                     failed_residents: std::mem::take(&mut self.failed_residents),
-                    failed_thread_creations: std::mem::take(&mut self.failed_thread_creations),
-                    thread_creations: std::mem::take(&mut self.thread_creations),
+                    failed_claims: std::mem::take(&mut self.failed_claims),
+                    claim_targets: std::mem::take(&mut self.claim_targets),
                     return_slot: self.return_slot.clone(),
                     process: self.process.clone(),
                     services: self.services.take(),
@@ -400,9 +397,9 @@ impl Drop for PreparedRecoveryServiceGraph {
     }
 }
 
+mod claim_targets;
 mod first_conversation;
 mod publication;
-mod thread_creation;
 
 #[cfg(all(test, feature = "test-faults", target_os = "windows"))]
 #[path = "../../tests/unit/app_services/recovery_graph_resident_support.rs"]

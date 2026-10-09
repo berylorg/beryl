@@ -17,7 +17,7 @@ fn cancelled_reconstruction_requires_exact_drained_runtime_before_original_sourc
     let mut original = source(prior);
     original.saved = Some(saved);
     let mut retirement = service
-        .retire_failed_thread_creation(original, &markers)
+        .retire_failed_claim_cleanup(original, &markers)
         .ok()
         .unwrap();
     drop(markers);

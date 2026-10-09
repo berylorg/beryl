@@ -20,6 +20,14 @@ pub struct MainWindowFreshComposerPreparation {
     state: BerylState,
     window: SessionWindowRecord,
     current: SyndicCurrentDraft,
+    kind: FreshComposerKind,
+}
+mod requests;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FreshComposerKind {
+    CreationEmpty,
+    OrdinaryClaim,
 }
 
 impl MainWindowFreshComposerPreparation {
@@ -67,6 +75,7 @@ impl MainWindowFreshComposerPreparation {
             state: state.clone(),
             window,
             current,
+            kind: FreshComposerKind::CreationEmpty,
         })
     }
 
@@ -83,6 +92,25 @@ impl MainWindowFreshComposerPreparation {
         Self::new(
             candidate, state, storage, window, thread, draft, request, disposal, marker,
         )
+    }
+
+    pub(crate) fn new_ordinary_claim(
+        candidate: &mut HomeRecoveryCandidate,
+        state: &BerylState,
+        storage: SyndicStorage,
+        window: SessionWindowRecord,
+        thread: SyndicThreadId,
+        draft: SyndicDraftId,
+        marker: MainWindowComposerMarkerMetadataAuthority,
+    ) -> Result<Self, String> {
+        let mut prepared =
+            Self::new_fresh(candidate, state, storage, window, thread, draft, marker)?;
+        prepared.kind = FreshComposerKind::OrdinaryClaim;
+        Ok(prepared)
+    }
+
+    pub(in crate::main_window) fn is_ordinary_claim(&self) -> bool {
+        self.kind == FreshComposerKind::OrdinaryClaim
     }
 
     pub fn window(&self) -> &SessionWindowRecord {

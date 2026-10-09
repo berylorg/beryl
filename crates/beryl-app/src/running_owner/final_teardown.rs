@@ -38,6 +38,8 @@ pub(super) struct FinalTeardown {
     native_failure: bool,
     #[cfg(test)]
     native_receipt_gate: Option<futures_channel::oneshot::Receiver<()>>,
+    #[cfg(test)]
+    phase: &'static str,
 }
 
 impl RunningProcessOwner {
@@ -148,6 +150,8 @@ impl RunningProcessOwner {
                 native_failure: false,
                 #[cfg(test)]
                 native_receipt_gate: None,
+                #[cfg(test)]
+                phase: "admitted",
             });
         }
         let retained = owner.clone();
@@ -193,6 +197,8 @@ impl RunningProcessOwner {
         owner: &Rc<RefCell<Self>>,
         cx: &mut AsyncApp,
     ) -> Result<(), String> {
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "before_audio_join");
         let mut audio = owner.borrow_mut().process.notification_audio.take_worker();
         let attention = owner.borrow_mut().process.parent_sound.take_worker();
         cx.background_executor()
@@ -203,6 +209,8 @@ impl RunningProcessOwner {
                 }
             })
             .await;
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "after_audio_join");
         let drafts = owner
             .borrow()
             .shutdown
@@ -213,9 +221,20 @@ impl RunningProcessOwner {
             .unwrap()
             .clone();
         loop {
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "before_retire_final_residents");
             let ready = cx
                 .update(|app| drafts.borrow_mut().retire_final_residents(app))
                 .map_err(|error| error.to_string())??;
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(
+                owner,
+                if ready {
+                    "retire_final_residents_ready"
+                } else {
+                    "retire_final_residents_pending"
+                },
+            );
             if ready {
                 break;
             }
@@ -223,6 +242,8 @@ impl RunningProcessOwner {
                 .timer(Duration::from_millis(10))
                 .await;
         }
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "before_service_finish");
         let mut services = owner
             .borrow_mut()
             .process
@@ -237,8 +258,12 @@ impl RunningProcessOwner {
             })
             .await;
         owner.borrow_mut().process.services = Some(returned);
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "after_service_finish");
         result.map_err(|error| format!("Final service cleanup failed: {error}"))?;
 
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "awaiting_auxiliary_cleanup");
         loop {
             match &owner.borrow().startup_cleanup {
                 StartupCleanup::Settled => break,
@@ -253,6 +278,15 @@ impl RunningProcessOwner {
         }
         let count = owner.borrow().process.windows.shells().len();
         for index in 0..count {
+            let (native_window, window) = cx
+                .update(|app| {
+                    let retained = owner.borrow();
+                    let shell = &retained.process.windows.shells()[index];
+                    Ok::<_, String>((shell.window(), shell.retained_window_id(app)?))
+                })
+                .map_err(|error| error.to_string())??;
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "before_native_read_drain");
             loop {
                 let drained = cx
                     .update(|app| {
@@ -270,6 +304,8 @@ impl RunningProcessOwner {
                     .await;
             }
             #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "after_native_read_drain");
+            #[cfg(test)]
             if owner
                 .borrow()
                 .final_teardown
@@ -285,9 +321,13 @@ impl RunningProcessOwner {
                         .begin_final_native_cleanup(app)
                 })
                 .map_err(|error| error.to_string())??;
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "awaiting_native_destruction_receipt");
             receipt
                 .await
                 .map_err(|error| format!("Published native destruction failed: {error}"))?;
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "after_native_destruction_receipt");
             #[cfg(test)]
             {
                 let gate = owner
@@ -298,17 +338,37 @@ impl RunningProcessOwner {
                     .native_receipt_gate
                     .take();
                 if let Some(gate) = gate {
+                    Self::test_set_final_teardown_phase(owner, "awaiting_native_receipt_test_gate");
                     gate.await.map_err(|_| {
                         "native destruction receipt delivery was abandoned".to_owned()
                     })?;
                 }
             }
             cx.update(|app| {
-                owner.borrow_mut().process.windows.shells_mut()[index]
-                    .settle_final_native_cleanup(app)
+                drafts.borrow_mut().settle_destroyed_final_resident(
+                    &mut owner.borrow_mut().process.windows.shells_mut()[index],
+                    app,
+                )
             })
             .map_err(|error| error.to_string())??;
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "after_native_cleanup_settlement");
+            #[cfg(test)]
+            Self::test_set_final_teardown_phase(owner, "awaiting_final_page_acknowledgements");
+            loop {
+                if drafts
+                    .borrow()
+                    .advance_destroyed_final_cleanup(native_window, window)?
+                {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(Duration::from_millis(10))
+                    .await;
+            }
         }
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "before_retired_shell_release");
         cx.update(|app| {
             let mut owner = owner.borrow_mut();
             owner
@@ -319,7 +379,29 @@ impl RunningProcessOwner {
             Ok::<(), String>(())
         })
         .map_err(|error| error.to_string())??;
+        #[cfg(test)]
+        Self::test_set_final_teardown_phase(owner, "completed");
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn test_set_final_teardown_phase(owner: &Rc<RefCell<Self>>, phase: &'static str) {
+        if let Some(teardown) = owner.borrow_mut().final_teardown.as_mut() {
+            teardown.phase = phase;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_final_teardown_diagnostics(&self) -> String {
+        let Some(teardown) = &self.final_teardown else {
+            return "present=false".into();
+        };
+        let status = match &teardown.status {
+            FinalTeardownStatus::Running => "Running",
+            FinalTeardownStatus::Blocked(_) => "Blocked",
+            FinalTeardownStatus::Finished => "Finished",
+        };
+        format!("present=true,status={status},phase={}", teardown.phase)
     }
 
     fn block_final_teardown(owner: &Rc<RefCell<Self>>, error: String, app: &mut App) {

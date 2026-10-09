@@ -1,9 +1,16 @@
+mod initial_target;
+mod prior_disposal;
+mod prior_save;
+
 use super::*;
 
 impl ActivationSource {
     fn capture_completed_successor(&mut self) -> Result<(), String> {
-        if self.creation.is_some() && self.completed_successor.is_none() {
-            if let Some(target) = self.committed_selection() {
+        if self.completed_successor.is_none() {
+            if let Some(target) = self
+                .committed_selection()
+                .or_else(|| self.creation.is_none().then_some(self.target))
+            {
                 self.completed_successor = self
                     .service
                     .take_completed_thread_successor_cleanup(target)?;
@@ -71,6 +78,16 @@ impl ActivationSource {
             return Ok(());
         }
         match self.stage {
+            Stage::Begin => self.run_initial_target_source(),
+            Stage::Flush => self.run_prior_save_source(),
+            Stage::DisposePrior => self.run_prior_disposal_source(),
+            _ => self.run_remaining_source(),
+        }
+    }
+
+    #[inline(never)]
+    fn run_remaining_source(&mut self) -> Result<(), String> {
+        match self.stage {
             Stage::ThreadSave
             | Stage::ThreadPrepare
             | Stage::ThreadCommit
@@ -79,172 +96,17 @@ impl ActivationSource {
             | Stage::ThreadRelease => {
                 return self.run_thread_creation_source();
             }
-            Stage::Begin => {
-                if self.creation.is_some() {
-                    self.capture_completed_successor()?;
-                    if let Some(completed) = self.completed_successor.take() {
-                        match self
-                            .service
-                            .settle_completed_thread_successor_cleanup(completed)
-                        {
-                            Ok(progress) => self.completed_successor_progress = Some(progress),
-                            Err((completed, error)) => {
-                                self.completed_successor = Some(completed);
-                                return Err(error);
-                            }
-                        }
-                    }
-                }
-                let (home, state, syndic) = self
-                    .reader
-                    .activation_sources()
-                    .ok_or("Running threads source retired")?;
-                self.home = Some(home);
-                self.state = Some(state);
-                self.syndic = Some(syndic);
-                let (request, retirement) =
-                    crate::bootstrap::thread_activation_request(self.target.thread_id())?;
-                let committed_preparation = beryl_home_store::CommandCancellation::new();
-                let preparation_cancel = if self.creation.is_some() {
-                    &committed_preparation
-                } else {
-                    &self.cancellation
-                };
-                let admission = if self.creation.is_some() && self.receipt.is_some() {
-                    Ok(ActivationAdvance::Ready(self.receipt()?))
-                } else if self.creation.is_some() {
-                    self.service.begin_thread_creation_activation(
-                        self.target,
-                        request,
-                        retirement,
-                        preparation_cancel,
-                    )
-                } else {
-                    self.service.begin_activation(
-                        self.target,
-                        request,
-                        retirement,
-                        preparation_cancel,
-                    )
-                };
-                let admission = match admission {
-                    Ok(value) => value,
-                    Err(error) => {
-                        self.receipt = self.service.pending_receipt();
-                        self.capture_completed_successor()?;
-                        return Err(error);
-                    }
-                };
-                match admission {
-                    ActivationAdvance::Ready(receipt) => self.receipt = Some(receipt),
-                    ActivationAdvance::RetirementPending(receipt)
-                    | ActivationAdvance::FailureRetirementPending { receipt, .. } => {
-                        self.receipt = Some(receipt);
-                        return Err("Target composer preparation requires retirement".into());
-                    }
-                    _ => return Err("Target composer preparation was refused".into()),
-                }
-                let prepared = self
-                    .service
-                    .prepare_claim_presentation_source(self.receipt()?)?;
-                self.pending_selection = Some(prepared.selection());
-                self.request.activation = prepared.selection().binding().host_generation().get();
-                self.presentation = Some(prepared);
-                if self.provider.is_none() {
-                    self.provider = Some(
-                        self.reader
-                            .transcript_provider()
-                            .map_err(|error| error.to_string())?,
-                    );
-                }
-                self.transcript = Some(
-                    self.provider
-                        .as_ref()
-                        .unwrap()
-                        .prepare_attachment(self.request.clone(), &self.transcript_cancel)
-                        .map_err(|error| error.to_string())?,
-                );
-                self.stage = Stage::Install;
-            }
             Stage::PrepareFence => {
                 self.expected = self.service.publish_preflight(self.receipt()?)?;
                 self.stage = Stage::Fence;
             }
-            Stage::Flush => {
-                let receipt = self.receipt()?;
-                if self.flush.is_none() {
-                    self.flush = Some(self.service.begin_claim_publication_save(receipt)?);
-                }
-                match self.flush.unwrap() {
-                    FlushAdmission::Started {
-                        ticket,
-                        state: FlushState::CaptureRequired,
-                    }
-                    | FlushAdmission::Joined {
-                        ticket,
-                        state: FlushState::CaptureRequired,
-                    } => {
-                        #[cfg(all(test, feature = "test-faults"))]
-                        {
-                            if let Some(hook) = self.before_save.take() {
-                                hook(&self.cancellation);
-                            }
-                        }
-                        let authority = match self.service.autosave_capture_requirement(self.expected)? {
-                            crate::main_window::MainWindowComposerAutosaveCaptureRequirement::ChangedMarkers => Some(fresh_marker_authority()?),
-                            _ => None,
-                        };
-                        let captured = self.service.capture_flush_publication(
-                            self.expected,
-                            ticket,
-                            self.assets.clone(),
-                            &self.marker_seals,
-                            fresh_piece_operation_id()?,
-                            authority,
-                            current_timestamp()?,
-                            &self.cancellation,
-                        )?;
-                        if matches!(captured, FlushCapture::Unsatisfied(_)) {
-                            self.error = Some("Prior composer flush was refused".into());
-                            self.stage = Stage::Retire;
-                            return Ok(());
-                        }
-                        if matches!(captured, FlushCapture::Stale) {
-                            self.terminal_release_failure = true;
-                            return Err("Prior composer save source was stale; settlement custody is retained".into());
-                        }
-                        self.flush = Some(FlushAdmission::Joined {
-                            ticket,
-                            state: FlushState::PublicationPending,
-                        });
-                    }
-                    FlushAdmission::Started {
-                        state: FlushState::DisposalRequired,
-                        ..
-                    }
-                    | FlushAdmission::Joined {
-                        state: FlushState::DisposalRequired,
-                        ..
-                    } => return Err("Prior composer flush unexpectedly required disposal".into()),
-                    _ => {}
-                }
-                let advance = self.service.advance_claim_publication_source(receipt)?;
-                if matches!(advance.advance, PublishAdvance::ReconciliationPending) {
-                    self.error = Some("Prior editor save is awaiting reconciliation".into());
-                }
-                if let PublishAdvance::Progress(state) = advance.advance {
-                    match self.flush.unwrap() {
-                        FlushAdmission::Started { ticket, .. }
-                        | FlushAdmission::Joined { ticket, .. } => {
-                            self.flush = Some(FlushAdmission::Joined { ticket, state });
-                        }
-                        FlushAdmission::Satisfied(_) => {}
-                    }
-                }
-                self.advance = Some(advance);
-                self.stage = Stage::AcceptFlush;
-            }
             Stage::Commit => {
+                if self.ordinary_save.is_none() {
+                    self.ordinary_save = Some(
+                        self.service
+                            .capture_ordinary_claim_save(self.receipt()?, self.expected)?,
+                    );
+                }
                 #[cfg(all(test, feature = "test-faults"))]
                 if let Some(hook) = self.before_commit.take() {
                     hook(&self.cancellation);
@@ -281,20 +143,8 @@ impl ActivationSource {
                     .begin_final_publish(self.receipt()?, self.expected)?;
                 self.stage = Stage::Release;
             }
-            Stage::DisposePrior => {
-                #[cfg(all(test, feature = "test-faults"))]
-                if let Some(hook) = self.before_disposal.take() {
-                    hook(&self.cancellation);
-                }
-                self.advance = Some(self.service.advance_committed_claim_disposal_source(
-                    self.receipt()?,
-                    self.expected,
-                    fresh_piece_operation_id()?,
-                )?);
-                self.stage = Stage::AcceptDisposal;
-            }
             Stage::Complete => {
-                if self.creation.is_some() && self.completed_predecessor.is_none() {
+                if self.completed_predecessor.is_none() {
                     self.completed_predecessor =
                         Some(self.service.take_completed_thread_predecessor_disposal(
                             self.receipt()?,
@@ -415,6 +265,21 @@ impl ActivationSource {
                 }
             }
             Stage::RestoreAutosave => {
+                if self.creation.is_none() {
+                    self.capture_completed_successor()?;
+                    if let Some(completed) = self.completed_successor.take() {
+                        match self
+                            .service
+                            .settle_completed_thread_successor_cleanup(completed)
+                        {
+                            Ok(progress) => self.completed_successor_progress = Some(progress),
+                            Err((completed, error)) => {
+                                self.completed_successor = Some(completed);
+                                return Err(error);
+                            }
+                        }
+                    }
+                }
                 let selected = self
                     .service
                     .selected_identity()
@@ -440,6 +305,10 @@ impl ActivationSource {
         Ok(())
     }
     pub(super) fn accept_outcome(&mut self, outcome: Outcome) {
+        #[cfg(all(test, feature = "test-faults"))]
+        if let Some(hook) = self.after_claim_outcome.take() {
+            hook(&outcome);
+        }
         match outcome {
             Outcome::Settled(commit) => {
                 self.committed = Some(commit);
@@ -455,6 +324,7 @@ impl ActivationSource {
             }
             Outcome::NotCommitted(error) => {
                 self.error = Some(error.to_string());
+                self.outcome = Some(Outcome::NotCommitted(error));
                 self.stage = Stage::Retire;
             }
         }

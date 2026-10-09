@@ -1,4 +1,6 @@
 mod activation;
+#[cfg(test)]
+mod disposal_execution_observation;
 mod error;
 mod history;
 mod lifecycle;
@@ -6,6 +8,8 @@ mod model;
 mod mutation;
 pub(crate) mod paste_image;
 mod publication;
+#[cfg(test)]
+mod publication_execution_observation;
 mod request;
 mod submission;
 
@@ -17,6 +21,11 @@ use syndic_storage::{
     DraftPieceOperationIdV1, DraftRootHistoryPairV1, SyndicStorage,
 };
 
+#[cfg(test)]
+pub(crate) use disposal_execution_observation::{
+    ComposerHostDisposalExecutionIdentity, ComposerHostDisposalExecutionObservation,
+    ComposerHostDisposalExecutionSnapshot,
+};
 pub use error::ComposerHostError;
 pub use history::{ComposerHostHistoryStatus, ComposerHostRetainedHistoryIntent};
 pub use lifecycle::*;
@@ -30,6 +39,11 @@ pub use mutation::{
     ComposerHostRetainedMutationIntent,
 };
 pub use publication::*;
+#[cfg(test)]
+pub(crate) use publication_execution_observation::{
+    ComposerHostPublicationExecutionIdentity, ComposerHostPublicationExecutionObservation,
+    ComposerHostPublicationExecutionSnapshot,
+};
 pub use submission::*;
 
 struct ActiveComposerHost {
@@ -64,6 +78,10 @@ pub struct SyndicComposerHost {
     last_history_identity: Option<Box<(ComposerHostBinding, gpui_text_input::RangeHistoryIntent)>>,
     last_history_outcome: Option<Box<gpui_text_input::RangeHistoryOutcome>>,
     publication: publication::ComposerHostPublicationCoordinator,
+    #[cfg(test)]
+    publication_execution_observation: Option<ComposerHostPublicationExecutionObservation>,
+    #[cfg(test)]
+    disposal_execution_observation: Option<ComposerHostDisposalExecutionObservation>,
     lifecycle: lifecycle::ComposerHostLifecycleCoordinator,
     submission: submission::ComposerHostSubmissionCoordinator,
     #[cfg(feature = "test-faults")]
@@ -84,6 +102,10 @@ pub struct SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     publication_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(all(test, feature = "test-faults"))]
+    publication_after_execute: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
     #[cfg(feature = "test-faults")]
     submission_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
@@ -98,6 +120,19 @@ pub struct SyndicComposerHost {
 }
 
 impl SyndicComposerHost {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_after_publication_execute(
+        &mut self,
+        hook: Box<
+            dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send,
+        >,
+    ) -> Result<(), String> {
+        if self.publication_after_execute.is_some() {
+            return Err("original publication outcome hook is already installed".into());
+        }
+        self.publication_after_execute = Some(hook);
+        Ok(())
+    }
     pub const fn new(storage: SyndicStorage) -> Self {
         Self::with_settlement_custody_capacity(
             storage,
@@ -125,6 +160,10 @@ impl SyndicComposerHost {
             last_history_identity: None,
             last_history_outcome: None,
             publication: publication::ComposerHostPublicationCoordinator::new(),
+            #[cfg(test)]
+            publication_execution_observation: None,
+            #[cfg(test)]
+            disposal_execution_observation: None,
             lifecycle: lifecycle::ComposerHostLifecycleCoordinator::new(),
             submission: submission::ComposerHostSubmissionCoordinator::new(),
             #[cfg(feature = "test-faults")]
@@ -139,6 +178,8 @@ impl SyndicComposerHost {
             history_after_commit_fault: None,
             #[cfg(feature = "test-faults")]
             publication_before_execute_fault: None,
+            #[cfg(all(test, feature = "test-faults"))]
+            publication_after_execute: None,
             #[cfg(feature = "test-faults")]
             submission_before_execute_fault: None,
             #[cfg(feature = "test-faults")]

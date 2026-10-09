@@ -322,7 +322,7 @@ fn cancellation_and_predecessor_drift_leave_target_unclaimed() {
             &fixture.syndic,
             CommandCancellation::new()
         ),
-        RunningThreadActivationOutcome::NotCommitted(RunningThreadActivationError::Session(_))
+        RunningThreadActivationOutcome::NotCommitted(rejected) if matches!(rejected.problem(), RunningThreadActivationError::Session(_))
     ));
     assert_eq!(fixture.store.home_revision().unwrap(), revision);
     assert_eq!(

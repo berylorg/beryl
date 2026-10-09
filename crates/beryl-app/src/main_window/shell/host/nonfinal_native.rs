@@ -1,6 +1,101 @@
 use super::*;
 
+#[cfg(test)]
+type NonfinalPageReleaseEvidence = Vec<(
+    crate::main_window::MainWindowComposerSelectionIdentity,
+    u64,
+    u64,
+    usize,
+)>;
+
+#[cfg(test)]
+struct NonfinalPageReleaseObserver {
+    window: beryl_model::WindowId,
+    identity: std::rc::Weak<()>,
+    evidence: std::rc::Weak<RefCell<NonfinalPageReleaseEvidence>>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static NONFINAL_PAGE_RELEASE_OBSERVER: RefCell<Option<NonfinalPageReleaseObserver>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+struct NonfinalPageReleaseObservationGuard {
+    identity: std::rc::Rc<()>,
+}
+
+#[cfg(test)]
+impl Drop for NonfinalPageReleaseObservationGuard {
+    fn drop(&mut self) {
+        NONFINAL_PAGE_RELEASE_OBSERVER.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if slot.as_ref().is_some_and(|observer| {
+                observer
+                    .identity
+                    .ptr_eq(&std::rc::Rc::downgrade(&self.identity))
+            }) {
+                slot.take();
+            }
+        });
+    }
+}
+
 impl MainWindowShell {
+    #[cfg(test)]
+    pub(crate) fn test_observe_nonfinal_page_release(
+        window: beryl_model::WindowId,
+        evidence: std::rc::Rc<RefCell<NonfinalPageReleaseEvidence>>,
+    ) -> Result<impl Drop, String> {
+        let identity = std::rc::Rc::new(());
+        NONFINAL_PAGE_RELEASE_OBSERVER.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if slot
+                .as_ref()
+                .is_some_and(|observer| observer.identity.upgrade().is_some())
+            {
+                return Err("nonfinal Page release observation is already active".into());
+            }
+            *slot = Some(NonfinalPageReleaseObserver {
+                window,
+                identity: std::rc::Rc::downgrade(&identity),
+                evidence: std::rc::Rc::downgrade(&evidence),
+            });
+            Ok(NonfinalPageReleaseObservationGuard { identity })
+        })
+    }
+
+    #[cfg(test)]
+    fn test_record_nonfinal_page_release(
+        window: beryl_model::WindowId,
+        draft: &MainWindowShutdownDraft,
+    ) {
+        if draft.failed.is_some() {
+            return;
+        }
+        let observer = NONFINAL_PAGE_RELEASE_OBSERVER.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .filter(|observer| {
+                    observer.window == window && observer.identity.upgrade().is_some()
+                })
+                .and_then(|observer| observer.evidence.upgrade())
+        });
+        let Some(observer) = observer else { return };
+        let Ok(evidence) = draft.test_original_page_release_evidence() else {
+            return;
+        };
+        if evidence
+            .iter()
+            .any(|(selection, _, _, _)| selection.window_id() != window)
+        {
+            return;
+        }
+        if let Ok(mut observed) = observer.try_borrow_mut() {
+            *observed = evidence;
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn test_nonfinal_native_close_outcome(
         &self,
@@ -112,8 +207,20 @@ impl MainWindowShell {
         {
             return Err("exact destroyed native close settlement is unavailable".into());
         }
-        self.root
-            .update(app, |root, cx| root.retire_final_shutdown_draft(draft, cx))
+        let window = self.retained_window_id(app)?;
+        if !self
+            .root
+            .update(app, |root, cx| root.retire_final_shutdown_draft(draft, cx))?
+        {
+            return Ok(false);
+        }
+        self.root.update(app, |root, cx| {
+            root.release_destroyed_final_shutdown_resident(draft, cx)
+        })?;
+        let result = draft.advance_destroyed_final_cleanup(window);
+        #[cfg(test)]
+        Self::test_record_nonfinal_page_release(window, draft);
+        result
     }
 }
 

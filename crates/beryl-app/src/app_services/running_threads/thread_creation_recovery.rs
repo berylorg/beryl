@@ -8,7 +8,7 @@ pub(crate) enum RetiredThreadClaimAdmission {
 }
 
 pub(crate) struct RetiredSameWindowThreadOperation {
-    pub(crate) saved: Option<crate::main_window::MainWindowRetiredThreadPredecessorSave>,
+    pub(crate) saved: Option<crate::main_window::MainWindowRetiredClaimPredecessorSave>,
     pub(crate) admission: RetiredThreadClaimAdmission,
     lease: Option<Arc<crate::window_acquisition::WindowSelectionLease>>,
     pub(crate) exclusion: Option<crate::window_acquisition::RetiredWindowSelectionLease>,

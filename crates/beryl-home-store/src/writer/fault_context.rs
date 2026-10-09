@@ -1,4 +1,4 @@
-use crate::CurrentDomainCommand;
+use crate::{CurrentDomainCommand, HomeCommand};
 
 #[derive(Clone, Copy)]
 pub(super) struct CommandFaultContext {
@@ -7,10 +7,12 @@ pub(super) struct CommandFaultContext {
 }
 
 impl CommandFaultContext {
-    pub(super) const fn unscoped() -> Self {
+    pub(super) const fn ordinary(command: &HomeCommand) -> Self {
+        #[cfg(not(feature = "test-faults"))]
+        let _ = command;
         Self {
             #[cfg(feature = "test-faults")]
-            scope: None,
+            scope: command.test_fault_scope,
         }
     }
 

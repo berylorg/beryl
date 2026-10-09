@@ -177,7 +177,7 @@ impl MainWindowConversationComposerMount {
                 });
             }
             resident.update(mount_cx, |resident, cx| {
-                resident.fence_fresh_recovery(ticket, window, cx)
+                resident.fence_fresh_recovery(ticket, preparation, window, cx)
             })?;
             mount.advance_fresh_recovery(ticket, window, mount_cx)?;
             mount.subscribe_to_contribution(window, mount_cx)?;
