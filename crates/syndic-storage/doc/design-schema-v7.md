@@ -1,7 +1,7 @@
 # V7 Persisted Schema
 
 This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
-the complete 69-primary plus 24-index family inventory, family and record versions, natural keys,
+the complete 74-primary plus 29-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
 change persisted bytes.
@@ -56,7 +56,9 @@ change persisted bytes.
   `terminal-repair-media-pages`, `canonical-items`,
   `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
   `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
-  `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
+  `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`,
+  `resource-structure-heads`, `resource-structure-builds`, `resource-structure-progress`,
+  `resource-structure-pages`, and `resource-structure-roots`.
 - `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`,
   `draft-marker-label-admission-capacity`, `draft-marker-label-admission-heads`,
   `draft-marker-label-admission-nodes`,
@@ -70,17 +72,261 @@ change persisted bytes.
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
-- The 24 index V7 families are `draft-by-thread`, `thread-parent-index`,
+- The 29 index V7 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
   `accepted-ready-sources`, `accepted-next-sources`, `non-idle-gate-sources`, `turn-items`, `activity-query-entries`,
   `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
-  `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V7 inventory is exactly 69 primary plus 24 index families, or 93 total. Family names,
+  `cas-turn-index`, and `provider-observation-chunks`, `resource-code-lines`, `resource-table-rows`,
+  `resource-table-cells`, `resource-table-columns`, and `resource-source-anchors`.
+- The complete V7 inventory is exactly 74 primary plus 29 index families, or 103 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
+
+### Resource Structure Companion Canonical Encoding
+
+The ten resource-structure families above use keyspace V1 and record V1. They implement the
+[indexed structure contract](../../../doc/systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
+without changing `resources`, projections or their existing codecs. Every numeric scalar, count,
+ordinal, revision and offset below is exactly eight bytes, checked unsigned big-endian `u64`.
+Explicit tags, roles, enums, alignments and booleans are one byte; booleans are exactly `0` or `1`.
+Identities are 16 bytes and digests 32 bytes.
+`LP` means an eight-byte length followed by exact bytes. An option is byte `0` alone or byte `1`
+followed by its payload. Arrays have an eight-byte count followed by elements. These definitions
+describe payload bytes before HomeStore's record-version envelope.
+
+#### Registration And Absence
+
+The complete target inventory is 103 families. A release registers only its implemented exact
+declaration; unimplemented terminal-repair and companion families are not empty placeholders.
+The package entry point and this inventory describe target authority, not an instruction to
+register an incomplete implementation. Required-domain declarations and codec registration change
+together when the companion implementation is accepted.
+
+Home admission preserves HomeStore's
+[exact declaration policy](../../beryl-home-store/doc/design-domain-api.md#registration-and-type-ownership).
+A persisted declaration differing from the implemented declaration is rejected before ordinary
+access. Registration does not extend an existing family set, migrate records, erase a home or
+probe application records for compatibility. Matching declarations with empty companion families
+are valid: old or newly finalized resource records need not have companions. Absence of a
+companion is explicit unavailability and may start bounded derivation from that exact resource.
+Routine open checks declarations and required physical families without enumerating resources,
+builds, roots or pages. Missing required physical families are structural failure; missing optional
+derived records are not. A stable head selecting a missing root or locator is corruption.
+
+#### Identities And Source Binding
+
+`R` is resource id followed by its nonzero resource revision, exactly 24 bytes. `B` is `R` followed
+by a caller-owned build operation id, exactly 40 bytes. A page or progress key is `B` followed by
+a nonzero page or transition ordinal, exactly 48 bytes. Build identity is separate from stable
+line, row and column identity. Reuse of an occupied operation with different canonical input is
+collision; no automatic alternate operation is chosen.
+
+Binding `S`, in order, is `R`, LP of the exact canonical existing `ResourceMetadataRecord` payload,
+the existing canonical `ProjectionTextSource` encoding, backing range start/end, projection-format
+`u64 = 1`, and structure-format `u64 = 1`. Metadata LP is limited to 65,536 bytes; the complete
+binding is limited to 66,048 bytes. The repeated source/range must equal metadata's text backing.
+Only Code or Table metadata with immutable readable backing is eligible. The source reference
+retains all existing content-summary or provider-narrative generation/frontier/digest fields;
+neither a content id alone nor a current successor reference is an immutable snapshot. A binding
+digest is `H(LP("syndic/resource-structure-binding/v1") || LP(S))`.
+
+To keep compact records bounded, every record stores the binding digest and `B` or `R`; the build
+record additionally stores `S`. Construction admission limits the canonical metadata payload in
+`S` to 4,096 bytes and complete `S` to 4,608 bytes. Larger otherwise valid metadata is explicit
+structure-unavailable, preserving ordinary raw-resource reads. Roots and heads authenticate their
+exact `S` through the named retained build; no detached digest establishes source authority.
+
+#### Descriptor Pages And Index Locators
+
+`resource-structure-pages` keys are page keys. Values encode that key, binding digest, prior page
+chain digest, the count-framed descriptor array, then page digest. A page contains 1 through 256
+descriptors and at most 65,536 payload bytes. The descriptor stream is ordered first by type tag
+then by coordinates. Construction closes each type stream before starting the next; bounded
+passes over immutable source are permitted for Table row and cell streams, and each pass has its
+own durable byte frontier. No pass restarts from zero after every quantum.
+
+Each descriptor starts with a closed tag and the following ordered fields:
+
+- `0`, Code line: zero-based line ordinal, raw start/end, content start/end, terminator start/end.
+  Ranges are resource-relative; raw is the union of contiguous content and terminator. Terminator
+  is empty, LF or CRLF as proven during construction; empty unterminated lines are forbidden.
+- `1`, Table row: role byte (`0` header, `1` body), zero-based row ordinal, raw start/end, authored
+  cell count, disposition byte (`0` ordinary, `1` whole-row fallback). Header ordinal is zero.
+  Fallback has no authored cell descriptors, retains the recorded columns and body-row ordinal,
+  and names the complete raw row including its terminator.
+- `2`, Table cell: role, row ordinal, column ordinal, raw start/end, trimmed start/end, presentation
+  byte (`0` literal, `1` literal with local fallback). Only authored cells are stored. Empty cells
+  have equal trimmed endpoints; missing cells have no raw source and are synthesized by the
+  owner from the row's authored count and root's column count. No descriptor invents an interval.
+- `3`, Table column: zero-based column ordinal, alignment byte (`0` unspecified, `1` left,
+  `2` center, `3` right). Alignment is derived from the exact delimiter syntax.
+
+All ranges are checked half-open intervals inside backing length. Relative-to-absolute mapping
+adds the binding's backing start with overflow checks. Trimmed spans lie inside raw spans;
+adjacent cell spans may be separated by delimiters but do not overlap. Display bytes are not
+persisted. Cell trimming removes only ASCII space (`0x20`) and horizontal tab (`0x09`) at each
+end; row terminators and recognized pipe delimiters are excluded from cell intervals. All other
+source bytes remain inside trimmed content. Trim the leading run first, then the trailing run in
+the remaining interval; an all-space/HT cell has both trimmed endpoints equal to raw end. Owner
+queries read the selected trimmed source span
+in fragments of at most 8,192
+complete UTF-8 bytes. V1 displays literal source with identity mapping; unsupported transformations
+retain literal bytes and fallback indication. Mapping encodes displayed start/end and absolute
+authored start/end as four `u64`s. A truncated fragment adds its exact remaining raw range and
+byte continuation. Copy/Save always reads raw source, independent of this display policy.
+
+The four coordinate index keys are `B` followed respectively by line ordinal (48 bytes), role and
+row ordinal (49), role and row ordinal and column ordinal (57), or column ordinal (48). Each
+value repeats its key then page ordinal and zero-based descriptor slot as two `u64`s, then page
+digest. A locator is admitted only with its byte-equal descriptor in the same contribution.
+Keys order numerically within one exact build. Zero-based coordinates are an explicit exception
+to generic one-based stored ordinal rules; page and transition ordinals remain one-based.
+
+`resource-source-anchors` keys are `B`, absolute raw start, descriptor tag, role byte and row/line
+ordinal and column ordinal, exactly 66 bytes. For Code the role and column fields are zero; for
+Table row fallback column is zero. Values repeat that key, absolute raw end, then the same page,
+slot and digest locator. Only Code lines, ordinary authored Table cells and whole-row fallback
+descriptors enter this index. Ordinary rows, missing cells and columns do not. Empty authored
+cell intervals are allowed, with coordinates breaking equal-start ties; lookup tests containment
+before choosing bounded predecessor/successor candidates. Delimiter/header syntax gaps use the
+nearest eligible descriptor with leading-side tie bias. No source lookup crosses the bound block.
+
+Coordinate seeks use exact prefix/range bounds, and source seeks use ordered predecessor/successor
+reads. Whole-row fallback is obtained through the row index before querying that row's cells;
+every intersecting nonempty rectangle returns it once. Missing trailing cells use direct column
+alignment reads. A late column never requires a row-prefix scan. Page reads validate the exact
+locator, descriptor slot, page digest and binding. Read work counts page bytes even when only one
+descriptor is returned; public output limits do not excuse an unbounded storage read.
+
+#### Build, Progress, Root And Head Values
+
+`resource-structure-builds` keys are `B`. Values, in order, are `B`, LP(S), binding digest, nonzero
+build revision, lifecycle byte (`0` building, `1` completed, `2` cancelled, `3` superseded,
+`4` refused), transition ordinal, optional selected progress reference (key and digest), next page
+ordinal, page chain digest, four cumulative descriptor counts in tag order, and checkpoint.
+Lifecycle starts building at revision one and transition zero; every command advances both once.
+Terminal values retain exact frontiers and reject further construction. A nonzero transition
+requires the exact selected receipt; zero requires its absence. Payload ceiling is 24,576 bytes.
+Initial admission's exact old side is absence of B, and its exact new side is the byte-equal
+revision-one build with empty chain/counts, next page one and no receipt or output. It fences
+the exact resource/source closure and checks any already selected companion before publication.
+
+Checkpoint, in order, is pass byte (`0` Code lines, `1` Table rows, `2` Table cells, `3` columns,
+`4` sealed), resource-relative next source byte, current line start, row role byte (`0` header,
+`1` body; zero outside Table row/cell passes), next line/row ordinal,
+next column ordinal, phase byte (`0` consuming, `1` draining syntax, `2` pass EOF), pending-CR
+boolean, LP of at most three UTF-8 carry bytes, syntax-window start, LP of at most 16,384 undecided
+syntax bytes, output byte position within that window, escape boolean and backtick-state boolean.
+Carry is only an incomplete UTF-8 suffix, never malformed interior text. Row/cell recognition uses
+the existing projection grammar; the window plus scalar carry is its full retained input.
+Long Code lines retain offsets rather than text. An oversized Table row is streamed as whole-row
+fallback; it is counted once and emits no cells. Column emission drains the bounded delimiter
+window across output-only steps. The column pass seeks directly to the line immediately after
+the metadata's exact header range and admits that delimiter into its bounded syntax window;
+it does not retain the header/delimiter through the intervening whole-resource passes. The cell
+pass consults each previously closed row descriptor and skips its source if it is fallback;
+ordinary rows must reproduce the same authored count and ranges before emitting their cells.
+At pass EOF all input/carry is accounted for; pass reset is an
+explicit transition, and columns require the exact delimiter source window. Sealed retains no
+carry/window and has final source position equal to backing length. Unused scalar fields are zero.
+
+`resource-structure-progress` keys are progress keys. Values encode that key, command tag
+(`0` advance, `1` pass change, `2` complete, `3` cancel, `4` supersede, `5` refuse), optional prior
+receipt key/digest, before/after build revisions, before/after build digests, optional emitted page
+key/digest, and optional completed root digest. Progress digest is appended. Payload ceiling is
+512 bytes. Build digest is `H(LP("syndic/resource-structure-build/v1") || LP(key) || LP(value))`
+with exactly the selected progress digest omitted; its selected key remains encoded. This prevents
+a build/receipt digest cycle. A receipt has domain `syndic/resource-structure-progress/v1` and hashes
+LP(key) and LP(all preceding payload fields). Prior receipt is absent only at transition one.
+
+`resource-structure-roots` keys are `B`. Values encode `B`, binding digest, final page count, final
+page chain digest, four descriptor counts, Code logical line count, Table body-row and column
+counts, optional header range, optional language LP UTF-8 (at most 4,096 bytes), final progress key,
+then root digest. Code has absent header and zero Table counts; Table has a header and absent
+language and zero Code count. Payload ceiling is 4,608 bytes. Root digest uses domain
+`syndic/resource-structure-root/v1`, LP(key) and LP(all preceding fields). The final receipt names
+this root digest, while the root stores only its key, preventing a digest cycle.
+
+`resource-structure-heads` keys are `R`. Values encode `R`, revision `u64 = 1`, binding digest, `B`,
+root digest, then head digest; payload is exactly 168 bytes. Head digest uses domain
+`syndic/resource-structure-head/v1`, LP(key) and LP(all preceding fields). A completed immutable
+binding is selected once; identical derivation reuses it. An occupied unequal binding/root is
+collision, not permission to replace a finalized companion.
+
+Page digest uses domain `syndic/resource-structure-page/v1`, LP(page key), LP(binding digest),
+LP(prior chain digest) and LP(count-framed descriptors). Empty page chain is
+`H(LP("syndic/resource-structure-chain/v1/empty") || LP(B) || LP(binding digest))`; successor is
+`H(LP("syndic/resource-structure-chain/v1/link") || LP(prior chain) || LP(page digest))`.
+All other digest formulas above prefix their exact ASCII domain with LP and use SHA-256. Digest
+agreement is an integrity filter; replay compares exact canonical bytes and selected closure.
+
+#### Incremental Publication And Bounds
+
+Admission authenticates resource metadata and immutable source/range through the existing typed
+source authority. The build starts with empty chain/counts and no page. Each advance validates one
+exact build/receipt frontier, consumes at most 65,536 source bytes, and emits at most one page.
+It may stop input early or advance output without consuming source; it cannot retain unread input
+outside checkpoint bounds. Ordering, contiguous row/line ordinals, exact cell coordinates, range
+coverage and delimiter recognition are established incrementally. Source and output progress must
+advance or explicitly change pass/lifecycle; unchanged no-op progress is forbidden.
+
+One command has at most 256 descriptors, 512 new index locators, one page, one build update and
+one receipt: at most 515 writes. Completion additionally installs root and head, hence at most
+517 writes. Cancellation/supersession/refusal emits only build and receipt. Maximum canonical
+key-plus-value writes are 262,144 bytes; reads are at most 520 records and 524,288 encoded bytes;
+simultaneously retained decoded bytes are at most 524,288. These are admission ceilings, not
+permission to buffer that much undisclosed syntax. Source pages and all metadata, occupied-key
+checks, receipt, root and index records count against one command ledger. A preparation exceeding
+a ceiling returns typed limit/refusal before publication; smaller input/output quanta remain
+permitted. The storage engine owns its internal ordered-index depth; no application offset array,
+whole-row scan or full-resource allocation is permitted.
+
+The conservative maximum emitted-byte envelope is
+`512*(66+122) + (48+65536) + (40+24576) + (48+512) + (40+4608) + (24+168)
+= 191856` bytes. This includes repeated index keys and completion's root/head and is below the
+262,144-byte contribution ceiling. Reads independently reserve the complete operation ledger;
+if source-piece fragmentation or occupied-key authentication would exceed 520 records or the
+byte ceiling, the command stops at a smaller exact frontier or refuses before any mutation.
+
+Completion uses the compact incrementally proved frontiers, requires exact metadata line/row/column
+counts and header/language facts, and installs terminal build, final receipt, immutable root and
+head atomically. Code descriptor count equals its logical line count and all other counts are
+zero; Table row count equals checked body rows plus one header, column descriptor count equals
+column count, and line count is zero. Cell count is the incrementally proved authored total of
+ordinary rows, excluding missing cells and fallback rows. It never scans all pages or source
+again. Recognition that cannot preserve
+recorded structure returns explicit unavailable rather than changing finalized metadata. Ordinary
+queries first authenticate head/root/build and exact resource binding under a stable domain read,
+then read only demanded indexes/pages/source fragments. Superseded resources cannot acquire
+successor authority through an old binding.
+
+Every command atomically publishes its entire page/index/build/receipt closure. Exact old means
+the before build is selected and all proposed new keys are absent; exact new means the complete
+byte-equal after build, selected receipt, page and its bounded locator set are present. Completion
+also requires its exact root/head pair. A stable mixture, locator without page, unequal occupied
+key, or selected root without terminal completed build is corruption/collision. Earlier pages
+remain authenticated by prior receipt/chain; reconciliation compares only the command's bounded
+closure. Acknowledgement loss transfers existing linear custody to HomeStore reconciliation;
+no blind retry, new operation identity or success inferred from digest alone is allowed.
+
+Restart resumes only a caller-named exact build under fresh projection-owner custody and coherent
+source binding; routine open performs no build sweep. Terminal/unselected build pages may remain
+retained until explicit bounded maintenance; they never become query authority. No cleanup occurs
+as a side effect of reading absence. Explicit validation walks records in bounded pages, validates
+chain/count/order/source coverage, all locator-to-page agreement, completed root/head/build/receipt
+closure, and permits coherent inert unselected builds. Malformed tags/options, invalid UTF-8,
+overflow, out-of-bound counts/ranges/slots, key/value disagreement, digest mismatch, unsupported
+versions and trailing bytes reject. A head/root split under a stable snapshot is corruption.
+
+Public structural responses contain at most 256 descriptors and 65,536 encoded bytes including
+binding facts, displays, mappings and cursor. Cursors are transport-only, bind exact B/root/source,
+original request and next coordinate/fragment, and distinguish request EOF from resource EOF.
+No cursor bytes are added to durable families. Instrumented late seeks, narrow rectangles,
+UTF-8 boundary fragments, missing/surplus cells, interrupted passes, capacity refusal and exact
+acknowledgement-loss closure are required implementation evidence under the owning query contract.
 
 ### Non-Idle Gate Source Canonical Encoding
 

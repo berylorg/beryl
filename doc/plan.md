@@ -98,23 +98,41 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 759: Qualify Syndic Resource Structure Range Queries (finished)
+# Phase 760: Specify Resource Structure Persistence (finished)
 
-Independent semantic review accepted the
-[structural-query qualification](audits/transcript-mounting-readiness.md#resource-structure-query-qualification),
-including immutable companions, indexed bounded lookup, exact source presentation and anchors,
-resumable publication and provider/residency custody. Concepts authority and surplus-row fallback
-were reconciled. Local links, whitespace and index reconciliation passed; no production code,
-runtime query or rendering acceptance is claimed. Exact persistence specification is next.
+Independent review accepted the [persistence specification](audits/transcript-mounting-readiness.md#resource-structure-persistence-qualification),
+including exact codecs, resumable passes, bounded indexed lookup and atomic publication/reconciliation.
+Target family inventory and strict home admission were reconciled; inventory, registration size,
+links, whitespace and index checks passed. No production implementation or runtime acceptance is
+claimed. The storage/provider/residency capability is ready for implementation.
 
-# Phase 760: Specify Resource Structure Persistence (pending)
+# Phase 761: Implement Indexed Transcript Resource Queries (pending)
 
-Translate the [structural-query contract](systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
-into the storage package's sole persisted-schema authority before production implementation.
-Define exact companion/build/index families, versions, natural keys, canonical values, source and
-root bindings, digest domains, ordering, bounds and atomic publication/reconciliation closure.
-Preserve finalized resource records and routine-open no-scan behavior; reconcile family inventory
-and explicitly resolve admission of homes without companions. Independently review codecs and
-publication proofs, then schedule the bounded storage/provider query implementation from that
-accepted specification. This prerequisite is necessary because semantic query authority alone
-does not authorize new durable bytes.
+Implement the accepted [query contract](systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
+and [persisted bytes](../crates/syndic-storage/doc/design-schema-v7.md#resource-structure-companion-canonical-encoding)
+through Syndic typed construction and reads, existing projection-work scheduling, selected-history
+provider transport and transcript residency. Update the implemented exact declaration with the ten
+companion families only when their codecs and behavior are complete; preserve the four deferred
+terminal-repair families and finalized resources. Accept a late Code line/fragment or narrow Table
+rectangle and source anchor through the actual provider/residency consumer, including inner demand
+changes without outer scrolling, exact root/source transport, stale completion, release and charges.
+
+Verify canonical byte fixtures/rejections, header/delimiter/empty/missing/surplus semantics, UTF-8
+boundary joins, long-line/cell fallback and checked overflow. Instrument late seeks and bounded
+source/output passes; interrupt every durable progress/publication boundary, exercise capacity
+refusal and acknowledgement-loss reconciliation, and prove no mixed or partial current companion.
+Test matching empty-companion home admission, exact declaration mismatch rejection and routine-open
+no-scan behavior. Independently review the complete storage/provider/residency capability before
+acceptance. Mounted widget interaction and measured geometry remain separate consumers.
+
+# Phase 762: Mount The Indexed Transcript Code Panel (pending)
+
+Mount the authoritative Code panel on accepted indexed queries with bounded inner virtualization,
+language/line facts, exact source actions and same-source anchors. Verify actual native interaction,
+inner demand/disposal and coherent measured outer geometry with minimized startup where practical.
+
+# Phase 763: Mount The Indexed Transcript Table Panel (pending)
+
+Mount the authoritative Table panel with bounded row/column virtualization, owner-projected cells,
+alignment/header and whole-row fallback, exact source actions and anchors. Verify actual native
+interaction, inner demand/disposal and coherent measured outer geometry.

@@ -681,3 +681,28 @@ owning feature/widget/system/package contracts and exact parser/resource-emissio
 The prior semantic-table-read prohibition and unspecified surplus-row delivery were resolved;
 no blocking finding remained. Root verification passed local Markdown link checks and
 `git diff --check`; this documentation-only phase ran no builds or tests.
+
+## Resource Structure Persistence Qualification
+
+The sole [V7 byte authority](../../crates/syndic-storage/doc/design-schema-v7.md#resource-structure-companion-canonical-encoding)
+now defines five companion primary families and five coordinate/source index families, exact
+keys and payload order, scalar widths, closed tags, immutable source binding, digest domains,
+bounded resumable passes and atomic page/index/build/receipt/root/head closure. Table derivation
+uses bounded persisted passes rather than retaining all rows or cells. Literal source presentation
+and identity mappings preserve raw Copy/Save authority; whole-row fallback retains surplus source.
+
+Target inventory is 74 primary plus 29 index families, 103 unique names. The package entry's stale
+92-family count was reconciled. The current implemented declaration remains 89 families, with
+four target terminal-repair families deferred; this qualification adds no registration placeholders.
+The target registration encoding is 5,891 bytes, within HomeStore's 8,192-byte ceiling. Matching
+homes with empty companion families are valid and derive companions on demand. Differing persisted
+declarations retain existing strict rejection policy; this work specifies no home migration or
+deletion and routine open performs no application-record scan.
+
+Independent review checked the complete persistence/query boundary, key and payload lengths,
+checkpoint bounds, digest dependencies, indexed lookup, exact publication/reconciliation and
+restart custody. The default scalar-width gap was corrected to exact eight-byte unsigned
+big-endian fields; one-byte tags remain explicit. No blocking finding remained. Root checks
+confirmed inventory uniqueness, registration size, local Markdown targets and whitespace.
+No production code, codec fixtures, runtime queries or rendering behavior are accepted here;
+construction/query/provider/residency verification is the next implementation boundary.
