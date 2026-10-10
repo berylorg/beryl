@@ -646,3 +646,38 @@ Independent semantic review accepted the complete qualification and derived stru
 prerequisite after directly checking the cited sources, unchanged against `b82cb387`, and owning
 widget/feature/system contracts. No blocker or required correction was identified. Local links
 and `git diff --check` passed; no builds or tests were run for this documentation-only boundary.
+
+## Resource Structure Query Qualification
+
+The [Syndic structural-query contract](../systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
+defines separate completed companions for immutable Code/Table resources, exact-root indexed
+line/fragment and cell-rectangle lookup, source-anchor resolution, bounded source-preserving cell
+presentation, resumable construction and coherent publication. Storage public-boundary and
+renderer custody documents link that owner. The concepts supplement now distinguishes raw
+byte-range payload reads from typed companion structure queries.
+
+Construction and queries have separate bounds: source-page progress remains resumable, while a
+late viewport seeks indexed descriptors without a prefix scan. Responses cap descriptors and
+encoded bytes, charge source mappings/display fragments and carry exact continuations. Finalized
+resource records remain immutable; a companion does not change their identity or source revision.
+Inner viewport demand, cancellation, stale completion and release stay with existing selected-
+history/provider/residency custody. Structural readiness does not accept outer widget geometry.
+
+Existing V1 `parser.rs::process_line` accepts body rows without requiring their cell count to
+match the header, and `parser/output.rs::emit_table` persists header-derived columns. Therefore a
+two-column table containing `a|b|c` cannot be repaired by mutating finalized counts or dropping `c`.
+The selected whole-row fallback keeps the exact row identity and raw source range, is returned
+once by any intersecting nonempty rectangle, and permits bounded source-anchor/byte lookup and
+explicit raw-row Copy/Save. It supplies no invented authored cell selection.
+
+Semantic query authority does not specify new persisted bytes. The next prerequisite defines
+families, codecs, index ordering, source/root commitments and publication/reconciliation proofs
+in the package's sole [schema authority](../../crates/syndic-storage/doc/design-schema-v7.md), with
+exact inventory and home-admission reconciliation before implementation. No storage index,
+provider query or mounted Code/Table consumer is implemented or accepted by this qualification.
+
+Independent semantic review accepted the corrected complete design boundary after inspecting
+owning feature/widget/system/package contracts and exact parser/resource-emission symbols.
+The prior semantic-table-read prohibition and unspecified surplus-row delivery were resolved;
+no blocking finding remained. Root verification passed local Markdown link checks and
+`git diff --check`; this documentation-only phase ran no builds or tests.

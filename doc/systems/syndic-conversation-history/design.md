@@ -1805,6 +1805,164 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   becomes ordered source-preserving fallback spans; this may reduce styling locally but never
   drops bytes, changes authored text, or expands memory with the complete item.
 
+## Indexed Text Resource Structure Queries
+
+### Ownership And Publication
+
+Syndic supplies bounded structural queries for recognized Code and Table resources. Raw resource
+bytes remain in their exact immutable canonical backing; the structural index contains descriptors
+and bounded projected cell presentations, not a duplicate complete Markdown source. The storage
+package owns typed reads, construction progress and immutable index records. Beryl's selected
+transcript provider transports those facts; transcript residency owns their admission, demand,
+cancellation and release. Widgets neither parse Markdown nor call storage.
+
+Each structural companion binds the resource id and revision, exact immutable text source snapshot,
+backing range, projection format and structure format. A compact head selects one completed index
+root and its exact counts. The companion is separate derived authority: installing it never rewrites
+a finalized resource, its source, its projection identity or its revision. Absence is explicit
+structure-pending or structure-unavailable, never an empty Code/Table model. A bounded construction
+operation may derive a missing companion from the exact immutable backing, including finalized
+history, without reprojecting or changing that history.
+
+Construction consumes bounded source pages and emits bounded index pages through the existing
+projection work owner. Persisted progress includes source position, parser/UTF-8 carry, open
+line/cell state, output frontier and exact source binding. Steps obey the existing 65,536-byte
+source allowance and 16,384-byte undecided syntax allowance plus one scalar carry; index writes
+have explicit page and contribution ceilings. A step with no source consumption may still advance
+bounded index output. No final step collects every descriptor or validates by rereading the whole
+resource. The package incrementally establishes ordering, counts, source coverage and root closure,
+then atomically publishes the completed companion head. Unfinished roots are unreachable by reads.
+
+Cancellation, capacity refusal and source supersession cannot publish a partial head or mix index
+roots. Interrupted work resumes from its exact durable frontier or remains explicitly unavailable
+under existing projection recovery; it is not rebuilt on the GUI thread. Exact publication and
+acknowledgement-loss custody use the package mutation protocol. Immutable closed blocks share an
+existing companion across transcript generations. A provisional replacement has its own exact
+resource/source binding; old construction cannot become current for its successor.
+
+### Coordinates And Indexed Lookup
+
+All offsets are checked `u64` UTF-8 byte offsets. Descriptors expose both resource-relative ranges
+and their mapping to absolute logical offsets in the owning canonical text source. Content bytes,
+line endings and Markdown delimiters retain exact raw-source coordinates. Stable identities exclude
+viewport, wrapping, syntax highlighting, font, theme and index construction generation.
+
+A Code line identity is its immutable resource identity plus zero-based logical line ordinal.
+LF terminates a logical line; a preceding CR is part of the CRLF terminator. Descriptors distinguish
+content and terminator ranges. An unterminated nonempty tail is a line; a trailing terminator does
+not synthesize an additional empty line, and empty code has zero lines. Empty terminated lines
+remain lines. The owner supplies the bounded language label from resource metadata.
+
+A Table row identity is its immutable resource identity plus header/body role and zero-based row
+ordinal within that role. The header is one row, separate from body-row counts; the delimiter row
+is source syntax rather than a grid row. A column identity is its zero-based column ordinal within
+that immutable table; cell identity combines row and column identities. Counts, header source range
+and per-column alignment are owner-supplied facts. No viewport position becomes identity.
+
+Queries seek directly by line ordinal, row/column coordinates or absolute source anchor using
+ordered persistent indexes. Reading a late line or narrow rectangle must touch only bounded search
+paths and requested pages, never preceding source lines, all preceding cells in a wide row, or a
+complete offset array. Lookup work is proportional to index depth plus the requested bounded output;
+the resource's byte length and ordinal do not determine temporary resident size.
+
+Each response carries the exact companion root/source binding and at most 256 descriptors and
+65,536 encoded payload bytes in total, including any cell presentation and source mapping. Requests
+may set smaller limits. Rectangle traversal is row-major over only the requested columns, with an
+exact row/column continuation; Code traversal carries an exact next line/fragment position. Cursors
+bind the original rectangle/range and immutable root. Empty results, request completion and whole
+resource completion are distinct. Metadata counts never substitute for a successfully read range.
+
+### Cell Presentation And Pathological Content
+
+Syndic's projection grammar alone recognizes cells and owns escaping and delimiter decisions.
+Cell descriptors preserve the raw cell interval, its trimmed content interval, typed empty/missing
+cell distinction, alignment and bounded display fragments with source mappings. Optional outer
+pipes and escaped pipes are syntax under that grammar, not GUI string-splitting rules. A body row
+with fewer cells has explicit missing cells without invented authored bytes; surplus cells and
+unsupported or ambiguous syntax follow the existing source-preserving fallback contract rather
+than silently dropping source. Table recognition and descriptor derivation use the same grammar.
+
+A recognized table whose body row has surplus cells retains its recorded body-row ordinal and
+header-defined column count. Its companion supplies one typed row-fallback descriptor instead of
+authored cell descriptors for that row. The descriptor names the exact complete raw row interval,
+the existing row identity and column count, and optional bounded display fragments; it does not
+introduce an extra column or remove the row. Every nonempty rectangle intersecting that row returns
+its fallback descriptor once, irrespective of which columns are requested, charged as one
+descriptor plus its encoded bytes. The grid presents local fallback across the requested tracks.
+Source-anchor lookup resolves into that same row fallback and byte position; subsequent raw-range
+demand can reach any part of the row without assembling it. A truncated display fragment preserves
+the remaining-source range and exact byte continuation. Fallback paint is not selectable authored
+cell content; an explicit owner-supplied raw-row Copy/Save representation preserves the complete
+source, including surplus cells. This rule applies equally to an existing finalized resource and
+new construction and requires no re-projection or mutation of its stored counts.
+
+Cell presentation uses literal source text for unsupported inline syntax, with an explicit local
+fallback indication. Supported transformations, such as an escaped separator, carry source spans
+that map each displayed fragment to its exact authored bytes. No painted string becomes copy
+authority. Copy/Save use the selected source representation and admitted byte-range reads under
+the feature/widget contract; separators, omitted whitespace, ellipses and status labels cannot be
+inferred as authored content from paint. Empty and missing cells remain distinguishable in that
+representation.
+
+One admitted display fragment contains at most 8,192 UTF-8 bytes, with encoded mappings charged
+against the response byte ceiling. A long Code line supports direct byte-window lookup within its
+content range and bounded scalar-boundary adjustment, without materializing the entire line or
+scanning from its start. Wrapping beyond admitted fragments is a local fallback unless an owner
+supplies a bounded wrap index; this structural index does not promise complete wrap geometry.
+Oversized cell presentation is an explicit truncated/fallback fragment with remaining-source range,
+never an unbounded cell allocation. The grid may seek later columns directly. Syntax that exceeds
+the undecided grammar allowance remains ordered source-preserving fallback spans; indexing does
+not broaden that grammar envelope or force a pathological row into a canonical table.
+
+UTF-8 display fragments end at complete scalar boundaries. Byte reads may split a scalar and retain
+at most three pending bytes only across contiguous ranges of the same resource revision. Gaps,
+root replacement or disposal break that carry. Strict decoding distinguishes boundary incompleteness
+from malformed interior bytes. A bounded adjacent range is demanded explicitly when necessary;
+lossy decoding must not turn incomplete boundaries into invented authored replacement characters.
+
+### Same-Source Anchors And Resident Delivery
+
+An anchor names canonical source identity, block source anchor, logical source byte position and
+widget-local visual offset. Unchanged immutable resources preserve their exact line/cell identity.
+For a provisional successor within the same append source, the owner uses indexed source-position
+lookup to resolve the anchor inside the corresponding successor block, retaining the position when
+it survives. If it no longer belongs to an eligible descriptor, lookup chooses the nearest surviving
+descriptor in that block with a leading-side tie bias. A disappeared block or different source
+identity invalidates the nested anchor explicitly and leaves the outer owner to place its fallback.
+No identity is guessed across source replacement, and no complete revision map or chain of old
+widget models is retained. The query uses only the admitted old anchor and exact successor binding.
+
+Provider responses transport the structural binding, language/header/alignment facts, descriptors,
+source mappings and continuation without reparsing. Demand names the exact resource revision/root
+and requested line fragments or cell rectangle, even when the outer frame window is unchanged.
+The existing selected-history worker owns observation and post-publication result delivery; no
+parallel widget loader or independent cache is introduced. Residency charges descriptor, mapping
+and display bytes alongside raw slices, applies existing queue/pin budgets and discards stale
+selection, history, resource or companion results. Obsolete inner demand releases its admitted
+state through that same owner. A focus pin preserves only its smallest admitted target.
+
+Structural readiness does not establish measured outer geometry. Each Code/Table panel remains
+one bounded measured outer presentation record; estimated inner tracks do not authorize a guessed
+outer height. Demand and geometry publish through the coherent measured-candidate path defined by
+the [renderer architecture](../transcript-presentation/renderer-architecture.md).
+
+### Verification Boundary
+
+Acceptance requires independent semantic review of the complete storage/provider/residency
+boundary, including an adversarial pass over stale-source substitution, split publication,
+unbounded work and lost source. Focused tests establish line endings and empty tails, table header
+and delimiter roles, escaped separators, missing/surplus cells, exact source-copy mappings, UTF-8
+page splits, overflow and long-line/cell fallback. Instrumented late-ordinal and narrow-rectangle
+queries prove bounded search/page work without prefix scans or whole-resource assembly.
+
+Construction verification interrupts every durable progress/publication boundary, resumes exact
+frontiers, injects capacity refusal and acknowledgement loss, and proves no partially current index.
+Codec and corruption evidence belongs to the sole persisted-schema authority. Provider/residency
+integration verifies exact root/revision transport, inner-demand changes without outer scrolling,
+queue fairness, cancellation, stale completion, release and capacity accounting. Runtime widget
+interaction and native geometry acceptance remain required when those consumers are mounted;
+structural-query acceptance alone makes no rendering or GPU-paint claim.
+
 ## Execution And Policy Boundary
 
 - Codex App Server is the execution and policy authority for every executable turn.

@@ -98,20 +98,23 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 758: Qualify Transcript Resource Rendering Consumers (finished)
+# Phase 759: Qualify Syndic Resource Structure Range Queries (finished)
 
-Independent semantic review accepted the source-backed
-[rendering qualification](audits/transcript-mounting-readiness.md#resource-rendering-consumer-qualification):
-UTF-8 interval handling, partial fallbacks, internal demand and measured outer geometry are
-established. Full Code/Table consumers require missing indexed line/cell descriptors first.
-No production code changed or runtime rendering acceptance is claimed; local links and whitespace
-checks passed. Existing text-delivery acceptance remains reusable within its unchanged boundary.
+Independent semantic review accepted the
+[structural-query qualification](audits/transcript-mounting-readiness.md#resource-structure-query-qualification),
+including immutable companions, indexed bounded lookup, exact source presentation and anchors,
+resumable publication and provider/residency custody. Concepts authority and surplus-row fallback
+were reconciled. Local links, whitespace and index reconciliation passed; no production code,
+runtime query or rendering acceptance is claimed. Exact persistence specification is next.
 
-# Phase 759: Qualify Syndic Resource Structure Range Queries (pending)
+# Phase 760: Specify Resource Structure Persistence (pending)
 
-Derive the missing bounded logical-line and table-cell query capability under Syndic projection
-ownership before scheduling full Code/Table consumers. Resolve stable identities, indexed lookup,
-source-preserving cell presentation, same-source revision/anchor mapping, pathological line/cell
-limits, resumable construction and coherent publication in owning design authority. Establish
-bounded storage/provider/residency verification and independent review requirements. Do not
-implement a full-resource scan, renderer Markdown parser or widget-owned storage route.
+Translate the [structural-query contract](systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
+into the storage package's sole persisted-schema authority before production implementation.
+Define exact companion/build/index families, versions, natural keys, canonical values, source and
+root bindings, digest domains, ordering, bounds and atomic publication/reconciliation closure.
+Preserve finalized resource records and routine-open no-scan behavior; reconcile family inventory
+and explicitly resolve admission of homes without companions. Independently review codecs and
+publication proofs, then schedule the bounded storage/provider query implementation from that
+accepted specification. This prerequisite is necessary because semantic query authority alone
+does not authorize new durable bytes.

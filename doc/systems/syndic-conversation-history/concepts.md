@@ -435,8 +435,13 @@ It should support line-range reads.
 A table resource exposes metadata such as row count, column count, header information, byte count,
 digest, and optional preview rows.
 
-Its payload read surface uses bounded half-open resource-relative logical UTF-8 ranges with exact
-continuation. Syndic storage does not expose semantic row-range or column-range reads.
+Its raw payload read surface uses bounded half-open resource-relative logical UTF-8 ranges with
+exact continuation. A separate completed structural companion supplies indexed line/fragment and
+row/column rectangle descriptors with bounded owner-projected cell presentation, under the
+[structural-query contract](design.md#indexed-text-resource-structure-queries). Those typed queries
+preserve exact source ranges and do not assemble whole rows, columns or resources. Widgets report
+their visible-range demand through transcript residency; they do not parse raw payloads or read
+storage directly.
 
 The parent answer projection should contain lightweight placeholders or refs for these resources rather than embedding the full code block or table body.
 

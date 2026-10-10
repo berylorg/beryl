@@ -61,6 +61,15 @@ The renderer constructs GPUI elements only from the current resident presentatio
 
 Nested code, table, and media widgets render from resident resource slices and report range demand through the same residency channel. They do not fetch storage directly.
 
+Code/Table descriptors and projected cell fragments follow Syndic's
+[indexed structural-query contract](../syndic-conversation-history/design.md#indexed-text-resource-structure-queries).
+The selected-history provider transports the exact completed companion binding and continuation;
+residency admits and charges those values together with their source ranges. Inner viewport changes
+report line/fragment or cell-rectangle demand even when the outer realized window is unchanged.
+Companion absence and local syntax fallback remain explicit resident states. The renderer does not
+derive missing structure from resource bytes, and companion readiness does not replace outer
+measured-candidate publication.
+
 ## Pipeline
 
 The target pipeline is:

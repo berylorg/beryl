@@ -460,6 +460,17 @@ Projection-resource mappings name resources; they do not copy payloads. Textual 
 explicit, bounded, and cursorable. Provider credentials and unnormalized transport envelopes are
 never resources.
 
+Code/Table structure is supplied through the separate completed structural companion and indexed
+range-query contract owned by
+[Syndic conversation history](../../../doc/systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries).
+The package public boundary provides exact-root line/fragment, cell-rectangle and source-anchor
+queries; it constructs companions through bounded durable projection work. Companion publication
+preserves finalized resource bytes and identities. Structure absence, stale bindings, bounded
+capacity refusal and unsupported local syntax remain distinct typed outcomes. These semantic
+requirements do not change persisted bytes: family inventory, keys, codecs, versions, digest
+domains and companion publication proofs belong exclusively to `design-schema-v7.md` and must be
+specified there before implementation.
+
 For a selected terminal-repair source, ordinary resource-metadata reads resolve the named item and
 resource directly through its snapshot-backed locator. They return the exact target thread/turn,
 item/resource ordinal, Asset page/entry locator, AssetId, and sealed media commitment needed by the
@@ -480,6 +491,9 @@ residency.
 - Transcript-entry, transcript-path, item-projection, projection-resource, thread-lineage, and
   activity-query pages contain at most 256 records and 65,536 stored encoded bytes.
 - One textual-resource response contains at most 65,536 payload bytes.
+- One structural-resource response contains at most 256 descriptors and 65,536 encoded payload
+  bytes including display fragments and source mappings; one display fragment is at most 8,192
+  UTF-8 bytes. Its exact-root cursor continues the original requested interval or rectangle.
 - One projection step consumes at most one 65,536-byte canonical chunk plus bounded UTF-8 carry and
   undecided Markdown state. Persisted undecided Markdown is at most 16,384 bytes plus one UTF-8
   scalar carry.
