@@ -28,6 +28,8 @@ mod work_facts;
 #[allow(dead_code)]
 #[path = "runtime_session_preparation/submission.rs"]
 mod submission;
+#[path = "runtime_session_preparation/submission_isolation.rs"]
+mod submission_isolation;
 #[allow(dead_code)]
 #[path = "support/managed_runtime.rs"]
 mod support;

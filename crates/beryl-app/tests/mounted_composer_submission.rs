@@ -3,6 +3,8 @@
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
+#[path = "mounted_composer_submission/disabled.rs"]
+mod disabled;
 #[path = "mounted_composer_submission/start.rs"]
 mod start;
 
@@ -152,6 +154,9 @@ fn mounted_enter_flushes_the_dirty_binding_once_then_opens_the_editable_successo
         "the dirty candidate must remain unflushed until Enter starts submission"
     );
 
+    predecessor.update(cx, |composer, cx| {
+        composer.set_submission_availability(Ok(()), cx)
+    });
     cx.simulate_keystrokes("enter");
     cx.simulate_keystrokes("enter");
     let mut submitted = false;
@@ -290,6 +295,10 @@ fn mounted_direct_admission_denial_preserves_the_coherent_draft_and_releases_the
         total_bytes: u64::MAX,
     });
 
+    contribution.update(cx, |composer, cx| {
+        composer.set_submission_availability(Ok(()), cx)
+    });
+
     cx.simulate_keystrokes("enter");
     drive_until(cx, 2_048, "direct admission observation", |_| {
         faults.free_space_observation_count() == 1
@@ -385,6 +394,9 @@ fn mounted_empty_submission_preserves_the_coherent_editor_without_retaining_work
         .unwrap();
     assert_eq!(retained.binding().logical_extent().logical_utf8_bytes(), 0);
     assert_eq!(retained.binding().root().summary().marker_count(), 0);
+    contribution.update(cx, |composer, cx| {
+        composer.set_submission_availability(Ok(()), cx)
+    });
     let input = contribution.read_with(cx, |composer, _| composer.gpui_input());
     cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
 
@@ -851,6 +863,9 @@ fn prepare_flushed_submission(
     let contribution = mount
         .read_with(cx, |mount, _| mount.contribution())
         .expect("mounted fixture contribution");
+    contribution.update(cx, |composer, cx| {
+        composer.set_submission_availability(Ok(()), cx)
+    });
     let baseline = service
         .selected_identity()
         .expect("mounted fixture selection");

@@ -110,6 +110,9 @@ pub struct SyndicComposerHost {
     submission_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
+    submission_after_indeterminate_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
+    #[cfg(feature = "test-faults")]
     submission_transition_fault: Option<submission::ComposerHostSubmissionFaultPoint>,
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
@@ -182,6 +185,8 @@ impl SyndicComposerHost {
             publication_after_execute: None,
             #[cfg(feature = "test-faults")]
             submission_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_after_indeterminate_fault: None,
             #[cfg(feature = "test-faults")]
             submission_transition_fault: None,
             #[cfg(feature = "test-faults")]
@@ -383,6 +388,15 @@ impl SyndicComposerHost {
     ) {
         assert!(self.submission_before_execute_fault.is_none());
         self.submission_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_after_indeterminate_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore) + Send + 'static,
+    ) {
+        assert!(self.submission_after_indeterminate_fault.is_none());
+        self.submission_after_indeterminate_fault = Some(Box::new(fault));
     }
 
     #[cfg(feature = "test-faults")]

@@ -98,36 +98,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 749: Qualify Remaining Repair-Unavailable Presentation (finished)
+# Phase 750: Mount Exact Repair And Submission Unavailability (finished)
 
-Independent review accepted the remaining composer submission guard, bounded disabled outcome and
-specific Compact refusals, with the App owning contract corrected and prior runtime/lineage gaps
-reconciled. Source and authority qualification preserves initial execution, queued work, reconciliation
-and separate repair/transcript/recovery gates; see the
-[readiness record](audits/repair-unavailable-presentation-readiness.md).
-
-# Phase 750: Mount Exact Repair And Submission Unavailability (pending)
-
-Mount the remaining selected composer submission-disabled state and outcome through the accepted
-weak window services, deriving exact repair/input-gate and required same-binding execution facts
-off GPUI. Use the [accepted readiness](audits/repair-unavailable-presentation-readiness.md) and
-[App live-control contract](../crates/beryl-app/doc/design-live-control.md). Keep healthy-home typing,
-autosave, markers, caret, selection and undo available. Add the bounded App guard preventing new
-composer acceptance under repair-required authority; final typed gate/revision admission must
-enforce it independently of earlier presentation. Preserve initial draft-only execution, ordinary
-active steering, already accepted queued input and attempted-command reconciliation.
-
-Refine Compact's repair-required Busy explanation and replace NoValidBinding's unsupported repair
-assertion with a truthful binding-unavailable reason, preserving its existing admission and feedback.
-Use canonical local disabled explanations and editor command outcomes, with no new submit control,
-notice owner, history source or recovery command. Retain fixed-size current observations, existing
-sequential polling and original home/service/window/claim/composer fences.
-
-Acceptance requires focused admission and mounted/native cases for repair pending, incomplete,
-unknown terminal, same-binding usability recovery, unaffected-thread isolation, preserved editor
-state and draft persistence. Race gate changes, original selection/claim and publication loss
-against observation and final acceptance; prove refused work creates no acceptance, clear, dispatch
-or history injection while existing uncertain work retains settlement custody. Reuse unchanged
-accepted status/runtime/lineage/Compact evidence only within its proven coverage, run focused default
-checks and independent completion review. Phase 465 and remaining transcript/recovery/branch product
-gates remain separate; this mount alone does not close Checkpoint 4.
+Independent completion review accepted weak selected-composer submission availability, canonical
+refusal outcomes, independent final admission fencing and truthful Compact reasons. Focused native,
+mounted, exact submission and distinct-runtime cases passed 75/75 in run
+`1a37ad44-b324-46a5-8fd1-1b33e91868a1`; default App/backend/Home/Syndic checks passed. Native Active
+and Accepted admission, retained queued input and attempted reconciliation after actual weak
+publication loss are qualified on the unchanged Windows worker stack. Same-binding recovery uses
+fixture gate transitions; product repair, connection replacement, provider delivery of queued
+steering and Checkpoint 4 remain separate. See the [bounded failure findings](failures/composer-submission-admission.md).

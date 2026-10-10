@@ -245,6 +245,8 @@ impl MainWindowConversationComposer {
 
 impl Render for MainWindowConversationComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(feature = "test-faults")]
+        self.submission_outcome_rendered.set(None);
         self.schedule_pump(window, cx);
         let protected_layout = self.protected_resident_layout(cx);
         let selected = !self.is_pending_target();
@@ -258,12 +260,22 @@ impl Render for MainWindowConversationComposer {
         div()
             .id(("conversation-composer-root", cx.entity_id()))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if this.submission_outcome.is_some() && event.keystroke.key != "enter" {
+                    this.submission_outcome = None;
+                    cx.notify();
+                }
                 if event.keystroke.key == "escape" && this.paste_pending() {
                     this.cancel_captured_paste(cx);
                     cx.stop_propagation();
                 }
             }))
             .relative()
+            .when_some(
+                self.submission_unavailable().or(self.submission_outcome),
+                |root, reason| {
+                    root.tooltip(move |_, cx| cx.new(|_| SubmissionTooltip(reason)).into())
+                },
+            )
             .when(self.paste_pending(), |root| root.opacity(0.55))
             .size_full()
             .when_some(protected_layout, |root, layout| {
@@ -285,6 +297,24 @@ impl Render for MainWindowConversationComposer {
                 )
             }))
             .child(self.input.clone())
+            .children(self.submission_outcome.map(|reason| {
+                let outcome = div();
+                #[cfg(feature = "test-faults")]
+                let outcome = {
+                    let rendered = self.submission_outcome_rendered.clone();
+                    outcome.on_children_prepainted(move |bounds, _, _| {
+                        rendered.set(bounds.first().copied().map(|bounds| (reason, bounds)))
+                    })
+                };
+                outcome
+                    .id("conversation-composer-submission-outcome")
+                    .debug_selector(|| "conversation-composer-submission-outcome".to_owned())
+                    .absolute()
+                    .right(px(4.))
+                    .bottom(px(4.))
+                    .max_w_full()
+                    .child(submission_tooltip(reason))
+            }))
             .children(
                 self.image_surfaces
                     .menu()
@@ -296,6 +326,27 @@ impl Render for MainWindowConversationComposer {
                     .map(|_| self.render_image_preview(window, cx)),
             )
     }
+}
+
+struct SubmissionTooltip(crate::cas_projection::SubmissionUnavailable);
+
+impl Render for SubmissionTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        submission_tooltip(self.0)
+    }
+}
+
+fn submission_tooltip(reason: crate::cas_projection::SubmissionUnavailable) -> impl IntoElement {
+    div()
+        .max_w(px(320.))
+        .max_h(px(160.))
+        .px(px(8.))
+        .py(px(6.))
+        .rounded(px(5.))
+        .bg(rgb(0x111827))
+        .text_color(rgb(0xffffff))
+        .text_size(px(12.))
+        .child(reason.reason())
 }
 
 fn disabled_preview_command(selector: &'static str, label: &'static str) -> impl IntoElement {

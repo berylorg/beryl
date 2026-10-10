@@ -198,9 +198,11 @@ impl FirstAcceptanceMutation {
     ) -> Result<AcceptanceRecords, SyndicMutationError> {
         let base = shared::load_base(reader, &self.acceptance)?;
         if matches!(base.gate.state(), InputGateState::Idle) {
-            idle::records(reader, &self.acceptance, base).map(AcceptanceRecords::Idle)
+            idle::records(reader, &self.acceptance, base)
+                .map(|records| AcceptanceRecords::Idle(Box::new(records)))
         } else {
-            accepted::records(reader, &self.acceptance, base).map(AcceptanceRecords::Accepted)
+            accepted::records(reader, &self.acceptance, base)
+                .map(|records| AcceptanceRecords::Accepted(Box::new(records)))
         }
     }
 }

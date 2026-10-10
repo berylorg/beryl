@@ -20,7 +20,7 @@ pub(super) struct IdleRecords {
 pub(super) fn records(
     reader: &DomainReader<'_, SyndicDomain>,
     acceptance: &FirstAcceptance,
-    base: AcceptanceBase,
+    base: Box<AcceptanceBase>,
 ) -> Result<IdleRecords, SyndicMutationError> {
     if base.gate.live_count() != 0 {
         return Err(SyndicMutationError::InputGateStateConflict);

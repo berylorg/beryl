@@ -37,8 +37,8 @@ pub(super) struct AcceptanceBase {
 }
 
 pub(super) enum AcceptanceRecords {
-    Idle(super::idle::IdleRecords),
-    Accepted(super::accepted::AcceptedRecords),
+    Idle(Box<super::idle::IdleRecords>),
+    Accepted(Box<super::accepted::AcceptedRecords>),
 }
 
 impl AcceptanceRecords {
@@ -90,7 +90,7 @@ pub(super) fn reserve_acceptance_records(
 pub(super) fn load_base(
     reader: &DomainReader<'_, SyndicDomain>,
     acceptance: &FirstAcceptance,
-) -> Result<AcceptanceBase, SyndicMutationError> {
+) -> Result<Box<AcceptanceBase>, SyndicMutationError> {
     let thread = required::<ThreadsFamily>(reader, &acceptance.thread_id())?;
     if thread.revision() != acceptance.expected_thread_revision() {
         return Err(SyndicMutationError::ThreadRevisionConflict {
@@ -230,7 +230,7 @@ pub(super) fn load_base(
     {
         return Err(SyndicMutationError::AdmissionIdentityCollision);
     }
-    Ok(AcceptanceBase {
+    Ok(Box::new(AcceptanceBase {
         thread,
         image_label_authority,
         draft_image_label_protection,
@@ -240,7 +240,7 @@ pub(super) fn load_base(
         disposal,
         fresh_root,
         fresh_history,
-    })
+    }))
 }
 
 fn validate_asset_proof(acceptance: &FirstAcceptance) -> Result<(), SyndicMutationError> {

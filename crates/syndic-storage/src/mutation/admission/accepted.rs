@@ -21,7 +21,7 @@ pub(super) struct AcceptedRecords {
 pub(super) fn records(
     reader: &DomainReader<'_, SyndicDomain>,
     acceptance: &FirstAcceptance,
-    base: AcceptanceBase,
+    base: Box<AcceptanceBase>,
 ) -> Result<AcceptedRecords, SyndicMutationError> {
     if !matches!(
         base.draft.submission_intent(),

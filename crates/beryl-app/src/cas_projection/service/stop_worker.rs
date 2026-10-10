@@ -1,6 +1,9 @@
 use std::sync::Weak;
 
 mod context;
+mod submission;
+pub use submission::SubmissionProof;
+pub use submission::SubmissionUnavailable;
 pub(in crate::cas_projection) mod manual_compaction;
 pub use manual_compaction::{ManualCompactionAvailability, ManualCompactionEligibility};
 mod selected_operation;

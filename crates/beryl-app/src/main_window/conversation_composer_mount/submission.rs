@@ -70,7 +70,7 @@ impl MainWindowComposerSubmissionRequestSource {
         let next_draft_id = SyndicDraftId::from_bytes(fresh_bytes()?);
         let admitted_at = current_timestamp()?;
         let request = ComposerHostSubmissionRequest::new(
-            self.execution_wake.clone(),
+            self.execution_wake.clone().for_selection(selection),
             next_draft_id,
             SyndicItemId::from_bytes(fresh_bytes()?),
             DraftComposerMaterializationOperationIdV1::from_bytes(fresh_bytes()?),
@@ -220,6 +220,15 @@ impl MainWindowConversationComposerSubmission {
 }
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn set_submission_worker(
+        &mut self,
+        worker: crate::app_services::PublishedExactStopWorker,
+    ) {
+        if let Some(source) = self.submission.request_source.as_mut() {
+            source.execution_wake = source.execution_wake.clone().with_window_worker(worker);
+        }
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_submission_worker(
         &self,
@@ -383,6 +392,12 @@ impl MainWindowConversationComposerMount {
             }
             Err(_) => {
                 self.finish_submission_failure(window, cx);
+                contribution.update(cx, |composer, cx| {
+                    composer.report_submission_unavailable(
+                        crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable,
+                        cx,
+                    )
+                });
                 Ok(())
             }
         }
@@ -496,6 +511,19 @@ impl MainWindowConversationComposerMount {
             }
         }
         match result {
+            Ok(MainWindowComposerSubmissionAdvance::SubmissionUnavailable(reason)) => {
+                self.finish_submission_noncommit(
+                    MainWindowConversationComposerSubmissionStatus::NotCommitted,
+                    window,
+                    cx,
+                )?;
+                if let Some(contribution) = self.contribution() {
+                    contribution.update(cx, |composer, cx| {
+                        composer.set_submission_availability(Err(reason), cx);
+                        composer.report_submission_unavailable(reason, cx);
+                    });
+                }
+            }
             Ok(MainWindowComposerSubmissionAdvance::Progress(stage)) => {
                 self.submission.status =
                     MainWindowConversationComposerSubmissionStatus::Pending(stage);
@@ -630,6 +658,16 @@ impl MainWindowConversationComposerMount {
         self.synchronize_contribution_selection(cx)?;
         self.resume_contribution(window, cx)?;
         self.submission.clear_active(status);
+        if status == MainWindowConversationComposerSubmissionStatus::NotCommitted
+            && let Some(contribution) = self.contribution()
+        {
+            contribution.update(cx, |composer, cx| {
+                composer.report_submission_unavailable(
+                    crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable,
+                    cx,
+                );
+            });
+        }
         self.refresh_autosave(window, cx)
     }
 
@@ -833,6 +871,7 @@ async fn drain_unmounted_submission(
                 return;
             }
             Ok(MainWindowComposerSubmissionAdvance::Cancelled)
+            | Ok(MainWindowComposerSubmissionAdvance::SubmissionUnavailable(_))
             | Ok(MainWindowComposerSubmissionAdvance::Collision)
             | Ok(MainWindowComposerSubmissionAdvance::Stale)
             | Ok(MainWindowComposerSubmissionAdvance::SuccessorUnavailable) => return,

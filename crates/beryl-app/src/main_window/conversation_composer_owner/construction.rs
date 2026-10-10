@@ -263,6 +263,14 @@ impl MainWindowConversationComposer {
             startup_release_completion: None,
             scheduled: false,
             last_error: None,
+            submission_availability: Err(
+                crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable,
+            ),
+            submission_outcome: None,
+            #[cfg(feature = "test-faults")]
+            submission_outcome_rendered: Default::default(),
+            submission_proof: None,
+            submission_observation_epoch: std::sync::Arc::new(()),
             _input_subscription: None,
             _input_event_subscription: None,
         };
@@ -520,6 +528,10 @@ impl MainWindowConversationComposer {
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Enter) => {
                     if this.mutation_gated() {
+                        return;
+                    }
+                    if let Some(reason) = this.submission_unavailable() {
+                        this.report_submission_unavailable(reason, cx);
                         return;
                     }
                     cx.emit(MainWindowConversationComposerEvent::SubmitPropagated {

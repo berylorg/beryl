@@ -98,6 +98,21 @@ pub fn prepare_shell_with_theme(
         RuntimeBackedWindowProcessRegistry,
     ),
 ) {
+    let (prepared, acquisition, _) = prepare_shell_with_composer(fixture, theme);
+    (prepared, acquisition)
+}
+
+pub fn prepare_shell_with_composer(
+    fixture: &mut syndic::Fixture,
+    theme: beryl_state::PreparedThemeAppearance,
+) -> (
+    MainWindowShellPrepared,
+    (
+        RuntimeBackedWindowAcquisitionService,
+        RuntimeBackedWindowProcessRegistry,
+    ),
+    Arc<MainWindowConversationComposerService>,
+) {
     let home = fixture.home();
     let execution = syndic::execution_binding();
     let host = |path| AdmittedHostPath::from_admitted(PathFlavor::Windows, path).unwrap();
@@ -240,7 +255,7 @@ pub fn prepare_shell_with_theme(
         &service,
         MainWindowShellPreparationRequest::new(
             acquisition,
-            composer,
+            composer.clone(),
             Box::new(|selection| {
                 MainWindowConversationComposerConfig::new(
                     selection,
@@ -274,7 +289,7 @@ pub fn prepare_shell_with_theme(
         }
     });
     drop(home);
-    (prepared, (service, process))
+    (prepared, (service, process), composer)
 }
 
 fn commit(home: &beryl_home_store::HomeStore, mutation: beryl_home_store::MutationContribution) {

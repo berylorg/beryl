@@ -41,6 +41,12 @@ impl ProjectionConnectionService {
 }
 
 impl RuntimeFailureReader {
+    pub(super) fn initial_submission_preparation_open(&self, binding: &ExecutionBinding) -> bool {
+        self.owner
+            .upgrade()
+            .is_some_and(|owner| owner.initial_submission_preparation_open(binding))
+    }
+
     pub fn observe(
         &self,
         session: &beryl_state::SessionState,

@@ -277,6 +277,10 @@ impl MainWindowShellRoot {
         }
         let selection = self.status_selection(cx);
         if selection != self.status_controls.selection {
+            self.apply_submission_availability(
+                Err(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable),
+                cx,
+            );
             self.close_compaction_menu(window, cx);
             self.status_controls.compaction.availability =
                 crate::cas_projection::ManualCompactionAvailability::Unavailable(
@@ -312,12 +316,13 @@ impl MainWindowShellRoot {
                         root.status_controls.selection?,
                         root.status_controls.generation.load(Ordering::Acquire),
                         root.runtime_retry_observation_target(),
+                        root.submission_observation_epoch(cx),
                     ))
                 });
                 let Ok(observation) = observation else {
                     break;
                 };
-                if let Some((worker, selection, generation, retained_failure)) = observation {
+                if let Some((worker, selection, generation, retained_failure, submission_epoch)) = observation {
                     let result = background
                         .spawn(async move {
                             let runtime = worker.selected_runtime_failure(selection);
@@ -331,10 +336,11 @@ impl MainWindowShellRoot {
                                 let eligible = worker.selected_runtime_retry_eligible(selection, &execution, failure);
                                 (execution, failure, eligible)
                             });
-                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection))
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection))
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
+                        root.apply_submission_observation(selection, generation, submission_epoch, result.4, window, cx);
                         root.apply_compaction_observation(selection, generation, result.3, window, cx);
                         root.apply_runtime_failure_observation(
                             selection, generation, result.1, result.2, window, cx,
@@ -425,6 +431,73 @@ impl MainWindowShellRoot {
         self.status_controls.snapshot = result;
         self.sync_status_controls(window, cx);
         cx.notify();
+    }
+
+    fn apply_submission_availability(
+        &mut self,
+        availability: Result<
+            crate::cas_projection::SubmissionProof,
+            crate::cas_projection::SubmissionUnavailable,
+        >,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(mount) = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount.clone())
+            && let Some(worker) = self.status_controls.worker.clone()
+        {
+            mount.update(cx, |mount, _| mount.set_submission_worker(worker));
+        }
+        let contribution = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount.as_ref())
+            .and_then(|mount| mount.read(cx).contribution());
+        if let Some(contribution) = contribution {
+            contribution.update(cx, |composer, cx| {
+                composer.set_submission_observation(availability, cx)
+            });
+        }
+    }
+
+    fn apply_submission_observation(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        generation: u64,
+        epoch: Option<std::sync::Weak<()>>,
+        availability: Result<
+            crate::cas_projection::SubmissionProof,
+            crate::cas_projection::SubmissionUnavailable,
+        >,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync_status_controls(window, cx);
+        if self.status_controls.generation.load(Ordering::Acquire) == generation
+            && self.status_selection(cx) == Some(selection)
+            && epoch.as_ref().is_some_and(|epoch| {
+                epoch.strong_count() != 0
+                    && self
+                        .submission_observation_epoch(cx)
+                        .is_some_and(|current| current.ptr_eq(epoch))
+            })
+        {
+            self.apply_submission_availability(availability, cx);
+        }
+    }
+
+    fn submission_observation_epoch(&self, app: &App) -> Option<std::sync::Weak<()>> {
+        Some(
+            self.controller
+                .as_ref()?
+                .composer_mount
+                .as_ref()?
+                .read(app)
+                .contribution()?
+                .read(app)
+                .submission_observation_epoch(),
+        )
     }
 
     fn close_stop_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -655,6 +728,64 @@ impl MainWindowShellRoot {
 
     pub fn test_exact_status_selection_present(&self, app: &App) -> bool {
         self.status_selection(app).is_some()
+    }
+
+    pub fn test_submission_composer(
+        &self,
+        app: &App,
+    ) -> Option<gpui::Entity<crate::main_window::MainWindowConversationComposer>> {
+        self.controller
+            .as_ref()?
+            .composer_mount
+            .as_ref()?
+            .read(app)
+            .contribution()
+    }
+
+    pub fn test_submission_mount(
+        &self,
+    ) -> Option<gpui::Entity<crate::main_window::MainWindowConversationComposerMount>> {
+        self.controller.as_ref()?.composer_mount.clone()
+    }
+
+    pub fn test_apply_submission_observation(
+        &mut self,
+        stamp: (
+            MainWindowComposerSelectionIdentity,
+            u64,
+            Option<std::sync::Weak<()>>,
+        ),
+        availability: Result<
+            crate::cas_projection::SubmissionProof,
+            crate::cas_projection::SubmissionUnavailable,
+        >,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_submission_observation(stamp.0, stamp.1, stamp.2, availability, window, cx);
+    }
+
+    pub fn test_submission_observation_stamp(
+        &self,
+        app: &App,
+    ) -> (
+        MainWindowComposerSelectionIdentity,
+        u64,
+        Option<std::sync::Weak<()>>,
+    ) {
+        let stamp = self.test_exact_status_observation_stamp(app);
+        (stamp.0, stamp.1, self.submission_observation_epoch(app))
+    }
+
+    pub fn test_submission_observation(
+        &self,
+        app: &App,
+    ) -> Result<crate::cas_projection::SubmissionProof, crate::cas_projection::SubmissionUnavailable>
+    {
+        self.test_submission_composer(app)
+            .ok_or(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable)?
+            .read(app)
+            .test_submission_observation()
     }
 
     pub fn test_retain_exact_status_feedback(

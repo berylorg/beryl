@@ -3,6 +3,27 @@ use std::thread;
 use super::*;
 
 impl RuntimeInterestOwner {
+    pub(in crate::cas_projection) fn initial_submission_preparation_open(
+        &self,
+        binding: &ExecutionBinding,
+    ) -> bool {
+        let Ok(state) = self.shared.state.try_lock() else {
+            return false;
+        };
+        !state.closed
+            && self.shared.commands.try_is_open()
+            && state
+                .runtimes
+                .get(&binding.runtime_id())
+                .is_none_or(|entry| {
+                    entry.spec.runtime_mode() == binding.root_path().mode()
+                        && matches!(
+                            entry.status,
+                            RuntimeInterestStatus::Starting | RuntimeInterestStatus::Ready(_)
+                        )
+                })
+    }
+
     #[cfg(feature = "test-faults")]
     pub(in crate::cas_projection) fn interest_count_for_test(
         &self,

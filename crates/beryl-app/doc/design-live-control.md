@@ -94,6 +94,14 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   closed for submission and carries only bounded owner reason facts. Healthy-home draft editing
   and persistence remain available. Window application revalidates original publication, service,
   claim and composer identity; this read grants no recovery, retry, history or execution command.
+  The current observation may retain an opaque weak usability proof. Application, rendering and
+  Enter revalidate its publication, live command gate and exact loaded-session stamp using only
+  nonblocking in-memory checks; contention refuses submission. Home reads remain off GPUI. The
+  composer invalidates an in-flight observation when an explicit submission refusal is published;
+  only a fresh subsequent observation may restore availability or clear that outcome. The
+  writer uses the original full window claim and publication plus fresh same-binding usability,
+  with typed Home/gate revision validation. Previously accepted or uncertain work keeps its exact
+  reconciliation custody even when current submission becomes unavailable.
 - Operation origins are service-owned observations, not command capabilities or visible backend
   identifiers. Their equality includes the home/service incarnation, thread and exact ordinary or
   provider operation. An origin remains stable through stop admission and feedback convergence,

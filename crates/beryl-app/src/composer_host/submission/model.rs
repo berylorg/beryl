@@ -92,6 +92,7 @@ pub enum ComposerHostSubmissionStage {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerHostSubmissionAdvance {
+    SubmissionUnavailable(crate::cas_projection::SubmissionUnavailable),
     Progress(ComposerHostSubmissionStage),
     ReconciliationPending,
     DirectAdmissionDenied(FreeSpaceOutcome),

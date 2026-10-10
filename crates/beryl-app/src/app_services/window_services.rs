@@ -38,6 +38,65 @@ pub(crate) struct PublishedExactStopWorker {
 }
 
 impl PublishedExactStopWorker {
+    pub(crate) fn guard_selected_submission(
+        &self,
+        store: &beryl_home_store::HomeStore,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+        mut command: beryl_home_store::HomeCommand,
+    ) -> Result<beryl_home_store::HomeCommand, crate::cas_projection::SubmissionUnavailable> {
+        use crate::cas_projection::SubmissionUnavailable as Denial;
+        if !self.selection_current(selection) {
+            return Err(Denial::AuthorityUnavailable);
+        }
+        let proof = self
+            .worker
+            .selected_submission_proof(selection.claim().thread_id())?;
+        let session = self.session.as_ref().ok_or(Denial::AuthorityUnavailable)?;
+        let claim = session
+            .thread_claim_catalog_source(store, selection.claim().thread_id())
+            .map_err(|_| Denial::AuthorityUnavailable)?;
+        let current = claim.claim().ok_or(Denial::AuthorityUnavailable)?;
+        if current.window_id() != selection.window_id()
+            || current.thread_id() != selection.claim().thread_id()
+            || current.generation() != selection.claim().generation()
+            || current.revision() != selection.claim().revision()
+        {
+            return Err(Denial::AuthorityUnavailable);
+        }
+        command
+            .add_validation(
+                session.validate_thread_claim_catalog_source(
+                    session
+                        .revision(store)
+                        .map_err(|_| Denial::AuthorityUnavailable)?,
+                    claim,
+                ),
+            )
+            .map_err(|_| Denial::AuthorityUnavailable)?;
+        let lifetime = self.lifetime.clone();
+        Ok(command
+            .with_local_admission(move || lifetime.strong_count() != 0 && proof.elect_local()))
+    }
+
+    pub(crate) fn selected_submission_availability(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> Result<crate::cas_projection::SubmissionProof, crate::cas_projection::SubmissionUnavailable>
+    {
+        if !self.selection_current(selection) {
+            return Err(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable);
+        }
+        let result = self
+            .worker
+            .selected_submission_proof(selection.claim().thread_id())
+            .map(|proof| proof.with_publication(self.lifetime.clone()));
+        if self.selection_current(selection) {
+            result
+        } else {
+            Err(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable)
+        }
+    }
+
     pub(crate) fn selected_compaction_availability(
         &self,
         selection: crate::main_window::MainWindowComposerSelectionIdentity,

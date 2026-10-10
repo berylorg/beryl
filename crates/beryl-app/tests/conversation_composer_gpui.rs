@@ -635,6 +635,39 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
     });
     let marker_click = marker.hit_bounds().origin + point(px(1.0), px(1.0));
 
+    let retained_selection =
+        input.read_with(cx, |input, _| input.surface().unwrap().source_selection());
+    assert_eq!(selection.binding().root().summary().marker_count(), 1);
+    for reason in [
+        beryl_app::cas_projection::SubmissionUnavailable::RepairRequired,
+        beryl_app::cas_projection::SubmissionUnavailable::BindingUnavailable,
+        beryl_app::cas_projection::SubmissionUnavailable::RuntimeUnavailable,
+        beryl_app::cas_projection::SubmissionUnavailable::AuthorityUnavailable,
+    ] {
+        composer.update(cx, |composer, cx| {
+            composer.set_submission_availability(Err(reason), cx)
+        });
+        cx.simulate_keystrokes("enter");
+        drive_owner(cx, 4);
+        composer.read_with(cx, |composer, _| {
+            assert_eq!(composer.selection_identity(), selection);
+            assert_eq!(composer.submission_disabled_outcome(), Some(reason));
+            let (rendered, bounds) = composer.test_submission_outcome_rendered().unwrap();
+            assert_eq!(rendered, reason);
+            assert!(bounds.size.width > px(0.) && bounds.size.height > px(0.));
+        });
+        input.read_with(cx, |input, _| {
+            assert!(input.is_surface_current_and_interactive());
+            let surface = input.surface().unwrap();
+            assert_eq!(surface.source_selection(), retained_selection);
+            assert_eq!(surface.realized_objects().len(), 1);
+            assert_eq!(
+                surface.realized_objects()[0].hit_bounds(),
+                marker.hit_bounds()
+            );
+        });
+    }
+
     cx.simulate_click(marker_click, Modifiers::none());
     drive_owner(cx, 4);
     let anchor = composer.read_with(cx, |composer, _| composer.marker_menu().unwrap().anchor());

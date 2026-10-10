@@ -264,6 +264,19 @@ pub struct MainWindowConversationComposer {
         Option<futures_channel::oneshot::Sender<Result<MainWindowComposerWidgetRelease, String>>>,
     scheduled: bool,
     last_error: Option<String>,
+    submission_availability: Result<(), crate::cas_projection::SubmissionUnavailable>,
+    submission_proof: Option<crate::cas_projection::SubmissionProof>,
+    submission_observation_epoch: std::sync::Arc<()>,
+    submission_outcome: Option<crate::cas_projection::SubmissionUnavailable>,
+    #[cfg(feature = "test-faults")]
+    submission_outcome_rendered: std::rc::Rc<
+        std::cell::Cell<
+            Option<(
+                crate::cas_projection::SubmissionUnavailable,
+                gpui::Bounds<gpui::Pixels>,
+            )>,
+        >,
+    >,
     _input_subscription: Option<Subscription>,
     _input_event_subscription: Option<Subscription>,
 }
@@ -283,6 +296,91 @@ impl Drop for MainWindowConversationComposer {
 }
 
 impl MainWindowConversationComposer {
+    pub fn submission_unavailable(&self) -> Option<crate::cas_projection::SubmissionUnavailable> {
+        self.submission_proof
+            .as_ref()
+            .and_then(|proof| proof.availability().err())
+            .or(self.submission_availability.err())
+    }
+
+    pub fn submission_disabled_outcome(
+        &self,
+    ) -> Option<crate::cas_projection::SubmissionUnavailable> {
+        self.submission_outcome
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_submission_outcome_rendered(
+        &self,
+    ) -> Option<(
+        crate::cas_projection::SubmissionUnavailable,
+        gpui::Bounds<gpui::Pixels>,
+    )> {
+        self.submission_outcome_rendered.get()
+    }
+
+    pub fn set_submission_availability(
+        &mut self,
+        availability: Result<(), crate::cas_projection::SubmissionUnavailable>,
+        cx: &mut Context<Self>,
+    ) {
+        self.submission_observation_epoch = std::sync::Arc::new(());
+        self.apply_submission_availability(availability, cx);
+    }
+
+    fn apply_submission_availability(
+        &mut self,
+        availability: Result<(), crate::cas_projection::SubmissionUnavailable>,
+        cx: &mut Context<Self>,
+    ) {
+        self.submission_proof = None;
+        if self.submission_availability != availability {
+            self.submission_availability = availability;
+            self.submission_outcome = None;
+            cx.notify();
+        }
+    }
+
+    pub(in crate::main_window) fn report_submission_unavailable(
+        &mut self,
+        reason: crate::cas_projection::SubmissionUnavailable,
+        cx: &mut Context<Self>,
+    ) {
+        self.submission_outcome = Some(reason);
+        cx.notify();
+    }
+
+    pub(in crate::main_window) fn set_submission_observation(
+        &mut self,
+        observation: Result<
+            crate::cas_projection::SubmissionProof,
+            crate::cas_projection::SubmissionUnavailable,
+        >,
+        cx: &mut Context<Self>,
+    ) {
+        let availability = observation
+            .as_ref()
+            .map_err(|reason| *reason)
+            .and_then(|proof| proof.availability());
+        self.apply_submission_availability(availability, cx);
+        self.submission_proof = observation.ok();
+    }
+
+    pub(in crate::main_window) fn submission_observation_epoch(&self) -> std::sync::Weak<()> {
+        std::sync::Arc::downgrade(&self.submission_observation_epoch)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn test_submission_observation(
+        &self,
+    ) -> Result<crate::cas_projection::SubmissionProof, crate::cas_projection::SubmissionUnavailable>
+    {
+        self.submission_proof.clone().ok_or_else(|| {
+            self.submission_unavailable()
+                .unwrap_or(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable)
+        })
+    }
+
     pub(crate) fn interrupted_exit_configurator(
         &mut self,
         cx: &Context<Self>,

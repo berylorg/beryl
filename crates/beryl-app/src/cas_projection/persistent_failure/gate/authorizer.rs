@@ -137,6 +137,22 @@ impl LiveCommandAuthorizer {
         )
     }
 
+    pub(in crate::cas_projection) fn try_is_open(&self) -> bool {
+        self.inner
+            .state
+            .try_lock()
+            .is_ok_and(|state| self.inner.status(&state, None) == LiveCommandGateStatus::Open)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn test_with_gate_lock<T>(
+        &self,
+        callback: impl FnOnce() -> T,
+    ) -> T {
+        let _state = self.inner.state.lock().unwrap();
+        callback()
+    }
+
     pub(in crate::cas_projection) fn is_persistent_failure_cut(&self) -> bool {
         self.inner
             .state

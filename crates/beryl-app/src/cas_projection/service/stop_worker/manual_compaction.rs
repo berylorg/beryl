@@ -155,9 +155,11 @@ impl ExactStopWorker {
                 }
                 syndic_storage::CompactionAdmissionRead::Ineligible(ineligible) => {
                     reason = match ineligible {
+                        syndic_storage::CompactionAdmissionIneligibility::Busy { current_gate }
+                            if matches!(current_gate.state(), syndic_storage::InputGateState::RepairRequired(_)) => "The selected turn requires repair before compaction.",
                         syndic_storage::CompactionAdmissionIneligibility::Busy { .. } => "The selected thread is busy.",
                         syndic_storage::CompactionAdmissionIneligibility::AcceptedNextEffective { .. } => "Accepted queued work takes precedence over compaction.",
-                        syndic_storage::CompactionAdmissionIneligibility::NoValidBinding { .. } => "The selected thread requires repair before compaction.",
+                        syndic_storage::CompactionAdmissionIneligibility::NoValidBinding { .. } => "The selected execution binding is unavailable for compaction.",
                         syndic_storage::CompactionAdmissionIneligibility::MissingThread => "The selected thread is unavailable.",
                     };
                     return None;

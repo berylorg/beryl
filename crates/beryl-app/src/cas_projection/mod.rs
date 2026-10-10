@@ -72,6 +72,8 @@ pub(crate) use runtime_interest::RuntimeModelReadError;
 mod runtime_work;
 mod scheduled_ordinary;
 mod service;
+pub use service::SubmissionProof;
+pub use service::SubmissionUnavailable;
 pub use service::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
 pub(crate) use service::{ModelReadObservation, ModelReadSource, ModelSourceError};
 pub use service::{RuntimeFailureReader, SelectedRuntimeFailureObservation};

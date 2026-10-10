@@ -2,12 +2,18 @@
 
 #[path = "support/native_shell_appearance.rs"]
 mod appearance;
+#[path = "context_status_native/authority.rs"]
+mod authority;
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
 #[path = "support/desktop_placement_native.rs"]
 mod native;
 #[path = "normal_terminal/server.rs"]
 mod server;
+#[path = "context_status_native/submission.rs"]
+mod submission;
+#[path = "context_status_native/writer.rs"]
+mod writer;
 #[path = "mounted_exact_status_controls/support.rs"]
 mod support;
 #[path = "projection/syndic.rs"]
@@ -216,25 +222,35 @@ async fn wait_context(
 
 #[test]
 fn native_context_controls_render_usage_and_dispatch_exact_manual_compaction() {
-    run_native_context(false, false, false);
+    run_native_context(false, false, false, false, false);
 }
 
 #[test]
 fn native_compaction_rejects_original_idle_capability_when_queued_work_wins() {
-    run_native_context(true, false, false);
+    run_native_context(true, false, false, false, false);
 }
 
 #[test]
 fn native_compaction_rejects_original_claim_after_durable_selection_removal() {
-    run_native_context(true, true, false);
+    run_native_context(true, true, false, false, false);
 }
 
 #[test]
 fn native_compaction_retains_indeterminate_admission_until_exact_retirement() {
-    run_native_context(false, false, true);
+    run_native_context(false, false, true, false, false);
 }
 
-fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
+#[test]
+fn native_loaded_binding_loss_rejects_retained_positive_submission() {
+    run_native_context(false, false, false, true, false);
+}
+
+#[test]
+fn native_active_submission_accepts_steering_and_preserves_queued_input() {
+    run_native_context(false, false, false, false, true);
+}
+
+fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool, binding_loss: bool, active_submission: bool) {
     let faults = beryl_home_store::test_faults::FaultController::new();
     let fixture_faults = faults.clone();
     let server = server::NormalTerminalServer::spawn_controlled_connection_loss();
@@ -317,10 +333,17 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                     })
                     .unwrap();
                 wait_context(window, None, cx).await;
-                let (fixture, mut session, projection, coordinator) = join(
+                if active_submission {
+                    submission::submit_native_text(window, server::SUBMITTED_TEXT, cx).await;
+                }
+                let (fixture, mut session, projection, coordinator, authority_probe) = join(
                     support::worker(move || {
                         let mut fixture = fixture;
-                        fixture.submit_text(server::SUBMITTED_TEXT);
+                        if active_submission {
+                            fixture.advance_clock(u64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()).unwrap() + 1_000);
+                        } else {
+                            fixture.submit_text(server::SUBMITTED_TEXT);
+                        }
                         let connector = ManagedBackendClientConnector::for_lifecycle_test(
                             endpoint,
                             server::AUTHORIZATION,
@@ -355,13 +378,20 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                                 &fixture.cancellation,
                             )
                             .unwrap();
-                        (fixture, session, projection, coordinator)
+                        let authority_probe = if !queued_work && !claim_loss && !uncertainty && !binding_loss {
+                            let other = fixture.create_ordinary(203);
+                            Some((fixture.home().service_reference(), fixture.storage.clone(), other))
+                        } else {
+                            None
+                        };
+                        (fixture, session, projection, coordinator, authority_probe)
                     }),
                     cx,
                 )
                 .await;
                 server.wait_for_projection();
                 let selected_thread = fixture.thread;
+                let active_probe = active_submission.then(|| (fixture.home().service_reference(), fixture.storage.clone()));
                 let capture = support::worker(move || {
                     let outcome = coordinator.execute_ordinary_turn(
                         &*fixture.home(),
@@ -392,6 +422,92 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                     native::pump(cx).await;
                 }
                 server.send_observation(wire(50));
+                submission::wait_availability(window, Ok(()), cx).await;
+                if let Some((home, storage, other)) = authority_probe {
+                    authority::qualify(window, home, storage, worker.clone(), selected_thread, other, cx).await;
+                }
+                if active_submission {
+                    let first = submission::submit_native_text(window, "first steering input", cx).await;
+                    let second = submission::submit_native_text(window, "second steering input", cx).await;
+                    let (home, storage) = active_probe.unwrap();
+                    join(support::worker(move || {
+                        let limit = syndic_storage::SyndicPointReadLimit::new(1_000_000).unwrap();
+                        let gate = storage.input_gate(&home, selected_thread, limit).unwrap().unwrap();
+                        assert!(matches!(gate.state(), syndic_storage::InputGateState::Steerable(_)));
+                        assert_eq!(gate.accepted_high_water(), 2);
+                        assert_eq!(gate.live_steering_count(), 2);
+                        assert_eq!(gate.live_next_turn_count(), 0);
+                        for identity in [first, second] {
+                            let input = storage.accepted_input(&home, identity.binding().candidate().draft_id().accepted_input_id(), limit).unwrap().unwrap();
+                            assert_eq!(input.thread_id(), selected_thread);
+                        }
+                    }), cx).await;
+                    let (fixture, outcome) = {
+                        server.send_observation(server::terminal_wire());
+                        join(capture, cx).await
+                    };
+                    assert!(matches!(outcome, Ok(OrdinaryTurnExecutionOutcome::Terminal { .. })));
+                    let fixture = join(support::worker(move || {
+                        let home = fixture.home();
+                        let limit = syndic_storage::SyndicPointReadLimit::new(1_000_000).unwrap();
+                        let gate = fixture.storage.input_gate(&home, fixture.thread, limit).unwrap().unwrap();
+                        assert_eq!(gate.accepted_high_water(), 2);
+                        assert_eq!(gate.live_steering_count() + gate.live_next_turn_count(), 2);
+                        for identity in [first, second] {
+                            assert!(fixture.storage.accepted_input(&home, identity.binding().candidate().draft_id().accepted_input_id(), limit).unwrap().is_some());
+                        }
+                        drop(home);
+                        fixture
+                    }), cx).await;
+                    session.invalidate_connection();
+                    server.close_connection();
+                    drop(outcome);
+                    drop(session);
+                    server.join();
+                    window.update(cx, |_, window, _| window.remove_window()).unwrap();
+                    drop(shell);
+                    join(support::worker(move || {
+                        drop(acquisition);
+                        let (directory, service) = fixture.into_service();
+                        assert!(matches!(service.close().unwrap(), ProjectionConnectionServiceCloseOutcome::Closed));
+                        drop(directory);
+                    }), cx).await;
+                    result.store(true, Ordering::Release);
+                    cx.update(|app| app.quit()).unwrap();
+                    return;
+                }
+                let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
+                let positive = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap();
+                assert!(positive.is_ok());
+                worker.test_with_submission_authority_contended(|| {
+                    window.update(cx, |root, window, app| {
+                        root.test_apply_submission_observation(stamp, positive, window, app);
+                        let editor = root.test_submission_composer(app).unwrap();
+                        assert_eq!(editor.read(app).submission_unavailable(), Some(SubmissionUnavailable::AuthorityUnavailable));
+                        let identity = editor.read(app).selection_identity();
+                        editor.read(app).gpui_input().read(app).focus(window);
+                        assert_eq!(editor.read(app).selection_identity(), identity);
+                    }).unwrap();
+                    cx.update_window(window.into(), |_, window, app| {
+                        window.dispatch_input_for_test(gpui::PlatformInput::KeyDown(gpui::KeyDownEvent {
+                            keystroke: gpui::Keystroke::parse("enter").unwrap(), is_held: false,
+                        }), app);
+                    }).unwrap();
+                    window.read_with(cx, |root, app| {
+                        let editor = root.test_submission_composer(app).unwrap();
+                        assert_eq!(editor.read(app).submission_disabled_outcome(), Some(SubmissionUnavailable::AuthorityUnavailable));
+                    }).unwrap();
+                });
+                submission::wait_availability(window, Ok(()), cx).await;
+                let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
+                let proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
+                window.update(cx, |root, _, app| {
+                    root.test_submission_composer(app).unwrap().update(app, |editor, app| {
+                        editor.set_submission_availability(Err(SubmissionUnavailable::RepairRequired), app);
+                    });
+                }).unwrap();
+                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::RepairRequired, cx);
+                submission::wait_availability(window, Ok(()), cx).await;
                 wait_context(window, Some(75), cx).await;
                 server.send_observation(wire(-1));
                 wait_context(window, None, cx).await;
@@ -406,6 +522,9 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                         eligibility.test_projected_feedback(ExactStopFeedbackState::Completed).unwrap()
                     }
                 }), cx).await;
+                submission::wait_availability(window, Ok(()), cx).await;
+                let active_submission_stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
+                let active_submission_proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
                 server.send_observation(server::terminal_wire());
                 let (fixture, outcome) = join(capture, cx).await;
                 assert!(matches!(
@@ -424,10 +543,34 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                     );
                     native::pump(cx).await;
                 }
+                submission::reject_retained_proof(window, active_submission_stamp, active_submission_proof, SubmissionUnavailable::BindingUnavailable, cx);
+                submission::wait_availability(window, Ok(()), cx).await;
                 let deadline = Instant::now() + Duration::from_secs(10);
                 while !window.read_with(cx, |root, _| root.test_compaction_command_enabled()).unwrap() {
                     assert!(Instant::now() < deadline, "native Compact capability did not become available");
                     native::pump(cx).await;
+                }
+                if binding_loss {
+                    submission::wait_availability(window, Ok(()), cx).await;
+                    let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
+                    let proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
+                    server.close_connection();
+                    server.join();
+                    session.invalidate_connection();
+                    submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::BindingUnavailable, cx);
+                    drop(outcome);
+                    drop(session);
+                    window.update(cx, |_, window, _| window.remove_window()).unwrap();
+                    drop(shell);
+                    join(support::worker(move || {
+                        drop(acquisition);
+                        let (directory, service) = fixture.into_service();
+                        assert!(matches!(service.close().unwrap(), ProjectionConnectionServiceCloseOutcome::Closed));
+                        drop(directory);
+                    }), cx).await;
+                    result.store(true, Ordering::Release);
+                    cx.update(|app| app.quit()).unwrap();
+                    return;
                 }
                 let fixture = join(support::worker(move || {
                     verify_manual_admission_fences(&fixture);
@@ -579,7 +722,11 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                     assert_eq!(notice.content.dismissal, NoticeDismissal::Persistent);
                     assert_eq!(notice.content.title().as_str(), "Context compaction is still running");
                 }).unwrap();
+                submission::wait_availability(window, Ok(()), cx).await;
+                let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
+                let proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
                 drop(publication);
+                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::AuthorityUnavailable, cx);
                 let harness = fixture.store.context_compaction_lifecycle_test_harness().unwrap();
                 let pause = harness.pause_after_manual_settlement().unwrap();
                 server.send_observation(format!(r#"{{"method":"thread/status/changed","params":{{"threadId":"{}","status":{{"type":"idle"}}}}}}"#, server::CAS_THREAD_ID));
@@ -611,6 +758,12 @@ fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool) {
                 (fixture, server)
                 };
                 session.invalidate_connection();
+                let refusal = if (queued_work && !claim_loss) || uncertainty {
+                    SubmissionUnavailable::BindingUnavailable
+                } else {
+                    SubmissionUnavailable::AuthorityUnavailable
+                };
+                submission::wait_availability(window, Err(refusal), cx).await;
                 wait_context(window, None, cx).await;
                 server.close_connection();
                 drop(outcome);

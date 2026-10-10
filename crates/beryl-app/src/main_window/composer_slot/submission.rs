@@ -14,6 +14,7 @@ use crate::composer_marker_seal::DraftMarkerSealService;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MainWindowComposerSubmissionAdvance {
+    SubmissionUnavailable(crate::cas_projection::SubmissionUnavailable),
     Progress(ComposerHostSubmissionStage),
     ReconciliationPending,
     DirectAdmissionDenied(beryl_home_store::FreeSpaceOutcome),
@@ -127,6 +128,9 @@ impl MainWindowComposerSlot {
             selected.draft_state = draft_state_for_host(&selected.host, binding)?;
         }
         match outcome {
+            ComposerHostSubmissionAdvance::SubmissionUnavailable(reason) => Ok(
+                MainWindowComposerSubmissionAdvance::SubmissionUnavailable(reason),
+            ),
             ComposerHostSubmissionAdvance::Progress(stage) => {
                 Ok(MainWindowComposerSubmissionAdvance::Progress(stage))
             }

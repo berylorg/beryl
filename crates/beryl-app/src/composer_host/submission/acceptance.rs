@@ -44,18 +44,65 @@ impl SyndicComposerHost {
         self.inject_submission_transition_fault(
             ComposerHostSubmissionFaultPoint::AcceptanceBeforeAttempt,
         )?;
-        let command = crate::input_admission::first_acceptance_command(
+        let command = match crate::input_admission::first_acceptance_command(
             store,
             &self.storage,
             &assets,
             acceptance.clone(),
-        )?;
+        ) {
+            Ok(command) => command,
+            Err(crate::input_admission::InputAdmissionBuildError::FirstAcceptanceCollision)
+                if self
+                    .storage
+                    .input_gate(
+                        store,
+                        acceptance.thread_id(),
+                        super::submission_point_limit(),
+                    )?
+                    .is_some_and(|gate| {
+                        matches!(
+                            gate.state(),
+                            syndic_storage::InputGateState::RepairRequired(_)
+                        )
+                    }) =>
+            {
+                self.submission.pending = None;
+                return Ok(ComposerHostSubmissionAdvance::SubmissionUnavailable(
+                    crate::cas_projection::SubmissionUnavailable::RepairRequired,
+                ));
+            }
+            Err(error) => return Err(error.into()),
+        };
         let command = match command {
             crate::input_admission::FirstAcceptanceCommand::AlreadyAccepted(kind) => {
                 self.finish_submission_success(kind);
                 return Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind));
             }
             crate::input_admission::FirstAcceptanceCommand::Execute(command) => command,
+        };
+        if matches!(
+            acceptance.expected_gate_state(),
+            syndic_storage::InputGateState::RepairRequired(_)
+        ) {
+            self.submission.pending = None;
+            return Ok(ComposerHostSubmissionAdvance::SubmissionUnavailable(
+                crate::cas_projection::SubmissionUnavailable::RepairRequired,
+            ));
+        }
+        let command = match self
+            .submission
+            .pending
+            .as_ref()
+            .unwrap()
+            .request
+            .execution_wake
+            .guard_command(store, acceptance.thread_id(), command)
+        {
+            Ok(command) => command,
+            Err(reason) => {
+                self.submission.pending = None;
+                return Ok(ComposerHostSubmissionAdvance::SubmissionUnavailable(reason));
+            }
         };
         if matches!(
             acceptance.expected_gate_state(),
@@ -111,8 +158,37 @@ impl SyndicComposerHost {
                 self.cancel_submission()
             }
             CommandOutcome::NotCommitted { .. } => {
+                let wake = self
+                    .submission
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .request
+                    .execution_wake
+                    .clone();
                 self.submission.pending = None;
-                Ok(ComposerHostSubmissionAdvance::NotCommitted)
+                if self
+                    .storage
+                    .input_gate(
+                        store,
+                        acceptance.thread_id(),
+                        super::submission_point_limit(),
+                    )?
+                    .is_some_and(|gate| {
+                        matches!(
+                            gate.state(),
+                            syndic_storage::InputGateState::RepairRequired(_)
+                        )
+                    })
+                {
+                    Ok(ComposerHostSubmissionAdvance::SubmissionUnavailable(
+                        crate::cas_projection::SubmissionUnavailable::RepairRequired,
+                    ))
+                } else if let Some(reason) = wake.submission_unavailable(acceptance.thread_id()) {
+                    Ok(ComposerHostSubmissionAdvance::SubmissionUnavailable(reason))
+                } else {
+                    Ok(ComposerHostSubmissionAdvance::NotCommitted)
+                }
             }
             CommandOutcome::Committed { .. } => {
                 let kind = submission_acceptance_kind(&acceptance);
@@ -124,6 +200,10 @@ impl SyndicComposerHost {
                     acceptance,
                     reconciliation: Some(reconciliation.install_and_handle()),
                 };
+                #[cfg(feature = "test-faults")]
+                if let Some(fault) = self.submission_after_indeterminate_fault.take() {
+                    fault(store);
+                }
                 #[cfg(feature = "test-faults")]
                 self.inject_submission_transition_fault(
                     ComposerHostSubmissionFaultPoint::AcceptanceAfterAttempt,
