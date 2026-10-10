@@ -106,7 +106,28 @@ evidence. Source inspection and author semantic review qualify the next measured
 no target-authority gap was found for that slice. Prior snapshot evidence is reused only for
 unchanged ownership and disposal. No production behavior or full Checkpoint 4 mounting is accepted.
 
-# Phase 753: Mount The Measured Resident Transcript Viewport (pending)
+# Phase 753: Mount The Measured Resident Transcript Viewport (wip)
+
+Blocked on 2026-10-10: implementation and independent semantic review invalidated the proposed
+synchronous panel/controller measurement approach. Tall-record shrink caused resident-collection-sized
+layout work, and final clamping can publish unmeasured rows or leave the viewport empty. The
+[failure record](failures/transcript-measurement-publication.md) contains a source-backed reproduction
+and the concrete proposed correction. All provisional source/test edits were withdrawn; the
+accepted production baseline remains `1052e5fc`. The readiness record now withdraws mounting
+readiness for this slice.
+
+Before resuming, resolve bounded measurement preparation and coherent publication in the owning
+renderer and shell-boundary authority. The proposal keeps one exact generation/environment-owned
+preparation, bounds refill/shrink work and retained state, preserves remaining exact input, and
+publishes the final measured/clamped frame with corresponding selected-content metadata. This
+crosses the actual attachment publication consumer and is beyond the panel-only readiness
+assumption. Stop for Operator review of that architectural correction under the Scope's material
+architecture escalation rule and the instruction to notify when a plan step cannot technically work.
+
+Verification of the rejected candidate: default App check passed; six focused nextest integration
+targets passed 75/75 but did not cover these failures. GPUI and native mounting acceptance was not obtained;
+no native paint/input qualification is claimed. A temporary nextest source-qualification case
+reproduced the unchanged controller's zero-input shrink failure. No phase completion is accepted.
 
 Implement the next observable boundary in the [readiness record](audits/transcript-mounting-readiness.md#next-observable-boundary)
 through the production transcript panel and host, under the transcript feature, widget and

@@ -126,3 +126,14 @@ and disposal qualification: 117/117 cases across twelve targets, run
 `5bd6271a-420b-4ab2-ae66-808c594ee6a4`, plus the default App check. No tests or native qualification
 were rerun for this documentation-only review; that evidence does not qualify the proposed behavior.
 The Checkpoint 4 full mounting and diagnostic-child items remain open.
+
+## Implementation Qualification Correction
+
+Phase 753's implementation and independent review invalidated the assumption that synchronous
+panel measurement through the current frame helpers is sufficient for the next boundary.
+[Measurement publication failure](../failures/transcript-measurement-publication.md) records
+the anchor/shrink and final-clamp counterexamples, evidence limits and proposed clean correction.
+The target behavior remains authoritative, but production mounting readiness is withdrawn until
+bounded preparation, traversal and atomic measured-frame publication are resolved at the actual
+selected attachment consumer. The original source inventory and unchanged snapshot evidence remain
+usable. No provisional viewport implementation or native qualification was accepted.
