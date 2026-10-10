@@ -83,6 +83,17 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   its provider turn already has a proven terminal outcome. That terminal fact independently makes
   its exact popup anchor inactive; a workflow label cannot keep terminal stop controls available.
   After compaction settlement, the ordinary committed parent owns the last-turn readout again.
+- The weak selected-window reader also supplies bounded typed composer-submission refusals from
+  the exact input gate and execution binding. A displayed state, missing runtime failure, process
+  admission or stop eligibility is not a usable-binding permit. Repair-required input rejects new
+  composer acceptance without changing already accepted queued input; the exact final acceptance
+  gate/revision must enforce the same refusal independently of an earlier presentation read.
+  After interruption or recovery, submission requires the original binding's usable execution
+  authority. Initial draft-only execution retains its ordinary runtime/session preparation path
+  without requiring a previously created CAS thread. Missing, stale or revoked observation fails
+  closed for submission and carries only bounded owner reason facts. Healthy-home draft editing
+  and persistence remain available. Window application revalidates original publication, service,
+  claim and composer identity; this read grants no recovery, retry, history or execution command.
 - Operation origins are service-owned observations, not command capabilities or visible backend
   identifiers. Their equality includes the home/service incarnation, thread and exact ordinary or
   provider operation. An origin remains stable through stop admission and feedback convergence,

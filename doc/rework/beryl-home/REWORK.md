@@ -548,9 +548,9 @@
 - [x] Mounted and independently accepted exact live parent completion sound with current settings,
   known attention OR facts and process-owned native focus/monitor lifetime;
   [canonical qualification](../../failures/executable-bootstrap.md#parent-completion-sound-qualification).
-- [x] Established deferred repair/recovery presentation readiness: selected repair states already
-  publish, native-lineage denial loses its exact reason, and selected-runtime notice publication
-  remains absent; [readiness evidence](../../failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
+- [x] Established deferred repair/recovery presentation readiness; the original missing runtime
+  reader and native-lineage denial were resolved by the accepted mounts below;
+  [original readiness evidence](../../failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness).
 - [x] Mounted exact bounded native-lineage history-recovery disabled explanations through parked
   routes and failed commands, preserving admission and Retry;
   [canonical qualification](../../failures/executable-bootstrap.md#native-lineage-recovery-disabled-reason-qualification).
@@ -558,6 +558,9 @@
   preserving exact identity and unavailable recovery gates;
   [canonical qualification](../../failures/executable-bootstrap.md#selected-runtime-notice-qualification).
 - [x] Mounted exact healthy-home selected-runtime Retry with retained no-input projection usability and bounded notice feedback; [qualification](../../failures/executable-bootstrap.md#runtime-retry-qualification-boundaries).
+- [x] Qualified remaining repair-unavailable presentation and the new composer acceptance guard,
+  preserving initial execution, queued work and reconciliation; independent review accepted the
+  [readiness record](../../audits/repair-unavailable-presentation-readiness.md).
 - [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
   capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and

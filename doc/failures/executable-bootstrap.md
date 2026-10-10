@@ -449,6 +449,12 @@ best effort under the accepted audio-lane contract. Optional lifecycle sounds re
 
 ## Deferred Repair And Recovery Presentation Readiness
 
+The missing runtime reader and parked native-lineage denial described below were subsequently
+resolved by their linked qualifications in Checkpoint 4. The
+[remaining presentation readiness](../audits/repair-unavailable-presentation-readiness.md)
+requalifies current source, including the composer submission guard and localized Compact refusal;
+the original inspection remains evidence only for unchanged mechanisms.
+
 Inspection on 2026-10-03 at source commit `9498618b` against backend-recovery design/GUI,
 Notifications, status-line and app authority established two different missing inputs. This is
 readiness evidence; it does not accept
