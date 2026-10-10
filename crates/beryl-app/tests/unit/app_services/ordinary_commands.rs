@@ -22,6 +22,8 @@ mod resident_fixture;
 use mounted_support::*;
 #[path = "ordinary_commands_recovery.rs"]
 mod recovery;
+#[path = "ordinary_transcript_viewport.rs"]
+mod transcript_viewport;
 
 #[test]
 fn native_mounted_toolbar_exit_captures_exact_placements_with_reversed_shell_order() {

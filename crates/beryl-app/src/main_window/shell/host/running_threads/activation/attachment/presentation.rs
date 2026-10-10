@@ -198,6 +198,24 @@ impl MainWindowShellRoot {
                     .provider
                     .as_ref()
                     .ok_or("Transcript provider is missing")?;
+                self.synchronize_transcript_appearance(cx);
+                let candidate = source
+                    .transcript
+                    .as_ref()
+                    .ok_or("Prepared transcript is missing")?;
+                let allocation = self.transcript_attachment_allocation(
+                    Some(&operation.mount),
+                    candidate.lineage_head().total_parent_count() != 0,
+                    window,
+                    cx,
+                );
+                operation.panel.update(cx, |panel, panel_cx| {
+                    panel.stage_activation(candidate.activation(), Some(allocation));
+                    panel_cx.notify();
+                });
+                if !operation.panel.read(cx).measurement_current(window) {
+                    return Ok(());
+                }
                 let prepared = source
                     .transcript
                     .take()

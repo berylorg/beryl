@@ -344,6 +344,7 @@ impl RunningProcessOwner {
                             adapters,
                             configure,
                             transcript,
+                            cancellation.clone(),
                             native,
                             cx,
                         )

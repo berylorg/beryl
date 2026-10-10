@@ -252,6 +252,44 @@ Geometry can change because of resource readiness, widget mode changes, font or 
 
 When geometry changes, the scroll controller preserves the active semantic anchor or detached manual position using realized identity and measured geometry. It must not fall back to raw historical pixel offsets that can point into unloaded content or virtual empty space.
 
+## Measured Frame Preparation
+
+The transcript host owns one private measured-frame preparation and one published coherent frame.
+Preparation is keyed by exact host/view and activation identity, presentation and record revisions,
+and measurement environment, including viewport allocation, font/rem metrics and theme appearance.
+Only natural-layout observations for that current key may advance preparation. A changed key
+cancels the obsolete preparation and releases its observations, elements and candidate ownership.
+
+Each GUI frame performs at most 32 new record-layout observations for preparation. Refill and
+shrink traversal obey the same limit as ordinary input. Traversal retains its current stable record,
+viewport position and remaining exact displacement as bounded scalar state; crossed record elements
+and measurements are released rather than accumulated. Candidate geometry covers only the eventual
+viewport and bounded overscan plus the current traversal record. Ordinary resident admission bounds
+still apply to shared candidate data; preparation does not read history or extend residency.
+
+The renderer keeps the previously published coherent frame while preparation continues. It closes
+transient geometry invalidated by the environment change and does not construct selection or command
+targets from candidate content. With no prior frame, content remains absent until its complete measured
+initial placement is ready. A frame containing guessed record heights cannot be published as measured.
+
+Preparation measures adjacent resident records before integrating displacement or rebasing across
+them. Reaching either coherent edge clamps even during zero-input remeasurement. If a clamp changes
+the window, preparation qualifies all newly required rows before publication. It needs no total
+resident or historical pixel extent. Short content starts at the leading edge; otherwise tail
+placement puts the measured last record's bottom at the viewport bottom.
+
+Wheel, touchpad and keyboard intent detaches tail following immediately. Exact pending displacement
+is retained across bounded preparation steps and coherent same-view refresh, and retired on selected
+authority replacement. New input can follow a current preparation without discarding already accepted
+intent. Finishing preparation publishes its snapshot, actual geometry, semantic anchor, clamp and
+demand facts once; provisional rows emit no committed measurements or residency decisions.
+
+Selected attachment publication obeys the shell boundary's measured-publication gate. Candidate
+content cannot become visible before its matching selected metadata and initial measured placement.
+Host retirement, window close and authority replacement release both preparation and published-frame
+ownership. Content-free diagnostics expose pending preparation, observation work and retained geometry
+counts without content or resource bytes.
+
 ## Selection And Menus
 
 Selection, Markdown-preserving copy, quote harvesting, and turn context menus operate only on rendered records whose provenance and geometry are stable.

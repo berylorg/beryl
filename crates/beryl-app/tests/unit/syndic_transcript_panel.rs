@@ -12,8 +12,330 @@ struct NestedPanel {
     body_height: f32,
 }
 
+fn mounted_panel(
+    cx: &mut TestAppContext,
+    activation: PreparedTranscriptActivation,
+) -> gpui::WindowHandle<NestedPanel> {
+    mounted_panel_with_initial_layout(cx, activation, 180.0, 0.0)
+}
+
+fn mounted_panel_with_initial_layout(
+    cx: &mut TestAppContext,
+    activation: PreparedTranscriptActivation,
+    body_height: f32,
+    delta: f32,
+) -> gpui::WindowHandle<NestedPanel> {
+    cx.update(|app| {
+        app.open_window(
+            gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::centered(
+                    None,
+                    gpui::size(px(640.0), px(640.0)),
+                    app,
+                ))),
+                ..Default::default()
+            },
+            |_, app| {
+                let panel = app.new(|cx| {
+                    let mut panel = SyndicTranscriptPanel::new(cx);
+                    panel.stage_activation(&activation, None);
+                    panel.manual_scroll_delta(body_height, delta, cx);
+                    panel
+                });
+                app.new(|_| NestedPanel { panel, body_height })
+            },
+        )
+        .unwrap()
+    })
+}
+
+fn draw_frames(cx: &mut TestAppContext, window: gpui::WindowHandle<NestedPanel>, count: usize) {
+    cx.update(|app| {
+        for _ in 0..count {
+            app.update_window(window.into(), |_, window, app| window.draw(app).clear())
+                .unwrap();
+        }
+    });
+}
+
+fn long_tail_seed() -> PreparedTranscriptActivation {
+    let mut activation = seed(64);
+    let Some(TranscriptProviderResponseKind::ProjectionRecords(projections)) =
+        activation.projection_records_response.as_mut()
+    else {
+        unreachable!()
+    };
+    projections.records.last_mut().unwrap().payload = ProjectionPayload::Text {
+        text: "Long transcript paragraph ".repeat(500).into(),
+    };
+    activation
+}
+
+#[gpui::test]
+fn manual_input_before_first_content_uses_the_measured_tail_start(cx: &mut TestAppContext) {
+    let window = mounted_panel_with_initial_layout(cx, long_tail_seed(), 180.0, -63.25);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        let frame = panel.last_frame_window.as_ref().unwrap();
+        let last = frame.records.last().unwrap();
+        assert_eq!(last.index, 63);
+        assert_eq!(frame.manual_scroll_total_px, -63.25);
+        assert!((last.top_px + last.height_px - 243.25).abs() < 0.01);
+        assert!(matches!(
+            panel.refresh_placement(),
+            TranscriptActivationPlacement::Position(_)
+        ));
+    });
+}
+
+#[gpui::test]
+fn shrinking_last_record_without_input_qualifies_the_revealed_clamp_rows(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, long_tail_seed());
+    draw_frames(cx, window, 4);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let delta = panel.read_with(cx, |panel, _| {
+        panel
+            .last_frame_window
+            .as_ref()
+            .unwrap()
+            .records
+            .last()
+            .unwrap()
+            .top_px
+            + 1000.0
+    });
+    panel.update(cx, |panel, cx| panel.manual_scroll_delta(180.0, delta, cx));
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        assert!(
+            (panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .records
+                .last()
+                .unwrap()
+                .top_px
+                + 1000.0)
+                .abs()
+                < 0.01
+        )
+    });
+    panel.update(cx, |panel, cx| {
+        panel.stage_activation(&seed(64), None);
+        cx.notify();
+    });
+    draw_frames(cx, window, 8);
+    panel.read_with(cx, |panel, _| {
+        let frame = panel.last_frame_window.as_ref().unwrap();
+        assert!(!frame.records.is_empty());
+        let last = frame.records.last().unwrap();
+        assert!((last.top_px + last.height_px - 180.0).abs() < 0.01);
+        assert!(frame.records.iter().all(|record| record.height_px == 36.0));
+        assert_eq!(frame.manual_scroll_total_px, delta);
+    });
+}
+
+#[gpui::test]
+fn measured_scroll_keeps_coherent_output_until_bounded_batches_complete(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, seed(64));
+    draw_frames(cx, window, 4);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let before = panel.read_with(cx, |panel, _| panel.last_frame_window.clone().unwrap());
+    panel.update(cx, |panel, cx| {
+        panel.manual_scroll_delta(180.0, -2000.25, cx)
+    });
+    draw_frames(cx, window, 1);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(
+            panel.last_frame_window.as_ref().unwrap().anchor,
+            before.anchor
+        );
+        assert_eq!(panel.measurement_diagnostics().2, 32);
+        assert!(panel.measurement_diagnostics().0);
+        assert!(matches!(
+            panel.refresh_placement(),
+            TranscriptActivationPlacement::Position(_)
+        ));
+    });
+    draw_frames(cx, window, 8);
+    panel.read_with(cx, |panel, _| {
+        let frame = panel.last_frame_window.as_ref().unwrap();
+        assert_eq!(frame.manual_scroll_total_px, -2000.25);
+        assert_ne!(frame.anchor, before.anchor);
+        assert!(!frame.records.is_empty());
+        assert!(panel.measurement_diagnostics().2 <= 32);
+    });
+    panel.update(cx, |panel, cx| {
+        panel.stage_activation(&seed(65), None);
+        panel.manual_scroll_delta(180.0, -63.25, cx);
+    });
+    draw_frames(cx, window, 8);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(panel.snapshot().records.len(), 65);
+        assert_eq!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .manual_scroll_total_px,
+            -2063.5
+        );
+    });
+}
+
+#[gpui::test]
+fn cancelled_replacement_retires_input_and_preparation_ownership(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, seed(64));
+    draw_frames(cx, window, 4);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let original = panel.read_with(cx, |panel, _| panel.snapshot());
+    let mut replacement = seed(65);
+    replacement.view_id = Some(TranscriptViewId("replacement-view".into()));
+    panel.update(cx, |panel, cx| {
+        panel.stage_activation(&replacement, None);
+        panel.manual_scroll_delta(180.0, -90.25, cx);
+        panel.discard_staged_activation();
+    });
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        assert!(std::sync::Arc::ptr_eq(&panel.snapshot(), &original));
+        assert_eq!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .manual_scroll_total_px,
+            0.0
+        );
+    });
+    let weak = std::sync::Arc::downgrade(&original);
+    drop(original);
+    panel.update(cx, |panel, _| panel.retire());
+    assert!(weak.upgrade().is_none());
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(panel.measurement_diagnostics(), (false, 0, 0))
+    });
+}
+
+#[gpui::test]
+fn variable_rows_remeasure_on_resize_and_route_real_wheel_and_keyboard(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, long_tail_seed());
+    draw_frames(cx, window, 4);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let previous = panel.read_with(cx, |panel, _| {
+        panel
+            .last_frame_window
+            .as_ref()
+            .unwrap()
+            .records
+            .last()
+            .unwrap()
+            .height_px
+    });
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    visual.simulate_resize(gpui::size(px(320.0), px(640.0)));
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        let frame = panel.last_frame_window.as_ref().unwrap();
+        let last = frame.records.last().unwrap();
+        assert!(last.height_px > previous);
+        assert!((last.top_px + last.height_px - 180.0).abs() < 0.01);
+    });
+    let bounds = visual.debug_bounds("nested-transcript-body").unwrap();
+    let previous = panel.read_with(cx, |panel, _| {
+        panel
+            .last_frame_window
+            .as_ref()
+            .unwrap()
+            .records
+            .last()
+            .unwrap()
+            .height_px
+    });
+    visual.update(|window, _| window.set_rem_size(px(24.0)));
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        assert!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .records
+                .last()
+                .unwrap()
+                .height_px
+                > previous
+        )
+    });
+    visual.simulate_event(gpui::ScrollWheelEvent {
+        position: bounds.center(),
+        delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.0), px(83.25))),
+        modifiers: Default::default(),
+        touch_phase: gpui::TouchPhase::Moved,
+    });
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .manual_scroll_total_px,
+            -83.25
+        )
+    });
+    visual.simulate_event(gpui::MouseDownEvent {
+        button: MouseButton::Left,
+        position: bounds.center(),
+        modifiers: Default::default(),
+        click_count: 1,
+        first_mouse: false,
+    });
+    visual.simulate_keystrokes("up");
+    draw_frames(cx, window, 4);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .manual_scroll_total_px,
+            -123.25
+        )
+    });
+}
+
+#[gpui::test]
+fn first_content_waits_for_the_complete_measured_tail_frame(cx: &mut TestAppContext) {
+    let window = mounted_panel_with_initial_layout(cx, seed(64), 2000.0, 0.0);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    draw_frames(cx, window, 1);
+    panel.read_with(cx, |panel, _| {
+        assert!(panel.snapshot().records.is_empty());
+        assert!(panel.last_frame_window.is_none());
+        assert_eq!(panel.measurement_diagnostics().2, 32);
+    });
+    draw_frames(cx, window, 8);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(panel.snapshot().records.len(), 64);
+        let frame = panel.last_frame_window.as_ref().unwrap();
+        let last = frame.records.last().unwrap();
+        assert!((last.top_px + last.height_px - 2000.0).abs() < 0.01);
+        assert!(frame.records.len() > 32);
+        assert!(panel.measurement_diagnostics().2 <= 32);
+    });
+}
+
 impl Render for NestedPanel {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.panel.update(cx, |panel, _| {
+            if panel.measurement_current(window) {
+                let activation = panel.staged.as_ref().unwrap().activation.clone();
+                panel.publish_coherent_activation(activation);
+            }
+        });
         div().size_full().flex().flex_col().child(
             div()
                 .id("nested-transcript-body")
@@ -102,7 +424,7 @@ fn nested_body_paints_newest_tail_on_first_frame_and_preserves_manual_anchor(
             |_, app| {
                 let panel = app.new(|cx| {
                     let mut panel = SyndicTranscriptPanel::new(cx);
-                    panel.publish_coherent_activation(seed(8));
+                    panel.stage_activation(&seed(24), None);
                     panel
                 });
                 app.new(|_| NestedPanel {
@@ -114,15 +436,17 @@ fn nested_body_paints_newest_tail_on_first_frame_and_preserves_manual_anchor(
         .unwrap()
     });
     cx.update(|app| {
-        app.update_window(window.into(), |_, window, app| window.draw(app).clear())
-            .unwrap();
+        for _ in 0..4 {
+            app.update_window(window.into(), |_, window, app| window.draw(app).clear())
+                .unwrap();
+        }
     });
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let body = visual.debug_bounds("nested-transcript-body").unwrap();
     assert_eq!(body.size.height, px(180.));
     let panel = window.update(cx, |view, _, _| view.panel.clone()).unwrap();
     let row = visual
-        .debug_bounds("syndic-transcript-record:view:entry-7:projection:text-7")
+        .debug_bounds("syndic-transcript-record:view:entry-23:projection:text-23")
         .unwrap();
     assert!(row.top() >= body.top());
     assert_eq!(row.bottom(), body.bottom());
@@ -140,16 +464,29 @@ fn nested_body_paints_newest_tail_on_first_frame_and_preserves_manual_anchor(
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let body = visual.debug_bounds("nested-transcript-body").unwrap();
     let row = visual
-        .debug_bounds("syndic-transcript-record:view:entry-7:projection:text-7")
+        .debug_bounds("syndic-transcript-record:view:entry-23:projection:text-23")
         .unwrap();
     assert_eq!(row.bottom(), body.bottom());
     assert_eq!(body.size.height, px(144.));
 
-    let anchor = panel.update(cx, |panel, cx| {
-        panel.manual_scroll_delta(144., -144., cx).anchor.unwrap()
+    panel.update(cx, |panel, cx| {
+        panel.manual_scroll_delta(144., -144., cx);
+    });
+    cx.update(|app| {
+        app.update_window(window.into(), |_, window, app| window.draw(app).clear())
+            .unwrap();
+    });
+    let anchor = panel.read_with(cx, |panel, _| {
+        panel
+            .last_frame_window
+            .as_ref()
+            .unwrap()
+            .anchor
+            .clone()
+            .unwrap()
     });
     panel.update(cx, |panel, cx| {
-        panel.publish_coherent_activation(seed(9));
+        panel.stage_activation(&seed(25), None);
         cx.notify();
     });
     window
@@ -159,8 +496,10 @@ fn nested_body_paints_newest_tail_on_first_frame_and_preserves_manual_anchor(
         })
         .unwrap();
     cx.update(|app| {
-        app.update_window(window.into(), |_, window, app| window.draw(app).clear())
-            .unwrap();
+        for _ in 0..4 {
+            app.update_window(window.into(), |_, window, app| window.draw(app).clear())
+                .unwrap();
+        }
     });
     panel.read_with(cx, |panel, _| {
         let current = panel
@@ -179,16 +518,9 @@ fn nested_body_paints_newest_tail_on_first_frame_and_preserves_manual_anchor(
     });
     let mut visual = VisualTestContext::from_window(window.into(), cx);
     let body = visual.debug_bounds("nested-transcript-body").unwrap();
-    let selectors = [
-        "syndic-transcript-record:view:entry-0:projection:text-0",
-        "syndic-transcript-record:view:entry-1:projection:text-1",
-        "syndic-transcript-record:view:entry-2:projection:text-2",
-        "syndic-transcript-record:view:entry-3:projection:text-3",
-        "syndic-transcript-record:view:entry-4:projection:text-4",
-        "syndic-transcript-record:view:entry-5:projection:text-5",
-        "syndic-transcript-record:view:entry-6:projection:text-6",
-        "syndic-transcript-record:view:entry-7:projection:text-7",
-    ];
-    let anchor_row = visual.debug_bounds(selectors[anchor.index]).unwrap();
+    assert_eq!(anchor.index, 16);
+    let anchor_row = visual
+        .debug_bounds("syndic-transcript-record:view:entry-16:projection:text-16")
+        .unwrap();
     assert_eq!(anchor_row.top(), body.top() + px(anchor.viewport_y_px));
 }

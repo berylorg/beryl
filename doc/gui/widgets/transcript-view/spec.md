@@ -165,6 +165,14 @@ A synthetic-context group occupies one semantic position at its host-supplied in
 
 Remeasurement after width, font, theme, content, resource, fallback, or nested-widget changes preserves the active semantic anchor or detached manual position through stable realized identities and current measurements.
 
+The widget supplies bounded natural-layout observations to the host's measured-frame preparation
+under `doc/systems/transcript-presentation/renderer-architecture.md`. Candidate rows are private
+measurement work and cannot become selectable content or command targets. While preparation
+continues, the previously published coherent frame remains visible; invalidated transient geometry
+closes. The widget consumes only the host's ready measured frame and never publishes estimated row
+extents or a subsequent activation scroll correction. Measurement elements are released after each
+observation, and obsolete environment or generation observations cannot advance replacement content.
+
 Live-tail growth and durable reconciliation retain the same outer record identity. They may change its measured extent, but they do not insert a second row or reset the current semantic anchor solely because the authoritative frontier advanced.
 
 The selection and transient-affordance layers overlay the realized frame without changing record measurement or scroll geometry. Activation-pending dimming likewise does not alter layout.

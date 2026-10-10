@@ -63,6 +63,25 @@ separate bounded transient input and cannot populate repaired canonical records.
 
 The host publishes immutable resident presentation snapshots for the GPUI panel. A snapshot contains only currently resident presentation records, any bounded transient live suffix attached to its exact authored record, realized synthetic-context chunks, stable group and record identities, realized frame data, provenance, local fallback records, local affordances, and enough revision data for the renderer to reject stale measurements or demand facts.
 
+### Measured Publication Gate
+
+The shell stages selected attachment content and its corresponding title, lineage and exact selected
+claim as one candidate publication through the existing transcript host. The host prepares measured
+geometry under the renderer architecture's bounded preparation contract. While preparation is pending,
+the shell retains the previous coherent content and associated metadata. It does not advance a title
+or lineage independently ahead of the replacement frame.
+
+A ready preparation is a capability for one current host/view, activation, provider/publication and
+measurement-environment key. The shell rechecks its existing reader, selection, cancellation and
+request guards before consuming that capability. It then publishes the measured frame, initial
+placement and matching selected metadata in one GUI transition. A stale capability releases its
+candidate rather than replacing the current frame or correcting a replacement later.
+
+The same gate applies to selected attachment, same-view content refresh and recovery publication.
+Same-view refresh preserves exact pending manual intent; changed selection authority retires it.
+Geometry-only remeasurement uses the same bounded preparation mechanism without selecting new
+metadata. Retirement and window close cancel pending preparation and release all retained candidates.
+
 For repair publication, one snapshot generation atomically selects the affected turn's exact
 Syndic generation, compact head, source authority, pending, repaired, or incomplete provenance, and
 optional noninteractive record-status provenance. It does not contain a whole resident turn. The

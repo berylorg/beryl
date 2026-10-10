@@ -26,6 +26,9 @@ impl MainWindowShellRoot {
             .transcript_cancel
             .store(true, Ordering::Release);
         self.runtime_setup.transcript = None;
+        self.running_threads
+            .transcript
+            .update(cx, |panel, _| panel.discard_staged_activation());
         let Some(mount) = self.runtime_setup.mount.clone() else {
             return Ok(self.runtime_setup.workers.retained() == 0);
         };
@@ -153,6 +156,23 @@ impl MainWindowShellRoot {
             return Ok(());
         }
         if !services.revalidate_first_conversation(flight)? {
+            return Ok(());
+        }
+        self.synchronize_transcript_appearance(cx);
+        let candidate = &self.runtime_setup.transcript.as_ref().unwrap().prepared;
+        let allocation = self.transcript_attachment_allocation(Some(&mount), false, window, cx);
+        self.running_threads
+            .transcript
+            .update(cx, |panel, panel_cx| {
+                panel.stage_activation(candidate.activation(), Some(allocation));
+                panel_cx.notify();
+            });
+        if !self
+            .running_threads
+            .transcript
+            .read(cx)
+            .measurement_current(window)
+        {
             return Ok(());
         }
         composer.update(cx, |composer, cx| {

@@ -57,7 +57,7 @@ was already being updated. Native input and paint qualification were not obtaine
 native qualification must separate window drawing/input dispatch from root entity updates.
 The exact failed native fixture directory was reclaimed after process exit.
 
-## Proposed Clean Correction
+## Accepted Clean Correction
 
 Resolve bounded measurement preparation and coherent publication before mounting the viewport:
 
@@ -77,10 +77,28 @@ Resolve bounded measurement preparation and coherent publication before mounting
   selection authority. Invalidate transient geometry and release all superseded preparation
   state on environment change, replacement, cancellation and close.
 
-This is a proposed correction, not a new authoritative contract or approved compatibility path.
-The owning [renderer architecture](../systems/transcript-presentation/renderer-architecture.md)
-and [shell boundary](../systems/transcript-presentation/shell-boundary.md) must determine the
-bounded preparation/publication lifecycle before implementation resumes. The root plan records
-the stop required by the Operator's instruction for a technically invalid implementation step.
+Operator approved this correction on 2026-10-10. The owning
+[renderer architecture](../systems/transcript-presentation/renderer-architecture.md#measured-frame-preparation)
+and [shell boundary](../systems/transcript-presentation/shell-boundary.md#measured-publication-gate)
+now determine the bounded preparation/publication lifecycle; this failure record remains evidence.
+The root plan releases the technical hold and requires complete production qualification.
 Resource delivery, Markdown, nested widgets, live suffixes and complete transcript mounting
 remain separate outcomes.
+
+## Correction Disposition
+
+The accepted bounded preparation is implemented and qualified by the
+[viewport acceptance](../audits/transcript-mounting-readiness.md#measured-viewport-acceptance).
+The zero-input shrink now refills and clamps measured rows across bounded preparation steps;
+initial publication waits for its complete measured frame and corresponding shell metadata.
+
+Review found that the ordinary live-selection helper cannot validate recovered composers before
+their recovery fence is released. The corrected gate checks exact selected identity and retained
+recovery ticket while fenced, completes measured publication before reopening canonical admission,
+and propagates rejection instead of equating candidate absence with successful publication.
+Cancelled or stale candidates release their payload immediately and retain only a failure diagnostic.
+Current appearance is synchronized at asynchronous consumers as well as normal root rendering.
+
+Native paint qualification also cannot inspect GPUI's next-frame buffer after drawing swaps and
+clears it. The test now counts transcript glyphs inside the panel's actual paint callback. The
+earlier failed buffer assertion supplies no paint evidence; the corrected native case passes.

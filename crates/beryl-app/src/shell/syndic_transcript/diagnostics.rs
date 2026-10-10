@@ -123,6 +123,9 @@ pub(crate) struct ResidentDataDiagnostics {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ResidentFrameDiagnostics {
+    pub(crate) measurement_preparation_pending: bool,
+    pub(crate) retained_preparation_measurements: usize,
+    pub(crate) layout_observations_last_frame: usize,
     pub(crate) realized_range: Option<std::ops::Range<usize>>,
     pub(crate) visible_range: Option<std::ops::Range<usize>>,
     pub(crate) rendered_record_count: usize,

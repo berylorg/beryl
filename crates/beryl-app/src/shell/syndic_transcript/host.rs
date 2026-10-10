@@ -58,20 +58,66 @@ impl SyndicTranscriptHost {
         &mut self,
         prepared: PreparedTranscriptActivation,
     ) -> TranscriptActivationOutcome {
+        let (candidate, outcome) = self.prepare_coherent_activation(prepared);
+        *self = candidate;
+        outcome
+    }
+
+    pub(crate) fn prepare_coherent_activation(
+        &self,
+        prepared: PreparedTranscriptActivation,
+    ) -> (Self, TranscriptActivationOutcome) {
         let mut candidate = Self::empty();
         candidate.core = self.core.empty_successor();
         candidate.lifetime = std::sync::Arc::clone(&self.lifetime);
         let same_view = prepared.view_id.as_ref() == self.core.selected_view_id();
         let outcome = if same_view {
             candidate.scroll_controller = self.scroll_controller.clone();
+            candidate.last_frame_window = self.last_frame_window.clone();
             candidate
                 .core
                 .apply_prepared_activation(prepared, TranscriptActivationSource::RunningThread)
         } else {
             candidate.apply_prepared_activation(prepared, TranscriptActivationSource::RunningThread)
         };
-        *self = candidate;
-        outcome
+        (candidate, outcome)
+    }
+
+    pub(crate) fn scroll_state(&self) -> RealizedFrameScrollStateSnapshot {
+        self.scroll_controller.state_snapshot()
+    }
+
+    pub(crate) fn is_same_view(&self, prepared: &PreparedTranscriptActivation) -> bool {
+        prepared.view_id.as_ref() == self.core.selected_view_id()
+    }
+
+    pub(crate) fn detach_tail(&mut self) {
+        self.scroll_controller.detach_live_tail_following();
+    }
+
+    pub(crate) fn accept_measured_frame(&mut self, mut window: RealizedFrameWindow) {
+        let snapshot = self.shared_snapshot();
+        if let Some(previous) = &self.last_frame_window {
+            let before = previous.overscan_range.start
+                ..previous.overscan_range.end.min(window.overscan_range.start);
+            let after = previous.overscan_range.start.max(window.overscan_range.end)
+                ..previous.overscan_range.end;
+            for range in [before, after] {
+                if !range.is_empty() {
+                    window.demand_facts.push(DemandFact::new(
+                        snapshot.presentation_revision,
+                        super::DemandFactKind::ObsoleteRange { range },
+                    ));
+                }
+            }
+        }
+        let mode = self.scroll_controller.state_snapshot().scroll_mode;
+        self.scroll_controller
+            .accept_measured_frame(&snapshot, &window, mode);
+        for fact in &window.demand_facts {
+            self.core.push_demand_fact(fact.clone());
+        }
+        self.last_frame_window = Some(window);
     }
 
     pub(crate) fn refresh_placement(&self) -> TranscriptActivationPlacement {

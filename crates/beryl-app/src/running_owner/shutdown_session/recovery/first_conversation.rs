@@ -235,7 +235,13 @@ impl RunningProcessOwner {
                 };
                 window
                     .update(app, |root, native, cx| {
-                        retained.attach_first_conversation(request, root, native, cx)
+                        retained.attach_first_conversation(
+                            request,
+                            cancellation.clone(),
+                            root,
+                            native,
+                            cx,
+                        )
                     })
                     .map_err(|e| e.to_string())??;
                 retained.bind_interrupted_exit_appearance(request, window, &appearance, app)?;
@@ -283,6 +289,7 @@ impl RunningProcessOwner {
     fn attach_first_conversation(
         &mut self,
         request: &impl RecoveryIdentity,
+        cancellation: CommandCancellation,
         root: &mut MainWindowShellRoot,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<MainWindowShellRoot>,
@@ -318,7 +325,15 @@ impl RunningProcessOwner {
         let first = graph.first_conversation_preparation()?;
         let drafts = self.recovery_drafts()?;
         drafts.borrow_mut().adopt_first_conversation(
-            root, &facts, first, adapters, configure, transcript, window, cx,
+            root,
+            &facts,
+            first,
+            adapters,
+            configure,
+            transcript,
+            cancellation,
+            window,
+            cx,
         )?;
         #[cfg(test)]
         if reject_attachment {

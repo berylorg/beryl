@@ -68,7 +68,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
     let strip = strip
         .id("main-window-status-line")
         .debug_selector(|| "main-window-status-line".to_owned())
-        .h(px(28.))
+        .h(px(STATUS_STRIP_HEIGHT_PX))
         .flex_none()
         .flex()
         .items_center()

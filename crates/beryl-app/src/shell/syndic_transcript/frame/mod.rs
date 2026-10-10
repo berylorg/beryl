@@ -1,8 +1,10 @@
 use std::ops::Range;
 
 mod geometry;
+mod preparation;
 mod types;
 
+pub(crate) use preparation::MeasuredFramePreparation;
 pub(crate) use types::RealizedFrameWindow;
 pub(crate) use types::{
     RealizedFrameAnchor, RealizedFrameClamp, RealizedFrameRecord, RealizedFrameRequest,
@@ -52,6 +54,38 @@ impl RealizedFrameScrollController {
             presentation_revision: self.presentation_revision,
             manual_scroll_total_px: self.manual_scroll_total_px,
         }
+    }
+
+    pub(crate) fn accept_measured_frame(
+        &mut self,
+        snapshot: &ResidentTranscriptSnapshot,
+        window: &RealizedFrameWindow,
+        mode: RealizedFrameScrollMode,
+    ) {
+        self.anchor = window
+            .anchor
+            .as_ref()
+            .map(|anchor| RealizedFrameAnchorState {
+                record_id: anchor.record_id.clone(),
+                index: anchor.index,
+                viewport_y_px: anchor.viewport_y_px,
+                position: anchor.position,
+            });
+        self.measured_records = window
+            .records
+            .iter()
+            .map(|record| RealizedRecordMeasurementState {
+                record_id: record.record_id.clone(),
+                height_px: record.height_px,
+            })
+            .collect();
+        self.previous_overscan_range = Some(window.overscan_range.clone());
+        self.presentation_revision = Some(snapshot.presentation_revision);
+        self.manual_scroll_total_px = window.manual_scroll_total_px;
+        self.scroll_mode = mode;
+        self.pending_tail_placement = false;
+        self.previous_snapshot_record_ids.clear();
+        self.viewport_height_px = None;
     }
 
     pub(crate) fn begin_live_tail_following(&mut self) {

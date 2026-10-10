@@ -138,6 +138,7 @@ impl RunningShutdownDrafts {
         adapters: crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
         configure: crate::main_window::MainWindowShellComposerConfigurator,
         transcript: crate::syndic_transcript::PreparedTranscriptActivation,
+        cancellation: beryl_home_store::CommandCancellation,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<crate::main_window::MainWindowConversationComposerCloseTicket, String> {
@@ -159,6 +160,7 @@ impl RunningShutdownDrafts {
             adapters,
             configure,
             transcript,
+            cancellation,
             window,
             cx,
         )?;
@@ -192,6 +194,7 @@ impl RunningShutdownDrafts {
         adapters: crate::app_services::recovery_composer::PreparedComposerRecoveryAdapters,
         configure: crate::main_window::MainWindowShellComposerConfigurator,
         transcript: crate::syndic_transcript::PreparedTranscriptActivation,
+        cancellation: beryl_home_store::CommandCancellation,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<MainWindowShellRoot>,
     ) -> Result<(), String> {
@@ -213,6 +216,7 @@ impl RunningShutdownDrafts {
             adapters,
             configure,
             transcript,
+            cancellation,
             window,
             cx,
         )?;

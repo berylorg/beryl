@@ -9,7 +9,7 @@ impl Render for ThreadLineage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.viewport_width() == 0. {
             self.bounds.size.width = (window.viewport_size().width - px(92.)).max(px(0.));
-            self.bounds.size.height = px(32.);
+            self.bounds.size.height = px(THREAD_LINEAGE_HEIGHT_PX);
         }
         if self.auto_reveal {
             self.place_trailing();
@@ -187,7 +187,7 @@ impl Render for ThreadLineage {
             .debug_selector(|| "thread-lineage".into())
             .w_full()
             .min_w_0()
-            .h(px(32.))
+            .h(px(THREAD_LINEAGE_HEIGHT_PX))
             .flex_none()
             .flex()
             .items_center()

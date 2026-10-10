@@ -33,10 +33,45 @@ const SYNDIC_TRANSCRIPT_DEFAULT_RECORD_HEIGHT_PX: f32 = 72.0;
 const SYNDIC_TRANSCRIPT_RESOURCE_PREVIEW_BYTES: u64 = 4096;
 const SYNDIC_TRANSCRIPT_RESOURCE_PREVIEW_TEXT_BYTES: usize = 2048;
 
+struct StagedTranscript {
+    activation: PreparedTranscriptActivation,
+    host: SyndicTranscriptHost,
+    outcome: TranscriptActivationOutcome,
+    allocation: Option<gpui::Size<gpui::Pixels>>,
+    unplaced_tail: bool,
+}
+
+#[derive(Clone, PartialEq)]
+struct MeasurementEnvironment {
+    viewport: gpui::Size<gpui::Pixels>,
+    window_viewport: gpui::Size<gpui::Pixels>,
+    scale: f32,
+    rem: gpui::Pixels,
+    text: gpui::TextStyle,
+}
+
+struct PendingGeometry {
+    revision: u64,
+    environment: MeasurementEnvironment,
+    delta: f32,
+    preparation: super::frame::MeasuredFramePreparation,
+    ready: Option<RealizedFrameWindow>,
+    published: bool,
+}
+
 pub(crate) struct SyndicTranscriptPanel {
     focus_handle: FocusHandle,
     host: SyndicTranscriptHost,
     last_frame_window: Option<RealizedFrameWindow>,
+    published_snapshot: Option<std::sync::Arc<ResidentTranscriptSnapshot>>,
+    staged: Option<StagedTranscript>,
+    geometry: Option<PendingGeometry>,
+    pending_delta: f32,
+    appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
+    #[cfg(test)]
+    viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    #[cfg(test)]
+    painted_glyphs: usize,
 }
 
 impl SyndicTranscriptPanel {
@@ -45,6 +80,15 @@ impl SyndicTranscriptPanel {
             focus_handle: cx.focus_handle(),
             host: SyndicTranscriptHost::empty(),
             last_frame_window: None,
+            published_snapshot: None,
+            staged: None,
+            geometry: None,
+            pending_delta: 0.0,
+            appearance: None,
+            #[cfg(test)]
+            viewport_bounds: None,
+            #[cfg(test)]
+            painted_glyphs: 0,
         }
     }
 
@@ -64,12 +108,174 @@ impl SyndicTranscriptPanel {
         &mut self,
         prepared: PreparedTranscriptActivation,
     ) -> TranscriptActivationOutcome {
-        self.host.publish_coherent_activation(prepared)
+        assert!(
+            self.staged
+                .as_ref()
+                .is_some_and(|staged| staged.activation == prepared)
+                && self.measurement_ready(),
+            "attachment publication requires its measured generation"
+        );
+        self.commit_measured_activation()
+    }
+
+    pub(crate) fn stage_activation(
+        &mut self,
+        prepared: &PreparedTranscriptActivation,
+        allocation: Option<gpui::Size<gpui::Pixels>>,
+    ) {
+        if self
+            .staged
+            .as_ref()
+            .is_some_and(|staged| &staged.activation == prepared)
+        {
+            let staged = self.staged.as_mut().unwrap();
+            if staged.allocation != allocation {
+                staged.allocation = allocation;
+                self.geometry = None;
+            }
+            return;
+        }
+        if !self.host.is_same_view(prepared) {
+            self.pending_delta = 0.0;
+        }
+        let (host, outcome) = self.host.prepare_coherent_activation(prepared.clone());
+        let unplaced_tail = host.scroll_state().anchor.is_none()
+            && prepared.placement == TranscriptActivationPlacement::Tail;
+        self.staged = Some(StagedTranscript {
+            activation: prepared.clone(),
+            host,
+            outcome,
+            allocation,
+            unplaced_tail,
+        });
+        self.geometry = None;
+        self.close_invalid_geometry();
+    }
+
+    pub(crate) fn measurement_ready(&self) -> bool {
+        self.staged.is_some()
+            && self
+                .geometry
+                .as_ref()
+                .is_some_and(|geometry| geometry.ready.is_some())
+    }
+
+    pub(crate) fn measurement_current(&self, window: &Window) -> bool {
+        self.measurement_ready()
+            && self.geometry.as_ref().is_some_and(|geometry| {
+                geometry.environment.window_viewport == window.viewport_size()
+                    && geometry.environment.scale == window.scale_factor()
+                    && geometry.environment.rem == window.rem_size()
+                    && geometry.environment.text == window.text_style()
+            })
+    }
+
+    pub(crate) fn set_appearance(
+        &mut self,
+        appearance: std::sync::Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) {
+        if self
+            .appearance
+            .as_ref()
+            .is_some_and(|current| std::sync::Arc::ptr_eq(current, &appearance))
+        {
+            return;
+        }
+        self.appearance = Some(appearance);
+        self.geometry = None;
+        self.close_invalid_geometry();
+    }
+
+    pub(crate) fn measurement_diagnostics(&self) -> (bool, usize, usize) {
+        self.geometry
+            .as_ref()
+            .map(|geometry| {
+                (
+                    !geometry.published,
+                    geometry.preparation.retained_measurement_count()
+                        + geometry
+                            .ready
+                            .as_ref()
+                            .map(|frame| frame.records.len())
+                            .unwrap_or(0),
+                    geometry.preparation.work_last_step(),
+                )
+            })
+            .unwrap_or((false, 0, 0))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn measured_frame_for_test(&self) -> Option<RealizedFrameWindow> {
+        self.last_frame_window.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn viewport_bounds_for_test(&self) -> Option<gpui::Bounds<gpui::Pixels>> {
+        self.viewport_bounds
+    }
+
+    #[cfg(test)]
+    pub(crate) fn painted_glyphs_for_test(&self) -> usize {
+        self.painted_glyphs
+    }
+
+    pub(crate) fn discard_staged_activation(&mut self) {
+        if self
+            .staged
+            .as_ref()
+            .is_some_and(|staged| !self.host.is_same_view(&staged.activation))
+        {
+            self.pending_delta = 0.0;
+        }
+        self.staged = None;
+        self.geometry = None;
+    }
+
+    fn commit_measured_activation(&mut self) -> TranscriptActivationOutcome {
+        let staged = self.staged.take().expect("measured attachment is staged");
+        self.host = staged.host;
+        self.publish_ready_geometry();
+        staged.outcome
+    }
+
+    fn close_invalid_geometry(&mut self) {
+        self.host.clear_resident_selection();
+        self.host.clear_resident_quote_target();
+        self.host.clear_resident_context_menu_target();
+        self.host.clear_resident_media_action_target();
+    }
+
+    fn queue_manual_delta(&mut self, delta: f32, cx: &mut Context<Self>) {
+        if !delta.is_finite() || delta == 0.0 {
+            return;
+        }
+        self.host.detach_tail();
+        if let Some(staged) = &mut self.staged {
+            staged.host.detach_tail();
+        }
+        self.pending_delta += delta;
+        self.close_invalid_geometry();
+        cx.notify();
+    }
+
+    fn publish_ready_geometry(&mut self) {
+        let geometry = self.geometry.as_mut().expect("measured geometry exists");
+        let frame = geometry.ready.take().expect("measured geometry is ready");
+        self.pending_delta -= geometry.delta;
+        geometry.delta = 0.0;
+        geometry.published = true;
+        self.host.accept_measured_frame(frame.clone());
+        self.published_snapshot = Some(self.host.shared_snapshot());
+        self.last_frame_window = Some(frame);
     }
 
     pub(crate) fn retire(&mut self) {
         self.host.retire();
         self.last_frame_window = None;
+        self.published_snapshot = None;
+        self.staged = None;
+        self.geometry = None;
+        self.pending_delta = 0.0;
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {
@@ -77,7 +283,12 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn diagnostic_snapshot(&self) -> SyndicTranscriptDiagnosticSnapshot {
-        self.host.diagnostic_snapshot()
+        let mut snapshot = self.host.diagnostic_snapshot();
+        let (pending, retained, work) = self.measurement_diagnostics();
+        snapshot.frame.measurement_preparation_pending = pending;
+        snapshot.frame.retained_preparation_measurements = retained;
+        snapshot.frame.layout_observations_last_frame = work;
+        snapshot
     }
 
     pub(crate) fn begin_activation(
@@ -98,9 +309,9 @@ impl SyndicTranscriptPanel {
     pub(crate) fn manual_scroll(
         &mut self,
         command: ManualTranscriptScrollCommand,
-    ) -> RealizedFrameWindow {
-        let window = self.host.manual_scroll(command);
-        self.remember_realized_frame(window)
+        cx: &mut Context<Self>,
+    ) {
+        self.queue_manual_delta(command.frame_request().manual_delta_px, cx);
     }
 
     pub(crate) fn manual_scroll_delta(
@@ -108,17 +319,18 @@ impl SyndicTranscriptPanel {
         viewport_height_px: f32,
         delta_px: f32,
         cx: &mut Context<Self>,
-    ) -> RealizedFrameWindow {
+    ) {
         let snapshot = self.host.shared_snapshot();
-        let window = self.manual_scroll(ManualTranscriptScrollCommand::new(
-            viewport_height_px,
-            viewport_height_px * SYNDIC_TRANSCRIPT_OVERSCAN_RATIO,
-            SYNDIC_TRANSCRIPT_DEFAULT_RECORD_HEIGHT_PX,
-            delta_px,
-            Some(snapshot.presentation_revision),
-        ));
-        cx.notify();
-        window
+        self.manual_scroll(
+            ManualTranscriptScrollCommand::new(
+                viewport_height_px,
+                viewport_height_px * SYNDIC_TRANSCRIPT_OVERSCAN_RATIO,
+                SYNDIC_TRANSCRIPT_DEFAULT_RECORD_HEIGHT_PX,
+                delta_px,
+                Some(snapshot.presentation_revision),
+            ),
+            cx,
+        );
     }
 
     pub(crate) fn close_transient_popups_for_dynamic_tool(
@@ -192,6 +404,16 @@ impl SyndicTranscriptPanel {
         &mut self,
         record_ids: &[ResidentPresentationRecordId],
     ) -> ResidentSelectionOutcome {
+        if self.staged.is_some()
+            || self
+                .geometry
+                .as_ref()
+                .is_none_or(|geometry| !geometry.published)
+        {
+            return ResidentSelectionOutcome::Unavailable(
+                ResidentSelectionUnavailable::NoRealizedFrame,
+            );
+        }
         let Some(frame_window) = self.last_frame_window.as_ref() else {
             let _ = self.host.clear_resident_selection();
             return ResidentSelectionOutcome::Unavailable(
@@ -217,6 +439,16 @@ impl SyndicTranscriptPanel {
         record_ids: &[ResidentPresentationRecordId],
         cx: &mut Context<Self>,
     ) -> ResidentQuoteOutcome {
+        if self.staged.is_some()
+            || self
+                .geometry
+                .as_ref()
+                .is_none_or(|geometry| !geometry.published)
+        {
+            return ResidentQuoteOutcome::Unavailable(
+                ResidentSelectionUnavailable::NoRealizedFrame,
+            );
+        }
         let outcome = self.apply_realized_quote_target_for_record_ids(record_ids);
         cx.notify();
         outcome
@@ -247,6 +479,16 @@ impl SyndicTranscriptPanel {
         record_id: &ResidentPresentationRecordId,
         cx: &mut Context<Self>,
     ) -> ResidentContextMenuOutcome {
+        if self.staged.is_some()
+            || self
+                .geometry
+                .as_ref()
+                .is_none_or(|geometry| !geometry.published)
+        {
+            return ResidentContextMenuOutcome::Unavailable(
+                ResidentContextMenuUnavailable::NoRealizedFrame,
+            );
+        }
         let outcome = self.apply_realized_context_menu_target_for_record_id(record_id);
         cx.notify();
         outcome
@@ -290,6 +532,16 @@ impl SyndicTranscriptPanel {
         record_id: &ResidentPresentationRecordId,
         cx: &mut Context<Self>,
     ) -> ResidentMediaActionOutcome {
+        if self.staged.is_some()
+            || self
+                .geometry
+                .as_ref()
+                .is_none_or(|geometry| !geometry.published)
+        {
+            return ResidentMediaActionOutcome::Unavailable(
+                ResidentMediaActionUnavailable::NoRealizedFrame,
+            );
+        }
         let outcome = self.apply_realized_media_action_target_for_record_id(record_id);
         cx.notify();
         outcome
@@ -392,21 +644,36 @@ impl Focusable for SyndicTranscriptPanel {
 impl Render for SyndicTranscriptPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let panel = cx.entity();
+        #[cfg(test)]
+        let paint_panel = panel.clone();
         canvas(
             move |bounds, window, cx| {
                 if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
                     return None;
                 }
                 let mut content = panel.update(cx, |panel, cx| {
-                    panel.render_measured(bounds.size, cx).into_any_element()
+                    #[cfg(test)]
+                    {
+                        panel.viewport_bounds = Some(bounds);
+                    }
+                    panel
+                        .render_measured(bounds.size, window, cx)
+                        .into_any_element()
                 });
                 content.layout_as_root(bounds.size.map(gpui::AvailableSpace::Definite), window, cx);
                 content.prepaint_at(bounds.origin, window, cx);
                 Some(content)
             },
-            |_, content, window, cx| {
+            move |_, content, window, cx| {
                 if let Some(mut content) = content {
+                    #[cfg(test)]
+                    let before = window.paint_snapshot_for_test().glyphs.len();
                     content.paint(window, cx);
+                    #[cfg(test)]
+                    {
+                        let count = window.paint_snapshot_for_test().glyphs.len() - before;
+                        paint_panel.update(cx, |panel, _| panel.painted_glyphs = count);
+                    }
                 }
             },
         )
@@ -418,11 +685,112 @@ impl SyndicTranscriptPanel {
     fn render_measured(
         &mut self,
         viewport_size: gpui::Size<gpui::Pixels>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
         let viewport_width_px = f32::from(viewport_size.width);
-        let viewport_height_px = f32::from(viewport_size.height);
-        let snapshot = self.host.shared_snapshot();
+        let measured_size = self
+            .staged
+            .as_ref()
+            .and_then(|staged| staged.allocation)
+            .unwrap_or(viewport_size);
+        let viewport_height_px = f32::from(measured_size.height);
+        let target = self
+            .staged
+            .as_ref()
+            .map(|staged| &staged.host)
+            .unwrap_or(&self.host);
+        let snapshot = target.shared_snapshot();
+        let environment = MeasurementEnvironment {
+            viewport: measured_size,
+            window_viewport: window.viewport_size(),
+            scale: window.scale_factor(),
+            rem: window.rem_size(),
+            text: window.text_style(),
+        };
+        let changed = self.geometry.as_ref().is_none_or(|geometry| {
+            geometry.revision != snapshot.presentation_revision
+                || geometry.environment != environment
+        });
+        let settled = self
+            .geometry
+            .as_ref()
+            .is_some_and(|geometry| geometry.published)
+            && self.last_frame_window.is_some()
+            && !changed;
+        if changed || (settled && self.pending_delta != 0.0) {
+            let mut state = target.scroll_state();
+            if self
+                .staged
+                .as_ref()
+                .is_some_and(|staged| staged.unplaced_tail)
+            {
+                state.scroll_mode = super::RealizedFrameScrollMode::LiveTailFollowing;
+            }
+            self.close_invalid_geometry();
+            self.geometry = Some(PendingGeometry {
+                revision: snapshot.presentation_revision,
+                environment,
+                delta: self.pending_delta,
+                preparation: super::frame::MeasuredFramePreparation::new(
+                    snapshot.clone(),
+                    state,
+                    RealizedFrameRequest {
+                        viewport_height_px,
+                        overscan_height_px: viewport_height_px * SYNDIC_TRANSCRIPT_OVERSCAN_RATIO,
+                        default_record_height_px: SYNDIC_TRANSCRIPT_DEFAULT_RECORD_HEIGHT_PX,
+                        manual_delta_px: self.pending_delta,
+                        observed_presentation_revision: Some(snapshot.presentation_revision),
+                    },
+                ),
+                ready: None,
+                published: false,
+            });
+        }
+        let geometry = self.geometry.as_mut().unwrap();
+        if geometry.ready.is_none() && !geometry.published {
+            geometry.ready = geometry.preparation.advance(32, |record| {
+                let mut element = div()
+                    .w(viewport_size.width)
+                    .px_4()
+                    .py_2()
+                    .child(render_record_content(&snapshot, record))
+                    .into_any_element();
+                f32::from(
+                    element
+                        .layout_as_root(
+                            gpui::size(
+                                gpui::AvailableSpace::Definite(viewport_size.width),
+                                gpui::AvailableSpace::MinContent,
+                            ),
+                            window,
+                            cx,
+                        )
+                        .height,
+                )
+            });
+        }
+        if geometry.ready.is_some() && self.staged.is_none() {
+            self.publish_ready_geometry();
+        }
+        if self.staged.is_some()
+            || self.pending_delta != 0.0
+            || self.last_frame_window.is_none()
+            || self
+                .geometry
+                .as_ref()
+                .is_some_and(|geometry| !geometry.published)
+        {
+            window.request_animation_frame();
+        }
+        let snapshot = self
+            .published_snapshot
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(ResidentTranscriptSnapshot::empty()));
+        let Some(frame_window) = self.last_frame_window.clone() else {
+            window.request_animation_frame();
+            return div().size_full();
+        };
 
         self.host.push_demand_fact(DemandFact::new(
             snapshot.presentation_revision,
@@ -432,13 +800,6 @@ impl SyndicTranscriptPanel {
             },
         ));
 
-        let frame_window = self.host.realize_frame(RealizedFrameRequest {
-            viewport_height_px,
-            overscan_height_px: viewport_height_px * SYNDIC_TRANSCRIPT_OVERSCAN_RATIO,
-            default_record_height_px: SYNDIC_TRANSCRIPT_DEFAULT_RECORD_HEIGHT_PX,
-            manual_delta_px: 0.0,
-            observed_presentation_revision: Some(snapshot.presentation_revision),
-        });
         report_nested_resource_demands(&snapshot, &frame_window, &mut self.host);
         self.reconcile_resident_selection_with_frame(&snapshot, &frame_window);
         self.reconcile_resident_quote_target_with_frame(&snapshot, &frame_window);
@@ -471,6 +832,33 @@ impl SyndicTranscriptPanel {
             .overflow_hidden()
             .key_context(SYNDIC_TRANSCRIPT_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|panel, _, window, _| window.focus(&panel.focus_handle)),
+            )
+            .on_scroll_wheel(
+                cx.listener(|panel, event: &gpui::ScrollWheelEvent, window, cx| {
+                    let delta = event.delta.pixel_delta(window.line_height());
+                    panel.queue_manual_delta(-f32::from(delta.y), cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .on_key_down(cx.listener(|panel, event: &gpui::KeyDownEvent, _, cx| {
+                let height = panel
+                    .geometry
+                    .as_ref()
+                    .map(|geometry| f32::from(geometry.environment.viewport.height))
+                    .unwrap_or(0.0);
+                let delta = match event.keystroke.key.as_str() {
+                    "up" => -40.0,
+                    "down" => 40.0,
+                    "pageup" => -height,
+                    "pagedown" => height,
+                    _ => return,
+                };
+                panel.queue_manual_delta(delta, cx);
+                cx.stop_propagation();
+            }))
             .children(
                 source_message
                     .map(|message| div().px_4().py_2().text_sm().opacity(0.72).child(message)),

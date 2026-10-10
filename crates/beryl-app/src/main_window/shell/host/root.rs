@@ -1,6 +1,63 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    pub(super) fn synchronize_transcript_appearance(&self, cx: &mut Context<Self>) {
+        if let Some(controller) = &self.controller {
+            let appearance = controller.appearance.generation.clone();
+            self.running_threads
+                .transcript
+                .update(cx, |panel, _| panel.set_appearance(appearance));
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_transcript_panel(
+        &self,
+    ) -> Entity<crate::syndic_transcript::SyndicTranscriptPanel> {
+        self.running_threads.transcript.clone()
+    }
+
+    pub(super) fn transcript_attachment_allocation(
+        &self,
+        mount: Option<&Entity<MainWindowConversationComposerMount>>,
+        lineage_present: bool,
+        window: &Window,
+        cx: &App,
+    ) -> gpui::Size<gpui::Pixels> {
+        let viewport = window.viewport_size();
+        let minimum = self
+            .controller
+            .as_ref()
+            .map(|controller| controller.minimum_size.height * 0.5)
+            .unwrap_or(px(0.0));
+        let input_height = mount
+            .map(|mount| {
+                composer_panel_height(
+                    mount
+                        .read(cx)
+                        .presentation_content_height(cx)
+                        .unwrap_or(px(0.0)),
+                    minimum,
+                    viewport.height,
+                )
+            })
+            .unwrap_or(px(0.0));
+        let lineage_height = if lineage_present {
+            px(crate::thread_lineage::THREAD_LINEAGE_HEIGHT_PX)
+        } else {
+            px(0.0)
+        };
+        gpui::size(
+            viewport.width,
+            (viewport.height
+                - px(self.notice_chrome_height())
+                - px(status_controls::STATUS_STRIP_HEIGHT_PX)
+                - input_height
+                - lineage_height)
+                .max(px(0.0)),
+        )
+    }
+
     pub(super) fn new(
         controller: MainWindowShellController,
         construction_error: Option<String>,
@@ -189,6 +246,8 @@ impl Render for MainWindowShellRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(target_os = "windows")]
         crate::parent_completion_sound::refresh_focus(cx);
+        self.synchronize_transcript_appearance(cx);
+        let _ = self.drive_recovered_transcript(window, cx);
         self.sync_status_controls(window, cx);
         self.sync_model_controls(window, cx);
         self.sync_running_threads(window, cx);
@@ -208,9 +267,11 @@ impl Render for MainWindowShellRoot {
             .and_then(|mount| mount.read(cx).presentation_content_height(cx))
             .unwrap_or(px(0.));
         let minimum_panel_height = controller.minimum_size.height * 0.5;
-        let composer_height = (content_height + px(22.))
-            .max(minimum_panel_height)
-            .min((window.viewport_size().height * 0.5).max(minimum_panel_height));
+        let composer_height = composer_panel_height(
+            content_height,
+            minimum_panel_height,
+            window.viewport_size().height,
+        );
         let command = (self.creation.is_some() || controller.is_threadless())
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
@@ -283,11 +344,7 @@ impl Render for MainWindowShellRoot {
                             .debug_selector(|| "main-window-transcript-region".to_owned())
                             .flex_1()
                             .min_h_0()
-                            .children(
-                                self.running_threads
-                                    .transcript_claim
-                                    .map(|_| self.running_threads.transcript.clone()),
-                            ),
+                            .child(self.running_threads.transcript.clone()),
                     )
                     .children(input_panel),
             )
@@ -300,4 +357,14 @@ impl Render for MainWindowShellRoot {
             .child(self.notices.widget.clone())
             .into_any_element()
     }
+}
+
+fn composer_panel_height(
+    content_height: gpui::Pixels,
+    minimum: gpui::Pixels,
+    viewport_height: gpui::Pixels,
+) -> gpui::Pixels {
+    (content_height + px(22.0))
+        .max(minimum)
+        .min((viewport_height * 0.5).max(minimum))
 }

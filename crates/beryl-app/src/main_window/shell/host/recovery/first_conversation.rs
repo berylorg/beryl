@@ -140,6 +140,7 @@ impl MainWindowShellRoot {
         adapters: PreparedComposerRecoveryAdapters,
         mut configure: MainWindowShellComposerConfigurator,
         transcript: PreparedTranscriptActivation,
+        cancellation: beryl_home_store::CommandCancellation,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
@@ -228,13 +229,15 @@ impl MainWindowShellRoot {
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
         self.running_threads.transcript =
             cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
-        self.running_threads
-            .transcript
-            .update(cx, |panel, panel_cx| {
-                panel.publish_coherent_activation(transcript);
-                panel_cx.notify();
-            });
-        self.running_threads.transcript_claim = Some(selection.claim());
+        self.stage_recovered_transcript(
+            selection,
+            transcript,
+            None,
+            None,
+            preparation.transcript_publication_home(),
+            cancellation,
+            cx,
+        );
         cx.notify();
         Ok(())
     }

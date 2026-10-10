@@ -133,7 +133,59 @@ Phase 753's implementation and independent review invalidated the assumption tha
 panel measurement through the current frame helpers is sufficient for the next boundary.
 [Measurement publication failure](../failures/transcript-measurement-publication.md) records
 the anchor/shrink and final-clamp counterexamples, evidence limits and proposed clean correction.
-The target behavior remains authoritative, but production mounting readiness is withdrawn until
-bounded preparation, traversal and atomic measured-frame publication are resolved at the actual
-selected attachment consumer. The original source inventory and unchanged snapshot evidence remain
-usable. No provisional viewport implementation or native qualification was accepted.
+Operator approved the bounded measurement transaction on 2026-10-10. The renderer architecture's
+measured-frame preparation and the shell boundary's measured-publication gate resolve that
+prerequisite at the actual selected attachment consumer. The source inventory and unchanged
+snapshot evidence remain usable. The acceptance below qualifies the corrected viewport boundary;
+no rejected provisional implementation or earlier native attempt supplies acceptance evidence.
+
+## Measured Viewport Acceptance
+
+Accepted on 2026-10-10 for phase 753. Production host/panel preparation measures at most 32 new
+natural layouts per frame, carries a bounded cursor and exact displacement, and publishes only
+fully qualified viewport/overscan geometry. Initial attachment, activation, ordinary refresh,
+first-conversation setup and recovery consume the same ready gate. Selected title, lineage and
+claim publish with the corresponding measured attachment. Preparation retains the previous coherent
+output; width, font/style, appearance and record changes invalidate observations. Same-view input
+survives refresh; changed selection and retirement release input and candidate state.
+
+Recovery completes measured publication before reopening admission or releasing canonical workers.
+The final gate checks the qualified Home generation, original cancellation, exact selected composer
+and retained recovery ticket while the composer is still fenced. Terminal rejection retains only
+the failure diagnostic, releasing the candidate payload. Every asynchronous consumer refreshes
+current appearance before accepting prepared geometry. Independent semantic review accepted the
+complete changed boundary after these corrections; no blocking source finding remains.
+
+Verification uses stable Cargo with `.cargo/local.toml`, one build job, development/test debug
+information zero and incremental compilation disabled:
+
+- App compilation passes. Combined nextest run `e5b470ef-431e-4ef1-ab4b-91d91881ee8f`
+  passes 84/84 cases across measured preparation, realized frame, activation, status facts,
+  renderer selection, selection copy and source-boundary targets. The 16 preparation cases cover
+  fractional geometry, bounded traversal, invalid observations, initial tail, both edge clamps
+  and zero-input shrink without retaining crossed-row measurements.
+- App library run `80cad152-00a1-45f1-b5bb-aafcc43360b9`, with `test-faults` and one test thread,
+  passes 33/33 cases: seven GPUI panel cases, twenty provider cases and six committed
+  first-conversation recovery cases. Actual GPUI layout qualifies multi-frame first publication,
+  queued input, same-view content refresh, resize/rem changes, detached anchors, zero-input shrink,
+  selection replacement and disposal. Recovery includes cancellation, stale selection, rejected
+  widget release and retries.
+- Native Windows ordinary-shell case
+  `app_services::tests::startup_owner::running_exit_work::ordinary_commands::transcript_viewport::native_mounted_transcript_publishes_measured_tail_and_routes_fractional_input`
+  passes in 6.13 seconds, process 19100. Thirty-two admitted terminal history records include
+  long wrapped text. It verifies the first published tail against actual transcript slot bounds,
+  fewer than 32 realized records, transcript glyphs emitted in the panel paint callback, exact
+  fractional wheel and keyboard movement, detached anchor preservation through native width resize
+  and a large displacement clamped at the leading resident edge.
+- Native ordinary claim recovery case
+  `app_services::tests::startup_owner::ordinary_running_home::claim_activation::native_original_ordinary_committed_claim_recovers_exact_nonempty_target`
+  passes in 6.78 seconds, process 4888. Both native binaries were launched best-effort minimized;
+  required placement/activation assertions remained enabled. Processes exited and exact owned
+  fixture directories were reclaimed after verification.
+
+The native paint assertion observes glyphs during `content.paint`, before GPUI swaps and clears
+its frame buffers. It proves transcript paint submission; it does not claim independent screen
+pixel capture. Native input/resize evidence and actual GPUI font/content/retirement evidence
+together qualify this scoped viewport boundary. The full Checkpoint 4 transcript, resource/adjacent
+delivery, Markdown, nested widgets, focus pins, live suffixes and diagnostic-child readiness remain
+open. This acceptance supplies their geometry foundation, not their implementation.

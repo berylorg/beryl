@@ -10,6 +10,7 @@ impl MainWindowShellRoot {
         adapters: PreparedComposerRecoveryAdapters,
         mut configure: crate::main_window::MainWindowShellComposerConfigurator,
         transcript: crate::syndic_transcript::PreparedTranscriptActivation,
+        cancellation: beryl_home_store::CommandCancellation,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerCloseTicket, String> {
@@ -108,25 +109,15 @@ impl MainWindowShellRoot {
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
         self.running_threads.transcript =
             cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
-        self.running_threads
-            .transcript
-            .update(cx, |panel, panel_cx| {
-                panel.publish_coherent_activation(transcript);
-                panel_cx.notify();
-            });
-        self.running_threads.transcript_claim = Some(selection.claim());
-        self.running_threads.selected_title = preparation
-            .qualified_selected_title()
-            .map(|title| (selection, title.clone()));
-        if let Some(title) = preparation.qualified_selected_title().cloned() {
-            self.publish_selected_lineage(
-                selection,
-                preparation.qualified_selected_lineage().clone(),
-                title,
-                window,
-                cx,
-            );
-        }
+        self.stage_recovered_transcript(
+            selection,
+            transcript,
+            preparation.qualified_selected_title().cloned(),
+            Some(preparation.qualified_selected_lineage().clone()),
+            preparation.transcript_publication_home(),
+            cancellation,
+            cx,
+        );
         cx.notify();
         Ok(close)
     }

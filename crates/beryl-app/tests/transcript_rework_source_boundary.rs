@@ -120,7 +120,7 @@ fn syndic_transcript_panel_renders_resident_snapshots_only() {
     let source = fs::read_to_string(panel_path).expect("panel source should be readable");
     let required_needles = [
         "RealizedFrameRequest",
-        "realize_frame",
+        "MeasuredFramePreparation",
         "DemandFactKind::Viewport",
         "report_nested_resource_demands",
         "DemandFactKind::ResourceRange",
@@ -240,7 +240,10 @@ fn syndic_transcript_manual_scroll_command_stays_on_host_boundary() {
     assert!(host_source.contains("pub(crate) fn manual_scroll("));
     assert!(host_source.contains("self.realize_frame(command.frame_request())"));
     assert!(panel_source.contains("pub(crate) fn manual_scroll("));
-    assert!(panel_source.contains("self.host.manual_scroll(command)"));
+    assert!(
+        panel_source
+            .contains("self.queue_manual_delta(command.frame_request().manual_delta_px, cx)")
+    );
     assert!(panel_source.contains("pub(crate) fn manual_scroll_delta("));
     assert!(panel_source.contains("ManualTranscriptScrollCommand::new("));
     assert!(panel_source.contains("Some(snapshot.presentation_revision)"));

@@ -18,6 +18,7 @@ use feedback::AcknowledgedStopFeedback;
 pub(super) use render::{render_menu, render_strip};
 
 const FEEDBACK_LIMIT: usize = 72;
+pub(super) const STATUS_STRIP_HEIGHT_PX: f32 = 28.0;
 
 pub(crate) struct ExactStopFeedbackHandoff {
     pub(crate) order: u64,

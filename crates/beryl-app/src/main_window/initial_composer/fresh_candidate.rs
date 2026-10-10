@@ -156,6 +156,15 @@ impl MainWindowFreshComposerPreparation {
         self.candidate.service.clone()
     }
 
+    pub(crate) fn transcript_publication_home(
+        &self,
+    ) -> (
+        Arc<beryl_home_store::HomeServiceReference>,
+        beryl_home_store::HomeGeneration,
+    ) {
+        (self.candidate.store.clone(), self.candidate.home_generation)
+    }
+
     pub fn validate(&self, candidate: &mut HomeRecoveryCandidate) -> Result<(), String> {
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
         self.validate_access(&access)

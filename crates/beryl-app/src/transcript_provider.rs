@@ -90,6 +90,10 @@ pub(crate) struct TranscriptAttachmentSourceIdentity {
 }
 
 impl PreparedTranscriptAttachment {
+    pub(crate) fn activation(&self) -> &PreparedTranscriptActivation {
+        &self.activation
+    }
+
     pub(crate) fn lineage_head(&self) -> &syndic_storage::ThreadLineageHead {
         &self.lineage
     }

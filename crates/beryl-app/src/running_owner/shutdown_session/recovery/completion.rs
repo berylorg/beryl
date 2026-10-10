@@ -65,6 +65,16 @@ impl RunningProcessOwner {
                 .iter()
                 .map(|shell| shell.window())
                 .collect::<Vec<_>>();
+            for window in &windows {
+                let ready = window
+                    .update(app, |root, native, cx| {
+                        root.finish_recovered_transcript_publication(native, cx)
+                    })
+                    .map_err(|error| error.to_string())??;
+                if !ready {
+                    return Ok(false);
+                }
+            }
             let creation = crate::main_window::MainWindowCreationOwner::prepare_recovered_process(
                 owner
                     .process

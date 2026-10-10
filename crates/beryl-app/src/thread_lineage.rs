@@ -3,6 +3,8 @@ mod render;
 mod style;
 pub use model::*;
 
+pub(crate) const THREAD_LINEAGE_HEIGHT_PX: f32 = 32.0;
+
 use gpui::{AppContext, Context, FocusHandle, Window, point, px, size};
 use gpui_scrollbar::{
     Axis, ScrollbarInteraction, ScrollbarMountGeneration, ScrollbarOwnerId, ScrollbarOwnerKey,

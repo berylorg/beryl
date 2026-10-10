@@ -93,6 +93,11 @@ impl MainWindowShellRoot {
             return Err("a running thread selection is still settling".into());
         }
         self.suspend_running_thread_reads(window, cx);
+        if self.running_threads.recovered_attachment.take().is_some() {
+            self.running_threads
+                .transcript
+                .update(cx, |panel, _| panel.discard_staged_activation());
+        }
         let composer = match self.shutdown_draft_mount(cx)? {
             Some(mount) => {
                 let editor = mount

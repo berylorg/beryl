@@ -87,6 +87,8 @@ pub(super) struct RunningThreadsContribution {
     pub(super) transcript_claim: Option<beryl_state::WindowClaimSelection>,
     transcript_request: u64,
     transcript_source: Option<crate::transcript_provider::TranscriptAttachmentSourceIdentity>,
+    measured_attachment: Option<transcript::PendingMeasuredAttachment>,
+    pub(super) recovered_attachment: Option<Result<transcript::PendingRecoveredAttachment, String>>,
     pages: VecDeque<ProcessWorkQueryPage>,
     source_revision: Option<ProcessWorkQueryRevision>,
     count: Option<u64>,
@@ -175,6 +177,8 @@ impl RunningThreadsContribution {
             transcript_claim: None,
             transcript_request: 0,
             transcript_source: None,
+            measured_attachment: None,
+            recovered_attachment: None,
             pages: VecDeque::new(),
             source_revision: None,
             count: None,
@@ -312,6 +316,11 @@ impl MainWindowShellRoot {
             .transcript_cancel
             .store(true, Ordering::Release);
         self.running_threads.transcript_task = None;
+        if self.running_threads.measured_attachment.take().is_some() {
+            self.running_threads
+                .transcript
+                .update(cx, |panel, _| panel.discard_staged_activation());
+        }
         self.cancel_running_page_reads(window, cx);
         self.cancel_lineage_reads(cx);
         if self.running_threads.read_drain_task.is_none() && !self.running_thread_reads_drained() {
@@ -371,6 +380,10 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.running_threads.recovered_attachment = None;
+        self.running_threads
+            .transcript
+            .update(cx, |panel, _| panel.discard_staged_activation());
         self.suspend_running_thread_reads(window, cx);
         self.running_threads.retire_source()?;
         self.running_threads.read_drain_task = None;
@@ -474,10 +487,11 @@ impl MainWindowShellRoot {
             self.running_threads.reads_suspended = false;
             self.running_threads.read_drain_task = None;
         }
-        if self.running_threads.transcript_claim
-            != self
-                .cached_running_selection(cx)
-                .map(|(selection, _)| selection.claim())
+        if self.running_threads.measured_attachment.is_some()
+            || self.running_threads.transcript_claim
+                != self
+                    .cached_running_selection(cx)
+                    .map(|(selection, _)| selection.claim())
         {
             self.sync_running_transcript(window, cx);
         }

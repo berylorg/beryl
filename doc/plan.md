@@ -98,54 +98,21 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 752: Qualify Realized Transcript Mounting Readiness (finished)
+# Phase 753: Mount The Measured Resident Transcript Viewport (finished)
 
-[Readiness review](audits/transcript-mounting-readiness.md) identifies the production attachment,
-refresh, panel and frame consumers, their remaining contract gaps, acceptance seams and native
-evidence. Source inspection and author semantic review qualify the next measured viewport boundary;
-no target-authority gap was found for that slice. Prior snapshot evidence is reused only for
-unchanged ownership and disposal. No production behavior or full Checkpoint 4 mounting is accepted.
+Accepted the bounded measured viewport and coherent attachment/refresh/setup/recovery publication
+under the Operator-approved correction. Exact input, natural layout, multi-frame preparation,
+clamps, environment invalidation and disposal pass App compilation, 84 combined nextest cases,
+33 focused panel/provider/recovery cases, native ordinary-shell viewport and claim recovery checks,
+and independent semantic review. [Durable acceptance](audits/transcript-mounting-readiness.md#measured-viewport-acceptance)
+preserves evidence and limits; full Checkpoint 4 and diagnostic-child readiness remain open.
 
-# Phase 753: Mount The Measured Resident Transcript Viewport (wip)
+# Phase 754: Qualify Resident Transcript Demand Delivery (pending)
 
-Blocked on 2026-10-10: implementation and independent semantic review invalidated the proposed
-synchronous panel/controller measurement approach. Tall-record shrink caused resident-collection-sized
-layout work, and final clamping can publish unmeasured rows or leave the viewport empty. The
-[failure record](failures/transcript-measurement-publication.md) contains a source-backed reproduction
-and the concrete proposed correction. All provisional source/test edits were withdrawn; the
-accepted production baseline remains `1052e5fc`. The readiness record now withdraws mounting
-readiness for this slice.
-
-Before resuming, resolve bounded measurement preparation and coherent publication in the owning
-renderer and shell-boundary authority. The proposal keeps one exact generation/environment-owned
-preparation, bounds refill/shrink work and retained state, preserves remaining exact input, and
-publishes the final measured/clamped frame with corresponding selected-content metadata. This
-crosses the actual attachment publication consumer and is beyond the panel-only readiness
-assumption. Stop for Operator review of that architectural correction under the Scope's material
-architecture escalation rule and the instruction to notify when a plan step cannot technically work.
-
-Verification of the rejected candidate: default App check passed; six focused nextest integration
-targets passed 75/75 but did not cover these failures. GPUI and native mounting acceptance was not obtained;
-no native paint/input qualification is claimed. A temporary nextest source-qualification case
-reproduced the unchanged controller's zero-input shrink failure. No phase completion is accepted.
-
-Implement the next observable boundary in the [readiness record](audits/transcript-mounting-readiness.md#next-observable-boundary)
-through the production transcript panel and host, under the transcript feature, widget and
-presentation-system contracts. Replace fixed row extents with bounded natural-content measurement
-and realized-frame feedback. Key and invalidate observations by current host/view, record/revision
-and measurement environment; preserve semantic anchors across width, font, theme, content and
-resource-shell changes. Bound measurement and element state to realized content plus permitted
-overscan, rejecting stale results and disposing obsolete state on replacement and close.
-
-Connect ordinary wheel, touchpad and keyboard manual input to exact pixel movement through the
-host, detaching tail-following before demand and clamping at coherent resident edges. Publish initial
-content and measured tail placement together; no later activation scroll correction. Close affected
-selection/menu/media geometry when it becomes invalid. Retain shared immutable snapshot ownership.
-Resource/adjacent-page delivery, Markdown, nested widgets, focus pins and live suffixes remain
-separate mounting outcomes; leave full Checkpoint 4 and diagnostic-child readiness open.
-
-Extend focused frame and GPUI panel cases for variable and fractional geometry, real input routing,
-revision/environment invalidation, detached anchors, first-frame placement, clamps and disposal.
-Require App compilation, proportionate combined nextest checks, ordinary native Windows shell
-qualification and independent semantic review of the complete changed viewport boundary. Follow the
-readiness record's native evidence requirements and best-effort minimized launch policy.
+Use the accepted measured viewport and the presentation-system contracts to qualify the next
+production consumer of adjacent-page and resource demand. Identify exact asynchronous request,
+response, activation/provider generation and range custody, cancellation/join and obsolete release
+at the actual host/panel consumer. Resolve any missing authority before implementation. Preserve
+resident-edge clamping and the absence of alternate history loading. Record a source-backed readiness
+outcome and derive one bounded implementation acceptance boundary; resource rendering, Markdown,
+nested widgets, focus pins and live suffixes retain their separate mounting gates.
