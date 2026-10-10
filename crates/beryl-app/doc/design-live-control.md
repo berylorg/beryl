@@ -113,6 +113,54 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 
 ## Compaction And Continuation
 
+- The published service exposes a sendable weak context worker using the same home/service and
+  restoration-publication lifetime fences as `ExactStopWorker`. It grants only bounded context
+  status, opaque manual-compaction eligibility and request/feedback operations. It retains no
+  home, connection registry, coordinator, GUI entity or published graph. Every call requires live
+  command admission; missing ownership and retirement make it inert. Context observations are
+  included in the coherent selected-status read rather than a second window polling loop.
+- Eligibility captures the system-owned original selection/claim, projection and idle-gate
+  authority. The service prepares off GPUI and passes that opaque authority through the existing
+  coordinator to the actual atomic admission boundary. Its final election rechecks all captured
+  revisions and accepted-work precedence. Runtime Ready or a still-visible thread identifier is
+  insufficient. Publication loss before request entry rejects entry; after request processing
+  begins it cannot discard returned exact feedback. Consumers fence visible application separately.
+- Before request admission, reserve a consumer-owned feedback record from the existing shared
+  72-record service-incarnation presentation budget. Manual compaction and exact stop share that
+  limit; duplicate handles share a record and saturation rejects before any effect. Each record
+  contains only bounded opaque origin, latest typed result and revision, not a coordinator or
+  execution owner. The weak service association does not keep a consumerless record alive.
+- Install the exact settlement destination before durable admission can dispatch. A live consumer
+  can receive late settlement after the local operation is removed. Timer expiry and exact
+  terminal publication serialize on the same record; terminal settlement wins and can never be
+  overwritten by StillRunning. The admitted operation snapshots validated applied timeout settings
+  once, retains the original deadline and never starts a fresh deadline for duplicate observation.
+  Polling reads current revisions; it creates no timers, result backlog or additional dispatch.
+- Feedback distinguishes request pending, rejected, waiting for an admitted exact operation,
+  StillRunning, succeeded, failed, interrupted and lost/unknown authority. A proven nondispatch
+  result is a failure, not success. Indeterminate admission cannot be reported as proven rejection.
+  Only system-qualified exact successful settlement produces succeeded. Service teardown settles
+  waiting consumers to lost/unknown authority; no old record regains authority after replacement.
+- A feedback association starts with a bounded opaque request identity and original selected
+  authority; durable admission adds the exact operation origin without changing its request
+  identity. Rejected requests therefore require no invented operation. Each window's request
+  admission order supplies the Notifications-owned shared stop/compaction FIFO selector; polling
+  and late result arrival do not change that order. Indeterminate admission remains pending until
+  exact convergence or retirement, rather than releasing required feedback early.
+- A window shares its existing 72-record budget across stop and manual-compaction feedback,
+  acknowledgements/refusals and pending Notifications handoffs. It retains the latest observation
+  and exact result handles, including after thread deselection. Selection or anchor loss moves
+  required feedback to the feature's Notifications contribution; it never applies a result to a
+  successor or cancels the command. Acknowledgement releases resolved presentation ownership.
+  Waiting and StillRunning records remain live until exact outcome or retirement; they cannot be
+  evicted to admit another command. Disposal releases presentation without execution custody.
+- Verification covers real ordered usage/quota ingress, numeric and sparse-window invalidation,
+  exact interest replacement, selection and session ABA, and retirement without history work.
+  Manual acceptance additionally exercises selection/claim and idle-gate drift at admission,
+  accepted-input precedence, original-driver-only dispatch, draft preservation, occupied shared
+  presentation capacity, timeout/terminal races, late settlement after local removal and window/
+  service teardown. Existing coordinator tests do not by themselves accept the mounted worker.
+
 - One process compaction coordinator keyed by healthy home generation and Syndic thread participates
   in the same target-operation election and admits only exact typed authority.
 - Distinct compaction-operation and attempt identities are 128-bit OS-cryptographic-random values.

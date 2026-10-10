@@ -98,39 +98,41 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 745: Qualify Context And Manual Compaction Mounting Readiness (finished)
+# Phase 746: Define Context Observation And Manual Compaction Mounting Contracts (finished)
 
-Accepted pinned usage/quota provenance and exact foreground compaction admission/settlement
-readiness through source inspection and independent semantic review. Missing bounded public
-contracts gate implementation; no source, manifest, Cargo run or GUI launch changed. See the
-[readiness record](audits/context-compaction-mount-readiness.md).
+Accepted bounded context provenance/domains/continuity and weak manual admission/late feedback
+contracts through independent semantic review. Notifications owns protected shared feedback FIFO;
+pinned quota remains unavailable without a qualified model association. Documentation-only checks
+and index reconciliation passed. See the [closure record](audits/context-compaction-mount-readiness.md#contract-closure).
 
-# Phase 746: Define Context Observation And Manual Compaction Mounting Contracts (wip)
-
-Resolve the readiness record's missing public contracts in their owning Backend/App supplements
-and CAS-live system authority. Preserve feature-owned Unknown/independent quota omission and
-idle-only Compact behavior. Specify exact transient usage provenance, active-model interest and
-quota numeric/window domains; bounded observation retention and invalidation, including sparse
-quota updates; and a weak manual
-compaction capability with opaque selection/claim/idle authority elected at actual admission.
-Specify bounded consumer-owned timeout and late-settlement feedback independently of execution
-custody, reusing existing publication, operation-origin and presentation-limit rules where valid.
-
-Accept this boundary when ownership, identities, lifecycle, dataflow, limits, failure/retirement
-and verification seams determine implementation without inferred model buckets, history mutation,
-GUI-only admission checks or a detached provider driver. Review the complete affected contract
-chain before scheduling production source edits. Root owns shared authority edits and Cargo.
-
-Initial milestone: phase-745 findings and conditional mounting boundaries are independently
-accepted. Owning-contract edits have not started. Preserve the accepted model-mount evidence and
-existing source; resolve the readiness record's identified seams before source implementation.
-
-# Phase 747: Mount Exact Selected-Thread Context Status (pending)
+# Phase 747: Mount Exact Selected-Thread Context Status (wip)
 
 Implement and mount the qualified bounded usage/quota observation path into the existing status
 cell. Accept authentic same-thread values, exact optional quota matches, Unknown/omission and
 selection/publication/retirement fencing through real ingress and native mounting evidence.
 Status reads must not start turns or mutate conversation history.
+
+The production entry is Backend's ordered provider classifier/sink through the registered
+foreground projection and coherent selected-status worker to the native context cell. Implement
+fixed-size exact usage and unavailable quota observations under the owning
+[Backend domains](../crates/beryl-backend/doc/design-provider-stream.md#context-observation-domains),
+[CAS-live continuity/election](systems/cas-live-syndic-transcript/design.md#context-compaction) and
+[App weak-worker contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).
+The pinned producer has no qualified model/metering association: coincident strings and labels
+must not make quota available. Preserve the 300/10,080-minute supported domains without adding an
+unqualified account read. Mount context observation only; manual command effects remain in 748.
+
+Verify malformed counters and missing/nonpositive windows, ordered replacement and sparse quota
+invalidation, multi-projection interest disagreement, authenticated ordinary revision continuity,
+binding/session replacement, stale selection/publication and retirement. Exercise real ingress and
+native cell rendering plus no history/start effect; focused Cargo checks and behavior tests use
+the accepted root build policy and sole root Cargo permit. Preserve model-mount evidence and
+best-effort minimized native launches. Completion requires independent review of the whole mounted
+boundary, rather than acceptance of a parser or presentation helper alone.
+
+Initial milestone: owning contracts are accepted; production source edits have not started.
+No unresolved product decision blocks this phase. Phase-746 changed no source or manifest and
+started no Cargo or GUI process. Root owns shared service/authority integration and Cargo.
 
 # Phase 748: Mount Exact Manual Context Compaction (pending)
 

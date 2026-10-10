@@ -34,3 +34,50 @@ This supplement is normative only for its bounded backend provider-stream role a
 - Latest per-thread token usage exposed through read-only metadata normalizes to the same transient exact usage value; the backend never estimates context from transcript text or local tokenization. `fs/readFile` is not a normalized backend API: it neither materializes a base64 file response nor decodes a whole byte vector.
 - Provider and control ordering is retained through request response, item lifecycle, terminal facts, dynamic-tool response, and approval response. A source message that exposes a large field before its required route may borrow one connection-scoped unattached observation capability; trailing route validation seals it or releases all pages. The backend neither selects storage nor publishes durable state.
 - The private repair adapter reuses this closed incremental item union for its one exact terminal snapshot. It emits final item facts, not synthetic starts, deltas, timestamps, approvals, or source sequence positions.
+
+## Context Observation Domains
+
+- `thread/tokenUsage/updated` crosses the ordered provider sink with bounded exact thread and turn
+  identities and one fixed-size value containing `total` and `last` counters and optional model
+  context window. Each breakdown preserves total, input, cached-input, cache-write-input, output
+  and reasoning-output counters. Counters occupy the inclusive domain `0..=i64::MAX`; absent
+  cache-write input uses only the pinned protocol's zero default. No sums, cache subtraction or
+  locally inferred relationships replace producer values. A missing or nonpositive context
+  window remains unavailable for a percentage without discarding otherwise valid usage.
+- Structural schema or route violations follow the existing fatal known-message contract.
+  Structurally valid counters outside the supported domain produce one source-ordered unavailable
+  observation for that exact route, replacing prior availability; numeric overflow is never a
+  truncated or wrapped value. These observations grant no turn admission or history authority.
+- A provider connection accepts at most one current active-model interest, containing an exact
+  model identifier of at most 256 UTF-8 bytes and an opaque interest revision. Replacement clears
+  quota availability before accepting another result. Interest must come from authenticated
+  backend-owned current model metadata, never a draft selection or a display label. Missing,
+  oversized or ambiguous interest makes quota unavailable. The connection retains no interest
+  history or model-to-bucket alias registry. An exact quota association additionally requires
+  qualified producer evidence explicitly associating that model with a metering ID of at most
+  256 UTF-8 bytes;
+  equality of strings from separate model and metering namespaces is not association evidence.
+  The pinned producer currently supplies no qualified association, so its quota remains unavailable.
+- `account/rateLimits/updated` normalizes its single supplied snapshot against that interest.
+  Only byte-exact equality between nonempty `limitId` and the interest's separately qualified
+  metering identity is a match. Without that association even a model-identical ID is unavailable.
+  `limitName`, absent IDs and generic metering IDs establish no model mapping. A read-only
+  collection, if separately qualified, scans without retaining unmatched entries; multiple exact
+  matches are ambiguous. The normalized result carries its captured interest revision so a
+  concurrent interest change cannot publish it to a successor.
+- The supported window durations are exactly 300 minutes for the short window and 10,080 minutes
+  for the weekly window. This is the normalization operating envelope, not a claim that every
+  account supplies these windows. Primary/secondary position alone establishes neither kind.
+  Each supplied window requires `usedPercent` in `0..=100`, the exact duration, and a missing or
+  nonnegative `i64` Unix-seconds reset time. Unsupported duration, malformed numeric facts or two
+  windows claiming the same kind make that kind unavailable independently. No clamping, duration
+  inference, reset-based countdown or remaining-percent estimate repairs a malformed window.
+- Each account notification is a complete observation for its matched bucket, not a patch.
+  Missing/null windows clear their prior facts; unavailable/nonmatching snapshots clear the
+  connection's previous quota availability. Credits, plan, display labels and other account facts
+  are structurally discarded. At most one fixed-size normalized quota observation survives,
+  with at most two windows and the bounded matched identity; no account collection or update
+  backlog survives. Omitted account notifications do not clear the latest valid observation.
+- Connection loss, retirement or interest replacement invalidates quota; no result crosses a
+  connection incarnation. This boundary initiates no account read or latest-usage probe. Such
+  read routes require separate pinned provenance and the same domains before exposure.

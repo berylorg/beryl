@@ -66,3 +66,9 @@ This feature mounts no `main-window notice`. For the fallback state owned by `de
 the Notifications arbiter with one owner-configured record containing stable exact-operation
 identity, bounded title and detail, severity and dismissal variants, and no independent overlay
 geometry. Notifications composes that record into its sole visible notice instance.
+
+The context-operation menu uses the same Notifications contribution for required manual-compaction
+feedback after command invocation or anchor loss. It supplies one opaque exact request/operation
+identity and bounded current title, detail, severity and dismissal state. StillRunning remains
+pending, exact settlement updates the record, and acknowledgement is available only when resolved.
+The feature adds no independent overlay or operation control to the notice.

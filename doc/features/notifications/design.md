@@ -23,13 +23,13 @@ Report user-visible errors, recovery states, and completion attention signals wi
   by `gui.md`.
 - Notices report localized errors and recovery information that should not replace the active conversation shell.
 - Notifications is the sole per-window presentation owner for every main-conversation notice. Beryl-home,
-  backend-runtime recovery, status-line stop feedback, and ordinary feature errors contribute
+  backend-runtime recovery, status-line stop/compaction feedback, and ordinary feature errors contribute
   bounded design-owned notice records; they do not mount or order competing notice
   widgets independently.
 - Each window renders exactly zero or one active notice. Notice panels
   never stack, overlap one another, or reserve multiple overlay positions. A replacement reuses the
   same widget anchor and publishes one visible record transition.
-- Priority from highest to lowest is: persistent Beryl-home failure or reopening; exact stop
+- Priority from highest to lowest is: persistent Beryl-home failure or reopening; exact stop/compaction
   feedback for the selected request; lifecycle-yield review, operator-attention, completion, or
   continuation-failure records; persistent selected-thread runtime/backend unavailability; ordinary
   turn or command error; successful home/runtime recovery information; ordinary warning, including
@@ -41,13 +41,13 @@ Report user-visible errors, recovery states, and completion attention signals wi
   from an arbitrarily large backend or storage error retains only a bounded, explicitly truncated
   display projection or compact summary; it never clones the complete source payload.
 - The bound always leaves simultaneous Beryl-home, selected runtime/backend, and selected exact
-  stop-feedback conditions representable. Repeated reporting of one condition updates its one
+  operation-feedback conditions representable. Repeated reporting of one condition updates its one
   eligible notice rather than consuming another pending position.
 - Dismissing the visible notice advances to the highest-priority oldest eligible record when
   present. A persistent record has no close action and remains eligible until its owning condition
   ends, although a higher-priority record may temporarily preempt it.
 - Another report for the same eligible condition updates that notice's bounded count, content,
-  commands, or summary in place. Persistent Beryl-home, exact-stop, and selected-runtime conditions
+  commands, or summary in place. Persistent Beryl-home, exact stop/compaction, and selected-runtime conditions
   are never discarded for an ordinary notice. At capacity, the newest queued record at the lowest
   lower priority is replaced; when no lower-priority record is replaceable, the new ordinary
   arrival is omitted and counted only in content-free diagnostics. Unrelated conditions are never
@@ -112,6 +112,15 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 ## Exact Stop-Feedback Notices
 
+- Stop and manual-compaction feedback share one protected operation-feedback priority and FIFO
+  selector. The selector chooses the oldest eligible exact request across both kinds, using the
+  original per-window request admission order. At most one contributes a notice at a time; later
+  requests remain in the App's shared bounded presentation-handle budget, without duplicating
+  them in the ordinary pending-notice queue. The selected contribution has a reserved condition
+  position and cannot be omitted or evicted at ordinary queue capacity. Home-failure preemption
+  preserves that selection and latest revision. Once it ends, the next eligible request wins.
+  No extra feedback pool or execution ownership follows from this projection.
+
 - Select the oldest retained unacknowledged request whose exact popup cannot safely retain its
   required feedback. Keep that request selected until its popup can safely retain the same feedback
   again or its resolved notice is dismissed. Later requests remain bounded and retained without
@@ -150,6 +159,27 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - When the status popup can safely retain the feedback, no duplicate notice record is contributed.
   If popup eligibility later disappears while feedback is still required, Notifications receives the
   same exact record identity and latest bounded revision.
+
+## Manual Compaction Feedback Notices
+
+- The status-line contributes required manual-compaction feedback through the protected shared
+  operation-feedback selector above when command invocation closes its popup or its exact anchor
+  becomes ineligible. Popup suppression requires the same exact request association to remain
+  safely presented. Visible thread or provider IDs cannot reconstruct that association; a rejected
+  request need not have a durable operation identity. Later admitted requests never overwrite an
+  older required record, and ordinary notice saturation cannot lose required feedback.
+- Pending admission, admitted waiting and StillRunning use persistent warning records without a
+  close action. Timeout changes the same record's detail and grants no repeat, interruption or
+  successful-completion claim. Exact late settlement updates that record even after deselection.
+- Proven rejection or failed settlement is a dismissible error; exact success or interruption is
+  dismissible information; settled lost/unknown authority is a dismissible warning. Indeterminate
+  admission remains pending until exact convergence or retirement and never masquerades as proven
+  rejection. Notice content names only the system-qualified result and offers no retry or stop
+  command. Missing error detail does not erase the outcome.
+- Resolved dismissal acknowledges only that exact feedback record and releases its presentation
+  ownership. It changes no execution, draft, gate or future eligibility. Window disposal releases
+  its local presentation handles without cancelling admitted compaction. This command feedback
+  has no cross-window or durable notice history and triggers no end-turn sound.
 
 ## End-Turn Sound
 

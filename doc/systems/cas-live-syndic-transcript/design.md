@@ -658,6 +658,59 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Context Compaction
 
+- Context status consumes only source-ordered transient observations from the authenticated
+  foreground connection. One latest usage value belongs to its exact loaded projection, binding
+  revision and session generation, with the source thread/turn identity preserved. A stale route
+  cannot overwrite another projection. Usage is not a terminal fact, history record or scheduler
+  input. The Backend's [context domains](../../../crates/beryl-backend/doc/design-provider-stream.md#context-observation-domains)
+  govern counters, exact model interest and quota normalization.
+- Each registered foreground projection retains at most one fixed-size usage observation and one
+  quota observation under existing connection admission bounds. There is no all-thread cache,
+  durable usage record or replay collection. An unavailable observation replaces the affected
+  latest value. Binding/session replacement and connection or service retirement clear both;
+  model-interest replacement clears quota. A proven ordinary terminal transition may advance the
+  same loaded projection's binding to its authenticated checked-next revision while runtime, CAS
+  thread and loaded-session identity remain unchanged. That transition explicitly carries usage
+  continuity to the new accepted revision while retaining its original source provenance; merely
+  rereading a newer revision cannot rebind an observation. Drift or an unproven revision change
+  clears availability. Ordinary terminal settlement therefore does not erase authentic usage on
+  the same still-loaded projection. A selection without an exact loaded observation
+  remains Unknown; selection never loads history or starts provider work to fill this value.
+- Selected status reads coherently identify the current projection and authenticated current
+  model interest. Account quota has no thread identity of its own: it is eligible for selected
+  presentation only through that exact connection and interest revision. Draft model choices
+  and another connection's account observation cannot supply it. A window retains one latest
+  observation, applies its ordinary selection/publication fences, and uses its existing single
+  status-read loop without a separate context polling queue.
+- The process-owned connection registry elects the connection's single model interest by a
+  bounded scan of its already registered exact loaded projections, retaining only one candidate
+  and ambiguity state. All eligible projections must have authenticated current model metadata
+  and agree on that model; missing metadata or disagreement makes interest unavailable. Window
+  focus, selection order and latest account arrival cannot select a winner. Projection membership,
+  model or incarnation changes advance the interest revision and invalidate quota before a new
+  observation can publish. Reads authenticate that revision again; they cannot combine a result
+  normalized for an earlier interest with a later selected model. No additional projections or
+  provider queries are created to conduct this election.
+- Manual GUI compaction consumes an opaque eligibility capability for the original window
+  selection and GUI claim, healthy home/service/publication incarnation, exact binding/session
+  and idle operation-gate revision. Eligibility neither reserves execution nor promises admission.
+  At durable admission these authorities are elected together with the existing idle/no-next-work/
+  no-repair gate. Selection ABA, released/reacquired claim, publication replacement or a different
+  idle revision rejects the original capability before mutation. A GUI-only precheck followed by
+  latest-thread admission is insufficient. Preparation may run off-thread, but final election
+  cannot hold a home election across a blocking coordinator call or recursively enter it.
+- The manual command preserves composer state and uses only the existing registered exact
+  foreground projection, process coordinator and sole driver. Already accepted input wins the
+  atomic election; later accepted input remains ordered next-turn work. No missing projection is
+  resumed, created or replaced merely to satisfy this command. Consuming the capability prevents
+  repeated GUI dispatch; callers observe its exact result rather than retargeting or retrying.
+- Manual feedback belongs to its exact admitted operation independently of execution custody.
+  Waiting expiry changes only the latest presentation result to StillRunning. Exact later
+  settlement replaces that result even after local coordinator removal. Admission rejection,
+  failed/interrupted settlement and lost or uncertain authority remain distinct from success.
+  Retirement resolves unresolved presentation to lost/unknown authority without transferring
+  it to a successor. Dropping a window or feedback consumer never cancels admitted execution.
+
 - Context compaction is a CAS provider operation on one exact idle exclusive projection. It is not an ordinary conversation turn and does not change Syndic parentage or represented-prefix identity.
 - Admission requires a healthy store, an idle same-thread gate, no accepted-next work, no repair-required turn, and an exact valid foreground projection.
 - One durable operation and one request-attempt identity authorize at most one `thread/compact/start` dispatch. Possible dispatch is never retried automatically.

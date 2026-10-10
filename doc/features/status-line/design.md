@@ -79,6 +79,12 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Rejection, failure, interruption, unknown completion, and lost backend authority receive bounded
   operation feedback and never appear as successful compaction merely because the start request
   was accepted or no further progress is visible.
+- Manual compaction feedback uses the system's opaque exact request/operation identity. Required
+  waiting, StillRunning and resolved feedback contributes one bounded record to Notifications
+  when the context popup closes, becomes ineligible or loses its selected-thread anchor. Thread
+  switching and window disposal never cancel the admitted operation. Exact late settlement updates
+  the same record; only resolved feedback may be acknowledged. There is no second notice surface
+  or retry action on an uncertain operation.
 
 ## Turn State, View Count, And Stop Controls
 

@@ -76,3 +76,26 @@ real provider ingress, stale-window and successor races, no history mutation for
 timeout/late settlement and teardown. No product contradiction or requirement for a migration
 adapter was found. Phase-744 evidence remains retained; this investigation created no GUI or
 managed runtime process, Home, Cargo execution or upstream checkout.
+
+# Contract Closure
+
+The owning-contract boundary passed independent semantic review on 2026-10-10. Backend defines
+fixed-size exact usage, numeric domains, separately qualified model/metering association,
+300/10,080-minute normalization windows and complete sparse quota observations. The pinned
+producer has no qualified model association, including when identifier strings coincide; its
+quota remains unavailable. CAS-live owns bounded agreeing-projection interest election and exact
+observation retirement. Proven ordinary terminal revision advancement on the same loaded session
+preserves source provenance; merely reading a newer binding cannot rebind an observation.
+
+App and CAS-live define weak original-selection/claim/idle admission and independent bounded
+feedback, with terminal settlement winning timeout and late outcome surviving local removal.
+Notifications owns the shared protected stop/compaction FIFO and reserved visible contribution;
+ordinary queue saturation cannot discard required command feedback. Window disposal releases
+presentation without cancelling admitted execution. Source feasibility review included
+`ordinary/execute/capture_loop.rs::finish_proven_terminal` and its checked-next binding transition.
+
+Review corrections resolved namespace coincidence, multi-projection interest ownership,
+Notifications retention and normal revision continuity. Scoped `git diff --check` passed and
+rag-rat discovery/reconciliation reached Current with zero failed or blocked chunks. This was a
+documentation-only boundary: no production Rust/manifest edits, Cargo run or GUI launch occurred.
+Context status and manual command production mounting remain separately unaccepted work.
