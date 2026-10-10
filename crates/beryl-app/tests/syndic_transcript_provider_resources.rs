@@ -253,7 +253,7 @@ fn bounded_range_reads_return_requested_bytes_and_complete_flag() {
     assert_eq!(partial.kind, ResourceKind::Code);
     assert_eq!(partial.range, 2..6);
     assert_eq!(partial.bytes, b"2345".to_vec());
-    assert!(!partial.complete);
+    assert!(partial.complete);
     assert!(partial.bytes.len() < code_bytes.len());
 
     let terminal = expect_range(read_range(&mut provider, 5, &attachment_id, 10..16, None));

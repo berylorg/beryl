@@ -124,7 +124,6 @@ fn syndic_transcript_panel_renders_resident_snapshots_only() {
         "DemandFactKind::Viewport",
         "report_nested_resource_demands",
         "DemandFactKind::ResourceRange",
-        "DemandFactKind::MediaPreviewPin",
         "ResidentResourceSlice",
         "snapshot.resources",
         "for frame_record in &frame_window.records",

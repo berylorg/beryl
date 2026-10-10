@@ -18,8 +18,10 @@ use crate::{
     syndic_transcript::{PreparedTranscriptActivation, TranscriptActivationPlacement},
 };
 
+mod resources;
 mod selected_title;
 mod source;
+pub(crate) use resources::{PreparedTranscriptResource, TranscriptResourceRequest};
 pub(crate) use source::prepare_candidate_activation;
 
 pub(crate) const ATTACHMENT_MAX_RECORDS: usize = 64;
@@ -41,6 +43,7 @@ pub(crate) enum TranscriptAttachmentPurpose {
     Attach,
     Refresh,
     Adjacent { end: u64, backward: bool },
+    Resource,
 }
 
 pub(crate) struct PreparedTranscriptAttachment {
@@ -113,6 +116,10 @@ impl PreparedTranscriptAttachment {
 }
 
 impl TranscriptAttachmentSourceIdentity {
+    pub(crate) fn has_parent_lineage(&self) -> bool {
+        self.lineage.total_parent_count() != 0
+    }
+
     pub(crate) fn matches_authority(&self, prepared: &PreparedTranscriptAttachment) -> bool {
         self.authority == prepared.authority
     }

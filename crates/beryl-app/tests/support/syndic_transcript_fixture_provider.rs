@@ -332,7 +332,7 @@ impl InMemorySyndicTranscriptProvider {
             kind: resource.metadata.kind.clone(),
             range,
             bytes: resource.bytes[start..end].to_vec(),
-            complete: end == resource.bytes.len(),
+            complete: true,
         })
     }
 

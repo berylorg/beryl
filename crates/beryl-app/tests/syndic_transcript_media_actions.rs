@@ -129,6 +129,8 @@ fn seed_media_presentation(
     let projection_id = projection_id("media");
     let resource_id = resource_id("primary");
     let projection_provenance = provenance(&view_id, &projection_id, &resource_id, resource_range);
+    let mut resource_metadata = metadata(resource_id.clone(), kind.clone());
+    resource_metadata.preview_range = Some(0..bytes.len() as u64);
     let mut provider = InMemorySyndicTranscriptProvider::new();
     provider
         .set_revision(REVISION)
@@ -142,7 +144,7 @@ fn seed_media_presentation(
             kind.clone(),
             projection_provenance,
         ))
-        .insert_resource(metadata(resource_id.clone(), kind), bytes);
+        .insert_resource(resource_metadata, bytes);
 
     let mut core = ResidentTranscriptCore::empty();
     let page_request = core.request_view_page(

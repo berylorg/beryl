@@ -130,3 +130,32 @@
 - Historical disposition: the former Phase 2 and Syndic-to-renderer rework completed. Its tracker is
   archived at `doc/rework/syndic-to-renderer/old-doc/REWORK.md`; current authority is the active root
   plan and Beryl-home rework.
+
+## Resource Publication Re-Entered The Home Health Lock
+
+- Scope: ordinary post-publication transcript text-resource delivery.
+- Invalid assumption: a prepared resource could reread durable metadata inside the Home's
+  observed-coherent GUI publication closure to reconfirm its backing.
+- Evidence: semantic inspection of `transcript_provider/resources.rs` and Home observation
+  election found that durable reads enter `HealthGate` while the election holds its inner lock.
+  Moving that reread just outside the closure would instead put durable I/O on the GUI thread.
+- Correction: validate exact backing on the tracked worker, reread it before worker return and
+  retain the coherent mutation observation with the private prepared descriptor. GUI admission
+  elects the observation and validates exact request/private identity without durable reads or
+  nested health-lock entry. Provider and native mounting coverage is recorded in
+  [delivery acceptance](../audits/transcript-mounting-readiness.md#post-publication-text-resource-delivery-acceptance).
+- Remaining boundary: other durable consumers must qualify their own worker preparation and
+  observation custody; this correction supplies no general storage-read exemption.
+
+## Stale Resource Demand Starved Selected History Refresh
+
+- Scope: mounted selected transcript resource scheduling.
+- Invalid assumption: giving resource demand priority on every synchronization was harmless
+  because the resident selected source would eventually refresh independently.
+- Evidence: the mounted scheduling review found that unchanged resident demand could repeatedly
+  dispatch against a now-stale head/summary and return before ordinary refresh ran.
+- Correction: each resource attempt or settled publication yields once to ordinary refresh or
+  adjacent work. The native fairness fixture changes selected head/summary during a pending
+  resource read and requires the newer selected source to publish. Its revisions advance from
+  the maximum of both authorities because their revision counters are independent.
+- Affected evidence: [delivery acceptance](../audits/transcript-mounting-readiness.md#post-publication-text-resource-delivery-acceptance).

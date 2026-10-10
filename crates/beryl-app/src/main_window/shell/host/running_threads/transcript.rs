@@ -5,6 +5,9 @@ use crate::{
 };
 use std::sync::atomic::AtomicBool;
 
+mod resources;
+pub(super) use resources::PendingMeasuredResource;
+
 pub(super) struct PendingMeasuredAttachment {
     provider: crate::transcript_provider::TranscriptProviderReader,
     prepared: crate::transcript_provider::PreparedTranscriptAttachment,
@@ -174,6 +177,9 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.synchronize_transcript_appearance(cx);
+        if self.sync_running_transcript_resource(window, cx) {
+            return;
+        }
         if self
             .running_threads
             .transcript_demand

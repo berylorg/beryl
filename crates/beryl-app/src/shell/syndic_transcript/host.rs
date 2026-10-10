@@ -100,6 +100,34 @@ impl SyndicTranscriptHost {
         })
     }
 
+    pub(crate) fn resource_demand(&self) -> Option<super::ResourceTranscriptDemand> {
+        self.last_frame_window.as_ref()?;
+        self.core.resource_demand()
+    }
+
+    pub(crate) fn resource_demands(&self) -> Vec<super::ResourceTranscriptDemand> {
+        if self.last_frame_window.is_none() {
+            return Vec::new();
+        }
+        self.core.resource_demands()
+    }
+
+    pub(crate) fn prepare_resource_response(
+        &self,
+        demand: &super::ResourceTranscriptDemand,
+        response: super::TranscriptProviderResponseKind,
+    ) -> Option<Self> {
+        if !self.resource_demands().contains(demand) {
+            return None;
+        }
+        Some(Self {
+            lifetime: self.lifetime.clone(),
+            core: self.core.prepare_resource_response(demand, response)?,
+            scroll_controller: self.scroll_controller.clone(),
+            last_frame_window: self.last_frame_window.clone(),
+        })
+    }
+
     pub(crate) fn prepare_adjacent_extension(
         &self,
         demand: &AdjacentTranscriptDemand,
@@ -179,6 +207,7 @@ impl SyndicTranscriptHost {
         for fact in &window.demand_facts {
             self.core.push_demand_fact(fact.clone());
         }
+        self.core.reconcile_resource_demand();
         self.last_frame_window = Some(window);
     }
 

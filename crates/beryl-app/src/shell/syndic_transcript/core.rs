@@ -46,6 +46,10 @@ const FALLBACK_RECORD_ESTIMATED_BYTES: usize = 96;
 const GEOMETRY_PLACEHOLDER_BYTES_PER_RECORD: usize = 32;
 const PIN_PLACEHOLDER_BYTES: usize = 64;
 
+#[path = "core/resource_delivery.rs"]
+mod resource_delivery;
+pub(crate) use resource_delivery::ResourceTranscriptDemand;
+
 #[derive(Clone, Debug)]
 pub(crate) struct ResidentTranscriptCore {
     policy: ResidentTranscriptPolicy,
@@ -704,7 +708,7 @@ impl ResidentTranscriptCore {
         Some(self.reserve_provider_request(
             TranscriptProviderRequestKind::ReadResourceMetadata(ResourceMetadataRequest {
                 resource_id,
-                observed_revision: self.resident.provider_revision,
+                observed_revision: None,
             }),
             reason,
         ))
@@ -723,6 +727,16 @@ impl ResidentTranscriptCore {
         if self.resource_has_terminal_fallback(&resource_id) {
             return None;
         }
+
+        let metadata = self
+            .resident
+            .resource_metadata
+            .iter()
+            .find(|metadata| metadata.resource_id == resource_id)?;
+        if range.start >= range.end || range.end > metadata.byte_len {
+            return None;
+        }
+        let observed_revision = Some(metadata.revision);
 
         let Some(bounded_range) = self.bound_resource_range(range.clone()) else {
             self.upsert_resource_fallback_for_demand(
@@ -743,14 +757,6 @@ impl ResidentTranscriptCore {
             return None;
         }
 
-        let observed_revision = self
-            .resident
-            .resource_metadata
-            .iter()
-            .find(|metadata| metadata.resource_id == resource_id)
-            .map(|metadata| metadata.revision)
-            .or(self.resident.provider_revision);
-
         Some(self.reserve_provider_request(
             TranscriptProviderRequestKind::ReadResourceRange(ResourceRangeRequest {
                 resource_id,
@@ -765,6 +771,17 @@ impl ResidentTranscriptCore {
         &mut self,
         response: TranscriptProviderResponse,
     ) -> ResidentProviderResponseEffect {
+        if !self.resource_response_matches_request(&response)
+            || matches!(&response.kind, TranscriptProviderResponseKind::ResourceRange(range) if range.bytes.len() > self.policy.max_resource_slice_bytes)
+        {
+            return self
+                .finish_current_provider_response(
+                    response.request_id,
+                    ProviderRequestOutcome::Rejected,
+                )
+                .map(|_| ResidentProviderResponseEffect::Ignored)
+                .unwrap_or_else(|effect| effect);
+        }
         self.shared_presentation.get_mut().take();
         let request_id = response.request_id;
         match response.kind {
@@ -1932,7 +1949,9 @@ impl ResidentTranscriptCore {
         }
 
         let resource_id = metadata.resource_id.clone();
-        let revision = metadata.revision;
+        Arc::make_mut(&mut self.resident.resource_slices).retain(|slice| {
+            slice.resource_id != resource_id || slice.revision == metadata.revision
+        });
         let should_budget_fallback = self.metadata_exceeds_media_budget(&metadata);
         let budget_limit = self.policy.max_resource_bytes;
         let byte_len = metadata.byte_len;
@@ -1952,7 +1971,6 @@ impl ResidentTranscriptCore {
         self.remove_resource_rejections_for_resource(&resource_id);
         self.remove_fallbacks_for_resource(&resource_id);
         self.sort_resource_metadata();
-        self.resident.provider_revision = Some(revision);
         self.resident.resource_metadata_count = self.resident.resource_metadata.len();
         if should_budget_fallback {
             self.upsert_resource_fallback_for_demand(
@@ -1974,7 +1992,6 @@ impl ResidentTranscriptCore {
         }
 
         let resource_id = range.resource_id.clone();
-        let revision = range.revision;
         let slice = self.bounded_resource_slice(range);
         let byte_count = slice.bytes.len();
         let admitted_count = if let Some(existing) =
@@ -1994,7 +2011,6 @@ impl ResidentTranscriptCore {
         self.remove_resource_rejections_for_resource(&resource_id);
         self.remove_fallbacks_for_resource(&resource_id);
         self.sort_resource_slices();
-        self.resident.provider_revision = Some(revision);
         self.trim_resource_slices_to_policy();
         self.refresh_budget_accounting();
         (admitted_count, byte_count)
@@ -2247,7 +2263,8 @@ impl ResidentTranscriptCore {
 
         let presentation_revision = self.presentation.presentation_revision;
         for fallback in &self.resident.fallback_records {
-            let fallback_record = presentation_record_for_fallback(fallback, presentation_revision);
+            let mut fallback_record =
+                presentation_record_for_fallback(fallback, presentation_revision);
 
             if let Some(existing) = Arc::make_mut(&mut self.presentation.records)
                 .iter_mut()
@@ -2255,6 +2272,7 @@ impl ResidentTranscriptCore {
                     presentation_record_matches_fallback_target(record, &fallback.target)
                 })
             {
+                fallback_record.id = existing.id.clone();
                 *existing = fallback_record;
                 continue;
             }
@@ -2342,6 +2360,9 @@ impl ResidentTranscriptCore {
     fn resource_range_is_resident(&self, resource_id: &ResourceId, range: &Range<u64>) -> bool {
         self.resident.resource_slices.iter().any(|slice| {
             &slice.resource_id == resource_id
+                && self.resident.resource_metadata.iter().any(|metadata| {
+                    &metadata.resource_id == resource_id && metadata.revision == slice.revision
+                })
                 && slice.range.start <= range.start
                 && slice.range.end >= range.end
         })
@@ -2354,6 +2375,9 @@ impl ResidentTranscriptCore {
     ) -> Option<&ResidentResourceSlice> {
         self.resident.resource_slices.iter().find(|slice| {
             &slice.resource_id == resource_id
+                && self.resident.resource_metadata.iter().any(|metadata| {
+                    &metadata.resource_id == resource_id && metadata.revision == slice.revision
+                })
                 && slice.range.start <= range.start
                 && slice.range.end >= range.end
         })

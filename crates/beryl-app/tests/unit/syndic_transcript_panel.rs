@@ -7,6 +7,9 @@ use super::super::{
 use super::*;
 use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
 
+#[path = "syndic_transcript_panel/resources.rs"]
+mod resources;
+
 struct NestedPanel {
     panel: Entity<SyndicTranscriptPanel>,
     body_height: f32,
@@ -332,8 +335,9 @@ impl Render for NestedPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.panel.update(cx, |panel, _| {
             if panel.measurement_current(window) {
-                let activation = panel.staged.as_ref().unwrap().activation.clone();
-                panel.publish_coherent_activation(activation);
+                if let Some(activation) = panel.staged.as_ref().unwrap().activation.clone() {
+                    panel.publish_coherent_activation(activation);
+                }
             }
         });
         div().size_full().flex().flex_col().child(

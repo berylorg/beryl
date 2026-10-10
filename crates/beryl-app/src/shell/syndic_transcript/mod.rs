@@ -42,6 +42,7 @@ pub(crate) use core::{
     ResidentGeneration, ResidentPresentationSnapshot, ResidentProviderResponseEffect,
     ResidentReleaseDecision, ResidentReleaseReason, ResidentReleaseTarget,
     ResidentSyndicDataSnapshot, ResidentTranscriptCore, ResidentTranscriptPolicy,
+    ResourceTranscriptDemand,
 };
 pub(crate) use demand::{DemandFact, DemandFactKind, DemandFactSink, DemandFactSinkSnapshot};
 pub(crate) use diagnostics::{

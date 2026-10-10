@@ -84,6 +84,9 @@ pub(super) struct RunningThreadsContribution {
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
     transcript_demand: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
+    resource_demand: Option<crate::syndic_transcript::ResourceTranscriptDemand>,
+    measured_resource: Option<transcript::PendingMeasuredResource>,
+    resource_refresh_due: bool,
     transcript_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub(super) transcript_claim: Option<beryl_state::WindowClaimSelection>,
     transcript_request: u64,
@@ -175,6 +178,9 @@ impl RunningThreadsContribution {
             transcript_provider: None,
             transcript_task: None,
             transcript_demand: None,
+            resource_demand: None,
+            measured_resource: None,
+            resource_refresh_due: false,
             transcript_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             transcript_claim: None,
             transcript_request: 0,
@@ -253,6 +259,29 @@ impl RunningThreadsContribution {
 
 impl MainWindowShellRoot {
     #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_fence_pending_resource_read(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let pending = self.test_pending_resource_read();
+        if pending {
+            self.ordinary_close_interaction_gated = true;
+            self.suspend_running_thread_reads(window, cx);
+        }
+        pending
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_pending_resource_read(&self) -> bool {
+        self.running_threads
+            .resource_demand
+            .as_ref()
+            .is_some_and(|demand| demand.range.is_some())
+            && self.running_threads.transcript_task.is_some()
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn test_fence_pending_adjacent_read(
         &mut self,
         window: &mut Window,
@@ -282,6 +311,7 @@ impl MainWindowShellRoot {
 
     pub(crate) fn running_thread_reads_drained(&self) -> bool {
         self.running_threads.workers.retained() == 0
+            && self.running_threads.measured_resource.is_none()
             && !self.running_threads.has_activation_custody()
     }
 
@@ -332,6 +362,11 @@ impl MainWindowShellRoot {
             .store(true, Ordering::Release);
         self.running_threads.transcript_task = None;
         self.running_threads.transcript_demand = None;
+        self.running_threads.resource_demand = None;
+        self.running_threads.resource_refresh_due = false;
+        if let Some(pending) = self.running_threads.measured_resource.take() {
+            pending.discard(cx);
+        }
         if self.running_threads.measured_attachment.take().is_some() {
             self.running_threads
                 .transcript
@@ -504,6 +539,14 @@ impl MainWindowShellRoot {
             self.running_threads.read_drain_task = None;
         }
         if self.running_threads.measured_attachment.is_some()
+            || self.running_threads.measured_resource.is_some()
+            || self.running_threads.resource_demand.is_some()
+            || self
+                .running_threads
+                .transcript
+                .read(cx)
+                .resource_demand()
+                .is_some()
             || self.running_threads.transcript_demand.is_some()
             || self
                 .running_threads

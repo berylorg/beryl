@@ -458,3 +458,73 @@ focus-pin mounting and live suffixes retain their separate gates.
 Independent semantic review accepted this complete qualification and the derived text-delivery
 boundary after clarifying preview fallback cases and explicitly retaining Home identity/generation
 in request custody. No source or test changes and no runtime acceptance are claimed for this phase.
+
+## Post-Publication Text Resource Delivery Acceptance
+
+The ordinary selected transcript now starts metadata-first text delivery after its measured
+selected-view publication. Current realized/protected records supply demand; the existing tracked
+worker prepares exact Code/Table metadata and bounded missing byte intervals. Selected title,
+lineage and history revision remain independent of resource readiness and resource revisions.
+
+Request custody includes Home identity/generation, provider generation, host lifetime, activation,
+selected source authority, owning record/projection/item, exact resource and retained pin categories.
+The worker checks immutable backing, relative extents and bounded continuation, reconfirms selected
+head/summary, rereads backing before return and retains a coherent Home mutation observation.
+GUI admission elects that observation and checks private prepared/request identity without durable
+reads or re-entering the Home health lock. A superseded observation cannot publish.
+
+Core admission verifies response kind, resource, revision, interval, byte count and completion
+before capacity mutation. Metadata validates preview extents; absent metadata never produces a
+guessed range. Missing intervals require the admitted resource revision. Terminal local
+missing/unsupported/capacity outcomes preserve record identity and stop dispatch; partial capacity
+refusal releases prior slices. No automatic preview pin holds an offscreen row indefinitely.
+Demand removal releases obsolete metadata/slices, bounded rejection keys and pending custody.
+Explicit pins remain distinct even when they protect an already visible record.
+
+Resource candidates pass the current allocation and appearance measurement before publication,
+preserving immutable prior snapshots and the manual semantic anchor. Manual input or changed
+demand revokes a candidate. Every resource attempt yields once to ordinary refresh/adjacent work,
+so stale resource work cannot starve a newer selected history publication. Cancellation, suspend,
+source retirement and output disposal share the existing tracked worker drain boundary.
+
+### Verification
+
+The focused final provider/panel run passed all 42 cases
+(`e9d4781f-5231-4049-974b-c741ae44c615`). It covers exact backing
+offsets and bounded multi-page continuation, split UTF-8 bytes, preview extents, request/backing
+supersession, cancellation, non-text rejection, immutable candidates, capacity and pin custody.
+Final combined regressions passed all 122 cases across activation, resident resources, provider
+resources/revisions, release, realized frames, selection/copy, media actions, measured preparation
+and source boundaries (`95b454b2-0f56-4eae-a748-ce4fade31616`). Both runs used
+`cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults`;
+the focused run selected `--lib -E 'test(transcript_provider) | test(syndic_transcript::panel)'`,
+and regressions selected those ten integration targets.
+
+Two exact native cases ran from `target/debug/deps/beryl_app-06ddcee903197152.exe` with
+`--exact --ignored --nocapture`, through `Start-Process -WindowStyle Minimized`:
+
+- `native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges` passed in
+  4.52 seconds, PID 29864, exit 0. It proves initial selected publication without metadata/slices,
+  subsequent loading without changing selected title/authority, fractional wheel/manual-anchor
+  preservation and disposal while an actual range is pending. Retained prior snapshots stay
+  immutable; suspension drains worker/output custody without resurrection.
+- `native_mounted_resource_failure_yields_to_selected_history_refresh` passed in 2.31 seconds,
+  PID 24340, exit 0. Advancing selected head and summary during a pending resource read publishes
+  the newer source despite the stale resource attempt.
+
+Both cases live under
+`app_services::tests::startup_owner::running_exit_work::ordinary_commands::transcript_viewport::resources`.
+These tests prove mounted measurement and lifecycle behavior; they do not establish screenshot or
+GPU-paint acceptance. Task-owned native Home directories were reclaimed after process exit.
+Independent final semantic review accepted the complete mounted delivery boundary after directly
+checking the focused, combined and native evidence, exact pin/capacity regressions and fixture
+corrections. No remaining blocker or required source correction was identified.
+
+Native loaded text exposed an unresolvable literal `monospace` font family in the existing shell.
+The shell now uses `Consolas`, matching the application's code-font default; focused verification
+and the successful native loading case include that correction. Existing media-action fixtures
+also needed previews bounded to their actual payload length under strict metadata admission.
+
+Non-text asset preparation/renditions, full resource rendering, Markdown structure, nested
+interaction, focus-pin mounting and live suffixes remain separate acceptance gates. Ordinary
+projection ownership remains required; this boundary supplies no selected-repair-media reader.

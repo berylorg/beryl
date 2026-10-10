@@ -106,6 +106,8 @@ fn adjacent_late_results_release_reservations_after_authority_or_lifetime_replac
 }
 #[path = "transcript_provider/candidate_activation.rs"]
 mod candidate_activation;
+#[path = "transcript_provider/resources.rs"]
+mod resources;
 #[path = "transcript_provider/selected_title.rs"]
 mod selected_title;
 #[path = "transcript_provider/selected_title_history.rs"]

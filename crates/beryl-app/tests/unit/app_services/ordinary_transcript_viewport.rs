@@ -14,6 +14,9 @@ fn resident_positions(panel: &crate::syndic_transcript::SyndicTranscriptPanel) -
         .collect()
 }
 
+#[path = "ordinary_transcript_viewport/resources.rs"]
+mod resources;
+
 #[test]
 fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() {
     run_mounted_with_prepared_home_retained(
@@ -227,6 +230,10 @@ fn seed_history(path: &std::path::Path) {
 }
 
 fn seed_history_count(path: &std::path::Path, count: u8) {
+    seed_history_text(path, count, None);
+}
+
+fn seed_history_text(path: &std::path::Path, count: u8, resource_text: Option<&str>) {
     use crate::support::exact_cas;
     use beryl_model::{SyndicDraftId, SyndicItemId};
     use syndic_storage::{SourceEventPayload, SyndicTimestamp, TurnEndStatus};
@@ -254,10 +261,12 @@ fn seed_history_count(path: &std::path::Path, count: u8) {
         let item = SyndicItemId::from_bytes(item_identity);
         let mut draft_identity = [0xA8; 16];
         draft_identity[0] = ordinal;
-        let text = format!("Transcript viewport record {ordinal} ").repeat(if ordinal % 3 == 0 {
-            70
-        } else {
-            1
+        let text = resource_text.map(str::to_owned).unwrap_or_else(|| {
+            format!("Transcript viewport record {ordinal} ").repeat(if ordinal % 3 == 0 {
+                70
+            } else {
+                1
+            })
         });
         let timestamp =
             |offset| SyndicTimestamp::from_unix_millis(1000 + u64::from(ordinal) * 10 + offset);

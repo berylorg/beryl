@@ -34,12 +34,13 @@ const SYNDIC_TRANSCRIPT_RESOURCE_PREVIEW_BYTES: u64 = 4096;
 const SYNDIC_TRANSCRIPT_RESOURCE_PREVIEW_TEXT_BYTES: usize = 2048;
 
 struct StagedTranscript {
-    activation: PreparedTranscriptActivation,
+    activation: Option<PreparedTranscriptActivation>,
     host: SyndicTranscriptHost,
     outcome: TranscriptActivationOutcome,
     allocation: Option<gpui::Size<gpui::Pixels>>,
     unplaced_tail: bool,
     adjacent: Option<super::AdjacentTranscriptDemand>,
+    resource: Option<super::ResourceTranscriptDemand>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -69,6 +70,7 @@ pub(crate) struct SyndicTranscriptPanel {
     geometry: Option<PendingGeometry>,
     pending_delta: f32,
     rejected_adjacent: Option<super::AdjacentTranscriptDemand>,
+    rejected_resource: Vec<super::ResourceTranscriptDemand>,
     appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
     #[cfg(test)]
     viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
@@ -87,6 +89,7 @@ impl SyndicTranscriptPanel {
             geometry: None,
             pending_delta: 0.0,
             rejected_adjacent: None,
+            rejected_resource: Vec::new(),
             appearance: None,
             #[cfg(test)]
             viewport_bounds: None,
@@ -114,7 +117,7 @@ impl SyndicTranscriptPanel {
         assert!(
             self.staged
                 .as_ref()
-                .is_some_and(|staged| staged.activation == prepared)
+                .is_some_and(|staged| staged.activation.as_ref() == Some(&prepared))
                 && self.measurement_ready(),
             "attachment publication requires its measured generation"
         );
@@ -129,7 +132,7 @@ impl SyndicTranscriptPanel {
         if self
             .staged
             .as_ref()
-            .is_some_and(|staged| &staged.activation == prepared)
+            .is_some_and(|staged| staged.activation.as_ref() == Some(prepared))
         {
             let staged = self.staged.as_mut().unwrap();
             if staged.allocation != allocation {
@@ -145,12 +148,13 @@ impl SyndicTranscriptPanel {
         let unplaced_tail = host.scroll_state().anchor.is_none()
             && prepared.placement == TranscriptActivationPlacement::Tail;
         self.staged = Some(StagedTranscript {
-            activation: prepared.clone(),
+            activation: Some(prepared.clone()),
             host,
             outcome,
             allocation,
             unplaced_tail,
             adjacent: None,
+            resource: None,
         });
         self.geometry = None;
         self.close_invalid_geometry();
@@ -200,15 +204,128 @@ impl SyndicTranscriptPanel {
             provider_request: None,
         };
         self.staged = Some(StagedTranscript {
-            activation: prepared.clone(),
+            activation: Some(prepared.clone()),
             host,
             outcome,
             allocation: None,
             unplaced_tail: false,
             adjacent: Some(demand.clone()),
+            resource: None,
         });
         self.geometry = None;
         true
+    }
+
+    pub(crate) fn resource_demand(&self) -> Option<super::ResourceTranscriptDemand> {
+        if self.pending_delta != 0.0 {
+            return None;
+        }
+        self.host.resource_demands().into_iter().find(|demand| {
+            !self.rejected_resource.iter().any(|rejected| {
+                rejected.activation_revision == demand.activation_revision
+                    && rejected.view_id == demand.view_id
+                    && rejected.revision == demand.revision
+                    && rejected.record_id == demand.record_id
+                    && rejected.provenance == demand.provenance
+                    && rejected.metadata == demand.metadata
+                    && rejected.range == demand.range
+            })
+        })
+    }
+
+    pub(crate) fn reject_resource_demand(&mut self, demand: super::ResourceTranscriptDemand) {
+        self.prune_rejected_resources();
+        self.rejected_resource.retain(|rejected| {
+            rejected.activation_revision == demand.activation_revision
+                && rejected.view_id == demand.view_id
+                && rejected.record_id != demand.record_id
+        });
+        if self.rejected_resource.len() < 1024 {
+            self.rejected_resource.push(demand);
+        }
+    }
+
+    fn prune_rejected_resources(&mut self) {
+        let current = self.host.resource_demands();
+        self.rejected_resource.retain(|rejected| {
+            current.iter().any(|demand| {
+                rejected.activation_revision == demand.activation_revision
+                    && rejected.view_id == demand.view_id
+                    && rejected.revision == demand.revision
+                    && rejected.record_id == demand.record_id
+                    && rejected.provenance == demand.provenance
+                    && rejected.metadata == demand.metadata
+                    && rejected.range == demand.range
+            })
+        });
+    }
+
+    pub(crate) fn resource_candidate_current(
+        &self,
+        demand: &super::ResourceTranscriptDemand,
+    ) -> bool {
+        self.resource_demand().as_ref() == Some(demand)
+            && self
+                .staged
+                .as_ref()
+                .is_some_and(|staged| staged.resource.as_ref() == Some(demand))
+    }
+
+    pub(crate) fn stage_resource_response(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        response: super::TranscriptProviderResponseKind,
+        allocation: Option<gpui::Size<gpui::Pixels>>,
+    ) -> bool {
+        if self.resource_demand().as_ref() != Some(demand) || self.staged.is_some() {
+            return false;
+        }
+        let Some(host) = self.host.prepare_resource_response(demand, response) else {
+            return false;
+        };
+        let snapshot = host.shared_snapshot();
+        let outcome = TranscriptActivationOutcome {
+            activation_revision: snapshot.activation_revision,
+            presentation_revision: snapshot.presentation_revision,
+            state: snapshot.state.clone(),
+            retained_previous_snapshot: true,
+            provider_request: None,
+        };
+        self.staged = Some(StagedTranscript {
+            activation: None,
+            host,
+            outcome,
+            allocation,
+            unplaced_tail: false,
+            adjacent: None,
+            resource: Some(demand.clone()),
+        });
+        self.geometry = None;
+        true
+    }
+
+    pub(crate) fn update_resource_allocation(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        allocation: gpui::Size<gpui::Pixels>,
+    ) -> bool {
+        if !self.resource_candidate_current(demand) {
+            return false;
+        }
+        let staged = self.staged.as_mut().unwrap();
+        if staged.allocation != Some(allocation) {
+            staged.allocation = Some(allocation);
+            self.geometry = None;
+        }
+        true
+    }
+
+    pub(crate) fn publish_resource_candidate(&mut self, demand: &super::ResourceTranscriptDemand) {
+        assert!(
+            self.resource_candidate_current(demand) && self.measurement_ready(),
+            "resource publication requires its current measured generation"
+        );
+        self.commit_measured_activation();
     }
 
     pub(crate) fn measurement_ready(&self) -> bool {
@@ -279,11 +396,12 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn discard_staged_activation(&mut self) {
-        if self
-            .staged
-            .as_ref()
-            .is_some_and(|staged| !self.host.is_same_view(&staged.activation))
-        {
+        if self.staged.as_ref().is_some_and(|staged| {
+            staged
+                .activation
+                .as_ref()
+                .is_some_and(|activation| !self.host.is_same_view(activation))
+        }) {
             self.pending_delta = 0.0;
         }
         self.staged = None;
@@ -311,7 +429,7 @@ impl SyndicTranscriptPanel {
         if self
             .staged
             .as_ref()
-            .is_some_and(|staged| staged.adjacent.is_some())
+            .is_some_and(|staged| staged.adjacent.is_some() || staged.resource.is_some())
         {
             self.discard_staged_activation();
         }
@@ -331,6 +449,7 @@ impl SyndicTranscriptPanel {
         geometry.delta = 0.0;
         geometry.published = true;
         self.host.accept_measured_frame(frame.clone());
+        self.prune_rejected_resources();
         self.published_snapshot = Some(self.host.shared_snapshot());
         self.last_frame_window = Some(frame);
     }
@@ -343,6 +462,7 @@ impl SyndicTranscriptPanel {
         self.geometry = None;
         self.pending_delta = 0.0;
         self.rejected_adjacent = None;
+        self.rejected_resource.clear();
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {
@@ -1113,7 +1233,6 @@ fn report_nested_resource_demands(
     host: &mut SyndicTranscriptHost,
 ) {
     let mut reported_ranges: Vec<(ResourceId, Range<u64>)> = Vec::new();
-    let mut reported_media_pins: Vec<ResourceId> = Vec::new();
 
     for frame_record in &frame_window.records {
         let Some(record) = snapshot.records.get(frame_record.index) else {
@@ -1123,28 +1242,10 @@ fn report_nested_resource_demands(
             continue;
         }
 
-        let ResidentPresentationRecordKind::ResourceReference {
-            resource_id,
-            resource_kind,
-            ..
-        } = &record.kind
+        let ResidentPresentationRecordKind::ResourceReference { resource_id, .. } = &record.kind
         else {
             continue;
         };
-
-        if resource_kind_is_media(resource_kind)
-            && !reported_media_pins
-                .iter()
-                .any(|reported_id| reported_id == resource_id)
-        {
-            host.push_demand_fact(DemandFact::new(
-                snapshot.presentation_revision,
-                DemandFactKind::MediaPreviewPin {
-                    resource_id: resource_id.clone(),
-                },
-            ));
-            reported_media_pins.push(resource_id.clone());
-        }
 
         let Some(range) = resource_demand_range(snapshot, resource_id) else {
             continue;
@@ -1170,11 +1271,8 @@ fn resource_demand_range(
     snapshot: &ResidentTranscriptSnapshot,
     resource_id: &ResourceId,
 ) -> Option<Range<u64>> {
-    let range = snapshot
-        .resources
-        .metadata_for(resource_id)
-        .and_then(metadata_preview_range)
-        .unwrap_or(0..SYNDIC_TRANSCRIPT_RESOURCE_PREVIEW_BYTES);
+    let metadata = snapshot.resources.metadata_for(resource_id)?;
+    let range = metadata_preview_range(metadata)?;
 
     if range.start >= range.end || resource_slices_cover_range(snapshot, resource_id, &range) {
         return None;
@@ -1185,6 +1283,9 @@ fn resource_demand_range(
 
 fn metadata_preview_range(metadata: &ResourceMetadata) -> Option<Range<u64>> {
     if let Some(range) = metadata.preview_range.clone() {
+        if range.end > metadata.byte_len {
+            return None;
+        }
         return bounded_resource_preview_range(range);
     }
 
@@ -1209,10 +1310,14 @@ fn resource_slices_cover_range(
     resource_id: &ResourceId,
     range: &Range<u64>,
 ) -> bool {
-    snapshot
-        .resources
-        .slices_for(resource_id)
-        .any(|slice| slice.range.start <= range.start && slice.range.end >= range.end)
+    snapshot.resources.slices_for(resource_id).any(|slice| {
+        snapshot
+            .resources
+            .metadata_for(resource_id)
+            .is_some_and(|metadata| metadata.revision == slice.revision)
+            && slice.range.start <= range.start
+            && slice.range.end >= range.end
+    })
 }
 
 fn render_resource_reference(
@@ -1320,7 +1425,7 @@ fn render_text_resource_shell(
             div()
                 .text_xs()
                 .line_height(px(16.0))
-                .font_family("monospace".to_string())
+                .font_family("Consolas")
                 .whitespace_normal()
                 .child(resource_preview_text(slice)),
         )

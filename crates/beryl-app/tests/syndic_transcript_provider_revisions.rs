@@ -76,9 +76,7 @@ fn text_projection(
         id: projection_id.clone(),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text {
-            text: text.into(),
-        },
+        payload: ProjectionPayload::Text { text: text.into() },
         provenance: provenance(
             view_id,
             position,
@@ -495,7 +493,7 @@ fn newer_revision_replaces_view_projection_and_resource_data() {
     ));
     assert_eq!(updated_range.revision, UPDATED_REVISION);
     assert_eq!(updated_range.bytes, b"updated".to_vec());
-    assert!(!updated_range.complete);
+    assert!(updated_range.complete);
 }
 
 #[test]

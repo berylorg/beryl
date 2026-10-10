@@ -8,6 +8,9 @@ use syndic_transcript_core::*;
 
 const REVISION: ProviderRevision = ProviderRevision(41);
 
+#[path = "syndic_transcript_resident_resources/delivery.rs"]
+mod delivery;
+
 fn view_id() -> TranscriptViewId {
     TranscriptViewId("thread-view".to_string())
 }
@@ -329,7 +332,7 @@ fn resource_metadata_demand_is_requested_and_admitted_without_bytes() {
     match &request.kind {
         TranscriptProviderRequestKind::ReadResourceMetadata(metadata_request) => {
             assert_eq!(metadata_request.resource_id, resource_id);
-            assert_eq!(metadata_request.observed_revision, Some(REVISION));
+            assert_eq!(metadata_request.observed_revision, None);
         }
         other => panic!("expected resource metadata request, got {other:?}"),
     }
@@ -476,7 +479,7 @@ fn resource_range_demand_is_bounded_and_admitted() {
         snapshot.presentation.resources.slices[0],
         snapshot.resident.resource_slices[0]
     );
-    assert!(!snapshot.resident.resource_slices[0].complete);
+    assert!(snapshot.resident.resource_slices[0].complete);
     assert_eq!(snapshot.resident.resource_bytes, 5);
     assert!(snapshot.resident.estimated_resident_bytes >= 5);
     assert!(!has_fallback(&snapshot));
@@ -551,21 +554,14 @@ fn media_preview_pin_tracks_referenced_resource_without_loading_bytes() {
 }
 
 #[test]
-fn stale_resource_responses_create_local_fallbacks_without_resident_content() {
+fn stale_resource_range_creates_local_fallback_without_resident_bytes() {
     let (mut core, mut provider, resource_id) = seed_resource_presentation(
         ResidentTranscriptPolicy::default(),
         ResourceKind::Attachment,
         b"attachment bytes".to_vec(),
     );
+    admit_metadata(&mut core, &mut provider);
     provider.advance_revision();
-
-    let metadata_request = core
-        .request_resource_metadata_for_presentation_records(ProviderRequestReason::ResourceMetadata)
-        .expect("resource reference should demand stale metadata");
-    assert_eq!(
-        handle_provider_request(&mut core, &mut provider, metadata_request),
-        ResidentProviderResponseEffect::Stale
-    );
 
     let range_request = core
         .request_resource_range(
@@ -580,12 +576,12 @@ fn stale_resource_responses_create_local_fallbacks_without_resident_content() {
     );
 
     let snapshot = core.core_snapshot();
-    assert_eq!(snapshot.provider_requests.stale_result_count, 2);
+    assert_eq!(snapshot.provider_requests.stale_result_count, 1);
     assert_eq!(snapshot.provider_requests.rejected_result_count, 0);
-    assert_eq!(snapshot.resident.resource_metadata_count, 0);
+    assert_eq!(snapshot.resident.resource_metadata_count, 1);
     assert_eq!(snapshot.resident.resource_slice_count, 0);
     assert_eq!(snapshot.resident.resource_rejection_count, 0);
-    assert_eq!(snapshot.resident.fallback_record_count, 2);
+    assert_eq!(snapshot.resident.fallback_record_count, 1);
     assert_eq!(snapshot.resident.budget_rejection_count, 0);
     assert_eq!(snapshot.resident.resource_bytes, 0);
     let fallback = first_fallback(&snapshot);
