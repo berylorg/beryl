@@ -98,21 +98,39 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 753: Mount The Measured Resident Transcript Viewport (finished)
+# Phase 754: Qualify Resident Transcript Demand Delivery (finished)
 
-Accepted the bounded measured viewport and coherent attachment/refresh/setup/recovery publication
-under the Operator-approved correction. Exact input, natural layout, multi-frame preparation,
-clamps, environment invalidation and disposal pass App compilation, 84 combined nextest cases,
-33 focused panel/provider/recovery cases, native ordinary-shell viewport and claim recovery checks,
-and independent semantic review. [Durable acceptance](audits/transcript-mounting-readiness.md#measured-viewport-acceptance)
-preserves evidence and limits; full Checkpoint 4 and diagnostic-child readiness remain open.
+Qualified the actual host/panel/provider consumer against current authority. Production emits but
+does not consume adjacent/resource demand; existing attachment and resident request bookkeeping
+does not establish asynchronous demand custody. Source-backed review found adjacent delivery ready
+for implementation under existing contracts and separated resource backing qualification.
+[Readiness and acceptance boundary](audits/transcript-mounting-readiness.md#resident-demand-delivery-readiness)
+records identity, cancellation/join, coherent publication and obsolete-release requirements.
+Independent semantic review accepted the readiness and boundaries without blocking findings. No
+runtime code changed or tests rerun; measured viewport acceptance remains the prior foundation.
 
-# Phase 754: Qualify Resident Transcript Demand Delivery (pending)
+# Phase 755: Mount Exact Adjacent Transcript Demand Delivery (pending)
 
-Use the accepted measured viewport and the presentation-system contracts to qualify the next
-production consumer of adjacent-page and resource demand. Identify exact asynchronous request,
-response, activation/provider generation and range custody, cancellation/join and obsolete release
-at the actual host/panel consumer. Resolve any missing authority before implementation. Preserve
-resident-edge clamping and the absence of alternate history loading. Record a source-backed readiness
-outcome and derive one bounded implementation acceptance boundary; resource rendering, Markdown,
-nested widgets, focus pins and live suffixes retain their separate mounting gates.
+Connect the ordinary selected panel's measured demand to host-owned residency and bounded Syndic
+page/projection workers through the selected provider. Follow the
+[qualified boundary](audits/transcript-mounting-readiness.md#adjacent-delivery-acceptance-boundary)
+and normative presentation-system contracts. Carry exact host/activation, Home/service, selected
+authority, logical range and fresh request identity through dispatch, response and measured
+publication. Coalesce current observations under existing residency limits; reject superseded
+results and release all returned state. Cancel and join on demand removal, provider retirement,
+selection replacement, recovery and window close. Release obsolete records through stable identity
+while preserving current measured anchor, visible content and existing pins. Keep resident-edge
+clamping until a coherent measured extension is ready; use no alternate history loader.
+
+Accept both directions beyond the initial seed, exact fractional input and anchor continuity,
+terminal edges, capacity refusal, repeated demand, immutable prior snapshots and all stale/disposal
+paths through focused core/provider/GPUI tests, App compilation, native ordinary-shell scrolling
+across multiple seeds and independent semantic review. Resource rendering, Markdown, nested
+widgets, focus pins and live suffixes remain separate gates.
+
+# Phase 756: Qualify Transcript Resource Demand Consumers (pending)
+
+Qualify post-publication resource metadata and bounded range delivery at the selected host/panel.
+Prove exact resource-relative extents, backing/revision identity, text continuation and non-text
+asset ownership before deriving one implementation boundary. Preserve stable local failure and
+resource budgets without gating selected-thread publication; retain separate rendering gates.

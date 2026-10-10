@@ -189,3 +189,85 @@ pixel capture. Native input/resize evidence and actual GPUI font/content/retirem
 together qualify this scoped viewport boundary. The full Checkpoint 4 transcript, resource/adjacent
 delivery, Markdown, nested widgets, focus pins, live suffixes and diagnostic-child readiness remain
 open. This acceptance supplies their geometry foundation, not their implementation.
+
+## Resident Demand Delivery Readiness
+
+Reviewed on 2026-10-10 for phase 754 against the presentation system's residency, asynchronous
+identity and disposal contracts, the transcript feature's resident-edge clamp and post-publication
+resource behavior, the App worker boundary and the bounded-resource system. This is source-backed
+qualification; it supplies no new runtime acceptance evidence.
+
+Independent semantic review accepted the source inventory and adjacent implementation boundary
+without blocking findings. No source changes or runtime checks were performed for this review.
+
+The production entry is the selected shell's `SyndicTranscriptPanel` and its
+`SyndicTranscriptHost`, with the selected `TranscriptProviderReader` supplying Syndic-only reads.
+The measured viewport is accepted, but demand delivery is absent:
+
+- `shell/syndic_transcript/host.rs::accept_measured_frame` commits measured facts and obsolete
+  intervals. `panel.rs::report_nested_resource_demands` emits bounded resource requests for
+  realized references. `demand.rs::DemandFactSink` retains at most 128 facts and drops the oldest
+  on overflow. These facts are observations, not durable request custody.
+- `core.rs::push_demand_fact` updates visible/overscan ranges and pins, but adjacent and resource
+  facts perform no load. A scoped search of App production source finds only the core and host
+  definitions of `drain_demand_facts`; no production consumer drains them. The host exposes no
+  production dispatch owner for these observations.
+- `transcript_provider.rs::prepare_attachment` owns one pending reservation, exact weak host,
+  activation/request identity, Home/service generation, cancellation checks and observed-coherent
+  publication. `source.rs::read_bounded_activation` reads at most 64 records and 65,536 bytes
+  around initial placement. It returns exact view positions and edge flags, but both cursor fields
+  are absent. Resource references validate durable metadata without admitting that metadata or
+  resource bytes into the resident resource snapshot. Repeating attachment preparation is not
+  an adjacent-demand delivery protocol.
+- `provider.rs` requests and responses carry a local request id plus operation payload.
+  `core.rs::ProviderRequestRecord` adds a resident generation; `finish_current_provider_response`
+  checks that generation. Together these do not establish the full asynchronous host, activation,
+  selected authority, service and range custody required by the normative system. Local request
+  counters begin again in an empty core, so request-id equality alone cannot qualify a completion.
+- `core.rs::release_obsolete_resident_data` can release unprotected records, projections and
+  unreferenced resources while retaining protected identities. No production source invokes it.
+  The next consumer must translate index observations to stable identities before resident edits
+  and rebase the measured window after release; stored indices cannot authorize later eviction.
+- `TranscriptProviderReader::retire` closes admission and reports whether its pending reservation
+  has settled. `running_threads.rs::retire_source` also waits for retained workers. These existing
+  attachment gates are reusable; they do not yet own cancellation, response-sink closure or join
+  for adjacent/resource workers. `host.rs::retire` replaces resident state with an empty host.
+  A new asynchronous owner must settle work before that terminal disposal, and recovery must keep
+  only the already accepted inert coherent snapshot until replacement publication.
+
+The normative architecture already decides the required identity, ownership, cancellation,
+rejection, release and publication behavior. No new history mode, resource governor or product
+decision is needed for adjacent delivery. Missing production mechanisms are implementation work,
+not missing authority. The next bounded acceptance is ordinary selected-view adjacent-page
+delivery through the host residency boundary, including its asynchronous custody and obsolete
+release. It must use exact Syndic view generation/positions, preserve the current measured anchor,
+clamp while pending and publish only after the replacement resident window is measured.
+
+Resource delivery remains a separate consumer qualification. Syndic's
+`read/range.rs::resource_text_range` provides bounded resource-relative text ranges with exact
+continuation and explicit rejection of non-text backing; it is not a general media range source.
+The panel's metadata-free preview default cannot prove a valid extent or backing. Qualify metadata
+before dispatch, resource-relative offsets and revisions, text continuation, and the owning asset
+route for non-text resources before scheduling resource delivery. Stable unsupported/unavailable
+states remain permitted by the feature contract. Resource preparation must follow selected-view
+publication and must not strengthen its readiness gate.
+
+### Adjacent Delivery Acceptance Boundary
+
+Implement one host-owned current-demand owner, bounded by the existing residency policy, with
+bounded Syndic page/projection reads off the GUI thread. Give each dispatch exact host lifetime,
+activation, Home/provider service, selected transcript authority, logical range and fresh request
+identity. A response may publish only while that complete demand remains outstanding. Coalesce
+replaceable observations from the current measured snapshot; dropped queue entries cannot leave
+obsolete loads or pins permanently alive. Preserve current visible content, anchor and existing
+selection/menu pins during obsolete release. Frame preparation and final publication must reject
+any generation, range or environment change discovered while the response is pending.
+
+Verify both leading and trailing extension beyond the initial seed, exact fractional scrolling
+and detached-anchor continuity across prepend/release, terminal edges, repeated/coalesced demand,
+capacity rejection and immutable prior snapshots. Exercise late responses after range supersession,
+same-view authority replacement, thread switch, provider retirement, recovery and window close;
+prove cancellation/join, returned-buffer release and no resurrected demand. Use focused core,
+provider and GPUI tests, App compilation, native ordinary-shell scrolling across more than one seed,
+and independent semantic review of the complete mounted boundary. Preserve separate gates for
+resources, Markdown, nested widgets, focus pins, live suffixes and diagnostic-child readiness.
