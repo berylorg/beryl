@@ -98,22 +98,33 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 751: Share Immutable Resident Transcript Snapshots (finished)
+# Phase 752: Qualify Realized Transcript Mounting Readiness (finished)
 
-Resident presentation records, resource metadata and range descriptors now share bounded immutable
-batches through the existing host/panel snapshot boundary. Owner mutations preserve previous
-snapshots; clearing drops ownership without copying discarded records. Author semantic review and
-117/117 cases across twelve explicit transcript integration targets passed in run
-`5bd6271a-420b-4ab2-ae66-808c594ee6a4`; default App check passed. Allocation identity, viewport-only
-sharing, generation detachment, obsolete release and final-reference disposal are qualified.
-Provider admission policy, full transcript mounting, nested widgets and live suffixes remain separate.
+[Readiness review](audits/transcript-mounting-readiness.md) identifies the production attachment,
+refresh, panel and frame consumers, their remaining contract gaps, acceptance seams and native
+evidence. Source inspection and author semantic review qualify the next measured viewport boundary;
+no target-authority gap was found for that slice. Prior snapshot evidence is reused only for
+unchanged ownership and disposal. No production behavior or full Checkpoint 4 mounting is accepted.
 
-# Phase 752: Qualify Realized Transcript Mounting Readiness (pending)
+# Phase 753: Mount The Measured Resident Transcript Viewport (pending)
 
-Inspect the existing production panel, activation, provider and frame path against the
-[transcript feature](features/transcript/design.md), its GUI contract and the
-[presentation system](systems/transcript-presentation/design.md) supplements. Produce one bounded
-readiness record identifying current production consumers, remaining contract gaps and the next
-observable mounting boundary, with source-backed acceptance seams and required native evidence.
-Resolve any material design gap in its owning authority before authorizing production changes;
-do not accept the prototype, immutable snapshot work or compile checks as full Checkpoint 4 mounting.
+Implement the next observable boundary in the [readiness record](audits/transcript-mounting-readiness.md#next-observable-boundary)
+through the production transcript panel and host, under the transcript feature, widget and
+presentation-system contracts. Replace fixed row extents with bounded natural-content measurement
+and realized-frame feedback. Key and invalidate observations by current host/view, record/revision
+and measurement environment; preserve semantic anchors across width, font, theme, content and
+resource-shell changes. Bound measurement and element state to realized content plus permitted
+overscan, rejecting stale results and disposing obsolete state on replacement and close.
+
+Connect ordinary wheel, touchpad and keyboard manual input to exact pixel movement through the
+host, detaching tail-following before demand and clamping at coherent resident edges. Publish initial
+content and measured tail placement together; no later activation scroll correction. Close affected
+selection/menu/media geometry when it becomes invalid. Retain shared immutable snapshot ownership.
+Resource/adjacent-page delivery, Markdown, nested widgets, focus pins and live suffixes remain
+separate mounting outcomes; leave full Checkpoint 4 and diagnostic-child readiness open.
+
+Extend focused frame and GPUI panel cases for variable and fractional geometry, real input routing,
+revision/environment invalidation, detached anchors, first-frame placement, clamps and disposal.
+Require App compilation, proportionate combined nextest checks, ordinary native Windows shell
+qualification and independent semantic review of the complete changed viewport boundary. Follow the
+readiness record's native evidence requirements and best-effort minimized launch policy.
