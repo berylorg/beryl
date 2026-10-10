@@ -98,32 +98,19 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 760: Specify Resource Structure Persistence (finished)
+# Phase 761: Implement Indexed Transcript Resource Queries (finished)
 
-Independent review accepted the [persistence specification](audits/transcript-mounting-readiness.md#resource-structure-persistence-qualification),
-including exact codecs, resumable passes, bounded indexed lookup and atomic publication/reconciliation.
-Target family inventory and strict home admission were reconciled; inventory, registration size,
-links, whitespace and index checks passed. No production implementation or runtime acceptance is
-claimed. The storage/provider/residency capability is ready for implementation.
+Independent storage and delivery reviews accepted bounded Code/Table companion construction,
+exact frozen range/display/anchor queries, the ten-family V7 declaration, selected-history transport,
+residency and native measured Pending-to-Ready publication. Successor anchors preserve exact source
+positions; competing-frontier refusals refresh only after proven peer progress, preserving the
+original command outcome. The [refusal lesson](failures/indexed-resource-pending-refusal.md) is retained.
 
-# Phase 761: Implement Indexed Transcript Resource Queries (pending)
-
-Implement the accepted [query contract](systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
-and [persisted bytes](../crates/syndic-storage/doc/design-schema-v7.md#resource-structure-companion-canonical-encoding)
-through Syndic typed construction and reads, existing projection-work scheduling, selected-history
-provider transport and transcript residency. Update the implemented exact declaration with the ten
-companion families only when their codecs and behavior are complete; preserve the four deferred
-terminal-repair families and finalized resources. Accept a late Code line/fragment or narrow Table
-rectangle and source anchor through the actual provider/residency consumer, including inner demand
-changes without outer scrolling, exact root/source transport, stale completion, release and charges.
-
-Verify canonical byte fixtures/rejections, header/delimiter/empty/missing/surplus semantics, UTF-8
-boundary joins, long-line/cell fallback and checked overflow. Instrument late seeks and bounded
-source/output passes; interrupt every durable progress/publication boundary, exercise capacity
-refusal and acknowledgement-loss reconciliation, and prove no mixed or partial current companion.
-Test matching empty-companion home admission, exact declaration mismatch rejection and routine-open
-no-scan behavior. Independently review the complete storage/provider/residency capability before
-acceptance. Mounted widget interaction and measured geometry remain separate consumers.
+Acceptance includes 129 storage structure tests, 35 resident/release/activation tests, all 68
+provider/panel tests (`406be4a5-52df-46cf-931f-d2199d6a3a82`, 47.792 seconds), and the minimized
+native measured test (`030e5b37-f542-451b-9610-1609dbec103b`, 4.886 seconds). Non-test app check
+(20.55 seconds), formatting and scoped whitespace checks passed. Mounted Code/Table widgets and
+their interaction/geometry remain the following acceptance boundaries.
 
 # Phase 762: Mount The Indexed Transcript Code Panel (pending)
 

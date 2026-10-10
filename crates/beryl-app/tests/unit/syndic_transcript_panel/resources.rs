@@ -1,5 +1,190 @@
 use super::*;
 
+#[gpui::test]
+fn refreshed_indexed_resources_share_the_queue_without_outer_scrolling(cx: &mut TestAppContext) {
+    use crate::transcript_provider::{
+        IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+        ResourceDeliveryResponse,
+    };
+    use syndic_storage::indexed_resource as index;
+    let window =
+        mounted_panel_with_initial_layout(cx, resource_seed(3, ResourceKind::Code), 640.0, 0.0);
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let (owners, visible, activation) = panel.update(cx, |panel, _| {
+        let owners = panel.host.resource_demands();
+        assert_eq!(owners.len(), 3);
+        for owner in &owners {
+            assert!(panel.set_indexed_resource_demand(
+                owner,
+                Some(IndexedResourceDemand {
+                    revision: beryl_model::ProjectionRevision::new(7).unwrap(),
+                    root: None,
+                    query: IndexedResourceQuery::Display {
+                        request: index::DisplayRequest {
+                            target: index::Target::Code(0),
+                            offset: 0,
+                        },
+                        cursor: None,
+                        bytes: 8192,
+                    },
+                })
+            ));
+        }
+        let snapshot = panel.snapshot();
+        (
+            owners,
+            snapshot.visible_range.clone(),
+            snapshot.activation_revision,
+        )
+    });
+    let mut served = Vec::new();
+    for _ in 0..6 {
+        let demand = panel.update(cx, |panel, _| {
+            let demand = panel.resource_demand().unwrap();
+            let pending = || {
+                ResourceDeliveryResponse::Indexed(std::sync::Arc::new(IndexedResourceResponse {
+                    root: None,
+                    value: IndexedResourceValue::Pending,
+                    encoded_bytes: 1,
+                }))
+            };
+            assert!(panel.stage_resource_delivery(&demand, pending(), None));
+            panel.discard_staged_activation();
+            assert_eq!(panel.resource_demand(), Some(demand.clone()));
+            assert!(panel.stage_resource_delivery(&demand, pending(), None));
+            demand
+        });
+        draw_frames(cx, window, 5);
+        window
+            .update(cx, |root, window, cx| {
+                root.panel.update(cx, |panel, _| {
+                    assert!(panel.measurement_current(window));
+                    panel.publish_resource_candidate(&demand);
+                    assert!(panel.refresh_pending_indexed_resource(&demand));
+                    assert_ne!(panel.resource_demand().unwrap().record_id, demand.record_id);
+                    let snapshot = panel.snapshot();
+                    assert_eq!(snapshot.visible_range, visible);
+                    assert_eq!(snapshot.activation_revision, activation);
+                });
+            })
+            .unwrap();
+        served.push(demand.record_id);
+    }
+    assert_eq!(&served[..3], &served[3..]);
+    for owner in owners {
+        assert_eq!(
+            served.iter().filter(|id| **id == owner.record_id).count(),
+            2
+        );
+    }
+    panel.update(cx, |panel, _| {
+        let first = panel.resource_demand().unwrap();
+        panel.reject_resource_demand(first.clone());
+        let mut inner = first.indexed.clone().unwrap();
+        inner.root = Some([73; 32]);
+        assert!(panel.set_indexed_resource_demand(&first, Some(inner)));
+        assert_ne!(panel.resource_demand().unwrap().record_id, first.record_id);
+        panel
+            .resource_queue_position
+            .as_mut()
+            .unwrap()
+            .activation_revision += 1;
+        assert_eq!(
+            panel.resource_demand().unwrap().record_id,
+            panel.host.resource_demands()[0].record_id
+        );
+        panel.retire();
+        assert!(panel.resource_queue_position.is_none());
+        assert!(panel.resource_demand().is_none());
+    });
+}
+
+#[gpui::test]
+fn indexed_inner_demand_stages_pending_and_rejects_completion_after_inner_replacement(
+    cx: &mut TestAppContext,
+) {
+    use crate::transcript_provider::{
+        IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+        ResourceDeliveryResponse,
+    };
+    use syndic_storage::indexed_resource as index;
+    let window = mounted_panel(cx, resource_seed(1, ResourceKind::Code));
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let raw = panel.read_with(cx, |panel, _| panel.resource_demand().unwrap());
+    let mut inner = IndexedResourceDemand {
+        revision: beryl_model::ProjectionRevision::new(7).unwrap(),
+        root: None,
+        query: IndexedResourceQuery::Display {
+            request: index::DisplayRequest {
+                target: index::Target::Code(4096),
+                offset: 0,
+            },
+            cursor: None,
+            bytes: 65_536,
+        },
+    };
+    let pending = || {
+        ResourceDeliveryResponse::Indexed(std::sync::Arc::new(IndexedResourceResponse {
+            root: None,
+            value: IndexedResourceValue::Pending,
+            encoded_bytes: 1,
+        }))
+    };
+    let indexed = panel.update(cx, |panel, _| {
+        assert!(panel.set_indexed_resource_demand(&raw, Some(inner.clone())));
+        let demand = panel.resource_demand().unwrap();
+        assert!(panel.stage_resource_delivery(&demand, pending(), None));
+        assert!(!panel.refresh_pending_indexed_resource(&demand));
+        assert!(
+            panel
+                .host
+                .indexed_resource_response(&demand.resource_id)
+                .is_none()
+        );
+        demand
+    });
+    inner.root = Some([12; 32]);
+    panel.update(cx, |panel, _| {
+        assert!(panel.set_indexed_resource_demand(&indexed, Some(inner)));
+        assert!(!panel.resource_candidate_current(&indexed));
+        assert!(!panel.stage_resource_delivery(&indexed, pending(), None));
+        let current = panel.resource_demand().unwrap();
+        assert!(panel.stage_resource_delivery(&current, pending(), None));
+    });
+    draw_frames(cx, window, 5);
+    window
+        .update(cx, |root, window, cx| {
+            root.panel.update(cx, |panel, _| {
+                let demand = panel.resource_demand().unwrap();
+                assert!(panel.measurement_current(window));
+                panel.publish_resource_candidate(&demand);
+                assert!(matches!(
+                    panel
+                        .host
+                        .indexed_resource_response(&demand.resource_id)
+                        .unwrap()
+                        .value,
+                    IndexedResourceValue::Pending
+                ));
+                assert!(panel.resource_demand().is_none());
+                assert!(!panel.refresh_pending_indexed_resource(&indexed));
+                assert!(panel.refresh_pending_indexed_resource(&demand));
+                assert_eq!(panel.resource_demand().unwrap().indexed, demand.indexed);
+                assert!(!panel.refresh_pending_indexed_resource(&demand));
+                assert!(panel.set_indexed_resource_demand(&demand, None));
+                assert!(
+                    panel
+                        .host
+                        .indexed_resource_response(&demand.resource_id)
+                        .is_none()
+                );
+            });
+        })
+        .unwrap();
+}
+
 fn resource_seed(count: u64, kind: ResourceKind) -> PreparedTranscriptActivation {
     let mut activation = seed(count);
     let Some(TranscriptProviderResponseKind::ProjectionRecords(projections)) =

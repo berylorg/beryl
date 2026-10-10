@@ -68,6 +68,10 @@ pub(in crate::cas_projection) use resolution_admission::admit_resolution;
 pub use resolution_admission::{DiscussionResolutionOutcome, ScopedDiscussionResolutionOutcome};
 mod compaction_work;
 mod construction;
+mod resource_construction;
+pub(crate) use resource_construction::{
+    ResourceConstructionAuthority, ResourceConstructionError, ResourceConstructionStep,
+};
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;

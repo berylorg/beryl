@@ -1,14 +1,17 @@
 use super::*;
-use crate::transcript_provider::{PreparedTranscriptResource, TranscriptResourceRequest};
+use crate::app_services::{PreparedRunningResource, RunningResourceConstruction};
+use crate::transcript_provider::{PreparedResourceDelivery, TranscriptResourceRequest};
 
 pub(in crate::main_window::shell::host::running_threads) struct PendingMeasuredResource {
     panel: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     provider: crate::transcript_provider::TranscriptProviderReader,
-    prepared: PreparedTranscriptResource,
+    prepared: PreparedResourceDelivery,
     reader: PublishedRunningThreadsReader,
     selection: crate::main_window::MainWindowComposerSelectionIdentity,
     request: TranscriptResourceRequest,
     cancel: Arc<AtomicBool>,
+    retry_pending: bool,
+    _construction: Option<RunningResourceConstruction>,
 }
 
 impl PendingMeasuredResource {
@@ -89,13 +92,16 @@ impl MainWindowShellRoot {
             }
             if pending
                 .provider
-                .publish_resource_if_current(
+                .publish_resource_delivery_if_current(
                     pending.prepared,
                     &pending.request,
                     &pending.cancel,
                     |_| {
                         panel.update(cx, |panel, panel_cx| {
                             panel.publish_resource_candidate(demand);
+                            if pending.retry_pending {
+                                panel.refresh_pending_indexed_resource(demand);
+                            }
                             panel_cx.notify();
                         });
                     },
@@ -160,6 +166,7 @@ impl MainWindowShellRoot {
         let expected = request.clone();
         let cancelled = cancel.clone();
         let worker_provider = provider.clone();
+        let worker_reader = reader.clone();
         let output_release = self
             .running_threads
             .workers
@@ -168,7 +175,11 @@ impl MainWindowShellRoot {
             .running_threads
             .workers
             .track(move || RunningReadOutput {
-                result: worker_provider.prepare_resource(expected, &cancelled),
+                result: worker_reader.prepare_running_resource(
+                    &worker_provider,
+                    expected,
+                    &cancelled,
+                ),
                 _release: output_release,
             });
         let job = cx.background_executor().spawn(async move { work.run() });
@@ -201,7 +212,11 @@ impl MainWindowShellRoot {
                     return;
                 }
                 match result {
-                    Ok(prepared) => {
+                    Ok(PreparedRunningResource {
+                        prepared,
+                        retry_pending,
+                        construction,
+                    }) => {
                         let mount = root
                             .controller
                             .as_ref()
@@ -213,9 +228,9 @@ impl MainWindowShellRoot {
                             cx,
                         );
                         if panel.update(cx, |panel, panel_cx| {
-                            let staged = panel.stage_resource_response(
+                            let staged = panel.stage_resource_delivery(
                                 &demand,
-                                prepared.response().clone(),
+                                prepared.response(),
                                 Some(allocation),
                             );
                             if staged {
@@ -232,6 +247,8 @@ impl MainWindowShellRoot {
                                     selection,
                                     request,
                                     cancel,
+                                    retry_pending,
+                                    _construction: construction,
                                 });
                             cx.notify();
                         } else {

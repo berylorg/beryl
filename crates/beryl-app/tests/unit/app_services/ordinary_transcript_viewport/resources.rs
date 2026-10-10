@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "indexed_resources.rs"]
+mod indexed_resources;
+
 #[test]
 fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
     run_mounted_with_prepared_home_retained(

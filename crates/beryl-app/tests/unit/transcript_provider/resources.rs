@@ -10,6 +10,15 @@ use syndic_storage::{
     ResourceBacking, ResourceMetadataRecord, ResourceOrdinal, ResourceStructure,
 };
 
+#[path = "resources/construction.rs"]
+mod construction;
+#[path = "resources/construction_delivery.rs"]
+mod construction_delivery;
+#[path = "resources/indexed.rs"]
+mod indexed;
+#[path = "resources/residency.rs"]
+mod residency;
+
 impl Fixture {
     fn seed_resource(
         &self,
@@ -19,7 +28,27 @@ impl Fixture {
         preview: Option<std::ops::Range<u64>>,
         revision: u64,
     ) -> ResourceMetadataRecord {
+        self.seed_structured_resource(
+            text,
+            start,
+            end,
+            preview,
+            revision,
+            ResourceStructure::code(None, 1).unwrap(),
+        )
+    }
+
+    fn seed_structured_resource(
+        &self,
+        text: &str,
+        start: u64,
+        end: u64,
+        preview: Option<std::ops::Range<u64>>,
+        revision: u64,
+        structure: ResourceStructure,
+    ) -> ResourceMetadataRecord {
         self.seed_projection("resource owner", 1);
+        let table = matches!(structure, ResourceStructure::Table { .. });
         let content = PreparedContent::composer(
             &ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap(),
         )
@@ -34,7 +63,11 @@ impl Fixture {
             projection,
             item,
             ResourceOrdinal::new(1).unwrap(),
-            syndic_storage::ResourceKind::Code,
+            if table {
+                syndic_storage::ResourceKind::Table
+            } else {
+                syndic_storage::ResourceKind::Code
+            },
             "text/plain",
             ResourceBacking::TextRange {
                 source: ProjectionTextSource::composer(reference),
@@ -42,7 +75,7 @@ impl Fixture {
             },
             [22; 32],
             preview.map(|range| ProjectionSourceRange::new(range.start, range.end).unwrap()),
-            ResourceStructure::code(None, 1).unwrap(),
+            structure,
         )
         .unwrap();
         let mut batch = FixtureBatch::new();
@@ -63,10 +96,18 @@ impl Fixture {
                 content.sealed_manifest(ContentRevision::new(1).unwrap()),
             ))
             .unwrap();
+        let mut encoded_start = 0;
         for record in content.chunks() {
             batch
                 .put(FixtureRecord::ContentChunk(record.clone()))
                 .unwrap();
+            batch
+                .put(FixtureRecord::ContentByteSpan(
+                    syndic_storage::ContentByteSpanRecord::for_chunk(record, encoded_start)
+                        .unwrap(),
+                ))
+                .unwrap();
+            encoded_start += record.bytes().len() as u64;
         }
         for record in content.text_spans() {
             batch
@@ -87,7 +128,11 @@ impl Fixture {
                 ProjectionOrdinal::new(1).unwrap(),
                 syndic_storage::ProjectionPayload::resource_reference(
                     MarkdownBlockId::from_bytes([16; 32]),
-                    MarkdownBlockKind::FencedCode,
+                    if table {
+                        MarkdownBlockKind::Table
+                    } else {
+                        MarkdownBlockKind::FencedCode
+                    },
                     ProjectionSourceRange::new(start, end).unwrap(),
                     resource,
                     "resource preview",
@@ -127,6 +172,7 @@ impl Fixture {
             attachment,
             source,
             demand: ResourceTranscriptDemand {
+                indexed: None,
                 activation_revision: 1,
                 presentation_revision: 1,
                 view_id: view_id.clone(),

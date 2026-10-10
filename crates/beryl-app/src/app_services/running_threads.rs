@@ -4,6 +4,7 @@ mod claim_recovery;
 mod lineage;
 mod ordinary_selection;
 mod ordinary_selection_recovery;
+mod resource_delivery;
 mod thread_creation_recovery;
 use crate::cas_projection::{
     ProcessWorkError, ProcessWorkPageLimits, ProcessWorkQueryPage, ProcessWorkQueryRevision,
@@ -12,6 +13,7 @@ use crate::cas_projection::{
 use crate::lifecycle_attention::{LifecycleAttentionToken, ProcessLifecycleAttentionPool};
 pub(crate) use claim_recovery::*;
 pub(crate) use ordinary_selection_recovery::*;
+pub(crate) use resource_delivery::{PreparedRunningResource, RunningResourceConstruction};
 use std::sync::Weak;
 pub(crate) use thread_creation_recovery::*;
 
@@ -30,6 +32,7 @@ pub(crate) struct PublishedRunningThreadsReader {
     syndic: SyndicStorage,
     service_generation: crate::cas_projection::ProjectionServiceGeneration,
     observer: beryl_home_store::HomeMutationObserver,
+    resource_construction: crate::cas_projection::ResourceConstructionAuthority,
 }
 
 impl ProcessServiceOwner {
@@ -83,11 +86,26 @@ impl ProcessServiceOwner {
             syndic: graph.syndic().clone(),
             service_generation: graph.cas().service_generation(),
             observer: graph.cas().home_mutation_observer(),
+            resource_construction: graph.cas().resource_construction_authority(),
         })
     }
 }
 
 impl PublishedRunningThreadsReader {
+    pub(crate) fn step_resource_construction(
+        &self,
+        key: syndic_storage::indexed_resource::BuildKey,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<
+        crate::cas_projection::ResourceConstructionStep,
+        crate::cas_projection::ResourceConstructionError,
+    > {
+        if !self.current() {
+            return Err(crate::cas_projection::ResourceConstructionError::Unavailable);
+        }
+        self.resource_construction.step(key, cancelled)
+    }
+
     pub(crate) fn failed_retirement_home(&self) -> &beryl_home_store::HomeStore {
         &self.home
     }
@@ -180,6 +198,7 @@ impl PublishedRunningThreadsReader {
             syndic,
             service_generation: service.service_generation(),
             observer: service.home_mutation_observer(),
+            resource_construction: service.resource_construction_authority(),
         }
     }
 

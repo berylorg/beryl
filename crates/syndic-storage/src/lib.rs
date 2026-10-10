@@ -660,6 +660,8 @@ pub use mutation::ThreadAcquisitionContribution;
 mod native_projection;
 mod pristine_thread;
 mod projection;
+mod resource_structure;
+pub use resource_structure::access as indexed_resource;
 #[cfg(feature = "provider-frame-test-support")]
 pub mod provider_frame_test_support;
 pub(crate) mod provider_item;
@@ -668,6 +670,7 @@ mod read;
 mod record;
 mod recovery;
 mod selected_path;
+mod table_syntax;
 mod terminal_history;
 #[cfg(feature = "test-faults")]
 pub mod test_faults;

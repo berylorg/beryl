@@ -63,6 +63,7 @@ pub(crate) struct ResidentTranscriptCore {
     active_quote_target: Option<ResidentTranscriptQuoteTarget>,
     active_context_menu_target: Option<ResidentTranscriptContextMenuTarget>,
     active_media_action_target: Option<ResidentTranscriptMediaActionTarget>,
+    indexed_resources: resource_delivery::IndexedResidency,
 }
 
 impl Default for ResidentTranscriptCore {
@@ -147,6 +148,7 @@ impl ResidentTranscriptCore {
             active_quote_target: None,
             active_context_menu_target: None,
             active_media_action_target: None,
+            indexed_resources: Default::default(),
         }
     }
 
@@ -944,6 +946,7 @@ impl ResidentTranscriptCore {
         }
         self.prune_stale_pins();
         self.refresh_resident_record_counts();
+        self.reconcile_indexed_resources(&self.protected_presentation_record_ids());
         self.refresh_budget_accounting();
 
         self.record_release_decision(ResidentReleaseDecision {
@@ -2488,7 +2491,9 @@ impl ResidentTranscriptCore {
     }
 
     fn trim_resource_slices_to_policy(&mut self) {
-        while resource_slice_bytes(&self.resident.resource_slices) > self.policy.max_resource_bytes
+        while resource_slice_bytes(&self.resident.resource_slices)
+            .saturating_add(self.indexed_resources.encoded_bytes())
+            > self.policy.max_resource_bytes
             && !self.resident.resource_slices.is_empty()
         {
             Arc::make_mut(&mut self.resident.resource_slices).remove(0);
@@ -2503,6 +2508,7 @@ impl ResidentTranscriptCore {
     }
 
     fn clear_resource_residency(&mut self) {
+        self.indexed_resources = Default::default();
         self.clear_active_media_action_target_state();
         self.resident.resource_metadata = Arc::default();
         self.resident.resource_slices = Arc::default();
@@ -2576,7 +2582,10 @@ impl ResidentTranscriptCore {
             projection_estimated_bytes(&self.resident.projection_records);
         self.resident.presentation_bytes = presentation_estimated_bytes(&self.presentation);
         self.resident.resource_slice_bytes = resource_slice_bytes(&self.resident.resource_slices);
-        self.resident.resource_bytes = self.resident.resource_slice_bytes;
+        self.resident.resource_bytes = self
+            .resident
+            .resource_slice_bytes
+            .saturating_add(self.indexed_resources.encoded_bytes());
         self.resident.geometry_bytes = self
             .presentation
             .records
@@ -2605,7 +2614,7 @@ impl ResidentTranscriptCore {
             .resident
             .projection_bytes
             .saturating_add(self.resident.presentation_bytes)
-            .saturating_add(self.resident.resource_slice_bytes)
+            .saturating_add(self.resident.resource_bytes)
             .saturating_add(self.resident.decoded_or_uploaded_media_bytes)
             .saturating_add(self.resident.geometry_bytes)
             .saturating_add(self.resident.pin_bytes);

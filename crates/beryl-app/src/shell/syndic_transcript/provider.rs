@@ -6,6 +6,13 @@
 
 use std::ops::Range;
 
+#[path = "provider/indexed.rs"]
+mod indexed;
+pub(crate) use indexed::{
+    IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+    ResourceDeliveryResponse,
+};
+
 pub(crate) type TranscriptProviderResult =
     Result<TranscriptProviderResponse, TranscriptProviderError>;
 

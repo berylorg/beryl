@@ -112,43 +112,11 @@ fn is_thematic_break(source: &str) -> bool {
 }
 
 pub(super) fn table_columns(line: &str) -> Option<u64> {
-    let source = trim_line_ending(line).trim();
-    let source = source.strip_prefix('|').unwrap_or(source);
-    let source = source.strip_suffix('|').unwrap_or(source);
-    let mut separators = 0_u64;
-    let mut escaped = false;
-    let mut in_code = false;
-    for byte in source.bytes() {
-        if escaped {
-            escaped = false;
-        } else if byte == b'\\' {
-            escaped = true;
-        } else if byte == b'`' {
-            in_code = !in_code;
-        } else if byte == b'|' && !in_code {
-            separators = separators.checked_add(1)?;
-        }
-    }
-    (separators != 0).then_some(separators + 1)
+    crate::table_syntax::columns(line)
 }
 
 pub(super) fn table_delimiter_columns(line: &str) -> Option<u64> {
-    let source = trim_line_ending(line).trim();
-    let source = source.strip_prefix('|').unwrap_or(source);
-    let source = source.strip_suffix('|').unwrap_or(source);
-    let cells: Vec<&str> = source.split('|').collect();
-    if cells.is_empty() {
-        return None;
-    }
-    for cell in &cells {
-        let cell = cell.trim();
-        let cell = cell.strip_prefix(':').unwrap_or(cell);
-        let cell = cell.strip_suffix(':').unwrap_or(cell);
-        if cell.len() < 3 || !cell.bytes().all(|byte| byte == b'-') {
-            return None;
-        }
-    }
-    u64::try_from(cells.len()).ok()
+    crate::table_syntax::delimiter_columns(line)
 }
 
 pub(super) fn looks_like_table_row(line: &str) -> bool {

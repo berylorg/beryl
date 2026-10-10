@@ -98,6 +98,65 @@ internal contract.
   rebound by coincidence.
 - Renderer-facing code consumes only prepared bounded app projections. Storage, backend, and
   provider workers return typed bounded values containing no GPUI state.
+- `TranscriptProviderReader` prepares indexed resource ranges, display fragments and source
+  anchors through its existing selected-history resource reservation and mutation observation.
+  Requests qualify the resource revision, optional exact root and complete inner query, including
+  continuation and smaller byte/descriptor allowances. The worker authenticates the published
+  transcript backing, constructs the exact Syndic binding and borrows a frozen Home read for the
+  bounded query. It releases that custody before returning on success or failure. Prepared results
+  retain the original publication observation; publication rechecks the exact request, query,
+  owner and cancellation through the existing resource election boundary. Ready results transport
+  Syndic root/source facts and canonical payload charges without duplicating their binding.
+  Missing companions return an explicit Pending tag (one encoded byte); failures never become
+  empty Ready results.
+  `prepare_resource_delivery` and `publish_resource_delivery_if_current` dispatch raw and indexed
+  requests within the same tracked selected-history worker and publication election. The native
+  resource completion stages either kind through the existing measured resource candidate.
+  Residency holds at most one admitted inner query per resource, bounded by the existing request
+  count policy, and checks the full inner query and current outer owner on admission. Its shared
+  typed payload preserves Syndic facts without reparsing; canonical encoded bytes join raw-slice
+  charges under the resource and per-response budgets. Replacement, disposal, obsolete outer
+  records and activation reset release this state. An admitted Pending response remains explicit
+  and suppresses repeated reads until its exact demand is refreshed. The host/panel
+  `refresh_pending_indexed_resource` operation releases only an admitted Pending result for the
+  exact current demand; Ready results, replaced demands and obsolete owners reject refresh. It
+  restores read demand without changing outer visibility or activation, and the panel defers it
+  while a measured candidate is staged. Construction completion must refresh that demand through
+  the existing projection work owner. The panel rotates eligible raw and indexed reads by stable
+  record identity after measured publication or rejection of the current demand. It retains one
+  queue position qualified by view and activation, without retaining a query or payload. Repeated
+  inner replacement or Pending refresh cannot keep an eligible peer behind that resource;
+  discarded candidates do not consume a turn, obsolete activations ignore the position and
+  retirement releases it.
+- `ProjectionConnectionService::step_resource_construction` admits at most one companion
+  command under the existing master command gate and ordinary projection worker capacity.
+  It observes one exact durable build frontier and releases frozen custody before dispatch;
+  absent builds start, Building frontiers advance with at most 65,536 source bytes and 64
+  descriptors, and terminal frontiers return their explicit status without mutation.
+  A definitive refusal may observe one fresh exact build frontier under the same permit and
+  worker. Only an appeared or strictly advanced Building frontier proves peer progress;
+  the result retains the original refusal. Unchanged or terminal frontiers do not retry.
+  Cancellation before dispatch and exhausted capacity perform no command. The caller retains
+  the original HomeStore command outcome, including reconciliation custody; a terminal build
+  status does not authorize a Ready response, which still requires a fresh authenticated query.
+  Its cloneable resource construction authority shares that exact service gate and worker pool,
+  retains only a weak Home service reference between invocations and upgrades it under the scoped
+  command permit. The published running-threads reader carries this authority for background work
+  and rejects construction when its publication lifetime has retired. Retained authority cannot
+  reopen a closed service or reserve a separate worker budget.
+  The existing tracked selected-history resource worker first authenticates its read. For an
+  indexed Pending response it releases the provider reservation, takes at most one construction
+  step and performs a fresh authenticated read. All selected-history requests for the same
+  resource revision share the deterministic zero-operation build key; finalized history uses
+  this same demand path. Indeterminate commands install their original custody and trigger exact
+  targeted reconciliation before rereading. Prepared output retains the original command outcome
+  or reconciliation failure, handle and resolution until publication or disposal. No construction
+  queue, additional worker, snapshot owner or payload cache is created.
+  After measured publication, an exact Pending demand is refreshed when construction progressed,
+  a bounded refusal check proved peer progress, reconciled to an exact old/new state, or lacked
+  ordinary capacity. Refresh happens after the
+  staged candidate is committed and the resource queue advances, preserving measurement custody
+  and peer fairness. Ready reads perform no construction; refused terminal states do not retry.
 - The package never leaks raw Fjall handles or encodings, backend JSON, CAS history collections,
   dependency custody internals, or storage proof construction across its public surface.
 - Every app-owned queue, worker set, page set, cache, retained projection, in-flight operation, and

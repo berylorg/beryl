@@ -1,0 +1,269 @@
+use super::super::super::provider::{
+    IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+};
+use super::*;
+
+#[derive(Clone, Default)]
+pub(in super::super) struct IndexedResidency {
+    entries: Vec<IndexedEntry>,
+}
+
+impl std::fmt::Debug for IndexedResidency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IndexedResidency")
+            .field("entries", &self.entries.len())
+            .field("encoded_bytes", &self.encoded_bytes())
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct IndexedEntry {
+    demand: ResourceTranscriptDemand,
+    pub(super) inner: IndexedResourceDemand,
+    pub(super) response: Option<Arc<IndexedResourceResponse>>,
+}
+
+impl IndexedResidency {
+    pub(in super::super) fn encoded_bytes(&self) -> usize {
+        self.entries
+            .iter()
+            .filter_map(|entry| entry.response.as_ref())
+            .fold(0usize, |bytes, response| {
+                bytes.saturating_add(response.encoded_bytes)
+            })
+    }
+
+    pub(super) fn demand_for(
+        &self,
+        view: &TranscriptViewId,
+        revision: ProviderRevision,
+        activation: u64,
+        record: &ResidentPresentationRecordId,
+        provenance: &SyndicSourceProvenance,
+    ) -> Option<&IndexedEntry> {
+        self.entries.iter().find(|entry| {
+            entry.demand.view_id == *view
+                && entry.demand.revision == revision
+                && entry.demand.activation_revision == activation
+                && entry.demand.record_id == *record
+                && entry.demand.provenance == *provenance
+        })
+    }
+}
+
+impl ResidentTranscriptCore {
+    pub(crate) fn refresh_pending_indexed_resource(
+        &mut self,
+        demand: &ResourceTranscriptDemand,
+    ) -> bool {
+        if !self.indexed_owner_current(demand) {
+            return false;
+        }
+        let Some(entry) = self.indexed_resources.entries.iter_mut().find(|entry| {
+            entry.demand == *demand
+                && entry
+                    .response
+                    .as_ref()
+                    .is_some_and(|response| matches!(response.value, IndexedResourceValue::Pending))
+        }) else {
+            return false;
+        };
+        entry.response = None;
+        self.refresh_budget_accounting();
+        true
+    }
+
+    pub(crate) fn set_indexed_resource_demand(
+        &mut self,
+        demand: &ResourceTranscriptDemand,
+        inner: Option<IndexedResourceDemand>,
+    ) -> bool {
+        if !self.indexed_owner_current(demand) {
+            return false;
+        }
+        if !self.resource_demands().contains(demand) {
+            // An admitted inner response suppresses its read, but its exact original owner may
+            // still replace or dispose that inner viewport without moving the outer viewport.
+            let current = self
+                .indexed_resources
+                .entries
+                .iter()
+                .any(|entry| entry.demand == *demand);
+            if !current {
+                return false;
+            }
+        }
+        if !matches!(demand.kind, ResourceKind::Code | ResourceKind::Table) {
+            return false;
+        }
+        if inner.is_some()
+            && self.indexed_resources.entries.len() >= self.policy.max_pending_provider_requests
+            && !self
+                .indexed_resources
+                .entries
+                .iter()
+                .any(|entry| entry.demand.resource_id == demand.resource_id)
+        {
+            return false;
+        }
+        self.indexed_resources
+            .entries
+            .retain(|entry| entry.demand.resource_id != demand.resource_id);
+        if let Some(inner) = inner {
+            let mut owner = demand.clone();
+            owner.metadata = None;
+            owner.range = None;
+            owner.indexed = Some(inner.clone());
+            self.indexed_resources.entries.push(IndexedEntry {
+                demand: owner,
+                inner,
+                response: None,
+            });
+        }
+        self.refresh_budget_accounting();
+        true
+    }
+
+    pub(crate) fn indexed_resource_response(
+        &self,
+        resource: &ResourceId,
+    ) -> Option<Arc<IndexedResourceResponse>> {
+        self.indexed_resources
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.demand.resource_id == *resource && self.indexed_owner_current(&entry.demand)
+            })
+            .and_then(|entry| entry.response.clone())
+    }
+
+    pub(crate) fn prepare_indexed_resource_response(
+        &self,
+        demand: &ResourceTranscriptDemand,
+        response: Arc<IndexedResourceResponse>,
+    ) -> Option<Self> {
+        if !self.resource_demands().contains(demand) {
+            return None;
+        }
+        let inner = demand.indexed.as_ref()?;
+        let allowance = match &inner.query {
+            IndexedResourceQuery::Range { bytes, .. }
+            | IndexedResourceQuery::Display { bytes, .. }
+            | IndexedResourceQuery::Anchor { bytes, .. } => *bytes,
+        };
+        if response.encoded_bytes == 0
+            || response.encoded_bytes > allowance.min(65_536)
+            || response.encoded_bytes > self.policy.max_resource_slice_bytes
+        {
+            return None;
+        }
+        match (&inner.query, &response.value) {
+            (_, IndexedResourceValue::Pending)
+                if response.root.is_none() && response.encoded_bytes == 1 => {}
+            (
+                IndexedResourceQuery::Range {
+                    request,
+                    descriptors,
+                    ..
+                },
+                IndexedResourceValue::Range(value),
+            ) => {
+                if !indexed_binding_matches(demand, inner, &response, &value.binding)
+                    || value.cursor.request != *request
+                    || value.items.len() > (*descriptors).min(256)
+                    || response.root.as_ref().is_none_or(|root| {
+                        root.key != value.cursor.build || root.digest != value.cursor.root_digest
+                    })
+                {
+                    return None;
+                }
+            }
+            (
+                IndexedResourceQuery::Display { request, .. },
+                IndexedResourceValue::Display(value),
+            ) => {
+                if !indexed_binding_matches(demand, inner, &response, &value.binding)
+                    || value.cursor.request != *request
+                    || response.root.as_ref().is_none_or(|root| {
+                        root.key != value.cursor.build || root.digest != value.cursor.root
+                    })
+                {
+                    return None;
+                }
+            }
+            (IndexedResourceQuery::Anchor { .. }, IndexedResourceValue::Anchor(value)) => {
+                if !indexed_binding_matches(demand, inner, &response, &value.binding) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+        let mut candidate = self.clone();
+        let entry = candidate
+            .indexed_resources
+            .entries
+            .iter_mut()
+            .find(|entry| {
+                entry.inner == *inner && entry.demand.resource_id == demand.resource_id
+            })?;
+        entry.demand = demand.clone();
+        entry.response = Some(response);
+        candidate.refresh_budget_accounting();
+        if candidate.resident.resource_bytes > candidate.policy.max_resource_bytes {
+            return None;
+        }
+        candidate.bump_resource_presentation();
+        Some(candidate)
+    }
+
+    pub(in super::super) fn reconcile_indexed_resources(
+        &mut self,
+        protected: &[ResidentPresentationRecordId],
+    ) {
+        self.indexed_resources.entries.retain(|entry| {
+            entry.demand.activation_revision == self.presentation.activation_revision
+                && self.resident.view_id.as_ref() == Some(&entry.demand.view_id)
+                && self.resident.provider_revision == Some(entry.demand.revision)
+                && protected.contains(&entry.demand.record_id)
+                && self.presentation.records.iter().any(|record| {
+                    record.id == entry.demand.record_id
+                        && record.provenance.source
+                            == ResidentRecordSource::Syndic(entry.demand.provenance.clone())
+                })
+        });
+    }
+
+    fn indexed_owner_current(&self, demand: &ResourceTranscriptDemand) -> bool {
+        demand.activation_revision == self.presentation.activation_revision
+            && self.resident.view_id.as_ref() == Some(&demand.view_id)
+            && self.resident.provider_revision == Some(demand.revision)
+            && self
+                .protected_presentation_record_ids()
+                .contains(&demand.record_id)
+            && self.presentation.records.iter().any(|record| {
+                record.id == demand.record_id
+                    && record.provenance.source
+                        == ResidentRecordSource::Syndic(demand.provenance.clone())
+                    && matches!(&record.kind, ResidentPresentationRecordKind::ResourceReference {
+                    resource_id, resource_kind, ..
+                } if *resource_id == demand.resource_id && *resource_kind == demand.kind)
+            })
+    }
+}
+
+fn indexed_binding_matches(
+    demand: &ResourceTranscriptDemand,
+    inner: &IndexedResourceDemand,
+    response: &IndexedResourceResponse,
+    binding: &syndic_storage::indexed_resource::Binding,
+) -> bool {
+    response.root.as_ref().is_some_and(|root| {
+        root.key.resource == binding.resource
+            && binding.metadata.revision() == inner.revision
+            && binding.resource.id.to_string() == demand.resource_id.0
+            && demand.provenance.source_range.as_ref()
+                == Some(&(binding.range.start..binding.range.end))
+            && inner.root.is_none_or(|digest| digest == root.digest)
+    })
+}

@@ -7,6 +7,7 @@ use beryl_home_store::{
 };
 use beryl_model::DomainRevision;
 
+use crate::resource_structure::codec as structure;
 use crate::{codec::*, draft_piece::*, error::SyndicValidationError};
 
 const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
@@ -99,8 +100,18 @@ const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<DraftPieceBuildMappingCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<NonIdleGateSourcesCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DiscussionHandoffGatesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::BuildsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::ProgressCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::RootsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::HeadsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::PagesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::CodeLinesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::TableRowsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::TableCellsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::TableColumnsCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<structure::SourceAnchorsCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 89] = [(); V7_FAMILIES.len()];
+const _: [(); 99] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
@@ -227,6 +238,16 @@ impl StorageDomain for SyndicDomain {
         classify!(DraftMarkerAdmissionHeadsCodec);
         classify!(DraftMarkerAdmissionNodesCodec);
         classify!(DraftMarkerAdmissionReceiptsCodec);
+        classify!(structure::BuildsCodec);
+        classify!(structure::ProgressCodec);
+        classify!(structure::RootsCodec);
+        classify!(structure::HeadsCodec);
+        classify!(structure::PagesCodec);
+        classify!(structure::CodeLinesCodec);
+        classify!(structure::TableRowsCodec);
+        classify!(structure::TableCellsCodec);
+        classify!(structure::TableColumnsCodec);
+        classify!(structure::SourceAnchorsCodec);
         Ok(sides.finish())
     }
 }

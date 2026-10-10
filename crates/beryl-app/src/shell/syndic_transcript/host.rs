@@ -128,6 +128,53 @@ impl SyndicTranscriptHost {
         })
     }
 
+    pub(crate) fn refresh_pending_indexed_resource(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+    ) -> bool {
+        self.core.refresh_pending_indexed_resource(demand)
+    }
+
+    pub(crate) fn set_indexed_resource_demand(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        inner: Option<super::provider::IndexedResourceDemand>,
+    ) -> bool {
+        self.core.set_indexed_resource_demand(demand, inner)
+    }
+
+    pub(crate) fn indexed_resource_response(
+        &self,
+        resource: &super::ResourceId,
+    ) -> Option<std::sync::Arc<super::provider::IndexedResourceResponse>> {
+        self.core.indexed_resource_response(resource)
+    }
+
+    pub(crate) fn prepare_resource_delivery(
+        &self,
+        demand: &super::ResourceTranscriptDemand,
+        response: super::provider::ResourceDeliveryResponse,
+    ) -> Option<Self> {
+        match response {
+            super::provider::ResourceDeliveryResponse::Raw(response) => {
+                self.prepare_resource_response(demand, response)
+            }
+            super::provider::ResourceDeliveryResponse::Indexed(response) => {
+                if !self.resource_demands().contains(demand) {
+                    return None;
+                }
+                Some(Self {
+                    lifetime: self.lifetime.clone(),
+                    core: self
+                        .core
+                        .prepare_indexed_resource_response(demand, response)?,
+                    scroll_controller: self.scroll_controller.clone(),
+                    last_frame_window: self.last_frame_window.clone(),
+                })
+            }
+        }
+    }
+
     pub(crate) fn prepare_adjacent_extension(
         &self,
         demand: &AdjacentTranscriptDemand,

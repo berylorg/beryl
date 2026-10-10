@@ -41,11 +41,11 @@ mod published;
 mod running_threads;
 pub(crate) mod runtime_setup;
 pub(crate) use running_threads::{
-    PublishedRunningThreadsReader, PublishedSameWindowThreadCurrent,
+    PreparedRunningResource, PublishedRunningThreadsReader, PublishedSameWindowThreadCurrent,
     PublishedSameWindowThreadOperation, PublishedSameWindowThreadPreparation,
     PublishedSameWindowThreadPreparationFailure, RetiredClaimCommit, RetiredClaimOperation,
     RetiredOrdinaryClaimAdmission, RetiredOrdinarySelectionOperation,
-    RetiredSameWindowThreadOperation, RunningThreadsObservation,
+    RetiredSameWindowThreadOperation, RunningResourceConstruction, RunningThreadsObservation,
 };
 pub(crate) use runtime_setup::{PublishedRuntimeSetupObservation, PublishedRuntimeSetupServices};
 pub(crate) mod recovery_composer;

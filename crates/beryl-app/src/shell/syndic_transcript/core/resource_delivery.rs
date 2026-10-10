@@ -1,7 +1,12 @@
 use super::*;
 
+#[path = "resource_delivery/indexed.rs"]
+mod indexed;
+pub(super) use indexed::IndexedResidency;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResourceTranscriptDemand {
+    pub(crate) indexed: Option<super::super::provider::IndexedResourceDemand>,
     pub(crate) activation_revision: u64,
     pub(crate) presentation_revision: u64,
     pub(crate) view_id: TranscriptViewId,
@@ -63,7 +68,18 @@ impl ResidentTranscriptCore {
                 .iter()
                 .find(|metadata| &metadata.resource_id == resource_id)
                 .cloned();
+            let indexed = self.indexed_resources.demand_for(
+                view_id,
+                revision,
+                self.presentation.activation_revision,
+                &record.id,
+                provenance,
+            );
+            if indexed.is_some_and(|entry| entry.response.is_some()) {
+                continue;
+            }
             let range = match &metadata {
+                _ if indexed.is_some() => None,
                 None => None,
                 Some(metadata) => {
                     let Some(preview) = resource_preview_range(metadata) else {
@@ -76,6 +92,7 @@ impl ResidentTranscriptCore {
                 }
             };
             demands.push(ResourceTranscriptDemand {
+                indexed: indexed.map(|entry| entry.inner.clone()),
                 activation_revision: self.presentation.activation_revision,
                 presentation_revision: self.presentation.presentation_revision,
                 view_id: view_id.clone(),
@@ -84,7 +101,7 @@ impl ResidentTranscriptCore {
                 provenance: provenance.clone(),
                 resource_id: resource_id.clone(),
                 kind: resource_kind.clone(),
-                metadata,
+                metadata: if indexed.is_some() { None } else { metadata },
                 range,
                 retained_records: protected.clone(),
                 pins: ResourceDemandPins {
@@ -133,6 +150,7 @@ impl ResidentTranscriptCore {
             .filter(|record| protected.contains(&record.id))
             .filter_map(presentation_record_resource_id)
             .collect();
+        self.reconcile_indexed_resources(&protected);
         if self
             .resident
             .resource_metadata
@@ -204,6 +222,9 @@ impl ResidentTranscriptCore {
         demand: &ResourceTranscriptDemand,
         kind: TranscriptProviderResponseKind,
     ) -> Option<Self> {
+        if demand.indexed.is_some() {
+            return None;
+        }
         if !self.resource_demands().contains(demand) {
             return None;
         }
@@ -237,6 +258,7 @@ impl ResidentTranscriptCore {
                 .iter()
                 .map(|slice| slice.bytes.len())
                 .sum::<usize>();
+            let bytes = bytes.saturating_add(candidate.indexed_resources.encoded_bytes());
             if range.bytes.len() > candidate.policy.max_resource_slice_bytes
                 || bytes
                     .checked_add(range.bytes.len())

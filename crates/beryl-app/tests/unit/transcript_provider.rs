@@ -143,11 +143,15 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_faults(beryl_home_store::test_faults::FaultController::new())
+    }
+
+    fn with_faults(faults: beryl_home_store::test_faults::FaultController) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
-            directory.path(),
-            HomeSchemaVersion::CURRENT,
-        ))
+        let mut candidate = HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+            faults,
+        )
         .unwrap();
         let state = BerylState::register(&mut candidate).unwrap();
         let storage = SyndicStorage::register(&mut candidate).unwrap();

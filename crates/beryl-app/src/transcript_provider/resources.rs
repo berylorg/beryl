@@ -8,6 +8,29 @@ use syndic_storage::{
     ResourceBacking, ResourceMetadataRecord, ResourceStructure, SyndicPointReadLimit,
 };
 
+mod indexed;
+pub(crate) use crate::syndic_transcript::{
+    IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+    ResourceDeliveryResponse,
+};
+pub(crate) use indexed::{PreparedIndexedResource, TranscriptIndexedResourceRequest};
+
+pub(crate) enum PreparedResourceDelivery {
+    Raw(PreparedTranscriptResource),
+    Indexed(PreparedIndexedResource),
+}
+
+impl PreparedResourceDelivery {
+    pub(crate) fn response(&self) -> ResourceDeliveryResponse {
+        match self {
+            Self::Raw(prepared) => ResourceDeliveryResponse::Raw(prepared.response().clone()),
+            Self::Indexed(prepared) => {
+                ResourceDeliveryResponse::Indexed(prepared.shared_response())
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct TranscriptResourceRequest {
     pub(crate) attachment: TranscriptAttachmentRequest,
@@ -31,6 +54,58 @@ impl PreparedTranscriptResource {
 }
 
 impl TranscriptProviderReader {
+    pub(crate) fn prepare_resource_delivery(
+        &self,
+        request: TranscriptResourceRequest,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedResourceDelivery, TranscriptAttachmentError> {
+        match request.demand.indexed.clone() {
+            Some(inner) => self
+                .prepare_indexed_resource(
+                    TranscriptIndexedResourceRequest {
+                        resource: request,
+                        revision: inner.revision,
+                        root: inner.root,
+                        query: inner.query,
+                    },
+                    cancelled,
+                )
+                .map(PreparedResourceDelivery::Indexed),
+            None => self
+                .prepare_resource(request, cancelled)
+                .map(PreparedResourceDelivery::Raw),
+        }
+    }
+
+    pub(crate) fn publish_resource_delivery_if_current<T>(
+        &self,
+        prepared: PreparedResourceDelivery,
+        expected: &TranscriptResourceRequest,
+        cancelled: &AtomicBool,
+        publish: impl FnOnce(ResourceDeliveryResponse) -> T,
+    ) -> Result<T, TranscriptAttachmentError> {
+        match (prepared, expected.demand.indexed.as_ref()) {
+            (PreparedResourceDelivery::Raw(prepared), None) => {
+                self.publish_resource_if_current(prepared, expected, cancelled, |response| {
+                    publish(ResourceDeliveryResponse::Raw(response))
+                })
+            }
+            (PreparedResourceDelivery::Indexed(prepared), Some(inner)) => self
+                .publish_indexed_resource_if_current(
+                    prepared,
+                    &TranscriptIndexedResourceRequest {
+                        resource: expected.clone(),
+                        revision: inner.revision,
+                        root: inner.root,
+                        query: inner.query.clone(),
+                    },
+                    cancelled,
+                    |response| publish(ResourceDeliveryResponse::Indexed(response)),
+                ),
+            _ => Err(TranscriptAttachmentError::Identity),
+        }
+    }
+
     pub(crate) fn prepare_resource(
         &self,
         request: TranscriptResourceRequest,

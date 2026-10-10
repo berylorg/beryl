@@ -143,6 +143,31 @@ Public APIs use stable Syndic identities and typed nonzero monotonic revisions. 
 identities are bounded source metadata and never the sole primary key. Every correctness-sensitive
 mutation names exact expected revisions or immutable roots for all authority it reads or changes.
 
+The `indexed_resource` namespace exposes the Code/Table binding, root facts, coordinate demand,
+continuation and source-mapped presentation values. `SyndicStorage` provides
+`read_frozen_indexed_resource_range`, `read_frozen_indexed_resource_display` and
+`read_frozen_indexed_resource_anchor` under a caller-owned
+`FrozenHomeRead`. These reads borrow snapshot custody; they do not capture, retain or release an
+observation. Results distinguish a pending companion from a ready authenticated root and bounded
+response. Continuations require their exact root even when the caller omits a separate root argument.
+The total encoded response allowance includes the canonical root and result framing as well as
+binding, descriptors, mappings, display bytes and continuation. Released or foreign observations
+remain typed read failures. These storage reads do not establish provider or residency admission.
+
+Anchor responses repeat the exact binding and selected root, charge the descriptor, absolute source
+mapping and resolved source/visual position, and distinguish an invalidated anchor from a pending
+companion. Resolution uses bounded neighboring index seeks under the same frozen observation.
+
+`read_frozen_indexed_resource_build` reads one bounded persisted frontier into opaque `BuildState`.
+The state exposes its build key, revision and lifecycle; it carries no snapshot custody. The
+`current_start_indexed_resource_build`, `current_advance_indexed_resource_build` and
+`current_stop_indexed_resource_build` methods create ordinary HomeStore commands. Advance consumes
+the observed frontier and caller quantum, selecting the next source/output step, pass transition or
+atomic completion from that frontier. Stop consumes it with typed cancel, supersede or refuse.
+Mutation callbacks authenticate the exact stored frontier again before contributing; stale state
+cannot write. Existing bounded mutation reservations and acknowledgement-loss reconciliation apply
+to these commands. Public callers do not supply parser checkpoints, index pages or publication roots.
+
 The normal provider-frame API performs streaming structural validation. The optional
 `provider-frame-test-support` feature exposes the bounded complete materializer only through a
 test-support namespace for independent canonical and malformed-frame parity checks. Default builds

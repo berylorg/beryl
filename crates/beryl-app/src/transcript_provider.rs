@@ -21,7 +21,14 @@ use crate::{
 mod resources;
 mod selected_title;
 mod source;
-pub(crate) use resources::{PreparedTranscriptResource, TranscriptResourceRequest};
+pub(crate) use resources::{
+    IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+    PreparedIndexedResource, TranscriptIndexedResourceRequest,
+};
+pub(crate) use resources::{
+    PreparedResourceDelivery, PreparedTranscriptResource, ResourceDeliveryResponse,
+    TranscriptResourceRequest,
+};
 pub(crate) use source::prepare_candidate_activation;
 
 pub(crate) const ATTACHMENT_MAX_RECORDS: usize = 64;

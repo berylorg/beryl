@@ -61,6 +61,12 @@ struct PendingGeometry {
     published: bool,
 }
 
+struct ResourceQueuePosition {
+    activation_revision: u64,
+    view_id: super::TranscriptViewId,
+    record_id: ResidentPresentationRecordId,
+}
+
 pub(crate) struct SyndicTranscriptPanel {
     focus_handle: FocusHandle,
     host: SyndicTranscriptHost,
@@ -71,6 +77,7 @@ pub(crate) struct SyndicTranscriptPanel {
     pending_delta: f32,
     rejected_adjacent: Option<super::AdjacentTranscriptDemand>,
     rejected_resource: Vec<super::ResourceTranscriptDemand>,
+    resource_queue_position: Option<ResourceQueuePosition>,
     appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
     #[cfg(test)]
     viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
@@ -90,6 +97,7 @@ impl SyndicTranscriptPanel {
             pending_delta: 0.0,
             rejected_adjacent: None,
             rejected_resource: Vec::new(),
+            resource_queue_position: None,
             appearance: None,
             #[cfg(test)]
             viewport_bounds: None,
@@ -220,7 +228,7 @@ impl SyndicTranscriptPanel {
         if self.pending_delta != 0.0 {
             return None;
         }
-        self.host.resource_demands().into_iter().find(|demand| {
+        let mut demands = self.host.resource_demands().into_iter().filter(|demand| {
             !self.rejected_resource.iter().any(|rejected| {
                 rejected.activation_revision == demand.activation_revision
                     && rejected.view_id == demand.view_id
@@ -229,11 +237,30 @@ impl SyndicTranscriptPanel {
                     && rejected.provenance == demand.provenance
                     && rejected.metadata == demand.metadata
                     && rejected.range == demand.range
+                    && rejected.indexed == demand.indexed
             })
+        });
+        let first = demands.next()?;
+        let Some(position) = self.resource_queue_position.as_ref().filter(|position| {
+            position.activation_revision == first.activation_revision
+                && position.view_id == first.view_id
+        }) else {
+            return Some(first);
+        };
+        std::iter::once(first).chain(demands).min_by(|left, right| {
+            let key = |demand: &super::ResourceTranscriptDemand| {
+                demand.record_id.0 <= position.record_id.0
+            };
+            key(left)
+                .cmp(&key(right))
+                .then_with(|| left.record_id.0.cmp(&right.record_id.0))
         })
     }
 
     pub(crate) fn reject_resource_demand(&mut self, demand: super::ResourceTranscriptDemand) {
+        if self.resource_demand().as_ref() == Some(&demand) {
+            self.advance_resource_queue(&demand);
+        }
         self.prune_rejected_resources();
         self.rejected_resource.retain(|rejected| {
             rejected.activation_revision == demand.activation_revision
@@ -256,6 +283,7 @@ impl SyndicTranscriptPanel {
                     && rejected.provenance == demand.provenance
                     && rejected.metadata == demand.metadata
                     && rejected.range == demand.range
+                    && rejected.indexed == demand.indexed
             })
         });
     }
@@ -277,10 +305,56 @@ impl SyndicTranscriptPanel {
         response: super::TranscriptProviderResponseKind,
         allocation: Option<gpui::Size<gpui::Pixels>>,
     ) -> bool {
+        self.stage_resource_delivery(
+            demand,
+            super::provider::ResourceDeliveryResponse::Raw(response),
+            allocation,
+        )
+    }
+
+    pub(crate) fn refresh_pending_indexed_resource(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+    ) -> bool {
+        if self.staged.is_some() {
+            return false;
+        }
+        self.host.refresh_pending_indexed_resource(demand)
+    }
+
+    pub(crate) fn set_indexed_resource_demand(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        inner: Option<super::provider::IndexedResourceDemand>,
+    ) -> bool {
+        if self.staged.as_ref().is_some_and(|staged| {
+            staged
+                .resource
+                .as_ref()
+                .is_some_and(|current| current.resource_id == demand.resource_id)
+        }) {
+            self.discard_staged_activation();
+        }
+        self.host.set_indexed_resource_demand(demand, inner)
+    }
+
+    pub(crate) fn indexed_resource_response(
+        &self,
+        resource: &super::ResourceId,
+    ) -> Option<std::sync::Arc<super::provider::IndexedResourceResponse>> {
+        self.host.indexed_resource_response(resource)
+    }
+
+    pub(crate) fn stage_resource_delivery(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        response: super::provider::ResourceDeliveryResponse,
+        allocation: Option<gpui::Size<gpui::Pixels>>,
+    ) -> bool {
         if self.resource_demand().as_ref() != Some(demand) || self.staged.is_some() {
             return false;
         }
-        let Some(host) = self.host.prepare_resource_response(demand, response) else {
+        let Some(host) = self.host.prepare_resource_delivery(demand, response) else {
             return false;
         };
         let snapshot = host.shared_snapshot();
@@ -326,6 +400,15 @@ impl SyndicTranscriptPanel {
             "resource publication requires its current measured generation"
         );
         self.commit_measured_activation();
+        self.advance_resource_queue(demand);
+    }
+
+    fn advance_resource_queue(&mut self, demand: &super::ResourceTranscriptDemand) {
+        self.resource_queue_position = Some(ResourceQueuePosition {
+            activation_revision: demand.activation_revision,
+            view_id: demand.view_id.clone(),
+            record_id: demand.record_id.clone(),
+        });
     }
 
     pub(crate) fn measurement_ready(&self) -> bool {
@@ -463,6 +546,7 @@ impl SyndicTranscriptPanel {
         self.pending_delta = 0.0;
         self.rejected_adjacent = None;
         self.rejected_resource.clear();
+        self.resource_queue_position = None;
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {

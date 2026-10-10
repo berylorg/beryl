@@ -46,6 +46,9 @@ mod context_compaction;
 mod operation_feedback;
 pub(crate) use service::PreparedManualCompaction;
 pub use service::{ManualCompactionAvailability, ManualCompactionEligibility};
+pub(crate) use service::{
+    ResourceConstructionAuthority, ResourceConstructionError, ResourceConstructionStep,
+};
 
 pub use context_compaction::{
     ContextCompactionFeedback, ContextCompactionFeedbackSnapshot, ContextCompactionFeedbackState,
