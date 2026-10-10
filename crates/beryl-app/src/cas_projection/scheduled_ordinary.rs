@@ -22,6 +22,14 @@ pub struct ScheduledOrdinaryRequestPolicy {
 }
 
 impl ScheduledOrdinaryRequestPolicy {
+    pub(in crate::cas_projection) fn with_pending_model_choice(
+        mut self,
+        pending: super::process_sessions::model_selection::PendingThreadModelChoice,
+    ) -> Self {
+        self.turn = self.turn.with_pending_model_choice(pending);
+        self
+    }
+
     pub fn backend_defaults(
         settings: beryl_state::SettingsState,
         model_context_window_tokens: Option<u64>,

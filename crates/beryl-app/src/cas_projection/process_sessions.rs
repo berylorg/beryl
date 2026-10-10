@@ -19,6 +19,7 @@ use super::{
 
 mod checkout;
 mod control;
+pub(crate) mod model_selection;
 mod recovery;
 mod retirement;
 pub(crate) use recovery::{RetainedSelectedProjection, SelectedProjectionRecoveryError};
@@ -168,6 +169,8 @@ pub struct ScheduledSessionDiagnostics {
 }
 
 struct SessionState {
+    model_choices: BTreeMap<SyndicThreadId, model_selection::StoredThreadModelChoice>,
+    model_choice_revision: u64,
     context: Option<ScheduledExecutionProviderContext>,
     closed: bool,
     next_serial: u64,
@@ -218,6 +221,8 @@ impl ProcessScheduledExecutionProvider {
         let sessions = ScheduledExecutionSessions {
             work_identity: Arc::new(()),
             state: Arc::new(Mutex::new(SessionState {
+                model_choices: BTreeMap::new(),
+                model_choice_revision: 0,
                 context: None,
                 closed: false,
                 next_serial: 0,

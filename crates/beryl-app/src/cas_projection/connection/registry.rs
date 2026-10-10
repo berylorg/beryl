@@ -315,6 +315,21 @@ pub(in crate::cas_projection) fn observed_metadata(
         .map(|entry| entry.metadata.clone()))
 }
 
+pub(in crate::cas_projection) fn observed_owner_metadata(
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+) -> Result<Option<beryl_backend::ThreadSessionMetadata>, ProjectionCoordinatorError> {
+    let state = lock()?;
+    let mut matches = state.entries.values().filter(|entry| {
+        entry.connection == connection && entry.owner == owner && !entry.leases.is_empty()
+    });
+    let metadata = matches.next().map(|entry| entry.metadata.clone());
+    if matches.next().is_some() {
+        return Ok(None);
+    }
+    Ok(metadata)
+}
+
 pub(in crate::cas_projection) fn invalidate_metadata(
     key: &LoadedThreadKey,
     connection: ConnectionGeneration,

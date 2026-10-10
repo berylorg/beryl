@@ -34,6 +34,7 @@ mod driver_outcome;
 mod forwarding_hub;
 mod lease;
 mod lifecycle;
+mod model_status;
 mod persistent_failure;
 mod provider_broker;
 mod recovery_source_broker;

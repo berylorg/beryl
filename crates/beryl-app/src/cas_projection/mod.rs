@@ -57,10 +57,12 @@ mod provider_identity;
 mod publication;
 mod runtime;
 mod runtime_interest;
+pub(crate) use runtime_interest::RuntimeModelReadError;
 mod runtime_work;
 mod scheduled_ordinary;
 mod service;
 pub use service::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
+pub(crate) use service::{ModelReadObservation, ModelReadSource, ModelSourceError};
 pub use service::{RuntimeFailureReader, SelectedRuntimeFailureObservation};
 pub use service::{
     SelectedRuntimeRetryError, SelectedRuntimeRetryWorker, SelectedRuntimeUsability,
@@ -158,6 +160,8 @@ pub use persistent_failure::{
 };
 #[cfg(feature = "test-faults")]
 pub use process_sessions::IdleSessionElectionPause;
+pub(crate) use process_sessions::WeakScheduledExecutionSessions;
+pub(crate) use process_sessions::model_selection::{ThreadModelChoice, reasoning_wire};
 pub use process_sessions::{
     ProcessScheduledExecutionProvider, RuntimeSessionPreparationConfig,
     RuntimeSessionPreparationError, RuntimeTokenDirectory, ScheduledExecutionProviderContext,

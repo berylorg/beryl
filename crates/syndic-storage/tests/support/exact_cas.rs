@@ -514,7 +514,25 @@ pub fn establish_turn(
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
 ) -> CasTurnSource {
-    let (cas_thread, snapshot) = activate_turn(store, storage.clone(), thread, turn, started_at);
+    establish_turn_with_profile(store, storage, thread, turn, started_at, tool_profile())
+}
+
+pub fn establish_turn_with_profile(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    started_at: SyndicTimestamp,
+    initial_tool_profile: CasConversationToolProfile,
+) -> CasTurnSource {
+    let (cas_thread, snapshot) = activate_turn_with_profile(
+        store,
+        storage.clone(),
+        thread,
+        turn,
+        started_at,
+        initial_tool_profile,
+    );
     let binding = storage
         .current_binding(store, thread, point_limit())
         .unwrap()
@@ -549,6 +567,17 @@ pub fn activate_turn(
     thread: SyndicThreadId,
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
+) -> (CasThreadId, SyndicExecutionSnapshotId) {
+    activate_turn_with_profile(store, storage, thread, turn, started_at, tool_profile())
+}
+
+pub fn activate_turn_with_profile(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    started_at: SyndicTimestamp,
+    initial_tool_profile: CasConversationToolProfile,
 ) -> (CasThreadId, SyndicExecutionSnapshotId) {
     let _ = super::enroll_fixture_activity(store, &storage, thread, turn);
     let current = storage
@@ -617,7 +646,7 @@ pub fn activate_turn(
                     CasThreadId::new(format!("test-thread-{turn}")).unwrap(),
                     CasLineageProof::native(mechanism, represented).unwrap(),
                     CasNativeTurnCount::ZERO,
-                    tool_profile(),
+                    initial_tool_profile,
                 )
             }
         };

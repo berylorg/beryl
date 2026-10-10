@@ -17,6 +17,7 @@ impl MainWindowShellRoot {
             runtime_setup: runtime_setup::RuntimeSetupContribution::new(cx),
             running_threads: running_threads::RunningThreadsContribution::new(cx),
             status_controls: status_controls::ExactStatusControls::new(cx),
+            model_controls: model_controls::ModelControls::new(cx),
             startup_interaction: None,
             shutdown_interaction_gated: false,
             exit_disabled_reason: None,
@@ -189,6 +190,7 @@ impl Render for MainWindowShellRoot {
         #[cfg(target_os = "windows")]
         crate::parent_completion_sound::refresh_focus(cx);
         self.sync_status_controls(window, cx);
+        self.sync_model_controls(window, cx);
         self.sync_running_threads(window, cx);
         self.sync_runtime_setup(window, cx);
         self.sync_thread_switcher(window, cx);
@@ -222,6 +224,7 @@ impl Render for MainWindowShellRoot {
         let switcher_picker = thread_switcher::render_picker(self, window);
         let status = status_controls::render_strip(self, cx);
         let stop_menu = status_controls::render_menu(self, window, cx);
+        let model_menu = model_controls::render_menu(self, window, cx);
         let input_panel = composer.map(|composer| {
             div()
                 .id("main-window-user-input-panel")
@@ -290,6 +293,7 @@ impl Render for MainWindowShellRoot {
             )
             .child(status)
             .children(stop_menu)
+            .children(model_menu)
             .children(running_picker)
             .children(setup_picker)
             .children(switcher_picker)

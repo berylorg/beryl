@@ -345,7 +345,7 @@ impl RuntimeInterestTestProbe {
         state.disposed != 0
     }
 
-    fn launch(self) -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> {
+    pub(super) fn launch(self) -> Result<Box<dyn RunningRuntime>, RuntimeLaunchFailure> {
         let mut state = self.shared.0.lock().unwrap();
         state.launches += 1;
         self.shared.1.notify_all();

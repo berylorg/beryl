@@ -65,21 +65,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
         .bg(appearance.status)
         .text_size(px(12.))
         .text_color(gpui::rgb(0x475569))
-        .child(
-            div()
-                .id("main-window-status-model")
-                .w(px(170.))
-                .flex_none()
-                .px(px(10.))
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .tooltip(|_, cx| {
-                    cx.new(|_| StatusTooltip("Model Unknown • Reasoning Unknown".into()))
-                        .into()
-                })
-                .child("Model Unknown • Reasoning Unknown"),
-        )
+        .child(super::super::model_controls::render_segment(root, cx))
         .child(divider())
         .child(
             div()

@@ -93,6 +93,13 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
             state.work_changed();
             checkout
         };
+        let policy = match self
+            .sessions
+            .pending_model_choice(admission.thread_id(), admission.execution_binding())
+        {
+            Some(pending) => policy.with_pending_model_choice(pending),
+            None => policy,
+        };
         if let Some(projection) = resources.projection.take()
             && let Err(error) = projection.release()
         {

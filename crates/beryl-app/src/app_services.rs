@@ -35,6 +35,7 @@ mod attempt;
 mod catalog_queries;
 mod failed_retirement;
 mod initial_disposal;
+mod model_selection;
 mod preparation;
 mod published;
 mod running_threads;
@@ -193,6 +194,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    model_selection: std::sync::OnceLock<crate::model_selection::PublishedModelSelection>,
     runtime_setup: Arc<runtime_setup::RuntimeSetupService>,
     private_clipboard: crate::main_window::MainWindowPrivateClipboardOwner,
     restore_lifetime: Option<Arc<()>>,

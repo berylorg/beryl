@@ -209,6 +209,7 @@ pub mod input_admission;
 pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;
 pub mod main_window;
+mod model_selection;
 mod notice_limits;
 #[cfg(target_os = "windows")]
 mod notification_audio;
@@ -229,6 +230,7 @@ mod support;
 pub mod theme_runtime;
 pub mod thread_lineage;
 pub mod thread_root_picker;
+mod widgets;
 #[cfg(feature = "test-faults")]
 pub use main_window::running_threads::*;
 pub mod same_window_thread_acquisition;

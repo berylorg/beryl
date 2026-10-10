@@ -104,6 +104,7 @@ impl ScheduledExecutionSessions {
                     .values()
                     .any(|slot| !slot.retiring || slot.resources.is_some());
             state.closed = true;
+            state.model_choices.clear();
             let context = state.preparation.take();
             let resources: Vec<_> = state
                 .slots

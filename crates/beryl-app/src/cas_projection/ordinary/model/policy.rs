@@ -25,6 +25,42 @@ impl PartialEq for BackendDefaultSettings {
 impl Eq for BackendDefaultSettings {}
 
 impl OrdinaryTurnExecutionRequest {
+    pub(in crate::cas_projection) fn with_pending_model_choice(
+        mut self,
+        pending: crate::cas_projection::process_sessions::model_selection::PendingThreadModelChoice,
+    ) -> Self {
+        let instructions = self
+            .start_options
+            .developer_instructions_context()
+            .map(|context| context.developer_instructions().map(str::to_owned));
+        self.start_options = self.start_options.with_model(pending.choice.model.as_str());
+        self.start_options = self.start_options.with_reasoning_effort(
+            pending
+                .choice
+                .reasoning
+                .map(crate::cas_projection::process_sessions::model_selection::reasoning_wire)
+                .unwrap_or(""),
+        );
+        if let Some(instructions) = instructions {
+            self.start_options = self.start_options.with_developer_instructions_context(
+                instructions,
+                pending.choice.model.as_str(),
+                pending.choice.reasoning.map(|effort| {
+                    crate::cas_projection::process_sessions::model_selection::reasoning_wire(effort)
+                        .to_owned()
+                }),
+            );
+        }
+        self.pending_model_choice = Some(pending);
+        self
+    }
+
+    pub(in crate::cas_projection) fn accept_model_choice(&self) {
+        if let Some(pending) = &self.pending_model_choice {
+            pending.accepted();
+        }
+    }
+
     pub fn backend_defaults(settings: SettingsState, request_timeout: Duration) -> Self {
         let mut request = Self::new(TurnStartOptions::default(), request_timeout);
         request.context_compaction_timeout =
@@ -55,23 +91,31 @@ impl OrdinaryTurnExecutionRequest {
         let record = settings
             .0
             .setting(store, SettingKey::DeveloperInstructions)?;
-        let metadata = projection
-            .observed_thread_metadata()?
-            .ok_or(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
-        let model = metadata
-            .model
-            .ok_or(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
+        let metadata = projection.observed_thread_metadata()?;
+        let (model, reasoning) = if let Some(pending) = &self.pending_model_choice {
+            let model = pending.choice.model.as_str().to_owned();
+            let reasoning = pending.choice.reasoning.map(|effort| {
+                crate::cas_projection::process_sessions::model_selection::reasoning_wire(effort)
+                    .to_owned()
+            });
+            projection.invalidate_observed_thread_metadata()?;
+            (model, reasoning)
+        } else {
+            let metadata =
+                metadata.ok_or(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
+            let model = metadata
+                .model
+                .ok_or(OrdinaryTurnExecutionError::BackendDefaultPolicyUnavailable)?;
+            (model, metadata.reasoning_effort)
+        };
         let instructions = record
             .as_ref()
             .and_then(|record| record.value().as_developer_instructions())
             .filter(|instructions| !instructions.trim().is_empty())
             .map(str::to_owned);
-        Ok(
-            TurnStartOptions::default().with_developer_instructions_context(
-                instructions,
-                model,
-                metadata.reasoning_effort,
-            ),
-        )
+        Ok(self
+            .start_options
+            .clone()
+            .with_developer_instructions_context(instructions, model, reasoning))
     }
 }

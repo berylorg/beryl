@@ -20,6 +20,8 @@ use policy::BackendDefaultSettings;
 
 #[derive(Clone, Debug)]
 pub struct OrdinaryTurnExecutionRequest {
+    pending_model_choice:
+        Option<crate::cas_projection::process_sessions::model_selection::PendingThreadModelChoice>,
     start_options: TurnStartOptions,
     backend_default_settings: Option<BackendDefaultSettings>,
     request_timeout: Duration,
@@ -32,6 +34,7 @@ impl OrdinaryTurnExecutionRequest {
     #[must_use]
     pub fn new(start_options: TurnStartOptions, request_timeout: Duration) -> Self {
         Self {
+            pending_model_choice: None,
             start_options,
             backend_default_settings: None,
             request_timeout,
@@ -82,6 +85,7 @@ impl OrdinaryTurnExecutionRequest {
 impl PartialEq for OrdinaryTurnExecutionRequest {
     fn eq(&self, other: &Self) -> bool {
         self.start_options == other.start_options
+            && self.pending_model_choice == other.pending_model_choice
             && self.backend_default_settings == other.backend_default_settings
             && self.request_timeout == other.request_timeout
             && self.context_compaction_timeout == other.context_compaction_timeout

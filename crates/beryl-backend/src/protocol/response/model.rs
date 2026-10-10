@@ -267,7 +267,7 @@ pub struct ModelPageCapacityError {
 
 #[derive(PartialEq, Eq)]
 pub struct ModelPage {
-    records: [Option<ModelRecord>; MODEL_PAGE_MAX_RECORDS],
+    records: Box<[Option<ModelRecord>; MODEL_PAGE_MAX_RECORDS]>,
     len: u8,
     next_cursor: Option<ModelPageCursor>,
 }
@@ -277,7 +277,14 @@ impl ModelPage {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            records: std::array::from_fn(|_| None),
+            records: {
+                let mut records = Vec::with_capacity(MODEL_PAGE_MAX_RECORDS);
+                records.resize_with(MODEL_PAGE_MAX_RECORDS, || None);
+                records
+                    .into_boxed_slice()
+                    .try_into()
+                    .unwrap_or_else(|_| unreachable!("model page has exactly its fixed slot count"))
+            },
             len: 0,
             next_cursor: None,
         }

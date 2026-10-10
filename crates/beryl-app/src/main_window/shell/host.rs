@@ -20,6 +20,7 @@ mod selection_invocation;
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
+mod model_controls;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
@@ -668,6 +669,7 @@ pub struct MainWindowShellRoot {
     runtime_setup: runtime_setup::RuntimeSetupContribution,
     running_threads: running_threads::RunningThreadsContribution,
     status_controls: status_controls::ExactStatusControls,
+    model_controls: model_controls::ModelControls,
     startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     shutdown_interaction_gated: bool,
     exit_disabled_reason: Option<&'static str>,

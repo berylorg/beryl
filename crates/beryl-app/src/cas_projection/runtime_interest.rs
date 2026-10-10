@@ -15,6 +15,7 @@ use super::persistent_failure::LiveCommandAuthorizer;
 mod activity;
 mod activity_read;
 mod managed;
+mod model_read;
 mod owner;
 mod retry;
 mod session;
@@ -23,6 +24,7 @@ mod worker;
 pub(crate) use activity_read::{
     RuntimeActivityObservation, RuntimeActivityReadError, RuntimeActivityReadSource,
 };
+pub(crate) use model_read::{RuntimeModelRead, RuntimeModelReadError};
 pub use session::RuntimeSessionAdmissionError;
 
 #[cfg(feature = "test-faults")]

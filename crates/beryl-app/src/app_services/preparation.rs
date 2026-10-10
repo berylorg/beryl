@@ -252,6 +252,7 @@ impl PreparedAppServices {
             .expect("prepared catalog queries")
             .publish();
         let graph = PublishedAppServices {
+            model_selection: std::sync::OnceLock::new(),
             runtime_setup: self
                 .runtime_setup
                 .take()

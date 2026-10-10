@@ -98,43 +98,9 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 743: Mount Bounded Selected-Thread Lineage (finished)
+# Phase 744: Mount Selected-Thread Model And Reasoning Selection (finished)
 
-Accepted the complete bounded lineage strip with exact parent activation, coherent endpoint,
-source/claim fences and original same-window failed-Home recovery. All 139 distinct affected App
-cases, current canonical checks, scoped formatting and independent completion review pass;
-all 109 logged Homes are absent. See [qualification](audits/thread-lineage-mount-qualification.md).
-
-# Phase 744: Mount Selected-Thread Model And Reasoning Selection (pending)
-
-Publish the bounded model reader and mount exact selected-thread model/reasoning status with the
-progressive anchored selection menu. Derive behavior from [status-line design](features/status-line/design.md#model-and-reasoning-cell),
-[GUI composition](features/status-line/gui.md#status-operation-menus), [runtime ownership](systems/backend-runtime/design.md),
-[App adapters](../crates/beryl-app/doc/design-feature-adapters.md) and
-[bounded backend operations](../crates/beryl-backend/doc/design-thread-operations.md).
-The production consumer is the existing main-window status strip; completion includes explicit
-choices carried into that thread's next real ordinary turn.
-
-Implement weak generation-bound publication and off-GPUI cwd-scoped configuration/model reads
-from an already available admitted runtime through separate bounded request connections. Keep
-model pages at most 64 records, revision/cursor-bound retained pages and a bounded working set;
-never aggregate the complete inventory. Mount the canonical anchored context menu's virtualized
-collection with stable option identities, logical keyboard focus, selected-row reveal, fixed
-bounded realization and content-free scroll diagnostics. Preserve exact active/pending/draft
-values, backend defaults and Unknown; do not infer reasoning from menu defaults.
-
-Qualify passive/disabled gates, pointer and keyboard selection, multiple pages and bounded
-realization, initial Loading/Empty/failure, later-page failure preserving presented choices,
-exact failed-query Retry without duplicate requests, and current thread/runtime/popup/Home fences.
-Closing or replacing a scope drains its retained results and capacity. Explicit selections affect
-only that thread's current draft or next real turn, preserve hidden-instruction policy, and never
-mutate global configuration, create a synthetic turn or launch CAS merely to fill Unknown.
-Verify selected overrides at the actual ordinary-turn dispatch boundary and subsequent backend
-metadata presentation. Preserve previously accepted status/stop and ordinary-turn behavior.
-
-Run focused App/backend nextest cases, affected status/runtime/ordinary regressions, applicable
-canonical all-target and production-default checks, scoped formatting and independent semantic
-completion review. Root owns integration and the Cargo execution permit. Architecture readiness
-is clear; the separate Activity pre-enrollment presentation gap does not block this boundary.
-Start with bounded read-capability/publication and status ownership integration; no implementation
-has begun at this checkpoint.
+Accepted exact selected-thread model/reasoning status, bounded canonical selection menus and
+choices carried into the next real ordinary turn with authentic subsequent metadata. All 176
+distinct affected cases, current canonical checks, scoped formatting and independent completion
+review pass; all 221 logged Homes are absent. See [qualification](audits/model-selection-mount-qualification.md).

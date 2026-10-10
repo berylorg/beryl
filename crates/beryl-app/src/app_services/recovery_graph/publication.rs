@@ -51,6 +51,7 @@ impl ProcessServiceOwner {
             .expect("prepared recovery queries")
             .publish();
         self.graph = Some(PublishedAppServices {
+            model_selection: std::sync::OnceLock::new(),
             runtime_setup: graph
                 .runtime_setup
                 .take()

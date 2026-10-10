@@ -152,11 +152,15 @@ impl Drop for ExactStatusControls {
 }
 
 impl MainWindowShellRoot {
+    pub(in crate::main_window::shell::host) fn model_turn_active(&self) -> bool {
+        self.status_controls.snapshot.operation_active
+    }
+
     pub(in crate::main_window::shell) fn runtime_retry_interaction_gated(&self) -> bool {
         self.status_mutation_gate().is_some()
     }
 
-    fn status_mutation_gate(&self) -> Option<&'static str> {
+    pub(in crate::main_window::shell::host) fn status_mutation_gate(&self) -> Option<&'static str> {
         if self.shutdown_interaction_gated {
             Some("Application Exit is waiting for active work and durable state.")
         } else if self.ordinary_close_interaction_gated {

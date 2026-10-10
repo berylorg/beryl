@@ -13,7 +13,7 @@ use beryl_state::{
 };
 use syndic_storage::SyndicTimestamp;
 
-use crate::{
+use super::{
     EXECUTION_ROOT, scheduler_support,
     server::{AUTHORIZATION, AttemptServer, TIMEOUT},
     syndic::{Fixture, execution_binding},

@@ -250,6 +250,7 @@ pub(super) fn execute_in_flight(
         )
         .map_err(after_activation),
         Ok(NonIdempotentRequestOutcome::ExactResponse { response }) => {
+            request.accept_model_choice();
             drop(parent_dispatch);
             let cas_turn_id = response.turn_id().clone();
             begin_capture(

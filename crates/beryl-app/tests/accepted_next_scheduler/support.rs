@@ -37,14 +37,14 @@ pub fn execution_binding(runtime_id: RuntimeId) -> ExecutionBinding {
     )
 }
 
-pub fn admit_runtime_next_input(fixture: &mut crate::syndic::Fixture, seed: u8) -> NextRecordIds {
+pub fn admit_runtime_next_input(fixture: &mut super::syndic::Fixture, seed: u8) -> NextRecordIds {
     let ids = seed_runtime_next_input_without_wake_after_direct_setup(fixture, seed, || {});
     fixture.store.notify_scheduled_ordinary_execution_ready();
     ids
 }
 
 pub fn admit_runtime_next_input_after_direct_setup(
-    fixture: &mut crate::syndic::Fixture,
+    fixture: &mut super::syndic::Fixture,
     seed: u8,
     after_direct_setup: impl FnOnce(),
 ) -> NextRecordIds {
@@ -55,14 +55,14 @@ pub fn admit_runtime_next_input_after_direct_setup(
 }
 
 pub fn seed_runtime_next_input_without_wake(
-    fixture: &mut crate::syndic::Fixture,
+    fixture: &mut super::syndic::Fixture,
     seed: u8,
 ) -> NextRecordIds {
     seed_runtime_next_input_without_wake_after_direct_setup(fixture, seed, || {})
 }
 
 fn seed_runtime_next_input_without_wake_after_direct_setup(
-    fixture: &mut crate::syndic::Fixture,
+    fixture: &mut super::syndic::Fixture,
     seed: u8,
     after_direct_setup: impl FnOnce(),
 ) -> NextRecordIds {
@@ -84,7 +84,7 @@ fn seed_runtime_next_input_without_wake_after_direct_setup(
 }
 
 pub fn admit_runtime_awaiting_terminal_input(
-    fixture: &mut crate::syndic::Fixture,
+    fixture: &mut super::syndic::Fixture,
     _seed: u8,
 ) -> NextRecordIds {
     let (thread, parent) = {

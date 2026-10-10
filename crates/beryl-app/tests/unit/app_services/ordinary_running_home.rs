@@ -29,6 +29,8 @@ use mounted_support::*;
 mod cancellation;
 #[path = "ordinary_running_home/claim_activation.rs"]
 mod claim_activation;
+#[path = "../model_menu_native.rs"]
+mod model_menu_native;
 #[path = "ordinary_running_home_native_support.rs"]
 mod native_support;
 #[path = "ordinary_running_home_preservation.rs"]

@@ -82,7 +82,9 @@ pub(crate) use graceful_shutdown::{
 };
 mod process_work;
 pub use process_work::*;
+mod model_read;
 mod runtime_failure;
+pub(crate) use model_read::{ModelReadObservation, ModelReadSource, ModelSourceError};
 mod runtime_retry;
 pub use runtime_retry::{
     SelectedRuntimeRetryError, SelectedRuntimeRetryWorker, SelectedRuntimeUsability,

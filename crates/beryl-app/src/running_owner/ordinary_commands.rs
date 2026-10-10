@@ -15,6 +15,11 @@ struct MountedRunningOwner(std::rc::Weak<RefCell<RunningProcessOwner>>);
 impl gpui::Global for MountedRunningOwner {}
 
 impl RunningProcessOwner {
+    pub(crate) fn model_selection_reader(
+        &self,
+    ) -> Option<crate::model_selection::PublishedModelSelection> {
+        self.process.services.as_ref()?.model_selection_reader()
+    }
     #[cfg(test)]
     pub(crate) fn test_last_ordinary_command_failure(
         &self,
