@@ -9,7 +9,11 @@ pub(super) struct AcknowledgedStopFeedback {
 
 impl ExactStatusControls {
     pub(super) fn feedback_budget(&self) -> usize {
-        self.feedback.len() + self.acknowledged.len()
+        self.feedback.len()
+            + self.acknowledged.len()
+            + self.compaction.feedback.len()
+            + usize::from(self.compaction.pending)
+            + self.stop_pending_orders.len()
     }
 
     pub(super) fn volatile_refused(&self) -> bool {
@@ -39,6 +43,15 @@ impl ExactStatusControls {
 }
 
 impl MainWindowShellRoot {
+    pub(in crate::main_window::shell) fn pending_operation_feedback_order(&self) -> Option<u64> {
+        self.status_controls
+            .stop_pending_orders
+            .iter()
+            .map(|entry| entry.1)
+            .chain(self.status_controls.compaction.pending_order)
+            .min()
+    }
+
     pub(in crate::main_window::shell) fn stop_feedback_popup_safe(
         &self,
         feedback: &ExactStopFeedback,

@@ -699,6 +699,12 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   idle revision rejects the original capability before mutation. A GUI-only precheck followed by
   latest-thread admission is insufficient. Preparation may run off-thread, but final election
   cannot hold a home election across a blocking coordinator call or recursively enter it.
+- The prepared manual request composes the original claim's typed validation participant and
+  original idle candidate's mutation in one caller-fenced Home command. The Home-owned local
+  admission predicate elects its weak publication and exact registered connection/session
+  authority after those typed preparations, before assembly. It uses only bounded nonblocking
+  checks and consumes the original capability once. Retirement after that admission cut follows
+  the admitted operation and its exact feedback; it never authorizes a replacement dispatch.
 - The manual command preserves composer state and uses only the existing registered exact
   foreground projection, process coordinator and sole driver. Already accepted input wins the
   atomic election; later accepted input remains ordered next-turn work. No missing projection is

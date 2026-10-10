@@ -674,6 +674,10 @@ impl Fixture {
         self.clock = self.clock.max(next_unix_millis);
     }
 
+    pub fn advance_clock(&mut self, unix_millis: u64) {
+        self.clock = self.clock.max(unix_millis);
+    }
+
     fn tick(&mut self) -> SyndicTimestamp {
         let value = self.clock;
         self.clock = self.clock.checked_add(1).unwrap();

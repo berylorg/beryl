@@ -212,6 +212,13 @@ impl ContextCompactionCoordinator {
                 self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
             }
         } else {
+            let _fence = self
+                .settlement_fence
+                .lock()
+                .map_err(|_| ContextCompactionError::Unavailable)?;
+            if self.closing.load(Ordering::Acquire) {
+                return Err(ContextCompactionError::Unavailable);
+            }
             let settlement = match (local.origin, successful) {
                 (CompactionOrigin::Manual, true) => CompactionSettlement::ManualSuccess,
                 (CompactionOrigin::Manual, false) | (CompactionOrigin::Lifecycle { .. }, false) => {
@@ -220,6 +227,9 @@ impl ContextCompactionCoordinator {
                 (CompactionOrigin::Lifecycle { .. }, true) => unreachable!(),
             };
             self.execute_manual_settlement(operation, settlement)?;
+            #[cfg(feature = "test-faults")]
+            self.pause_after_lifecycle_settlement_for_test();
+            return self.finish_settlement(local, successful);
         }
         self.finish_settlement(local, successful)
     }
@@ -264,6 +274,15 @@ impl ContextCompactionCoordinator {
                 ContextCompactionOutcome::Failed
             },
         );
+        local.settle_feedback(if successful {
+            super::super::feedback::ContextCompactionFeedbackState::Succeeded
+        } else if settled.terminal().is_some_and(|terminal| {
+            terminal.status().outcome() == syndic_storage::TurnTerminalOutcome::Interrupted
+        }) {
+            super::super::feedback::ContextCompactionFeedbackState::Interrupted
+        } else {
+            super::super::feedback::ContextCompactionFeedbackState::Failed
+        });
         Ok(())
     }
 
@@ -325,6 +344,13 @@ impl ContextCompactionCoordinator {
     pub(super) fn fail_local(&self, local: &LocalCompaction) {
         self.fail_lifecycle_intent(local);
         self.complete_local(local, ContextCompactionOutcome::Failed);
+        if let Some(record) = local.feedback_record() {
+            record.settle_execution(if self.ensure_local_current(local).is_ok() {
+                super::super::feedback::ContextCompactionFeedbackState::Failed
+            } else {
+                super::super::feedback::ContextCompactionFeedbackState::AuthorityLost
+            });
+        }
     }
 
     pub(super) fn complete_local(
@@ -453,6 +479,11 @@ impl ContextCompactionCoordinator {
         let after = self.read_operation(local.operation_id)?;
         if !matches!(after.state(), CompactionOperationState::Consumed(_)) {
             return Err(ContextCompactionError::Storage);
+        }
+        if matches!(reason, CompactionAbandonmentReason::TargetAuthorityLost) {
+            local.settle_feedback(
+                super::super::feedback::ContextCompactionFeedbackState::AuthorityLost,
+            );
         }
         Ok(())
     }

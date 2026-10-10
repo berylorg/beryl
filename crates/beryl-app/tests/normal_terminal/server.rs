@@ -26,6 +26,7 @@ enum ServerEvent {
     ProjectionReady,
     UnsubscribeObserved,
     TurnStartObserved,
+    CompactionObserved,
     Closed,
 }
 
@@ -58,6 +59,7 @@ enum ServerScenario {
 }
 
 enum ServerCommand {
+    ExpectCompaction,
     SendObservation(String),
     CloseConnection,
     AssertQuietAndClose,
@@ -271,6 +273,11 @@ impl NormalTerminalServer {
 
     pub fn wait_for_turn_start(&self) {
         self.expect(ServerEvent::TurnStartObserved);
+    }
+
+    pub fn accept_compaction(&self) {
+        self.commands.send(ServerCommand::ExpectCompaction).unwrap();
+        self.expect(ServerEvent::CompactionObserved);
     }
 
     pub fn release_turn_start_rejection(&self) {
@@ -531,6 +538,34 @@ fn run_server(
             loop {
                 match commands.recv_timeout(TIMEOUT).unwrap() {
                     ServerCommand::SendObservation(wire) => send_json(&mut socket, &wire),
+                    ServerCommand::ExpectCompaction => {
+                        let request =
+                            read_json(&mut socket).expect("one exact manual compact start");
+                        assert_eq!(request["method"], "thread/compact/start");
+                        assert_eq!(request["params"], json!({"threadId": CAS_THREAD_ID}));
+                        send_json(
+                            &mut socket,
+                            &json!({"id": request["id"], "result": {}}).to_string(),
+                        );
+                        send_json(
+                            &mut socket,
+                            &format!(
+                                r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"manual-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37020,"completedAt":null,"durationMs":null}}}}}}"#
+                            ),
+                        );
+                        for (method, field, timestamp) in [
+                            ("item/started", "startedAtMs", 37021),
+                            ("item/completed", "completedAtMs", 37022),
+                        ] {
+                            send_json(
+                                &mut socket,
+                                &format!(
+                                    r#"{{"method":"{method}","params":{{"item":{{"type":"contextCompaction","id":"manual-compaction-marker"}},"threadId":"{CAS_THREAD_ID}","turnId":"manual-compaction","{field}":{timestamp}}}}}"#
+                                ),
+                            );
+                        }
+                        events.send(ServerEvent::CompactionObserved).unwrap();
+                    }
                     ServerCommand::CloseConnection => break,
                     _ => panic!("unexpected controlled connection command"),
                 }
@@ -863,6 +898,9 @@ fn complete_steering_correlation_loss(
         | ServerCommand::ReleaseStopTerminal
         | ServerCommand::SendPermission
         | ServerCommand::SendObservation(_) => {
+            panic!("steering-loss server received an unrelated control command")
+        }
+        ServerCommand::ExpectCompaction => {
             panic!("steering-loss server received an unrelated control command")
         }
     };

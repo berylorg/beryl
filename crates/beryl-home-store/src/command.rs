@@ -526,6 +526,7 @@ pub enum CommandBuildError {
 
 /// One revision-checked command spanning one or more logical domains.
 pub struct HomeCommand {
+    pub(crate) local_admission: Option<Box<dyn FnOnce() -> bool + Send>>,
     pub(crate) expected_home_revision: HomeRevision,
     pub(crate) cancellation: CommandCancellation,
     pub(crate) participants: Vec<DomainParticipant>,
@@ -535,11 +536,24 @@ pub struct HomeCommand {
 }
 
 impl HomeCommand {
+    pub fn with_local_admission(
+        mut self,
+        admission: impl FnOnce() -> bool + Send + 'static,
+    ) -> Self {
+        assert!(
+            self.local_admission.is_none(),
+            "one local admission predicate per command"
+        );
+        self.local_admission = Some(Box::new(admission));
+        self
+    }
+
     /// Constructs an empty command against one exact home revision.
     #[must_use]
     pub fn new(expected_home_revision: HomeRevision) -> Self {
         Self {
             expected_home_revision,
+            local_admission: None,
             cancellation: CommandCancellation::new(),
             participants: Vec::new(),
             sidecars: Vec::new(),

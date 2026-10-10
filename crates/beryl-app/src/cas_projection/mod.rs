@@ -43,6 +43,13 @@ pub use connection::registry::context_test_support::{
 };
 mod connection_work;
 mod context_compaction;
+mod operation_feedback;
+pub(crate) use service::PreparedManualCompaction;
+pub use service::{ManualCompactionAvailability, ManualCompactionEligibility};
+
+pub use context_compaction::{
+    ContextCompactionFeedback, ContextCompactionFeedbackSnapshot, ContextCompactionFeedbackState,
+};
 mod error;
 mod execute;
 mod execution_error;

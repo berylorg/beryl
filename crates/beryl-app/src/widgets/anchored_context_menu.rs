@@ -441,7 +441,61 @@ pub(crate) fn render<E: 'static>(
     .h(height)
     .w_full()
     .track_scroll(menu.scroll.clone());
-    let selector = selectors.0;
+    render_panel(
+        menu,
+        anchor,
+        bounds,
+        colors,
+        selectors.0,
+        list.into_any_element(),
+        effect,
+        cx,
+    )
+}
+
+pub(crate) fn render_static<E: 'static>(
+    menu: &AnchoredContextMenu,
+    anchor: Bounds<Pixels>,
+    rows: Vec<MenuRow>,
+    colors: MenuColors,
+    selector: &'static str,
+    effect: fn(&mut E, MenuEvent, &mut Window, &mut Context<E>),
+    window: &Window,
+    cx: &mut Context<E>,
+) -> AnyElement {
+    let bounds = menu.bounds(anchor, rows.len(), window.viewport_size());
+    let list = div().w_full().children(render_rows(
+        rows,
+        menu.focused_id(),
+        colors,
+        menu.invocation,
+        effect,
+        cx,
+    ));
+    render_panel(
+        menu,
+        anchor,
+        bounds,
+        colors,
+        selector,
+        list.into_any_element(),
+        effect,
+        cx,
+    )
+}
+
+fn render_panel<E: 'static>(
+    menu: &AnchoredContextMenu,
+    anchor: Bounds<Pixels>,
+    bounds: Bounds<Pixels>,
+    colors: MenuColors,
+    selector: &'static str,
+    list: AnyElement,
+    effect: fn(&mut E, MenuEvent, &mut Window, &mut Context<E>),
+    cx: &mut Context<E>,
+) -> AnyElement {
+    let height = (bounds.size.height - px(8.)).max(px(0.));
+    let invocation = menu.invocation;
     div()
         .id(selector)
         .debug_selector(move || selector.to_owned())

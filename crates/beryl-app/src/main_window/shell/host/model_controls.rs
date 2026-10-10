@@ -15,6 +15,7 @@ use std::{
 mod jobs;
 mod render;
 mod rows;
+pub(super) use render::menu_colors;
 pub(super) use render::{render_menu, render_segment};
 
 pub(super) struct ModelControls {

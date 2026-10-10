@@ -522,6 +522,9 @@
 - [x] Mounted exact ordered selected-thread context status with bounded projection provenance,
   weak nonblocking publication fences, proven ordinary terminal continuity and retirement Unknown;
   [native mounting and review](../../audits/context-compaction-mount-readiness.md#context-status-mounting-closure).
+- [x] Mounted exact manual Compact through original-selection atomic admission, shared bounded
+  feedback and protected FIFO, with genuine uncertainty and late settlement through retirement;
+  [native mounting and review](../../audits/context-compaction-mount-readiness.md#manual-compaction-mounting-closure).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
@@ -536,7 +539,6 @@
 - [x] Mounted and independently accepted the production exact status strip and Soft stop popup,
   with coherent typed observations, opaque operation origins, bounded feedback and window/selection
   fences; [canonical mounted evidence](../../failures/executable-bootstrap.md#exact-status-mount-qualification).
-  Manual context operations remain deferred.
 - [x] Mounted and independently accepted exact soft-stop notice fallback through the sole arbiter,
   preserving FIFO identity, popup recovery, resolved dismissal and volatile refusal across temporary
   loss; [canonical qualification](../../failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).

@@ -6,8 +6,6 @@ use syndic_storage::{StopOperationTarget, TurnTerminalOutcome};
 use super::{StopCoordinationError, StopCoordinator};
 use crate::cas_projection::connection::StopTargetProof;
 
-const FEEDBACK_CAPACITY: usize = 72;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExactStopFeedbackState {
     Waiting,
@@ -160,6 +158,7 @@ pub enum ExactStopRequestError {
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct FeedbackRecord {
+    _presentation: Arc<()>,
     origin: Mutex<Option<crate::cas_projection::ExactOperationOrigin>>,
     target: StopOperationTarget,
     proof: StopTargetProof,
@@ -263,14 +262,16 @@ impl StopCoordinator {
         if state.feedback_epoch != epoch || state.persistent_failure.is_some() {
             return Err(ExactStopRequestError::Revoked);
         }
-        if state.feedback.len() == FEEDBACK_CAPACITY {
-            return Err(ExactStopRequestError::Capacity);
-        }
+        let presentation = self
+            .feedback_budget
+            .reserve()
+            .ok_or(ExactStopRequestError::Capacity)?;
         let next = state
             .feedback_epoch
             .checked_add(1)
             .ok_or(ExactStopRequestError::Revoked)?;
         let inner = Arc::new(FeedbackRecord {
+            _presentation: presentation,
             origin: Mutex::new(None),
             target: target.clone(),
             proof: proof.clone(),

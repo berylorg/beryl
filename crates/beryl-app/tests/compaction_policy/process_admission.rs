@@ -36,6 +36,8 @@ fn manual_compaction_admission_linearizes_with_fence_and_keeps_original_epoch() 
         let ready = reserved
             .then(|| harness.pause_compaction_custody(CompactionCustodyTestStage::AdmissionReady));
         thread::scope(|scope| {
+            let pause = pause;
+            let ready = ready;
             let worker = scope.spawn(|| {
                 fixture
                     .store
@@ -153,6 +155,12 @@ fn lifecycle_compaction_admission_uses_yield_epoch_across_fence_and_reopen() {
             .then(|| harness.pause_compaction_custody(CompactionCustodyTestStage::DispatchClaimed));
         let request = OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT);
         thread::scope(|scope| {
+            let pause = pause;
+            let dispatch_pause = dispatch_pause;
+            eprintln!(
+                "lifecycle admission fixture: {} reserved={reserved} reopen_early={reopen_early}",
+                fixture.home_path().display()
+            );
             let worker = scope.spawn(|| execute(&fixture, projection, &request));
             server.wait_started();
             scheduler_support::wait_until("accept continuation", || {
@@ -176,7 +184,10 @@ fn lifecycle_compaction_admission_uses_yield_epoch_across_fence_and_reopen() {
                     Err(ProcessAdmissionError::Unsettled)
                 );
             } else if reopen_early {
-                fence.try_reopen(true).unwrap();
+                assert_eq!(
+                    fence.try_reopen(true),
+                    Err(ProcessAdmissionError::Unsettled)
+                );
             }
             pause.release();
             let admitted = dispatch_pause.as_ref().map(|dispatch_pause| {
@@ -244,9 +255,7 @@ fn lifecycle_compaction_admission_uses_yield_epoch_across_fence_and_reopen() {
                 None
             );
             assert!(fixture.home().pending_reconciliations().is_empty());
-            if !reopen_early {
-                fence.try_reopen(true).unwrap();
-            }
+            fence.try_reopen(true).unwrap();
         });
         session.invalidate_connection();
         drop(session);

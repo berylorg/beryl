@@ -103,7 +103,10 @@ pub(crate) use shutdown_settlement::{
 mod stop_feedback;
 mod stop_worker;
 pub use stop_worker::ExactStopWorker;
+pub(in crate::cas_projection) use stop_worker::manual_compaction::ManualCompactionAuthority;
+pub(crate) use stop_worker::manual_compaction::PreparedManualCompaction;
 pub use stop_worker::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};
+pub use stop_worker::{ManualCompactionAvailability, ManualCompactionEligibility};
 mod stop_work;
 mod work_facts;
 mod work_sources;

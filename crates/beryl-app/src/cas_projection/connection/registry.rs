@@ -14,6 +14,10 @@ use beryl_model::{
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
 mod context;
+mod manual_compaction;
+pub(in crate::cas_projection) use manual_compaction::{
+    ManualProjectionStamp, read_manual_projection,
+};
 #[cfg(feature = "test-faults")]
 pub(in crate::cas_projection) mod context_test_support;
 mod work_facts;

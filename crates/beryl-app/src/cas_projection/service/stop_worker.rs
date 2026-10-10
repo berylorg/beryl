@@ -1,6 +1,8 @@
 use std::sync::Weak;
 
 mod context;
+pub(in crate::cas_projection) mod manual_compaction;
+pub use manual_compaction::{ManualCompactionAvailability, ManualCompactionEligibility};
 mod selected_operation;
 pub use selected_operation::{
     ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot,
@@ -15,6 +17,8 @@ use crate::cas_projection::{
 
 #[derive(Clone)]
 pub struct ExactStopWorker {
+    context_compaction:
+        Weak<crate::cas_projection::context_compaction::ContextCompactionCoordinator>,
     runtime_failure: super::RuntimeFailureReader,
     home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
@@ -39,6 +43,10 @@ pub(super) struct ExactStopRead {
 impl ProjectionConnectionService {
     pub fn exact_stop_worker(&self) -> ExactStopWorker {
         ExactStopWorker {
+            context_compaction: self
+                .context_compaction
+                .as_ref()
+                .map_or_else(Weak::new, Arc::downgrade),
             runtime_failure: self.runtime_failure_reader(),
             home: self.home.as_ref().map_or_else(Weak::new, Arc::downgrade),
             home_id: self.home_id,

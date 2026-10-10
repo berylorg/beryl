@@ -100,6 +100,7 @@ const COMPACTION_QUEUE_CAPACITY: usize = 64;
 const COMPACTION_WORKER_CAPACITY: usize = 8;
 
 pub(in crate::cas_projection) struct ContextCompactionCoordinator {
+    feedback: Mutex<Vec<Weak<super::feedback::FeedbackRecord>>>,
     home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -142,6 +143,7 @@ enum CompactionOrigin {
 }
 
 struct LocalCompaction {
+    feedback: Mutex<Option<std::sync::Weak<super::feedback::FeedbackRecord>>>,
     operation_id: CompactionOperationId,
     attempt: CompactionAttemptNonce,
     origin: CompactionOrigin,
@@ -193,6 +195,51 @@ impl CompactionWork {
 }
 
 impl ContextCompactionCoordinator {
+    pub(in crate::cas_projection) fn compact_selected(
+        self: &Arc<Self>,
+        authority: Arc<crate::cas_projection::service::ManualCompactionAuthority>,
+        settings: beryl_state::SettingsState,
+        feedback: &super::feedback::ContextCompactionFeedback,
+    ) -> Result<(), ContextCompactionError> {
+        let command = self
+            .commands
+            .authorize()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        self.ensure_current()?;
+        let request =
+            ContextCompactionRequest::applied_settings(authority.candidate.thread_id(), settings);
+        self.admit_manual(
+            &authority.candidate,
+            request.timeout_policy(),
+            command,
+            Some((authority.clone(), feedback)),
+        )?;
+        Ok(())
+    }
+
+    pub(in crate::cas_projection) fn reserve_feedback(
+        &self,
+    ) -> Result<
+        super::feedback::ContextCompactionFeedback,
+        crate::cas_projection::ExactStopRequestError,
+    > {
+        let mut records = self
+            .feedback
+            .lock()
+            .map_err(|_| crate::cas_projection::ExactStopRequestError::Revoked)?;
+        self.ensure_current()
+            .map_err(|_| crate::cas_projection::ExactStopRequestError::Revoked)?;
+        let presentation = self
+            .stop
+            .feedback_budget
+            .reserve()
+            .ok_or(crate::cas_projection::ExactStopRequestError::Capacity)?;
+        records.retain(|record| record.strong_count() != 0);
+        let feedback = super::feedback::ContextCompactionFeedback::new(presentation);
+        records.push(feedback.destination());
+        Ok(feedback)
+    }
+
     pub(in crate::cas_projection) fn new(
         home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
@@ -241,6 +288,7 @@ impl ContextCompactionCoordinator {
             commands,
             scheduler_signal,
             closing: AtomicBool::new(false),
+            feedback: Mutex::new(Vec::new()),
             settlement_fence: Mutex::new(()),
             custody,
             #[cfg(feature = "test-faults")]
@@ -311,7 +359,7 @@ impl ContextCompactionCoordinator {
                 return Err(ContextCompactionError::Ineligible(reason));
             }
             CompactionAdmissionRead::Admissible(candidate) => {
-                self.admit_manual(candidate.as_ref(), request.timeout_policy(), command)?
+                self.admit_manual(candidate.as_ref(), request.timeout_policy(), command, None)?
             }
         };
         Ok(local.wait())
@@ -443,6 +491,15 @@ impl ContextCompactionCoordinator {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner())
                 .take();
+            for record in self
+                .feedback
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .iter()
+                .filter_map(Weak::upgrade)
+            {
+                record.settle(super::feedback::ContextCompactionFeedbackState::AuthorityLost);
+            }
         }
         let locals = self
             .operations
@@ -612,6 +669,7 @@ impl LocalCompaction {
     ) -> Self {
         let observation = command.observation();
         Self {
+            feedback: Mutex::new(None),
             operation_id,
             attempt,
             origin,
@@ -631,6 +689,18 @@ impl LocalCompaction {
             .unwrap_or_else(|poison| poison.into_inner());
         if wait.result.is_none() && wait.deadline.is_none() {
             wait.deadline = Some(Instant::now() + self.completion_timeout.duration());
+            if let Some(record) = self
+                .feedback
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+            {
+                record.admitted(
+                    self.operation_id,
+                    wait.deadline.expect("accepted operation has a deadline"),
+                );
+            }
         }
         drop(wait);
         self.changed.notify_all();
@@ -654,6 +724,20 @@ impl LocalCompaction {
         }
         drop(wait);
         self.changed.notify_all();
+    }
+
+    fn feedback_record(&self) -> Option<Arc<super::feedback::FeedbackRecord>> {
+        self.feedback
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+    }
+
+    fn settle_feedback(&self, state: super::feedback::ContextCompactionFeedbackState) {
+        if let Some(record) = self.feedback_record() {
+            record.settle_execution(state);
+        }
     }
 
     fn is_finished(&self) -> bool {

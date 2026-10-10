@@ -423,6 +423,7 @@ impl HomeStore {
                 });
             }
             Ok(HomeCommand {
+                local_admission: None,
                 expected_home_revision: current_home,
                 cancellation,
                 participants: vec![DomainParticipant::Mutation(MutationContribution {
@@ -469,6 +470,7 @@ impl HomeStore {
         reservation: &mut CommandReservation,
     ) -> ExecutionOutcome {
         let HomeCommand {
+            local_admission,
             expected_home_revision,
             participants,
             sidecars,
@@ -581,6 +583,9 @@ impl HomeStore {
             Ok(prepared) => prepared,
             Err(error) => return ExecutionOutcome::NotCommitted(error),
         };
+        if local_admission.is_some_and(|admit| !admit()) {
+            return ExecutionOutcome::NotCommitted(CommandError::LocalAdmissionRejected);
+        }
         let receipt = match intended_receipt(generation, health_generation, current_home, &prepared)
         {
             Ok(receipt) => receipt,

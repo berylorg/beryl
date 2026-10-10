@@ -517,3 +517,92 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
     assert_eq!(read(&store, &beta, 99), None);
     assert_eq!(read(&store, &beta, 100), None);
 }
+
+#[test]
+fn local_admission_refusal_preserves_durable_records_and_health() {
+    local_admission_case(false, false, false);
+}
+
+#[test]
+fn local_admission_runs_once_after_typed_validation() {
+    local_admission_case(true, false, false);
+}
+
+#[test]
+fn typed_refusal_does_not_invoke_local_admission() {
+    local_admission_case(true, true, false);
+}
+
+#[test]
+fn revision_conflict_does_not_invoke_local_admission() {
+    local_admission_case(true, false, true);
+}
+
+fn local_admission_case(allowed: bool, typed_refusal: bool, stale: bool) {
+    let directory = tempdir().unwrap();
+    let mut candidate = open_home(directory.path());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let beta = candidate.register_domain::<BetaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    commit(&store, &beta, 7, b"guarded");
+    let called = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls = called.clone();
+    let mut command =
+        HomeCommand::new(store.home_revision().unwrap()).with_local_admission(move || {
+            calls.fetch_add(1, Ordering::SeqCst);
+            allowed
+        });
+    command
+        .add(alpha.contribution(
+            store.domain_revision(&alpha).unwrap(),
+            PutBytes::<AlphaDomain>::new(1, b"committed".to_vec()),
+        ))
+        .unwrap();
+    command
+        .add_validation(beta.validation(
+            store.domain_revision(&beta).unwrap(),
+            RequireBytes::<BetaDomain>::new(
+                7,
+                if typed_refusal {
+                    b"wrong".as_slice()
+                } else {
+                    b"guarded".as_slice()
+                },
+            ),
+        ))
+        .unwrap();
+    if stale {
+        commit(&store, &beta, 8, b"later");
+    }
+    let revision = store.home_revision().unwrap();
+    let health = store.health();
+    let outcome = store.execute(command);
+    if !stale && !typed_refusal && allowed {
+        committed(outcome);
+        assert_eq!(read(&store, &alpha, 1), Some(b"committed".to_vec()));
+    } else {
+        let error = not_committed(outcome);
+        if !stale && !typed_refusal {
+            assert!(matches!(error, CommandError::LocalAdmissionRejected));
+        }
+        assert_eq!(store.home_revision().unwrap(), revision);
+        assert_eq!(read(&store, &alpha, 1), None);
+    }
+    assert_eq!(
+        called.load(Ordering::SeqCst),
+        usize::from(!stale && !typed_refusal)
+    );
+    assert_eq!(store.health().state(), health.state());
+    assert_eq!(store.health().generation(), health.generation());
+    store.close().unwrap();
+}

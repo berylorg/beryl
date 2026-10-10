@@ -38,6 +38,43 @@ pub(crate) struct PublishedExactStopWorker {
 }
 
 impl PublishedExactStopWorker {
+    pub(crate) fn selected_compaction_availability(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> crate::cas_projection::ManualCompactionAvailability {
+        use crate::cas_projection::ManualCompactionAvailability;
+        if !self.selection_current(selection) {
+            return ManualCompactionAvailability::Unavailable("Runtime is unavailable.");
+        }
+        let Some(session) = &self.session else {
+            return ManualCompactionAvailability::Unavailable("Runtime is unavailable.");
+        };
+        let availability = self.worker.selected_compaction_availability(
+            session,
+            selection.window_id(),
+            selection.claim(),
+            self.lifetime.clone(),
+        );
+        if self.selection_current(selection) {
+            availability
+        } else {
+            ManualCompactionAvailability::Unavailable("Runtime is unavailable.")
+        }
+    }
+
+    pub(crate) fn prepare_manual_compaction(
+        &self,
+        eligibility: &crate::cas_projection::ManualCompactionEligibility,
+    ) -> Result<
+        crate::cas_projection::PreparedManualCompaction,
+        crate::cas_projection::ExactStopRequestError,
+    > {
+        if !self.publication_current() {
+            return Err(crate::cas_projection::ExactStopRequestError::Revoked);
+        }
+        self.worker.prepare_manual_compaction(eligibility)
+    }
+
     pub(crate) fn selected_runtime_failure(
         &self,
         selection: crate::main_window::MainWindowComposerSelectionIdentity,

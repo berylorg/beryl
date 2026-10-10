@@ -95,6 +95,7 @@ struct StopCoordinatorState {
 }
 
 pub(in crate::cas_projection) struct StopCoordinator {
+    pub(super) feedback_budget: super::operation_feedback::OperationFeedbackBudget,
     home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -399,6 +400,7 @@ impl StopCoordinator {
             storage,
             commands,
             state: state::StopState::new(StopCoordinatorState::default()),
+            feedback_budget: super::operation_feedback::OperationFeedbackBudget::default(),
             compaction_custody:
                 super::context_compaction::coordinator::custody::CompactionCustodyPool::new(
                     scheduler_signal.clone(),

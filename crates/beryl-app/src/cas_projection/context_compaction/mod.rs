@@ -1,8 +1,13 @@
 //! Exact same-thread context-compaction coordination.
 
 pub(super) mod coordinator;
+pub(super) mod feedback;
 mod target;
 mod timeout;
+
+pub use feedback::{
+    ContextCompactionFeedback, ContextCompactionFeedbackSnapshot, ContextCompactionFeedbackState,
+};
 
 pub use timeout::{
     ContextCompactionTimeoutPolicy, ContextCompactionTimeoutSource,

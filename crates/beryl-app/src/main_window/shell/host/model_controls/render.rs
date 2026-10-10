@@ -3,7 +3,7 @@ use crate::main_window::creation::command::theme_color;
 use crate::widgets::anchored_context_menu::{self as widget, MenuColors};
 use beryl_state::ThemePropertyId as Property;
 
-fn menu_colors(root: &MainWindowShellRoot) -> MenuColors {
+pub(in crate::main_window::shell::host) fn menu_colors(root: &MainWindowShellRoot) -> MenuColors {
     let appearance = root.controller().expect("mounted controller").appearance();
     let color = |role, property, fallback| theme_color(appearance, role, property, fallback);
     MenuColors {

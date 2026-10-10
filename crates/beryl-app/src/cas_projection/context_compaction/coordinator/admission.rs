@@ -23,11 +23,22 @@ impl ContextCompactionCoordinator {
         candidate: &syndic_storage::CompactionAdmissionCandidate,
         timeout_policy: &ContextCompactionTimeoutPolicy,
         command: LiveCommandPermit,
+        selected: Option<(
+            Arc<crate::cas_projection::service::ManualCompactionAuthority>,
+            &super::super::feedback::ContextCompactionFeedback,
+        )>,
     ) -> Result<Arc<LocalCompaction>, ContextCompactionError> {
         let command = self.reserve_command(command, candidate.thread_id())?;
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;
         let (connection, projection) = self.projection_for(candidate)?;
+        if let Some((authority, _)) = &selected {
+            if authority.projection.loaded_generation() != projection.loaded_session_generation()
+                || !authority.connection.ptr_eq(&Arc::downgrade(&connection))
+            {
+                return Err(ContextCompactionError::AuthorityMismatch);
+            }
+        }
         let completion_timeout = timeout_policy.resolve(&self.home)?;
         let admission = candidate.admission(
             operation_nonce,
@@ -51,19 +62,60 @@ impl ContextCompactionCoordinator {
             completion_timeout,
             command,
         ));
+        if let Some((_, feedback)) = &selected {
+            *local.feedback.lock().unwrap_or_else(|p| p.into_inner()) =
+                Some(feedback.destination());
+        }
         let mut custody = custody::CompactionAdmissionCustody::new(self, &local);
         // Dispose the projection before releasing command custody, including on unwind.
         let projection = projection;
         self.install_local(Arc::clone(&local))?;
         custody.installed();
-        if let Err(error) = require_committed_command(
+        let selected_request = selected.is_some();
+        let outcome = if let Some((authority, _)) = selected {
+            let mut command = beryl_home_store::HomeCommand::new(
+                self.home
+                    .home_revision()
+                    .map_err(|_| ContextCompactionError::Storage)?,
+            )
+            .with_local_admission({
+                let authority = authority.clone();
+                move || authority.elect_local()
+            });
+            command
+                .add(
+                    self.storage.admit_compaction_operation(
+                        self.storage
+                            .revision(&self.home)
+                            .map_err(|_| ContextCompactionError::Storage)?,
+                        admission.clone(),
+                    ),
+                )
+                .map_err(|_| ContextCompactionError::Storage)?;
+            command
+                .add_validation(
+                    authority.session.validate_thread_claim_catalog_source(
+                        authority
+                            .session
+                            .revision(&self.home)
+                            .map_err(|_| ContextCompactionError::Storage)?,
+                        authority.claim,
+                    ),
+                )
+                .map_err(|_| ContextCompactionError::Storage)?;
+            self.home.execute(command)
+        } else {
             self.home.execute_current(
                 self.storage
                     .current_admit_compaction_operation(admission.clone()),
-            ),
-        ) {
+            )
+        };
+        if let Err(error) = require_committed_command(outcome) {
             self.fail_local(&local);
             return Err(error);
+        }
+        if selected_request {
+            local.mark_accepted();
         }
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,

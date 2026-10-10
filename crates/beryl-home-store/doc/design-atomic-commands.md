@@ -47,6 +47,22 @@ is governed by [the package design](design.md), including that design's engineer
 
 ## Mutation Observation And In-Memory Election
 
+- A caller-fenced `HomeCommand` may own one local admission predicate in addition to its typed
+  participants. The writer consumes it once after every typed preparation and revision check
+  succeeds, before batch assembly. This is the atomic admission cut for participating durable
+  facts and the caller's exact local authority. Refusal returns `NotCommitted` with
+  `LocalAdmissionRejected`, without assembly, mutation, persistence or a health change.
+- The predicate performs only bounded in-memory, nonblocking authority election. It receives no
+  store, snapshot or guard, performs no storage/backend I/O, waits, joins or writer reentry, and
+  cannot reserve a second command. Missing, contended or retired local authority refuses entry.
+  Its owning system defines the finite capture and exact incarnation checks. Local retirement
+  before this cut rejects entry; retirement afterward follows that operation's admitted lifetime
+  and cannot hide its classified durable result or transfer it to a successor. No local guard is
+  held across physical I/O. Current commands do not acquire this optional predicate implicitly.
+- Verification covers predicate noninvocation on revision or typed preparation failure, one
+  invocation on admission, refusal without durable changes, and normal classified persistence
+  outcomes after the cut. Owner integration additionally proves local retirement races.
+
 - `HomeStore::observe_mutations` installs one current `HomeMutationObserver` with a supplied
   `Waker`. Replacing the observer revokes the prior registration and its tokens atomically.
   Observer clones share that registration; only the last owner drop revokes it. The store retains

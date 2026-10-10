@@ -365,6 +365,12 @@ impl ContextCompactionLifecycleTestHarness {
         Ok(ContextCompactionSettlementPauseController { gate })
     }
 
+    pub fn pause_after_manual_settlement(
+        &self,
+    ) -> Result<ContextCompactionSettlementPauseController, ContextCompactionError> {
+        self.pause_after_lifecycle_settlement()
+    }
+
     pub fn shutdown_requested(&self) -> Result<bool, ContextCompactionError> {
         Ok(self.coordinator()?.closing.load(Ordering::Acquire))
     }

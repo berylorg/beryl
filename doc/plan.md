@@ -98,36 +98,35 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 747: Mount Exact Selected-Thread Context Status (finished)
+# Phase 748: Mount Exact Manual Context Compaction (finished)
 
-Accepted bounded ordered usage, unavailable quota and the exact weak publication fence through
-the native 180-pixel cell. Independent whole-boundary review passed with 128 affected cases,
-default production checks and proven terminal/retirement rendering. See the
-[closure record](audits/context-compaction-mount-readiness.md#context-status-mounting-closure).
+Accepted the canonical Compact menu with atomic original-selection admission, shared bounded
+feedback, protected FIFO, genuine uncertainty and exact late settlement through retirement.
+Independent completion review passed 225 affected cases, four native Compact cases, 39 shared
+menu/Stop cases, the native model-menu case and default checks. See the
+[closure record](audits/context-compaction-mount-readiness.md#manual-compaction-mounting-closure).
 
-# Phase 748: Mount Exact Manual Context Compaction (wip)
+# Phase 749: Qualify Remaining Repair-Unavailable Presentation (pending)
 
-Mount the bounded Compact menu through the qualified opaque capability and existing coordinator.
-Accept idle-only atomic admission, preserved drafts and queued-work precedence, actual sole-driver
-dispatch, bounded rejection/uncertainty feedback, timeout with exact late settlement, selection
-replacement and teardown through the complete production path.
+Qualify the remaining Checkpoint 4 fail-closed repair/recovery presentation against
+[backend recovery](features/backend-runtime-recovery/design.md#live-capture-gap-recovery),
+[status states](features/status-line/design.md#turn-state-view-count-and-stop-controls) and the
+accepted App weak selected-operation reader. Establish which exact repair/incomplete/unknown-terminal
+facts and backend-required action refusals already reach the production window, which localized
+explanations remain absent, and the original-selection/publication fences and resource bounds needed
+to mount them. Preserve draft typing/persistence and affected-thread isolation.
 
-Use the accepted [status feature](features/status-line/design.md#context-and-rate-limit-cell),
-[App weak-worker contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation),
-[CAS-live admission/settlement](systems/cas-live-syndic-transcript/design.md#context-compaction)
-and [Notifications feedback](features/notifications/design.md) as authority. Keep GUI reads and
-commands weak and bounded; consume only exact original-selection admission and preserve admitted
-execution/feedback through view removal. Shared protected feedback retention and reserved visible
-contribution must preserve required results when ordinary notifications saturate. Do not infer
-eligibility from the new percentage readout or use selection changes to cancel admitted work.
+Acceptance is a bounded source/authority readiness record and independent review, with required
+owning-contract corrections resolved before mounting scope is activated. Existing unavailable
+repair and explicit-incomplete convergence remain controlling; this qualification authorizes no
+new repair source, history injection or recovery command. Reuse the
+[prior readiness evidence](failures/executable-bootstrap.md#deferred-repair-and-recovery-presentation-readiness)
+only for unchanged mechanisms and reconcile its superseded runtime/lineage gaps against their
+accepted mounting records.
 
-Verify real ingress and native command mounting, exact idle and queued-work races, rejection and
-uncertainty, timeout versus terminal settlement, successor/selection replacement and disposal.
-Preserve the accepted context/model mounting behavior and request minimized native launches where
-practical. Root owns shared service integration and the sole Cargo permit; independent review
-must assess the whole mounted manual-command boundary.
+# Phase 750: Mount Exact Repair-Unavailable Explanations (pending)
 
-Current milestone: context status is accepted; manual command effects have not started. Owning
-admission/late-feedback contracts were accepted before implementation. No product decision or
-manifest change is pending. Accepted context receipts have been consumed and summarized in the
-closure record; no temporary receipt path is needed for continuation.
+After phase 749 establishes owning readiness, mount the remaining exact disabled explanations and
+repair/recovery unavailable states through the accepted selected-window services. Verify affected
+thread isolation, preserved drafts, original selection/publication loss and truthful terminal states;
+retain phase 465's unavailable repair boundary and the separate transcript/recovery product gates.

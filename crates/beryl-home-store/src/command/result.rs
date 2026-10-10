@@ -413,6 +413,8 @@ pub enum CommandError {
     /// Cancellation was observed before this command acquired writer admission.
     #[error("command was cancelled before writer admission")]
     CancelledBeforeAdmission,
+    #[error("local command authority refused admission")]
+    LocalAdmissionRejected,
     /// The same thread attempted to enter this store's writer recursively.
     #[error("reentrant use of the same Beryl-home writer is forbidden")]
     ReentrantWriter,

@@ -6,6 +6,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
 ) -> AnyElement {
     let appearance = &root.controller.as_ref().unwrap().appearance;
     let status = &root.status_controls;
+    let colors = super::super::model_controls::menu_colors(root);
     let remaining = status
         .snapshot
         .context
@@ -90,10 +91,42 @@ pub(in crate::main_window::shell::host) fn render_strip(
                 })
                 .w(px(180.))
                 .flex_none()
+                .h_full()
                 .px(px(10.))
+                .flex()
+                .items_center()
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
+                .when(status.compaction.anchor.is_some(), |segment| {
+                    segment
+                        .bg(colors.pressed)
+                        .text_color(colors.pressed_foreground)
+                })
+                .when(root.compaction_menu_available(), |segment| {
+                    segment
+                        .cursor_pointer()
+                        .hover(|style| style.bg(colors.hover).text_color(colors.hover_foreground))
+                        .active(|style| {
+                            style
+                                .bg(colors.pressed)
+                                .text_color(colors.pressed_foreground)
+                        })
+                        .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
+                            window.prevent_default()
+                        })
+                        .on_click(cx.listener(|root, _, window, cx| {
+                            root.toggle_compaction_menu(window, cx)
+                        }))
+                })
+                .when(
+                    status.selection.is_some() && !root.compaction_menu_available(),
+                    |segment| segment.text_color(colors.disabled),
+                )
+                .tooltip({
+                    let reason = root.compaction_reason().to_owned();
+                    move |_, cx| cx.new(|_| StatusTooltip(reason.clone())).into()
+                })
                 .child(remaining.map_or_else(
                     || "Context Unknown".to_owned(),
                     |value| format!("Context {value}%"),
@@ -109,6 +142,9 @@ pub(in crate::main_window::shell::host) fn render_menu(
     window: &Window,
     cx: &mut Context<MainWindowShellRoot>,
 ) -> Option<AnyElement> {
+    if root.status_controls.compaction.anchor.is_some() {
+        return super::manual_compaction::render_menu(root, window, cx);
+    }
     let status = &root.status_controls;
     status.menu_anchor.as_ref()?;
     let enabled = status.command_enabled() && root.status_mutation_gate().is_none();
@@ -233,7 +269,7 @@ fn feedback_text(state: ExactStopFeedbackState) -> &'static str {
     }
 }
 
-struct StatusTooltip(String);
+pub(super) struct StatusTooltip(pub(super) String);
 
 impl Render for StatusTooltip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {

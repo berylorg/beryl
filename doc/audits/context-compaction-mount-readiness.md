@@ -148,3 +148,64 @@ after absolute-path, reparse and process checks. All three native runner PIDs
 and their test processes are absent. The initial abort did not print its Home; the bounded read-only
 creation-time check found no remaining candidate, and no uncertain temporary directory was deleted.
 No selected simplification-audit finding required a separate change in this boundary.
+
+# Manual Compaction Mounting Closure
+
+The production Context segment now opens the canonical one-row Compact menu with shared focus,
+pointer/keyboard admission, pressed/open feedback and theme roles. Availability comes from an
+opaque capability capturing the original published window, full Session claim, loaded connection,
+Syndic binding and idle candidate. Final Home admission composes typed storage/Session revisions
+with the bounded nonblocking local predicate, so new accepted work, claim removal and original
+publication loss refuse before effects. The original applied whole-second timeout is resolved
+once. Draft text and root remain unchanged.
+
+Stop and manual compaction share a 72-record consumer budget. Reservation and exact GUI feedback
+retention precede dispatch; clones share one slot and final disposal frees it. The weak worker and
+feedback do not retain the service graph or execution. Pending uncertainty, refusal, waiting,
+StillRunning and exact resolved outcomes remain distinct. A classified indeterminate admission
+retains reconciliation and Pending feedback without dispatch; retirement resolves AuthorityLost.
+Exact durable terminal settlement and result publication share the retirement fence, preserving
+late success after local removal and original window-publication loss.
+
+The sole protected Notifications contribution follows original admission order, including pending
+handoffs. Ordinary warning saturation cannot discard it. Dismissing an earlier resolved Stop result
+reveals the later persistent Compact result; resolved Compact feedback is separately dismissible.
+Selection and window disposal release presentation without cancelling admitted execution.
+
+Final native Compact qualification passed 4/4 on Windows, run
+`da631945-4ca5-48c0-9253-7656e769377f`, with minimized startup requests. It uses real Application,
+production shell publication, real websocket ordinary ingress and the existing sole compaction
+driver. Actual Window event dispatch clicks the Context segment and canonical Compact row.
+The row's test bounds are calculated widget geometry, not a claimed prepaint receipt. Cases cover
+queued-work/original-claim refusal, shared capacity and clone disposal, publication revocation,
+saturated-notice FIFO, original timeout, late success concurrent with retirement and authentic
+indeterminate admission followed by exact retirement/reconciliation. Existing context usage
+75%/Unknown/87%, normal terminal continuity and retirement Unknown remain exercised.
+
+Shared canonical-menu/model and Stop library cases passed 39/39, run
+`f10f1f09-8703-4180-811d-f3cccfa86a6a`. The real native progressive model-menu pointer, keyboard,
+reasoning and focus case passed 1/1, run `da5ca1d8-e6f2-4126-87f4-3b513508abd9`.
+These receipts precede the localized Context-segment hover/open styling correction; their unchanged
+menu and Stop mechanisms remain qualified, and the final four native cases qualify the correction.
+The retained complete affected Home/App suite passed 225/225, run
+`374ced60-df40-4504-ae97-b765d50e01b5`, in 273.139 seconds with eight slow cases. It includes Home
+validation participants, admission/process custody, compaction policy and settlement, exact mounted
+status/observations, Notices and runtime preparation. The earlier lifecycle fixture failure was
+corrected within its owning tests, and this complete receipt supersedes that failed run.
+Default `cargo check -p beryl-backend -p beryl-app -p beryl-home-store --lib --locked --offline`
+passed in 12.24 seconds. Scoped formatting and diff checks passed.
+
+All 36 changed Rust inputs, including the owned fork wrapper, matched the final reviewed receipt
+`4067284EA463560069264746D587B872382299813AC16D35E42F88A7675FBF6F`.
+
+The owned GPUI fork exposes only a test-support void wrapper into the existing Window event path.
+Independent wrapper review and native qualification passed; fork commit `21c7393531` was pushed.
+No manifest changed. Durable corrections are preserved in
+[manual feedback lessons](../failures/manual-compaction-feedback.md). No selected simplification
+finding required a separate change. Independent whole-boundary completion review accepted phase
+748 after authenticating all final receipts and source identities. Resource inspection confirms all 15 recorded
+native/model runner PIDs, the affected-suite runner and both explicitly stopped stalled fixture
+processes are absent. Six printed failed-fixture Homes are absent. Read-only creation bounds found
+no remaining unidentified stalled-fixture candidate; no uncertain temporary directory was deleted.
+All temporary receipts have been consumed. The exact 3.7 MiB task root is reclaimed after absolute
+path, nested/ancestor reparse and process checks; no task-owned runner, Home or evidence directory remains.

@@ -3,7 +3,7 @@ use crate::app_services::PublishedExactStopWorker;
 use crate::cas_projection::{
     ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot,
     ExactSoftStopAvailability, ExactSoftStopEligibility, ExactSoftStopUnavailable,
-    ExactStopFeedback, ExactStopFeedbackState, ExactStopRequestError,
+    ExactStopFeedback, ExactStopFeedbackState, ExactStopRequestError, ManualCompactionAvailability,
 };
 use crate::main_window::MainWindowComposerSelectionIdentity;
 use gpui::prelude::FluentBuilder;
@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 mod feedback;
+mod manual_compaction;
 mod render;
 use feedback::AcknowledgedStopFeedback;
 pub(super) use render::{render_menu, render_strip};
@@ -19,11 +20,15 @@ pub(super) use render::{render_menu, render_strip};
 const FEEDBACK_LIMIT: usize = 72;
 
 pub(crate) struct ExactStopFeedbackHandoff {
+    pub(crate) order: u64,
     pub(crate) origin: ExactOperationOrigin,
     pub(crate) feedback: ExactStopFeedback,
 }
 
 pub(super) struct ExactStatusControls {
+    next_feedback_order: u64,
+    stop_pending_orders: Vec<(ExactOperationOrigin, u64)>,
+    compaction: manual_compaction::ManualCompactionControls,
     worker: Option<PublishedExactStopWorker>,
     selection: Option<MainWindowComposerSelectionIdentity>,
     snapshot: ExactSelectedOperationSnapshot,
@@ -44,6 +49,9 @@ pub(super) struct ExactStatusControls {
 impl ExactStatusControls {
     pub(super) fn new(cx: &mut Context<MainWindowShellRoot>) -> Self {
         Self {
+            next_feedback_order: 0,
+            stop_pending_orders: Vec::new(),
+            compaction: Default::default(),
             worker: None,
             selection: None,
             snapshot: ExactSelectedOperationSnapshot::unavailable(),
@@ -134,6 +142,11 @@ impl ExactStatusControls {
     }
 
     fn retain_feedback(&mut self, origin: ExactOperationOrigin, feedback: ExactStopFeedback) {
+        let pending = self
+            .stop_pending_orders
+            .iter()
+            .position(|(pending, _)| pending == &origin)
+            .map(|index| self.stop_pending_orders.remove(index).1);
         if feedback.operation_origin().as_ref() != Some(&origin)
             || self.feedback.iter().any(|entry| entry.feedback == feedback)
             || self
@@ -144,9 +157,21 @@ impl ExactStatusControls {
             return;
         }
         if self.feedback_budget() < FEEDBACK_LIMIT {
-            self.feedback
-                .push(ExactStopFeedbackHandoff { origin, feedback });
+            let order = pending.unwrap_or_else(|| self.allocate_feedback_order());
+            self.feedback.push(ExactStopFeedbackHandoff {
+                order,
+                origin,
+                feedback,
+            });
         }
+    }
+
+    fn allocate_feedback_order(&mut self) -> u64 {
+        let order = self.next_feedback_order;
+        self.next_feedback_order = order
+            .checked_add(1)
+            .expect("bounded request admission order");
+        order
     }
 }
 
@@ -189,6 +214,9 @@ impl MainWindowShellRoot {
             return;
         }
         self.close_stop_menu(window, cx);
+        self.close_compaction_menu(window, cx);
+        self.status_controls.compaction.availability =
+            ManualCompactionAvailability::Unavailable("Runtime is unavailable.");
         self.status_controls
             .generation
             .fetch_add(1, Ordering::AcqRel);
@@ -249,6 +277,11 @@ impl MainWindowShellRoot {
         }
         let selection = self.status_selection(cx);
         if selection != self.status_controls.selection {
+            self.close_compaction_menu(window, cx);
+            self.status_controls.compaction.availability =
+                crate::cas_projection::ManualCompactionAvailability::Unavailable(
+                    "Runtime is unavailable.",
+                );
             self.close_stop_menu(window, cx);
             self.status_controls
                 .generation
@@ -298,10 +331,11 @@ impl MainWindowShellRoot {
                                 let eligible = worker.selected_runtime_retry_eligible(selection, &execution, failure);
                                 (execution, failure, eligible)
                             });
-                            (worker.selected_operation_snapshot(selection), runtime, eligibility)
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection))
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
+                        root.apply_compaction_observation(selection, generation, result.3, window, cx);
                         root.apply_runtime_failure_observation(
                             selection, generation, result.1, result.2, window, cx,
                         );
@@ -418,6 +452,7 @@ impl MainWindowShellRoot {
         if !self.status_controls.menu_available() {
             return;
         }
+        self.close_compaction_menu(window, cx);
         self.status_controls.return_focus = window.focused(cx).map(|focus| focus.downgrade());
         self.status_controls.menu_anchor = self.status_controls.snapshot.origin.clone();
         window.focus(&self.status_controls.menu_focus);
@@ -452,6 +487,10 @@ impl MainWindowShellRoot {
             return;
         }
         self.status_controls.request_pending = Some(origin.clone());
+        let order = self.status_controls.allocate_feedback_order();
+        self.status_controls
+            .stop_pending_orders
+            .push((origin.clone(), order));
         self.status_controls.request_failure = None;
         self.status_controls.snapshot.stop =
             ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::RequestInProgress);
@@ -507,7 +546,9 @@ impl MainWindowShellRoot {
             self.status_controls.request_pending = None;
         }
         match feedback {
-            Ok(feedback) => self.status_controls.retain_feedback(origin, feedback),
+            Ok(feedback) => self
+                .status_controls
+                .retain_feedback(origin.clone(), feedback),
             Err(error) if current => {
                 self.status_controls.request_failure = Some(match error {
                     ExactStopRequestError::Revoked => {
@@ -518,6 +559,9 @@ impl MainWindowShellRoot {
             }
             _ => {}
         }
+        self.status_controls
+            .stop_pending_orders
+            .retain(|(pending, _)| pending != &origin);
         if current {
             self.status_controls
                 .generation
@@ -626,6 +670,14 @@ impl MainWindowShellRoot {
         self.status_controls.snapshot.stop =
             ExactSoftStopAvailability::Unavailable(ExactSoftStopUnavailable::RequestInProgress);
         cx.notify();
+    }
+
+    pub fn test_begin_exact_stop_feedback_handoff(&mut self, feedback: &ExactStopFeedback) {
+        assert!(self.status_controls.feedback_budget() < FEEDBACK_LIMIT);
+        let order = self.status_controls.allocate_feedback_order();
+        self.status_controls
+            .stop_pending_orders
+            .push((feedback.operation_origin().unwrap(), order));
     }
 
     pub fn test_exact_status_observation_stamp(

@@ -107,6 +107,7 @@ impl HomeStore {
                 }));
             }
             Ok(HomeCommand {
+                local_admission: None,
                 expected_home_revision: current_home,
                 cancellation: command.cancellation,
                 participants,
