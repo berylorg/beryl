@@ -39,6 +39,7 @@ struct StagedTranscript {
     outcome: TranscriptActivationOutcome,
     allocation: Option<gpui::Size<gpui::Pixels>>,
     unplaced_tail: bool,
+    adjacent: Option<super::AdjacentTranscriptDemand>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -67,6 +68,7 @@ pub(crate) struct SyndicTranscriptPanel {
     staged: Option<StagedTranscript>,
     geometry: Option<PendingGeometry>,
     pending_delta: f32,
+    rejected_adjacent: Option<super::AdjacentTranscriptDemand>,
     appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
     #[cfg(test)]
     viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
@@ -84,6 +86,7 @@ impl SyndicTranscriptPanel {
             staged: None,
             geometry: None,
             pending_delta: 0.0,
+            rejected_adjacent: None,
             appearance: None,
             #[cfg(test)]
             viewport_bounds: None,
@@ -147,9 +150,65 @@ impl SyndicTranscriptPanel {
             outcome,
             allocation,
             unplaced_tail,
+            adjacent: None,
         });
         self.geometry = None;
         self.close_invalid_geometry();
+    }
+
+    pub(crate) fn adjacent_demand(&self) -> Option<super::AdjacentTranscriptDemand> {
+        if self.pending_delta != 0.0 {
+            return None;
+        }
+        self.host
+            .adjacent_demand()
+            .filter(|demand| self.rejected_adjacent.as_ref() != Some(demand))
+    }
+
+    pub(crate) fn reject_adjacent_demand(&mut self, demand: super::AdjacentTranscriptDemand) {
+        self.rejected_adjacent = Some(demand);
+    }
+
+    pub(crate) fn adjacent_candidate_current(
+        &self,
+        demand: &super::AdjacentTranscriptDemand,
+    ) -> bool {
+        self.adjacent_demand().as_ref() == Some(demand)
+            && self
+                .staged
+                .as_ref()
+                .is_some_and(|staged| staged.adjacent.as_ref() == Some(demand))
+    }
+
+    pub(crate) fn stage_adjacent_extension(
+        &mut self,
+        demand: &super::AdjacentTranscriptDemand,
+        prepared: &PreparedTranscriptActivation,
+    ) -> bool {
+        if self.adjacent_demand().as_ref() != Some(demand) || self.staged.is_some() {
+            return false;
+        }
+        let Some(host) = self.host.prepare_adjacent_extension(demand, prepared) else {
+            return false;
+        };
+        let snapshot = host.shared_snapshot();
+        let outcome = TranscriptActivationOutcome {
+            activation_revision: snapshot.activation_revision,
+            presentation_revision: snapshot.presentation_revision,
+            state: snapshot.state.clone(),
+            retained_previous_snapshot: true,
+            provider_request: None,
+        };
+        self.staged = Some(StagedTranscript {
+            activation: prepared.clone(),
+            host,
+            outcome,
+            allocation: None,
+            unplaced_tail: false,
+            adjacent: Some(demand.clone()),
+        });
+        self.geometry = None;
+        true
     }
 
     pub(crate) fn measurement_ready(&self) -> bool {
@@ -249,6 +308,13 @@ impl SyndicTranscriptPanel {
         if !delta.is_finite() || delta == 0.0 {
             return;
         }
+        if self
+            .staged
+            .as_ref()
+            .is_some_and(|staged| staged.adjacent.is_some())
+        {
+            self.discard_staged_activation();
+        }
         self.host.detach_tail();
         if let Some(staged) = &mut self.staged {
             staged.host.detach_tail();
@@ -276,6 +342,7 @@ impl SyndicTranscriptPanel {
         self.staged = None;
         self.geometry = None;
         self.pending_delta = 0.0;
+        self.rejected_adjacent = None;
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {

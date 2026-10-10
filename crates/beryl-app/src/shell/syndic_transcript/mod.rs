@@ -52,7 +52,7 @@ pub(crate) use frame::{
     RealizedFrameScrollController, RealizedFrameScrollMode, RealizedFrameScrollStateSnapshot,
     RealizedFrameWindow, RealizedRecordMeasurement,
 };
-pub(crate) use host::SyndicTranscriptHost;
+pub(crate) use host::{AdjacentTranscriptDemand, SyndicTranscriptHost};
 pub(crate) use media_action::{
     ResidentMediaActionCommand, ResidentMediaActionOutcome, ResidentMediaActionRecord,
     ResidentMediaActionUnavailable, ResidentMediaRangeAvailability,

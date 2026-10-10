@@ -348,6 +348,122 @@ impl Render for NestedPanel {
     }
 }
 
+fn page_seed(range: std::ops::Range<u64>, end: u64) -> PreparedTranscriptActivation {
+    let mut activation = seed(end);
+    let Some(TranscriptProviderResponseKind::ViewPage(page)) = &mut activation.view_page_response
+    else {
+        unreachable!()
+    };
+    page.records
+        .retain(|record| range.contains(&record.position.0));
+    page.at_start = range.start == 1;
+    page.at_end = range.end == end;
+    let Some(TranscriptProviderResponseKind::ProjectionRecords(projections)) =
+        &mut activation.projection_records_response
+    else {
+        unreachable!()
+    };
+    projections
+        .records
+        .retain(|record| range.contains(&record.provenance.position.unwrap().0));
+    activation
+}
+
+#[gpui::test]
+fn measured_adjacent_prepend_preserves_anchor_and_prior_snapshot(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, page_seed(65..129, 129));
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    panel.update(cx, |panel, cx| {
+        panel.manual_scroll_delta(180.0, -100_000.25, cx)
+    });
+    draw_frames(cx, window, 5);
+    let (demand, anchor, prior) = panel.read_with(cx, |panel, _| {
+        (
+            panel.adjacent_demand().unwrap(),
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .anchor
+                .clone()
+                .unwrap(),
+            panel.snapshot(),
+        )
+    });
+    assert_eq!(demand.range, 1..65);
+    assert_eq!(
+        demand,
+        panel.read_with(cx, |panel, _| panel.adjacent_demand().unwrap())
+    );
+    let extension = page_seed(1..65, 129);
+    panel.update(cx, |panel, cx| {
+        assert!(panel.stage_adjacent_extension(&demand, &extension));
+        assert!(std::sync::Arc::ptr_eq(&panel.snapshot(), &prior));
+        cx.notify();
+    });
+    draw_frames(cx, window, 5);
+    panel.read_with(cx, |panel, _| {
+        let current = panel
+            .last_frame_window
+            .as_ref()
+            .unwrap()
+            .anchor
+            .as_ref()
+            .unwrap();
+        assert_eq!(current.record_id, anchor.record_id);
+        assert_eq!(current.viewport_y_px, anchor.viewport_y_px);
+        assert_eq!(
+            panel
+                .last_frame_window
+                .as_ref()
+                .unwrap()
+                .manual_scroll_total_px,
+            -100_000.25
+        );
+        assert!(panel.snapshot().records.len() > 64);
+        assert!(
+            !panel
+                .snapshot()
+                .records
+                .iter()
+                .any(|record| record.id == prior.records.last().unwrap().id)
+        );
+        assert!(
+            panel
+                .snapshot()
+                .records
+                .iter()
+                .any(|record| record.id == anchor.record_id)
+        );
+        assert_eq!(prior.records.len(), 64);
+        assert!(panel.adjacent_demand().is_none());
+    });
+}
+
+#[gpui::test]
+fn input_supersedes_measured_adjacent_candidate(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, page_seed(65..129, 129));
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    panel.update(cx, |panel, cx| {
+        panel.manual_scroll_delta(180.0, -100_000.0, cx)
+    });
+    draw_frames(cx, window, 5);
+    let demand = panel.read_with(cx, |panel, _| panel.adjacent_demand().unwrap());
+    panel.update(cx, |panel, cx| {
+        assert!(panel.stage_adjacent_extension(&demand, &page_seed(1..65, 129)));
+        panel.manual_scroll_delta(180.0, 12.25, cx);
+        assert!(panel.staged.is_none());
+        assert!(panel.adjacent_demand().is_none());
+        assert!(!panel.stage_adjacent_extension(&demand, &page_seed(1..65, 129)));
+    });
+    draw_frames(cx, window, 5);
+    panel.read_with(cx, |panel, _| {
+        assert_eq!(panel.snapshot().records.len(), 64)
+    });
+}
+
 fn seed(record_count: u64) -> PreparedTranscriptActivation {
     let view_id = TranscriptViewId("nested-panel".into());
     let revision = ProviderRevision(record_count);
@@ -405,6 +521,35 @@ fn seed(record_count: u64) -> PreparedTranscriptActivation {
             },
         )),
     )
+}
+
+#[gpui::test]
+fn adjacent_allocation_and_pin_changes_revoke_prepared_geometry(cx: &mut TestAppContext) {
+    let window = mounted_panel(cx, page_seed(65..129, 129));
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    panel.update(cx, |panel, cx| {
+        panel.manual_scroll_delta(180.0, -100_000.0, cx)
+    });
+    draw_frames(cx, window, 5);
+    let demand = panel.read_with(cx, |panel, _| panel.adjacent_demand().unwrap());
+    let extension = page_seed(1..65, 129);
+    panel.update(cx, |panel, _| {
+        assert!(panel.stage_adjacent_extension(&demand, &extension));
+        panel.stage_activation(&extension, Some(gpui::size(px(640.0), px(240.0))));
+        assert!(!panel.measurement_ready());
+        assert!(panel.adjacent_candidate_current(&demand));
+        let pinned = panel.snapshot().records.last().unwrap().id.clone();
+        panel.host.push_demand_fact(DemandFact::new(
+            demand.presentation_revision,
+            DemandFactKind::OpenMenuPin { record_id: pinned },
+        ));
+        assert!(!panel.adjacent_candidate_current(&demand));
+        panel.discard_staged_activation();
+        assert!(!panel.adjacent_candidate_current(&demand));
+        panel.retire();
+        assert!(panel.adjacent_demand().is_none());
+    });
 }
 
 #[gpui::test]

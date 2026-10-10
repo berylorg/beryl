@@ -83,6 +83,7 @@ pub(super) struct RunningThreadsContribution {
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
+    transcript_demand: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
     transcript_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub(super) transcript_claim: Option<beryl_state::WindowClaimSelection>,
     transcript_request: u64,
@@ -173,6 +174,7 @@ impl RunningThreadsContribution {
             transcript: cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new),
             transcript_provider: None,
             transcript_task: None,
+            transcript_demand: None,
             transcript_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             transcript_claim: None,
             transcript_request: 0,
@@ -251,6 +253,19 @@ impl RunningThreadsContribution {
 
 impl MainWindowShellRoot {
     #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_fence_pending_adjacent_read(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let pending = self.running_threads.transcript_demand.is_some()
+            && self.running_threads.transcript_task.is_some();
+        self.ordinary_close_interaction_gated = true;
+        self.suspend_running_thread_reads(window, cx);
+        pending
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn test_running_thread_reader(
         &mut self,
         reader: &Arc<PublishedRunningThreadsReader>,
@@ -316,6 +331,7 @@ impl MainWindowShellRoot {
             .transcript_cancel
             .store(true, Ordering::Release);
         self.running_threads.transcript_task = None;
+        self.running_threads.transcript_demand = None;
         if self.running_threads.measured_attachment.take().is_some() {
             self.running_threads
                 .transcript
@@ -488,6 +504,13 @@ impl MainWindowShellRoot {
             self.running_threads.read_drain_task = None;
         }
         if self.running_threads.measured_attachment.is_some()
+            || self.running_threads.transcript_demand.is_some()
+            || self
+                .running_threads
+                .transcript
+                .read(cx)
+                .adjacent_demand()
+                .is_some()
             || self.running_threads.transcript_claim
                 != self
                     .cached_running_selection(cx)

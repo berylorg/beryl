@@ -40,6 +40,7 @@ pub(crate) struct TranscriptAttachmentRequest {
 pub(crate) enum TranscriptAttachmentPurpose {
     Attach,
     Refresh,
+    Adjacent { end: u64, backward: bool },
 }
 
 pub(crate) struct PreparedTranscriptAttachment {
@@ -108,6 +109,21 @@ impl PreparedTranscriptAttachment {
             title: self.title.clone(),
             lineage: self.lineage.clone(),
         }
+    }
+}
+
+impl TranscriptAttachmentSourceIdentity {
+    pub(crate) fn matches_authority(&self, prepared: &PreparedTranscriptAttachment) -> bool {
+        self.authority == prepared.authority
+    }
+
+    pub(crate) fn matches_selected_metadata(
+        &self,
+        prepared: &PreparedTranscriptAttachment,
+    ) -> bool {
+        self.matches_authority(prepared)
+            && self.title == prepared.title
+            && self.lineage == prepared.lineage
     }
 }
 

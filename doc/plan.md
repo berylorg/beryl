@@ -98,35 +98,16 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 754: Qualify Resident Transcript Demand Delivery (finished)
+# Phase 755: Mount Exact Adjacent Transcript Demand Delivery (finished)
 
-Qualified the actual host/panel/provider consumer against current authority. Production emits but
-does not consume adjacent/resource demand; existing attachment and resident request bookkeeping
-does not establish asynchronous demand custody. Source-backed review found adjacent delivery ready
-for implementation under existing contracts and separated resource backing qualification.
-[Readiness and acceptance boundary](audits/transcript-mounting-readiness.md#resident-demand-delivery-readiness)
-records identity, cancellation/join, coherent publication and obsolete-release requirements.
-Independent semantic review accepted the readiness and boundaries without blocking findings. No
-runtime code changed or tests rerun; measured viewport acceptance remains the prior foundation.
-
-# Phase 755: Mount Exact Adjacent Transcript Demand Delivery (pending)
-
-Connect the ordinary selected panel's measured demand to host-owned residency and bounded Syndic
-page/projection workers through the selected provider. Follow the
-[qualified boundary](audits/transcript-mounting-readiness.md#adjacent-delivery-acceptance-boundary)
-and normative presentation-system contracts. Carry exact host/activation, Home/service, selected
-authority, logical range and fresh request identity through dispatch, response and measured
-publication. Coalesce current observations under existing residency limits; reject superseded
-results and release all returned state. Cancel and join on demand removal, provider retirement,
-selection replacement, recovery and window close. Release obsolete records through stable identity
-while preserving current measured anchor, visible content and existing pins. Keep resident-edge
-clamping until a coherent measured extension is ready; use no alternate history loader.
-
-Accept both directions beyond the initial seed, exact fractional input and anchor continuity,
-terminal edges, capacity refusal, repeated demand, immutable prior snapshots and all stale/disposal
-paths through focused core/provider/GPUI tests, App compilation, native ordinary-shell scrolling
-across multiple seeds and independent semantic review. Resource rendering, Markdown, nested
-widgets, focus pins and live suffixes remain separate gates.
+Mounted bounded adjacent Syndic page/projection reads from the ordinary selected host's exact
+measured demand. Extensions preserve the measured anchor and immutable prior snapshot, release
+obsolete identities, reject stale/capacity results and use the existing tracked cancellation/drain
+boundary. Same-authority refresh retains the extended window while publishing changed selected
+metadata. Independent semantic review accepted the complete scoped boundary; combined 119-case
+and corrected 33-case nextest runs, App compilation and three minimized native cases pass.
+[Acceptance evidence](audits/transcript-mounting-readiness.md#adjacent-delivery-acceptance)
+retains verification and corrected fixture dispositions. Other transcript gates remain separate.
 
 # Phase 756: Qualify Transcript Resource Demand Consumers (pending)
 

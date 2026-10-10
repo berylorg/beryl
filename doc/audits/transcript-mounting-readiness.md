@@ -271,3 +271,75 @@ prove cancellation/join, returned-buffer release and no resurrected demand. Use 
 provider and GPUI tests, App compilation, native ordinary-shell scrolling across more than one seed,
 and independent semantic review of the complete mounted boundary. Preserve separate gates for
 resources, Markdown, nested widgets, focus pins, live suffixes and diagnostic-child readiness.
+
+## Adjacent Delivery Acceptance
+
+Accepted phase 755 on 2026-10-10. The ordinary selected shell now dispatches bounded adjacent
+Syndic page/projection reads from the host's current committed measured-frame demand. The host
+derives a replaceable exact view, activation/presentation revision, provider revision, direction,
+logical range and protected-record identity key directly from current state; an overflowing
+observation queue cannot retain obsolete request authority. Shell custody adds exact selected
+window/binding, weak host lifetime, fresh checked request counter and the current reader/provider
+service. Prepared source results retain the existing exact Home generation and observed-coherent
+publication election. Reads admit at most 64 records and 65,536 bytes, with backward reads ending
+at the requested leading boundary rather than returning a disconnected prefix.
+
+Extensions remain private candidates until measured publication. Before admitting a page, the
+candidate resolves obsolete indices against their original stable identities and releases only
+the unprotected opposite edges, retaining a contiguous window containing the current anchor,
+visible/overscan content and existing pins. Admission checks record capacity before mutation;
+refusal keeps a stable resident-edge clamp. The previous immutable snapshot remains unchanged.
+The measured controller rebases by stable anchor identity and preserves exact fractional input.
+Input, pin changes, candidate disposal and changed authority revoke obsolete preparation. Final
+measurement also qualifies the exact predicted transcript body allocation, appearance, viewport,
+scale, rem and text environment. Normal refresh under unchanged history authority retains the
+extended window; changed selected title/lineage metadata still publishes coherently.
+
+Adjacent work uses the existing tracked worker and returned-output lifetime guards. Removing demand
+cancels its request; publication rechecks the complete current demand, reader, selection and
+cancellation before electing the observed Home state. The existing suspension/drain path settles
+work and returned buffers before provider/source retirement. Selected-thread replacement,
+recovery and ordinary close already share that production path. A surviving host retains its
+bounded coherent snapshot as inert presentation; host disposal releases it and rejects later work.
+Independent semantic review accepted the complete mounted boundary and verification without
+remaining blockers or scoped acceptance gaps.
+
+Verification used stable Cargo with `.cargo/local.toml`, one build job, development/test debug
+information zero and incremental compilation disabled:
+
+- Combined nextest run `da399f9a-2156-4f97-b09b-d5f1c30bb261` passes 119/119 cases across the
+  App library and seven focused integration targets: activation, measured preparation, realized
+  frame, status facts, renderer selection, selection copy and source boundary. New core cases
+  verify capacity refusal, changed authority rejection and immutable prior snapshots.
+- Corrected App library run `a703c48d-f1f6-4d87-89dd-fba725657ee2`, with `test-faults` and one
+  test thread, passes 33/33 provider and GPUI panel cases. Adjacent-specific cases cover exact
+  range/direction, empty or oversized range refusal, late authority/lifetime/retirement rejection,
+  reservation release, repeated demand, measured prepend, anchor/fractional continuity, actual
+  obsolete trailing-record release, input cancellation and allocation/pin invalidation.
+- App compilation passes in 15.84 seconds with the existing 342 warnings.
+- Native ordinary-shell case
+  `app_services::tests::startup_owner::running_exit_work::ordinary_commands::transcript_viewport::native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions`
+  passes in 52.82 seconds, process 30404. It seeds 160 admitted terminal history records, traverses
+  multiple resident seeds in both directions, verifies opposite-edge eviction and stable anchor
+  coordinates, and reaches the trailing terminal boundary. With an exact adjacent task outstanding,
+  it establishes the existing close interaction gate, invokes production suspension, waits for
+  tracked worker/output settlement and source retirement, preserves the inert snapshot, disposes
+  the panel and verifies no resurrection. This tests the common lifecycle used by selection
+  replacement, recovery and close; it does not claim a separate OS-level window-close experiment.
+- The original native measured viewport/fractional input/glyph-paint case passes in 4.93 seconds,
+  process 4908. The original ordinary committed-claim recovery case passes in 6.88 seconds,
+  process 1412. All three programs requested best-effort minimized startup while retaining native
+  activation and placement assertions.
+
+Two native fixture failures supplied no acceptance evidence: extending repeated-byte test IDs
+collided with an existing fixture identity, and accepting the initial empty frame as readiness
+reached a content assertion before attachment publication. The corrected fixture uses separate
+tagged item/draft identity domains and waits for nonempty measured content plus a coherent selected
+title. Production gates were not weakened. The aborted process's exact retained Home directory
+was reclaimed; accepted processes exited and their exact fixture and task directories were reclaimed
+after review. An initial combined filter spelling was rejected before execution; the corrected
+binary-substring filter produced the accepted 119-case run.
+
+This accepts ordinary adjacent page/projection delivery only. Resource metadata/range delivery,
+resource rendering, Markdown, nested widgets, focus pins, live suffixes, complete Checkpoint 4 and
+diagnostic-child readiness remain separate gates.

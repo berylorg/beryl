@@ -179,6 +179,85 @@ impl ResidentTranscriptCore {
         successor
     }
 
+    pub(crate) fn prepare_adjacent_extension(
+        &self,
+        prepared: &PreparedTranscriptActivation,
+    ) -> Option<Self> {
+        let Some(TranscriptProviderResponseKind::ViewPage(page)) = &prepared.view_page_response
+        else {
+            return None;
+        };
+        let Some(TranscriptProviderResponseKind::ProjectionRecords(projections)) =
+            &prepared.projection_records_response
+        else {
+            return None;
+        };
+        if self.resident.view_id.as_ref() != Some(&page.view_id)
+            || self.resident.provider_revision != Some(page.revision)
+            || projections.view_id != page.view_id
+            || projections.revision != page.revision
+        {
+            return None;
+        }
+        let mut candidate = self.clone();
+        // Resolve obsolete indices against their original snapshot before admitting a page.
+        let protected = candidate.protected_presentation_record_ids();
+        let retained: Vec<_> = candidate
+            .presentation
+            .records
+            .iter()
+            .enumerate()
+            .filter(|(_, record)| protected.contains(&record.id))
+            .map(|(index, _)| index)
+            .collect();
+        candidate.resident.obsolete_ranges.clear();
+        if let (Some(first), Some(last)) = (retained.first(), retained.last()) {
+            if *first > 0 {
+                candidate.resident.obsolete_ranges.push(0..*first);
+                candidate.resident.at_start = false;
+            }
+            if last + 1 < candidate.presentation.records.len() {
+                candidate
+                    .resident
+                    .obsolete_ranges
+                    .push(last + 1..candidate.presentation.records.len());
+                candidate.resident.at_end = false;
+            }
+        }
+        candidate.release_obsolete_resident_data();
+        let policy = candidate.policy;
+        if candidate
+            .resident
+            .view_records
+            .len()
+            .checked_add(page.records.len())?
+            > policy.max_resident_view_records
+            || candidate
+                .resident
+                .projection_records
+                .len()
+                .checked_add(projections.records.len())?
+                > policy.max_resident_projection_records
+            || candidate
+                .presentation
+                .records
+                .len()
+                .checked_add(page.records.len())?
+                > policy.max_presentation_records
+        {
+            return None;
+        }
+        let visible = candidate
+            .presentation_record_ids_for_optional_range(candidate.resident.visible_range.as_ref());
+        let overscan = candidate
+            .presentation_record_ids_for_optional_range(candidate.resident.overscan_range.as_ref());
+        candidate.shared_presentation.get_mut().take();
+        candidate.admit_view_page(page.clone());
+        candidate.admit_projection_record_set(projections.clone());
+        candidate.reconcile_retained_ranges_after_release(&visible, &overscan);
+        Some(candidate)
+    }
+
     pub(crate) fn selected_view_id(&self) -> Option<&TranscriptViewId> {
         self.resident.view_id.as_ref()
     }
@@ -1309,7 +1388,7 @@ impl ResidentTranscriptCore {
         record_ids
     }
 
-    fn protected_presentation_record_ids(&self) -> Vec<ResidentPresentationRecordId> {
+    pub(crate) fn protected_presentation_record_ids(&self) -> Vec<ResidentPresentationRecordId> {
         let mut record_ids = Vec::new();
         if let Some(range) = &self.resident.visible_range {
             self.push_record_ids_in_range(&mut record_ids, range);

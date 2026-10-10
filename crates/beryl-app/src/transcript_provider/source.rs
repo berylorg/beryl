@@ -73,7 +73,7 @@ impl access::ActivationReadSource<'_> {
             .as_ref()
             .is_none_or(|head| head.lifecycle() != ProjectionLifecycle::Current)
         {
-            if request.purpose == TranscriptAttachmentPurpose::Refresh {
+            if request.purpose != TranscriptAttachmentPurpose::Attach {
                 return Err(TranscriptAttachmentError::Stale);
             }
             self.check_request(request, cancelled)?;
@@ -150,15 +150,38 @@ impl access::ActivationReadSource<'_> {
         } else {
             None
         };
-        let limits = CursorReadLimits::new(ATTACHMENT_MAX_RECORDS, ATTACHMENT_MAX_BYTES)
+        let requested_end = match request.purpose {
+            TranscriptAttachmentPurpose::Adjacent { end, .. } => {
+                if end <= first || end - first > ATTACHMENT_MAX_RECORDS as u64 {
+                    return Err(TranscriptAttachmentError::Identity);
+                }
+                end.min(count.saturating_add(1))
+            }
+            _ => first
+                .saturating_add(ATTACHMENT_MAX_RECORDS as u64)
+                .min(count.saturating_add(1)),
+        };
+        let record_limit = if count == 0 {
+            ATTACHMENT_MAX_RECORDS
+        } else {
+            (requested_end - first) as usize
+        };
+        let limits = CursorReadLimits::new(record_limit, ATTACHMENT_MAX_BYTES)
             .map_err(|_| TranscriptAttachmentError::Capacity)?;
         self.check_request(request, cancelled)?;
         let page = self
             .transcript_entries(request.thread_id, head.generation(), after, limits)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
         let mut entries = page.into_records();
-        let tail = request.placement == TranscriptActivationPlacement::Tail;
-        if tail && count != 0 && entries.last().map(|entry| entry.position().get()) != Some(count) {
+        let tail = request.placement == TranscriptActivationPlacement::Tail
+            || matches!(
+                request.purpose,
+                TranscriptAttachmentPurpose::Adjacent { backward: true, .. }
+            );
+        if tail
+            && count != 0
+            && entries.last().map(|entry| entry.position().get()) != Some(requested_end - 1)
+        {
             return Err(TranscriptAttachmentError::Stale);
         }
         if tail {
@@ -170,7 +193,7 @@ impl access::ActivationReadSource<'_> {
         let mut projections = Vec::with_capacity(entries.len());
         let mut rejections = Vec::new();
         let mut bytes = 0_usize;
-        let mut expected_position = if tail { count } else { first };
+        let mut expected_position = if tail { requested_end - 1 } else { first };
         for entry in &entries {
             self.check_request(request, cancelled)?;
             if entry.thread_id() != request.thread_id

@@ -1,6 +1,232 @@
 use super::*;
 
+fn resident_positions(panel: &crate::syndic_transcript::SyndicTranscriptPanel) -> Vec<u64> {
+    panel
+        .snapshot()
+        .records
+        .iter()
+        .filter_map(|record| match &record.provenance.source {
+            crate::syndic_transcript::ResidentRecordSource::Syndic(source) => {
+                source.position.map(|position| position.0)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() {
+    run_mounted_with_prepared_home_retained(
+        1,
+        0,
+        |path| seed_history_count(path, 160),
+        |owner, _, cx| {
+            Box::pin(async move {
+                let window = windows(&owner)[0];
+                for _ in 0..100 {
+                    cx.update(|app| {
+                        app.update_window(window.into(), |_, native, app| {
+                            native.draw_and_present_for_test(app)
+                        })
+                        .unwrap()
+                    })
+                    .unwrap();
+                    let ready = window
+                        .update(cx, |root, _, app| {
+                            root.test_transcript_panel()
+                                .read(app)
+                                .measured_frame_for_test()
+                                .is_some_and(|frame| !frame.records.is_empty())
+                                && root.coherent_selected_thread_title(app).is_some()
+                        })
+                        .unwrap();
+                    if ready {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                }
+                let panel = window
+                    .update(cx, |root, _, _| root.test_transcript_panel())
+                    .unwrap();
+                let initial = cx
+                    .update(|app| resident_positions(panel.read(app)))
+                    .unwrap();
+                assert!(initial[0] > 1);
+                let mut prior = initial.clone();
+                for backward in [true, true, false, false, false, false] {
+                    cx.update(|app| {
+                        let position = panel.read(app).viewport_bounds_for_test().unwrap().center();
+                        app.update_window(window.into(), |_, native, app| {
+                            native.dispatch_input_for_test(
+                                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
+                                    position,
+                                    delta: gpui::ScrollDelta::Pixels(gpui::point(
+                                        gpui::px(0.0),
+                                        gpui::px(if backward {
+                                            1_000_000.25
+                                        } else {
+                                            -1_000_000.25
+                                        }),
+                                    )),
+                                    modifiers: Default::default(),
+                                    touch_phase: gpui::TouchPhase::Moved,
+                                }),
+                                app,
+                            );
+                            for _ in 0..8 {
+                                native.draw_and_present_for_test(app);
+                            }
+                        })
+                        .unwrap();
+                    })
+                    .unwrap();
+                    let anchor = cx
+                        .update(|app| {
+                            panel
+                                .read(app)
+                                .measured_frame_for_test()
+                                .unwrap()
+                                .anchor
+                                .unwrap()
+                        })
+                        .unwrap();
+                    let mut extended = None;
+                    for _ in 0..150 {
+                        cx.update(|app| {
+                            app.update_window(window.into(), |_, native, app| {
+                                native.draw_and_present_for_test(app)
+                            })
+                            .unwrap()
+                        })
+                        .unwrap();
+                        let positions = cx
+                            .update(|app| resident_positions(panel.read(app)))
+                            .unwrap();
+                        let changed = if backward {
+                            positions[0] < prior[0]
+                        } else {
+                            positions.last() > prior.last()
+                        };
+                        let terminal = if backward {
+                            prior[0] == 1
+                        } else {
+                            prior.last() == Some(&160)
+                        };
+                        if changed || terminal {
+                            if changed {
+                                if backward {
+                                    assert!(positions.last() < prior.last());
+                                } else {
+                                    assert!(positions[0] > prior[0]);
+                                }
+                                cx.update(|app| {
+                                    let panel = panel.read(app);
+                                    let current =
+                                        panel.measured_frame_for_test().unwrap().anchor.unwrap();
+                                    assert_eq!(current.record_id, anchor.record_id);
+                                    assert_eq!(current.viewport_y_px, anchor.viewport_y_px);
+                                    assert!(panel.measurement_diagnostics().2 <= 32);
+                                })
+                                .unwrap();
+                            }
+                            extended = Some(positions);
+                            break;
+                        }
+                        cx.background_executor()
+                            .timer(Duration::from_millis(20))
+                            .await;
+                    }
+                    prior = extended.expect("ordinary host must deliver the exact adjacent page");
+                    assert!(prior.len() <= 512);
+                    if backward {
+                        assert!(prior[0] <= initial[0]);
+                    }
+                }
+                assert_eq!(prior.last(), Some(&160));
+                let before_disposal = cx
+                    .update(|app| {
+                        let position = panel.read(app).viewport_bounds_for_test().unwrap().center();
+                        app.update_window(window.into(), |_, native, app| {
+                            native.dispatch_input_for_test(
+                                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
+                                    position,
+                                    delta: gpui::ScrollDelta::Pixels(gpui::point(
+                                        gpui::px(0.0),
+                                        gpui::px(1_000_000.25),
+                                    )),
+                                    modifiers: Default::default(),
+                                    touch_phase: gpui::TouchPhase::Moved,
+                                }),
+                                app,
+                            );
+                            for _ in 0..8 {
+                                native.draw_and_present_for_test(app);
+                            }
+                        })
+                        .unwrap();
+                        panel.read(app).snapshot()
+                    })
+                    .unwrap();
+                assert!(
+                    window
+                        .update(cx, |root, native, app| root
+                            .test_fence_pending_adjacent_read(native, app))
+                        .unwrap()
+                );
+                let mut drained = false;
+                for _ in 0..100 {
+                    drained = window
+                        .update(cx, |root, _, _| {
+                            root.release_suspended_running_thread_sources()
+                        })
+                        .unwrap();
+                    if drained {
+                        break;
+                    }
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                }
+                assert!(
+                    drained,
+                    "cancelled adjacent output and worker must settle before source retirement"
+                );
+                window
+                    .update(cx, |root, native, app| {
+                        assert!(root.running_thread_reads_drained());
+                        root.retire_running_thread_views(native, app).unwrap();
+                    })
+                    .unwrap();
+                cx.update(|app| {
+                    assert!(Arc::ptr_eq(
+                        &before_disposal.records,
+                        &panel.read(app).snapshot().records
+                    ));
+                    panel.update(app, |panel, _| panel.retire());
+                })
+                .unwrap();
+                for _ in 0..4 {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                    assert!(
+                        cx.update(|app| panel.read(app).snapshot().is_empty())
+                            .unwrap()
+                    );
+                }
+                cx.update(|app| app.quit()).unwrap();
+            })
+        },
+    );
+}
+
 fn seed_history(path: &std::path::Path) {
+    seed_history_count(path, 32);
+}
+
+fn seed_history_count(path: &std::path::Path, count: u8) {
     use crate::support::exact_cas;
     use beryl_model::{SyndicDraftId, SyndicItemId};
     use syndic_storage::{SourceEventPayload, SyndicTimestamp, TurnEndStatus};
@@ -22,8 +248,12 @@ fn seed_history(path: &std::path::Path) {
         .selected_thread()
         .unwrap()
         .thread_id();
-    for ordinal in 0..32u8 {
-        let item = SyndicItemId::from_bytes([ordinal + 40; 16]);
+    for ordinal in 0..count {
+        let mut item_identity = [0xA7; 16];
+        item_identity[0] = ordinal;
+        let item = SyndicItemId::from_bytes(item_identity);
+        let mut draft_identity = [0xA8; 16];
+        draft_identity[0] = ordinal;
         let text = format!("Transcript viewport record {ordinal} ").repeat(if ordinal % 3 == 0 {
             70
         } else {
@@ -35,7 +265,7 @@ fn seed_history(path: &std::path::Path) {
             &home,
             syndic.clone(),
             thread,
-            SyndicDraftId::from_bytes([ordinal + 80; 16]),
+            SyndicDraftId::from_bytes(draft_identity),
             item,
             &text,
             timestamp(0),

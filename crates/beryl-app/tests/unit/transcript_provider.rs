@@ -1,4 +1,109 @@
 use super::*;
+
+#[test]
+fn adjacent_page_qualifies_exact_range_and_direction_before_publication() {
+    let fixture = Fixture::new();
+    fixture.seed_projection("bounded adjacent record", 1);
+    let cancel = AtomicBool::new(false);
+    for backward in [true, false] {
+        let mut request = fixture.request(if backward { 1 } else { 2 });
+        request.placement = TranscriptActivationPlacement::Position(
+            crate::syndic_transcript::TranscriptViewPosition(1),
+        );
+        request.purpose = TranscriptAttachmentPurpose::Adjacent { end: 2, backward };
+        let prepared = fixture
+            .reader
+            .prepare_attachment(request.clone(), &cancel)
+            .unwrap();
+        assert_eq!(prepared.range, 1..2);
+        let mut changed = request.clone();
+        changed.purpose = TranscriptAttachmentPurpose::Adjacent { end: 3, backward };
+        assert_eq!(
+            fixture
+                .reader
+                .publish_if_current(prepared, &changed, &cancel, |_| ()),
+            Err(TranscriptAttachmentError::Identity)
+        );
+        let prepared = fixture
+            .reader
+            .prepare_attachment(request.clone(), &cancel)
+            .unwrap();
+        cancel.store(true, Ordering::Release);
+        assert_eq!(
+            fixture
+                .reader
+                .publish_if_current(prepared, &request, &cancel, |_| ()),
+            Err(TranscriptAttachmentError::Cancelled)
+        );
+        cancel.store(false, Ordering::Release);
+    }
+    assert!(fixture.reader.retire());
+}
+
+#[test]
+fn adjacent_read_refuses_an_unbounded_or_empty_requested_range() {
+    let fixture = Fixture::new();
+    fixture.seed_projection("bounded adjacent record", 1);
+    let cancel = AtomicBool::new(false);
+    for end in [1, 66] {
+        let mut request = fixture.request(end);
+        request.placement = TranscriptActivationPlacement::Position(
+            crate::syndic_transcript::TranscriptViewPosition(1),
+        );
+        request.purpose = TranscriptAttachmentPurpose::Adjacent {
+            end,
+            backward: false,
+        };
+        assert!(matches!(
+            fixture.reader.prepare_attachment(request, &cancel),
+            Err(TranscriptAttachmentError::Identity)
+        ));
+    }
+    assert!(fixture.reader.retire());
+}
+
+#[test]
+fn adjacent_late_results_release_reservations_after_authority_or_lifetime_replacement() {
+    for dimension in 0..4 {
+        let mut fixture = Fixture::new();
+        fixture.seed_projection("bounded adjacent record", 1);
+        let cancel = AtomicBool::new(false);
+        let mut request = fixture.request(1);
+        request.placement = TranscriptActivationPlacement::Position(
+            crate::syndic_transcript::TranscriptViewPosition(1),
+        );
+        request.purpose = TranscriptAttachmentPurpose::Adjacent {
+            end: 2,
+            backward: false,
+        };
+        let prepared = fixture
+            .reader
+            .prepare_attachment(request.clone(), &cancel)
+            .unwrap();
+        match dimension {
+            0 => fixture.seed_head(2),
+            1 => fixture.host = Arc::new(()),
+            2 => fixture.graph = Arc::new(()),
+            _ => assert!(!fixture.reader.retire()),
+        }
+        let called = AtomicBool::new(false);
+        let result = fixture
+            .reader
+            .publish_if_current(prepared, &request, &cancel, |_| {
+                called.store(true, Ordering::Release)
+            });
+        assert_eq!(
+            result,
+            Err(if dimension == 0 {
+                TranscriptAttachmentError::Stale
+            } else {
+                TranscriptAttachmentError::Retired
+            })
+        );
+        assert!(!called.load(Ordering::Acquire));
+        assert!(fixture.reader.retire());
+    }
+}
 #[path = "transcript_provider/candidate_activation.rs"]
 mod candidate_activation;
 #[path = "transcript_provider/selected_title.rs"]

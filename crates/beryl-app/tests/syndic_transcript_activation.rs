@@ -6,6 +6,73 @@ use syndic_transcript_core::*;
 
 const REVISION: ProviderRevision = ProviderRevision(31);
 
+fn prepared_range(range: std::ops::Range<u64>) -> PreparedTranscriptActivation {
+    let view = view_id("adjacent");
+    PreparedTranscriptActivation::new(
+        view.clone(),
+        TranscriptActivationPlacement::Start,
+        TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
+            view_id: view.clone(),
+            revision: REVISION,
+            history_state: TranscriptProviderHistoryState::Complete,
+            records: range
+                .clone()
+                .map(|position| view_record(&view, position, &position.to_string()))
+                .collect(),
+            previous_cursor: None,
+            next_cursor: None,
+            at_start: range.start == 1,
+            at_end: false,
+        }),
+        Some(TranscriptProviderResponseKind::ProjectionRecords(
+            ProjectionRecordSet {
+                view_id: view.clone(),
+                revision: REVISION,
+                records: range
+                    .map(|position| text_projection(&view, position, &position.to_string()))
+                    .collect(),
+                rejections: Vec::new(),
+            },
+        )),
+    )
+}
+
+#[test]
+fn adjacent_capacity_refusal_preserves_the_published_core() {
+    let mut core = ResidentTranscriptCore::new(policy_with_limits(4, 4));
+    core.apply_prepared_activation(prepared_range(5..9), TranscriptActivationSource::Test);
+    let prior = core.shared_presentation_snapshot();
+    assert!(
+        core.prepare_adjacent_extension(&prepared_range(1..5))
+            .is_none()
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        &prior,
+        &core.shared_presentation_snapshot()
+    ));
+    assert_eq!(core.core_snapshot().resident.view_records.len(), 4);
+}
+
+#[test]
+fn adjacent_admission_rejects_changed_authority_and_keeps_prior_snapshot_immutable() {
+    let mut core = ResidentTranscriptCore::new(policy_with_limits(4, 12));
+    core.apply_prepared_activation(prepared_range(5..9), TranscriptActivationSource::Test);
+    let prior = core.shared_presentation_snapshot();
+    let mut extension = prepared_range(1..5);
+    let candidate = core.prepare_adjacent_extension(&extension).unwrap();
+    assert_eq!(candidate.core_snapshot().resident.view_records.len(), 8);
+    assert_eq!(prior.records.len(), 4);
+    assert!(std::sync::Arc::ptr_eq(
+        &prior,
+        &core.shared_presentation_snapshot()
+    ));
+    if let Some(TranscriptProviderResponseKind::ViewPage(page)) = &mut extension.view_page_response
+    {
+        page.revision = ProviderRevision(32);
+    }
+    assert!(core.prepare_adjacent_extension(&extension).is_none());
+}
+
 fn view_id(name: &str) -> TranscriptViewId {
     TranscriptViewId(name.to_string())
 }

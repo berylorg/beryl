@@ -12,6 +12,7 @@ pub(super) struct PendingMeasuredAttachment {
     selection: crate::main_window::MainWindowComposerSelectionIdentity,
     request: TranscriptAttachmentRequest,
     cancel: Arc<AtomicBool>,
+    adjacent: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
 }
 
 pub(in crate::main_window::shell::host) struct PendingRecoveredAttachment {
@@ -173,6 +174,27 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.synchronize_transcript_appearance(cx);
+        if self
+            .running_threads
+            .transcript_demand
+            .as_ref()
+            .is_some_and(|demand| {
+                self.running_threads
+                    .transcript
+                    .read(cx)
+                    .adjacent_demand()
+                    .as_ref()
+                    != Some(demand)
+                    || self
+                        .cached_running_selection(cx)
+                        .map(|(selection, _)| selection.claim())
+                        != self.running_threads.transcript_claim
+            })
+        {
+            self.running_threads
+                .transcript_cancel
+                .store(true, Ordering::Release);
+        }
         if let Some(pending) = self.running_threads.measured_attachment.take() {
             let panel = self.running_threads.transcript.clone();
             if pending.cancel.load(Ordering::Acquire)
@@ -188,6 +210,10 @@ impl MainWindowShellRoot {
                     .cached_running_selection(cx)
                     .map(|(selection, _)| selection)
                     != Some(pending.selection)
+                || pending
+                    .adjacent
+                    .as_ref()
+                    .is_some_and(|demand| !panel.read(cx).adjacent_candidate_current(demand))
             {
                 panel.update(cx, |panel, _| panel.discard_staged_activation());
             } else {
@@ -228,7 +254,9 @@ impl MainWindowShellRoot {
                 {
                     self.running_threads.transcript_provider = Some(pending.provider);
                     self.running_threads.transcript_claim = Some(pending.selection.claim());
-                    self.running_threads.transcript_source = Some(identity);
+                    if pending.adjacent.is_none() {
+                        self.running_threads.transcript_source = Some(identity);
+                    }
                     self.running_threads.selected_title = Some((pending.selection, title.clone()));
                     self.publish_selected_lineage(pending.selection, lineage, title, window, cx);
                     cx.notify();
@@ -258,7 +286,18 @@ impl MainWindowShellRoot {
         self.running_threads.transcript_request = request_id;
         let panel = self.running_threads.transcript.clone();
         let prior_claim = self.running_threads.transcript_claim;
-        let placement = if prior_claim == Some(selection.claim()) {
+        let adjacent = (prior_claim == Some(selection.claim())
+            && self.running_threads.transcript_provider.is_some()
+            && self.running_threads.transcript_source.is_some())
+        .then(|| panel.read(cx).adjacent_demand())
+        .flatten();
+        let authority = self.running_threads.transcript_source.clone();
+        self.running_threads.transcript_demand = adjacent.clone();
+        let placement = if let Some(demand) = &adjacent {
+            TranscriptActivationPlacement::Position(
+                crate::syndic_transcript::TranscriptViewPosition(demand.range.start),
+            )
+        } else if prior_claim == Some(selection.claim()) {
             panel.read(cx).refresh_placement()
         } else {
             TranscriptActivationPlacement::Tail
@@ -270,7 +309,13 @@ impl MainWindowShellRoot {
             thread_id: selection.claim().thread_id(),
             request_id,
             placement,
-            purpose: if prior_claim == Some(selection.claim()) {
+            purpose: if let Some(demand) = &adjacent {
+                TranscriptAttachmentPurpose::Adjacent {
+                    end: demand.range.end,
+                    backward: demand.direction
+                        == crate::syndic_transcript::TranscriptPageDirection::Backward,
+                }
+            } else if prior_claim == Some(selection.claim()) {
                 TranscriptAttachmentPurpose::Refresh
             } else {
                 TranscriptAttachmentPurpose::Attach
@@ -309,6 +354,7 @@ impl MainWindowShellRoot {
                     return;
                 }
                 root.running_threads.transcript_task = None;
+                root.running_threads.transcript_demand = None;
                 if cancel.load(Ordering::Acquire)
                     || !reader.current()
                     || !root.running_threads_enabled()
@@ -322,9 +368,63 @@ impl MainWindowShellRoot {
                         .cached_running_selection(cx)
                         .map(|(current, _)| current)
                         != Some(selection)
-                    || (prior_claim == Some(selection.claim())
+                    || (adjacent.is_none()
+                        && prior_claim == Some(selection.claim())
                         && panel.read(cx).refresh_placement() != placement)
+                    || adjacent.as_ref().is_some_and(|demand| {
+                        panel.read(cx).adjacent_demand().as_ref() != Some(demand)
+                    })
                 {
+                    return;
+                }
+                if let Some(demand) = &adjacent {
+                    if let Ok((provider, prepared)) = result {
+                        let exact = authority
+                            .as_ref()
+                            .is_some_and(|identity| identity.matches_authority(&prepared))
+                            && prepared.range.start >= demand.range.start
+                            && prepared.range.end <= demand.range.end
+                            && !prepared.range.is_empty()
+                            && match demand.direction {
+                                crate::syndic_transcript::TranscriptPageDirection::Backward => {
+                                    prepared.range.end == demand.range.end
+                                }
+                                crate::syndic_transcript::TranscriptPageDirection::Forward => {
+                                    prepared.range.start == demand.range.start
+                                }
+                            };
+                        if exact
+                            && panel.update(cx, |panel, panel_cx| {
+                                let staged =
+                                    panel.stage_adjacent_extension(demand, prepared.activation());
+                                if staged {
+                                    panel_cx.notify();
+                                }
+                                staged
+                            })
+                        {
+                            root.running_threads.measured_attachment =
+                                Some(PendingMeasuredAttachment {
+                                    provider,
+                                    prepared,
+                                    reader,
+                                    selection,
+                                    request,
+                                    cancel,
+                                    adjacent: adjacent.clone(),
+                                });
+                            cx.notify();
+                        } else {
+                            panel.update(cx, |panel, _| {
+                                panel.reject_adjacent_demand(demand.clone())
+                            });
+                        }
+                    } else if matches!(
+                        result,
+                        Err(crate::transcript_provider::TranscriptAttachmentError::Capacity)
+                    ) {
+                        panel.update(cx, |panel, _| panel.reject_adjacent_demand(demand.clone()));
+                    }
                     return;
                 }
                 if let Ok((provider, prepared)) = result {
@@ -332,7 +432,11 @@ impl MainWindowShellRoot {
                     let lineage = prepared.lineage_head().clone();
                     let source_identity = prepared.source_identity();
                     if root.running_threads.transcript_claim == Some(selection.claim())
-                        && root.running_threads.transcript_source.as_ref() == Some(&source_identity)
+                        && root
+                            .running_threads
+                            .transcript_source
+                            .as_ref()
+                            .is_some_and(|identity| identity.matches_authority(&prepared))
                     {
                         if root
                             .running_threads
@@ -340,6 +444,9 @@ impl MainWindowShellRoot {
                             .as_ref()
                             .is_some_and(|(current, _)| *current == selection)
                             && root.running_threads.lineage.matches_selection(selection)
+                            && root.running_threads.transcript_source.as_ref().is_some_and(
+                                |identity| identity.matches_selected_metadata(&prepared),
+                            )
                         {
                             return;
                         }
@@ -348,6 +455,7 @@ impl MainWindowShellRoot {
                             .is_ok()
                         {
                             root.running_threads.transcript_provider = Some(provider);
+                            root.running_threads.transcript_source = Some(source_identity);
                             root.running_threads.selected_title = Some((selection, title.clone()));
                             root.publish_selected_lineage(selection, lineage, title, window, cx);
                             cx.notify();
@@ -365,6 +473,7 @@ impl MainWindowShellRoot {
                         selection,
                         request,
                         cancel,
+                        adjacent: None,
                     });
                     cx.notify();
                 }

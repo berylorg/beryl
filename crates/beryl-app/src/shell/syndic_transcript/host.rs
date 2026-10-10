@@ -26,6 +26,17 @@ pub(crate) struct SyndicTranscriptHost {
     last_frame_window: Option<RealizedFrameWindow>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AdjacentTranscriptDemand {
+    pub(crate) activation_revision: u64,
+    pub(crate) presentation_revision: u64,
+    pub(crate) view_id: super::TranscriptViewId,
+    pub(crate) revision: super::ProviderRevision,
+    pub(crate) range: Range<u64>,
+    pub(crate) direction: super::TranscriptPageDirection,
+    pub(crate) retained_records: Vec<super::ResidentPresentationRecordId>,
+}
+
 impl Default for SyndicTranscriptHost {
     fn default() -> Self {
         Self::empty()
@@ -52,6 +63,57 @@ impl SyndicTranscriptHost {
 
     pub(crate) fn lifetime(&self) -> std::sync::Weak<()> {
         std::sync::Arc::downgrade(&self.lifetime)
+    }
+
+    pub(crate) fn adjacent_demand(&self) -> Option<AdjacentTranscriptDemand> {
+        let frame = self.last_frame_window.as_ref()?;
+        let direction = frame
+            .demand_facts
+            .iter()
+            .rev()
+            .find_map(|fact| match fact.kind {
+                super::DemandFactKind::AdjacentRange { direction, .. } => Some(direction),
+                _ => None,
+            })?;
+        let state = self.core.core_snapshot();
+        let resident = &state.resident;
+        let first = resident.view_records.first()?.position.0;
+        let end = resident.view_records.last()?.position.0.checked_add(1)?;
+        let limit = state.policy.view_page_limit.min(64) as u64;
+        let range = match direction {
+            super::TranscriptPageDirection::Backward if !resident.at_start && first > 1 => {
+                first.saturating_sub(limit).max(1)..first
+            }
+            super::TranscriptPageDirection::Forward if !resident.at_end => {
+                end..end.checked_add(limit)?
+            }
+            _ => return None,
+        };
+        Some(AdjacentTranscriptDemand {
+            activation_revision: state.presentation.activation_revision,
+            presentation_revision: state.presentation.presentation_revision,
+            view_id: resident.view_id.clone()?,
+            revision: resident.provider_revision?,
+            range,
+            direction,
+            retained_records: self.core.protected_presentation_record_ids(),
+        })
+    }
+
+    pub(crate) fn prepare_adjacent_extension(
+        &self,
+        demand: &AdjacentTranscriptDemand,
+        prepared: &PreparedTranscriptActivation,
+    ) -> Option<Self> {
+        if self.adjacent_demand().as_ref() != Some(demand) {
+            return None;
+        }
+        Some(Self {
+            lifetime: self.lifetime.clone(),
+            core: self.core.prepare_adjacent_extension(prepared)?,
+            scroll_controller: self.scroll_controller.clone(),
+            last_frame_window: None,
+        })
     }
 
     pub(crate) fn publish_coherent_activation(
