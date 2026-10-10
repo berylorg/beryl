@@ -399,12 +399,12 @@ fn record_id_for_text(
 ) -> ResidentPresentationRecordId {
     core.presentation_snapshot()
         .records
-        .into_iter()
-        .find_map(|record| match record.kind {
+        .iter()
+        .find_map(|record| match &record.kind {
             ResidentPresentationRecordKind::TextChunk { text, .. }
                 if text.as_ref() == expected_text =>
             {
-                Some(record.id)
+                Some(record.id.clone())
             }
             _ => None,
         })
@@ -414,8 +414,8 @@ fn record_id_for_text(
 fn text_records(core: &ResidentTranscriptCore) -> Vec<String> {
     core.presentation_snapshot()
         .records
-        .into_iter()
-        .filter_map(|record| match record.kind {
+        .iter()
+        .filter_map(|record| match &record.kind {
             ResidentPresentationRecordKind::TextChunk { text, .. } => Some(text.to_string()),
             _ => None,
         })

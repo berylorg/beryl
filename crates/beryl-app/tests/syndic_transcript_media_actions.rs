@@ -534,7 +534,8 @@ fn renderer_media_command_rejects_fallback_local_non_media_provenance_and_metada
                 copy_source_range: None,
             },
             estimated_bytes: 0,
-        }],
+        }]
+        .into(),
         resources: ResidentResourceSnapshot::default(),
         realized_range: None,
         visible_range: None,

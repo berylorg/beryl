@@ -284,7 +284,7 @@ impl RealizedFrameScrollController {
 
         self.previous_snapshot_record_ids
             .iter()
-            .zip(&snapshot.records)
+            .zip(snapshot.records.iter())
             .all(|(previous_id, current_record)| previous_id == &current_record.id)
     }
 

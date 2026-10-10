@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use super::provider::{
     ProjectionRecordId, ProviderRevision, ResourceId, ResourceKind, ResourceMetadata,
@@ -10,7 +11,7 @@ pub(crate) struct ResidentTranscriptSnapshot {
     pub(crate) activation_revision: u64,
     pub(crate) presentation_revision: u64,
     pub(crate) state: ResidentTranscriptSnapshotState,
-    pub(crate) records: Vec<ResidentPresentationRecord>,
+    pub(crate) records: Arc<Vec<ResidentPresentationRecord>>,
     pub(crate) resources: ResidentResourceSnapshot,
     pub(crate) realized_range: Option<Range<usize>>,
     pub(crate) visible_range: Option<Range<usize>>,
@@ -32,8 +33,8 @@ impl ResidentTranscriptSnapshot {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ResidentResourceSnapshot {
-    pub(crate) metadata: Vec<ResourceMetadata>,
-    pub(crate) slices: Vec<ResidentResourceSlice>,
+    pub(crate) metadata: Arc<Vec<ResourceMetadata>>,
+    pub(crate) slices: Arc<Vec<ResidentResourceSlice>>,
 }
 
 impl ResidentResourceSnapshot {

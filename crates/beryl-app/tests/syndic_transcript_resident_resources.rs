@@ -212,6 +212,104 @@ fn first_fallback(snapshot: &ResidentCoreSnapshot) -> &ResidentPresentationRecor
 }
 
 #[test]
+fn immutable_resource_batches_survive_admission_and_release_after_last_snapshot() {
+    use std::sync::Arc;
+
+    let (mut core, mut provider, resource_id) = seed_resource_presentation(
+        ResidentTranscriptPolicy::default(),
+        ResourceKind::Code,
+        b"0123456789abcdef".to_vec(),
+    );
+    let before = core.presentation_snapshot();
+    admit_metadata(&mut core, &mut provider);
+    let metadata = core.presentation_snapshot();
+    assert!(before.resources.metadata.is_empty());
+    assert_eq!(metadata.resources.metadata.len(), 1);
+    assert!(Arc::ptr_eq(&before.records, &metadata.records));
+    assert!(!Arc::ptr_eq(
+        &before.resources.metadata,
+        &metadata.resources.metadata
+    ));
+
+    let first_request = core
+        .request_resource_range(
+            resource_id.clone(),
+            0..4,
+            ProviderRequestReason::ResourceRange,
+        )
+        .expect("first bounded range should be admitted");
+    handle_provider_request(&mut core, &mut provider, first_request);
+    let first = core.shared_presentation_snapshot();
+    let bytes = Arc::downgrade(&first.resources.slices[0].bytes);
+    assert!(metadata.resources.slices.is_empty());
+    assert_eq!(first.resources.slices.len(), 1);
+    assert_eq!(&*first.resources.slices[0].bytes, b"0123");
+    assert!(Arc::ptr_eq(
+        &metadata.resources.metadata,
+        &first.resources.metadata
+    ));
+    let read = core.core_snapshot();
+    assert!(Arc::ptr_eq(
+        &first.resources.metadata,
+        &read.resident.resource_metadata
+    ));
+    assert!(Arc::ptr_eq(
+        &first.resources.slices,
+        &read.resident.resource_slices
+    ));
+    drop(read);
+
+    core.push_demand_fact(DemandFact::new(
+        first.presentation_revision,
+        DemandFactKind::VisibleRange { range: 0..1 },
+    ));
+    let viewport = core.shared_presentation_snapshot();
+    assert!(Arc::ptr_eq(&first.records, &viewport.records));
+    assert!(Arc::ptr_eq(
+        &first.resources.slices,
+        &viewport.resources.slices
+    ));
+
+    let next_request = core
+        .request_resource_range(resource_id, 4..8, ProviderRequestReason::ResourceRange)
+        .expect("adjacent bounded range should be admitted");
+    handle_provider_request(&mut core, &mut provider, next_request);
+    let next = core.shared_presentation_snapshot();
+    assert_eq!(first.resources.slices.len(), 1);
+    assert_eq!(next.resources.slices.len(), 2);
+    assert!(!Arc::ptr_eq(
+        &first.resources.slices,
+        &next.resources.slices
+    ));
+    assert!(Arc::ptr_eq(
+        &first.resources.slices[0].bytes,
+        &next.resources.slices[0].bytes
+    ));
+    assert!(Arc::ptr_eq(&first.records, &next.records));
+    let first_batch = Arc::downgrade(&first.resources.slices);
+    let metadata_batch = Arc::downgrade(&first.resources.metadata);
+
+    core.begin_activation(TranscriptActivationSeed::unavailable(
+        TranscriptActivationSource::Test,
+        TranscriptActivationPlacement::Tail,
+    ));
+    let cleared = core.presentation_snapshot();
+    assert!(cleared.resources.metadata.is_empty());
+    assert!(cleared.resources.slices.is_empty());
+    assert_eq!(&*first.resources.slices[0].bytes, b"0123");
+    drop(before);
+    drop(metadata);
+    drop(first);
+    assert!(first_batch.upgrade().is_some());
+    drop(viewport);
+    assert!(first_batch.upgrade().is_none());
+    assert!(bytes.upgrade().is_some());
+    drop(next);
+    assert!(metadata_batch.upgrade().is_none());
+    assert!(bytes.upgrade().is_none());
+}
+
+#[test]
 fn resource_metadata_demand_is_requested_and_admitted_without_bytes() {
     let bytes = b"resident image bytes".to_vec();
     let (mut core, mut provider, resource_id) = seed_resource_presentation(

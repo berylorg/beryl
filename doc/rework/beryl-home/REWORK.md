@@ -561,10 +561,9 @@
 - [x] Qualified remaining repair-unavailable presentation and the new composer acceptance guard,
   preserving initial execution, queued work and reconciliation; independent review accepted the
   [readiness record](../../audits/repair-unavailable-presentation-readiness.md).
-- [ ] Mount explicit fail-closed repair and recovery unavailable states without pretending deferred
-  capabilities are mounted.
-- [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
-  mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
+- [x] Mounted exact repair and submission unavailability while preserving drafting, queued work and reconciliation; [qualification](../../failures/composer-submission-admission.md).
+- [x] Shared bounded immutable resident presentation and resource batches without snapshot collection copies, preserving prior generations and final-reference disposal.
+- [ ] Complete transcript mounting with realized-frame rendering, anchors, selection, nested widgets and resource demand through immutable bounded pages or generations.
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.

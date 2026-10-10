@@ -452,11 +452,11 @@ impl ResidentTranscriptCore {
             self.presentation.activation_revision.saturating_add(1);
         self.presentation.presentation_revision =
             self.presentation.presentation_revision.saturating_add(1);
-        self.update_remaining_presentation_revision();
-
-        if !retained_previous_snapshot {
+        if retained_previous_snapshot {
+            self.update_remaining_presentation_revision();
+        } else {
             self.clear_resident_data_for_activation();
-            self.presentation.records.clear();
+            self.presentation.records = Arc::default();
             self.presentation.realized_range = None;
             self.presentation.visible_range = None;
             self.presentation.state = if seed.view_id.is_some() {
@@ -1321,7 +1321,7 @@ impl ResidentTranscriptCore {
             push_unique_record_id(&mut record_ids, record_id.clone());
         }
         if let Some(position) = self.resident.current_anchor_position {
-            for record in &self.presentation.records {
+            for record in self.presentation.records.iter() {
                 if presentation_record_position(record) == Some(position) {
                     push_unique_record_id(&mut record_ids, record.id.clone());
                 }
@@ -1339,7 +1339,7 @@ impl ResidentTranscriptCore {
         for record_id in &self.resident.active_media_pins {
             push_unique_record_id(&mut record_ids, record_id.clone());
         }
-        for record in &self.presentation.records {
+        for record in self.presentation.records.iter() {
             let Some(resource_id) = presentation_record_resource_id(record) else {
                 continue;
             };
@@ -1386,7 +1386,7 @@ impl ResidentTranscriptCore {
         record_ids: &[ResidentPresentationRecordId],
     ) -> Vec<ProjectionRecordId> {
         let mut projection_ids = Vec::new();
-        for record in &self.presentation.records {
+        for record in self.presentation.records.iter() {
             if !record_id_in(record_ids, &record.id) {
                 continue;
             }
@@ -1403,8 +1403,7 @@ impl ResidentTranscriptCore {
         record_ids: &[ResidentPresentationRecordId],
     ) -> usize {
         let before_count = self.presentation.records.len();
-        self.presentation
-            .records
+        Arc::make_mut(&mut self.presentation.records)
             .retain(|record| !record_id_in(record_ids, &record.id));
         let released_count = before_count.saturating_sub(self.presentation.records.len());
         self.presentation.state =
@@ -1462,13 +1461,11 @@ impl ResidentTranscriptCore {
     fn release_unreferenced_resources(&mut self) -> (usize, usize) {
         let retained_resource_ids = self.retained_resource_ids();
         let before_metadata_count = self.resident.resource_metadata.len();
-        self.resident
-            .resource_metadata
+        Arc::make_mut(&mut self.resident.resource_metadata)
             .retain(|metadata| resource_id_in(&retained_resource_ids, &metadata.resource_id));
 
         let before_slice_count = self.resident.resource_slices.len();
-        self.resident
-            .resource_slices
+        Arc::make_mut(&mut self.resident.resource_slices)
             .retain(|slice| resource_id_in(&retained_resource_ids, &slice.resource_id));
         self.resident.resource_rejections.retain(|rejection| {
             rejection_resource_id(rejection)
@@ -1492,7 +1489,7 @@ impl ResidentTranscriptCore {
 
     fn update_remaining_presentation_revision(&mut self) {
         let presentation_revision = self.presentation.presentation_revision;
-        for record in &mut self.presentation.records {
+        for record in Arc::make_mut(&mut self.presentation.records) {
             record.provenance.presentation_revision = presentation_revision;
         }
     }
@@ -1860,17 +1857,16 @@ impl ResidentTranscriptCore {
         let should_budget_fallback = self.metadata_exceeds_media_budget(&metadata);
         let budget_limit = self.policy.max_resource_bytes;
         let byte_len = metadata.byte_len;
-        let admitted_count = if let Some(existing) = self
-            .resident
-            .resource_metadata
-            .iter_mut()
-            .find(|existing| existing.resource_id == resource_id)
+        let admitted_count = if let Some(existing) =
+            Arc::make_mut(&mut self.resident.resource_metadata)
+                .iter_mut()
+                .find(|existing| existing.resource_id == resource_id)
         {
             let changed = *existing != metadata;
             *existing = metadata;
             usize::from(changed)
         } else {
-            self.resident.resource_metadata.push(metadata);
+            Arc::make_mut(&mut self.resident.resource_metadata).push(metadata);
             1
         };
 
@@ -1903,14 +1899,16 @@ impl ResidentTranscriptCore {
         let slice = self.bounded_resource_slice(range);
         let byte_count = slice.bytes.len();
         let admitted_count = if let Some(existing) =
-            self.resident.resource_slices.iter_mut().find(|existing| {
-                existing.resource_id == slice.resource_id && existing.range == slice.range
-            }) {
+            Arc::make_mut(&mut self.resident.resource_slices)
+                .iter_mut()
+                .find(|existing| {
+                    existing.resource_id == slice.resource_id && existing.range == slice.range
+                }) {
             let changed = *existing != slice;
             *existing = slice;
             usize::from(changed)
         } else {
-            self.resident.resource_slices.push(slice);
+            Arc::make_mut(&mut self.resident.resource_slices).push(slice);
             1
         };
 
@@ -2172,9 +2170,12 @@ impl ResidentTranscriptCore {
         for fallback in &self.resident.fallback_records {
             let fallback_record = presentation_record_for_fallback(fallback, presentation_revision);
 
-            if let Some(existing) = self.presentation.records.iter_mut().find(|record| {
-                presentation_record_matches_fallback_target(record, &fallback.target)
-            }) {
+            if let Some(existing) = Arc::make_mut(&mut self.presentation.records)
+                .iter_mut()
+                .find(|record| {
+                    presentation_record_matches_fallback_target(record, &fallback.target)
+                })
+            {
                 *existing = fallback_record;
                 continue;
             }
@@ -2182,12 +2183,12 @@ impl ResidentTranscriptCore {
             if self.presentation.records.len() == self.policy.max_presentation_records {
                 continue;
             }
-            self.presentation.records.push(fallback_record);
+            Arc::make_mut(&mut self.presentation.records).push(fallback_record);
         }
 
         let presentation_resource_ids = self.presentation_resource_ids();
         sort_presentation_records(
-            &mut self.presentation.records,
+            Arc::make_mut(&mut self.presentation.records).as_mut_slice(),
             &self.resident.view_records,
             &presentation_resource_ids,
         );
@@ -2231,7 +2232,7 @@ impl ResidentTranscriptCore {
 
     fn presentation_resource_ids(&self) -> Vec<ResourceId> {
         let mut resource_ids = Vec::new();
-        for record in &self.presentation.records {
+        for record in self.presentation.records.iter() {
             let Some(resource_id) = presentation_record_resource_id(record) else {
                 continue;
             };
@@ -2365,14 +2366,14 @@ impl ResidentTranscriptCore {
 
     fn sort_resource_metadata(&mut self) {
         let presentation_resource_ids = self.presentation_resource_ids();
-        self.resident.resource_metadata.sort_by_key(|metadata| {
+        Arc::make_mut(&mut self.resident.resource_metadata).sort_by_key(|metadata| {
             resource_sort_key(&presentation_resource_ids, &metadata.resource_id)
         });
     }
 
     fn sort_resource_slices(&mut self) {
         let presentation_resource_ids = self.presentation_resource_ids();
-        self.resident.resource_slices.sort_by(|left, right| {
+        Arc::make_mut(&mut self.resident.resource_slices).sort_by(|left, right| {
             resource_sort_key(&presentation_resource_ids, &left.resource_id)
                 .cmp(&resource_sort_key(
                     &presentation_resource_ids,
@@ -2387,7 +2388,7 @@ impl ResidentTranscriptCore {
         while resource_slice_bytes(&self.resident.resource_slices) > self.policy.max_resource_bytes
             && !self.resident.resource_slices.is_empty()
         {
-            self.resident.resource_slices.remove(0);
+            Arc::make_mut(&mut self.resident.resource_slices).remove(0);
         }
     }
 
@@ -2400,8 +2401,8 @@ impl ResidentTranscriptCore {
 
     fn clear_resource_residency(&mut self) {
         self.clear_active_media_action_target_state();
-        self.resident.resource_metadata.clear();
-        self.resident.resource_slices.clear();
+        self.resident.resource_metadata = Arc::default();
+        self.resident.resource_slices = Arc::default();
         self.resident.resource_rejections.clear();
         self.resident.fallback_records.clear();
         self.resident.active_resource_pins.clear();
@@ -2538,7 +2539,7 @@ impl ResidentTranscriptCore {
         self.presentation.realized_range = None;
         self.presentation.visible_range = None;
         self.presentation.state = self.presentation_state_for_records(!records.is_empty());
-        self.presentation.records = records;
+        self.presentation.records = Arc::new(records);
         self.apply_fallback_records_to_presentation();
         self.refresh_budget_accounting();
     }
@@ -2597,7 +2598,7 @@ impl ResidentTranscriptCore {
                 self.presentation.presentation_revision.saturating_add(1);
         }
 
-        self.presentation.records.clear();
+        self.presentation.records = Arc::default();
         self.presentation.realized_range = None;
         self.presentation.visible_range = None;
         self.presentation.state = ResidentTranscriptSnapshotState::Empty;
@@ -3033,8 +3034,8 @@ pub(crate) struct ResidentSyndicDataSnapshot {
     pub(crate) view_records: Vec<TranscriptViewRecord>,
     pub(crate) projection_records: Vec<ProjectionRecord>,
     pub(crate) projection_rejections: Vec<TranscriptProviderRejection>,
-    pub(crate) resource_metadata: Vec<ResourceMetadata>,
-    pub(crate) resource_slices: Vec<ResidentResourceSlice>,
+    pub(crate) resource_metadata: Arc<Vec<ResourceMetadata>>,
+    pub(crate) resource_slices: Arc<Vec<ResidentResourceSlice>>,
     pub(crate) resource_rejections: Vec<TranscriptProviderRejection>,
     pub(crate) fallback_records: Vec<ResidentFallbackRecord>,
     pub(crate) previous_cursor: Option<TranscriptCursor>,
@@ -3081,8 +3082,8 @@ impl Default for ResidentSyndicDataSnapshot {
             view_records: Vec::new(),
             projection_records: Vec::new(),
             projection_rejections: Vec::new(),
-            resource_metadata: Vec::new(),
-            resource_slices: Vec::new(),
+            resource_metadata: Arc::default(),
+            resource_slices: Arc::default(),
             resource_rejections: Vec::new(),
             fallback_records: Vec::new(),
             previous_cursor: None,

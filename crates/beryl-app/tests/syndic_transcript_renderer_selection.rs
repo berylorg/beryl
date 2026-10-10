@@ -160,7 +160,7 @@ fn snapshot_with_records(
         state: ResidentTranscriptSnapshotState::ProviderBacked {
             label: "renderer-selection-test".to_string(),
         },
-        records,
+        records: records.into(),
         resources: ResidentResourceSnapshot::default(),
         realized_range: None,
         visible_range: None,

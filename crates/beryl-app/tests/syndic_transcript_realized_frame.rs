@@ -38,7 +38,8 @@ fn snapshot_with_names(presentation_revision: u64, names: &[&str]) -> ResidentTr
             .iter()
             .enumerate()
             .map(|(index, name)| presentation_record(presentation_revision, index as u64, name))
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
         resources: ResidentResourceSnapshot::default(),
         realized_range: None,
         visible_range: None,

@@ -268,12 +268,12 @@ fn presentation_record_id_by_text(
 ) -> ResidentPresentationRecordId {
     core.presentation_snapshot()
         .records
-        .into_iter()
+        .iter()
         .find_map(|record| match &record.kind {
             ResidentPresentationRecordKind::TextChunk { text, .. }
                 if text.as_ref() == expected_text =>
             {
-                Some(record.id)
+                Some(record.id.clone())
             }
             _ => None,
         })
@@ -316,7 +316,20 @@ fn obsolete_release_preserves_visible_anchor_and_selection_pin() {
         DemandFactKind::ObsoleteRange { range: 0..4 },
     ));
 
+    let previous = core.shared_presentation_snapshot();
+    let previous_lifetime = std::sync::Arc::downgrade(&previous.records);
     assert_eq!(core.release_obsolete_resident_data(), 1);
+    assert_eq!(previous.records.len(), 4);
+    assert_eq!(
+        previous.records[0].provenance.presentation_revision,
+        presentation_revision
+    );
+    assert!(!std::sync::Arc::ptr_eq(
+        &previous.records,
+        &core.presentation_snapshot().records
+    ));
+    drop(previous);
+    assert!(previous_lifetime.upgrade().is_none());
 
     let snapshot = core.core_snapshot();
     assert_eq!(

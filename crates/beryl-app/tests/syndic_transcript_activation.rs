@@ -143,6 +143,19 @@ fn immutable_publication_shares_authored_bytes_across_viewport_updates() {
         kind: DemandFactKind::VisibleRange { range: 0..1 },
     });
     let moved = core.shared_presentation_snapshot();
+    assert!(Arc::ptr_eq(&first.records, &moved.records));
+    assert!(Arc::ptr_eq(
+        &first.resources.metadata,
+        &moved.resources.metadata
+    ));
+    assert!(Arc::ptr_eq(
+        &first.resources.slices,
+        &moved.resources.slices
+    ));
+    assert!(Arc::ptr_eq(
+        &first.records,
+        &core.presentation_snapshot().records
+    ));
     assert_eq!(moved.visible_range, Some(0..1));
     assert_eq!(first.visible_range, None);
     for snapshot in [&first, &moved] {
@@ -158,6 +171,34 @@ fn immutable_publication_shares_authored_bytes_across_viewport_updates() {
         kind: DemandFactKind::VisibleRange { range: 0..1 },
     });
     assert!(Arc::ptr_eq(&moved, &core.shared_presentation_snapshot()));
+
+    let records_lifetime = Arc::downgrade(&first.records);
+    let metadata_lifetime = Arc::downgrade(&first.resources.metadata);
+    let slices_lifetime = Arc::downgrade(&first.resources.slices);
+    core.begin_activation(activation_seed(view_id("next-view")));
+    let successor = core.shared_presentation_snapshot();
+    assert!(!Arc::ptr_eq(&first.records, &successor.records));
+    assert_eq!(first.records[0].provenance.presentation_revision, revision);
+    assert_eq!(
+        successor.records[0].provenance.presentation_revision,
+        revision + 1
+    );
+    assert!(Arc::ptr_eq(
+        &first.resources.metadata,
+        &successor.resources.metadata
+    ));
+    core.begin_activation(TranscriptActivationSeed::unavailable(
+        TranscriptActivationSource::Test,
+        TranscriptActivationPlacement::Tail,
+    ));
+    assert!(core.presentation_snapshot().records.is_empty());
+    drop(successor);
+    drop(first);
+    assert!(records_lifetime.upgrade().is_some());
+    drop(moved);
+    assert!(records_lifetime.upgrade().is_none());
+    assert!(metadata_lifetime.upgrade().is_none());
+    assert!(slices_lifetime.upgrade().is_none());
 }
 
 #[test]

@@ -98,13 +98,22 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 750: Mount Exact Repair And Submission Unavailability (finished)
+# Phase 751: Share Immutable Resident Transcript Snapshots (finished)
 
-Independent completion review accepted weak selected-composer submission availability, canonical
-refusal outcomes, independent final admission fencing and truthful Compact reasons. Focused native,
-mounted, exact submission and distinct-runtime cases passed 75/75 in run
-`1a37ad44-b324-46a5-8fd1-1b33e91868a1`; default App/backend/Home/Syndic checks passed. Native Active
-and Accepted admission, retained queued input and attempted reconciliation after actual weak
-publication loss are qualified on the unchanged Windows worker stack. Same-binding recovery uses
-fixture gate transitions; product repair, connection replacement, provider delivery of queued
-steering and Checkpoint 4 remain separate. See the [bounded failure findings](failures/composer-submission-admission.md).
+Resident presentation records, resource metadata and range descriptors now share bounded immutable
+batches through the existing host/panel snapshot boundary. Owner mutations preserve previous
+snapshots; clearing drops ownership without copying discarded records. Author semantic review and
+117/117 cases across twelve explicit transcript integration targets passed in run
+`5bd6271a-420b-4ab2-ae66-808c594ee6a4`; default App check passed. Allocation identity, viewport-only
+sharing, generation detachment, obsolete release and final-reference disposal are qualified.
+Provider admission policy, full transcript mounting, nested widgets and live suffixes remain separate.
+
+# Phase 752: Qualify Realized Transcript Mounting Readiness (pending)
+
+Inspect the existing production panel, activation, provider and frame path against the
+[transcript feature](features/transcript/design.md), its GUI contract and the
+[presentation system](systems/transcript-presentation/design.md) supplements. Produce one bounded
+readiness record identifying current production consumers, remaining contract gaps and the next
+observable mounting boundary, with source-backed acceptance seams and required native evidence.
+Resolve any material design gap in its owning authority before authorizing production changes;
+do not accept the prototype, immutable snapshot work or compile checks as full Checkpoint 4 mounting.
