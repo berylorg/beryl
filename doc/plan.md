@@ -98,9 +98,43 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 744: Mount Selected-Thread Model And Reasoning Selection (finished)
+# Phase 745: Qualify Context And Manual Compaction Mounting Readiness (finished)
 
-Accepted exact selected-thread model/reasoning status, bounded canonical selection menus and
-choices carried into the next real ordinary turn with authentic subsequent metadata. All 176
-distinct affected cases, current canonical checks, scoped formatting and independent completion
-review pass; all 221 logged Homes are absent. See [qualification](audits/model-selection-mount-qualification.md).
+Accepted pinned usage/quota provenance and exact foreground compaction admission/settlement
+readiness through source inspection and independent semantic review. Missing bounded public
+contracts gate implementation; no source, manifest, Cargo run or GUI launch changed. See the
+[readiness record](audits/context-compaction-mount-readiness.md).
+
+# Phase 746: Define Context Observation And Manual Compaction Mounting Contracts (wip)
+
+Resolve the readiness record's missing public contracts in their owning Backend/App supplements
+and CAS-live system authority. Preserve feature-owned Unknown/independent quota omission and
+idle-only Compact behavior. Specify exact transient usage provenance, active-model interest and
+quota numeric/window domains; bounded observation retention and invalidation, including sparse
+quota updates; and a weak manual
+compaction capability with opaque selection/claim/idle authority elected at actual admission.
+Specify bounded consumer-owned timeout and late-settlement feedback independently of execution
+custody, reusing existing publication, operation-origin and presentation-limit rules where valid.
+
+Accept this boundary when ownership, identities, lifecycle, dataflow, limits, failure/retirement
+and verification seams determine implementation without inferred model buckets, history mutation,
+GUI-only admission checks or a detached provider driver. Review the complete affected contract
+chain before scheduling production source edits. Root owns shared authority edits and Cargo.
+
+Initial milestone: phase-745 findings and conditional mounting boundaries are independently
+accepted. Owning-contract edits have not started. Preserve the accepted model-mount evidence and
+existing source; resolve the readiness record's identified seams before source implementation.
+
+# Phase 747: Mount Exact Selected-Thread Context Status (pending)
+
+Implement and mount the qualified bounded usage/quota observation path into the existing status
+cell. Accept authentic same-thread values, exact optional quota matches, Unknown/omission and
+selection/publication/retirement fencing through real ingress and native mounting evidence.
+Status reads must not start turns or mutate conversation history.
+
+# Phase 748: Mount Exact Manual Context Compaction (pending)
+
+Mount the bounded Compact menu through the qualified opaque capability and existing coordinator.
+Accept idle-only atomic admission, preserved drafts and queued-work precedence, actual sole-driver
+dispatch, bounded rejection/uncertainty feedback, timeout with exact late settlement, selection
+replacement and teardown through the complete production path.
