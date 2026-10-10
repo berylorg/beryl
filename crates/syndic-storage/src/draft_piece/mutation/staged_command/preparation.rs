@@ -87,17 +87,7 @@ impl SyndicStorage {
         {
             return Err(StagedDraftPiecePreparationErrorV1::StaleEndpoint);
         }
-        Ok(Some(PreparedStagedDraftPieceCommandV1 {
-            storage: self.clone(),
-            source: Box::new(CapturedState {
-                staging: head,
-                build: Some(advance.expected.as_ref().clone()),
-                session: advance.expected_session.clone(),
-                settlement: None,
-                terminal_admission: None,
-            }),
-            command: CommandKind::Advance(Box::new(advance)),
-        }))
+        Ok(Some(capture_advance_command(self, head, Box::new(advance))))
     }
 
     pub fn prepare_staged_draft_piece_terminal(
@@ -130,6 +120,25 @@ impl SyndicStorage {
             }),
             command: CommandKind::Terminal(Box::new(edit), election),
         })
+    }
+}
+
+#[inline(never)]
+fn capture_advance_command(
+    storage: &SyndicStorage,
+    head: DraftMutationStagingHeadV1,
+    advance: Box<PreparedDraftPieceAdvanceV1>,
+) -> PreparedStagedDraftPieceCommandV1 {
+    PreparedStagedDraftPieceCommandV1 {
+        storage: storage.clone(),
+        source: Box::new(CapturedState {
+            staging: head,
+            build: Some(advance.expected.as_ref().clone()),
+            session: advance.expected_session.clone(),
+            settlement: None,
+            terminal_admission: None,
+        }),
+        command: CommandKind::Advance(advance),
     }
 }
 

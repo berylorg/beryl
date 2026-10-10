@@ -39,3 +39,29 @@ During local live testing after the managed visibility extraction, all expected 
 The invalid assumption was that continuously computed opacity plus timers at lifecycle boundaries would be enough for smooth visual fade. The opacity math was continuous, but `gpui-scrollbar` only repainted on activity, the idle-delay wakeup, and the end-of-transition wakeup. Without a presentation-frame repaint loop, intermediate opacity values were not presented reliably.
 
 The course correction is for `gpui-scrollbar` to own presentation-rate fade driving as part of reusable scrollbar chrome. Managed fade transitions request `gpui` animation frames from the scrollbar render path while opacity is changing. Timers may still wake idle-delay and cleanup boundaries, but they must not be the only mechanism that advances visible fade frames.
+
+## Compact Lineage Controls Overlapped The Default Scrollbar Hit Lane
+
+The first mounted lineage widget inherited the reusable scrollbar's eighteen-pixel hit lane in a
+thirty-two-pixel strip. Its overlay intercepted breadcrumb-center pointer input. Canonical run
+`23a632ed-3b73-49bd-9de9-0be4bb6b849b` isolates the failure before keyboard input: the actual
+parent-center click produces no activation, while the other six focused cases pass.
+
+Configure a compact ten-pixel lane and two-pixel thumb inset in lineage's own widget roles while
+retaining the registered scrollbar owner, managed visibility and direct manipulation. The corrected
+parent-center pointer, Enter and Space case passes in run
+`6fb515bf-ad43-45d6-ae28-54126f7c3aaa`; actual thumb-drag qualification remains pending. Moving
+the test click around the interception would conceal the integration defect.
+
+## Registered Scrollbar Authority Was Mistaken For A Bundled Reference
+
+The bundled scrollbar reference describes lane page clicks for either axis. The registered
+`gpui-scrollbar` specification explicitly leaves horizontal lane clicks outside the thumb inert.
+The first lineage lane test incorrectly expected horizontal paging, and root briefly escalated
+the mismatch as a product choice before checking `doc/gui/external-specs.md`.
+
+That registry explicitly makes registered contracts controlling and excludes same-name bundled
+references from both fallback and additional authority. The registered horizontal no-op is the
+required lane oracle; thumb dragging remains a separate required real-input test. No fork change
+or Operator decision is needed. Resolve registry precedence before interpreting a bundled widget
+reference or escalating an apparent product contradiction.

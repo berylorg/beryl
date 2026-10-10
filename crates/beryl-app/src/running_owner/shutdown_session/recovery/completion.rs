@@ -136,7 +136,9 @@ impl RunningProcessOwner {
             }
             for (handle, focus) in &owner.interrupted_exit.as_ref().unwrap().focus {
                 handle
-                    .update(app, |_, window, _| focus.focus(window))
+                    .update(app, |root, window, cx| {
+                        root.restore_running_recovery_focus(focus, window, cx);
+                    })
                     .expect("captured recovered focus remains owned by the surviving shell");
             }
             if request.lifecycle().is_none() {

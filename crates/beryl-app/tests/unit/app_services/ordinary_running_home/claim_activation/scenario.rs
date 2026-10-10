@@ -3,8 +3,10 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(super) enum Entry {
     Prepared,
+    PreparedWithParentFocus,
     Switcher,
     Navigation,
+    Lineage(lineage_entry::Input),
 }
 
 pub(super) async fn recover(
@@ -40,9 +42,17 @@ pub(super) async fn recover_with_entry(
     if matches!(entry, Entry::Navigation) {
         navigation_entry::prepare(invoking, cx).await;
     }
+    if matches!(entry, Entry::Lineage(_)) {
+        lineage_entry::prepare(invoking, cx).await;
+    }
     let unrelated_window = original_windows[1];
     let dirty = !matches!(save, SaveExpectation::SavedNoop);
-    let mut prior = preservation::capture_resident(&owner, invoking, 0, dirty, cx).await;
+    let mut prior = if matches!(save, SaveExpectation::DirtyPageSetup) {
+        let height = measure_pending_target_page_view(&owner, invoking, cx).await;
+        preservation::capture_original_page_resident(&owner, invoking, 0, height, cx).await
+    } else {
+        preservation::capture_resident(&owner, invoking, 0, dirty, cx).await
+    };
     let unrelated = preservation::capture_resident(&owner, unrelated_window, 1, dirty, cx).await;
     let mut marker = if matches!(save, SaveExpectation::DirtyMarker) {
         assert!(matches!(cut, Cut::DisposalCommitted));
@@ -53,6 +63,9 @@ pub(super) async fn recover_with_entry(
     let original_editor = composer(invoking, cx).await;
     let original_identity = cx
         .update(|app| original_editor.read(app).selection_identity())
+        .unwrap();
+    let original_input = cx
+        .update(|app| original_editor.read(app).gpui_input())
         .unwrap();
     let publication = crate::composer_host::ComposerHostPublicationExecutionObservation::new();
     let disposal = crate::composer_host::ComposerHostDisposalExecutionObservation::new();
@@ -104,6 +117,21 @@ pub(super) async fn recover_with_entry(
     ];
     wait_for_unviewed_catalog_source(&owner, original_claim.thread_id(), cx).await;
     let target = SyndicThreadId::from_bytes([242; 16]);
+    let target_draft = {
+        let retained = owner.borrow();
+        let graph = retained.test_services().graph().unwrap();
+        graph
+            .syndic()
+            .current_draft(
+                graph.home(),
+                target,
+                SyndicPointReadLimit::new(65_536).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .draft()
+            .id()
+    };
     let (home, state, storage) = {
         let retained = owner.borrow();
         let graph = retained.test_services().graph().unwrap();
@@ -159,6 +187,44 @@ pub(super) async fn recover_with_entry(
         .await;
     let picker = match entry {
         Entry::Prepared => None,
+        Entry::PreparedWithParentFocus => {
+            lineage_entry::ready(invoking, target, cx).await;
+            lineage_entry::focus(invoking, target, cx).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(10))
+                .await;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let settled = invoking
+                    .update(cx, |root, window, app| {
+                        let resident = original_editor.read(app);
+                        let input = original_input.read(app);
+                        input.is_quiescent()
+                            && input.is_surface_current_and_interactive()
+                            && !resident.test_has_active_flight()
+                            && !resident.test_has_pending_realizer()
+                            && root.test_thread_lineage_focus(
+                                original_claim.thread_id(),
+                                target,
+                                window,
+                                app,
+                            )
+                    })
+                    .unwrap();
+                if settled {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "original parent-lineage focus and Page geometry did not settle"
+                );
+                cx.background_executor()
+                    .timer(Duration::from_millis(10))
+                    .await;
+            }
+            prior.expect_restored_lineage_focus(original_claim.thread_id(), target);
+            None
+        }
         Entry::Switcher => {
             let picker = switcher_entry::open(invoking, target, cx).await;
             let owner_focus = invoking
@@ -178,7 +244,16 @@ pub(super) async fn recover_with_entry(
             prior.expect_restored_focus(focus);
             None
         }
+        Entry::Lineage(_) => {
+            lineage_entry::ready(invoking, target, cx).await;
+            lineage_entry::focus(invoking, target, cx).await;
+            prior.expect_restored_lineage_focus(original_claim.thread_id(), target);
+            None
+        }
     };
+    if matches!(save, SaveExpectation::DirtyPageSetup) {
+        prior.authenticate_original_page_custody(cx);
+    }
     let failed_generation = home.health().generation().unwrap();
     control::install(&owner, invoking, control, cx).await;
     let reached = Arc::new(AtomicBool::new(false));
@@ -237,7 +312,10 @@ pub(super) async fn recover_with_entry(
                                 outcome_evidence::fail_original_confirmed_read(&claim_failure_home, &fail_faults, &fail_reached);
                             }
                         }));
-                        if matches!(entry, Entry::Navigation) {
+                        if let Entry::Lineage(input) = entry {
+                            drop((prepared, duplicate));
+                            lineage_entry::post_input(root, target, input, native_handles[0], window, app);
+                        } else if matches!(entry, Entry::Navigation) {
                             drop((prepared, duplicate));
                             navigation_entry::post_space(native_handles[0]);
                         } else if let Some((picker, key)) = picker {
@@ -366,12 +444,21 @@ pub(super) async fn recover_with_entry(
         assert_eq!(binding.claim(), expected_claim);
         assert_ne!(binding.binding().home_generation(), failed_generation);
         assert_eq!(binding.binding().logical_extent().logical_utf8_bytes(), 768);
-        assert_eq!(
-            binding.binding().candidate().draft_id(),
-            SyndicDraftId::from_bytes([244; 16])
-        );
+        assert_eq!(binding.binding().candidate().draft_id(), target_draft);
         assert_eq!(copy_all(invoking, &resident, cx).await, draft_text(1));
-        transcript::assert_recovered(invoking, cx).await;
+        if matches!(entry, Entry::Lineage(_)) {
+            transcript::assert_recovered_with_records(invoking, 3, cx).await;
+        } else {
+            transcript::assert_recovered(invoking, cx).await;
+        }
+        if matches!(entry, Entry::Lineage(_)) {
+            invoking
+                .update(cx, |root, window, app| {
+                    assert!(root.test_thread_lineage_view().is_none());
+                    assert!(root.notice_safe_focus(app).is_focused(window));
+                })
+                .unwrap();
+        }
         let retained = owner.borrow();
         let graph = retained.test_services().graph().unwrap();
         assert!(
@@ -474,5 +561,184 @@ pub(super) async fn recover_with_entry(
         })
         .unwrap();
     }
+    if matches!(entry, Entry::Lineage(_)) {
+        lineage_entry::assert_history_settled_once(
+            invoking,
+            original_claim.thread_id(),
+            target,
+            cut.committed(),
+            cx,
+        )
+        .await;
+    }
     (invoking, settled_window, settled_claim)
+}
+
+async fn measure_pending_target_page_view(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut gpui::AsyncApp,
+) -> gpui::Pixels {
+    let resident = composer(window, cx).await;
+    let original_identity = resident
+        .read_with(cx, |resident, _| resident.selection_identity())
+        .unwrap();
+    let id = window
+        .read_with(cx, |root, _| root.controller().unwrap().window_id())
+        .unwrap();
+    let record = snapshot(owner)
+        .windows()
+        .iter()
+        .find(|record| record.window_id() == id)
+        .unwrap()
+        .clone();
+    let target = SyndicThreadId::from_bytes([242; 16]);
+    wait_for_unviewed_catalog_source(owner, target, cx).await;
+    let (home, state, storage) = {
+        let retained = owner.borrow();
+        let graph = retained.test_services().graph().unwrap();
+        (
+            graph.home().service_reference(),
+            graph.state().clone(),
+            graph.syndic().clone(),
+        )
+    };
+    let prepared = cx
+        .background_executor()
+        .spawn(async move {
+            let RunningThreadActivationPreparation::Prepared(prepared) =
+                RunningThreadActivation::prepare(
+                    &home,
+                    &state,
+                    &storage,
+                    id,
+                    record.selected_thread(),
+                    record.remembered_target().unwrap(),
+                    target,
+                )
+                .unwrap()
+            else {
+                panic!("Page admission target was not prepared");
+            };
+            Box::new(prepared)
+        })
+        .await;
+    let observation = Arc::new(std::sync::Mutex::new(None));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancel_acknowledgement = cancelled.clone();
+    assert_original_producer_current(
+        owner,
+        original_identity.binding(),
+        "before Page admission target activation",
+    );
+    window
+        .update(cx, |root, window, app| {
+            root.test_observe_ordinary_pending_ready(Some(observation.clone()));
+            root.test_thread_confirmation_hooks(
+                Some(Box::new(move |cancellation| {
+                    cancellation.cancel();
+                    cancel_acknowledgement.store(true, Ordering::Release);
+                })),
+                None,
+                None,
+            );
+            root.test_begin_original_ordinary_selection(*prepared, window, app)
+                .unwrap();
+        })
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let settled = cancelled.load(Ordering::Acquire)
+            && !owner.borrow().test_services().running_selection_pending()
+            && window
+                .read_with(cx, |root, _| !root.test_running_thread_activation_pending())
+                .unwrap();
+        if settled {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Page admission target cancellation did not settle"
+        );
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
+    let (observed_target, target_identity, height) = observation
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("ordinary target supplied no staged Ready geometry");
+    assert_eq!(observed_target, target);
+    assert_eq!(target_identity.claim().thread_id(), target);
+    assert!(height > gpui::Pixels::ZERO && f32::from(height).is_finite());
+    window
+        .update(cx, |root, _, _| {
+            root.test_observe_ordinary_pending_ready(None)
+        })
+        .unwrap();
+    let restored = composer(window, cx).await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let settled = restored
+            .read_with(cx, |resident, app| {
+                assert_eq!(resident.selection_identity(), original_identity);
+                let input = resident.gpui_input();
+                let input = input.read(app);
+                input.is_enabled()
+                    && input.is_quiescent()
+                    && input.is_surface_current_and_interactive()
+                    && !resident.test_has_active_flight()
+                    && !resident.test_has_pending_realizer()
+            })
+            .unwrap();
+        if settled {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "original editor did not settle after Page admission target cancellation"
+        );
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
+    assert_eq!(
+        snapshot(owner)
+            .windows()
+            .iter()
+            .find(|record| record.window_id() == id)
+            .unwrap()
+            .selected_thread(),
+        Some(original_identity.claim())
+    );
+    assert_original_producer_current(
+        owner,
+        original_identity.binding(),
+        "after Page admission target cancellation",
+    );
+    height
+}
+
+fn assert_original_producer_current(
+    owner: &Rc<RefCell<RunningProcessOwner>>,
+    binding: crate::composer_host::ComposerHostBinding,
+    cut: &str,
+) {
+    let candidate = binding.candidate();
+    let retained = owner.borrow();
+    let graph = retained.test_services().graph().unwrap();
+    let outcome = graph
+        .syndic()
+        .draft_editor_candidate_session(graph.home(), candidate.draft_id(), candidate.session_id())
+        .unwrap();
+    let syndic_storage::DraftEditorCandidateSessionReadOutcomeV1::Active(head) = outcome else {
+        panic!("original producer was not Active {cut}: expected={binding:?}, actual={outcome:?}");
+    };
+    assert!(
+        head.draft_id() == candidate.draft_id()
+            && head.session_id() == candidate.session_id()
+            && head.session_generation() == candidate.session_generation(),
+        "original producer generation changed {cut}: expected={binding:?}, actual={head:?}"
+    );
 }

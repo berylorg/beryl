@@ -118,6 +118,15 @@ impl MainWindowShellRoot {
         self.running_threads.selected_title = preparation
             .qualified_selected_title()
             .map(|title| (selection, title.clone()));
+        if let Some(title) = preparation.qualified_selected_title().cloned() {
+            self.publish_selected_lineage(
+                selection,
+                preparation.qualified_selected_lineage().clone(),
+                title,
+                window,
+                cx,
+            );
+        }
         cx.notify();
         Ok(close)
     }

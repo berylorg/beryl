@@ -1,4 +1,5 @@
 use super::*;
+use crate::main_window::MainWindowComposerSlot;
 
 pub(crate) struct MainWindowFailedClaimGuiAuthority {
     pub(crate) prior: MainWindowComposerSelectionIdentity,
@@ -115,6 +116,7 @@ impl MainWindowConversationComposer {
         {
             return Err("retired thread creation widget protection changed".into());
         }
+        let failed_claim_protection = &mut self.failed_claim_protection;
         self.input
             .update(cx, |input, input_cx| {
                 input
@@ -122,6 +124,7 @@ impl MainWindowConversationComposer {
                     .map_err(|error| {
                         format!("retired widget protection release failed: {error:?}")
                     })?;
+                *failed_claim_protection = None;
                 Ok::<_, String>(input.dispose(window, input_cx))
             })
             .inspect(|_| {
@@ -169,6 +172,14 @@ impl MainWindowConversationComposer {
             );
         }
         service.qualify_failed_resident_home(self.selection)?;
+        if matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::Live
+                | MainWindowConversationComposerPhase::Fencing
+        ) && !self.settle_failed_view_demands(cx)?
+        {
+            return Ok(None);
+        }
         if !authority.committed && !self.is_pending_target() {
             let ticket = self.begin_failed_resident(cx)?;
             return self.capture_failed_resident(ticket, cx).map(|capture| {
@@ -273,6 +284,7 @@ impl MainWindowConversationComposer {
             .map_err(|error| {
                 format!("failed thread creation editor protection refused: {error:?}")
             })?;
+        self.failed_claim_protection = Some(protection);
         self.phase = MainWindowConversationComposerPhase::RecoveryFenced;
         self.admitted_positions = None;
         self.scheduled = false;
@@ -285,6 +297,16 @@ impl MainWindowConversationComposer {
             widget_disposal_requested: false,
             unpublished_target: None,
         }))
+    }
+
+    fn settle_failed_view_demands(&mut self, cx: &mut Context<Self>) -> Result<bool, String> {
+        if !self.failed_editor_work_drained() {
+            return Ok(false);
+        }
+        let binding = self.selection.binding().range_binding();
+        self.input.update(cx, |input, cx| {
+            settle_failed_input_view_demands(input, binding, cx)
+        })
     }
 
     pub(crate) fn detach_failed_claim_resources(
@@ -331,4 +353,85 @@ impl MainWindowConversationComposer {
             clipboard_writer: self.clipboard_writer.take(),
         })
     }
+}
+
+fn settle_failed_input_view_demands(
+    input: &mut RangeTextInput,
+    binding: gpui_text_input::RangeBinding,
+    cx: &mut Context<RangeTextInput>,
+) -> Result<bool, String> {
+    if !input.is_semantically_quiescent() {
+        return Ok(false);
+    }
+    let budget = input.realization_diagnostics().max_queued_requests;
+    for _ in 0..budget {
+        let request = input.take_request_if(|request| match request {
+            RangeTextInputRequest::Page(page) => {
+                let key = page.key();
+                key.binding() == binding.binding()
+                    && key.revision() == binding.revision()
+                    && matches!(
+                        key.purpose(),
+                        PagePurpose::GeometryIndex | PagePurpose::GeometryTarget
+                    )
+            }
+            RangeTextInputRequest::ObjectPage(page) => {
+                let key = page.key();
+                key.binding() == binding.binding()
+                    && key.revision() == binding.revision()
+                    && matches!(
+                        key.purpose(),
+                        ObjectPurpose::GeometryIndex | ObjectPurpose::GeometryTarget
+                    )
+            }
+            _ => MainWindowComposerSlot::widget_release_request_is_settled(request),
+        });
+        match request {
+            Some(RangeTextInputRequest::Page(page)) => input
+                .fail_page(page.key(), gpui_text_input::PageFailure::Unavailable, cx)
+                .map_err(|_| "original failed view page settlement was refused".to_owned())?,
+            Some(RangeTextInputRequest::ObjectPage(page)) => {
+                match input.fail_object_page(
+                    page.key(),
+                    gpui_text_input::ObjectPageFailure::Unavailable,
+                    cx,
+                ) {
+                    Ok(()) => {}
+                    Err(gpui_text_input::RangeTextInputError::Stale) => {
+                        let remaining = input.realization_diagnostics().current;
+                        if remaining.active_geometry_jobs != 0
+                            || remaining.pending_geometry_objects != 0
+                            || remaining.pending_object_requests != 0
+                            || remaining.dispatched_object_requests != 0
+                        {
+                            return Ok(false);
+                        }
+                    }
+                    Err(_) => {
+                        return Err("original failed view object settlement was refused".into());
+                    }
+                }
+            }
+            Some(release) => {
+                assert!(MainWindowComposerSlot::widget_release_request_is_settled(
+                    &release
+                ));
+            }
+            None => {
+                if input.realization_diagnostics().current.queued_requests != 0 {
+                    return Err("original failed view request remains unsupported".into());
+                }
+                return Ok(input.is_quiescent());
+            }
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+mod tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/failed_claim_view_demands.rs"
+    ));
 }

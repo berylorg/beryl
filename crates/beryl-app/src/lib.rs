@@ -227,6 +227,7 @@ pub mod startup_surface;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 pub mod theme_runtime;
+pub mod thread_lineage;
 pub mod thread_root_picker;
 #[cfg(feature = "test-faults")]
 pub use main_window::running_threads::*;

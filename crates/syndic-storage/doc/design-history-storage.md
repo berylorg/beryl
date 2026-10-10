@@ -33,6 +33,13 @@ package-owned title precedence. A history-derived title already earned under tho
 does not require repeating history traversal. Missing or outdated derived authority is a typed
 rebuild requirement, not absence of the canonical thread. This read grants no mutation capability.
 
+The same compact source-witness authentication is available for one current live inspection.
+It returns an authenticated compact summary, proven canonical thread absence, or a typed missing
+or outdated summary requirement. It performs bounded metadata reads without deriving history
+titles, rebuilding summaries or admitting commands. The owning caller must retain one coherent
+observation/read boundary for its complete join; returning a compact value grants no later
+source currentness or activation permission.
+
 Background summary preparation separately derives any required history title under existing bounded
 source traversal and seals exact canonical source and old-summary-or-absence guards. The owning
 package chooses an initial revision only for proven absence; callers cannot manufacture it. Its
@@ -482,6 +489,16 @@ residency.
   262,144 logical UTF-8 bytes. The item ceiling follows from the byte ceiling.
 - Callers may request smaller page bounds. Larger requests clamp to the declared ceiling and return
   a stable continuation cursor rather than allocating a larger page.
+- An authenticated thread-lineage head also permits a cursor at an exact zero-based ancestor
+  ordinal. The original page read validates that head's leaf identity, revision, depth and digest
+  and resolves the requested depth through authenticated skips. Out-of-range positions are typed;
+  the end position has no page. An ordinal alone grants no authority, and callers need no retained
+  prefix cursors, complete ancestry or jump table to reach a distant page.
+- Ordinary and recovery-candidate head inspection share the same compact construction from an
+  exactly decoded canonical Thread record. Candidate inspection uses the original authorized
+  candidate read access and existing point limit; it admits no command, ordinary source access
+  or ancestor traversal. Coherent recovery may carry this pure head with its qualified title and
+  selected claim, without opening another source or retaining the candidate read capability in GUI.
 
 Every bounded collection count is decoded before allocation with checked arithmetic. Unknown tags,
 trailing bytes, invalid UTF-8, noncanonical options, overflow, key/value disagreement, or an

@@ -16,6 +16,16 @@ pub use activity::*;
 pub const QUERY_PAGE_MAX_RECORDS: usize = 256;
 pub const QUERY_PAGE_MAX_STORED_BYTES: usize = crate::TRANSCRIPT_PAGE_MAX_BYTES;
 
+fn lineage_head(thread: crate::ThreadRecord) -> ThreadLineageHead {
+    ThreadLineageHead {
+        leaf_thread_id: thread.id(),
+        thread_revision: thread.revision(),
+        lineage_depth: thread.lineage_depth(),
+        lineage_digest: thread.lineage_digest(),
+        total_parent_count: thread.lineage_depth().get() - 1,
+    }
+}
+
 /// Revision-bound immutable facts selecting one thread-lineage query.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThreadLineageHead {
@@ -56,6 +66,25 @@ impl ThreadLineageHead {
             lineage_digest: self.lineage_digest,
             next_depth: ThreadLineageDepth::FIRST,
         })
+    }
+
+    pub fn cursor_at(&self, ordinal: u64) -> Result<Option<ThreadLineageCursor>, SyndicReadError> {
+        if ordinal > self.total_parent_count {
+            return Err(SyndicReadError::InvalidThreadLineageCursor);
+        }
+        if ordinal == self.total_parent_count {
+            return Ok(None);
+        }
+        let depth = ordinal
+            .checked_add(1)
+            .and_then(|depth| ThreadLineageDepth::new(depth).ok())
+            .ok_or(SyndicReadError::InvalidThreadLineageCursor)?;
+        Ok(Some(ThreadLineageCursor {
+            leaf_thread_id: self.leaf_thread_id,
+            thread_revision: self.thread_revision,
+            lineage_digest: self.lineage_digest,
+            next_depth: depth,
+        }))
     }
 }
 
@@ -177,13 +206,21 @@ impl SyndicStorage {
         let Some(thread) = self.point::<ThreadsFamily>(store, thread_id, limit)? else {
             return Ok(None);
         };
-        Ok(Some(ThreadLineageHead {
-            leaf_thread_id: thread.id(),
-            thread_revision: thread.revision(),
-            lineage_depth: thread.lineage_depth(),
-            lineage_digest: thread.lineage_digest(),
-            total_parent_count: thread.lineage_depth().get() - 1,
-        }))
+        Ok(Some(lineage_head(thread)))
+    }
+
+    pub fn thread_lineage_head_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadLineageHead>, SyndicReadError> {
+        self.point_with_access::<ThreadsFamily>(
+            super::access::ReadAccess::Candidate(access),
+            thread_id,
+            limit,
+        )
+        .map(|thread| thread.map(lineage_head))
     }
 
     pub fn thread_lineage_page(

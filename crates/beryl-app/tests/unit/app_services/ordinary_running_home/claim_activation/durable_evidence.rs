@@ -128,7 +128,20 @@ impl OriginalDurableEvidence {
         let current = self.read_draft(home, storage);
         assert_eq!(current, self.before);
         assert_eq!(current.piece_root(), self.selection.binding().root());
-        assert_eq!(current.history(), self.selection.binding().history());
+        let published = current.history();
+        let captured = self.selection.binding().history();
+        assert_eq!(published.root(), captured.root());
+        assert_eq!(
+            published.candidate_generation(),
+            captured.candidate_generation()
+        );
+        assert_eq!(published.frontier_revision(), captured.frontier_revision());
+        assert_eq!(published.byte_budget(), captured.byte_budget());
+        assert_eq!(
+            published.retention_policy_revision(),
+            captured.retention_policy_revision()
+        );
+        assert_eq!(published.availability(), captured.availability());
         let disposed = self.read_disposed(home, storage);
         assert_eq!(disposed.thread_id(), self.before.thread_id());
         assert_eq!(disposed.draft_id(), original_disposal.draft_id);
@@ -136,6 +149,7 @@ impl OriginalDurableEvidence {
         assert_eq!(disposed.published_selector_revision(), current.revision());
         assert_eq!(disposed.published_root(), current.piece_root());
         assert_eq!(disposed.published_history(), current.history());
+        assert_eq!(disposed.newest_history(), current.history());
         assert_eq!(
             disposed.disposal_operation_id(),
             Some(original_disposal.operation_id)

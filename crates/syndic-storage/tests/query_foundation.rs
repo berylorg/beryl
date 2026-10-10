@@ -120,6 +120,54 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         .unwrap()
         .unwrap();
     assert_eq!(head.total_parent_count(), DEPTH - 1);
+    assert_eq!(head.cursor_at(0).unwrap(), head.cursor());
+    assert_eq!(head.cursor_at(DEPTH - 1).unwrap(), None);
+    assert!(matches!(
+        head.cursor_at(DEPTH),
+        Err(SyndicReadError::InvalidThreadLineageCursor)
+    ));
+    assert!(matches!(
+        head.cursor_at(u64::MAX),
+        Err(SyndicReadError::InvalidThreadLineageCursor)
+    ));
+    for ordinal in [0, 147, DEPTH - 2] {
+        let page = storage
+            .thread_lineage_page(
+                &store,
+                &head,
+                head.cursor_at(ordinal).unwrap().unwrap(),
+                page_limits(32),
+            )
+            .unwrap();
+        assert_eq!(
+            page.records()[0].thread_id(),
+            identity(u128::from(ordinal + 1))
+        );
+        assert_eq!(page.records()[0].depth().get(), ordinal + 1);
+        assert_eq!(
+            page.records()[0].lineage_digest(),
+            records[usize::try_from(ordinal).unwrap()].lineage_digest()
+        );
+        assert_eq!(
+            page.records().len(),
+            usize::try_from((DEPTH - 1 - ordinal).min(32)).unwrap()
+        );
+        assert!(page.stored_bytes() <= QUERY_PAGE_MAX_STORED_BYTES);
+        assert!(page.decoded_bytes() <= QUERY_PAGE_MAX_STORED_BYTES);
+    }
+    let other_head = storage
+        .thread_lineage_head(&store, identity(150), point_limit())
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        storage.thread_lineage_page(
+            &store,
+            &head,
+            other_head.cursor_at(147).unwrap().unwrap(),
+            page_limits(32)
+        ),
+        Err(SyndicReadError::InvalidThreadLineageCursor)
+    ));
     let first_cursor = head.cursor().unwrap();
     let measured_first = storage
         .clone()
@@ -137,6 +185,25 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
         .unwrap();
     assert_eq!(exact_first.records().len(), 1);
     assert_eq!(exact_first.stored_bytes(), root_stored_bytes);
+    let partial = storage
+        .thread_lineage_page(
+            &store,
+            &head,
+            first_cursor,
+            CursorReadLimits::new(32, root_stored_bytes).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(partial.records().len(), 1);
+    assert_eq!(partial.next_cursor(), head.cursor_at(1).unwrap());
+    let resumed = storage
+        .thread_lineage_page(
+            &store,
+            &head,
+            partial.next_cursor().unwrap(),
+            page_limits(32),
+        )
+        .unwrap();
+    assert_eq!(resumed.records()[0].thread_id(), identity(2));
     assert!(
         storage
             .clone()
@@ -187,6 +254,56 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
             .thread_lineage_page(&store, &head, stale_cursor, page_limits(4)),
         Err(SyndicReadError::StaleThreadLineage)
     ));
+    let fresh = storage
+        .thread_lineage_head(&store, leaf.id(), point_limit())
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        storage.thread_lineage_page(&store, &fresh, stale_cursor, page_limits(4)),
+        Err(SyndicReadError::InvalidThreadLineageCursor)
+    ));
+    drop(storage);
+    store.close().unwrap();
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut candidate = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap();
+    {
+        let access = candidate.recovery_access().unwrap();
+        assert_eq!(
+            storage
+                .thread_lineage_head_candidate(&access, identity(DEPTH.into()), point_limit())
+                .unwrap(),
+            Some(fresh.clone())
+        );
+        assert!(
+            storage
+                .thread_lineage_head_candidate(
+                    &access,
+                    identity(DEPTH.into()),
+                    SyndicPointReadLimit::new(1).unwrap()
+                )
+                .is_err()
+        );
+        assert_eq!(
+            storage
+                .thread_lineage_head_candidate(
+                    &access,
+                    SyndicThreadId::from_bytes([255; 16]),
+                    point_limit()
+                )
+                .unwrap(),
+            None
+        );
+    }
+    let reopened = candidate.publish().unwrap();
+    assert_eq!(
+        storage
+            .thread_lineage_head(&reopened, identity(DEPTH.into()), point_limit())
+            .unwrap(),
+        Some(fresh)
+    );
 }
 
 #[test]

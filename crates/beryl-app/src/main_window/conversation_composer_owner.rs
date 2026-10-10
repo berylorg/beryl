@@ -250,6 +250,7 @@ pub struct MainWindowConversationComposer {
     recovery_snapshot: Option<MainWindowComposerRecoverySnapshot>,
     failed_resident: Option<failed_resident::FailedResidentFence>,
     failed_resident_generation: u64,
+    failed_claim_protection: Option<gpui_text_input::RangeResidentProtection>,
     unpublished_recovery_protection: Option<(
         super::MainWindowConversationComposerCloseTicket,
         gpui_text_input::RangeResidentProtection,

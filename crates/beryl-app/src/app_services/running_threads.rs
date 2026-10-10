@@ -1,6 +1,7 @@
 use super::*;
 
 mod claim_recovery;
+mod lineage;
 mod ordinary_selection;
 mod ordinary_selection_recovery;
 mod thread_creation_recovery;

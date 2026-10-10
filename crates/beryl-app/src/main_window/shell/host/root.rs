@@ -193,6 +193,7 @@ impl Render for MainWindowShellRoot {
         self.sync_runtime_setup(window, cx);
         self.sync_thread_switcher(window, cx);
         self.sync_notices(window, cx);
+        let lineage = self.render_selected_lineage(cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
         };
@@ -202,15 +203,7 @@ impl Render for MainWindowShellRoot {
             .or_else(|| self.runtime_setup.mount.clone());
         let content_height = composer
             .as_ref()
-            .and_then(|mount| mount.read(cx).contribution())
-            .and_then(|composer| {
-                composer
-                    .read(cx)
-                    .gpui_input()
-                    .read(cx)
-                    .surface()
-                    .map(|surface| surface.content_height())
-            })
+            .and_then(|mount| mount.read(cx).presentation_content_height(cx))
             .unwrap_or(px(0.));
         let minimum_panel_height = controller.minimum_size.height * 0.5;
         let composer_height = (content_height + px(22.))
@@ -273,6 +266,7 @@ impl Render for MainWindowShellRoot {
                     .children(command)
                     .child(exit),
             )
+            .children(lineage)
             .child(
                 div()
                     .id("main-window-conversation-body")

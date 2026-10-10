@@ -15,6 +15,7 @@ pub(in crate::main_window::shell::host) use activation::{
     CapturedClaimOperation, RetiringClaimOperation,
 };
 mod command;
+mod lineage;
 mod transcript;
 pub(super) use command::{render_command, render_picker};
 
@@ -40,6 +41,18 @@ pub(super) struct RunningThreadsContribution {
     fixture_windows: Vec<WindowHandle<MainWindowShellRoot>>,
     #[cfg(all(test, feature = "test-faults"))]
     fixture_activation_hooks: Option<activation::RunningActivationFixtureHooks>,
+    #[cfg(all(test, feature = "test-faults"))]
+    fixture_pending_ready_observation: Option<
+        Arc<
+            std::sync::Mutex<
+                Option<(
+                    beryl_model::SyndicThreadId,
+                    crate::main_window::MainWindowComposerSelectionIdentity,
+                    gpui::Pixels,
+                )>,
+            >,
+        >,
+    >,
     #[cfg(all(test, feature = "test-faults"))]
     fixture_real_creation_reconciliation: bool,
     #[cfg(all(test, feature = "test-faults"))]
@@ -96,6 +109,7 @@ pub(super) struct RunningThreadsContribution {
         crate::main_window::MainWindowComposerSelectionIdentity,
         beryl_state::CatalogResolvedTitle,
     )>,
+    lineage: lineage::SelectedLineage,
     activation_task: Option<gpui::Task<()>>,
     activation_wake: Option<Arc<()>>,
     activation_operation: Option<activation::UnviewedRunningActivation>,
@@ -117,6 +131,7 @@ impl Drop for RunningThreadsContribution {
         for (_, cancel, _) in &self.page_jobs {
             cancel.cancel();
         }
+        self.lineage.cancel();
     }
 }
 
@@ -132,6 +147,8 @@ impl RunningThreadsContribution {
             fixture_windows: Vec::new(),
             #[cfg(all(test, feature = "test-faults"))]
             fixture_activation_hooks: None,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_pending_ready_observation: None,
             #[cfg(all(test, feature = "test-faults"))]
             fixture_real_creation_reconciliation: false,
             #[cfg(all(test, feature = "test-faults"))]
@@ -173,6 +190,7 @@ impl RunningThreadsContribution {
             ordinary_activation: false,
             navigation_history: Default::default(),
             selected_title: None,
+            lineage: Default::default(),
             activation_task: None,
             activation_wake: None,
             activation_operation: None,
@@ -220,6 +238,7 @@ impl RunningThreadsContribution {
             drop(provider);
         }
         self.transcript_source = None;
+        self.lineage.observation = None;
         self.reader = None;
         self.source_revision = None;
         Ok(())
@@ -294,6 +313,7 @@ impl MainWindowShellRoot {
             .store(true, Ordering::Release);
         self.running_threads.transcript_task = None;
         self.cancel_running_page_reads(window, cx);
+        self.cancel_lineage_reads(cx);
         if self.running_threads.read_drain_task.is_none() && !self.running_thread_reads_drained() {
             self.running_threads.read_drain_task =
                 Some(cx.spawn_in(window, async move |this, cx| {
@@ -359,6 +379,8 @@ impl MainWindowShellRoot {
             picker.update(cx, |picker, picker_cx| picker.dismiss(window, picker_cx));
         }
         self.running_threads.subscription = None;
+        self.running_threads.lineage.widget = None;
+        self.running_threads.lineage.subscription = None;
         Ok(())
     }
 
@@ -619,6 +641,7 @@ impl MainWindowShellRoot {
                             Err(error) => root.running_threads.failure = Some(error.to_string()),
                         }
                         root.sync_running_transcript(window, cx);
+                        root.sync_selected_lineage(window, cx);
                         cx.notify();
                         true
                     })

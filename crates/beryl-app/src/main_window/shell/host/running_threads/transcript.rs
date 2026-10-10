@@ -75,7 +75,7 @@ impl MainWindowShellRoot {
         let job = cx.background_executor().spawn(async move { work.run() });
         self.running_threads.transcript_task = Some(cx.spawn_in(window, async move |this, cx| {
             let output = job.await;
-            let _ = this.update_in(cx, |root, _, cx| {
+            let _ = this.update_in(cx, |root, window, cx| {
                 let RunningReadOutput { _release, result } = output;
                 if root.running_threads.transcript_request != request_id {
                     return;
@@ -101,10 +101,29 @@ impl MainWindowShellRoot {
                 }
                 if let Ok((provider, prepared)) = result {
                     let title = prepared.resolved_title().clone();
+                    let lineage = prepared.lineage_head().clone();
                     let source_identity = prepared.source_identity();
                     if root.running_threads.transcript_claim == Some(selection.claim())
                         && root.running_threads.transcript_source.as_ref() == Some(&source_identity)
                     {
+                        if root
+                            .running_threads
+                            .selected_title
+                            .as_ref()
+                            .is_some_and(|(current, _)| *current == selection)
+                            && root.running_threads.lineage.matches_selection(selection)
+                        {
+                            return;
+                        }
+                        if provider
+                            .publish_if_current(prepared, &request, &cancel, |_| ())
+                            .is_ok()
+                        {
+                            root.running_threads.transcript_provider = Some(provider);
+                            root.running_threads.selected_title = Some((selection, title.clone()));
+                            root.publish_selected_lineage(selection, lineage, title, window, cx);
+                            cx.notify();
+                        }
                         return;
                     }
                     if provider
@@ -120,7 +139,8 @@ impl MainWindowShellRoot {
                         root.running_threads.transcript_provider = Some(provider);
                         root.running_threads.transcript_claim = Some(selection.claim());
                         root.running_threads.transcript_source = Some(source_identity);
-                        root.running_threads.selected_title = Some((selection, title));
+                        root.running_threads.selected_title = Some((selection, title.clone()));
+                        root.publish_selected_lineage(selection, lineage, title, window, cx);
                         cx.notify();
                     }
                 }

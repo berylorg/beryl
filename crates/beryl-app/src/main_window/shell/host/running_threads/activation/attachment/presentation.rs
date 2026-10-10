@@ -1,6 +1,24 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_observe_ordinary_pending_ready(
+        &mut self,
+        observation: Option<
+            Arc<
+                Mutex<
+                    Option<(
+                        beryl_model::SyndicThreadId,
+                        crate::main_window::MainWindowComposerSelectionIdentity,
+                        gpui::Pixels,
+                    )>,
+                >,
+            >,
+        >,
+    ) {
+        self.running_threads.fixture_pending_ready_observation = observation;
+    }
+
     pub(super) fn accept_running_activation_stage(
         &mut self,
         operation: &UnviewedRunningActivation,
@@ -83,6 +101,25 @@ impl MainWindowShellRoot {
                 }
                 if ready {
                     self.preflight_running_selection(&source.service, cx)?;
+                    #[cfg(all(test, feature = "test-faults"))]
+                    if let Some(observation) =
+                        &self.running_threads.fixture_pending_ready_observation
+                    {
+                        let receipt = source.receipt()?;
+                        let selection = source
+                            .pending_selection
+                            .ok_or("Pending staged selection is missing")?;
+                        let height = operation
+                            .mount
+                            .read(cx)
+                            .presentation_content_height(cx)
+                            .ok_or("Pending staged content height is missing")?;
+                        observation.lock().unwrap().get_or_insert((
+                            receipt.target_thread(),
+                            selection,
+                            height,
+                        ));
+                    }
                     source.stage = Stage::Commit;
                 } else {
                     source.stage = Stage::Flush;
@@ -167,6 +204,7 @@ impl MainWindowShellRoot {
                     .ok_or("Prepared transcript is missing")?;
                 let identity = prepared.source_identity();
                 let title = prepared.resolved_title().clone();
+                let lineage = prepared.lineage_head().clone();
                 let mut prepared = Some(prepared);
                 let result = publication.try_elect_current(|| {
                     provider.publish_if_current(
@@ -195,7 +233,14 @@ impl MainWindowShellRoot {
                         self.running_threads.transcript_claim = Some(committed);
                         self.running_threads.transcript_source = Some(identity);
                         self.running_threads.selected_title =
-                            Some((publication.selection(), title));
+                            Some((publication.selection(), title.clone()));
+                        self.publish_selected_lineage(
+                            publication.selection(),
+                            lineage,
+                            title,
+                            window,
+                            cx,
+                        );
                         source.error = None;
                         source.gui_published = true;
                         source.stage = Stage::Finalize;

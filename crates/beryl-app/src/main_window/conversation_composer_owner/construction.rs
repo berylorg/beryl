@@ -253,6 +253,7 @@ impl MainWindowConversationComposer {
             recovery_snapshot: None,
             failed_resident: None,
             failed_resident_generation: 0,
+            failed_claim_protection: None,
             unpublished_recovery_protection: None,
             fresh_recovery_release_requests: None,
             fresh_recovery_gui: None,

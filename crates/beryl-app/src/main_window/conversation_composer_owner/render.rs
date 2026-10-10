@@ -13,6 +13,27 @@ const PREVIEW_WIDTH: Pixels = px(360.0);
 const PREVIEW_HEIGHT: Pixels = px(224.0);
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn protected_resident_layout(
+        &self,
+        cx: &gpui::App,
+    ) -> Option<gpui_text_input::RangeResidentLayoutSnapshot> {
+        (matches!(
+            self.phase,
+            super::MainWindowConversationComposerPhase::RecoveryFenced
+        ) && (self
+            .failed_resident
+            .as_ref()
+            .is_some_and(|fence| fence.capture_taken)
+            || self.failed_claim_protection.is_some_and(|protection| {
+                let input = self.input.read(cx);
+                input.resident_protection_is_current(protection)
+                    && input.surface().is_some_and(|surface| {
+                        surface.binding() == self.selection.binding().range_binding()
+                    })
+            })))
+        .then(|| self.input.read(cx).resident_layout_snapshot())
+    }
+
     fn record_surface_error(&mut self, error: String, cx: &mut Context<Self>) {
         self.last_error = Some(error);
         cx.notify();
@@ -225,6 +246,7 @@ impl MainWindowConversationComposer {
 impl Render for MainWindowConversationComposer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_pump(window, cx);
+        let protected_layout = self.protected_resident_layout(cx);
         let selected = !self.is_pending_target();
         let pending_realizer = self.pending_realizer.as_ref().and_then(|pending| {
             pending.lifetime.upgrade()?;
@@ -244,6 +266,11 @@ impl Render for MainWindowConversationComposer {
             .relative()
             .when(self.paste_pending(), |root| root.opacity(0.55))
             .size_full()
+            .when_some(protected_layout, |root, layout| {
+                root.w(layout.layout.wrap_width)
+                    .h(layout.viewport_extent)
+                    .flex_none()
+            })
             .when(selected, |root| {
                 root.debug_selector(|| "conversation-composer-root".to_owned())
             })

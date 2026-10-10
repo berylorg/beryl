@@ -115,6 +115,14 @@ pub(super) fn prepare_history(home: &HomeStore, storage: &SyndicStorage, target:
 }
 
 pub(super) async fn assert_recovered(window: WindowHandle<MainWindowShellRoot>, cx: &mut AsyncApp) {
+    assert_recovered_with_records(window, 1, cx).await;
+}
+
+pub(super) async fn assert_recovered_with_records(
+    window: WindowHandle<MainWindowShellRoot>,
+    expected_count: usize,
+    cx: &mut AsyncApp,
+) {
     window
         .update(cx, |root, _, app| {
             let claim = root
@@ -129,7 +137,7 @@ pub(super) async fn assert_recovered(window: WindowHandle<MainWindowShellRoot>, 
                 snapshot.state,
                 ResidentTranscriptSnapshotState::ProviderBacked { .. }
             ));
-            assert_eq!(snapshot.records.len(), 1);
+            assert_eq!(snapshot.records.len(), expected_count);
             let record = &snapshot.records[0];
             let ResidentPresentationRecordKind::TextChunk {
                 narrative_kind,

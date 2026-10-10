@@ -1,5 +1,14 @@
 use super::*;
 
+struct ActivationAdmissionSnapshot(String);
+impl Drop for ActivationAdmissionSnapshot {
+    fn drop(&mut self) {
+        if !self.0.is_empty() {
+            eprintln!("original activation admission deadline: {}", self.0);
+        }
+    }
+}
+
 pub(super) fn activate(cx: &mut gpui::TestAppContext, seed: u8, mode: CompletionMode) {
     let mounted = mount(cx, seed);
     let prior = mounted
@@ -243,13 +252,23 @@ pub(super) fn activate(cx: &mut gpui::TestAppContext, seed: u8, mode: Completion
     }
     support::draw(cx);
     gpui::VisualTestContext::from_window(mounted.window.into(), cx).simulate_keystrokes("enter");
+    let mut admission = ActivationAdmissionSnapshot(String::new());
     drive(cx, |cx| {
-        mounted
+        let (ready, diagnostic) = mounted
             .window
-            .read_with(cx, |root, _| {
-                root.running_threads.activation_operation.is_some()
+            .read_with(cx, |root, app| {
+                let running = &root.running_threads;
+                let focused = running.picker.as_ref().and_then(|picker| picker.read(app).focused_key());
+                let target_resident = running.pages.iter().flat_map(|page| page.records()).any(|row| row.thread_id == target);
+                let ready = running.activation_operation.is_some();
+                let diagnostic = format!("target={target:?}, focused={focused:?}, focused_target={}, target_resident={}, query_revision={}, pending={:?}, prepared={}, operation={:?}, task={}, lease={}, fixture_lease={}, failure={:?}, notice={}, suspended={}, enabled={}, retired={}, generation={}, reader_current={}, cached_prior_match={}, picker={:?}",
+                    focused.is_some_and(|key| key.0 == target.to_string()), target_resident, running.query_revision,
+                    running.pending_activation, running.prepared_activation.is_some(), running.activation_operation.as_ref().map(|operation| operation.diagnostics()), running.activation_task.is_some(), running.selection_lease.is_some(), running.fixture_selection_lease.is_some(), running.failure, running.failure_notice.is_some(), running.reads_suspended, root.running_threads_enabled(), running.views_retired, running.generation.load(Ordering::Acquire), running.reader.as_ref().is_some_and(PublishedRunningThreadsReader::current), root.cached_running_selection(app).map(|(identity, _)| identity) == Some(edited_prior), running.picker.as_ref().map(|picker| picker.read(app).diagnostics()));
+                (ready, diagnostic)
             })
-            .unwrap()
+            .unwrap();
+        admission.0 = if ready { String::new() } else { diagnostic };
+        ready
     });
     mounted
         .window

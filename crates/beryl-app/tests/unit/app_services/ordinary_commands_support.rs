@@ -64,7 +64,44 @@ pub(super) fn run_mounted_with_prepared_home(
         count,
         chunks,
         Some(Box::new(prepare)),
-        Some(final_selection),
+        Some(Box::new(move || {
+            vec![
+                final_selection
+                    .borrow()
+                    .expect("prepared Home scenario must qualify its final selection"),
+            ]
+        })),
+        scenario,
+        expect_shutdown,
+        Some(restored_count),
+    )
+    .unwrap()
+}
+
+pub(super) fn run_mounted_with_prepared_home_selections(
+    count: u8,
+    chunks: usize,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    final_selections: Rc<RefCell<Option<Vec<(WindowId, beryl_model::SyndicThreadId)>>>>,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: usize,
+) -> MinimalSessionBootstrap {
+    run_mounted_case(
+        count,
+        chunks,
+        Some(Box::new(prepare)),
+        Some(Box::new(move || {
+            final_selections
+                .borrow()
+                .clone()
+                .expect("prepared Home scenario must qualify its declared final selections")
+        })),
         scenario,
         expect_shutdown,
         Some(restored_count),
@@ -114,7 +151,7 @@ fn run_mounted_case(
     count: u8,
     chunks: usize,
     prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
-    final_selection: Option<Rc<RefCell<Option<(WindowId, beryl_model::SyndicThreadId)>>>>,
+    final_selection: Option<Box<dyn FnOnce() -> Vec<(WindowId, beryl_model::SyndicThreadId)>>>,
     scenario: impl for<'a> FnOnce(
         Owner,
         FaultController,
@@ -326,14 +363,17 @@ fn run_mounted_case(
     let home = candidate.publish().unwrap();
     let restored = state.session().minimal_bootstrap(&home).unwrap().unwrap();
     assert_eq!(restored.windows().len(), restored_count);
-    let final_selection = final_selection.map(|expected| {
-        expected
-            .borrow()
-            .expect("prepared Home scenario must qualify its final selection")
-    });
-    if let Some((id, _)) = final_selection {
-        assert!(initial.borrow().iter().any(|row| row.window_id() == id));
-        assert!(restored.windows().iter().any(|row| row.window_id() == id));
+    let final_selections = final_selection
+        .map(|expected| expected())
+        .unwrap_or_default();
+    for (index, (id, _)) in final_selections.iter().enumerate() {
+        assert!(
+            final_selections[..index]
+                .iter()
+                .all(|(prior, _)| prior != id)
+        );
+        assert!(initial.borrow().iter().any(|row| row.window_id() == *id));
+        assert!(restored.windows().iter().any(|row| row.window_id() == *id));
     }
     for record in restored.windows() {
         let before = initial.borrow();
@@ -343,10 +383,11 @@ fn run_mounted_case(
         {
             assert_eq!(
                 record.selected_thread().map(|claim| claim.thread_id()),
-                match final_selection {
-                    Some((id, thread)) if id == record.window_id() => Some(thread),
-                    _ => original.selected_thread().map(|claim| claim.thread_id()),
-                }
+                final_selections
+                    .iter()
+                    .find(|(id, _)| *id == record.window_id())
+                    .map(|(_, thread)| *thread)
+                    .or_else(|| original.selected_thread().map(|claim| claim.thread_id()))
             );
         }
         if let Some((_, placement)) = captured

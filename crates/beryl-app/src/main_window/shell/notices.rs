@@ -250,11 +250,26 @@ impl MainWindowShellRoot {
             .filter(|focus| focus.is_focused(window))
             .or_else(|| self.focused_thread_switcher_owner(window))
             .or_else(|| self.focused_thread_navigation_owner(window))
+            .or_else(|| self.focused_thread_lineage_owner(window, app))
             .or_else(|| {
                 self.shell_focus
                     .is_focused(window)
                     .then(|| self.shell_focus.clone())
             })
+    }
+
+    pub(crate) fn restore_running_recovery_focus(
+        &self,
+        focus: &gpui::FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let safe = self.notice_safe_focus(cx);
+        if &safe == focus || self.running_recovery_focus_current(focus, cx) {
+            focus.focus(window);
+        } else {
+            safe.focus(window);
+        }
     }
 
     pub(super) fn replace_recovered_notices(

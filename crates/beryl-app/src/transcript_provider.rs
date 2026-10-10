@@ -48,6 +48,7 @@ pub(crate) struct PreparedTranscriptAttachment {
     pub(crate) range: Range<u64>,
     activation: PreparedTranscriptActivation,
     title: beryl_state::CatalogResolvedTitle,
+    lineage: syndic_storage::ThreadLineageHead,
     observation: HomeMutationObservation,
     owner: Weak<TranscriptProviderState>,
     _reservation: PendingRead,
@@ -85,9 +86,13 @@ pub(crate) struct TranscriptAttachmentSourceIdentity {
     range: Range<u64>,
     placement: TranscriptActivationPlacement,
     title: beryl_state::CatalogResolvedTitle,
+    lineage: syndic_storage::ThreadLineageHead,
 }
 
 impl PreparedTranscriptAttachment {
+    pub(crate) fn lineage_head(&self) -> &syndic_storage::ThreadLineageHead {
+        &self.lineage
+    }
     pub(crate) fn resolved_title(&self) -> &beryl_state::CatalogResolvedTitle {
         &self.title
     }
@@ -97,6 +102,7 @@ impl PreparedTranscriptAttachment {
             range: self.range.clone(),
             placement: self.request.placement,
             title: self.title.clone(),
+            lineage: self.lineage.clone(),
         }
     }
 }
@@ -199,6 +205,16 @@ impl TranscriptProviderReader {
             .map_err(|_| TranscriptAttachmentError::Stale)?;
         let (authority, range, activation) = self.read_activation(&request, cancelled)?;
         let title = self.prepare_selected_title(&request, cancelled)?;
+        let lineage = self
+            .syndic
+            .thread_lineage_head(
+                &self.home,
+                request.thread_id,
+                syndic_storage::SyndicPointReadLimit::new(65_536)
+                    .map_err(|_| TranscriptAttachmentError::Capacity)?,
+            )
+            .map_err(|_| TranscriptAttachmentError::Unavailable)?
+            .ok_or(TranscriptAttachmentError::Unavailable)?;
         self.check_request(&request, cancelled)?;
         self.home
             .try_elect_observed_coherent(&observation, self.home_generation, || ())
@@ -209,6 +225,7 @@ impl TranscriptProviderReader {
             range,
             activation,
             title,
+            lineage,
             observation,
             owner: Arc::downgrade(&self.state),
             _reservation: reservation,

@@ -103,8 +103,7 @@ fn run(cancellation: Cancellation) {
                         let read_faults = faults.clone();
                         cx.background_executor()
                             .spawn(async move {
-                                read_faults.fail_next(FaultPoint::BeforeReadConfirmation);
-                                assert!(home.home_revision().is_err());
+                                claim_activation::fail_confirmed_fixture_read(&home, &read_faults);
                                 assert_eq!(home.health().state(), HomeHealthState::Failed);
                             })
                             .await;

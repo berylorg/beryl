@@ -20,6 +20,10 @@ mod control;
 mod durable_evidence;
 #[path = "claim_activation/fixture.rs"]
 mod fixture;
+#[path = "claim_activation/lineage_entry.rs"]
+mod lineage_entry;
+#[path = "claim_activation/lineage_fixture.rs"]
+mod lineage_fixture;
 #[path = "claim_activation/marker_origin.rs"]
 mod marker_origin;
 #[path = "claim_activation/navigation_entry.rs"]
@@ -34,6 +38,15 @@ mod scenario;
 mod switcher_entry;
 #[path = "claim_activation/transcript.rs"]
 mod transcript;
+
+pub(super) fn fail_confirmed_fixture_read(
+    home: &beryl_home_store::HomeStore,
+    faults: &FaultController,
+) {
+    let reached = AtomicBool::new(false);
+    outcome_evidence::fail_original_confirmed_read(home, faults, &reached);
+    assert!(reached.load(Ordering::Acquire));
+}
 
 #[derive(Clone, Copy, Debug)]
 enum Cut {

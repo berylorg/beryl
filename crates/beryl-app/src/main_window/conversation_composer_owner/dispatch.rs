@@ -569,6 +569,32 @@ impl MainWindowConversationComposer {
         )
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_edit_position_proof_ready(&self, cx: &gpui::App) -> bool {
+        if !self.is_live()
+            || self.route != MainWindowConversationComposerRoute::Selected
+            || self.active_flight.is_some()
+            || self.pending_dispatch.is_some()
+            || self.last_error.is_some()
+        {
+            return false;
+        }
+        let input = self.input.read(cx);
+        let Some(surface) = input.surface().filter(|surface| {
+            input.is_surface_current_and_interactive()
+                && surface.binding() == self.selection.binding().range_binding()
+        }) else {
+            return false;
+        };
+        let selection = surface.selection();
+        self.admitted_positions
+            == Some(gpui_text_input::MutationPositions::new(
+                surface.caret(),
+                selection.anchor,
+                selection.head,
+            ))
+    }
+
     fn pump_edit_proof(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.is_live() || !matches!(self.route, MainWindowConversationComposerRoute::Selected) {
             return;

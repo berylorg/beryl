@@ -5,6 +5,84 @@ use crate::main_window::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(in crate::main_window) fn presentation_content_height(
+        &self,
+        cx: &App,
+    ) -> Option<gpui::Pixels> {
+        if let Some(layout) = self
+            .contribution()
+            .and_then(|selected| selected.read(cx).protected_resident_layout(cx))
+        {
+            return Some(layout.viewport_extent);
+        }
+        let pending = self.pending_presentation.as_ref().filter(|pending| {
+            pending
+                .contribution
+                .read(cx)
+                .matches_pending_target(pending.receipt)
+        });
+        pending
+            .and_then(|pending| {
+                pending
+                    .contribution
+                    .read(cx)
+                    .gpui_input()
+                    .read(cx)
+                    .surface()
+                    .map(|surface| surface.content_height())
+            })
+            .or_else(|| {
+                self.contribution().and_then(|selected| {
+                    selected
+                        .read(cx)
+                        .gpui_input()
+                        .read(cx)
+                        .surface()
+                        .map(|surface| surface.content_height())
+                })
+            })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_claim_pending_state(&self, cx: &App) -> String {
+        self.pending_presentation.as_ref().map_or_else(|| "absent".into(), |pending| {
+            let composer = pending.contribution.read(cx);
+            let input = composer.gpui_input();
+            let input = input.read(cx);
+            let realization = input.realization_diagnostics();
+            format!("target={:?}, generation={}, claim={:?}, pending={}, ready={}, interactive={}, quiescent={}, enabled={}, surface={}, flight={}, prior_released={}, realizer={}, render_child={}, realization={:?}, rejection={:?}, error={:?}", pending.receipt.target_thread(), pending.receipt.generation(), composer.selection_identity().claim(), composer.is_pending_target(), composer.pending_surface_ready(cx), input.is_surface_current_and_interactive(), input.is_quiescent(), input.is_enabled(), input.surface().is_some(), composer.test_has_active_flight(), self.contribution.as_ref().is_some_and(|selected| selected.read(cx).test_widget_released()), self.contribution.as_ref().is_some_and(|selected| selected.read(cx).test_has_pending_realizer()), self.contribution.as_ref().is_some_and(|selected| selected.read(cx).test_has_pending_render_child(cx)), realization.current, realization.last_response_rejection, composer.last_error())
+        })
+    }
+
+    #[cfg(test)]
+    fn test_claim_promotion_predicates(
+        &self,
+        publication: &MainWindowComposerClaimPublication,
+        cx: &App,
+    ) -> String {
+        let receipt = publication.receipt();
+        let pending = self.pending_presentation.as_ref();
+        format!(
+            "receipt_match={}, route_match={}, selection_match={}, owner_ready={}, surface_ready={}, mount_service_match={}, expected_claim={:?}; {}",
+            pending.is_some_and(|pending| pending.receipt == receipt),
+            pending.is_some_and(|pending| pending
+                .contribution
+                .read(cx)
+                .matches_pending_target(receipt)),
+            pending.is_some_and(|pending| pending.contribution.read(cx).selection_identity()
+                == publication.selection()),
+            pending.is_some_and(|pending| pending
+                .contribution
+                .read(cx)
+                .claim_pending_promotion_ready(publication, cx)),
+            pending.is_some_and(|pending| pending.contribution.read(cx).pending_surface_ready(cx)),
+            self.bound_service()
+                .is_ok_and(|service| publication.matches_service(service)),
+            publication.selection().claim(),
+            self.test_claim_pending_state(cx),
+        )
+    }
+
     pub(in crate::main_window) fn claim_publication_service(
         &self,
     ) -> Result<Arc<MainWindowConversationComposerService>, String> {
@@ -276,7 +354,14 @@ impl MainWindowConversationComposerMount {
                         .read(cx)
                         .claim_pending_promotion_ready(publication, cx)
             })
-            .ok_or_else(|| "composer claim publication target is stale".to_owned())?
+            .ok_or_else(|| {
+                #[cfg(test)]
+                eprintln!(
+                    "exact composer claim promotion refused: {}",
+                    self.test_claim_promotion_predicates(publication, cx)
+                );
+                "composer claim publication target is stale".to_owned()
+            })?
             .contribution
             .read(cx);
         if self

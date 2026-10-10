@@ -136,10 +136,43 @@ governed by [design.md](design.md). It does not independently declare engineerin
   cancelled selection or a known uncommitted claim retires only the target and permits the same
   prior editor to resume after exact settlement. Indeterminate save or claim retains both editor
   and operation custody and excludes competing selection until exact reconciliation.
+  After original failed-Home operation and selection authentication, settled semantic work permits
+  bounded closure of original queued view demands through the widget's guarded dequeue. Eligible
+  text/object geometry demands receive exact unavailable settlement; original cancellation and
+  release requests retain their existing pure cleanup acknowledgement. This cut performs no
+  source reads or new page admission and leaves unsupported queued requests in original custody.
+  It preserves coherent resident surface/Page custody, waits for full quiescence and retains
+  exact binding, history and position protection before capture. Exhausting a bounded cleanup
+  slice yields to the original continuation with remaining custody retained.
+  Once the original failed-resident fence or committed selected-predecessor capture has protected
+  its input in RecoveryFenced, that same owner renders at the input's existing resident-layout
+  wrap width and viewport extent. Committed capture retains only its original compact protection
+  identity in that owner and revalidates its currentness and exact binding before using this
+  layout; successful original release clears it before disposal or replacement. Phase state
+  alone does not establish protection. The
+  existing mount measures the protected viewport before ordinary content-height fallback, so
+  shell allocation cannot resize the protected input between capture and release. No separate
+  size cache or layout owner is introduced, and no new protection is minted. Native window clipping may limit
+  visibility during this fence; reflow resumes through the ordinary replacement or release
+  boundary. This cut performs no source reads or new view-demand admission and does not relax
+  the widget's protected-environment checks.
+  Consecutive lineage query replacements for the same selected owner preserve its existing
+  compact logical focus target while current pages are pending. The current query must still
+  authenticate the expected parent key and bounded ordinal before focus settles. Changed selected
+  ownership or an out-of-range target clears that intent; no old entity or page is retained.
   Once the claim is known committed, canonical predecessor disposal and widget release complete
   before coherent target promotion. Their failures retain the committed target and predecessor
   cleanup custody; they never roll back the claim or resume the old editor. Ordinary close,
   submission and ordinary ThreadSwitch completion retain their own existing semantics.
+
+  During receipt-bound replacement staging, composer panel measurement prefers the exact owned
+  pending target surface once available, falling back to the selected surface. The original
+  pending owner qualifies that target at its continuing viewport before predecessor widget release
+  and coherent promotion. Disposal must not replace the measurement with an empty prior surface
+  and invalidate an already qualified target after its preparation read pump closes. Pending
+  measurement does not publish the selected editor, title, transcript or lineage. Original source,
+  receipt, readiness and retirement guards remain authoritative; no separate height cache or
+  sizing owner is introduced.
 
 - Existing-window thread creation may qualify the same selected editor's saved checkpoint before
   a target editor exists. Its opaque move-only predecessor-save proof authenticates that exact
@@ -554,3 +587,42 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - The title adapter consumes exact Syndic eligibility and bounded source facts, uses one bounded
   maintenance backend session, validates the typed result, and submits one one-way Syndic attribute
   mutation. It never reads CAS thread names or history or occupies a selected foreground stream.
+
+## Selected-Thread Lineage Adapter
+
+- The selected lineage head is compact Syndic-owned ancestry metadata associated with the same
+  exact source and selected claim as coherent transcript/title publication. Selected replacement
+  clears the previous lineage before it can appear beside another thread. A top-level head mounts
+  no strip or spacer. Only parent pages may load progressively; the current readonly endpoint
+  belongs to the coherent selected publication.
+- An ordinary edit may renew the exact composer binding while retaining the selected claim and
+  immutable transcript source. Renew selected title and lineage identity through the original
+  prepared attachment's observed-coherent election even when that source is unchanged. Retain
+  the existing transcript panel and Page custody; source equality alone cannot establish current
+  selected metadata identity. Already matching metadata retains the existing no-op.
+- The adapter reuses the existing weak published Running-thread reader, tracked root workers and
+  source observation/wake routes. One compact query binds the selected claim, published source,
+  generation and exact Syndic lineage head. Source-owned ordinal cursors answer top-to-bottom
+  pages without prefix caches. The adapter starts no independent poller or service registry.
+- Within one observed-coherent join, a worker authenticates compact Syndic catalog-summary
+  witnesses for titles and reads exact State claim/runtime/root availability. Label inspection
+  never repeats full history-title derivation or prepares a complete activation for each row.
+  Authenticated absent title yields `Untitled`; missing/outdated label authority yields unknown
+  metadata and an explanatory inert parent. A known stable parent remains represented when its
+  label or availability is missing. Missing canonical ancestry needed to prove the chain is a
+  typed source failure; it never invents an ancestor or redirects the requested identity.
+- A joined page carries at most thirty-two parents and 256 KiB of actual presentation payload.
+  Titles retain their existing 512-byte bound; each explanation retains at most 512 scalars and
+  optional context is charged to the same page. Syndic's existing record and stored/decoded-byte
+  ceilings continue to apply independently. A partial source page preserves its exact next
+  ordinal so byte limits cannot make a parent unreachable.
+- One head request establishes the query before paging. At most two deduplicated page requests
+  are pending, with no separate queued requests. GUI acceptance revalidates the exact query,
+  request, selected claim, native window and source generation/observation. Refresh replaces
+  stale facts through existing wakes; GUI currentness election performs no source reads.
+  Replacement, shutdown and recovery cancel and drain original tracked work before retiring
+  source ownership. The GUI retains only bounded pure pages and compact query metadata.
+- Available parent activation requests fresh exact ordinary intake, preserving the original
+  flush/claim/mount/recovery flight and successful-user-selection history settlement. Presentation
+  status grants no admission permission. Current, missing, unavailable and open-elsewhere parent
+  activation preserves the coherent view and never reveals or redirects another window.

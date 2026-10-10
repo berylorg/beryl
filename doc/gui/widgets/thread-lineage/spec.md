@@ -31,6 +31,13 @@ Each resident parent breadcrumb has an owner-supplied stable thread identity, ti
 
 The widget owns strip anatomy, breadcrumb geometry, focus movement, truncation, horizontal overflow, bounded realization, page requests, unavailable/current presentation, and tooltip anchoring. The owning feature supplies one revision-bound lineage query identity, the total parent count, bounded resident breadcrumb pages, stable identities, labels, availability meaning, navigation effects, the current endpoint, and whether the widget is mounted. The widget never receives the complete lineage collection.
 
+Pages contain at most thirty-two parent slots. The widget retains at most twenty-four resident
+pages and two deduplicated pending page requests, with no separate queued request collection.
+Eviction retains only the compact logical focus record, never offscreen breadcrumb entities,
+geometry or tooltip anchors. Partial byte-limited pages preserve exact source positions and request
+the remaining range; they do not advance past a missing parent. Realization remains the viewport
+intersection plus at most two complete slots on each side, independently of total ancestor count.
+
 # Look
 
 The strip reads as lightweight navigation chrome subordinate to the toolbar. The structural heading stays visually quiet while parent breadcrumbs read as compact controls and the current endpoint reads as a readonly destination.
@@ -52,6 +59,11 @@ Parent breadcrumbs support normal, hover, pressed, focused, unavailable, open el
 Activating an available parent breadcrumb reports its exact stable thread identity and command to the owner. Enter and Space activate the focused breadcrumb. Unavailable breadcrumbs remain represented, do not activate through pointer, keyboard, or programmatic paths, and satisfy `disabled-command-tooltip`.
 
 Left and Right move focus through every logical parent breadcrumb in lineage order, including unavailable breadcrumbs that expose an explanation. Home and End target the first and last parent breadcrumb. Navigation into a nonresident range requests its bounded page, preserves the logical target, and moves focus only after the matching query revision and stable identity arrive. Focus movement reveals the complete fixed-stride control geometry without activating it.
+
+Consecutive query replacements for the same selected owner retain an existing compact pending
+focus target while its ordinal remains valid. Current query and expected parent identity must
+still match before focus settles. Changed selection or an invalid ordinal clears the target;
+this continuity retains no old breadcrumb entity or page and grants no activation permission.
 
 The trail viewport owns horizontal wheel, touchpad, Shift-plus-wheel, scrollbar drag, and programmatic reveal while it has overflow. Boundary propagation follows `scroll-ownership`. Vertical wheel intent is not converted to horizontal motion unless the platform or gesture explicitly supplies horizontal intent.
 
@@ -87,6 +99,10 @@ The root fills `main-window.thread-lineage` and keeps one fixed block size. The 
 Breadcrumbs and separators occupy one horizontal row. Each parent slot has one fixed inline stride and block size. The current endpoint may use the remaining inline allocation but remains width-capped when the complete trail overflows.
 
 The horizontal scrollbar overlays the viewport's bottom edge and does not change strip height when overflow begins or ends.
+
+The strip configures the registered scrollbar's hit lane and thumb inset with compact defaults
+from its own UI roles, keeping breadcrumb-center input clear of scrollbar chrome. Horizontal
+lane clicks outside the thumb preserve the registered scrollbar's no-op interaction contract.
 
 Spec CSS:
 
@@ -159,6 +175,13 @@ Spec CSS:
 .thread-lineage[data-state~="inert"] {
   opacity: var(--opacity);
 }
+
+.thread-lineage__scrollbar {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: var(--hit-lane-thickness);
+}
 ```
 
 # Variants
@@ -201,6 +224,11 @@ Default variant: ordered parent breadcrumbs with a readonly current endpoint.
 
 .thread-lineage__breadcrumb[data-state~="unavailable"] {
   --foreground: #64748b;
+}
+
+.thread-lineage__scrollbar {
+  --hit-lane-thickness: 10px;
+  --track-inset: 2px;
 }
 
 .thread-lineage__current {

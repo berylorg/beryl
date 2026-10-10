@@ -187,6 +187,12 @@ impl Drop for ThreadSwitcherContribution {
 }
 
 impl MainWindowShellRoot {
+    pub(in crate::main_window::shell) fn thread_switcher_focus_current(
+        &self,
+        focus: &gpui::FocusHandle,
+    ) -> bool {
+        !self.thread_switcher.retired && &self.thread_switcher.focus == focus
+    }
     pub(in crate::main_window::shell) fn focused_thread_switcher_owner(
         &self,
         window: &Window,

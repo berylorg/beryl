@@ -15,6 +15,7 @@ use super::admission::index::{
 use super::*;
 
 pub(in super::super) mod advance_budget;
+mod build_custody;
 pub(super) mod mapping_custody;
 pub(super) mod marker_advance;
 mod sequence_advance;
@@ -341,11 +342,7 @@ impl SyndicStorage {
         }
         let key = DraftPieceSettlementKeyV1::new(draft_id, session_id, operation_id);
         let acquisition = advance_budget::BuildAcquisition::new(self, store);
-        let selected = Box::new(
-            acquisition
-                .point::<DraftPieceBuildsFamily>(key)?
-                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
-        );
+        let selected = build_custody::acquired_build(&acquisition, key)?;
         if build_key(&selected) != key {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
@@ -444,18 +441,9 @@ fn authenticated_build_from_store(
     Option<(Box<DraftPieceBuildRecordV1>, DraftEditorCandidateSessionV1)>,
     DraftPiecePrepareErrorV1,
 > {
-    let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
+    let build = build_custody::stored_build(storage, store, key)?;
     let Some(build) = build else { return Ok(None) };
-    let build = Box::new(build);
-    let receipt = Box::new(
-        storage
-            .point::<DraftPieceBuildProgressFamily>(
-                store,
-                build.progress_receipt().key(),
-                point_limit(),
-            )?
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
-    );
+    let receipt = build_custody::stored_progress(storage, store, build.progress_receipt().key())?;
     if !progress_receipt_matches_build(&receipt, &build) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }

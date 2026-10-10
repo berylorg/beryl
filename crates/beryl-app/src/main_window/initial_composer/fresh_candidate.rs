@@ -22,6 +22,7 @@ pub struct MainWindowFreshComposerPreparation {
     current: SyndicCurrentDraft,
     kind: FreshComposerKind,
     selected_title: Option<beryl_state::CatalogResolvedTitle>,
+    selected_lineage: syndic_storage::ThreadLineageHead,
 }
 mod requests;
 
@@ -63,6 +64,10 @@ impl MainWindowFreshComposerPreparation {
         {
             return Err("fresh recovery draft or thread differs from committed onboarding".into());
         }
+        let selected_lineage = storage
+            .thread_lineage_head_candidate(&access, thread, point_limit())
+            .map_err(|error| error.to_string())?
+            .ok_or("fresh recovery lineage is missing")?;
         Ok(Self {
             candidate: InitialComposerCandidate::new(
                 store,
@@ -78,6 +83,7 @@ impl MainWindowFreshComposerPreparation {
             current,
             kind: FreshComposerKind::CreationEmpty,
             selected_title: None,
+            selected_lineage,
         })
     }
 
@@ -135,6 +141,10 @@ impl MainWindowFreshComposerPreparation {
         self.selected_title.as_ref()
     }
 
+    pub(crate) fn qualified_selected_lineage(&self) -> &syndic_storage::ThreadLineageHead {
+        &self.selected_lineage
+    }
+
     pub fn selection(&self) -> Option<MainWindowComposerSelectionIdentity> {
         self.candidate
             .service
@@ -183,6 +193,20 @@ impl MainWindowFreshComposerPreparation {
             .ok_or("fresh recovery current draft disappeared")?;
         if current != self.current {
             return Err("fresh recovery committed draft facts changed".into());
+        }
+        if self
+            .candidate
+            .storage
+            .thread_lineage_head_candidate(
+                access,
+                self.candidate.request.thread_id(),
+                point_limit(),
+            )
+            .map_err(|error| error.to_string())?
+            .as_ref()
+            != Some(&self.selected_lineage)
+        {
+            return Err("fresh recovery lineage facts changed".into());
         }
         if access.home_revision().map_err(|e| e.to_string())? != revision {
             return Err("fresh recovery selection changed during authentication".into());
