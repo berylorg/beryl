@@ -528,3 +528,121 @@ also needed previews bounded to their actual payload length under strict metadat
 Non-text asset preparation/renditions, full resource rendering, Markdown structure, nested
 interaction, focus-pin mounting and live suffixes remain separate acceptance gates. Ordinary
 projection ownership remains required; this boundary supplies no selected-repair-media reader.
+
+## Resource Rendering Consumer Qualification
+
+This source-backed qualification follows accepted text delivery at `b82cb387`. It establishes
+readiness and missing capabilities for Code/Table presentation, not runtime or GPU-paint acceptance.
+Controlling authorities are the transcript feature's [design](../features/transcript/design.md)
+and [GUI](../features/transcript/gui.md), the
+[renderer architecture](../systems/transcript-presentation/renderer-architecture.md),
+[Syndic history](../systems/syndic-conversation-history/design.md), and canonical
+[code panel](../gui/widgets/code-panel/spec.md) and [table panel](../gui/widgets/table-panel/spec.md).
+The feature and presentation system select `production-application/v2`; consequential identity,
+residency and lifecycle decisions require independent semantic review.
+
+### Current Sources And Limits
+
+`crates/beryl-app/src/shell/syndic_transcript/panel.rs::render_text_resource_shell` selects
+`first_resident_resource_slice`; `resource_preview_text` decodes at most 2,048 bytes of that slice
+with `String::from_utf8_lossy`. It neither joins contiguous pages nor consults the requested
+interval when interpreting `complete`. A scalar split at the display cap or page boundary can
+become a replacement character; later slices are not displayed. Normal whitespace also fails
+source-preserving code layout. This shell is not a canonical Code/Table panel.
+
+`report_nested_resource_demands` reports realized resource records; `resource_demand_range` asks
+for a metadata-derived preview capped at 4,096 bytes. There is no internal viewport or line/cell
+mapping. Its coverage helper looks for one slice covering the interval; contiguous multi-slice
+coverage requires an interval union. Accepted core delivery already finds missing intervals across
+current slices and bounds preview demand separately. The old panel fact queue cannot own outstanding
+work or establish internal scroll demand; reconcile these preview policies in a mounted consumer.
+
+`shell/render/code_panel_projection_cache/request.rs::CodePanelSourceRevision` owns complete
+display/copy strings. Its worker calls `CodePanelDisplayProjection::new` in
+`shell/render/code_panel/projection.rs`, constructing all display lines and scanning for maximum
+text. Later window selection bounds returned lines, not initial projection. These helpers can
+process an explicitly small admitted fragment; they do not qualify arbitrary-size range-backed
+code panels. Fragment-local string offsets cannot replace exact resource identity and offsets.
+Source searches found no `TablePanel`/`table_panel` implementation in `crates/beryl-app/src`.
+Canonical specs define the target; they do not prove an existing ready consumer.
+
+### UTF-8 And Partial Presentation
+
+Presentation must group only contiguous slices with the same resource and revision, intersect
+them with the exact demanded interval and preserve resource-relative byte offsets. Gaps stay
+pending/unavailable; concatenating bytes across a gap invents contiguous source text. Coverage
+and completion are separate: `complete` ends the requested interval, not necessarily the resource.
+
+For example, `A€B` occupies bytes `41 E2 82 AC 42`. Pages `0..3` and `3..5` split the euro sign.
+Independent lossy decoding creates false text. Boundary-aware preparation joins current contiguous
+bytes before strict decoding, preserving `A€B` and its offsets. A bounded streaming decoder needs
+at most three pending bytes at a page boundary. Carry cannot cross a gap, revision, replacement
+generation or disposal.
+
+An interval starting inside a scalar cannot invent preceding bytes; one ending inside it cannot
+paint a replacement character as source. A bounded preview can expose only complete interior
+scalars with distinct partial-range status. A source-preserving widget needing the boundary scalar
+requires an explicitly admitted neighboring-byte demand within extents and budgets. Malformed
+interior bytes require a local fallback. Display truncation ends at a scalar boundary; its status
+stays outside selectable/copyable source text. These are derived preparation requirements, not
+acceptance of a new production decoder.
+
+Empty resources, explicit empty previews, missing ranges, capacity rejection and unsupported
+presentation remain distinct. An empty response cannot prove an unloaded nonempty resource is
+empty. A preview may stay visibly partial but cannot claim full code navigation or a structured
+table. Copy and streaming Save use exact-source contracts, never painted ellipses or fallback labels.
+
+### Missing Structural Capability
+
+`syndic-storage/src/record/projection/resource.rs::ResourceStructure` stores code language and
+logical-line count, or table body-row count, column count and resource-relative header range.
+`mutation/projection/parser/output.rs::emit_code` externalizes the code body; `emit_table`
+externalizes original Markdown table bytes. Counts and one header interval do not locate arbitrary
+lines, rows or cells. The inspected public read surface supplies metadata, resource pages and
+`read/range.rs::resource_text_range`: exact byte lookup through indexed text backing, without a
+logical-line or table-cell query.
+
+`beryl-app/src/transcript_provider/resources.rs::resource_descriptor` transports counts and
+preview extent but drops code language and table header range. Adding those fields alone cannot
+supply stable line/cell descriptors. Splitting a table preview on pipes would rediscover Markdown
+structure in Beryl and mishandle escaping, partial rows and source/display mapping, contrary to
+Syndic projection ownership.
+
+Full consumers need a separately qualified bounded structural query: stable source positions,
+line/row/cell identities, exact ranges and cell presentation from Syndic, with indexed lookup that
+does not scan a complete prefix to find a late viewport. Construction, publication, revision
+mapping and pathological-content limits must be resolved in owning design before implementation.
+Accepted byte delivery supplies reusable custody, not proof that this query exists.
+
+### Demand, Geometry And Next Acceptance
+
+Canonical code panels require source anchors and bounded logical/wrapped-line realization; table
+panels require bounded two-axis realization over owner-supplied stable rows, columns and cells.
+Both report demand through residency and consume admitted data without storage access or an
+independent unloaded-history cache. Resize, wrap, appearance and source revision reconcile stable
+panel identity and anchor; same-source changes need owner-supplied bounded revision mapping.
+
+The outer renderer retains one bounded panel record. Actual layout, including header, viewport,
+feedback and fallback changes, passes the exact measured-publication gate; estimated inner tracks
+cannot qualify guessed outer height. Only current realized panels construct elements. Internal
+visible-range changes update authoritative demand even when the outer record window is unchanged,
+cancel removed work and release obsolete slices, descriptors, layout and charges. Candidate
+preparation exposes no interactive targets or committed demand before coherent publication.
+
+After structural qualification, mounted evidence must distinguish multi-page UTF-8 joins, clipped
+previews, invalid interior bytes, gaps and stale revisions; late line/cell lookup without prefix
+scans; huge lines/cells and wide tables within documented limits; bounded realized rows/columns
+and layout; resize/wrap/appearance anchor reconciliation; local fallback and exact outer measurement;
+inner-demand changes/release and pending disposal. Native checks must establish actual mounted
+panels and geometry with minimized startup where practical. Byte-delivery tests cannot substitute
+for rendering or visual acceptance. Nested interaction, selection/copy/Save, wheel routing, focus
+pins, Markdown structure, assets/renditions and live suffixes retain separate gates.
+
+No source or tests changed; prior delivery results remain reusable only for unchanged byte custody
+and measured resource publication. Structural-query readiness is the next prerequisite; full
+Code/Table mounting remains unaccepted.
+
+Independent semantic review accepted the complete qualification and derived structural-query
+prerequisite after directly checking the cited sources, unchanged against `b82cb387`, and owning
+widget/feature/system contracts. No blocker or required correction was identified. Local links
+and `git diff --check` passed; no builds or tests were run for this documentation-only boundary.

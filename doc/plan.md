@@ -98,20 +98,20 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 757: Mount Post-Publication Transcript Text Resource Delivery (finished)
+# Phase 758: Qualify Transcript Resource Rendering Consumers (finished)
 
-Mounted metadata-first bounded text delivery after selected-view publication, with exact worker
-backing/observation custody, measured admission, separate resource/history revisions, local
-fallbacks, history-refresh fairness and complete demand/disposal release. Independent semantic
-review accepted the mounted boundary: focused tests passed 42, regressions passed 122 and both
-native loading/disposal and refresh-fairness cases passed with minimized startup.
-[Acceptance evidence](audits/transcript-mounting-readiness.md#post-publication-text-resource-delivery-acceptance)
-records guarantees and remaining rendering/interaction/media gates.
+Independent semantic review accepted the source-backed
+[rendering qualification](audits/transcript-mounting-readiness.md#resource-rendering-consumer-qualification):
+UTF-8 interval handling, partial fallbacks, internal demand and measured outer geometry are
+established. Full Code/Table consumers require missing indexed line/cell descriptors first.
+No production code changed or runtime rendering acceptance is claimed; local links and whitespace
+checks passed. Existing text-delivery acceptance remains reusable within its unchanged boundary.
 
-# Phase 758: Qualify Transcript Resource Rendering Consumers (pending)
+# Phase 759: Qualify Syndic Resource Structure Range Queries (pending)
 
-After text delivery acceptance, qualify bounded Code/Table rendering from admitted metadata and
-exact byte slices against the transcript renderer and existing widget authorities. Establish
-UTF-8 boundary handling, partial-preview/fallback behavior, internal visible-range demand and
-measured outer geometry before implementing the mounted consumer. Preserve separate acceptance
-for nested interaction, focus pins, Markdown structure, non-text assets/renditions and live suffixes.
+Derive the missing bounded logical-line and table-cell query capability under Syndic projection
+ownership before scheduling full Code/Table consumers. Resolve stable identities, indexed lookup,
+source-preserving cell presentation, same-source revision/anchor mapping, pathological line/cell
+limits, resumable construction and coherent publication in owning design authority. Establish
+bounded storage/provider/residency verification and independent review requirements. Do not
+implement a full-resource scan, renderer Markdown parser or widget-owned storage route.
