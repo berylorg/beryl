@@ -98,20 +98,28 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 755: Mount Exact Adjacent Transcript Demand Delivery (finished)
+# Phase 756: Qualify Transcript Resource Demand Consumers (finished)
 
-Mounted bounded adjacent Syndic page/projection reads from the ordinary selected host's exact
-measured demand. Extensions preserve the measured anchor and immutable prior snapshot, release
-obsolete identities, reject stale/capacity results and use the existing tracked cancellation/drain
-boundary. Same-authority refresh retains the extended window while publishing changed selected
-metadata. Independent semantic review accepted the complete scoped boundary; combined 119-case
-and corrected 33-case nextest runs, App compilation and three minimized native cases pass.
-[Acceptance evidence](audits/transcript-mounting-readiness.md#adjacent-delivery-acceptance)
-retains verification and corrected fixture dispositions. Other transcript gates remain separate.
+Qualified the metadata-first post-publication text-resource consumer, exact relative extents and
+continuation, distinct resource/history revisions and full Home/host/provider request custody.
+Independent semantic review accepted the derived delivery boundary. Non-text bytes remain under
+separate asset ownership and rendition gates; no production resource delivery or runtime
+acceptance is claimed. [Qualification evidence](audits/transcript-mounting-readiness.md#resource-demand-consumer-qualification)
+records the source gaps and next-phase verification obligations.
 
-# Phase 756: Qualify Transcript Resource Demand Consumers (pending)
+# Phase 757: Mount Post-Publication Transcript Text Resource Delivery (pending)
 
-Qualify post-publication resource metadata and bounded range delivery at the selected host/panel.
-Prove exact resource-relative extents, backing/revision identity, text continuation and non-text
-asset ownership before deriving one implementation boundary. Preserve stable local failure and
-resource budgets without gating selected-thread publication; retain separate rendering gates.
+After resource qualification is accepted, mount metadata-first bounded text-range delivery at the
+ordinary selected host/panel through the existing tracked worker and disposal boundary. Derive
+current resource demand from measured/protected records, prove exact backing and relative extents,
+keep resource revisions separate from selected history authority, and admit only matching current
+responses. Continue only demanded missing intervals; release superseded metadata, slices and all
+in-flight custody. Preserve stable local missing/unsupported/capacity outcomes and selected-view
+publication independent of resource readiness.
+
+Verify offset/continuation and response identity failures, budget refusal and demand removal,
+then prove native post-publication text loading, anchor preservation and pending-read disposal.
+Independent semantic review must cover the complete mounted boundary. Non-text byte preparation,
+asset renditions, resource rendering, Markdown, nested interaction, focus pins and live suffixes
+remain separate gates. The [qualification](audits/transcript-mounting-readiness.md#resource-demand-consumer-qualification)
+defines the current source gaps and required acceptance evidence.

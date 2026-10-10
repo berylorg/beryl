@@ -343,3 +343,118 @@ binary-substring filter produced the accepted 119-case run.
 This accepts ordinary adjacent page/projection delivery only. Resource metadata/range delivery,
 resource rendering, Markdown, nested widgets, focus pins, live suffixes, complete Checkpoint 4 and
 diagnostic-child readiness remain separate gates.
+
+## Resource Demand Consumer Qualification
+
+This source-backed qualification covers post-publication delivery to the selected measured host,
+under the transcript-presentation, Syndic-history, bounded-resource and image-asset authorities.
+It accepts no production resource delivery or rendering. The existing adjacent acceptance remains
+reusable for worker/output custody and measured publication; resource-specific identity and
+admission still require their own implementation evidence.
+
+### Current Consumer And Admission Gaps
+
+- `panel.rs::report_nested_resource_demands` visits exact realized record identities and emits
+  resource-range facts and media pins. `resource_demand_range` defaults to a preview-sized range
+  when metadata is absent. An empty/unusable explicit preview or zero-length metadata also reaches
+  that default; absent preview with positive length instead derives a bounded `0..byte_len`. A
+  queued fact is therefore an observation, not proof of an admissible byte extent. Derive current
+  demand from the committed measured window and protected records, first requesting metadata.
+  The bounded drop-oldest fact queue cannot own outstanding work.
+- `core.rs::request_resource_range` checks reference, fallback, pending work and slice policy,
+  but does not require metadata or prove its requested extent against resource length. Its
+  observed revision falls back to the selected provider revision. Metadata and range admission
+  overwrite that selected revision with a resource revision. These distinct identities must be
+  kept separate before mounting; a resource result cannot advance selected history authority.
+- `core.rs::handle_provider_response` settles a locally current request id before admitting the
+  response. Resource admission checks that the resource remains referenced, but does not establish
+  complete request-kind, resource, backing, range, revision and byte-count agreement. The mounted
+  boundary must validate these facts before mutation. Resident coverage must require the same
+  resource revision; numeric interval coverage alone cannot make stale bytes current.
+- `source.rs::read_bounded_activation` point-reads resource metadata to establish item/projection
+  ownership, but publishes only resource-reference descriptors. The mounted reader has no resource
+  dispatcher. Resource preparation follows selected-view publication; missing resource bytes never
+  hold selected title, lineage or recovery admission closed.
+
+### Text Extents And Continuation
+
+`syndic-storage/src/record/projection/resource.rs::ResourceMetadataRecord::new` derives text byte
+length from its immutable backing range and validates preview and table-header extents relative
+to that length. The source range of the projection itself is a different coordinate space.
+`read/range.rs::resource_text_range` accepts only `ResourceBacking::TextRange`, checks the requested
+half-open interval against resource length, adds the backing start with checked arithmetic and
+reads the indexed source. Its payload limit is positive and at most 65,536 bytes. Returned start
+and exact continuation are resource-relative; an empty request returns no bytes and no continuation.
+
+For example, a code resource backed by source bytes `1000..91000` has logical bytes `0..90000`.
+A demand for resource bytes `200..80000` reads source bytes beginning at `1200`. At a 65,536-byte
+payload cap, the first result occupies `200..65736` and continuation is `65736`. A further read is
+allowed only while the remaining interval is still demanded. Completion means reaching the end
+of that requested interval, not loading the complete resource. Range bytes may split a UTF-8
+sequence; delivery preserves exact bytes and text presentation owns boundary-aware interpretation.
+
+The existing `syndic-storage/tests/projection_boundaries.rs` case
+`heavy_resource_text_is_range_read_with_exact_bounded_continuations` proves byte-exact chained
+reads, missing and empty ranges, invalid limits and invalid extents. Its source was inspected;
+it was not rerun for this documentation-only qualification. Mounted continuation and stale-result
+behavior are not covered by that storage test and remain next-phase acceptance requirements.
+
+The delivery key must retain exact window/host lifetime, activation, Home identity/generation,
+selected thread/view/history authority and provider-service generation, owning presentation record/projection/item, resource
+id and resource revision, backing identity, requested interval and fresh request id. Reconfirm the
+selected publication and metadata backing before returning and before host admission. Keeping
+the durable metadata privately in provider preparation avoids exposing storage mechanics to the
+panel. Resource continuation must not replace the outstanding requested interval with an
+unrelated prefix or promote a prior response under a new request id.
+
+### Non-Text Ownership And Separate Media Gate
+
+`ResourceBacking::GeneratedMedia` has `PendingAsset`, `Asset(AssetId)` and terminal `Unavailable`
+dispositions. Pending/unavailable metadata deliberately omits byte length and digest; absence is
+not a zero-length text resource. Admitted metadata obtains length/digest from the exact asset.
+`resource_text_range` rejects every generated-media disposition with `ResourceHasNoTextBacking`.
+It supplies no image reader, decoder or sidecar authority.
+
+The image-asset system owns admitted sidecars, original-image verification and bounded decode,
+rendition, upload and cache admission. `beryl-state/src/asset.rs::verify_sidecar` verifies the exact
+asset address and admitted length; it does not prove selected repair visibility. The image-asset
+authority's selected repair-resource route additionally requires the exact thread/turn,
+item/resource locator, asset and sealed commitment. AssetId-only lookup cannot discover repaired
+staging or substitute another asset. Neither the current transcript `ResourceMetadata` nor
+`ResourceRangeResponse` carries this owner-qualified media authority. The mounted activation
+resource-reference arm currently requires a matching ordinary projection owner; this qualification
+does not establish a mounted selected-repair-media reader.
+
+Consequently the next text-delivery boundary must leave non-text byte demand explicitly locally
+unsupported/unavailable, preserving any admitted descriptor and stable identity. It must not
+attempt text reads, follow a provider path, load an original image into a text slice, reinterpret
+missing length as empty content, or claim image readiness. Exact asset-backed rendition and
+selected-repair ownership need their separately qualified consumer before media mounting.
+
+### Derived Delivery Acceptance Boundary
+
+Mount one post-publication metadata/text-range consumer through the existing tracked ordinary
+worker boundary. Host demand names current realized/protected resource records; metadata determines
+the bounded preview extent and exact text backing. Admit only exact current responses, with
+resource revisions separate from selected history authority, and continue only currently demanded
+missing intervals. Metadata-only and byte readiness remain independent of thread publication.
+
+Use the existing finite pending, slice and resident-resource budgets. Preserve local stable
+missing/unsupported/capacity outcomes without repeated dispatch for the same current demand;
+failed invocations may use the established retry behavior with fresh ids. Cancel removed or
+superseded demands, release obsolete metadata/slices/rejections and return all worker/output
+charges on cancellation, stale return, selection change, recovery, source retirement and close.
+Preserve the prior immutable snapshot; any changed measured resource-shell geometry must pass
+the current allocation/appearance gate and keep the semantic anchor.
+
+Required implementation evidence includes nonzero backing offsets, short/empty/invalid previews,
+bounded multi-page continuation, split UTF-8 bytes, wrong resource/revision/backing/range/byte count,
+request-kind mismatch, supersession, pin/viewport removal, terminal non-text rejection, capacity
+refusal and drain to baseline. A native mounted text-resource case must prove metadata-first
+post-publication loading, unchanged selected authority/title, stable anchor and disposal while a
+read is pending. Resource rendering, Markdown structure, nested interaction, asset renditions,
+focus-pin mounting and live suffixes retain their separate gates.
+
+Independent semantic review accepted this complete qualification and the derived text-delivery
+boundary after clarifying preview fallback cases and explicitly retaining Home identity/generation
+in request custody. No source or test changes and no runtime acceptance are claimed for this phase.
