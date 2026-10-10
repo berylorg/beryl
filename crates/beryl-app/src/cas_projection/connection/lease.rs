@@ -93,6 +93,28 @@ impl RawLoadedLeaseSeed {
 }
 
 impl LoadedProjectionLease {
+    pub(in crate::cas_projection) fn bind_context(
+        &self,
+        previous: Option<beryl_model::BindingRevision>,
+        revision: beryl_model::BindingRevision,
+        proven_continuity: bool,
+    ) {
+        if !self.active
+            || registry::bind_context(
+                &self.key,
+                self.connection.authority.generation,
+                self.owner,
+                self.generation,
+                self.token,
+                previous,
+                revision,
+                proven_continuity,
+            )
+            .is_err()
+        {
+            self.connection.retire();
+        }
+    }
     pub(in crate::cas_projection) fn runtime_interest(
         &self,
     ) -> Option<Arc<crate::cas_projection::RuntimeInterest>> {

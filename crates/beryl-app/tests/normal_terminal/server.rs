@@ -58,6 +58,7 @@ enum ServerScenario {
 }
 
 enum ServerCommand {
+    SendObservation(String),
     CloseConnection,
     AssertQuietAndClose,
     ReleaseTurnStartRejection,
@@ -89,6 +90,11 @@ pub struct NormalTerminalServer {
 }
 
 impl NormalTerminalServer {
+    pub fn send_observation(&self, wire: String) {
+        self.commands
+            .send(ServerCommand::SendObservation(wire))
+            .unwrap();
+    }
     pub fn spawn_projection_only() -> Self {
         Self::spawn_scenario(ServerScenario::ProjectionOnly)
     }
@@ -510,10 +516,25 @@ fn run_server(
             complete_projection(&mut socket);
             events.send(ServerEvent::ProjectionReady).unwrap();
             begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
-            assert!(matches!(
-                commands.recv_timeout(TIMEOUT).unwrap(),
-                ServerCommand::CloseConnection
-            ));
+            send_json(
+                &mut socket,
+                &format!(
+                    r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"{CAS_TURN_ID}","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37010,"completedAt":null,"durationMs":null}}}}}}"#
+                ),
+            );
+            send_json(
+                &mut socket,
+                &format!(
+                    r#"{{"method":"thread/status/changed","params":{{"threadId":"{CAS_THREAD_ID}","status":{{"type":"active","activeFlags":[]}}}}}}"#
+                ),
+            );
+            loop {
+                match commands.recv_timeout(TIMEOUT).unwrap() {
+                    ServerCommand::SendObservation(wire) => send_json(&mut socket, &wire),
+                    ServerCommand::CloseConnection => break,
+                    _ => panic!("unexpected controlled connection command"),
+                }
+            }
             socket.close(None).unwrap();
         }
         ServerScenario::AcceptedStop => {
@@ -840,7 +861,8 @@ fn complete_steering_correlation_loss(
         | ServerCommand::ReleaseUnsubscribe
         | ServerCommand::CloseConnection
         | ServerCommand::ReleaseStopTerminal
-        | ServerCommand::SendPermission => {
+        | ServerCommand::SendPermission
+        | ServerCommand::SendObservation(_) => {
             panic!("steering-loss server received an unrelated control command")
         }
     };
@@ -962,7 +984,20 @@ fn read_json(socket: &mut WebSocket<TcpStream>) -> Option<Value> {
 }
 
 fn send_json(socket: &mut WebSocket<TcpStream>, value: &str) {
-    socket.send(Message::Text(value.into())).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(value).unwrap();
+    let wire = if matches!(
+        parsed["method"].as_str(),
+        Some("turn/started" | "thread/status/changed" | "turn/completed")
+    ) && parsed.get("emittedAtMs").is_none()
+    {
+        format!(
+            "{},\"emittedAtMs\":1770000000123}}",
+            value.strip_suffix('}').unwrap()
+        )
+    } else {
+        value.to_owned()
+    };
+    socket.send(Message::Text(wire.into())).unwrap();
 }
 
 fn read_until_close(socket: &mut WebSocket<TcpStream>) -> Result<(), tungstenite::Error> {

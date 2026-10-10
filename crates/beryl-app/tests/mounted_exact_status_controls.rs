@@ -4,6 +4,8 @@
 mod compaction;
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
+#[path = "mounted_exact_status_controls/context.rs"]
+mod context;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "mounted_exact_status_controls/stop_feedback.rs"]
@@ -75,7 +77,7 @@ fn mounted_pointer_stop_closes_command_menu_preserves_waiting_and_exact_interrup
 }
 
 #[gpui::test]
-fn mounted_expired_publication_and_window_disposal_do_not_interrupt_execution(
+fn mounted_context_tracks_ordered_usage_and_expired_publication_without_interrupting_execution(
     cx: &mut gpui::TestAppContext,
 ) {
     run_mounted(cx, false, true, None);
@@ -292,6 +294,9 @@ fn run_mounted_with_notices(
         support::wait(window, cx, |diagnostic| {
             diagnostic.0 == "working" && diagnostic.2
         });
+        if retire {
+            context::exercise(&server, window, cx, worker.clone(), fixture.thread);
+        }
         if let Some(scenario) = notice_scenario {
             stop_feedback::exercise(
                 scenario,
@@ -546,6 +551,14 @@ fn run_mounted_with_notices(
             }
             drop(visual);
             support::draw(window, cx);
+            if retire {
+                assert_eq!(
+                    window
+                        .read_with(cx, |root, _| root.test_context_remaining_percent())
+                        .unwrap(),
+                    None
+                );
+            }
             assert_eq!(
                 window
                     .read_with(cx, |root, _| root.test_exact_status_diagnostics().3)

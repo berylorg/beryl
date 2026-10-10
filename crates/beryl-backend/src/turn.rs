@@ -1,4 +1,5 @@
 mod approval;
+mod context_observation;
 mod control;
 mod metadata;
 mod normal_terminal;
@@ -8,6 +9,7 @@ mod steering_passive;
 mod streamed_input;
 
 pub use approval::*;
+pub use context_observation::*;
 pub use control::*;
 pub use metadata::*;
 pub use normal_terminal::*;

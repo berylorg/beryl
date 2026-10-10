@@ -48,7 +48,7 @@ pub(in crate::cas_projection) fn loaded_owner_prefix(
     let limit = limit.clamp(1, 257);
     let mut threads = std::collections::BTreeSet::new();
     if let Some(owners) = state.connection_authority_counts.get(&connection) {
-        for &thread_id in owners.keys() {
+        for &thread_id in owners.owners.keys() {
             if after.is_none_or(|after| thread_id > after) {
                 threads.insert(thread_id);
                 if threads.len() > limit {

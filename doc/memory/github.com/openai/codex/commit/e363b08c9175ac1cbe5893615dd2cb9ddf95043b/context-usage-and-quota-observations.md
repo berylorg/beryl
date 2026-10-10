@@ -27,6 +27,13 @@ name proves equality with a selected model's identity. No model-to-metering-buck
 established by this investigation. A consumer requiring exact model identity must preserve
 unavailability for unmatched buckets rather than infer a mapping.
 
+The transport envelope also matters: `send_server_notification_to_connections` constructs a
+timestamped `ServerNotificationEnvelope` for targeted and broadcast notifications. Its serialized
+top-level `emittedAtMs` follows `params`; the producer sets it to an integer millisecond timestamp.
+The envelope's serialization assertion confirms this wire shape. Consumers must consume the
+optional field incrementally rather than reject authentic notifications after their params object.
+Inspected the pinned outgoing sender on 2026-10-10 during implementation review.
+
 This inspection establishes a stream producer, serialized field order and public numeric shapes.
 It does not qualify a read-only latest-usage response, quota-window classification, a reconnect
 cache, or source changes beyond this pinned release.
@@ -36,6 +43,8 @@ cache, or source changes beyond this pinned release.
 - Repository: [OpenAI Codex](https://github.com/openai/codex), requested release `rust-v0.146.0`,
   resolved commit `e363b08c9175ac1cbe5893615dd2cb9ddf95043b`, previously qualified by the sibling
   [release investigation](native-spawn-and-thread-response-0.146.0.md). Accessed 2026-10-10.
+- [Outgoing envelope](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server/src/outgoing_message.rs#L543-L581):
+  timestamped notification construction at lines 677–681 and serialization assertion at 715–739.
 - [Thread protocol](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs):
   usage notification, usage/breakdown declarations and core conversion.
 - [Account protocol](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/v2/account.rs):

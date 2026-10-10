@@ -27,6 +27,8 @@ use crate::{
         UserMessageEchoLifecycle,
     },
 };
+use account_quota::AccountQuotaMachine;
+use context_usage::ContextUsageMachine;
 use helpers::*;
 use normal_terminal::NormalTerminalMachine;
 use thread_closed::ThreadClosedMachine;
@@ -37,8 +39,11 @@ const STACK_CAPACITY: usize = 144;
 const STRUCTURED_DEPTH_LIMIT: u8 = 128;
 const FIXED_SCALAR_BYTES: usize = 256;
 
+mod account_quota;
+mod context_usage;
 mod helpers;
 mod normal_terminal;
+mod notification_envelope;
 mod thread_closed;
 mod thread_status;
 mod turn_started;
@@ -134,6 +139,8 @@ enum Mode<'a> {
     ThreadClosed(ThreadClosedMachine<'a>),
     ThreadStatus(ThreadStatusChangedMachine<'a>),
     TurnStarted(TurnStartedMachine<'a>),
+    ContextUsage(ContextUsageMachine<'a>),
+    AccountQuota(AccountQuotaMachine<'a>),
     NormalTerminal(NormalTerminalMachine<'a>),
     DynamicTool(DynamicToolMachine<'a>),
     Transition,
@@ -220,6 +227,8 @@ impl<'a> Machine<'a> {
             Mode::ThreadClosed(closed) => closed.scratch_bytes(bytes),
             Mode::ThreadStatus(status) => status.scratch_bytes(bytes),
             Mode::TurnStarted(turn) => turn.scratch_bytes(bytes),
+            Mode::ContextUsage(usage) => usage.scratch_bytes(bytes),
+            Mode::AccountQuota(quota) => quota.scratch_bytes(bytes),
             Mode::NormalTerminal(terminal) => terminal.scratch_bytes(bytes),
             Mode::DynamicTool(target) => target.scratch_bytes(bytes),
             Mode::Transition => unreachable!("mode transition is not externally visible"),
@@ -271,6 +280,8 @@ impl<'a> Machine<'a> {
             Mode::ThreadClosed(closed) => return closed.event(event),
             Mode::ThreadStatus(status) => return status.event(event),
             Mode::TurnStarted(turn) => return turn.event(event),
+            Mode::ContextUsage(usage) => return usage.event(event),
+            Mode::AccountQuota(quota) => return quota.event(event),
             Mode::NormalTerminal(terminal) => return terminal.event(event),
             Mode::DynamicTool(target) => return target.event(event),
             Mode::Transition => unreachable!("mode transition is not externally visible"),
@@ -363,6 +374,22 @@ impl<'a> Machine<'a> {
                 };
                 self.mode = Mode::NormalTerminal(NormalTerminalMachine::new(sink));
             }
+            Classification::Target(ClassifiedTarget::ContextUsage) => {
+                let Mode::Undecided { sink, .. } =
+                    std::mem::replace(&mut self.mode, Mode::Transition)
+                else {
+                    unreachable!("classification decision came from undecided mode")
+                };
+                self.mode = Mode::ContextUsage(ContextUsageMachine::new(sink));
+            }
+            Classification::Target(ClassifiedTarget::AccountQuota) => {
+                let Mode::Undecided { sink, .. } =
+                    std::mem::replace(&mut self.mode, Mode::Transition)
+                else {
+                    unreachable!("classification decision came from undecided mode")
+                };
+                self.mode = Mode::AccountQuota(AccountQuotaMachine::new(sink));
+            }
         }
         Ok(())
     }
@@ -374,6 +401,8 @@ impl<'a> Machine<'a> {
             Mode::ThreadClosed(closed) => closed.map_parse_failure(failure),
             Mode::ThreadStatus(status) => status.map_parse_failure(failure),
             Mode::TurnStarted(turn) => turn.map_parse_failure(failure),
+            Mode::ContextUsage(usage) => usage.map_parse_failure(failure),
+            Mode::AccountQuota(quota) => quota.map_parse_failure(failure),
             Mode::NormalTerminal(terminal) => terminal.map_parse_failure(failure),
             Mode::DynamicTool(target) => target.map_parse_failure(failure),
             Mode::Response(_) | Mode::Discard(_) => json_failure(failure),
@@ -398,6 +427,9 @@ impl<'a> Machine<'a> {
             }
             Mode::TurnStarted(_) => {
                 DecodeReaderError::Envelope(ForegroundIngressError::MalformedTurnStarted)
+            }
+            Mode::ContextUsage(_) | Mode::AccountQuota(_) => {
+                DecodeReaderError::Envelope(ForegroundIngressError::MalformedContextObservation)
             }
             Mode::NormalTerminal(_) => {
                 DecodeReaderError::Envelope(ForegroundIngressError::MalformedNormalTurnTerminal)
@@ -424,6 +456,8 @@ impl<'a> Machine<'a> {
             Mode::ThreadClosed(closed) => closed.finish(),
             Mode::ThreadStatus(status) => status.finish(),
             Mode::TurnStarted(turn) => turn.finish(),
+            Mode::ContextUsage(usage) => usage.finish(),
+            Mode::AccountQuota(quota) => quota.finish(),
             Mode::NormalTerminal(terminal) => terminal.finish(),
             Mode::DynamicTool(target) => target.finish(),
             Mode::Discard(discard) => discard.finish().map_err(Into::into),

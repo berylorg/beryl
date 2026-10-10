@@ -27,6 +27,9 @@ pub(super) struct ExactStatusControls {
     worker: Option<PublishedExactStopWorker>,
     selection: Option<MainWindowComposerSelectionIdentity>,
     snapshot: ExactSelectedOperationSnapshot,
+    #[cfg(feature = "test-faults")]
+    context_rendered:
+        std::rc::Rc<std::cell::Cell<Option<(Option<u8>, gpui::Bounds<gpui::Pixels>)>>>,
     generation: Arc<AtomicU64>,
     poll: Option<gpui::Task<()>>,
     request_pending: Option<ExactOperationOrigin>,
@@ -44,6 +47,8 @@ impl ExactStatusControls {
             worker: None,
             selection: None,
             snapshot: ExactSelectedOperationSnapshot::unavailable(),
+            #[cfg(feature = "test-faults")]
+            context_rendered: Default::default(),
             generation: Arc::new(AtomicU64::new(1)),
             poll: None,
             request_pending: None,
@@ -382,6 +387,7 @@ impl MainWindowShellRoot {
                 .generation
                 .fetch_add(1, Ordering::AcqRel);
         }
+        result.revalidate_context();
         self.status_controls.snapshot = result;
         self.sync_status_controls(window, cx);
         cx.notify();
@@ -538,6 +544,18 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.apply_runtime_failure_observation(stamp.0, stamp.1, result, None, window, cx);
+    }
+
+    pub fn test_context_remaining_percent(&self) -> Option<u8> {
+        self.status_controls
+            .snapshot
+            .context
+            .and_then(beryl_backend::ContextTokenUsage::remaining_percent)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_context_rendered(&self) -> Option<(Option<u8>, gpui::Bounds<gpui::Pixels>)> {
+        self.status_controls.context_rendered.get()
     }
 
     pub fn test_mount_exact_status_worker(

@@ -98,45 +98,36 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 746: Define Context Observation And Manual Compaction Mounting Contracts (finished)
+# Phase 747: Mount Exact Selected-Thread Context Status (finished)
 
-Accepted bounded context provenance/domains/continuity and weak manual admission/late feedback
-contracts through independent semantic review. Notifications owns protected shared feedback FIFO;
-pinned quota remains unavailable without a qualified model association. Documentation-only checks
-and index reconciliation passed. See the [closure record](audits/context-compaction-mount-readiness.md#contract-closure).
+Accepted bounded ordered usage, unavailable quota and the exact weak publication fence through
+the native 180-pixel cell. Independent whole-boundary review passed with 128 affected cases,
+default production checks and proven terminal/retirement rendering. See the
+[closure record](audits/context-compaction-mount-readiness.md#context-status-mounting-closure).
 
-# Phase 747: Mount Exact Selected-Thread Context Status (wip)
-
-Implement and mount the qualified bounded usage/quota observation path into the existing status
-cell. Accept authentic same-thread values, exact optional quota matches, Unknown/omission and
-selection/publication/retirement fencing through real ingress and native mounting evidence.
-Status reads must not start turns or mutate conversation history.
-
-The production entry is Backend's ordered provider classifier/sink through the registered
-foreground projection and coherent selected-status worker to the native context cell. Implement
-fixed-size exact usage and unavailable quota observations under the owning
-[Backend domains](../crates/beryl-backend/doc/design-provider-stream.md#context-observation-domains),
-[CAS-live continuity/election](systems/cas-live-syndic-transcript/design.md#context-compaction) and
-[App weak-worker contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).
-The pinned producer has no qualified model/metering association: coincident strings and labels
-must not make quota available. Preserve the 300/10,080-minute supported domains without adding an
-unqualified account read. Mount context observation only; manual command effects remain in 748.
-
-Verify malformed counters and missing/nonpositive windows, ordered replacement and sparse quota
-invalidation, multi-projection interest disagreement, authenticated ordinary revision continuity,
-binding/session replacement, stale selection/publication and retirement. Exercise real ingress and
-native cell rendering plus no history/start effect; focused Cargo checks and behavior tests use
-the accepted root build policy and sole root Cargo permit. Preserve model-mount evidence and
-best-effort minimized native launches. Completion requires independent review of the whole mounted
-boundary, rather than acceptance of a parser or presentation helper alone.
-
-Initial milestone: owning contracts are accepted; production source edits have not started.
-No unresolved product decision blocks this phase. Phase-746 changed no source or manifest and
-started no Cargo or GUI process. Root owns shared service/authority integration and Cargo.
-
-# Phase 748: Mount Exact Manual Context Compaction (pending)
+# Phase 748: Mount Exact Manual Context Compaction (wip)
 
 Mount the bounded Compact menu through the qualified opaque capability and existing coordinator.
 Accept idle-only atomic admission, preserved drafts and queued-work precedence, actual sole-driver
 dispatch, bounded rejection/uncertainty feedback, timeout with exact late settlement, selection
 replacement and teardown through the complete production path.
+
+Use the accepted [status feature](features/status-line/design.md#context-and-rate-limit-cell),
+[App weak-worker contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation),
+[CAS-live admission/settlement](systems/cas-live-syndic-transcript/design.md#context-compaction)
+and [Notifications feedback](features/notifications/design.md) as authority. Keep GUI reads and
+commands weak and bounded; consume only exact original-selection admission and preserve admitted
+execution/feedback through view removal. Shared protected feedback retention and reserved visible
+contribution must preserve required results when ordinary notifications saturate. Do not infer
+eligibility from the new percentage readout or use selection changes to cancel admitted work.
+
+Verify real ingress and native command mounting, exact idle and queued-work races, rejection and
+uncertainty, timeout versus terminal settlement, successor/selection replacement and disposal.
+Preserve the accepted context/model mounting behavior and request minimized native launches where
+practical. Root owns shared service integration and the sole Cargo permit; independent review
+must assess the whole mounted manual-command boundary.
+
+Current milestone: context status is accepted; manual command effects have not started. Owning
+admission/late-feedback contracts were accepted before implementation. No product decision or
+manifest change is pending. Accepted context receipts have been consumed and summarized in the
+closure record; no temporary receipt path is needed for continuation.

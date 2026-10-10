@@ -6,6 +6,10 @@ pub(in crate::main_window::shell::host) fn render_strip(
 ) -> AnyElement {
     let appearance = &root.controller.as_ref().unwrap().appearance;
     let status = &root.status_controls;
+    let remaining = status
+        .snapshot
+        .context
+        .and_then(beryl_backend::ContextTokenUsage::remaining_percent);
     let text = format!("{}  View -/-", status.snapshot.state.label());
     let available = status.menu_available();
     let disabled = status.snapshot.state.active() && !available;
@@ -52,7 +56,15 @@ pub(in crate::main_window::shell::host) fn render_strip(
             .flex_none()
             .bg(appearance.separator)
     };
-    div()
+    let strip = div();
+    #[cfg(feature = "test-faults")]
+    let strip = {
+        let rendered = status.context_rendered.clone();
+        strip.on_children_prepainted(move |bounds, _, _| {
+            rendered.set(bounds.get(2).copied().map(|bounds| (remaining, bounds)));
+        })
+    };
+    let strip = strip
         .id("main-window-status-line")
         .debug_selector(|| "main-window-status-line".to_owned())
         .h(px(28.))
@@ -70,17 +82,26 @@ pub(in crate::main_window::shell::host) fn render_strip(
         .child(
             div()
                 .id("main-window-status-context")
+                .debug_selector(move || {
+                    remaining.map_or_else(
+                        || "main-window-status-context:unknown".to_owned(),
+                        |value| format!("main-window-status-context:{value}"),
+                    )
+                })
                 .w(px(180.))
                 .flex_none()
                 .px(px(10.))
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .child("Context Unknown"),
+                .child(remaining.map_or_else(
+                    || "Context Unknown".to_owned(),
+                    |value| format!("Context {value}%"),
+                )),
         )
         .child(divider())
-        .child(turn)
-        .into_any_element()
+        .child(turn);
+    strip.into_any_element()
 }
 
 pub(in crate::main_window::shell::host) fn render_menu(

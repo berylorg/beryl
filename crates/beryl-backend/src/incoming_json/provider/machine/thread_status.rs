@@ -2,6 +2,7 @@ use super::*;
 use crate::{LoadedThreadStatus, ThreadActiveFlags, ThreadStatusChanged};
 
 pub(super) struct ThreadStatusChangedMachine<'a> {
+    envelope: super::notification_envelope::NotificationEnvelopeTail,
     sink: Option<&'a mut dyn OrderedTurnStreamSink>,
     expected: Expected,
     scalar: Scalar,
@@ -48,6 +49,7 @@ enum Scalar {
 impl<'a> ThreadStatusChangedMachine<'a> {
     pub(super) fn new(sink: Option<&'a mut dyn OrderedTurnStreamSink>) -> Self {
         Self {
+            envelope: Default::default(),
             sink,
             expected: Expected::RootParamsName,
             scalar: Scalar::None,
@@ -59,6 +61,9 @@ impl<'a> ThreadStatusChangedMachine<'a> {
     }
 
     pub(super) fn scratch_bytes(&mut self, bytes: &[u8]) -> Result<(), MachineError> {
+        if self.expected == Expected::RootEnd {
+            return self.envelope.scratch_bytes(bytes).map_err(|_| malformed());
+        }
         let accepted = match &mut self.scalar {
             Scalar::Name {
                 probe, expected, ..
@@ -81,6 +86,13 @@ impl<'a> ThreadStatusChangedMachine<'a> {
     }
 
     pub(super) fn event(&mut self, event: Event) -> Result<(), MachineError> {
+        if self.expected == Expected::RootEnd {
+            self.envelope.event(event).map_err(|_| malformed())?;
+            if self.envelope.complete() {
+                self.expected = Expected::Done;
+            }
+            return Ok(());
+        }
         if !matches!(self.scalar, Scalar::None) {
             return self.scalar_event(event);
         }

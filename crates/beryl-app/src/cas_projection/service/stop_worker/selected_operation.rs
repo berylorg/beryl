@@ -67,6 +67,8 @@ impl ExactParentState {
 }
 
 pub struct ExactSelectedOperationSnapshot {
+    pub context: Option<beryl_backend::ContextTokenUsage>,
+    context_origin: Option<context::SelectedContext>,
     pub state: ExactParentState,
     pub operation_active: bool,
     pub origin: Option<ExactOperationOrigin>,
@@ -74,8 +76,21 @@ pub struct ExactSelectedOperationSnapshot {
 }
 
 impl ExactSelectedOperationSnapshot {
+    pub(crate) fn revalidate_context(&mut self) {
+        if !self
+            .context_origin
+            .as_ref()
+            .is_some_and(|origin| origin.is_current())
+        {
+            self.context = None;
+            self.context_origin = None;
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
+            context: None,
+            context_origin: None,
             state: ExactParentState::Unknown,
             operation_active: false,
             origin: None,
@@ -108,6 +123,7 @@ impl ExactStopRead {
         thread: SyndicThreadId,
     ) -> Option<ExactSelectedOperationSnapshot> {
         let home = self.home.as_deref()?;
+        let context = self.selected_context(thread);
         let limit = SyndicPointReadLimit::new(1_000_000).ok()?;
         let thread_record = self.storage.thread(home, thread, limit).ok()??;
         let gate = self.storage.input_gate(home, thread, limit).ok()??;
@@ -142,7 +158,11 @@ impl ExactStopRead {
             {
                 return None;
             }
+            let context =
+                context.filter(|value| self.selected_context(thread).as_ref() == Some(value));
             return Some(ExactSelectedOperationSnapshot {
+                context: context.as_ref().and_then(|value| value.usage()),
+                context_origin: context,
                 state: ExactParentState::Unknown,
                 operation_active: false,
                 origin: None,
@@ -253,7 +273,10 @@ impl ExactStopRead {
                 state.lifecycle(),
                 TurnLifecycle::Pending | TurnLifecycle::Active
             );
+        let context = context.filter(|value| self.selected_context(thread).as_ref() == Some(value));
         Some(ExactSelectedOperationSnapshot {
+            context: context.as_ref().and_then(|value| value.usage()),
+            context_origin: context,
             state: parent,
             operation_active,
             origin: Some(origin),

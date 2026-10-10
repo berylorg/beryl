@@ -16,6 +16,7 @@ directories = ["."]
 kind = "docs"
 include = ["**/*.md"]
 exclude = [
+  ".aipm/tasks/**",
   ".agents/**",
   ".codex/**",
   ".git/**",

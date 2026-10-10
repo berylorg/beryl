@@ -312,6 +312,7 @@ impl LoadedCasProjection {
         lineage_proof: CasLineageProof,
     ) -> Self {
         let loaded_session_generation = lease.generation();
+        lease.bind_context(None, binding_revision, false);
         Self {
             home_id: coordinator.home_id(),
             home_generation: coordinator.home_generation(),
@@ -350,6 +351,27 @@ impl LoadedCasProjection {
     }
 
     pub(super) fn with_binding_revision(mut self, binding_revision: BindingRevision) -> Self {
+        if let Some(lease) = &self.lease {
+            lease.bind_context(Some(self.binding_revision), binding_revision, false);
+        }
+        self.binding_revision = binding_revision;
+        self
+    }
+
+    pub(super) fn bind_context_activation(&self, binding_revision: BindingRevision) {
+        if let Some(lease) = &self.lease {
+            lease.bind_context(Some(self.binding_revision), binding_revision, false);
+        }
+    }
+
+    pub(super) fn with_proven_terminal_binding(
+        mut self,
+        previous: BindingRevision,
+        binding_revision: BindingRevision,
+    ) -> Self {
+        if let Some(lease) = &self.lease {
+            lease.bind_context(Some(previous), binding_revision, true);
+        }
         self.binding_revision = binding_revision;
         self
     }

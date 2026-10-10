@@ -379,7 +379,7 @@ fn finish_proven_terminal(
     let context_compaction = target.context_compaction_coordinator()?;
     let projection = target
         .into_proven_terminal_projection()?
-        .with_binding_revision(binding.binding().revision());
+        .with_proven_terminal_binding(active_binding_revision, binding.binding().revision());
     converge_terminal_history(
         store,
         storage,

@@ -1,7 +1,8 @@
 # Boundary
 
-Read-only qualification on 2026-10-10 against the accepted model/reasoning mount at `b86f6932`.
-This record establishes prerequisites; it does not accept context or manual-compaction mounting.
+Initial read-only qualification on 2026-10-10 used the accepted model/reasoning mount at `b86f6932`.
+The source/prerequisite sections below preserve that readiness snapshot. The later context-status
+closure records its separate mounted acceptance; manual compaction remains a distinct boundary.
 The [status-line feature](../features/status-line/design.md#context-and-rate-limit-cell),
 [GUI composition](../features/status-line/gui.md#status-operation-menus),
 [CAS-live system](../systems/cas-live-syndic-transcript/design.md) and
@@ -99,3 +100,51 @@ Notifications retention and normal revision continuity. Scoped `git diff --check
 rag-rat discovery/reconciliation reached Current with zero failed or blocked chunks. This was a
 documentation-only boundary: no production Rust/manifest edits, Cargo run or GUI launch occurred.
 Context status and manual command production mounting remain separately unaccepted work.
+
+# Context Status Mounting Closure
+
+The bounded ordered context path is implemented on 2026-10-10. Backend incrementally validates
+exact usage routes/counters and known quota window shapes. Unsupported numeric domains replace
+prior observations with unavailable values; missing/nonpositive context windows render Unknown.
+The pinned producer supplies no qualified model/metering association, so account quota remains
+unavailable and quota windows are omitted even when names coincide. Unrelated account facts are
+streamed away. No account read or history/start effect is introduced by status observation.
+
+CAS-live retains one exact observation per registered projection and bounded agreeing-model
+interest per connection. Proven checked-next ordinary terminal advancement preserves original
+usage provenance; unproven drift, replacement and retirement invalidate it. The existing coherent
+status worker carries only a weak connection and exact loaded/session/binding/observation stamp to
+the final GUI apply. Final stamp election uses nonblocking locks and fails closed to Unknown;
+monotonic observation revisions reject identical-value ABA.
+
+Review corrected quota schema validation, late publication provenance and the pinned outgoing
+notification timestamp. The bounded optional timestamp tail also qualifies the necessary ordinary
+start/status/terminal controls while preserving their owned payload checks. The
+[pinned producer note](../memory/github.com/openai/codex/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/context-usage-and-quota-observations.md)
+preserves this transport evidence. The first native fixture aborted on nested root drawing;
+separate native window drawing and root reads corrected the fixture.
+
+Final retained receipts verify 128 distinct affected cases under the root one-job LLVM build policy:
+
+- Backend `incoming_json_ingress`: 110/110, run `ff914391-41cf-4b1d-90a0-0f8a4b30e839`.
+  Includes every-split timestamp-bearing usage/quota/control/terminal parsing and fatal owned shapes.
+- App `context_observation` and `mounted_exact_status_controls`: 17/17, run
+  `f98be985-bb02-45db-b4a4-6204364f2d24`. Includes continuity/election/retirement and actual final
+  GUI publication rejecting held identical-value ABA, selection loss and expired publication.
+- Windows `context_status_native`: 1/1, run `9fbfdfa3-f053-4ab5-9991-8204d88f1d4e`.
+  A real Application mounts and publishes the production shell, requests minimization and presents
+  native frames. Real websocket start/status/usage/terminal ingress renders the production 180-pixel
+  cell as 75%, Unknown and 87%; an actual terminal execution preserves 87% with `ok`, and exact
+  connection retirement renders Unknown. The production cell's prepaint receipt verifies its
+  native bounds and value, with explicit window/server/service cleanup.
+- Default production `cargo check -p beryl-backend -p beryl-app --lib --locked --offline` passed
+  in 13.90 seconds. Scoped formatting and `git diff --check` passed. No manifest changed.
+
+All 42 Rust inputs matched the reviewed fingerprint receipt
+`D244201F443F624043D23C8CE073A33D070F79E261D189FDB442A1FC8F959265`.
+Independent whole-boundary completion review accepted phase 747 with no blocking findings.
+Temporary receipts were consumed and the exact owned `.aipm/tasks/context-status/` root reclaimed
+after absolute-path, reparse and process checks. All three native runner PIDs
+and their test processes are absent. The initial abort did not print its Home; the bounded read-only
+creation-time check found no remaining candidate, and no uncertain temporary directory was deleted.
+No selected simplification-audit finding required a separate change in this boundary.

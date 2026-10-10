@@ -79,6 +79,25 @@ pub fn prepare_shell(
         RuntimeBackedWindowProcessRegistry,
     ),
 ) {
+    let theme = beryl_state::PreparedThemeAppearance::fallback(
+        fixture
+            .state
+            .themes()
+            .settings_identity(DomainRevision::new(1).unwrap(), None),
+    );
+    prepare_shell_with_theme(fixture, theme)
+}
+
+pub fn prepare_shell_with_theme(
+    fixture: &mut syndic::Fixture,
+    theme: beryl_state::PreparedThemeAppearance,
+) -> (
+    MainWindowShellPrepared,
+    (
+        RuntimeBackedWindowAcquisitionService,
+        RuntimeBackedWindowProcessRegistry,
+    ),
+) {
     let home = fixture.home();
     let execution = syndic::execution_binding();
     let host = |path| AdmittedHostPath::from_admitted(PathFlavor::Windows, path).unwrap();
@@ -213,12 +232,7 @@ pub fn prepare_shell(
     .unwrap();
     let appearance = AppearanceCoordinator::new(
         AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-        beryl_state::PreparedThemeAppearance::fallback(
-            fixture
-                .state
-                .themes()
-                .settings_identity(DomainRevision::new(1).unwrap(), None),
-        ),
+        theme,
     )
     .current();
     let prepared = MainWindowShellPrepared::prepare(

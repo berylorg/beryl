@@ -1,11 +1,17 @@
 #![cfg(feature = "lifecycle-test-support")]
 
+#[path = "incoming_json_ingress/account_quota.rs"]
+mod account_quota;
 #[path = "incoming_json_ingress/approvals.rs"]
 mod approvals;
 #[path = "incoming_json_ingress/classifier.rs"]
 mod classifier;
+#[path = "incoming_json_ingress/context_usage.rs"]
+mod context_usage;
 #[path = "incoming_json_ingress/normal_terminal.rs"]
 mod normal_terminal;
+#[path = "incoming_json_ingress/notification_envelope.rs"]
+mod notification_envelope;
 #[path = "incoming_json_ingress/predispatch.rs"]
 mod predispatch;
 #[path = "incoming_json_ingress/responses.rs"]

@@ -65,6 +65,8 @@ pub enum ForegroundIngressError {
     MalformedNormalTurnTerminal,
     #[error("thread status change did not match the pinned loaded-thread shape")]
     MalformedThreadStatusChanged,
+    #[error("context observation did not match the pinned field order and shape")]
+    MalformedContextObservation,
     #[error("thread close did not match the pinned field order and shape")]
     MalformedThreadClosed,
     #[error("turn start did not match the pinned field order and in-progress shape")]

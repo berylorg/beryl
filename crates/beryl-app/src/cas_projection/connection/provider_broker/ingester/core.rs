@@ -190,6 +190,20 @@ impl Ingester {
                 true,
             ),
             BrokerOperation::Ordered(operation) => match operation {
+                OrderedTurnStreamOperation::AccountQuotaObservation(quota) => {
+                    let result = self.router.observe_quota(quota);
+                    (
+                        BrokerReply::Applied(beryl_backend::OrderedTurnStreamCompletion::Applied),
+                        result.is_err(),
+                    )
+                }
+                OrderedTurnStreamOperation::ThreadContextObservation(observation) => {
+                    let result = self.router.observe_context(observation);
+                    (
+                        BrokerReply::Applied(beryl_backend::OrderedTurnStreamCompletion::Applied),
+                        result.is_err(),
+                    )
+                }
                 OrderedTurnStreamOperation::ThreadStatusChanged(status) => {
                     self.thread_status_changed(status)
                 }

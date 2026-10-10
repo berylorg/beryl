@@ -13,7 +13,14 @@ use beryl_model::{
 
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
+mod context;
+#[cfg(feature = "test-faults")]
+pub(in crate::cas_projection) mod context_test_support;
 mod work_facts;
+pub(in crate::cas_projection) use context::{
+    ContextSnapshot, ContextStamp, bind_context, context_is_current, observe_context,
+    observe_quota, read_context,
+};
 pub(in crate::cas_projection) use work_facts::{
     loaded_owner_prefix, try_hold_work_revision, try_work_revision, work_revision,
 };
@@ -72,12 +79,21 @@ struct LoadedThreadEntry {
     generation: CasLoadedThreadGeneration,
     leases: HashSet<LeaseToken>,
     metadata: beryl_backend::ThreadSessionMetadata,
+    context_binding: Option<beryl_model::BindingRevision>,
+    context_revision: Option<u64>,
+    context: Option<context::ContextRecord>,
 }
 
 struct LoadedThreadState {
     revision: Option<u64>,
     entries: HashMap<LoadedThreadKey, LoadedThreadEntry>,
-    connection_authority_counts: HashMap<ConnectionGeneration, HashMap<SyndicThreadId, usize>>,
+    connection_authority_counts: HashMap<ConnectionGeneration, ConnectionAuthorities>,
+}
+
+#[derive(Default)]
+struct ConnectionAuthorities {
+    owners: HashMap<SyndicThreadId, usize>,
+    context: context::ContextInterest,
 }
 
 impl Default for LoadedThreadState {
@@ -161,11 +177,13 @@ fn add_connection_authority(
         .connection_authority_counts
         .entry(connection)
         .or_default()
+        .owners
         .entry(owner)
         .or_default();
     *count = count
         .checked_add(1)
         .expect("registered connection authorities fit in memory");
+    context::refresh_interest(state, connection);
 }
 
 fn remove_connection_authority(
@@ -174,10 +192,11 @@ fn remove_connection_authority(
     owner: SyndicThreadId,
 ) {
     let remove = {
-        let owners = state
+        let authority = state
             .connection_authority_counts
             .get_mut(&connection)
             .expect("every registered authority contributes to its connection count");
+        let owners = &mut authority.owners;
         let count = owners
             .get_mut(&owner)
             .expect("every registered authority contributes to its owner count");
@@ -191,6 +210,8 @@ fn remove_connection_authority(
     };
     if remove {
         state.connection_authority_counts.remove(&connection);
+    } else {
+        context::refresh_interest(state, connection);
     }
 }
 
@@ -216,6 +237,9 @@ pub(in crate::cas_projection) fn register_new(
             generation,
             leases,
             metadata,
+            context_binding: None,
+            context_revision: Some(0),
+            context: None,
         },
     );
     add_connection_authority(&mut state, connection, owner);
@@ -352,6 +376,7 @@ pub(in crate::cas_projection) fn invalidate_metadata(
         })
         .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)?;
     entry.metadata = Default::default();
+    context::refresh_interest(&mut state, connection);
     Ok(())
 }
 
@@ -370,7 +395,7 @@ pub(in crate::cas_projection) fn thread_has_authority(
     Ok(lock()?
         .connection_authority_counts
         .get(&connection)
-        .is_some_and(|owners| owners.contains_key(&owner)))
+        .is_some_and(|authority| authority.owners.contains_key(&owner)))
 }
 
 pub(in crate::cas_projection) fn release_exact(

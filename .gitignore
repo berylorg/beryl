@@ -1,4 +1,5 @@
 /target/
+/.aipm/tasks/
 /.tmp/
 /ENV.md
 /forks/

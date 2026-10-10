@@ -27,6 +27,7 @@ mod close_reason;
 mod command;
 mod compaction;
 mod consumer;
+mod context;
 mod delayed_steering;
 mod dynamic_tool;
 mod loss;

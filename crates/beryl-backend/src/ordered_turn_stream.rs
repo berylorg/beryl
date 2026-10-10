@@ -16,6 +16,8 @@ use crate::{
 
 /// One operation in the exact order read from a backend connection.
 pub enum OrderedTurnStreamOperation {
+    AccountQuotaObservation(crate::AccountQuotaObservation),
+    ThreadContextObservation(crate::ThreadContextObservation),
     /// One exact loaded-thread status transition.
     ThreadStatusChanged(ThreadStatusChanged),
     /// One exact loaded-thread closure notification.
@@ -57,6 +59,14 @@ pub enum OrderedTurnStreamOperation {
 impl std::fmt::Debug for OrderedTurnStreamOperation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AccountQuotaObservation(observation) => formatter
+                .debug_tuple("AccountQuotaObservation")
+                .field(observation)
+                .finish(),
+            Self::ThreadContextObservation(observation) => formatter
+                .debug_tuple("ThreadContextObservation")
+                .field(observation)
+                .finish(),
             Self::ThreadStatusChanged(status) => formatter
                 .debug_tuple("ThreadStatusChanged")
                 .field(status)

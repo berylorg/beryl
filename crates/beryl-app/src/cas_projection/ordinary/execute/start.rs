@@ -179,6 +179,7 @@ pub(super) fn execute_in_flight(
                 return Err(activation_failure(source.into()));
             }
         };
+    projection.bind_context_activation(active_binding_revision);
     let activation = PendingTurnActivation::new(
         pending.thread_id,
         pending.turn_id,

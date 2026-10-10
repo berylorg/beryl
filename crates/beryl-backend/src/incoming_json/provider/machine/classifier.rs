@@ -14,6 +14,8 @@ enum ClassifiedTarget {
     ThreadClosed,
     ThreadStatus,
     TurnStarted,
+    ContextUsage,
+    AccountQuota,
     NormalTerminal,
 }
 
@@ -298,8 +300,8 @@ const CONTROL_CLASSIFICATIONS: [Classification; 9] = [
     Classification::Discard(DiscardDisposition::Unavailable(KnownControlFamily::Compact)),
     Classification::Target(ClassifiedTarget::ThreadStatus),
     Classification::Target(ClassifiedTarget::ThreadClosed),
-    Classification::Discard(DiscardDisposition::Unavailable(KnownControlFamily::Compact)),
-    Classification::Discard(DiscardDisposition::Unavailable(KnownControlFamily::Compact)),
+    Classification::Target(ClassifiedTarget::ContextUsage),
+    Classification::Target(ClassifiedTarget::AccountQuota),
     Classification::Target(ClassifiedTarget::TurnStarted),
     Classification::Discard(DiscardDisposition::Unavailable(KnownControlFamily::Compact)),
     Classification::Discard(DiscardDisposition::NoOwnerNotification),

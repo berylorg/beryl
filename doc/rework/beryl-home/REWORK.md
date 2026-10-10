@@ -519,6 +519,9 @@
 - [x] Mounted exact per-window Back/Forward controls with coherent history settlement, bounded availability and original same-window recovery; [qualification](../../audits/thread-navigation-mount-qualification.md).
 - [x] Mounted the bounded selected-thread lineage with exact parent activation and original same-window recovery; [qualification](../../audits/thread-lineage-mount-qualification.md).
 - [x] Mounted exact selected-thread model/reasoning status and bounded progressive selection with original Retry fences, canonical realized-row activation and next-real-turn choices; [qualification](../../audits/model-selection-mount-qualification.md).
+- [x] Mounted exact ordered selected-thread context status with bounded projection provenance,
+  weak nonblocking publication fences, proven ordinary terminal continuity and retirement Unknown;
+  [native mounting and review](../../audits/context-compaction-mount-readiness.md#context-status-mounting-closure).
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
@@ -533,7 +536,7 @@
 - [x] Mounted and independently accepted the production exact status strip and Soft stop popup,
   with coherent typed observations, opaque operation origins, bounded feedback and window/selection
   fences; [canonical mounted evidence](../../failures/executable-bootstrap.md#exact-status-mount-qualification).
-  Context operations remain deferred.
+  Manual context operations remain deferred.
 - [x] Mounted and independently accepted exact soft-stop notice fallback through the sole arbiter,
   preserving FIFO identity, popup recovery, resolved dismissal and volatile refusal across temporary
   loss; [canonical qualification](../../failures/executable-bootstrap.md#exact-stop-notice-mount-qualification).

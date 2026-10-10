@@ -184,6 +184,8 @@ impl Ingester {
                         .routed(message.thread_id(), message.turn_id(), None, true);
                     applied()
                 }
+                Op::ThreadContextObservation(_) => applied(),
+                Op::AccountQuotaObservation(_) => applied(),
                 Op::ThreadStatusChanged(_) | Op::ThreadClosed(_) => {
                     self.passive.gap = true;
                     applied()

@@ -1,5 +1,6 @@
 use std::sync::Weak;
 
+mod context;
 mod selected_operation;
 pub use selected_operation::{
     ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot,

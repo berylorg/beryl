@@ -37,6 +37,10 @@ pub use control_work::{
     ControlWorkRevision,
 };
 mod connection;
+#[cfg(feature = "test-faults")]
+pub use connection::registry::context_test_support::{
+    ContextObservationTestHarness, ContextProjectionTestHandle,
+};
 mod connection_work;
 mod context_compaction;
 mod error;
