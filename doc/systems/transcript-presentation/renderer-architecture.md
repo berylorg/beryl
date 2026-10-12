@@ -265,7 +265,13 @@ replacement retains the existing reset behavior.
 
 Very large transcript records and synthetic context groups render through bounded chunks or stable fallbacks. A large row or context group may stream chunk presentation around the current anchor without providing continuous pixel geometry for unloaded chunks.
 
-Code blocks, tables, generated images, attachments, and comparable heavy resources are represented by Syndic resource metadata and explicit range-readable resource data. Beryl presentation records point at those resources and admit only the ranges needed for the current viewport, nested-widget viewport, admitted Copy/Save source action, or active UI pin.
+Every recognized fenced Code block uses Syndic resource metadata and explicit range-readable
+resource data, including small, empty and unfinished blocks, as specified by the
+[projection storage contract](../syndic-conversation-history/concepts.md#markdown-projection).
+Inline code spans remain part of their surrounding narrative block. Large Tables, generated
+images, attachments and comparable heavy resources also use resource data; small inline Tables
+use their admitted projection model. Resource-backed presentation admits only the ranges needed
+for the current viewport, nested-widget viewport, admitted Copy/Save source action or active UI pin.
 
 Code and table panels own their internal visible-range rendering, selection, copy affordances, and local fallbacks. The outer transcript renderer treats the panel shell as one bounded presentation record with measured outer geometry.
 

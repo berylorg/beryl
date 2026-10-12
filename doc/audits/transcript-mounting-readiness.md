@@ -741,6 +741,54 @@ correction matches the unchanged accepted behavior; no retained prior raw test h
 Temporary verification inputs and fixture homes reached their last review consumer at acceptance;
 this record and version control retain the durable outcome. Table mounting remains unaccepted.
 
+## Fenced Code Storage Form Qualification
+
+Inspected at `e2ce90f6` on 2026-10-12 for root-plan phase 768. The assumed small inline fenced
+Code path does not exist in the production producer. The controlling
+[projection contract](../systems/syndic-conversation-history/concepts.md#markdown-projection)
+already requires every recognized fence to become a Code resource, including empty and
+unfinished fences. The 2,048-byte/eight-line bound limits previews, not storage-form selection.
+Inline code spans belong to their surrounding narrative block and are a different consumer.
+
+Storage `mutation/projection/parser/output.rs::emit_code` unconditionally emits
+`ParserOutput::Resource` with the exact body range and Code structure.
+`mutation/projection/materialize.rs::materialize_output` maps that output to
+`ProjectionPayload::ResourceReference` and `ResourceKind::Code`. Opening/closing fence lines
+are excluded from body source; an opener without a body has an exact zero-length range.
+The generic inline payload constructor accepting a block-kind argument does not establish an
+inline fenced-Code producer. Table-specific inline preparation cannot be generalized into a
+missing Code path on that basis.
+
+The existing provider resource branch, typed presentation and indexed Code panel are therefore
+the ordinary consumer for these small fences. Their accepted indexed source, geometry, selection,
+Copy/Save and source-qualified replacement/disposal contracts remain applicable. No inline Code
+model, adapter, resource conversion, budget change or production implementation is required.
+The renderer architecture now states this storage-form distinction explicitly.
+
+Existing objective evidence covers this conclusion: storage
+`projection_boundaries::fenced_code_all_sizes_crlf_and_unfinished_blocks_publish_resources` and
+`empty_and_small_fenced_resources_retain_exact_body_and_language` cover tiny/large fences,
+opener-only sources with and without a newline, empty closed backtick/tilde fences, exact CRLF
+body bytes and an unfinished small body. These tests belong to the unchanged producer/projection
+29/29 run recorded in [inline Table acceptance](#mounted-inline-table-acceptance).
+Mounted Code evidence remains the [indexed acceptance](#mounted-indexed-code-acceptance),
+with affected Code regressions in the subsequent 231/231 app/core/provider/native run.
+Existing native `indexed_resources/code_streaming.rs::streaming_code_with_deadline` checks
+zero-line opening descriptors, one-line growth, exact body ranges and stable panel identity;
+`code_save.rs::native_code_save_empty_source_and_late_picker_retirement_preserve_output`
+qualifies empty-source Save. The existing checked clipboard/picker evidence does not qualify
+OS clipboard/common-dialog automation or the complete composer workflow.
+This documentation-only qualification reuses that evidence; it runs no Cargo or native tests
+and makes no new runtime acceptance claim. Narrative presentation, remaining interactions and
+diagnostic-child activation remain separate mounting boundaries.
+
+Independent read-only readiness review accepted this boundary on 2026-10-12 after checking the
+controlling authority, closed/unfinished fence producer, resource materialization, authenticated
+provider, typed presentation and panel mounting. It confirmed the cited tests and unchanged-input
+evidence reuse, with no supported-guarantee blocker. Documentation whitespace checking passed.
+The review performed no tests, edits or artifact creation. The next evidence-only boundary is
+ordinary narrative presentation, whose generic Text consumer still flattens stored block facts.
+
 ## Mounted Indexed Table Readiness
 
 Readiness inspection on 2026-10-12 continued from accepted Code mounting. This checkpoint is source

@@ -98,22 +98,25 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 767: Mount Inline Table Cell Interaction (finished)
+# Phase 768: Establish Inline Code Panel Mounting Readiness (finished)
 
-Accepted typed bounded preparation and ordinary inline Table mounting with whole-cell selection,
-exact/stripped Copy, direct immutable Save and source-qualified release. All 537 selected tests,
-including 37 native cases, production checking and independent review passed. Owned fixtures and
-execution artifacts are reclaimed. See [acceptance](audits/transcript-mounting-readiness.md#mounted-inline-table-acceptance).
+Inspection confirmed every recognized fence already uses the accepted Code resource path,
+including small, empty and unfinished blocks. No inline Code implementation is needed.
+Independent review accepted the documentation-only correction and unchanged verification reuse;
+see [qualification](audits/transcript-mounting-readiness.md#fenced-code-storage-form-qualification).
 
-# Phase 768: Establish Inline Code Panel Mounting Readiness (wip)
+# Phase 769: Establish Narrative Presentation Mounting Readiness (wip)
 
-Reconcile small recognized fenced Code blocks with the transcript GUI's requirement to mount every
-recognized Code panel. Inspect stored inline block/span/source facts, selected-history preparation,
-resident presentation, shared Code geometry/selection and direct source actions. Resolve ownership,
-limits, allocation admission, source-qualified lifecycle and native acceptance in their owning
-authorities before implementation. Reuse accepted indexed Code and inline Table mechanisms only
-where their guarantees apply; independently review the complete derived mounting boundary.
+Inspect ordinary saved Markdown blocks through selected-history preparation, resident presentation
+and measured narrative rendering. Reconcile retained block/span facts, source-to-display mappings,
+bounded preparation/paint and genuine pointer selection with the transcript's Markdown and Copy
+contracts. Resolve missing ownership, lifecycle, supported limits and native evidence in their
+owning authorities before scheduling implementation; keep quote/branch/menu and diagnostic-child
+acceptance separate where they require distinct outcomes. This phase authorizes diagnosis and
+readiness review only.
 
-Current checkpoint: inline Table mounting is accepted. Inspect genuine inline fenced Code source
-classification and production consumers next; no inline Code implementation is authorized by this
-readiness phase. Keep the conditional exact terminal repair boundary unchanged.
+Current checkpoint: the ordinary provider flattens non-Table inline Markdown into Text, resident
+presentation publishes TextChunk, and selection currently represents whole-record source ranges.
+Inspect genuine stored block/span facts and their production consumers next, then reconcile the
+owning system/package and GUI authorities before deriving an implementation phase. No narrative
+implementation is authorized yet. Keep the conditional exact terminal repair boundary unchanged.
