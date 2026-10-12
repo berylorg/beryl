@@ -16,6 +16,7 @@ use crate::syndic_transcript::{
 };
 
 mod access;
+mod discussion_context;
 use super::{
     ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_RECORDS, TranscriptAttachmentAuthority,
     TranscriptAttachmentError, TranscriptAttachmentPurpose, TranscriptAttachmentRequest,
@@ -108,6 +109,7 @@ impl access::ActivationReadSource<'_> {
                 placement: request.placement,
                 view_page_response: Some(TranscriptProviderResponseKind::ViewPage(page)),
                 projection_records_response: None,
+                discussion_context: None,
             };
             return Ok((
                 TranscriptAttachmentAuthority::Unpublished {
@@ -131,6 +133,8 @@ impl access::ActivationReadSource<'_> {
         if head.lifecycle() != ProjectionLifecycle::Current {
             return Err(TranscriptAttachmentError::Stale);
         }
+        let discussion_context =
+            self.read_discussion_context(request, &thread, &head, cancelled)?;
         let count = head.entry_count();
         let first = match request.placement {
             TranscriptActivationPlacement::Tail => count
@@ -443,6 +447,14 @@ impl access::ActivationReadSource<'_> {
         if confirmed.as_ref() != Some(&head) {
             return Err(TranscriptAttachmentError::Stale);
         }
+        if self
+            .thread(request.thread_id, point)
+            .map_err(attachment_read_error)?
+            .as_ref()
+            != Some(&thread)
+        {
+            return Err(TranscriptAttachmentError::Stale);
+        }
         Ok((
             TranscriptAttachmentAuthority::Published { head, summary },
             range,
@@ -453,6 +465,7 @@ impl access::ActivationReadSource<'_> {
                 projection_records_response: Some(
                     TranscriptProviderResponseKind::ProjectionRecords(projection_set),
                 ),
+                discussion_context,
             },
         ))
     }
@@ -498,6 +511,25 @@ impl access::ActivationReadSource<'_> {
         self.check_request(request, cancelled)?;
         let view_id = TranscriptViewId(request.thread_id.to_string());
         let revision = ProviderRevision(head.revision().get());
+        let context = self.read_discussion_context(request, &thread, &head, cancelled)?;
+        let capacity_context = context
+            .as_ref()
+            .map(|context| self.context_capacity_records(request, &head, context, point))
+            .transpose()?
+            .flatten();
+        let (records, projection_records_response, range, discussion_context) =
+            match capacity_context {
+                Some((record, set)) => {
+                    let position = record.position.0;
+                    (
+                        vec![record],
+                        Some(TranscriptProviderResponseKind::ProjectionRecords(set)),
+                        position..position.saturating_add(1),
+                        context,
+                    )
+                }
+                None => (Vec::new(), None, 0..0, None),
+            };
         let page = TranscriptViewPage {
             view_id: view_id.clone(),
             revision,
@@ -505,20 +537,35 @@ impl access::ActivationReadSource<'_> {
                 reason: TranscriptProviderHistoryReason::PresentationCapacity,
                 detail: Some("Part of this transcript exceeds the display limit.".to_owned()),
             },
-            records: Vec::new(),
+            records,
             previous_cursor: None,
             next_cursor: None,
-            at_start: true,
-            at_end: true,
+            at_start: range.start == 0 || range.start == 1,
+            at_end: range.end == 0 || range.end > head.entry_count(),
         };
+        self.check_request(request, cancelled)?;
+        if self
+            .transcript_view_head(request.thread_id, point)
+            .map_err(attachment_read_error)?
+            .as_ref()
+            != Some(&head)
+            || self
+                .thread(request.thread_id, point)
+                .map_err(attachment_read_error)?
+                .as_ref()
+                != Some(&thread)
+        {
+            return Err(TranscriptAttachmentError::Stale);
+        }
         Ok((
             TranscriptAttachmentAuthority::CapacityLimited { head, summary },
-            0..0,
+            range,
             PreparedTranscriptActivation {
                 view_id: Some(view_id),
                 placement: request.placement,
                 view_page_response: Some(TranscriptProviderResponseKind::ViewPage(page)),
-                projection_records_response: None,
+                projection_records_response,
+                discussion_context,
             },
         ))
     }

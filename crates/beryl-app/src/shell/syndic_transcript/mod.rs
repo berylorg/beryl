@@ -6,6 +6,7 @@ mod context_menu;
 mod core;
 mod demand;
 mod diagnostics;
+mod discussion_context;
 mod frame;
 mod host;
 mod media_action;
@@ -48,6 +49,7 @@ pub(crate) use demand::{DemandFact, DemandFactKind, DemandFactSink, DemandFactSi
 pub(crate) use diagnostics::{
     ResidentDataDiagnostics, ResidentFrameDiagnostics, SyndicTranscriptDiagnosticSnapshot,
 };
+pub(crate) use discussion_context::*;
 pub(crate) use frame::{
     RealizedFrameAnchor, RealizedFrameClamp, RealizedFrameRecord, RealizedFrameRequest,
     RealizedFrameScrollController, RealizedFrameScrollMode, RealizedFrameScrollStateSnapshot,
@@ -83,7 +85,7 @@ pub(crate) use selection::{
     ResidentQuoteCommand, ResidentQuoteOutcome, ResidentSelectedRecord, ResidentSelectionCommand,
     ResidentSelectionOutcome, ResidentSelectionRecordGeometry, ResidentSelectionUnavailable,
     ResidentTranscriptCopyPayload, ResidentTranscriptQuotePayload, ResidentTranscriptQuoteTarget,
-    ResidentTranscriptSelection,
+    ResidentTranscriptSelection, resident_selected_record,
 };
 pub(crate) use snapshot::{
     LocalPresentationReason, ResidentFallbackTarget, ResidentPresentationRecord,

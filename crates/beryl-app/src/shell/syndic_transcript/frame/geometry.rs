@@ -222,6 +222,9 @@ pub(super) fn presentation_record_position(
             source.position
         }
         ResidentRecordSource::LocalUi => None,
+        ResidentRecordSource::LocalContext { group, .. } => {
+            Some(TranscriptViewPosition(group.insertion_after))
+        }
     }
 }
 

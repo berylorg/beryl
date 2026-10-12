@@ -828,8 +828,8 @@ serial tests, debug disabled and nonincremental compilation. The final productio
 passed in 13.40 seconds with existing warnings. No manifest or dependency revision changed;
 the preceding mounted-Code publication and canonical one-GPUI evidence remains applicable.
 Independent review accepted the final conversion, accounting, source binding, command custody and
-failure behavior. Synthetic context is not yet mounted; Table remains unaccepted. Their native
-integration is qualified by the following separate plan boundaries.
+failure behavior. That boundary did not accept synthetic context or Table. Their native integration
+belongs to separate acceptance boundaries.
 
 Source-context and refresh lessons are retained in
 [source context](../failures/transcript-copy-source-context.md) and
@@ -838,3 +838,108 @@ identified native fixture homes reached their last review consumer at acceptance
 runs preceded fixture-ledger registration; their unidentified homes cannot be safely reclaimed
 from shared Temp. The [fixture-ledger lesson](../failures/native-copy-fixture-ledger.md) records
 that attribution limit; shared caches and unrelated temporary material remain untouched.
+
+## Synthetic Discussion Context Readiness
+
+Inspection on 2026-10-12 established a bounded mounting path under the existing
+[context presentation](../features/branch-discussions/design.md#context-presentation) and
+[presentation records](../systems/transcript-presentation/design.md#presentation-records)
+contracts. This checkpoint does not accept mounted context or its native Copy integration.
+
+`ThreadRecord::context_owner_id` identifies the exact immutable envelope owner. For the first
+context draft, its matching discussion-context submission intent and selected committed tail prove
+the insertion parent. After submission, a point read of the permanent owner turn's immutable
+parent proves that same boundary, including when replacement has selected away from the owner.
+The draft-to-submitted transition preserves the identity payload. A group keyed by discussion,
+that payload and parent can therefore remain stable without a new persisted descriptor.
+
+The exact envelope read is `SyndicStorage::context_envelope`. Its descriptor retains source thread,
+turn, item, projection, revision, selected range, digest and creation time. Decoding validates range
+and digest; source admission must also check agreement with the independently proven boundary.
+Missing or invalid envelope data can yield unavailable context at that boundary. Missing or invalid
+owner topology cannot prove a boundary and must fail explicitly rather than search visible text.
+
+Selected text is bounded to 65,536 UTF-8 bytes; the encoded context-family ceiling is 66,048 bytes.
+The existing 65,536-byte transcript attachment allowance cannot admit a maximum-sized encoded
+envelope. Context requires separately bounded admission including metadata and derived Copy text,
+plus live/candidate read parity and current-source fencing. Activation currently supplies only
+view and projection responses; explicit context transport and local presentation provenance are
+mounting prerequisites rather than canonical projection changes.
+
+Insertion means after the entire immutable source turn, even when a bounded page ends inside that
+turn. Exact topology must determine the boundary without a whole-history scan. Context chunks
+then use existing realized-frame measurement, selection and anchor mechanisms. Selection eligibility
+does not grant Quote, branch, edit or ordinary turn-menu eligibility; these commands need explicit
+exclusion when selection is broadened to copyable context. Storage's discussion creation and
+temporal-context tests supply existing topology evidence; source admission and mounted native
+interaction still need qualification.
+
+## Synthetic Discussion Context Acceptance
+
+Accepted on 2026-10-12 after independent semantic review. Ordinary selected-thread activation
+admits the exact durable context envelope and independently proven insertion parent. Bounded
+indexed topology reads locate the end of the complete source turn, including a page split within
+that turn. Stable discussion/owner-payload/parent identity survives the first draft's submitted
+transition and later selected-path replacement. Context remains explicit local presentation with
+no canonical projection or turn identity; it does not change turn counts or enter CAS input.
+
+The selected source limit is 65,536 UTF-8 bytes; the encoded envelope point-read allowance is
+66,048 bytes. Source adaptation admits separately charged original and best-effort stripped text
+as chunks of at most 2,048 bytes, with at most 33 UTF-8 chunks. The existing measured frame bounds
+rendering and preserves ordinary virtual extent. Group retention protects the whole admitted
+envelope plus its paging boundary; authored projection fallbacks and draft-tail context retain the
+same return path. Whole-group eviction releases its payload, and bounded source admission remounts
+it on return. Missing or invalid envelopes produce unavailable context at the proven boundary.
+An oversized authored projection can retain its exact metadata-backed fallback alongside admitted
+context, rather than silently dropping the context or reading the oversized projection.
+
+The `DISCUSSING` callout uses declared context roles through the canonical appearance schema.
+Resolved fonts and colors, font-derived group geometry and heading spacing feed the same measured
+and rendered composition. The finite text-role property sets expose only consumed properties.
+GPUI's normal wrapping preserves source whitespace and explicit line breaks; its line wrapper
+also breaks an overlong word when no earlier wrap opportunity exists. No literal spaces are added
+to the heading label to simulate letter spacing.
+
+Stable realized context permits selection and Copy. First Ctrl+C copies exact selected Markdown;
+the quick second distinct press uses the accepted source-owned stripped representation. Structural
+heading, provenance, unavailable labels and padding are excluded. Quote, mixed-context Quote,
+branch, edit and ordinary turn-menu targets remain unavailable. Continuation chunks conservatively
+preserve uncertain opening syntax under the shared Copy contract. Source, candidate and publication
+fences reject stale results; retirement and disposal release admitted payload and pins.
+
+Final local qualification passed:
+
+- Panel/provider/native library: 167/167 in 166.127 seconds,
+  `fe148bc6-4903-4d62-9530-43225c723128`, including ordinary and Code Copy, native Code Save,
+  context Copy, long-context scroll-away/return, font/width remeasurement, exact source admission,
+  candidate parity, page splitting and projection-capacity fallback.
+- Twelve affected transcript integration binaries: 96/96 in 0.494 seconds,
+  `df5a7094-92d0-482d-ad25-69dba9f73c77`, including group retention, fallback/tail boundaries,
+  eviction, disposal, action exclusions and existing selection/activation behavior.
+- Theme schema/document/semantic qualification: 9/9 in 0.654 seconds,
+  `38852309-4e04-4258-aeab-cae8a1d5834d`.
+- Storage value qualification: 4/4 in 0.023 seconds,
+  `dfe9fc3e-ff31-4135-91a4-bf132b3f9e32`. Fault-enabled temporal/creation qualification passed
+  twelve unchanged cases in `266a81f2-d5e2-4350-a7a5-6f04f700e66d`. Its inheritance fixture omitted
+  projection of a sealed pending user input; the local correction preserves Pending and zero
+  finalized items. That corrected case passed 1/1 in 9.451 seconds,
+  `8770d1d6-ace8-4a04-880f-f4093dd09962`. No shared helper or production input changed, so the
+  twelve successful cases and application qualification remain applicable.
+
+Stable Cargo/nextest used explicit `.cargo/local.toml`, locked offline resolution, one build job,
+serial cases, debug disabled and nonincremental compilation. The final production library check
+passed in 23.70 seconds with existing warnings. Independent review checked all 28 qualified
+implementation/test source hashes before accepting the local storage-fixture correction and the
+complete boundary. No manifest, lockfile or owned-fork revision changed; preceding canonical
+single-GPUI publication evidence remains applicable.
+
+Native tests use GPUI keyboard/wheel dispatch and captured checked-clipboard writes. They mount a
+prepared context group in the actual ordinary measured host; real durable source/candidate
+admission is qualified separately. This is not Windows SendInput, privileged OS clipboard mutation,
+or end-to-end discussion creation qualification. Those creation and broader branch workflows keep
+their separate rework boundaries. Table mounting remains unaccepted.
+
+The [group-residency lesson](../failures/discussion-context-group-residency.md) retains the
+invalidated partial-eviction approach. Execution logs and positively registered native fixture
+homes reached their last review consumer at acceptance; their exact owned cleanup does not extend
+to shared caches or the unidentified fixtures documented by the preceding Copy boundary.

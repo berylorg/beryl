@@ -19,6 +19,32 @@ use beryl_model::{
 };
 
 impl SyndicStorage {
+    pub fn context_envelope_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        owner: beryl_model::DiscussionContextOwnerId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<crate::ContextEnvelopeRecord>, SyndicReadError> {
+        self.point_with_access::<crate::codec::ContextEnvelopesFamily>(
+            ReadAccess::Candidate(store),
+            crate::codec::ContextOwnerKey::from(owner),
+            limit,
+        )
+    }
+
+    pub fn draft_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        id: beryl_model::SyndicDraftId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<crate::DraftRecord>, SyndicReadError> {
+        self.point_with_access::<crate::codec::DraftsFamily>(
+            ReadAccess::Candidate(store),
+            id,
+            limit,
+        )
+    }
+
     pub fn projection_candidate(
         &self,
         store: &HomeCandidateRecoveryAccess<'_>,

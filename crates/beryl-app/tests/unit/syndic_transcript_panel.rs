@@ -18,6 +18,8 @@ mod code_viewport_tests;
 
 #[path = "syndic_transcript_panel/code_appearance.rs"]
 mod code_appearance_tests;
+#[path = "syndic_transcript_panel/context_appearance.rs"]
+mod context_appearance_tests;
 
 #[path = "syndic_transcript_panel/code_layout.rs"]
 mod code_layout_tests;

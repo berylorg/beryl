@@ -180,6 +180,7 @@ fn immutable_publication_shares_authored_bytes_across_viewport_updates() {
     let mut core = ResidentTranscriptCore::empty();
     core.apply_prepared_activation(
         PreparedTranscriptActivation {
+            discussion_context: None,
             view_id: Some(view.clone()),
             placement: TranscriptActivationPlacement::Tail,
             view_page_response: Some(TranscriptProviderResponseKind::ViewPage(

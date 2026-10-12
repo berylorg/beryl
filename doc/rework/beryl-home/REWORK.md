@@ -627,7 +627,9 @@
     are accepted with role, lifecycle, membership, selected-path, UTF-8/range and stale-generation
     rejection evidence. Creation implementation remains pending and ordinary fallback deletion
     retains its existing scope.
-- [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
+- [x] Mounted bounded readonly discussion context with exact provenance, themed realization and
+  Copy-only interaction; [acceptance](../../audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
+- [ ] Implement branch discussion creation, immutable selection provenance,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.
 - [x] Accepted closed generated parent-input provenance and schema with bounded historical

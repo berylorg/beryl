@@ -5,6 +5,10 @@ pub(crate) mod provider;
 
 pub(crate) use provider::*;
 
+#[path = "../../src/shell/syndic_transcript/discussion_context.rs"]
+pub(crate) mod discussion_context;
+pub(crate) use discussion_context::*;
+
 #[path = "../../src/shell/syndic_transcript/snapshot.rs"]
 pub(crate) mod snapshot;
 

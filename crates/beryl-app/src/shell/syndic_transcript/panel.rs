@@ -10,6 +10,8 @@ mod code_layout_mount;
 mod code_panel;
 #[path = "panel/code_viewport.rs"]
 mod code_viewport;
+#[path = "panel/context_appearance.rs"]
+mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
 
@@ -95,6 +97,7 @@ pub(crate) struct SyndicTranscriptPanel {
     resource_queue_position: Option<ResourceQueuePosition>,
     appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
     code_appearance: code_appearance::CodeAppearance,
+    context_appearance: context_appearance::ContextAppearance,
     code_panels: Vec<code_panel::MountedCodePanel>,
     save_admission: crate::main_window::WorkerAdmission,
     retired_code_panels: Vec<code_panel::MountedCodePanel>,
@@ -126,6 +129,7 @@ impl SyndicTranscriptPanel {
             resource_queue_position: None,
             appearance: None,
             code_appearance: code_appearance::CodeAppearance::default(),
+            context_appearance: context_appearance::ContextAppearance::default(),
             code_panels: Vec::new(),
             save_admission: Default::default(),
             retired_code_panels: Vec::new(),
@@ -499,6 +503,8 @@ impl SyndicTranscriptPanel {
         }
         self.code_appearance =
             code_appearance::CodeAppearance::prepare(appearance.prepared().appearance());
+        self.context_appearance =
+            context_appearance::ContextAppearance::prepare(appearance.prepared().appearance());
         self.appearance = Some(appearance);
         self.geometry = None;
         self.close_invalid_geometry();
@@ -1116,11 +1122,21 @@ impl SyndicTranscriptPanel {
                 let mut element = div()
                     .w(viewport_size.width)
                     .px_4()
-                    .py_2()
+                    .py(px(
+                        if matches!(
+                            record.provenance.source,
+                            super::ResidentRecordSource::LocalContext { .. }
+                        ) {
+                            0.0
+                        } else {
+                            8.0
+                        },
+                    ))
                     .child(render_record_content(
                         &snapshot,
                         record,
                         self.code_appearance.header_height(),
+                        &self.context_appearance,
                     ))
                     .into_any_element();
                 f32::from(
@@ -1250,6 +1266,7 @@ impl SyndicTranscriptPanel {
                 &self.host,
                 &self.code_wheel_owner,
                 &self.code_appearance,
+                &self.context_appearance,
                 self.staged.is_some(),
                 cx,
             ))
@@ -1287,6 +1304,7 @@ fn render_frame_window(
     host: &SyndicTranscriptHost,
     wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
     code_appearance: &code_appearance::CodeAppearance,
+    context_appearance: &context_appearance::ContextAppearance,
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> gpui::Div {
@@ -1316,6 +1334,7 @@ fn render_frame_window(
             host,
             wheel_owner,
             code_appearance,
+            context_appearance,
             commands_pending,
             cx,
         ));
@@ -1333,6 +1352,7 @@ fn render_realized_record(
     host: &SyndicTranscriptHost,
     wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
     code_appearance: &code_appearance::CodeAppearance,
+    context_appearance: &context_appearance::ContextAppearance,
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
@@ -1351,7 +1371,16 @@ fn render_realized_record(
         .min_h(px(frame_record.height_px))
         .overflow_hidden()
         .px_4()
-        .py_2()
+        .py(px(
+            if matches!(
+                record.provenance.source,
+                super::ResidentRecordSource::LocalContext { .. }
+            ) {
+                0.0
+            } else {
+                8.0
+            },
+        ))
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |panel, _, window, cx| {
@@ -1374,7 +1403,12 @@ fn render_realized_record(
                     cx,
                 )
             } else {
-                render_record_content(snapshot, record, code_appearance.header_height())
+                render_record_content(
+                    snapshot,
+                    record,
+                    code_appearance.header_height(),
+                    context_appearance,
+                )
             },
         )
         .when(is_selected, |row| {
@@ -1427,7 +1461,84 @@ fn render_record_content(
     snapshot: &ResidentTranscriptSnapshot,
     record: &ResidentPresentationRecord,
     code_header_height: f32,
+    appearance: &context_appearance::ContextAppearance,
 ) -> AnyElement {
+    if let super::ResidentRecordSource::LocalContext { group, chunk_index } =
+        &record.provenance.source
+    {
+        let mut callout = div()
+            .w_full()
+            .min_w(px(0.0))
+            .flex()
+            .flex_col()
+            .gap(px(8.0 * appearance.scale()))
+            .px(px(14.0 * appearance.scale()))
+            .border_l_1()
+            .border_r_1()
+            .border_color(appearance.border)
+            .bg(appearance.background)
+            .text_color(appearance.foreground);
+        if *chunk_index == 0 {
+            callout = callout
+                .pt(px(12.0 * appearance.scale()))
+                .border_t_1()
+                .rounded_t(px(8.0 * appearance.scale()))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(0.8 * appearance.heading.size / 10.0))
+                        .text_size(px(appearance.heading.size))
+                        .font(appearance.heading.font.clone())
+                        .text_color(appearance.heading.color)
+                        .children(
+                            "DISCUSSING"
+                                .chars()
+                                .map(|glyph| div().child(glyph.to_string())),
+                        ),
+                );
+        } else {
+            callout = callout.pt(px(8.0 * appearance.scale()));
+        }
+        let last = *chunk_index + 1 == group.chunk_count;
+        if last {
+            callout = callout
+                .pb(px(12.0 * appearance.scale()))
+                .border_b_1()
+                .rounded_b(px(8.0 * appearance.scale()));
+        }
+        if matches!(
+            record.kind,
+            ResidentPresentationRecordKind::ContextUnavailable
+        ) {
+            callout = callout.opacity(0.62);
+        }
+        callout = callout.child(match &record.kind {
+            ResidentPresentationRecordKind::TextChunk { text, .. } => div()
+                .text_size(px(appearance.body.size))
+                .font(appearance.body.font.clone())
+                .text_color(appearance.body.color)
+                .line_height(px(20.0 * appearance.scale()))
+                .whitespace_normal()
+                .child(SharedString::from(text.clone())),
+            _ => div()
+                .text_size(px(appearance.body.size))
+                .font(appearance.body.font.clone())
+                .text_color(appearance.body.color)
+                .child("Discussion context unavailable"),
+        });
+        if last && group.descriptor.is_some() {
+            callout = callout.child(
+                div()
+                    .text_size(px(appearance.provenance.size))
+                    .font(appearance.provenance.font.clone())
+                    .text_color(appearance.provenance.color)
+                    .whitespace_nowrap()
+                    .truncate()
+                    .child("Selected assistant passage · Parent conversation"),
+            );
+        }
+        return callout.into_any_element();
+    }
     match &record.kind {
         ResidentPresentationRecordKind::TextChunk { text, .. } => div()
             .w_full()
@@ -1482,6 +1593,9 @@ fn render_record_content(
         ResidentPresentationRecordKind::LocalAffordance => {
             div().w_full().h(px(1.0)).min_h(px(1.0)).into_any_element()
         }
+        ResidentPresentationRecordKind::ContextUnavailable => div()
+            .child("Discussion context unavailable")
+            .into_any_element(),
     }
 }
 

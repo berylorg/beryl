@@ -168,6 +168,13 @@ reserves space while absent.
 
 A synthetic-context group occupies one semantic position at its host-supplied insertion boundary. Its realized chunks stack inside one visual group with bounded chunk spacing; unrealized chunks retain host-supplied virtual extent. The group has no inner scroll container, so ordinary transcript scrolling carries the complete item through the viewport.
 
+The theme adapter maps the synthetic-context parts to their canonical local role ids. Active body
+typography supplies a uniform layout scale relative to built-in body typography: group padding,
+chunk gap, radius and body line height follow that scale. Heading letter spacing scales with active
+heading typography. Border width remains widget geometry; unavailable treatment composites the
+declared state opacity with the active role colors. Measurement and rendering consume the same
+resolved typography, colors and derived layout so appearance changes preserve coherent geometry.
+
 Remeasurement after width, font, theme, content, resource, fallback, or nested-widget changes preserves the active semantic anchor or detached manual position through stable realized identities and current measurements.
 
 The widget supplies bounded natural-layout observations to the host's measured-frame preparation

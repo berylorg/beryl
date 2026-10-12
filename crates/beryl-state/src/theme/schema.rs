@@ -152,9 +152,23 @@ const TEXT: &[ThemePropertyId] = &[
     ThemePropertyId::FontSize,
     ThemePropertyId::FontWeight,
 ];
+const CONTEXT_TEXT: &[ThemePropertyId] = &[
+    ThemePropertyId::Foreground,
+    ThemePropertyId::FontFamily,
+    ThemePropertyId::FontSize,
+    ThemePropertyId::FontWeight,
+];
 const ROOT: &[ThemePropertyId] = &ThemePropertyId::ALL;
 
 fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
+    if matches!(
+        id,
+        "transcript-view.context-heading"
+            | "transcript-view.context-body"
+            | "transcript-view.context-provenance"
+    ) {
+        return CONTEXT_TEXT;
+    }
     if id == "root" {
         return ROOT;
     }
@@ -284,6 +298,9 @@ fn is_text_role(id: &str) -> bool {
                 | "main-window-notice.detail-viewport.warning"
                 | "main-window-notice.detail-viewport.error"
                 | "main-window-notice.detail-viewport.info"
+                | "transcript-view.context-heading"
+                | "transcript-view.context-body"
+                | "transcript-view.context-provenance"
         )
 }
 
@@ -321,6 +338,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if let Some(palette) = context_palette(id) {
+        return palette;
+    }
     if let Some(palette) = notice_palette(id) {
         return palette;
     }
@@ -391,6 +411,32 @@ fn palette(id: &str) -> Palette {
         value.font_size = 12.0;
     }
     value
+}
+
+fn context_palette(id: &str) -> Option<Palette> {
+    let base = Palette {
+        background: [0x11, 0x18, 0x27],
+        border: [0x47, 0x55, 0x69],
+        foreground: [0xe2, 0xe8, 0xf0],
+        font_family: "Inter",
+        font_size: 14.0,
+        font_weight: 400,
+    };
+    Some(match id {
+        "transcript-view.context-group" | "transcript-view.context-body" => base,
+        "transcript-view.context-heading" => Palette {
+            foreground: [0x7d, 0xd3, 0xfc],
+            font_size: 10.0,
+            font_weight: 700,
+            ..base
+        },
+        "transcript-view.context-provenance" => Palette {
+            foreground: [0x94, 0xa3, 0xb8],
+            font_size: 11.0,
+            ..base
+        },
+        _ => return None,
+    })
 }
 
 fn notice_palette(id: &str) -> Option<Palette> {
@@ -701,6 +747,10 @@ const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
     ("transcript.context_menu.header.text", Some("popup.header")),
     ("transcript.pending", Some("transcript.shell")),
     ("transcript.unavailable", Some("transcript.shell")),
+    ("transcript-view.context-group", Some("surface.panel")),
+    ("transcript-view.context-heading", Some("text")),
+    ("transcript-view.context-body", Some("text")),
+    ("transcript-view.context-provenance", Some("text.subtle")),
     ("markdown.paragraph", Some("text")),
     ("markdown.heading", Some("text.value")),
     ("markdown.emphasis", Some("markdown.paragraph")),

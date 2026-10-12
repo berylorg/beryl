@@ -98,23 +98,15 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 764: Implement The Transcript Two-Method Keyboard Copy Contract (finished)
+# Phase 765: Mount Synthetic Discussion Context And Integrate Shared Copy (finished)
 
-Independent semantic review accepted Markdown-first and stripped-second keyboard Copy across
-mounted ordinary transcript and Code, bounded source-owned conversion/accounting, failure feedback,
-supersession and disposal. Combined qualification passed 155/155; affected integration passed
-97/97; final keyboard/native cases passed 6/6 and the production check passed. Durable evidence,
-limits and cleanup attribution are in the
-[mounting audit](audits/transcript-mounting-readiness.md#shared-transcript-keyboard-copy-acceptance).
-Synthetic context and Table integrate this accepted shared contract in their separate boundaries.
-
-# Phase 765: Mount Synthetic Discussion Context And Integrate Shared Copy (pending)
-
-Mount the renderer-authorized immutable branch-context envelope at its exact insertion boundary
-through bounded source admission and chunk adaptation. Establish stable local context provenance,
-selection geometry and copy-only eligibility, then qualify both shared keyboard Copy methods with
-native input. This separate prerequisite supplies the synthetic surface absent from the current
-provider and presentation pipeline; keep quote, edit, branch and turn-menu restrictions intact.
+Independent semantic review accepted exact branch-boundary context admission, stable local
+provenance, bounded themed chunks, Copy-only eligibility and both shared keyboard Copy methods.
+Native scrolling, remeasurement, group retention/remount, unavailable context and disposal passed.
+Combined qualification passed 167/167, affected integration 96/96 and theme 9/9; storage qualification
+and the production check passed. Durable evidence and native limits are in the
+[mounting audit](audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
+Indexed Table mounting remains the next separate acceptance boundary.
 
 # Phase 763: Mount The Indexed Transcript Table Panel (pending)
 

@@ -113,6 +113,9 @@ The package exposes grouped typed operations rather than raw record mechanics:
   cleanup attachment custody within that same candidate generation.
 - Thread, draft, turn, branch-context, usage, title-source, lineage, history-summary, and revision
   reads.
+- `context_envelope_candidate` and `draft_candidate` expose the same exact-owner or exact-draft
+  bounded point reads through borrowed home-candidate recovery access. They preserve ordinary
+  decoding, byte limits and typed failure without publishing the candidate or granting mutations.
 - Editor-candidate open, publish, dispose, exact-root read, edit-history append, undo/redo adoption,
   staging, build, settlement, materialization, restoration, and sealed-text range operations.
 - Accepted-input, capture, item, activity, transcript, projection, resource, binding, execution, and

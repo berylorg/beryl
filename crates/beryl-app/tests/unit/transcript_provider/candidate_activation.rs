@@ -187,6 +187,35 @@ fn populated_candidate_activation_preserves_text_resource_narrative_and_ordinary
 }
 
 #[test]
+fn candidate_context_activation_preserves_exact_envelope_and_missing_state() {
+    for submitted in [false, true] {
+        for text in [None, Some("# Context\n**exact**\n")] {
+            let fixture = Fixture::new();
+            super::discussion_context::seed_context(&fixture, text, submitted);
+            let expected = fixture
+                .reader
+                .read_activation(&fixture.request(1), &AtomicBool::new(false))
+                .unwrap()
+                .2;
+            let mut candidate = into_candidate(fixture);
+            let access = candidate.publication.recovery_access().unwrap();
+            let before = access.home_revision().unwrap();
+            let prepared = prepare_candidate_activation(
+                &access,
+                &candidate.storage,
+                WindowId::from_bytes([5; 16]),
+                SyndicThreadId::from_bytes([1; 16]),
+                &CommandCancellation::new(),
+            )
+            .unwrap();
+            assert_eq!(prepared, expected);
+            assert_eq!(access.home_revision().unwrap(), before);
+            candidate.publication.publish().unwrap().close().unwrap();
+        }
+    }
+}
+
+#[test]
 fn candidate_activation_preserves_stale_unpublished_and_local_capacity_results() {
     let fixture = Fixture::new();
     fixture.seed_projection("stale", 2);

@@ -1,27 +1,35 @@
 pub fn system_font_appearance(
     state: &beryl_state::BerylState,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, None, None)
+    prepare_system_font_appearance(state, None, None, None)
 }
 
 pub fn system_font_appearance_with_code_size(
     state: &beryl_state::BerylState,
     size: u32,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, Some(size), None)
+    prepare_system_font_appearance(state, Some(size), None, None)
 }
 
 pub fn system_font_appearance_with_code_header_size(
     state: &beryl_state::BerylState,
     size: u32,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, None, Some(size))
+    prepare_system_font_appearance(state, None, Some(size), None)
+}
+
+pub fn system_font_appearance_with_context_size(
+    state: &beryl_state::BerylState,
+    size: u32,
+) -> beryl_state::PreparedThemeAppearance {
+    prepare_system_font_appearance(state, None, None, Some(size))
 }
 
 fn prepare_system_font_appearance(
     state: &beryl_state::BerylState,
     code_size: Option<u32>,
     code_header_size: Option<u32>,
+    context_size: Option<u32>,
 ) -> beryl_state::PreparedThemeAppearance {
     use beryl_state::*;
     let mut source = String::from("schema = 1\nid = \"native-test\"\nname = \"Native Test\"\n");
@@ -40,6 +48,11 @@ fn prepare_system_font_appearance(
                 if let Some(size) = code_header_size {
                     source.push_str(&format!("font_size = {size}\n"));
                 }
+            }
+            if role.id().as_str() == "transcript-view.context-body"
+                && let Some(size) = context_size
+            {
+                source.push_str(&format!("font_size = {size}\n"));
             }
         }
     }

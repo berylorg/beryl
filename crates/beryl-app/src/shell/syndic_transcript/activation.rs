@@ -85,6 +85,7 @@ pub(crate) struct PreparedTranscriptActivation {
     pub(crate) placement: TranscriptActivationPlacement,
     pub(crate) view_page_response: Option<TranscriptProviderResponseKind>,
     pub(crate) projection_records_response: Option<TranscriptProviderResponseKind>,
+    pub(crate) discussion_context: Option<super::SyntheticContextGroup>,
 }
 
 impl PreparedTranscriptActivation {
@@ -99,6 +100,7 @@ impl PreparedTranscriptActivation {
             placement,
             view_page_response: Some(view_page_response),
             projection_records_response,
+            discussion_context: None,
         }
     }
 
@@ -108,6 +110,7 @@ impl PreparedTranscriptActivation {
             placement,
             view_page_response: None,
             projection_records_response: None,
+            discussion_context: None,
         }
     }
 

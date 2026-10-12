@@ -151,9 +151,9 @@ impl ResidentTranscriptQuoteTarget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResidentSelectedRecord {
     pub(crate) record_id: ResidentPresentationRecordId,
-    pub(crate) source: SyndicSourceProvenance,
-    pub(crate) projection_id: ProjectionRecordId,
-    pub(crate) projection_revision: ProviderRevision,
+    pub(crate) source: ResidentRecordSource,
+    pub(crate) projection_id: Option<ProjectionRecordId>,
+    pub(crate) projection_revision: Option<ProviderRevision>,
     pub(crate) copy_source_range: Range<u64>,
 }
 
@@ -236,21 +236,22 @@ pub(crate) fn resident_selected_record(
         }
     }
 
-    let ResidentRecordSource::Syndic(source) = &record.provenance.source else {
+    if !matches!(
+        &record.provenance.source,
+        ResidentRecordSource::Syndic(_) | ResidentRecordSource::LocalContext { .. }
+    ) {
         return Err(ResidentSelectionUnavailable::NonContentRecord {
             record_id: record.id.clone(),
         });
-    };
-    let Some(projection_id) = &record.provenance.projection_id else {
+    }
+    if matches!(&record.provenance.source, ResidentRecordSource::Syndic(_))
+        && (record.provenance.projection_id.is_none()
+            || record.provenance.projection_revision.is_none())
+    {
         return Err(ResidentSelectionUnavailable::MissingStableProvenance {
             record_id: record.id.clone(),
         });
-    };
-    let Some(projection_revision) = record.provenance.projection_revision else {
-        return Err(ResidentSelectionUnavailable::MissingStableProvenance {
-            record_id: record.id.clone(),
-        });
-    };
+    }
     let Some(copy_source_range) = record.provenance.copy_source_range.clone() else {
         return Err(ResidentSelectionUnavailable::MissingCopySource {
             record_id: record.id.clone(),
@@ -259,9 +260,9 @@ pub(crate) fn resident_selected_record(
 
     Ok(ResidentSelectedRecord {
         record_id: record.id.clone(),
-        source: source.clone(),
-        projection_id: projection_id.clone(),
-        projection_revision,
+        source: record.provenance.source.clone(),
+        projection_id: record.provenance.projection_id.clone(),
+        projection_revision: record.provenance.projection_revision,
         copy_source_range,
     })
 }

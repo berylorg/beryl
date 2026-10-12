@@ -30,17 +30,21 @@ fn earlier_selected_source_excludes_later_turn_but_inherits_parent_label_frontie
         AssetReferenceSetDigest::from_bytes([221; 32]),
     )
     .unwrap();
+    let later_item = SyndicItemId::from_bytes([223; 16]);
     let later = support::exact_cas::submit_prepared_current_draft(
         &store,
         storage.clone(),
         id(30),
         draft_id(222),
-        SyndicItemId::from_bytes([223; 16]),
+        later_item,
         &content,
         Some(assets),
         timestamp(90),
     );
-    support::exact_cas::converge_items(&store, storage.clone(), id(30), later);
+    support::exact_cas::project_item_if_needed(&store, storage.clone(), later_item);
+    let later_state = storage.turn_state(&store, later, limit()).unwrap().unwrap();
+    assert_eq!(later_state.lifecycle(), TurnLifecycle::Pending);
+    assert_eq!(later_state.finalized_item_count(), 0);
     support::exact_cas::converge_transcript(&store, storage.clone(), id(30));
     let prepared = prepare(&store, &storage);
     let child = prepared.intent().thread_id();

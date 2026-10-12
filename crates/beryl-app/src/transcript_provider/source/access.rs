@@ -29,6 +29,19 @@ macro_rules! point_read {
 }
 
 impl ActivationReadSource<'_> {
+    point_read!(turn, turn_candidate, beryl_model::SyndicTurnId, TurnRecord);
+    point_read!(
+        draft,
+        draft_candidate,
+        beryl_model::SyndicDraftId,
+        DraftRecord
+    );
+    point_read!(
+        context_envelope,
+        context_envelope_candidate,
+        beryl_model::DiscussionContextOwnerId,
+        ContextEnvelopeRecord
+    );
     point_read!(
         thread,
         thread_candidate,

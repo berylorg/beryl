@@ -58,6 +58,32 @@ impl SyndicTranscriptDiagnosticSnapshot {
         Self {
             resident_data: ResidentDataDiagnostics {
                 resident_record_count: snapshot.presentation.record_count(),
+                synthetic_context_group_count: usize::from(
+                    snapshot.presentation.records.iter().any(|record| {
+                        matches!(
+                            record.provenance.source,
+                            super::ResidentRecordSource::LocalContext { .. }
+                        )
+                    }),
+                ),
+                realized_context_chunk_count: snapshot.presentation.realized_range.clone().map_or(
+                    0,
+                    |range| {
+                        snapshot
+                            .presentation
+                            .records
+                            .iter()
+                            .enumerate()
+                            .filter(|(index, record)| {
+                                range.contains(index)
+                                    && matches!(
+                                        record.provenance.source,
+                                        super::ResidentRecordSource::LocalContext { .. }
+                                    )
+                            })
+                            .count()
+                    },
+                ),
                 resident_view_record_count: snapshot.resident.view_record_count,
                 resident_projection_record_count: snapshot.resident.projection_record_count,
                 resident_resource_metadata_count: snapshot.resident.resource_metadata_count,
@@ -121,6 +147,8 @@ pub(crate) struct CodePanelDiagnostics {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ResidentDataDiagnostics {
+    pub(crate) synthetic_context_group_count: usize,
+    pub(crate) realized_context_chunk_count: usize,
     pub(crate) resident_record_count: usize,
     pub(crate) resident_view_record_count: usize,
     pub(crate) resident_projection_record_count: usize,

@@ -108,6 +108,7 @@ pub(crate) enum ResidentPresentationRecordKind {
         target: ResidentFallbackTarget,
     },
     LocalAffordance,
+    ContextUnavailable,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -143,4 +144,8 @@ pub(crate) enum ResidentRecordSource {
     Syndic(SyndicSourceProvenance),
     LocalUi,
     LocalUiForSyndic(SyndicSourceProvenance),
+    LocalContext {
+        group: std::sync::Arc<super::SyntheticContextProvenance>,
+        chunk_index: usize,
+    },
 }

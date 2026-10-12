@@ -261,6 +261,7 @@ impl ResidentTranscriptCore {
         candidate.shared_presentation.get_mut().take();
         candidate.admit_view_page(page.clone());
         candidate.admit_projection_record_set(projections.clone());
+        candidate.admit_discussion_context(prepared.discussion_context.as_ref());
         candidate.reconcile_retained_ranges_after_release(&visible, &overscan);
         Some(candidate)
     }
@@ -604,6 +605,8 @@ impl ResidentTranscriptCore {
             });
         }
 
+        self.admit_discussion_context(prepared.discussion_context.as_ref());
+
         TranscriptActivationOutcome {
             activation_revision: self.presentation.activation_revision,
             presentation_revision: self.presentation.presentation_revision,
@@ -917,11 +920,27 @@ impl ResidentTranscriptCore {
             self.presentation_record_ids_for_optional_range(self.resident.visible_range.as_ref());
         let overscan_record_ids =
             self.presentation_record_ids_for_optional_range(self.resident.overscan_range.as_ref());
-        let release_record_ids: Vec<_> = obsolete_record_ids
+        let mut release_record_ids: Vec<_> = obsolete_record_ids
             .iter()
             .filter(|record_id| !record_id_in(&protected_record_ids, record_id))
             .cloned()
             .collect();
+        let releasing_context = self.presentation.records.iter().any(|record| {
+            matches!(
+                record.provenance.source,
+                ResidentRecordSource::LocalContext { .. }
+            ) && record_id_in(&release_record_ids, &record.id)
+        });
+        if releasing_context {
+            for record in self.presentation.records.iter().filter(|record| {
+                matches!(
+                    record.provenance.source,
+                    ResidentRecordSource::LocalContext { .. }
+                )
+            }) {
+                push_unique_record_id(&mut release_record_ids, record.id.clone());
+            }
+        }
         let preserved_count = obsolete_record_ids
             .len()
             .saturating_sub(release_record_ids.len());
@@ -1102,6 +1121,15 @@ impl ResidentTranscriptCore {
         let selection_command =
             ResidentSelectionCommand::new(command.presentation_revision, command.records.clone());
         let selection = self.validate_resident_selection(&selection_command)?;
+        if let Some(record) = selection
+            .records
+            .iter()
+            .find(|record| matches!(record.source, ResidentRecordSource::LocalContext { .. }))
+        {
+            return Err(ResidentSelectionUnavailable::NonContentRecord {
+                record_id: record.record_id.clone(),
+            });
+        }
         Ok(ResidentTranscriptQuoteTarget::new(
             selection.presentation_revision,
             selection.records,
@@ -1493,6 +1521,47 @@ impl ResidentTranscriptCore {
                 .active_resource_pins
                 .iter()
                 .any(|pinned_id| pinned_id == &resource_id)
+            {
+                push_unique_record_id(&mut record_ids, record.id.clone());
+            }
+        }
+        let context_boundary = self.presentation.records.iter().find_map(|record| {
+            if let ResidentRecordSource::LocalContext { group, .. } = &record.provenance.source
+                && (record_id_in(&record_ids, &record.id)
+                    || self.presentation.records.iter().any(|adjacent| {
+                        record_id_in(&record_ids, &adjacent.id)
+                            && presentation_record_position(adjacent)
+                                == Some(TranscriptViewPosition(group.insertion_after))
+                    }))
+            {
+                Some(group.insertion_after)
+            } else {
+                None
+            }
+        });
+        if let Some(boundary) = context_boundary {
+            for record in self.presentation.records.iter().filter(|record| {
+                matches!(
+                    record.provenance.source,
+                    ResidentRecordSource::LocalContext { .. }
+                )
+            }) {
+                push_unique_record_id(&mut record_ids, record.id.clone());
+            }
+            if let Some(record) = self
+                .presentation
+                .records
+                .iter()
+                .filter(|record| {
+                    matches!(
+                        record.provenance.source,
+                        ResidentRecordSource::Syndic(_) | ResidentRecordSource::LocalUiForSyndic(_)
+                    )
+                })
+                .min_by_key(|record| {
+                    presentation_record_position(record)
+                        .map_or(u64::MAX, |position| position.0.abs_diff(boundary))
+                })
             {
                 push_unique_record_id(&mut record_ids, record.id.clone());
             }
@@ -2671,7 +2740,22 @@ impl ResidentTranscriptCore {
         self.clear_active_context_menu_target_state();
         self.clear_active_media_action_target_state();
         let presentation_revision = self.presentation.presentation_revision.saturating_add(1);
-        let mut records = Vec::new();
+        let mut records: Vec<_> = self
+            .presentation
+            .records
+            .iter()
+            .filter(|record| {
+                matches!(
+                    record.provenance.source,
+                    ResidentRecordSource::LocalContext { .. }
+                )
+            })
+            .cloned()
+            .map(|mut record| {
+                record.provenance.presentation_revision = presentation_revision;
+                record
+            })
+            .collect();
 
         for view_record in &self.resident.view_records {
             let Some(projection_record) = self
@@ -2698,7 +2782,64 @@ impl ResidentTranscriptCore {
         self.presentation.visible_range = None;
         self.presentation.state = self.presentation_state_for_records(!records.is_empty());
         self.presentation.records = Arc::new(records);
+        let resource_ids = self.presentation_resource_ids();
+        sort_presentation_records(
+            Arc::make_mut(&mut self.presentation.records).as_mut_slice(),
+            &self.resident.view_records,
+            &resource_ids,
+        );
         self.apply_fallback_records_to_presentation();
+        self.refresh_budget_accounting();
+    }
+
+    fn admit_discussion_context(&mut self, context: Option<&super::SyntheticContextGroup>) {
+        let Some(context) = context else {
+            return;
+        };
+        let boundary = context.provenance.insertion_after;
+        let Some(first) = self.resident.view_records.first() else {
+            return;
+        };
+        let Some(last) = self.resident.view_records.last() else {
+            return;
+        };
+        if first.position.0 > boundary.saturating_add(1) || last.position.0 < boundary {
+            return;
+        }
+        let revision = self.presentation.presentation_revision.saturating_add(1);
+        let incoming = context.presentation_records(revision);
+        let authored_count = self
+            .presentation
+            .records
+            .iter()
+            .filter(|record| {
+                !matches!(
+                    record.provenance.source,
+                    ResidentRecordSource::LocalContext { .. }
+                )
+            })
+            .count();
+        if incoming.len().saturating_add(authored_count) > self.policy.max_presentation_records {
+            return;
+        }
+        self.clear_active_selection_state();
+        self.clear_active_quote_target_state();
+        let records = Arc::make_mut(&mut self.presentation.records);
+        records.retain(|record| {
+            !matches!(
+                record.provenance.source,
+                ResidentRecordSource::LocalContext { .. }
+            )
+        });
+        records.extend(incoming);
+        for record in records.iter_mut() {
+            record.provenance.presentation_revision = revision;
+        }
+        sort_presentation_records(records, &self.resident.view_records, &[]);
+        self.presentation.presentation_revision = revision;
+        self.presentation.realized_range = None;
+        self.presentation.visible_range = None;
+        self.shared_presentation.get_mut().take();
         self.refresh_budget_accounting();
     }
 
@@ -2903,24 +3044,27 @@ fn presentation_record_sort_key(
     record: &ResidentPresentationRecord,
     view_records: &[TranscriptViewRecord],
     resource_ids: &[ResourceId],
-) -> (u8, u64, String) {
+) -> (u8, u64, u8, String) {
+    if let ResidentRecordSource::LocalContext { group, .. } = &record.provenance.source {
+        return (0, group.insertion_after, 1, record.id.0.clone());
+    }
     if let Some(projection_id) = &record.provenance.projection_id {
         return view_records
             .iter()
             .find(|view_record| view_record.projection_id == *projection_id)
-            .map(|view_record| (0, view_record.position.0, record.id.0.clone()))
-            .unwrap_or_else(|| (2, u64::MAX, record.id.0.clone()));
+            .map(|view_record| (0, view_record.position.0, 0, record.id.0.clone()))
+            .unwrap_or_else(|| (2, u64::MAX, 0, record.id.0.clone()));
     }
 
     if let Some(resource_id) = presentation_record_resource_id(record) {
         return resource_ids
             .iter()
             .position(|resident_id| resident_id == &resource_id)
-            .map(|index| (1, index as u64, record.id.0.clone()))
-            .unwrap_or_else(|| (2, u64::MAX, record.id.0.clone()));
+            .map(|index| (1, index as u64, 0, record.id.0.clone()))
+            .unwrap_or_else(|| (2, u64::MAX, 0, record.id.0.clone()));
     }
 
-    (2, u64::MAX, record.id.0.clone())
+    (2, u64::MAX, 0, record.id.0.clone())
 }
 
 fn sort_presentation_records(
@@ -3001,7 +3145,7 @@ fn syndic_source_for_record(record: &ResidentPresentationRecord) -> Option<Syndi
         ResidentRecordSource::Syndic(source) | ResidentRecordSource::LocalUiForSyndic(source) => {
             Some(source.clone())
         }
-        ResidentRecordSource::LocalUi => None,
+        ResidentRecordSource::LocalUi | ResidentRecordSource::LocalContext { .. } => None,
     }
 }
 
@@ -3063,6 +3207,9 @@ fn presentation_record_position(
             source.position
         }
         ResidentRecordSource::LocalUi => None,
+        ResidentRecordSource::LocalContext { group, .. } => {
+            Some(TranscriptViewPosition(group.insertion_after))
+        }
     }
 }
 
