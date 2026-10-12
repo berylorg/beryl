@@ -98,25 +98,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 761: Implement Indexed Transcript Resource Queries (finished)
+# Phase 762: Mount The Indexed Transcript Code Panel (finished)
 
-Independent storage and delivery reviews accepted bounded Code/Table companion construction,
-exact frozen range/display/anchor queries, the ten-family V7 declaration, selected-history transport,
-residency and native measured Pending-to-Ready publication. Successor anchors preserve exact source
-positions; competing-frontier refusals refresh only after proven peer progress, preserving the
-original command outcome. The [refusal lesson](failures/indexed-resource-pending-refusal.md) is retained.
-
-Acceptance includes 129 storage structure tests, 35 resident/release/activation tests, all 68
-provider/panel tests (`406be4a5-52df-46cf-931f-d2199d6a3a82`, 47.792 seconds), and the minimized
-native measured test (`030e5b37-f542-451b-9610-1609dbec103b`, 4.886 seconds). Non-test app check
-(20.55 seconds), formatting and scoped whitespace checks passed. Mounted Code/Table widgets and
-their interaction/geometry remain the following acceptance boundaries.
-
-# Phase 762: Mount The Indexed Transcript Code Panel (pending)
-
-Mount the authoritative Code panel on accepted indexed queries with bounded inner virtualization,
-language/line facts, exact source actions and same-source anchors. Verify actual native interaction,
-inner demand/disposal and coherent measured outer geometry with minimized startup where practical.
+Independent behavior and delivery review accepted bounded mounted Code, no-wrap/font geometry,
+source anchors, selection/Copy, confirmed native replacement Save and original-root shutdown custody.
+Combined Beryl passed 138/138; native Save/checked clipboard passed 23/23. Published dependency pins
+and canonical locked metadata resolve one GPUI; widget and root production checks passed and the
+analyzer restarted. Durable qualification and reused evidence are in the
+[mounting audit](audits/transcript-mounting-readiness.md#mounted-indexed-code-acceptance).
 
 # Phase 763: Mount The Indexed Transcript Table Panel (pending)
 

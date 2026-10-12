@@ -8,6 +8,7 @@ pub(crate) struct SyndicTranscriptDiagnosticSnapshot {
     pub(crate) resident_data: ResidentDataDiagnostics,
     pub(crate) frame: ResidentFrameDiagnostics,
     pub(crate) demand_facts: DemandFactSinkSnapshot,
+    pub(crate) code_panels: Vec<CodePanelDiagnostics>,
 }
 
 impl SyndicTranscriptDiagnosticSnapshot {
@@ -16,6 +17,7 @@ impl SyndicTranscriptDiagnosticSnapshot {
             resident_data: ResidentDataDiagnostics::default(),
             frame: ResidentFrameDiagnostics::default(),
             demand_facts: DemandFactSinkSnapshot::default(),
+            code_panels: Vec::new(),
         }
     }
 
@@ -91,6 +93,30 @@ impl SyndicTranscriptDiagnosticSnapshot {
             ..Self::empty()
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CodePanelDiagnostics {
+    pub(crate) key: Option<[u8; 16]>,
+    pub(crate) source_continuity: &'static str,
+    pub(crate) source_bytes: Option<u64>,
+    pub(crate) logical_lines: u64,
+    pub(crate) realized_source_range: Option<std::ops::Range<u64>>,
+    pub(crate) realized_visual_lines: usize,
+    pub(crate) overscan: u64,
+    pub(crate) wrap_mode: &'static str,
+    pub(crate) viewport_size: (f32, f32),
+    pub(crate) selected_for_wheel: bool,
+    pub(crate) anchor_present: bool,
+    pub(crate) anchor_remap_result: &'static str,
+    pub(crate) anchor_visual_offset: Option<f32>,
+    pub(crate) reconciliation_micros: u64,
+    pub(crate) layout_epoch: u64,
+    pub(crate) layout_state: &'static str,
+    pub(crate) layout_checkpoints: usize,
+    pub(crate) layout_fragments: usize,
+    pub(crate) layout_charged_bytes: usize,
+    pub(crate) complete_inline_extent: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

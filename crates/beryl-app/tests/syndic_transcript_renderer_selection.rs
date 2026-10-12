@@ -28,6 +28,7 @@ fn source_provenance(
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{name}"))),
         item_id: Some(SyndicItemId(format!("item-{name}"))),
+        block_id: None,
         projection_id: Some(projection_id),
         resource_id: None,
         source_range: Some(position..position + 8),

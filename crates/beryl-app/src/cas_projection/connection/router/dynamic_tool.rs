@@ -266,6 +266,7 @@ impl EventRouter {
                     });
                 match delivery {
                     Ok(()) => {
+                        target.history_wake.notify();
                         state.request_work_stage(
                             permit.admission.work_serial,
                             crate::cas_projection::ConnectionRequestWorkStage::Queued,

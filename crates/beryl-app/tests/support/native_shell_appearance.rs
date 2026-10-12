@@ -1,6 +1,28 @@
 pub fn system_font_appearance(
     state: &beryl_state::BerylState,
 ) -> beryl_state::PreparedThemeAppearance {
+    prepare_system_font_appearance(state, None, None)
+}
+
+pub fn system_font_appearance_with_code_size(
+    state: &beryl_state::BerylState,
+    size: u32,
+) -> beryl_state::PreparedThemeAppearance {
+    prepare_system_font_appearance(state, Some(size), None)
+}
+
+pub fn system_font_appearance_with_code_header_size(
+    state: &beryl_state::BerylState,
+    size: u32,
+) -> beryl_state::PreparedThemeAppearance {
+    prepare_system_font_appearance(state, None, Some(size))
+}
+
+fn prepare_system_font_appearance(
+    state: &beryl_state::BerylState,
+    code_size: Option<u32>,
+    code_header_size: Option<u32>,
+) -> beryl_state::PreparedThemeAppearance {
     use beryl_state::*;
     let mut source = String::from("schema = 1\nid = \"native-test\"\nname = \"Native Test\"\n");
     for (_, role) in canonical_theme_schema().roles() {
@@ -9,6 +31,16 @@ pub fn system_font_appearance(
                 "\n[[role]]\nid = \"{}\"\nfont_family = \".SystemUIFont\"\n",
                 role.id().as_str()
             ));
+            if role.id().as_str() == "code_panel.body.text" {
+                if let Some(size) = code_size {
+                    source.push_str(&format!("font_size = {size}\n"));
+                }
+            }
+            if role.id().as_str() == "code_panel.header.text" {
+                if let Some(size) = code_header_size {
+                    source.push_str(&format!("font_size = {size}\n"));
+                }
+            }
         }
     }
     let document =

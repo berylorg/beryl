@@ -107,8 +107,8 @@ impl MainWindowShellRoot {
         draft.composer = Some((mount, resident.entity_id(), close));
         let input = resident.read(cx).gpui_input();
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
-        self.running_threads.transcript =
-            cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
+        let panel = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
+        self.running_threads.replace_transcript(panel, cx);
         self.stage_recovered_transcript(
             selection,
             transcript,
@@ -119,6 +119,14 @@ impl MainWindowShellRoot {
             cx,
         );
         cx.notify();
+        #[cfg(all(test, feature = "test-faults"))]
+        if std::mem::take(
+            &mut self
+                .running_threads
+                .fixture_reject_creation_transcript_mount,
+        ) {
+            return Err("retained fresh New Thread transcript mount was refused".into());
+        }
         Ok(close)
     }
 
@@ -223,7 +231,8 @@ impl MainWindowShellRoot {
         controller.composer_mount = Some(attachment.original.0.clone());
         draft.composer = Some(attachment.original);
         self.composer_observer = None;
-        self.running_threads.transcript = attachment.transcript;
+        self.running_threads
+            .replace_transcript(attachment.transcript, cx);
         self.running_threads.transcript_claim = attachment.transcript_claim;
         cx.notify();
         Ok(true)

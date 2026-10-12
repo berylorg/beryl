@@ -9,9 +9,15 @@ pub(crate) struct ComposerHostSelectionSave {
 }
 
 impl ComposerHostSelectionSave {
-    pub(crate) fn binding(self) -> ComposerHostBinding { self.binding }
-    pub(crate) fn checkpoint(self) -> DraftEditorCandidateActivationBindingV1 { self.candidate }
-    pub(crate) fn selector(self) -> DraftEditorCurrentSelectorV1 { self.selector }
+    pub(crate) fn binding(self) -> ComposerHostBinding {
+        self.binding
+    }
+    pub(crate) fn checkpoint(self) -> DraftEditorCandidateActivationBindingV1 {
+        self.candidate
+    }
+    pub(crate) fn selector(self) -> DraftEditorCurrentSelectorV1 {
+        self.selector
+    }
     pub(crate) fn flush_ticket(self) -> ComposerHostFlushTicket {
         self.flush
     }

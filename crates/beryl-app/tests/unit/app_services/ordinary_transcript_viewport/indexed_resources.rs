@@ -2,6 +2,46 @@ use super::*;
 use crate::syndic_transcript::{IndexedResourceDemand, IndexedResourceQuery, IndexedResourceValue};
 use syndic_storage::indexed_resource as index;
 
+#[path = "indexed_resources/code_interaction.rs"]
+mod code_interaction;
+
+#[path = "indexed_resources/code_ownership.rs"]
+mod code_ownership;
+
+#[path = "indexed_resources/code_anchor.rs"]
+mod code_anchor;
+
+#[path = "indexed_resources/code_recovery.rs"]
+mod code_recovery;
+
+#[path = "indexed_resources/code_horizontal.rs"]
+mod code_horizontal;
+
+#[path = "indexed_resources/code_long_line.rs"]
+mod code_long_line;
+
+#[path = "indexed_resources/code_native_mount.rs"]
+mod code_native_mount;
+
+#[path = "indexed_resources/code_history_revision.rs"]
+mod code_history_revision;
+
+#[path = "indexed_resources/history_storage.rs"]
+mod history_storage;
+
+#[path = "indexed_resources/code_extent_revision.rs"]
+mod code_extent_revision;
+
+#[path = "indexed_resources/code_streaming.rs"]
+mod code_streaming;
+
+mod native_appearance {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/support/native_shell_appearance.rs"
+    ));
+}
+
 #[test]
 fn native_measured_indexed_resource_build_retries_pending_and_publishes_ready() {
     run_mounted_with_prepared_home_retained(

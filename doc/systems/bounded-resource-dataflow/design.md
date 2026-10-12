@@ -172,8 +172,9 @@ of every allocation made by Beryl or its dependencies.
 - Transcript activation and scrolling request revision-bound pages and only the indexed source-byte
   or resource ranges needed around the selected viewport. The host retains a configured visible
   working set plus modest overscan and evicts obsolete pages.
-- Live text deltas use bounded queues and bounded transient coalescing. Durable reconciliation
-  prevents the live suffix from becoming a second permanent copy of the response.
+- Live capture saves bounded Syndic chunks. Streaming presentation reads their coherent projection
+  frontiers through the same bounded residency path as completed history; there is no parallel
+  CAS-text suffix or whole-message presentation buffer.
 - Activity, catalog, lineage, model, and history collections remain paged when their logical count
   can grow substantially. Virtualization bounds rendered rows; page/cache policy bounds the
   application working set.

@@ -11,7 +11,7 @@ use syndic_storage::{
 mod indexed;
 pub(crate) use crate::syndic_transcript::{
     IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
-    ResourceDeliveryResponse,
+    IndexedSourceResponse, ResourceDeliveryResponse,
 };
 pub(crate) use indexed::{PreparedIndexedResource, TranscriptIndexedResourceRequest};
 

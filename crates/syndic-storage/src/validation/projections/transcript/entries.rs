@@ -49,7 +49,7 @@ pub(super) fn validate(
             &entry.projection_id(),
             "transcript entry projection is missing",
         )?;
-        if item.revision() != entry.item_revision()
+        if item.revision() < entry.item_revision()
             || projection.revision() != entry.projection_revision()
             || projection.item_id() != item.id()
             || projection.turn_id() != item.turn_id()
@@ -93,8 +93,8 @@ pub(super) fn validate(
         if path.turn_id() != turn.id() {
             return invariant("transcript entry is outside its selected path");
         }
-        if item.ordinal().get() > path.finalized_item_count() {
-            return invariant("transcript entry references an unfinalized item snapshot");
+        if item.ordinal().get() > path.item_count() {
+            return invariant("transcript entry exceeds its item snapshot frontier");
         }
         if entry.generation() == head.generation()
             && head.lifecycle() == ProjectionLifecycle::Current
@@ -104,7 +104,8 @@ pub(super) fn validate(
                 &item.id(),
                 "current transcript entry item head is missing",
             )?;
-            if item_head.lifecycle() != ProjectionLifecycle::Current
+            if item.revision() != entry.item_revision()
+                || item_head.lifecycle() != ProjectionLifecycle::Current
                 || item_head.generation() != entry.item_projection_generation()
             {
                 return invariant("current transcript entry references an uncurrent item set");

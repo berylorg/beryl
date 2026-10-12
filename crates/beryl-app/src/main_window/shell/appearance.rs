@@ -69,6 +69,31 @@ struct PreparedShellAppearance {
     appearance: MainWindowShellAppearance,
 }
 
+#[cfg(test)]
+impl MainWindowShellRoot {
+    pub(crate) fn test_appearance(&self) -> Arc<AppearanceGeneration> {
+        self.controller
+            .as_ref()
+            .unwrap()
+            .appearance
+            .generation
+            .clone()
+    }
+
+    pub(crate) fn test_apply_appearance(
+        window: WindowHandle<Self>,
+        generation: Arc<AppearanceGeneration>,
+        app: &mut App,
+    ) {
+        let prepared = Box::new(PreparedShellAppearance {
+            window,
+            appearance: MainWindowShellAppearance::prepare(generation),
+        });
+        prepared.validate(app).unwrap();
+        prepared.commit(app);
+    }
+}
+
 impl AppearanceWindowAdapter for ShellAppearanceAdapter {
     fn id(&self) -> WindowAdapterId {
         self.id

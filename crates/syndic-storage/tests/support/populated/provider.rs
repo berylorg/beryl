@@ -311,18 +311,9 @@ impl ProviderItemFixture {
                 receipts,
             );
             turn.state_revision = turn.state_revision.checked_next().unwrap();
+            converge_item_projection(store, storage, prepared.initial_build().item_id(), receipts);
             converge_transcript(store, storage, turn.thread, receipts);
         }
-        converge_item_projection(
-            store,
-            storage,
-            self.prepared
-                .first()
-                .expect("provider fixture has no prepared frame")
-                .initial_build()
-                .item_id(),
-            receipts,
-        );
     }
 }
 

@@ -9,8 +9,8 @@ use std::ops::Range;
 #[path = "provider/indexed.rs"]
 mod indexed;
 pub(crate) use indexed::{
-    IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
-    ResourceDeliveryResponse,
+    IndexedResourceDemand, IndexedResourceKind, IndexedResourceQuery, IndexedResourceResponse,
+    IndexedResourceValue, IndexedSourceResponse, ResourceDeliveryResponse, resource_index,
 };
 
 pub(crate) type TranscriptProviderResult =
@@ -249,6 +249,7 @@ pub(crate) struct SyndicSourceProvenance {
     pub(crate) position: Option<TranscriptViewPosition>,
     pub(crate) turn_id: Option<SyndicTurnId>,
     pub(crate) item_id: Option<SyndicItemId>,
+    pub(crate) block_id: Option<[u8; 32]>,
     pub(crate) projection_id: Option<ProjectionRecordId>,
     pub(crate) resource_id: Option<ResourceId>,
     pub(crate) source_range: Option<Range<u64>>,

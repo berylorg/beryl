@@ -65,5 +65,6 @@ impl HistoryAccess<'_> {
     point_read!(transcript_view_head, transcript_view_head_candidate, (id: SyndicThreadId), TranscriptViewHeadRecord);
     point_read!(item_projection_set, item_projection_set_candidate, (item: SyndicItemId, generation: ItemProjectionGeneration), ItemProjectionSetRecord);
     point_read!(item_projection_build, item_projection_build_candidate, (item: SyndicItemId, generation: ItemProjectionGeneration), ItemProjectionBuildRecord);
+    point_read!(latest_item_projection_build, latest_item_projection_build_candidate, (item: SyndicItemId), ItemProjectionBuildRecord);
     point_read!(transcript_build, transcript_build_candidate, (thread: SyndicThreadId, generation: TranscriptGeneration), TranscriptBuildRecord);
 }

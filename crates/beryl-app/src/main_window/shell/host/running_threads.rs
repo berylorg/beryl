@@ -21,6 +21,10 @@ pub(super) use command::{render_command, render_picker};
 
 const RUNNING_READ_RESOURCE_CAPACITY: usize = 9;
 
+fn running_resource_capacity_available(retained: usize) -> bool {
+    retained.saturating_add(2) <= RUNNING_READ_RESOURCE_CAPACITY
+}
+
 struct RunningReadOutput<T> {
     result: T,
     _release: crate::main_window::conversation_composer_mount::worker::ResourceWorker<fn()>,
@@ -73,6 +77,8 @@ pub(super) struct RunningThreadsContribution {
     )>,
     #[cfg(all(test, feature = "test-faults"))]
     pub(super) fixture_reject_creation_recovery_mount: bool,
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fixture_reject_creation_transcript_mount: bool,
     generation: Arc<AtomicU64>,
     cancellation: ProjectionCancellationToken,
     poll: Option<gpui::Task<()>>,
@@ -81,6 +87,7 @@ pub(super) struct RunningThreadsContribution {
     views_retired: bool,
     read_drain_task: Option<gpui::Task<()>>,
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
+    resource_subscription: Option<gpui::Subscription>,
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
     transcript_demand: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
@@ -142,7 +149,43 @@ impl Drop for RunningThreadsContribution {
 }
 
 impl RunningThreadsContribution {
+    fn resource_subscription(
+        transcript: &Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
+        cx: &mut Context<MainWindowShellRoot>,
+    ) -> gpui::Subscription {
+        cx.subscribe(
+            transcript,
+            |root, _, _: &crate::syndic_transcript::ResourceViewportDemandChanged, cx| {
+                if !root.running_threads.views_retired {
+                    cx.notify();
+                }
+            },
+        )
+    }
+
+    pub(in crate::main_window::shell::host) fn replace_transcript(
+        &mut self,
+        transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
+        cx: &mut Context<MainWindowShellRoot>,
+    ) {
+        let admission = self.workers.admission(RUNNING_READ_RESOURCE_CAPACITY - 2);
+        transcript.update(cx, |panel, _| panel.set_code_save_admission(admission));
+        self.resource_subscription = Some(Self::resource_subscription(&transcript, cx));
+        self.transcript = transcript;
+    }
+
+    fn resume_read_admission(&mut self) {
+        self.reads_suspended = false;
+        self.workers.suspend(false);
+    }
+
     pub(super) fn new(cx: &mut Context<MainWindowShellRoot>) -> Self {
+        let workers =
+            crate::main_window::conversation_composer_mount::worker::WorkerLifetime::default();
+        let admission = workers.admission(RUNNING_READ_RESOURCE_CAPACITY - 2);
+        let transcript = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
+        transcript.update(cx, |panel, _| panel.set_code_save_admission(admission));
+        let resource_subscription = Self::resource_subscription(&transcript, cx);
         Self {
             reader: None,
             #[cfg(all(test, feature = "test-faults"))]
@@ -167,14 +210,17 @@ impl RunningThreadsContribution {
             fixture_claim_widget_release: None,
             #[cfg(all(test, feature = "test-faults"))]
             fixture_reject_creation_recovery_mount: false,
+            #[cfg(all(test, feature = "test-faults"))]
+            fixture_reject_creation_transcript_mount: false,
             generation: Arc::new(AtomicU64::new(1)),
             cancellation: ProjectionCancellationToken::new(),
             poll: None,
-            workers: Default::default(),
+            workers,
             reads_suspended: false,
             views_retired: false,
             read_drain_task: None,
-            transcript: cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new),
+            transcript,
+            resource_subscription: Some(resource_subscription),
             transcript_provider: None,
             transcript_task: None,
             transcript_demand: None,
@@ -333,7 +379,7 @@ impl MainWindowShellRoot {
     }
 
     fn running_read_capacity_available(&self) -> bool {
-        self.running_threads.workers.retained().saturating_add(2) <= RUNNING_READ_RESOURCE_CAPACITY
+        running_resource_capacity_available(self.running_threads.workers.retained())
     }
 
     fn cancel_running_page_reads(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -354,6 +400,10 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) {
         self.running_threads.reads_suspended = true;
+        self.running_threads.workers.suspend(true);
+        self.running_threads
+            .transcript
+            .update(cx, |panel, cx| panel.fence_code_saves(cx));
         self.thread_navigation.status = [None, None];
         self.running_threads.cancellation.cancel();
         self.running_threads.poll = None;
@@ -415,7 +465,7 @@ impl MainWindowShellRoot {
         {
             return;
         }
-        self.running_threads.reads_suspended = false;
+        self.running_threads.resume_read_admission();
         self.running_threads.read_drain_task = None;
         self.settle_thread_navigation_history(cx);
         self.sync_running_threads(window, cx);
@@ -439,6 +489,7 @@ impl MainWindowShellRoot {
         self.running_threads.retire_source()?;
         self.running_threads.read_drain_task = None;
         self.running_threads.views_retired = true;
+        self.running_threads.resource_subscription = None;
         if let Some(picker) = self.running_threads.picker.take() {
             picker.update(cx, |picker, picker_cx| picker.dismiss(window, picker_cx));
         }
@@ -505,7 +556,7 @@ impl MainWindowShellRoot {
             if !self.running_thread_reads_drained() {
                 return;
             }
-            self.running_threads.reads_suspended = false;
+            self.running_threads.resume_read_admission();
             self.running_threads.read_drain_task = None;
             self.settle_thread_navigation_history(cx);
         }
@@ -535,7 +586,7 @@ impl MainWindowShellRoot {
                 return;
             }
             self.running_threads.reader = reader;
-            self.running_threads.reads_suspended = false;
+            self.running_threads.resume_read_admission();
             self.running_threads.read_drain_task = None;
         }
         if self.running_threads.measured_attachment.is_some()

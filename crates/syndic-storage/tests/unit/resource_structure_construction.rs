@@ -286,7 +286,7 @@ fn admission_preserves_maximum_supported_language_in_exact_binding() {
 fn ledger_reserves_all_reads_and_refuses_atomically_at_each_ceiling() {
     let mut ledger = Ledger::default();
     ledger.reserve_read(520, 524_288, 524_288).unwrap();
-    let full = ledger;
+    let full = ledger.clone();
     for request in [(1, 0, 0), (0, 1, 0), (0, 0, 1), (usize::MAX, 0, 0)] {
         assert!(matches!(
             ledger.reserve_read(request.0, request.1, request.2),
@@ -298,7 +298,7 @@ fn ledger_reserves_all_reads_and_refuses_atomically_at_each_ceiling() {
     for _ in 0..520 {
         fragmented.reserve_read(1, 512, 512).unwrap();
     }
-    let before = fragmented;
+    let before = fragmented.clone();
     assert!(matches!(
         fragmented.reserve_read(1, 512, 512),
         Err(ConstructionError::Limit)
@@ -312,7 +312,7 @@ fn ledger_enforces_normal_and_completion_write_envelopes() {
     for _ in 0..515 {
         ledger.reserve_write(1, 1, false).unwrap();
     }
-    let before = ledger;
+    let before = ledger.clone();
     assert!(matches!(
         ledger.reserve_write(1, 1, false),
         Err(ConstructionError::Limit)
@@ -320,7 +320,7 @@ fn ledger_enforces_normal_and_completion_write_envelopes() {
     assert_eq!(ledger, before);
     ledger.reserve_write(40, 4_608, true).unwrap();
     ledger.reserve_write(24, 168, true).unwrap();
-    let before = ledger;
+    let before = ledger.clone();
     assert!(matches!(
         ledger.reserve_write(1, 1, true),
         Err(ConstructionError::Limit)
@@ -328,7 +328,7 @@ fn ledger_enforces_normal_and_completion_write_envelopes() {
     assert_eq!(ledger, before);
     let mut byte_bound = Ledger::default();
     byte_bound.reserve_write(40, 262_104, false).unwrap();
-    let before = byte_bound;
+    let before = byte_bound.clone();
     assert!(matches!(
         byte_bound.reserve_write(0, 1, false),
         Err(ConstructionError::Limit)

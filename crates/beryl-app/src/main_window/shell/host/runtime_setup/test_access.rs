@@ -119,7 +119,11 @@ impl MainWindowShellRoot {
     pub(crate) fn test_thread_confirmation_visible_identity(
         &self,
         app: &App,
-    ) -> (gpui::EntityId, usize, Option<beryl_state::RememberedTarget>) {
+    ) -> (
+        gpui::EntityId,
+        gpui::EntityId,
+        Option<beryl_state::RememberedTarget>,
+    ) {
         let controller = self.controller.as_ref().unwrap();
         let remembered = match &controller.content {
             ShellContent::Selected { window, .. } => window.remembered_target(),
@@ -131,10 +135,10 @@ impl MainWindowShellRoot {
             ShellContent::RecoveredThreadless { source, .. } => source.window().remembered_target(),
             ShellContent::Retired { .. } => None,
         };
-        let transcript = self.running_threads.transcript.read(app).snapshot();
+        let _ = app;
         (
             controller.composer_mount.as_ref().unwrap().entity_id(),
-            Arc::as_ptr(&transcript) as usize,
+            self.running_threads.transcript.entity_id(),
             remembered,
         )
     }
@@ -163,6 +167,11 @@ impl MainWindowShellRoot {
 
     pub(crate) fn test_reject_thread_creation_recovery_mount(&mut self) {
         self.running_threads.fixture_reject_creation_recovery_mount = true;
+    }
+
+    pub(crate) fn test_reject_thread_creation_transcript_mount(&mut self) {
+        self.running_threads
+            .fixture_reject_creation_transcript_mount = true;
     }
 
     pub(crate) fn test_thread_creation_recovery_mount(

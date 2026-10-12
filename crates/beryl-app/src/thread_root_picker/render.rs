@@ -220,6 +220,7 @@ impl Render for ThreadRootPicker {
                             this.collection.cancel_navigation();
                             if this.full.external_command_reason.is_some() {
                                 this.search.read(cx).focus_handle(cx).focus(window);
+                                cx.stop_propagation();
                             }
                             cx.notify();
                         }),

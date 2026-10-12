@@ -1749,7 +1749,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   replacement moved the origin thread onto another branch. That work changes the retained turn,
   but it must not stale or reorder the origin thread's selected transcript or change its selected
   history summary unless bounded ancestry proof shows that the turn is still selected.
-- A named thread's transcript-view head and ordered entries remain a derived selected-path index. They may advance when the thread tail changes or while unfinished projection work converges, but recomposition only selects and orders finalized historical projections; it does not rewrite them.
+- A named thread's transcript-view head and ordered entries remain a derived selected-path index.
+  They may advance when the thread tail changes or coherent saved streaming chunks and their
+  projection frontiers become available. Finalized projections remain immutable; that guarantee
+  does not restrict presentation to completed CAS items or finalized turns. A coherent live source
+  snapshot is eligible for bounded streaming presentation without advancing the finalized-item
+  frontier or claiming terminal completeness.
 - Each transcript-view entry belongs to one explicit view generation. A selected-path change publishes a new stale generation without rewriting the prior generation; bounded rebuild commits populate only that generation, and one current head selects the published generation. Incomplete and superseded generations remain unreachable durable derived state until future garbage collection.
 - Recovery may deterministically finish stale or incomplete projection work before finalization. It does not invalidate or reproject already finalized history in place.
 - The transcript projection contains user-authored input, transcript-visible user media markers, assistant commentary, assistant final answers, assistant text marked transcript-visible by the source, and generated media intended as assistant output.

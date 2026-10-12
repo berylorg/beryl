@@ -30,6 +30,7 @@ mod consumer;
 mod context;
 mod delayed_steering;
 mod dynamic_tool;
+mod history_wake;
 mod loss;
 mod permit;
 mod persistent_failure;
@@ -501,6 +502,7 @@ struct ActiveStopElectionKey {
 
 #[derive(Debug)]
 struct TargetEntry {
+    history_wake: Arc<history_wake::HistoryWake>,
     runtime_interest: std::sync::Weak<crate::cas_projection::RuntimeInterest>,
     registration: u64,
     key: LoadedThreadKey,
@@ -638,6 +640,7 @@ impl EventRouter {
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct TargetRegistration {
+    history_wake: Arc<history_wake::HistoryWake>,
     runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     registration: u64,
     key: LoadedThreadKey,

@@ -2,11 +2,11 @@ use super::access::HistoryAccess;
 use beryl_home_store::CursorReadLimits;
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    CanonicalItemRecord, ContentLifecycle, ContentManifestRecord, ItemProjectionBuildRecord,
-    ItemProjectionGeneration, ItemProjectionHeadRecord, ItemProjectionSetRecord,
-    ProjectionLifecycle, ProjectionTextSource, ResourceMetadataRecord, SyndicPointReadLimit,
-    SyndicStorage, TranscriptBuildRecord, TranscriptViewHeadRecord, TurnItemIndexRecord,
-    TurnItemOrdinal, TurnRecord, TurnStateRecord,
+    CanonicalItemRecord, ContentLifecycle, ContentManifestRecord, ItemProjectionBuildPhase,
+    ItemProjectionBuildRecord, ItemProjectionGeneration, ItemProjectionHeadRecord,
+    ItemProjectionSetRecord, ProjectionLifecycle, ProjectionTextSource, ResourceMetadataRecord,
+    SyndicPointReadLimit, SyndicStorage, TranscriptBuildRecord, TranscriptViewHeadRecord,
+    TurnItemIndexRecord, TurnItemOrdinal, TurnRecord, TurnStateRecord,
 };
 
 use super::super::OrdinaryTurnExecutionError;
@@ -330,7 +330,8 @@ pub(super) fn item_projection(
         None => None,
     };
     let head = store.item_projection_head(storage, item_id, limit)?;
-    let generation = projection_generation(head.as_ref());
+    let latest_build = store.latest_item_projection_build(storage, item_id, limit)?;
+    let generation = projection_generation(head.as_ref(), latest_build.as_ref());
     let (build, set) = match generation {
         Some(generation) => (
             store.item_projection_build(storage, item_id, generation, limit)?,
@@ -349,12 +350,14 @@ pub(super) fn item_projection(
     let confirmed_projection_manifest =
         reread_manifest(store, storage, &projection_manifest, limit)?;
     let confirmed_head = store.item_projection_head(storage, item_id, limit)?;
+    let confirmed_latest_build = store.latest_item_projection_build(storage, item_id, limit)?;
     let confirmed_item = store.canonical_item(storage, item_id, limit)?;
     if confirmed_build != build
         || confirmed_set != set
         || confirmed_provider_manifest != provider_manifest
         || confirmed_projection_manifest != projection_manifest
         || confirmed_head != head
+        || confirmed_latest_build != latest_build
         || confirmed_item != item
     {
         return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
@@ -373,10 +376,25 @@ pub(super) fn item_projection(
 
 fn projection_generation(
     head: Option<&ItemProjectionHeadRecord>,
+    latest_build: Option<&ItemProjectionBuildRecord>,
 ) -> Option<ItemProjectionGeneration> {
-    match head {
-        Some(head) if head.lifecycle() == ProjectionLifecycle::Current => Some(head.generation()),
-        Some(head) => head.generation().checked_next().ok(),
+    if let Some(head) = head
+        && head.lifecycle() == ProjectionLifecycle::Current
+    {
+        return Some(head.generation());
+    }
+    if let Some(build) = latest_build
+        && matches!(build.phase(), ItemProjectionBuildPhase::Parsing(_))
+    {
+        return Some(build.generation());
+    }
+    match head
+        .map(ItemProjectionHeadRecord::generation)
+        .into_iter()
+        .chain(latest_build.map(ItemProjectionBuildRecord::generation))
+        .max()
+    {
+        Some(generation) => generation.checked_next().ok(),
         None => Some(ItemProjectionGeneration::FIRST),
     }
 }

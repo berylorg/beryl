@@ -16,8 +16,6 @@ pub use payload::ProjectionPayload;
 
 pub const MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES: usize = 16_384;
 pub const MARKDOWN_SPAN_MAX_BYTES: usize = 8_192;
-pub const MARKDOWN_CODE_INLINE_MAX_BYTES: usize = 4_096;
-pub const MARKDOWN_CODE_INLINE_MAX_LINES: u64 = 64;
 pub const MARKDOWN_CODE_PREVIEW_MAX_BYTES: usize = 2_048;
 pub const MARKDOWN_CODE_PREVIEW_MAX_LINES: u64 = 8;
 pub const MARKDOWN_TABLE_INLINE_MAX_BYTES: usize = 8_192;
@@ -58,7 +56,7 @@ pub struct ProjectionSourceRange {
 
 impl ProjectionSourceRange {
     pub fn new(start: u64, end: u64) -> Result<Self, SyndicRecordError> {
-        if start >= end {
+        if start > end {
             return Err(SyndicRecordError::InvalidByteRange {
                 kind: "projection source range",
                 start,
@@ -85,7 +83,7 @@ impl ProjectionSourceRange {
 
     #[must_use]
     pub const fn is_empty(self) -> bool {
-        false
+        self.start == self.end
     }
 }
 

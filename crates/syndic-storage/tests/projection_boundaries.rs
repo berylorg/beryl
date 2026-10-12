@@ -13,8 +13,7 @@ use beryl_model::{
 use syndic_storage::{
     AdvanceItemProjectionBuild, CONTENT_CHUNK_MAX_BYTES, ComposerAtom, ComposerContentAssembler,
     ComposerPayload, CreateThread, DraftEditHistoryPolicyV1, ImageLabelOrdinal,
-    ItemProjectionGeneration, MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_CODE_INLINE_MAX_LINES,
-    MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
+    ItemProjectionGeneration, MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
     MARKDOWN_TABLE_INLINE_MAX_BODY_ROWS, MARKDOWN_TABLE_INLINE_MAX_BYTES,
     MARKDOWN_TABLE_INLINE_MAX_COLUMNS, MarkdownBlockKind, PreparedContent, ProjectionPayload,
     StartItemProjectionBuild, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
@@ -302,16 +301,16 @@ fn heavy_resource_text_is_range_read_with_exact_bounded_continuations() {
 }
 
 #[test]
-fn fenced_code_thresholds_crlf_and_unfinished_blocks_preserve_exact_source() {
-    let exact_bytes_body = format!("{}\n", "x".repeat(MARKDOWN_CODE_INLINE_MAX_BYTES - 1));
+fn fenced_code_all_sizes_crlf_and_unfinished_blocks_publish_resources() {
+    let exact_bytes_body = format!("{}\n", "x".repeat(4095));
     let exact_bytes = format!("```text\n{exact_bytes_body}```\n");
-    assert_inline_block(
+    assert_resource_block(
         "code-exact-bytes",
         &exact_bytes,
         MarkdownBlockKind::FencedCode,
     );
 
-    let over_bytes_body = format!("{}\n", "x".repeat(MARKDOWN_CODE_INLINE_MAX_BYTES));
+    let over_bytes_body = format!("{}\n", "x".repeat(4096));
     let over_bytes = format!("```text\n{over_bytes_body}```\n");
     assert_resource_block(
         "code-over-bytes",
@@ -319,15 +318,15 @@ fn fenced_code_thresholds_crlf_and_unfinished_blocks_preserve_exact_source() {
         MarkdownBlockKind::FencedCode,
     );
 
-    let exact_lines_body = "x\n".repeat(MARKDOWN_CODE_INLINE_MAX_LINES as usize);
+    let exact_lines_body = "x\n".repeat(64);
     let exact_lines = format!("```\n{exact_lines_body}```\n");
-    assert_inline_block(
+    assert_resource_block(
         "code-exact-lines",
         &exact_lines,
         MarkdownBlockKind::FencedCode,
     );
 
-    let over_lines_body = "x\n".repeat(MARKDOWN_CODE_INLINE_MAX_LINES as usize + 1);
+    let over_lines_body = "x\n".repeat(65);
     let over_lines = format!("```\n{over_lines_body}```\n");
     assert_resource_block(
         "code-over-lines",
@@ -336,9 +335,75 @@ fn fenced_code_thresholds_crlf_and_unfinished_blocks_preserve_exact_source() {
     );
 
     let crlf = "```rust\r\nlet value = 1;\r\n```\r\n";
-    assert_inline_block("code-crlf", crlf, MarkdownBlockKind::FencedCode);
+    assert_resource_block("code-crlf", crlf, MarkdownBlockKind::FencedCode);
     let unfinished = "```rust\nlet value = 1;\n";
-    assert_inline_block("code-unfinished", unfinished, MarkdownBlockKind::FencedCode);
+    assert_resource_block("code-unfinished", unfinished, MarkdownBlockKind::FencedCode);
+    for (name, source) in [
+        ("code-opening", "```rust\n"),
+        ("code-opening-no-newline", "```rust"),
+        ("code-empty-closed", "```rust\n```\n"),
+        ("code-empty-tilde", "~~~rust\r\n~~~\r\n"),
+    ] {
+        assert_resource_block(name, source, MarkdownBlockKind::FencedCode);
+    }
+}
+
+#[test]
+fn empty_and_small_fenced_resources_retain_exact_body_and_language() {
+    for (name, markdown, start, body, lines) in [
+        ("empty-open", "```rust\n", 8, "", 0),
+        ("empty-closed", "```rust\n```\n", 8, "", 0),
+        ("empty-no-ending", "```rust", 7, "", 0),
+        (
+            "small-crlf",
+            "~~~rust\r\nlet x = 1;\r\n~~~\r\n",
+            9,
+            "let x = 1;\r\n",
+            1,
+        ),
+        ("small-open", "```rust\nlet x = 1;", 8, "let x = 1;", 1),
+    ] {
+        let fixture = project_user_markdown(name, markdown);
+        let projected = projections(&fixture);
+        assert_eq!(projected.len(), 1);
+        let ProjectionPayload::ResourceReference {
+            resource_id,
+            source_range,
+            ..
+        } = projected[0].payload()
+        else {
+            panic!("fenced code did not publish a resource");
+        };
+        assert_eq!(source_range.start(), start);
+        assert_eq!(source_range.end(), start + body.len() as u64);
+        assert_eq!(source_range.is_empty(), body.is_empty());
+        let metadata = fixture
+            .storage
+            .resource(&fixture.store, *resource_id, point_limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(metadata.byte_length(), Some(body.len() as u64));
+        assert_eq!(
+            metadata.structure(),
+            &syndic_storage::ResourceStructure::code(Some("rust"), lines).unwrap()
+        );
+        let page = fixture
+            .storage
+            .resource_text_range(&fixture.store, *resource_id, 0, body.len() as u64, 64)
+            .unwrap()
+            .unwrap();
+        assert_eq!(page.bytes(), body.as_bytes());
+        assert_eq!(page.next_offset(), None);
+        fixture
+            .store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
+    }
+    assert_inline_block(
+        "inline-code-span",
+        "Use `x` here.\n",
+        MarkdownBlockKind::Paragraph,
+    );
 }
 
 #[test]

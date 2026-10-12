@@ -30,6 +30,7 @@ fn provenance(
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{position}"))),
         item_id: Some(SyndicItemId(format!("item-{position}"))),
+        block_id: None,
         projection_id: Some(projection_id.clone()),
         resource_id,
         source_range,
@@ -235,7 +236,7 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
     let text_record = &snapshot.presentation.records[0];
     assert_eq!(
         text_record.id,
-        ResidentPresentationRecordId("view:text-record:projection:projection-text".to_string())
+        ResidentPresentationRecordId("view:thread-view:item:item-10:source:10".to_string())
     );
     assert_eq!(text_record.estimated_bytes, "assistant text chunk".len());
     assert_eq!(
@@ -269,6 +270,69 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
         snapshot.presentation.records[1].provenance.source,
         ResidentRecordSource::Syndic(image_provenance)
     );
+}
+
+#[test]
+fn saved_code_block_identity_survives_moving_body_boundaries_and_distinguishes_blocks() {
+    let view_id = view_id();
+    let mut retained_identity = None;
+    for (snapshot, range) in [3..3, 7..7, 8..8, 8..24].into_iter().enumerate() {
+        let mut provider = InMemorySyndicTranscriptProvider::new();
+        provider.set_revision(REVISION);
+        let mut views = Vec::new();
+        for position in 0..2 {
+            let id = projection_id(&format!("snapshot-{snapshot}-block-{position}"));
+            let resource = ResourceId(format!("resource-{snapshot}-{position}"));
+            let mut source = provenance(
+                &view_id,
+                position,
+                &id,
+                Some(resource.clone()),
+                Some(range.clone()),
+                None,
+                Some(range.clone()),
+            );
+            source.item_id = Some(SyndicItemId("saved-item".into()));
+            source.block_id = Some([42 + position as u8; 32]);
+            let mut view = view_record(
+                &view_id,
+                position,
+                &format!("entry-{snapshot}-{position}"),
+                id.clone(),
+                TranscriptNarrativeKind::AssistantText,
+            );
+            view.provenance = source.clone();
+            views.push(view);
+            provider.insert_projection_record(resource_projection(
+                id,
+                resource,
+                ResourceKind::Code,
+                Some("Code"),
+                source,
+            ));
+        }
+        provider.insert_view_records(view_id.clone(), views);
+        let mut core = ResidentTranscriptCore::empty();
+        admit_start_page(&mut core, &mut provider, &view_id);
+        let request = request_resident_projections(&mut core);
+        assert_eq!(
+            handle_provider_request(&mut core, &mut provider, request),
+            ResidentProviderResponseEffect::ProjectionRecordsAdmitted {
+                admitted_count: 2,
+                rejected_count: 0,
+            }
+        );
+        let snapshot = core.core_snapshot();
+        let records = &snapshot.presentation.records;
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0].id, records[1].id);
+        if let Some(prior) = &retained_identity {
+            assert_eq!(&records[0].id, prior);
+        } else {
+            retained_identity = Some(records[0].id.clone());
+        }
+        assert_eq!(records[0].provenance.copy_source_range, Some(range));
+    }
 }
 
 #[test]

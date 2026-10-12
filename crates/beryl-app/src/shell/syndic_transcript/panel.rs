@@ -1,11 +1,23 @@
 use std::ops::Range;
 
+#[path = "panel/code_appearance.rs"]
+mod code_appearance;
+#[path = "panel/code_layout.rs"]
+mod code_layout;
+#[path = "panel/code_layout_mount.rs"]
+mod code_layout_mount;
+#[path = "panel/code_panel.rs"]
+mod code_panel;
+#[path = "panel/code_viewport.rs"]
+mod code_viewport;
+
 use gpui::{
     Action, AnyElement, App, Context, FocusHandle, Focusable, MouseButton, Render, SharedString,
     Window, canvas, div, prelude::*, px,
 };
 
 gpui::actions!(syndic_transcript, [OpenTranscriptContextMenu]);
+pub(crate) struct ResourceViewportDemandChanged;
 use super::{
     DemandFact, DemandFactKind, LocalPresentationReason, ManualTranscriptScrollCommand,
     PreparedTranscriptActivation, RealizedFrameRecord, RealizedFrameRequest, RealizedFrameWindow,
@@ -79,11 +91,21 @@ pub(crate) struct SyndicTranscriptPanel {
     rejected_resource: Vec<super::ResourceTranscriptDemand>,
     resource_queue_position: Option<ResourceQueuePosition>,
     appearance: Option<std::sync::Arc<crate::theme_runtime::AppearanceGeneration>>,
+    code_appearance: code_appearance::CodeAppearance,
+    code_panels: Vec<code_panel::MountedCodePanel>,
+    save_admission: crate::main_window::WorkerAdmission,
+    retired_code_panels: Vec<code_panel::MountedCodePanel>,
+    code_release_registered: bool,
+    code_wheel_owner: std::rc::Rc<std::cell::Cell<Option<u64>>>,
     #[cfg(test)]
     viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     #[cfg(test)]
     painted_glyphs: usize,
+    #[cfg(test)]
+    code_reads_paused_through_revision: Option<super::ProviderRevision>,
 }
+
+impl gpui::EventEmitter<ResourceViewportDemandChanged> for SyndicTranscriptPanel {}
 
 impl SyndicTranscriptPanel {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
@@ -99,10 +121,18 @@ impl SyndicTranscriptPanel {
             rejected_resource: Vec::new(),
             resource_queue_position: None,
             appearance: None,
+            code_appearance: code_appearance::CodeAppearance::default(),
+            code_panels: Vec::new(),
+            save_admission: Default::default(),
+            retired_code_panels: Vec::new(),
+            code_release_registered: false,
+            code_wheel_owner: std::rc::Rc::default(),
             #[cfg(test)]
             viewport_bounds: None,
             #[cfg(test)]
             painted_glyphs: 0,
+            #[cfg(test)]
+            code_reads_paused_through_revision: None,
         }
     }
 
@@ -229,6 +259,15 @@ impl SyndicTranscriptPanel {
             return None;
         }
         let mut demands = self.host.resource_demands().into_iter().filter(|demand| {
+            #[cfg(test)]
+            if demand.kind == ResourceKind::Code
+                && demand.indexed.is_some()
+                && self
+                    .code_reads_paused_through_revision
+                    .is_some_and(|revision| demand.revision <= revision)
+            {
+                return false;
+            }
             !self.rejected_resource.iter().any(|rejected| {
                 rejected.activation_revision == demand.activation_revision
                     && rejected.view_id == demand.view_id
@@ -258,6 +297,7 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn reject_resource_demand(&mut self, demand: super::ResourceTranscriptDemand) {
+        self.reject_code_source_action(&demand);
         if self.resource_demand().as_ref() == Some(&demand) {
             self.advance_resource_queue(&demand);
         }
@@ -334,6 +374,19 @@ impl SyndicTranscriptPanel {
                 .is_some_and(|current| current.resource_id == demand.resource_id)
         }) {
             self.discard_staged_activation();
+        }
+        for panel in &mut self.code_panels {
+            if panel.viewport.owner.resource_id == demand.resource_id {
+                code_panel::release_layout(&mut self.host, &panel.viewport.owner);
+                if let Some(staged) = &mut self.staged {
+                    code_panel::release_layout(&mut staged.host, &panel.viewport.owner);
+                }
+                panel.layout.reset();
+                panel
+                    .actions
+                    .cancel_save("Save unavailable: source owner replaced");
+                panel.overridden = true;
+            }
         }
         self.host.set_indexed_resource_demand(demand, inner)
     }
@@ -440,6 +493,8 @@ impl SyndicTranscriptPanel {
         {
             return;
         }
+        self.code_appearance =
+            code_appearance::CodeAppearance::prepare(appearance.prepared().appearance());
         self.appearance = Some(appearance);
         self.geometry = None;
         self.close_invalid_geometry();
@@ -538,6 +593,10 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn retire(&mut self) {
+        for code in &mut self.code_panels {
+            code.actions.cancel_copy("");
+            code.actions.cancel_save("");
+        }
         self.host.retire();
         self.last_frame_window = None;
         self.published_snapshot = None;
@@ -547,6 +606,8 @@ impl SyndicTranscriptPanel {
         self.rejected_adjacent = None;
         self.rejected_resource.clear();
         self.resource_queue_position = None;
+        self.retired_code_panels.append(&mut self.code_panels);
+        self.code_wheel_owner.set(None);
     }
 
     pub(crate) fn status_facts(&self) -> ResidentTranscriptStatusFacts {
@@ -559,6 +620,7 @@ impl SyndicTranscriptPanel {
         snapshot.frame.measurement_preparation_pending = pending;
         snapshot.frame.retained_preparation_measurements = retained;
         snapshot.frame.layout_observations_last_frame = work;
+        snapshot.code_panels = self.code_diagnostics();
         snapshot
     }
 
@@ -938,11 +1000,15 @@ impl Render for SyndicTranscriptPanel {
             move |_, content, window, cx| {
                 if let Some(mut content) = content {
                     #[cfg(test)]
-                    let before = window.paint_snapshot_for_test().glyphs.len();
+                    let before = {
+                        let paint = window.paint_snapshot_for_test();
+                        paint.glyphs.len() + paint.color_glyphs.len()
+                    };
                     content.paint(window, cx);
                     #[cfg(test)]
                     {
-                        let count = window.paint_snapshot_for_test().glyphs.len() - before;
+                        let paint = window.paint_snapshot_for_test();
+                        let count = paint.glyphs.len() + paint.color_glyphs.len() - before;
                         paint_panel.update(cx, |panel, _| panel.painted_glyphs = count);
                     }
                 }
@@ -959,6 +1025,22 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
+        if !self.code_release_registered {
+            cx.on_release_in(window, |panel, window, app| {
+                for code in panel
+                    .code_panels
+                    .drain(..)
+                    .chain(panel.retired_code_panels.drain(..))
+                {
+                    code.retire(window, app);
+                }
+            })
+            .detach();
+            self.code_release_registered = true;
+        }
+        for code in self.retired_code_panels.drain(..) {
+            code.retire(window, cx);
+        }
         let viewport_width_px = f32::from(viewport_size.width);
         let measured_size = self
             .staged
@@ -1025,7 +1107,11 @@ impl SyndicTranscriptPanel {
                     .w(viewport_size.width)
                     .px_4()
                     .py_2()
-                    .child(render_record_content(&snapshot, record))
+                    .child(render_record_content(
+                        &snapshot,
+                        record,
+                        self.code_appearance.header_height(),
+                    ))
                     .into_any_element();
                 f32::from(
                     element
@@ -1072,6 +1158,7 @@ impl SyndicTranscriptPanel {
         ));
 
         report_nested_resource_demands(&snapshot, &frame_window, &mut self.host);
+        self.reconcile_code_panels(&snapshot, &frame_window, window, cx);
         self.reconcile_resident_selection_with_frame(&snapshot, &frame_window);
         self.reconcile_resident_quote_target_with_frame(&snapshot, &frame_window);
         self.reconcile_resident_context_menu_target_with_frame(&snapshot, &frame_window);
@@ -1105,7 +1192,11 @@ impl SyndicTranscriptPanel {
             .track_focus(&self.focus_handle)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|panel, _, window, _| window.focus(&panel.focus_handle)),
+                cx.listener(|panel, _, window, cx| {
+                    panel.code_wheel_owner.set(None);
+                    window.focus(&panel.focus_handle);
+                    cx.notify();
+                }),
             )
             .on_scroll_wheel(
                 cx.listener(|panel, event: &gpui::ScrollWheelEvent, window, cx| {
@@ -1138,6 +1229,11 @@ impl SyndicTranscriptPanel {
                 &snapshot,
                 &frame_window,
                 &selected_record_ids,
+                &self.code_panels,
+                &self.host,
+                &self.code_wheel_owner,
+                &self.code_appearance,
+                self.staged.is_some(),
                 cx,
             ))
     }
@@ -1155,6 +1251,11 @@ fn render_frame_window(
     snapshot: &ResidentTranscriptSnapshot,
     frame_window: &RealizedFrameWindow,
     selected_record_ids: &[ResidentPresentationRecordId],
+    code_panels: &[code_panel::MountedCodePanel],
+    host: &SyndicTranscriptHost,
+    wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
+    code_appearance: &code_appearance::CodeAppearance,
+    commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> gpui::Div {
     let mut frame = div()
@@ -1179,6 +1280,11 @@ fn render_frame_window(
             record,
             frame_record,
             record_is_selected(&record.id, selected_record_ids),
+            code_panels,
+            host,
+            wheel_owner,
+            code_appearance,
+            commands_pending,
             cx,
         ));
     }
@@ -1191,6 +1297,11 @@ fn render_realized_record(
     record: &ResidentPresentationRecord,
     frame_record: &RealizedFrameRecord,
     is_selected: bool,
+    code_panels: &[code_panel::MountedCodePanel],
+    host: &SyndicTranscriptHost,
+    wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
+    code_appearance: &code_appearance::CodeAppearance,
+    commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
     let context_record_id = record.id.clone();
@@ -1217,7 +1328,23 @@ fn render_realized_record(
                 cx.stop_propagation();
             }),
         )
-        .child(render_record_content(snapshot, record))
+        .child(
+            if let Some(code) = code_panels
+                .iter()
+                .find(|code| code.viewport.owner.record_id == record.id)
+            {
+                code_panel::render(
+                    code,
+                    host,
+                    wheel_owner,
+                    code_appearance,
+                    commands_pending,
+                    cx,
+                )
+            } else {
+                render_record_content(snapshot, record, code_appearance.header_height())
+            },
+        )
         .when(is_selected, |row| {
             row.child(render_selection_affordance(&record.id))
         })
@@ -1267,6 +1394,7 @@ fn render_selection_affordance(record_id: &ResidentPresentationRecordId) -> AnyE
 fn render_record_content(
     snapshot: &ResidentTranscriptSnapshot,
     record: &ResidentPresentationRecord,
+    code_header_height: f32,
 ) -> AnyElement {
     match &record.kind {
         ResidentPresentationRecordKind::TextChunk { text, .. } => div()
@@ -1281,7 +1409,21 @@ fn render_record_content(
             resource_id,
             resource_kind,
             label,
-        } => render_resource_reference(snapshot, resource_id, resource_kind, label),
+        } => {
+            if *resource_kind == ResourceKind::Code {
+                code_viewport::shell(code_header_height)
+                    .child("Code loading")
+                    .into_any_element()
+            } else {
+                render_resource_reference(
+                    snapshot,
+                    resource_id,
+                    resource_kind,
+                    label,
+                    code_header_height,
+                )
+            }
+        }
         ResidentPresentationRecordKind::LocalUiFallback { reason, target } => div()
             .w_full()
             .min_w(px(0.0))
@@ -1409,6 +1551,7 @@ fn render_resource_reference(
     resource_id: &ResourceId,
     resource_kind: &ResourceKind,
     label: &Option<std::sync::Arc<str>>,
+    code_header_height: f32,
 ) -> AnyElement {
     let metadata = snapshot.resources.metadata_for(resource_id);
     let title = label
@@ -1458,7 +1601,12 @@ fn render_resource_reference(
     };
 
     shell
-        .child(render_resource_shell(snapshot, resource_id, resource_kind))
+        .child(render_resource_shell(
+            snapshot,
+            resource_id,
+            resource_kind,
+            code_header_height,
+        ))
         .into_any_element()
 }
 
@@ -1466,9 +1614,12 @@ fn render_resource_shell(
     snapshot: &ResidentTranscriptSnapshot,
     resource_id: &ResourceId,
     resource_kind: &ResourceKind,
+    code_header_height: f32,
 ) -> AnyElement {
     match resource_kind {
-        ResourceKind::Code => render_text_resource_shell(snapshot, resource_id, "Code preview"),
+        ResourceKind::Code => code_viewport::shell(code_header_height)
+            .child("Code loading")
+            .into_any_element(),
         ResourceKind::Table => render_text_resource_shell(snapshot, resource_id, "Table preview"),
         ResourceKind::Image | ResourceKind::GeneratedImage => {
             render_binary_resource_shell(snapshot, resource_id, "Media preview")

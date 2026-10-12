@@ -1,6 +1,52 @@
 use super::*;
 
 impl MainWindowShellRoot {
+    #[cfg(test)]
+    pub(crate) fn test_suspend_code_saves_for_close(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.ordinary_close_interaction_gated = true;
+        self.suspend_running_thread_reads(window, cx);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_resume_code_saves_after_close(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.ordinary_close_interaction_gated = false;
+        self.resume_running_thread_reads(window, cx);
+    }
+    #[cfg(test)]
+    pub(crate) fn test_hold_indexed_code_source_read(
+        &mut self,
+        revision: crate::syndic_transcript::ProviderRevision,
+    ) -> Arc<crate::transcript_provider::IndexedReadGate> {
+        let gate = crate::transcript_provider::IndexedReadGate::source(revision);
+        self.running_threads
+            .transcript_provider
+            .as_mut()
+            .unwrap()
+            .set_indexed_read_gate_for_test(gate.clone());
+        gate
+    }
+    #[cfg(test)]
+    pub(crate) fn test_hold_indexed_code_read(
+        &mut self,
+        revision: crate::syndic_transcript::ProviderRevision,
+    ) -> Arc<crate::transcript_provider::IndexedReadGate> {
+        let gate = crate::transcript_provider::IndexedReadGate::new(revision);
+        self.running_threads
+            .transcript_provider
+            .as_mut()
+            .unwrap()
+            .set_indexed_read_gate_for_test(gate.clone());
+        gate
+    }
+
     pub(super) fn synchronize_transcript_appearance(&self, cx: &mut Context<Self>) {
         if let Some(controller) = &self.controller {
             let appearance = controller.appearance.generation.clone();

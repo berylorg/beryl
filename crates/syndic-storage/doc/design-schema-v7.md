@@ -129,6 +129,9 @@ the existing canonical `ProjectionTextSource` encoding, backing range start/end,
 `u64 = 1`, and structure-format `u64 = 1`. Metadata LP is limited to 65,536 bytes; the complete
 binding is limited to 66,048 bytes. The repeated source/range must equal metadata's text backing.
 Only Code or Table metadata with immutable readable backing is eligible. The source reference
+may bind a zero-length Code body range: its root has zero logical lines and no line descriptors.
+Projection source ranges permit equal start/end for that exact empty body representation.
+The source reference
 retains all existing content-summary or provider-narrative generation/frontier/digest fields;
 neither a content id alone nor a current successor reference is an immutable snapshot. A binding
 digest is `H(LP("syndic/resource-structure-binding/v1") || LP(S))`.

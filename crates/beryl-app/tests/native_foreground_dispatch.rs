@@ -69,7 +69,7 @@ fn self_waking_foreground_work_yields_to_native_close() {
                     }
                     .unwrap();
                 }
-                    if !native::alive(raw) || count == 1000 {
+                if !native::alive(raw) || count == 1000 {
                     return std::task::Poll::Ready(());
                 }
                 cx.waker().wake_by_ref();

@@ -12,6 +12,15 @@ remained the Beryl root. Cargo inherited Beryl's `.cargo/config.toml` patches an
 Fjall's ignored `Cargo.lock` needed an update under `--locked`. Treating that result as an actual
 Fjall lock mismatch created a false implementation blocker.
 
+The same error recurred while qualifying GPUI no-wrap layout: selecting the fork with
+`--manifest-path` from Beryl inherited Beryl's patches and resolved the ignored lock path under
+Beryl. An unlocked attempt expanded that local lock to the Zed workspace and began unrelated
+dependency downloads. The run was stopped; Beryl's local graph was reconstructed offline from
+its unchanged canonical lock and explicit local patches. Exact pre-run local-lock bytes were not
+retained, so this recovery must not be described as a byte-identical restoration. Tracked
+manifests and canonical lockfiles remained unchanged. The fork verification then used its own
+working directory and `--locked --offline`.
+
 ## Decisive Evidence
 
 The exact selected Fjall and `lsm-tree` suites pass under `--locked --offline` when each command
@@ -28,3 +37,17 @@ verification, and first repeat any apparent lock mismatch from the owning root b
 lockfile change. `--manifest-path` selects a manifest; it is not a substitute for the intended
 Cargo-configuration discovery root.
 
+Keep `--locked` on the first fork invocation, and use an explicit `workdir` even when the manifest
+path appears unambiguous. Resolve a configuration-root error before removing `--locked`; otherwise
+Cargo may mutate a different project's ignored lock and invalidate dependency-input assumptions.
+
+## Canonical Publication Checkout Placement
+
+Code dependency delivery on 2026-10-12 confirmed that an isolated checkout below Beryl still
+inherits Beryl's ancestor Cargo configuration, including local patches and the ignored lock path.
+A locked check refused the mismatched graph rather than validating canonical publication. Place
+canonical checkouts outside Beryl's tree, with tracked Cargo configuration and no local override.
+Beryl's own checkout must also remain beside its relative-path dependency clones; placing it deeper
+under a task directory makes those declared dependencies unavailable. Final sibling placement
+passed locked metadata, the single-GPUI graph check and the production check. Keep temporary
+checkout ownership explicit and remove only those exact checkouts after review.

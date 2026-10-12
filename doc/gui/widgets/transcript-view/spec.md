@@ -37,7 +37,10 @@ A synthetic-context group has an owner-supplied stable semantic identity and ins
 
 The transient affordance layer holds selection actions and menu anchors only while their exact realized geometry remains valid. Menus themselves use the referenced built-in widgets in the owning window overlay.
 
-One live authored-content record may combine a host-supplied durable prefix with one bounded transient suffix carrying the same exact item identity and a later logical-text frontier. The suffix is local presentation state until the host replaces it from an exactly matching durable projection; it is not a second transcript record or an independently scrolling surface.
+Live authored-content records consume host-supplied bounded presentation chunks derived from saved
+Beryl/Syndic history. They use the same resident snapshot boundary as completed records. CAS item
+completion does not gate their visibility or define chunk boundaries; raw CAS text is not a
+separate widget input.
 
 The widget consumes a host-supplied resident presentation snapshot whose content refers to immutable
 bounded pages or bounded generations and reports viewport, measurement, selection, menu-anchor, and
@@ -127,12 +130,11 @@ widget.
 
 While activation is pending, the retained coherent frame does not accept selection, menu, media, or navigation interaction. Publishing the replacement frame and initial viewport state is one visible transition.
 
-An arrival-streaming record exposes every newly supplied bounded normalized-text fragment on the
-next frame that consumes it. The widget preserves parent-delta identity and order and does not
-subdivide, delay, timestamp-replay, or animate a fragment character by character; multiple
-fragments received before one frame may naturally publish together. Exact durable-prefix
-reconciliation replaces the matching transient suffix without producing duplicate text or a blank
-intermediate record.
+An arrival-streaming record exposes every newly supplied history-backed presentation chunk on the
+next frame that consumes it. The widget preserves source provenance and order and does not delay,
+timestamp-replay, or animate a chunk character by character; multiple chunks ready before one frame
+may naturally publish together. Coherent frontier adoption preserves record identity and reading
+anchors without duplicate text or a blank intermediate record.
 
 The widget realizes only records and synthetic-context chunks present in the current host-supplied realized-frame snapshot, including its bounded overscan. Rendering, hit testing, measurement, and presentation construction never walk nonresident history, unreconciled context chunks, or elements outside that frame.
 

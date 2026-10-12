@@ -151,7 +151,7 @@ fn count_visible_current_projections(
                     ordinal: crate::TurnItemOrdinal::new(u64::MAX).expect("maximum is nonzero"),
                 },
                 |_, item_index| {
-                    if item_index.ordinal().get() > path.finalized_item_count() {
+                    if item_index.ordinal().get() > path.item_count() {
                         return Ok(());
                     }
                     let item = require::<CanonicalItemsFamily>(

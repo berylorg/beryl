@@ -16,7 +16,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 - [`gui.md`](gui.md) is a normative supplemental GUI composition file for the transcript region, transcript-owned embedded widgets, menus, and previews.
 - `doc/systems/transcript-presentation/design.md` owns the internal presentation, residency,
-  rendering, scrolling, live-text takeover, and repair-publication architecture.
+  rendering, scrolling, streaming history presentation, and repair-publication architecture.
 - `doc/systems/bounded-resource-dataflow/design.md` owns internal resource limits.
 - `doc/systems/syndic-conversation-history/design.md` owns durable conversation history,
   provenance, transcript projections, resources, replay, and repaired records.
@@ -42,11 +42,11 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
   introduces no additional pacing, so pauses and apparent throughput reflect when text reaches
   Beryl within ordinary frame scheduling rather than a simulated typewriter rate. Technical batch
   or fragment boundaries have no user-visible meaning.
-- As active assistant text becomes exact history, text already shown remains visually continuous
-  and in order. The transition must not duplicate, omit, reorder, blank, or visibly restyle matching
+- Assistant text remains visually continuous and in order as captured history grows and later
+  completes. The transition must not duplicate, omit, reorder, blank, or visibly restyle matching
   content.
-- Until exact historical provenance is available, live text remains readable but cannot authorize
-  selection-derived history commands.
+- Streaming visibility does not by itself authorize selection-derived history commands; each
+  command still requires its exact historical provenance and eligibility proof.
 - If text shown live cannot be established as the complete historical record, the transcript does
   not silently replace it with conflicting content or a speculative merge. Any later repaired
   content appears only through the atomic whole-turn presentation described below.
@@ -104,6 +104,18 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
   range fits the explicit platform clipboard limit. Rejection is explicit and preserves the
   selection. A nested resource that supports arbitrary-size source ranges exposes streaming
   `Save…` as the non-clipboard path; neither action reads renderer text or painted pixels as source.
+- Code's `Save…` opens the native save dialog for the complete exact source, including content
+  outside the realized window. An existing destination is replaced only after the user confirms
+  replacement in that native dialog. Success publishes the complete source bytes without fences
+  or newline conversion. Cancellation or source/host retirement before final publication is
+  admitted leaves an existing destination unchanged and a new destination absent; failures before
+  successful publication do likewise. Final admission checks the current source and elects either
+  cancellation or complete publication once. An already admitted file publication finishes even
+  if its source view then retires. Picker and write failures report bounded local feedback;
+  cancellation is quiet. Save preserves a valid selection and remains independent of the
+  clipboard-size limit. Incomplete staging output is removed on a failed or cancelled attempt.
+  If the filesystem refuses that cleanup, Save reports a distinct failure that a temporary
+  output may remain; it never reports successful save or disposal for that outcome.
 - If virtualization, release, remeasurement, activation, or missing data destroys stable selection geometry, Beryl closes the selection, quote affordance, or menu instead of pinning unbounded offscreen content.
 - Context menus target rendered transcript content. They do not open for empty space, operational activity, missing data, stale loading state, or transient non-content paint state.
 - A context menu for an exact historical user-input turn exposes `Edit message`. The row stays visible but disabled when the closest replacement-edit gate can be explained; a row without exact stable Syndic provenance exposes no edit command.

@@ -3,7 +3,7 @@ use beryl_home_store::test_faults::FaultBlock;
 use confirmation::{confirm, selected_window, selection, settled_confirmation};
 
 struct HeldReconciliation(FaultBlock);
-type VisiblePrior = (gpui::EntityId, usize, Option<RememberedTarget>);
+type VisiblePrior = (gpui::EntityId, gpui::EntityId, Option<RememberedTarget>);
 
 impl Drop for HeldReconciliation {
     fn drop(&mut self) {

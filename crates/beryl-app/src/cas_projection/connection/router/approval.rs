@@ -258,6 +258,12 @@ impl EventRouter {
             };
             match delivery {
                 Ok(()) => {
+                    state
+                        .targets
+                        .get(&thread_id)
+                        .expect("routed approval retains its target")
+                        .history_wake
+                        .notify();
                     state.request_work_stage(
                         work_serial,
                         crate::cas_projection::ConnectionRequestWorkStage::Queued,

@@ -314,6 +314,10 @@ impl access::ActivationReadSource<'_> {
                 position: Some(TranscriptViewPosition(entry.position().get())),
                 turn_id: Some(SyndicTurnId(projection.turn_id().to_string())),
                 item_id: Some(SyndicItemId(entry.item_id().to_string())),
+                block_id: projection
+                    .payload()
+                    .block_id()
+                    .map(|block| block.as_bytes()),
                 projection_id: Some(projection_id.clone()),
                 resource_id: None,
                 source_range: source_range.clone(),

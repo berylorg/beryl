@@ -3,6 +3,8 @@ use beryl_home_store::CommandCancellation;
 use beryl_model::ProjectionRevision;
 use syndic_storage::indexed_resource as index;
 
+mod source;
+
 #[derive(Clone, Debug)]
 pub(crate) struct TranscriptIndexedResourceRequest {
     pub(crate) resource: TranscriptResourceRequest,
@@ -42,7 +44,8 @@ impl TranscriptProviderReader {
                 *bytes
             }
             IndexedResourceQuery::Display { bytes, .. }
-            | IndexedResourceQuery::Anchor { bytes, .. } => *bytes,
+            | IndexedResourceQuery::Anchor { bytes, .. }
+            | IndexedResourceQuery::Source { bytes, .. } => *bytes,
         };
         if bytes == 0
             || bytes > ATTACHMENT_MAX_BYTES
@@ -100,7 +103,8 @@ impl TranscriptProviderReader {
                         bytes: *bytes,
                     },
                 )
-                .map(|value| transport(value, IndexedResourceValue::Range)),
+                .map(|value| transport(value, IndexedResourceValue::Range))
+                .map_err(indexed_error),
             IndexedResourceQuery::Display {
                 request: display,
                 cursor,
@@ -116,7 +120,8 @@ impl TranscriptProviderReader {
                     *cursor,
                     *bytes,
                 )
-                .map(|value| transport(value, IndexedResourceValue::Display)),
+                .map(|value| transport(value, IndexedResourceValue::Display))
+                .map_err(indexed_error),
             IndexedResourceQuery::Anchor { anchor, bytes } => self
                 .syndic
                 .read_frozen_indexed_resource_anchor(
@@ -127,22 +132,60 @@ impl TranscriptProviderReader {
                     *anchor,
                     *bytes,
                 )
-                .map(|value| transport(value, IndexedResourceValue::Anchor)),
+                .map(|value| transport(value, IndexedResourceValue::Anchor))
+                .map_err(indexed_error),
+            IndexedResourceQuery::Source { bytes, .. } => self
+                .syndic
+                .read_frozen_indexed_resource_range(
+                    &self.home,
+                    &frozen,
+                    &binding,
+                    request.root,
+                    index::Request::Code {
+                        lines: index::OrdinalRange { start: 0, end: 0 },
+                    },
+                    None,
+                    index::ResponseLimits {
+                        descriptors: 1,
+                        bytes: (*bytes).min(8192),
+                    },
+                )
+                .map_err(indexed_error)
+                .and_then(|value| match value {
+                    index::IndexedResourceResult::Pending => Ok(IndexedResourceResponse {
+                        root: None,
+                        value: IndexedResourceValue::Pending,
+                        encoded_bytes: 1,
+                    }),
+                    index::IndexedResourceResult::Ready {
+                        root,
+                        encoded_bytes,
+                        ..
+                    } => self.read_code_source_response(&request, &binding, root, encoded_bytes),
+                }),
         };
         self.home
             .release_frozen_read(&frozen)
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
-        let response = response.map_err(|error| match error {
-            index::IndexedResourceError::Collision => TranscriptAttachmentError::Stale,
-            _ => TranscriptAttachmentError::Unavailable,
-        })?;
-        self.check_resource_request(&request.resource, cancelled)?;
-        if self.read_resource_backing(&request.resource, cancelled)? != resource.metadata {
-            return Err(TranscriptAttachmentError::Stale);
+        let response = response?;
+        #[cfg(test)]
+        let held = self.indexed_read_gate.as_ref().filter(|gate| {
+            gate.matches(&response.value) && gate.hold(request.resource.demand.revision)
+        });
+        let current = (|| {
+            self.check_resource_request(&request.resource, cancelled)?;
+            if self.read_resource_backing(&request.resource, cancelled)? != resource.metadata {
+                return Err(TranscriptAttachmentError::Stale);
+            }
+            self.home
+                .try_elect_observed_coherent(&resource.observation, self.home_generation, || ())
+                .map_err(|_| TranscriptAttachmentError::Stale)
+        })();
+        #[cfg(test)]
+        if let Some(gate) = held {
+            gate.observe(&current);
         }
-        self.home
-            .try_elect_observed_coherent(&resource.observation, self.home_generation, || ())
-            .map_err(|_| TranscriptAttachmentError::Stale)?;
+        current?;
         Ok(PreparedIndexedResource {
             request,
             resource,
@@ -166,6 +209,13 @@ impl TranscriptProviderReader {
         self.publish_resource_if_current(prepared.resource, &expected.resource, cancelled, |_| {
             publish(prepared.response)
         })
+    }
+}
+
+fn indexed_error(error: index::IndexedResourceError) -> TranscriptAttachmentError {
+    match error {
+        index::IndexedResourceError::Collision => TranscriptAttachmentError::Stale,
+        _ => TranscriptAttachmentError::Unavailable,
     }
 }
 

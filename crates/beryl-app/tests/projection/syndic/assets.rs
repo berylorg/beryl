@@ -337,9 +337,7 @@ fn commit_atoms(
                     },
                 ));
                 metadata.push(
-                    beryl_app::composer_host::ComposerHostImageMarkerMetadata::new(
-                        object, asset,
-                    ),
+                    beryl_app::composer_host::ComposerHostImageMarkerMetadata::new(object, asset),
                 );
                 last_neighbor = Some(InlineObjectNeighbor::new(object, order));
             }

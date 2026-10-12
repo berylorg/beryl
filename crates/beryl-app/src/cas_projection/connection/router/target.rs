@@ -65,14 +65,17 @@ pub(super) fn close_target(
         // exact close cause before dropping the last sender.
         set_terminal(&target.terminal, reason);
         target.sender.take();
+        target.history_wake.notify();
         let connection_retired = fence_thread_lane(state, thread_id);
         if !connection_retired {
             advance_revision(state);
         }
         return connection_retired;
     }
-    if let Some(target) = state.targets.remove(thread_id) {
+    if let Some(mut target) = state.targets.remove(thread_id) {
         set_terminal(&target.terminal, reason);
+        target.sender.take();
+        target.history_wake.notify();
         if fence_thread_lane(state, thread_id) {
             return true;
         }
@@ -114,6 +117,7 @@ pub(super) fn retire_router_state(state: &mut RouterState, reason: LiveEventTarg
         } else {
             set_terminal(&target.terminal, reason);
             target.sender.take();
+            target.history_wake.notify();
         }
         target.dynamic_tool_responses.clear();
     }

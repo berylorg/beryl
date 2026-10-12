@@ -1,6 +1,14 @@
 use super::*;
 
 pub(super) fn prepare_home(path: &std::path::Path) {
+    prepare(path, false);
+}
+
+pub(super) fn prepare_home_with_code(path: &std::path::Path) {
+    prepare(path, true);
+}
+
+fn prepare(path: &std::path::Path, code: bool) {
     eprintln!(
         "original ordinary claim activation Home fixture: {}",
         path.display()
@@ -52,6 +60,9 @@ pub(super) fn prepare_home(path: &std::path::Path) {
         }
     ));
     super::transcript::prepare_history(&home, &storage, target);
+    if code {
+        super::code_replacement::prepare_history(&home, &storage, target);
+    }
     assert_eq!(
         resident_fixture::composer_support::seed_published_draft_chunks(&storage, &home, target, 1),
         768

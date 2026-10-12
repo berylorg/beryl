@@ -18,7 +18,11 @@ use crate::{
     syndic_transcript::{PreparedTranscriptActivation, TranscriptActivationPlacement},
 };
 
+#[cfg(test)]
+mod indexed_read_gate;
 mod resources;
+#[cfg(test)]
+pub(crate) use indexed_read_gate::IndexedReadGate;
 mod selected_title;
 mod source;
 pub(crate) use resources::{
@@ -143,6 +147,8 @@ impl TranscriptAttachmentSourceIdentity {
 
 #[derive(Clone)]
 pub(crate) struct TranscriptProviderReader {
+    #[cfg(test)]
+    indexed_read_gate: Option<Arc<IndexedReadGate>>,
     home: Arc<HomeServiceReference>,
     syndic: SyndicStorage,
     lifetime: Weak<()>,
@@ -193,6 +199,8 @@ impl TranscriptProviderReader {
             .generation_identity()
             .map_err(|_| TranscriptAttachmentError::Unavailable)?;
         Ok(Self {
+            #[cfg(test)]
+            indexed_read_gate: None,
             home_id: home.home_id(),
             home_generation,
             home_identity,

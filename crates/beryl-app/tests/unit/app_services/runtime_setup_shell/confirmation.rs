@@ -64,7 +64,10 @@ pub(super) fn confirm(
     root: RootId,
     cx: &mut TestAppContext,
 ) {
-    let invoking = selection(window, cx).window_id();
+    let invoking = window
+        .update(cx, |root, _, cx| root.running_selection_invocation(cx))
+        .unwrap()
+        .unwrap();
     let lease =
         cx.update(|app| Arc::new(owner.borrow().admit_thread_creation(invoking, app).unwrap()));
     window

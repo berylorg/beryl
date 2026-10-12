@@ -82,7 +82,7 @@ Operator approved this correction on 2026-10-10. The owning
 and [shell boundary](../systems/transcript-presentation/shell-boundary.md#measured-publication-gate)
 now determine the bounded preparation/publication lifecycle; this failure record remains evidence.
 The root plan releases the technical hold and requires complete production qualification.
-Resource delivery, Markdown, nested widgets, live suffixes and complete transcript mounting
+Resource delivery, Markdown, nested widgets, streaming history publication and complete transcript mounting
 remain separate outcomes.
 
 ## Correction Disposition

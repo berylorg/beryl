@@ -55,7 +55,10 @@ pub(super) fn validate(
                 )?;
                 if resource.projection_id() != Some(projection.id())
                     || resource.item_id() != projection.item_id()
-                    || resource.backing().text_source() != Some(source)
+                    || !resource
+                        .backing()
+                        .text_source()
+                        .is_some_and(|stored| stored.can_extend(source))
                     || resource.backing().range() != Some(*source_range)
                 {
                     return invariant("projection resource metadata disagrees");

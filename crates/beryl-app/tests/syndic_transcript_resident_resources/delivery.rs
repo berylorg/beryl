@@ -98,6 +98,31 @@ fn bounded_continuations_keep_relative_offsets_and_split_utf8_bytes_exact() {
         .collect();
     assert_eq!(actual, expected);
     assert_eq!(snapshot.resident.provider_revision, Some(REVISION));
+    let mounts = core.code_panel_demands();
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].resource_id, id);
+    assert!(mounts[0].range.is_none());
+    assert!(mounts[0].metadata.is_some());
+    let inner = IndexedResourceDemand {
+        revision: beryl_model::ProjectionRevision::new(900).unwrap(),
+        root: None,
+        query: IndexedResourceQuery::Range {
+            request: provider::resource_index::Request::Code {
+                lines: provider::resource_index::OrdinalRange { start: 0, end: 16 },
+            },
+            cursor: None,
+            descriptors: 16,
+            bytes: 65536,
+        },
+    };
+    let mut stale = mounts[0].clone();
+    stale.activation_revision += 1;
+    assert!(!core.set_indexed_resource_demand(&stale, Some(inner.clone())));
+    assert!(core.set_indexed_resource_demand(&mounts[0], Some(inner)));
+    let owner = core.indexed_resource_owner(&id).unwrap();
+    assert!(owner.indexed.is_some());
+    assert!(owner.metadata.is_none());
+    assert!(owner.range.is_none());
 }
 
 #[test]
@@ -203,6 +228,7 @@ fn empty_preview_is_settled_and_capacity_refusal_is_local() {
         )
         .unwrap();
     assert!(settled.resource_demand().is_none());
+    assert_eq!(settled.code_panel_demands().len(), 1);
     let (mut limited, mut provider, id) = seed_resource_presentation(
         ResidentTranscriptPolicy {
             max_resource_bytes: 2,
@@ -231,6 +257,7 @@ fn empty_preview_is_settled_and_capacity_refusal_is_local() {
         )
         .unwrap();
     assert!(refused.resource_demand().is_none());
+    assert!(refused.code_panel_demands().is_empty());
     assert_eq!(refused.core_snapshot().resident.resource_bytes, 0);
     assert_eq!(refused.core_snapshot().resident.budget_rejection_count, 1);
 }
@@ -349,6 +376,9 @@ fn zero_length_short_and_absent_previews_do_not_guess_resource_extents() {
             core.resource_demand().and_then(|demand| demand.range),
             expected
         );
+        let mounts = core.code_panel_demands();
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].range, expected);
     }
 }
 

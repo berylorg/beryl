@@ -297,7 +297,7 @@ fn resource_prepared_output_rejects_request_supersession_cancel_and_backing_repl
 }
 
 #[test]
-fn resource_preview_extents_remain_exact_and_storage_refuses_empty_backing() {
+fn resource_preview_extents_remain_exact_and_empty_code_backing_has_zero_extents() {
     for (text, start, end, preview) in [
         ("prefixbody", 6, 10, Some(1..2)),
         ("prefixbody", 6, 10, None),
@@ -322,8 +322,22 @@ fn resource_preview_extents_remain_exact_and_storage_refuses_empty_backing() {
         drop(prepared);
         assert!(fixture.reader.retire());
     }
-    assert!(ProjectionSourceRange::new(0, 0).is_err());
-    assert!(ProjectionSourceRange::new(6, 6).is_err());
+    assert!(ProjectionSourceRange::new(0, 0).is_ok());
+    assert!(ProjectionSourceRange::new(6, 6).is_ok());
+    let fixture = Fixture::new();
+    fixture.seed_structured_resource(
+        "prefixbody",
+        6,
+        6,
+        None,
+        5,
+        ResourceStructure::code(None, 0).unwrap(),
+    );
+    let metadata = read_metadata(&fixture, &fixture.resource_request(2));
+    assert_eq!(metadata.byte_len, 0);
+    assert_eq!(metadata.line_count, Some(0));
+    assert_eq!(metadata.preview_range, None);
+    assert!(fixture.reader.retire());
 }
 
 #[test]

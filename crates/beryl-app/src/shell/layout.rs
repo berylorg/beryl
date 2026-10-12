@@ -13,14 +13,12 @@ pub(crate) const STATUS_LINE_HEIGHT: f32 = 28.0;
 pub(crate) const STANDARD_UI_TEXT_FONT_SIZE: f32 = 16.0;
 #[cfg(test)]
 pub(crate) const STANDARD_UI_TEXT_LINE_HEIGHT: f32 = STANDARD_UI_TEXT_FONT_SIZE * 1.625;
-pub(crate) const ROUNDED_WIDGET_CORNER_RADIUS: f32 = 6.0;
-pub(crate) const BUTTON_OUTER_HEIGHT: f32 = 32.0;
+pub(crate) use crate::widgets::command_style::{
+    BUTTON_BORDER_WIDTH, BUTTON_HORIZONTAL_PADDING, BUTTON_LABEL_FONT_SIZE,
+    BUTTON_LABEL_LINE_HEIGHT, BUTTON_OUTER_HEIGHT, BUTTON_VERTICAL_PADDING,
+    ROUNDED_WIDGET_CORNER_RADIUS, button_required_outer_height,
+};
 pub(crate) const BUTTON_ICON_OUTER_WIDTH: f32 = BUTTON_OUTER_HEIGHT;
-pub(crate) const BUTTON_LABEL_FONT_SIZE: f32 = 14.0;
-pub(crate) const BUTTON_LABEL_LINE_HEIGHT: f32 = 18.0;
-pub(crate) const BUTTON_BORDER_WIDTH: f32 = 1.0;
-pub(crate) const BUTTON_VERTICAL_PADDING: f32 = 6.0;
-pub(crate) const BUTTON_HORIZONTAL_PADDING: f32 = 10.0;
 pub(crate) const TOOL_ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub(crate) const TOOL_ACTIVITY_OVERSCAN_ROWS: usize = 3;
 pub(crate) const TOOL_ACTIVITY_MIN_PANEL_HEIGHT: f32 = TOOL_ACTIVITY_ROW_HEIGHT;
@@ -41,10 +39,6 @@ pub(crate) const COMPOSER_INPUT_PAINT_SLACK: f32 = 4.0;
 pub(crate) const COMPOSER_INPUT_HORIZONTAL_CHROME: f32 =
     COMPOSER_INPUT_PADDING_X * 2.0 + COMPOSER_INPUT_BORDER_WIDTH * 2.0;
 pub(crate) const COMPOSER_OUTER_HORIZONTAL_PADDING: f32 = 32.0;
-
-pub(crate) const fn button_required_outer_height() -> f32 {
-    BUTTON_BORDER_WIDTH * 2.0 + BUTTON_VERTICAL_PADDING * 2.0 + BUTTON_LABEL_LINE_HEIGHT
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ToolActivityRowWindow {

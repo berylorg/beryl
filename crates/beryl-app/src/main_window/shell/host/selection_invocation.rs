@@ -6,7 +6,7 @@ pub(crate) struct MainWindowSelectionInvocation {
 }
 
 impl MainWindowShellRoot {
-    pub(in crate::main_window::shell::host) fn running_selection_invocation(
+    pub(crate) fn running_selection_invocation(
         &self,
         cx: &Context<Self>,
     ) -> Result<MainWindowSelectionInvocation, String> {

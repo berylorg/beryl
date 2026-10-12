@@ -306,6 +306,44 @@ fn ledger_refuses_before_span_chunk_or_output_acquisition() {
 }
 
 #[test]
+fn separate_visible_fragments_share_one_charged_chunk_and_release_with_the_ledger() {
+    let mut records = Records::default();
+    let text = b"one\n".repeat(16);
+    records.chunk_at(1, 0, &text);
+    records.text(0, 64, 1, 0, 0);
+    let binding = binding(composer(64), 0, 64);
+    let mut ledger = Ledger::default();
+    for line in 0..16 {
+        assert_eq!(
+            read_authenticated_window(&records, &mut ledger, &binding, 64, line * 4, 3).unwrap(),
+            b"one"
+        );
+    }
+    assert_eq!(
+        records
+            .calls
+            .borrow()
+            .iter()
+            .filter(|family| **family == ContentChunksFamily::NAME)
+            .count(),
+        1
+    );
+    let retained = std::sync::Arc::downgrade(ledger.source_chunk.as_ref().unwrap());
+    drop(ledger);
+    assert!(retained.upgrade().is_none());
+    read_authenticated_window(&records, &mut Ledger::default(), &binding, 64, 0, 3).unwrap();
+    assert_eq!(
+        records
+            .calls
+            .borrow()
+            .iter()
+            .filter(|family| **family == ContentChunksFamily::NAME)
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn source_window_rejects_gaps_chunk_substitution_and_bad_mapping() {
     for fault in 0..4 {
         let mut records = Records::default();

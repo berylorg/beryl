@@ -12,12 +12,12 @@ mod native;
 mod server;
 #[path = "context_status_native/submission.rs"]
 mod submission;
-#[path = "context_status_native/writer.rs"]
-mod writer;
 #[path = "mounted_exact_status_controls/support.rs"]
 mod support;
 #[path = "projection/syndic.rs"]
 mod syndic;
+#[path = "context_status_native/writer.rs"]
+mod writer;
 
 mod cas_projection {
     pub use beryl_app::cas_projection::*;
@@ -250,7 +250,13 @@ fn native_active_submission_accepts_steering_and_preserves_queued_input() {
     run_native_context(false, false, false, false, true);
 }
 
-fn run_native_context(queued_work: bool, claim_loss: bool, uncertainty: bool, binding_loss: bool, active_submission: bool) {
+fn run_native_context(
+    queued_work: bool,
+    claim_loss: bool,
+    uncertainty: bool,
+    binding_loss: bool,
+    active_submission: bool,
+) {
     let faults = beryl_home_store::test_faults::FaultController::new();
     let fixture_faults = faults.clone();
     let server = server::NormalTerminalServer::spawn_controlled_connection_loss();

@@ -3046,10 +3046,34 @@ fn presentation_record_for_projection(
     };
 
     ResidentPresentationRecord {
-        id: ResidentPresentationRecordId(format!(
-            "view:{}:projection:{}",
-            view_record.id.0, projection_record.id.0
-        )),
+        id: match (
+            &projection_record.payload,
+            projection_record.provenance.block_id,
+        ) {
+            (
+                ProjectionPayload::ResourceReference {
+                    resource_kind: ResourceKind::Code,
+                    ..
+                },
+                Some(block),
+            ) => ResidentPresentationRecordId(format!(
+                "view:{}:code:{block:?}",
+                projection_record.provenance.view_id.0
+            )),
+            _ => match (
+                &projection_record.provenance.item_id,
+                &projection_record.provenance.source_range,
+            ) {
+                (Some(item), Some(range)) => ResidentPresentationRecordId(format!(
+                    "view:{}:item:{}:source:{}",
+                    projection_record.provenance.view_id.0, item.0, range.start
+                )),
+                _ => ResidentPresentationRecordId(format!(
+                    "view:{}:projection:{}",
+                    view_record.id.0, projection_record.id.0
+                )),
+            },
+        },
         kind,
         provenance: ResidentRecordProvenance {
             source: ResidentRecordSource::Syndic(projection_record.provenance.clone()),

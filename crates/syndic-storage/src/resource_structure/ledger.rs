@@ -6,13 +6,14 @@ use crate::{
     domain::SyndicDomain,
 };
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct Ledger {
     pub(super) records: usize,
     pub(super) read_bytes: usize,
     pub(super) retained: usize,
     pub(super) writes: usize,
     pub(super) write_bytes: usize,
+    pub(super) source_chunk: Option<std::sync::Arc<crate::ContentChunkRecord>>,
 }
 
 impl Ledger {
@@ -35,7 +36,7 @@ impl Ledger {
                 .retained
                 .checked_add(retained)
                 .ok_or(ConstructionError::Limit)?,
-            ..*self
+            ..self.clone()
         };
         if next.records > 520 || next.read_bytes > 524_288 || next.retained > 524_288 {
             return Err(ConstructionError::Limit);

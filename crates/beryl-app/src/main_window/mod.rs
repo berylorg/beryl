@@ -1,6 +1,7 @@
 mod composer_slot;
 mod conversation_composer;
 mod conversation_composer_mount;
+pub(crate) use conversation_composer_mount::worker::{WorkerAdmission, WorkerLease};
 mod conversation_composer_owner;
 mod creation;
 #[cfg(target_os = "windows")]

@@ -225,7 +225,7 @@ pub(super) fn finish_open_block(
             language,
             preview,
             logical_lines,
-            body_bytes,
+            body_bytes: _,
             resource_digest,
             ..
         } => emit_code(
@@ -237,7 +237,6 @@ pub(super) fn finish_open_block(
             language,
             preview,
             logical_lines,
-            body_bytes,
             resource_digest,
             outputs,
         )?,
@@ -296,34 +295,19 @@ pub(super) fn emit_code(
     language: Option<Box<str>>,
     preview: Box<str>,
     logical_lines: u64,
-    body_bytes: u64,
     resource_digest: [u8; 32],
     outputs: &mut Vec<ParserOutput>,
 ) -> Result<(), SyndicMutationError> {
-    if body_bytes > crate::MARKDOWN_CODE_INLINE_MAX_BYTES as u64
-        || logical_lines > crate::MARKDOWN_CODE_INLINE_MAX_LINES
-    {
-        outputs.push(ParserOutput::Resource {
-            block_start,
-            kind: MarkdownBlockKind::FencedCode,
-            range: ProjectionSourceRange::new(body_start, body_end)?,
-            preview,
-            structure: ResourceStructure::code(language.as_deref(), logical_lines)?,
-            digest: resource_digest,
-        });
-        state.closed = block_end;
-        Ok(())
-    } else {
-        emit_inline(
-            state,
-            block_start,
-            MarkdownBlockKind::FencedCode,
-            1,
-            block_start,
-            block_end,
-            outputs,
-        )
-    }
+    outputs.push(ParserOutput::Resource {
+        block_start,
+        kind: MarkdownBlockKind::FencedCode,
+        range: ProjectionSourceRange::new(body_start, body_end)?,
+        preview,
+        structure: ResourceStructure::code(language.as_deref(), logical_lines)?,
+        digest: resource_digest,
+    });
+    state.closed = block_end;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

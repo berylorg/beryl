@@ -3,10 +3,10 @@ use super::*;
 mod activity;
 use beryl_state::{HandoffFailureKind, ParentHandoffIdentity};
 
-#[path = "parent_execution/recovery.rs"]
-mod recovery;
 #[path = "parent_execution/identity.rs"]
 mod identity_tests;
+#[path = "parent_execution/recovery.rs"]
+mod recovery;
 
 pub(super) fn start() -> Fixture {
     let fixture = Fixture::new(false);
@@ -326,10 +326,11 @@ fn unknown_dispatch_waits_then_session_loss_fails_without_cas_identity() {
     .unwrap();
     support::discussion_input::committed(
         &fixture.store,
-        fixture
-            .syndic
-            .admit_live_source_event(fixture.syndic.revision(&fixture.store).unwrap(), event,
-                activity::retired_activity(&fixture.store, &fixture.syndic, id(30), turn)),
+        fixture.syndic.admit_live_source_event(
+            fixture.syndic.revision(&fixture.store).unwrap(),
+            event,
+            activity::retired_activity(&fixture.store, &fixture.syndic, id(30), turn),
+        ),
     );
     assert!(matches!(
         observe(&fixture).unwrap().execute(),

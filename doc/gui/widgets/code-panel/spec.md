@@ -140,6 +140,9 @@ consumes only its bounded allocation, clips overflow, and does not become anothe
 
 Scrollable code panels use the shared scrollbar affordance.
 
+The header's configured height is a minimum. A header containing commands accommodates their
+shared command geometry without clipping the controls or changing geometry with availability.
+
 Bordered code panels realize only the visible logical or wrapped text range plus bounded overscan. The viewport consumes range slices and range-indexed syntax roles; it must not eagerly construct GPUI elements, shaped lines, or token children for an unbounded complete source. No-wrap mode uses logical-line ranges. Smart-wrap mode uses a bounded wrap-layout index or equivalent range-backed realization so offscreen text is not shaped merely to build the render tree.
 
 The top-visible anchor is source-based rather than realization-index based. Realization-window
@@ -181,7 +184,7 @@ Spec CSS:
 .code-panel__header {
   display: flex;
   align-items: center;
-  block-size: var(--height);
+  min-block-size: var(--height);
   padding-inline: var(--padding-x);
   border-block-end: var(--separator-width) solid var(--separator-color);
 }

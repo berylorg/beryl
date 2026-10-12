@@ -101,9 +101,11 @@ impl EventRouter {
             let terminal = Arc::new(Mutex::new(TargetTerminalSignal::Open));
             let loss_receipt = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let bound_turn = Arc::new(Mutex::new(turn_id.clone()));
+            let history_wake = Arc::new(super::history_wake::HistoryWake::default());
             state.targets.insert(
                 key.cas_thread_id.clone(),
                 TargetEntry {
+                    history_wake: Arc::clone(&history_wake),
                     runtime_interest: runtime_interest
                         .as_ref()
                         .map_or_else(std::sync::Weak::new, Arc::downgrade),
@@ -136,6 +138,7 @@ impl EventRouter {
             advance_revision(&mut state);
             Ok((
                 TargetRegistration {
+                    history_wake,
                     runtime_interest: runtime_interest.clone(),
                     registration,
                     key,

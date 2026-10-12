@@ -227,8 +227,8 @@ impl MainWindowShellRoot {
         draft.composer = Some((mount, resident.entity_id(), close));
         let input = resident.read(cx).gpui_input();
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
-        self.running_threads.transcript =
-            cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
+        let panel = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
+        self.running_threads.replace_transcript(panel, cx);
         self.stage_recovered_transcript(
             selection,
             transcript,

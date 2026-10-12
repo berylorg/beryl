@@ -59,7 +59,9 @@ pub(crate) use media_action::{
     ResidentMediaActionUnavailable, ResidentMediaRangeAvailability,
     ResidentTranscriptMediaActionTarget, ResidentTranscriptMediaPayload,
 };
-pub(crate) use panel::{SYNDIC_TRANSCRIPT_KEY_CONTEXT, SyndicTranscriptPanel};
+pub(crate) use panel::{
+    ResourceViewportDemandChanged, SYNDIC_TRANSCRIPT_KEY_CONTEXT, SyndicTranscriptPanel,
+};
 pub(crate) use provider::*;
 pub(crate) use renderer_context_menu::{
     realized_resident_context_menu_record_ids,

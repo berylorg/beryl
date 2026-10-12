@@ -223,7 +223,7 @@ fn cursor_substitution_and_invalid_limits_fail_before_demanded_reads() {
         (request, invalid_position),
     ] {
         let before = fixture.reads.borrow().len();
-        let ledger = query.ledger;
+        let ledger = query.ledger.clone();
         assert!(
             query
                 .range(&fixture, request, Some(cursor), ResponseLimits::default())
@@ -246,7 +246,7 @@ fn cursor_substitution_and_invalid_limits_fail_before_demanded_reads() {
             bytes: 65_537,
         },
     ] {
-        let ledger = query.ledger;
+        let ledger = query.ledger.clone();
         assert!(matches!(
             query.range(&fixture, request, None, limits),
             Err(ConstructionError::Limit)

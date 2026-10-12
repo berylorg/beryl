@@ -7,6 +7,8 @@ pub(super) fn run(
     opening_classification: bool,
     stale_state: bool,
     cancel_publication: bool,
+    verify_draft_isolation: bool,
+    verify_code_loading: bool,
 ) {
     let (directory, process, prepared, appearance, faults) =
         std::thread::spawn(prepared_process).join().unwrap();
@@ -49,6 +51,7 @@ pub(super) fn run(
         );
         (owner, window, original_generation)
     });
+    let prior_transcript = resource_wakeups::capture(window, cx);
     let (thread, draft, exact_window) = {
         let mut process = owner.borrow_mut().test_take_services();
         let original_faults = faults.clone();
@@ -415,6 +418,13 @@ pub(super) fn run(
                 .is_none()
         );
     });
+    resource_wakeups::verify_replacement(window, prior_transcript, cx);
+    if verify_draft_isolation {
+        super::draft_isolation::verify(window, cx);
+    }
+    let code_reader =
+        verify_code_loading.then(|| super::code_loading::verify(&owner, window, thread, cx));
     dispose_recovered(owner, window, cx);
+    drop(code_reader);
     assert_reopens(&directory);
 }

@@ -42,6 +42,15 @@ minimized Windows windows suspend frames. Retain a weak reference to any abandon
 refuse successor preparation until it disappears; otherwise repeated cancelled attempts can leave
 an accumulating callback queue in a minimized window.
 
+Native Code recovery qualification on 2026-10-11 confirmed that manually calling
+`draw_and_present_for_test` on a minimized window does not consume the queued recovery frame wake.
+Two bounded attempts retired the graph but remained pending until timeout
+(`cca99907-9b18-44d6-b09a-9abff2e599ec`, `0a390528-5db3-4e3e-8db8-c4c603f05361`).
+Use the existing test-only resident frame capture and dispatch seam when qualifying recovery with
+the native window minimized. The corrected native case passed with all 47 panel regressions
+(`97eaffe7-6e46-41a0-8add-2c95a2f8ad2a`). This qualifies recovery and provider-backed range delivery
+under controlled frame dispatch; it does not prove native frame scheduling while minimized.
+
 The first native phase 744 tests exposed a Windows background-thread stack overflow during source
 authentication, leaving the worker pending. CDB stopped at `__chkstk` in history authentication
 under saved-checkpoint validation and service reconstruction. Widget executor tests had missed the

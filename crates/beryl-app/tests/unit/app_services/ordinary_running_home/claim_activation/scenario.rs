@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(super) enum Entry {
     Prepared,
+    PreparedWithCode,
     PreparedWithParentFocus,
     Switcher,
     Navigation,
@@ -186,7 +187,7 @@ pub(super) async fn recover_with_entry(
         })
         .await;
     let picker = match entry {
-        Entry::Prepared => None,
+        Entry::Prepared | Entry::PreparedWithCode => None,
         Entry::PreparedWithParentFocus => {
             lineage_entry::ready(invoking, target, cx).await;
             lineage_entry::focus(invoking, target, cx).await;
@@ -448,6 +449,8 @@ pub(super) async fn recover_with_entry(
         assert_eq!(copy_all(invoking, &resident, cx).await, draft_text(1));
         if matches!(entry, Entry::Lineage(_)) {
             transcript::assert_recovered_with_records(invoking, 3, cx).await;
+        } else if matches!(entry, Entry::PreparedWithCode) {
+            transcript::assert_recovered_with_records(invoking, 2, cx).await;
         } else {
             transcript::assert_recovered(invoking, cx).await;
         }

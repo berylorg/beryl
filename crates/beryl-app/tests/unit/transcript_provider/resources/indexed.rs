@@ -2,6 +2,122 @@ use super::*;
 use beryl_home_store::{CommandCancellation, CurrentDomainCommand};
 use syndic_storage::indexed_resource as index;
 
+#[test]
+fn indexed_source_pages_use_saved_raw_bytes_with_exact_root_and_release_custody() {
+    let fixture = Fixture::new();
+    let text = "aa".to_owned() + &"🍒".repeat(2048) + "xxx\n";
+    let metadata = fixture.seed_resource(&text, 2, text.len() as u64, None, 7);
+    complete_with_limits(&fixture, &metadata, 16384, 1);
+    let cancel = AtomicBool::new(false);
+    let mut request = indexed_request(&fixture, 7);
+    let prepared = fixture
+        .reader
+        .prepare_indexed_resource(request.clone(), &cancel)
+        .unwrap();
+    request.root = Some(prepared.response().root.as_ref().unwrap().digest);
+    drop(prepared);
+    let mut reconstructed = Vec::new();
+    for range in [
+        index::ByteRange {
+            start: 2,
+            end: 8192,
+        },
+        index::ByteRange {
+            start: 8192,
+            end: text.len() as u64,
+        },
+    ] {
+        request.query = IndexedResourceQuery::Source {
+            range,
+            bytes: 16384,
+        };
+        let prepared = fixture
+            .reader
+            .prepare_indexed_resource(request.clone(), &cancel)
+            .unwrap();
+        assert!(prepared.response().encoded_bytes > (range.end - range.start) as usize);
+        assert!(prepared.response().encoded_bytes <= 16384);
+        fixture
+            .reader
+            .publish_indexed_resource_if_current(prepared, &request, &cancel, |response| {
+                let IndexedResourceValue::Source(page) = &response.value else {
+                    panic!("bound raw source page")
+                };
+                assert_eq!(page.binding.metadata, metadata);
+                assert_eq!(page.range, range);
+                assert_eq!(
+                    page.bytes,
+                    text.as_bytes()[range.start as usize..range.end as usize]
+                );
+                reconstructed.extend_from_slice(&page.bytes);
+            })
+            .unwrap();
+        assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
+    }
+    assert_eq!(reconstructed, text.as_bytes()[2..]);
+    assert!(fixture.reader.retire());
+}
+
+#[test]
+fn indexed_source_read_and_publication_refuse_invalid_or_obsolete_bindings() {
+    for invalid in 0..5 {
+        let fixture = Fixture::new();
+        let metadata = fixture.seed_resource("one\n", 0, 4, None, 7);
+        complete(&fixture, &metadata);
+        let cancel = AtomicBool::new(false);
+        let mut request = indexed_request(&fixture, 7);
+        let prepared = fixture
+            .reader
+            .prepare_indexed_resource(request.clone(), &cancel)
+            .unwrap();
+        request.root = Some(prepared.response().root.as_ref().unwrap().digest);
+        drop(prepared);
+        request.query = IndexedResourceQuery::Source {
+            range: index::ByteRange { start: 0, end: 4 },
+            bytes: 16384,
+        };
+        if invalid < 3 {
+            match invalid {
+                0 => request.root = None,
+                1 => request.root = Some([19; 32]),
+                _ => {
+                    request.query = IndexedResourceQuery::Source {
+                        range: index::ByteRange { start: 0, end: 5 },
+                        bytes: 16384,
+                    }
+                }
+            }
+            assert!(
+                fixture
+                    .reader
+                    .prepare_indexed_resource(request, &cancel)
+                    .is_err()
+            );
+        } else {
+            let prepared = fixture
+                .reader
+                .prepare_indexed_resource(request.clone(), &cancel)
+                .unwrap();
+            if invalid == 3 {
+                fixture.seed_head(2);
+            } else {
+                cancel.store(true, Ordering::Release);
+            }
+            let called = AtomicBool::new(false);
+            assert!(
+                fixture
+                    .reader
+                    .publish_indexed_resource_if_current(prepared, &request, &cancel, |_| called
+                        .store(true, Ordering::Release))
+                    .is_err()
+            );
+            assert!(!called.load(Ordering::Acquire));
+        }
+        assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
+        assert!(fixture.reader.retire());
+    }
+}
+
 pub(super) fn indexed_request(
     fixture: &Fixture,
     revision: u64,

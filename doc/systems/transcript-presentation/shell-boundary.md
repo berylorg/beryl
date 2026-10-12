@@ -38,9 +38,11 @@ The host does not own Syndic canonical history, durable storage, `syndic-storage
 
 ## Inputs
 
-The host accepts selected transcript-view activation seeds, previously coherent host state for non-blank activation handoff, typed synthetic-context contribution descriptors, provider responses, invalidation notices, viewport size, theme-dependent measurement changes, manual scroll deltas, explicit navigation requests, live-turn events, renderer demand facts, nested-widget resource demand, selection changes, quote requests, copy requests, context-menu requests, media action requests, popup-close commands, and diagnostic read commands.
+The host accepts selected transcript-view activation seeds, previously coherent host state for non-blank activation handoff, typed synthetic-context contribution descriptors, provider responses, invalidation notices, viewport size, theme-dependent measurement changes, manual scroll deltas, explicit navigation requests, renderer demand facts, nested-widget resource demand, selection changes, quote requests, copy requests, context-menu requests, media action requests, popup-close commands, and diagnostic read commands.
 
-Transcript-visible live-turn text events carry exact routed thread, turn, item, normalized kind, ordered text, and logical-frontier facts. The host may publish their bounded transient suffix before durable Syndic projection catches up, but it may not reinterpret them as durable history or replay them through a presentation timer.
+Streaming content arrives through revision-bound Syndic history and projection pages containing
+saved Beryl/Syndic chunks. CAS identities remain capture provenance; raw live-turn text is not a
+separate host input. CAS item completion must not gate admission of coherent streaming chunks.
 
 Activation seeds name the selected transcript view and requested initial placement. A
 branch-discussion seed may also name the immutable context-owner identity, expected revision, and
@@ -55,13 +57,13 @@ byte range, and one unique request id. A repair-publication response additionall
 view generation, the exact affected turn and projection revisions, snapshot-backed source
 provenance when repaired, and one pending, repaired, or incomplete disposition.
 
-The host does not accept a CAS repair response, repair adapter handle, live suffix, outage buffer,
-GUI-local text, or partial repair record as repair-publication input. Live-turn events remain a
-separate bounded transient input and cannot populate repaired canonical records.
+The host does not accept a CAS repair response, repair adapter handle, raw live text, outage buffer,
+GUI-local text, or partial repair record as repair-publication input. Runtime status notifications
+cannot populate authored presentation records or repaired canonical records.
 
 ## Outputs
 
-The host publishes immutable resident presentation snapshots for the GPUI panel. A snapshot contains only currently resident presentation records, any bounded transient live suffix attached to its exact authored record, realized synthetic-context chunks, stable group and record identities, realized frame data, provenance, local fallback records, local affordances, and enough revision data for the renderer to reject stale measurements or demand facts.
+The host publishes immutable resident presentation snapshots for the GPUI panel. A snapshot contains only currently resident history-backed presentation records, realized synthetic-context chunks, stable group and record identities, realized frame data, provenance, local fallback records, local affordances, and enough revision data for the renderer to reject stale measurements or demand facts.
 
 ### Measured Publication Gate
 
@@ -90,8 +92,8 @@ coherent realized window are ready; other pages and indexed source or resource r
 demand under the same generation. Publication switches those turn selectors together and emits no
 partial or mixed-authority output.
 
-The repair-generation switch simultaneously removes the superseded generation's transient live
-suffix and provisional turn-local evidence. Repair provenance, record content, presentation
+The repair-generation switch simultaneously removes the superseded generation's turn-local
+presentation state. Repair provenance, record content, presentation
 revision, and invalidation facts publish together; no separate GUI status output can advance them.
 After anchor rebasing, the switch releases the superseded projection pages, presentation records,
 measurements and layout, widget state, resource slices, pins, and every associated capacity charge.
@@ -180,16 +182,17 @@ Diagnostics may expose Syndic provenance and transcript-view positions. They mus
 - Synthetic context remains presentation-only, occupies its immutable branch-boundary position, does not increment turn counts, and cannot become a quote, branch, edit, or ordinary turn-menu target.
 - Activation publishes content and initial viewport state atomically when a coherent seed is available.
 - A previous coherent transcript may remain visible until the new coherent seed is ready.
-- Every arrived bounded fragment of a normalized transcript-visible text delta becomes eligible for
-  the next GUI frame without synthetic character pacing. Fragments already pending at one frame
-  boundary may publish together without losing parent-delta identity or order.
-- A transient live suffix remains bounded and non-authoritative. Exact Syndic prefix agreement transfers that range to durable presentation without duplication, blanking, or identity substitution; mismatch fails closed.
+- Every newly admitted history-backed streaming chunk becomes eligible for the next GUI frame
+  without synthetic character pacing. Chunks already ready at one frame boundary may publish
+  together without losing source provenance or order.
+- Streaming and completed authored content use the same Syndic provider and residency boundary.
+  Coherent frontier adoption preserves identity and reading anchors without duplicate ranges.
 - Repair publication accepts only one complete selected Syndic generation with generation-owned
   pending, repaired, or incomplete provenance; CAS repair snapshots, live or outage state, GUI
   text, and partial repair data never become host replacement content.
 - The host atomically switches the affected turn's generation, compact head, source authority, and
   provenance while retaining only bounded demanded pages and ranges. It never emits a mixed-
-  generation or blank intermediate turn and disposes any superseded transient live suffix in that
+  generation or blank intermediate turn and disposes superseded presentation state in that
   same switch.
 - Every asynchronous provider result matches its complete host, activation, authority-generation,
   range, and request-id key or is discarded with all returned capacity released; host, window, and

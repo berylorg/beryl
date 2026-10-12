@@ -2,10 +2,9 @@ use super::access::HistoryAccess;
 
 use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AdvanceItemProjectionBuild, ContentLifecycle, FinalizeNextTurnItem, FreezeNextTurnItem,
-    GeneratedMediaResourceDisposition, ItemProjectionBuildPhase, ProjectionLifecycle,
-    ProjectionTextSource, ProviderItemLifecycle, ResourceBacking, StartItemProjectionBuild,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnKind, TurnStateRecord,
+    ContentLifecycle, FinalizeNextTurnItem, FreezeNextTurnItem, GeneratedMediaResourceDisposition,
+    ProjectionTextSource, ProviderItemLifecycle, ResourceBacking, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, TurnKind, TurnStateRecord,
 };
 
 use super::super::OrdinaryTurnExecutionError;
@@ -298,19 +297,10 @@ fn converge_item_projection(
         let current =
             snapshot::item_projection(store, storage, thread_id, source.item.id(), limit)?;
         validate_projection_source(&current, source)?;
-        if current_projection(&current)? {
+        if super::projection::step(store, storage, &current)?
+            == super::projection::ItemProjectionStep::Current
+        {
             return Ok(());
-        }
-        match current.build.as_ref() {
-            Some(build) => {
-                if !valid_parsing_build(&current, build) {
-                    return Err(OrdinaryTurnExecutionError::Invariant(
-                        "terminal item projection build is not resumable",
-                    ));
-                }
-                advance_projection(store, storage, thread_id, source, limit, &current, build)?;
-            }
-            None => start_projection(store, storage, thread_id, source, limit, &current)?,
         }
     }
 }
@@ -329,86 +319,4 @@ fn validate_projection_source(
         ));
     }
     Ok(())
-}
-
-fn current_projection(
-    current: &snapshot::ProjectionSnapshot,
-) -> Result<bool, OrdinaryTurnExecutionError> {
-    let source = current
-        .item
-        .projection_source()
-        .ok_or(OrdinaryTurnExecutionError::Invariant(
-            "visible terminal item projection source has no text content",
-        ))?;
-    match current.head.as_ref() {
-        Some(head) if head.lifecycle() == ProjectionLifecycle::Current => {
-            let exact = head.generation() == current.generation
-                && head.source_item_revision() == current.item.revision()
-                && current.build.is_none()
-                && current.set.as_ref().is_some_and(|set| {
-                    set.item_id() == current.item.id()
-                        && set.generation() == head.generation()
-                        && set.source_item_revision() == current.item.revision()
-                        && set.source() == source
-                        && set.source_bytes() == source.logical_utf8_bytes()
-                        && set.projection_count() != 0
-                });
-            if exact {
-                Ok(true)
-            } else {
-                Err(OrdinaryTurnExecutionError::Invariant(
-                    "current terminal item projection is incoherent",
-                ))
-            }
-        }
-        Some(_) | None if current.set.is_none() => Ok(false),
-        Some(_) | None => Err(OrdinaryTurnExecutionError::Invariant(
-            "uncurrent item projection unexpectedly owns the selected set",
-        )),
-    }
-}
-
-fn valid_parsing_build(
-    current: &snapshot::ProjectionSnapshot,
-    build: &syndic_storage::ItemProjectionBuildRecord,
-) -> bool {
-    let Some(source) = current.item.projection_source() else {
-        return false;
-    };
-    build.item_id() == current.item.id()
-        && build.generation() == current.generation
-        && build.source_item_revision() == current.item.revision()
-        && build.source() == source
-        && build.source_bytes() == source.logical_utf8_bytes()
-        && matches!(build.phase(), ItemProjectionBuildPhase::Parsing(_))
-}
-
-fn start_projection(
-    store: HistoryAccess<'_>,
-    storage: &SyndicStorage,
-    thread_id: SyndicThreadId,
-    source: &snapshot::CanonicalSnapshot,
-    _limit: SyndicPointReadLimit,
-    before: &snapshot::ProjectionSnapshot,
-) -> Result<(), OrdinaryTurnExecutionError> {
-    let request =
-        StartItemProjectionBuild::new(source.item.id(), source.item.revision(), before.generation);
-    command::dispatch(store, storage.current_start_item_projection_build(request))
-}
-
-fn advance_projection(
-    store: HistoryAccess<'_>,
-    storage: &SyndicStorage,
-    thread_id: SyndicThreadId,
-    source: &snapshot::CanonicalSnapshot,
-    _limit: SyndicPointReadLimit,
-    before: &snapshot::ProjectionSnapshot,
-    build: &syndic_storage::ItemProjectionBuildRecord,
-) -> Result<(), OrdinaryTurnExecutionError> {
-    let request =
-        AdvanceItemProjectionBuild::new(source.item.id(), before.generation, build.revision());
-    command::dispatch(
-        store,
-        storage.current_advance_item_projection_build(request),
-    )
 }

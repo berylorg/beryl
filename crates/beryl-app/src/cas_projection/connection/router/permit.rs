@@ -628,6 +628,7 @@ fn finish_source_publication_locked(
         }
         target.turn_state = TargetTurn::Terminal;
         target.sender.take();
+        target.history_wake.notify();
     }
     if published && permit.activation.is_some() {
         target.activation_durable = true;
@@ -643,6 +644,9 @@ fn finish_source_publication_locked(
     let held = hold_after_commit && closing.is_none();
     if !held {
         target.publication_in_flight = None;
+    }
+    if published && !held && closing.is_none() && target.compaction.is_none() {
+        target.history_wake.published();
     }
     if published {
         state.routed_operation_count = state.routed_operation_count.saturating_add(1);
@@ -695,6 +699,9 @@ fn release_source_publication_locked(
         && target.compaction.is_none()
         && !target.loss_requested;
     target.publication_in_flight = None;
+    if closing.is_none() && target.compaction.is_none() {
+        target.history_wake.published();
+    }
     if let Some(reason) = closing {
         close_target(state, &release.thread_id, reason);
     } else {

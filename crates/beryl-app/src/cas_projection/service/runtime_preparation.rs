@@ -38,7 +38,10 @@ impl ProjectionConnectionService {
             return Err(RuntimeSessionPreparationError::InvalidConfiguration);
         }
         match candidate {
-            Some(access) => config.runtime_roots.has_runtimes_candidate(access).map(|_| ()),
+            Some(access) => config
+                .runtime_roots
+                .has_runtimes_candidate(access)
+                .map(|_| ()),
             None => config.runtime_roots.revision(home).map(|_| ()),
         }
         .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?;

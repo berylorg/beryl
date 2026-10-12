@@ -141,7 +141,58 @@ pub(super) fn run_mounted_with_prepared_home_retained(
             None,
             scenario,
             false,
-            None
+            None,
+        )
+        .is_none()
+    );
+}
+
+pub(super) fn run_mounted_with_prepared_home_retained_and_workers(
+    count: u8,
+    chunks: usize,
+    workers: u64,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    run_mounted_with_prepared_home_retained_and_workers_and_deadline(
+        count,
+        chunks,
+        workers,
+        Duration::from_secs(30),
+        prepare,
+        scenario,
+    );
+}
+
+pub(super) fn run_mounted_with_prepared_home_retained_and_workers_and_deadline(
+    count: u8,
+    chunks: usize,
+    workers: u64,
+    completion_deadline: Duration,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    assert!(
+        run_mounted_case_with_workers(
+            count,
+            chunks,
+            Some(Box::new(prepare)),
+            None,
+            scenario,
+            false,
+            None,
+            Some(workers),
+            completion_deadline,
         )
         .is_none()
     );
@@ -160,6 +211,35 @@ fn run_mounted_case(
     + 'static,
     expect_shutdown: bool,
     restored_count: Option<usize>,
+) -> Option<MinimalSessionBootstrap> {
+    run_mounted_case_with_workers(
+        count,
+        chunks,
+        prepare,
+        final_selection,
+        scenario,
+        expect_shutdown,
+        restored_count,
+        None,
+        Duration::from_secs(30),
+    )
+}
+
+fn run_mounted_case_with_workers(
+    count: u8,
+    chunks: usize,
+    prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
+    final_selection: Option<Box<dyn FnOnce() -> Vec<(WindowId, beryl_model::SyndicThreadId)>>>,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: Option<usize>,
+    projection_workers: Option<u64>,
+    completion_deadline: Duration,
 ) -> Option<MinimalSessionBootstrap> {
     let directory = if count == 0 {
         support::native_home()
@@ -197,7 +277,18 @@ fn run_mounted_case(
             syndic,
         }
     });
-    if count != 0 {
+    if let Some(workers) = projection_workers {
+        input.services.projection = crate::cas_projection::ProjectionServiceConfig::try_new(
+            8,
+            workers,
+            crate::cas_projection::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap();
+    }
+    if count == 0 {
+        input.windows.configurator_source =
+            resident_fixture::selected_inputs_with_extent(0).configurator_source;
+    } else {
         input.windows = resident_fixture::selected_inputs_with_extent((chunks * 768) as u64);
         let execution = beryl_model::ExecutionBinding::new(
             beryl_model::RuntimeId::from_bytes([194; 16]),
@@ -326,7 +417,7 @@ fn run_mounted_case(
                 },
                 app,
             );
-            support::watchdog_with_timeout(app, Duration::from_secs(30));
+            support::watchdog_with_timeout(app, completion_deadline);
         });
     let owner = retained
         .borrow_mut()
@@ -344,7 +435,16 @@ fn run_mounted_case(
     let Some(restored_count) = restored_count else {
         let retained_path = directory.keep();
         if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
-            std::fs::write(ledger, retained_path.to_string_lossy().as_bytes()).unwrap();
+            let mut ledger = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(ledger)
+                .unwrap();
+            std::io::Write::write_all(
+                &mut ledger,
+                format!("{}\n", retained_path.display()).as_bytes(),
+            )
+            .unwrap();
         }
         eprintln!(
             "retained ordinary command fixture awaiting process cleanup: {}",

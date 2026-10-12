@@ -112,6 +112,13 @@ impl SyndicTranscriptHost {
         self.core.resource_demands()
     }
 
+    pub(crate) fn code_panel_demands(&self) -> Vec<super::ResourceTranscriptDemand> {
+        if self.last_frame_window.is_none() {
+            return Vec::new();
+        }
+        self.core.code_panel_demands()
+    }
+
     pub(crate) fn prepare_resource_response(
         &self,
         demand: &super::ResourceTranscriptDemand,
@@ -143,11 +150,41 @@ impl SyndicTranscriptHost {
         self.core.set_indexed_resource_demand(demand, inner)
     }
 
+    pub(crate) fn can_reserve_code_layout(
+        &self,
+        demand: &super::ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        self.core.can_reserve_code_layout(demand, bytes)
+    }
+
+    pub(crate) fn reserve_code_layout(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        self.core.reserve_code_layout(demand, bytes)
+    }
+
     pub(crate) fn indexed_resource_response(
         &self,
         resource: &super::ResourceId,
     ) -> Option<std::sync::Arc<super::provider::IndexedResourceResponse>> {
         self.core.indexed_resource_response(resource)
+    }
+
+    pub(crate) fn indexed_resource_owner(
+        &self,
+        resource: &super::ResourceId,
+    ) -> Option<super::ResourceTranscriptDemand> {
+        self.core.indexed_resource_owner(resource)
+    }
+
+    pub(crate) fn indexed_resource_pages(
+        &self,
+        resource: &super::ResourceId,
+    ) -> Vec<std::sync::Arc<super::provider::IndexedResourceResponse>> {
+        self.core.indexed_resource_pages(resource)
     }
 
     pub(crate) fn prepare_resource_delivery(
@@ -226,6 +263,10 @@ impl SyndicTranscriptHost {
 
     pub(crate) fn is_same_view(&self, prepared: &PreparedTranscriptActivation) -> bool {
         prepared.view_id.as_ref() == self.core.selected_view_id()
+    }
+
+    pub(crate) fn selected_view_id(&self) -> Option<&super::TranscriptViewId> {
+        self.core.selected_view_id()
     }
 
     pub(crate) fn detach_tail(&mut self) {

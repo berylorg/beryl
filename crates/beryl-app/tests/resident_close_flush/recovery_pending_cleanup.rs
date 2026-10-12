@@ -133,7 +133,8 @@ fn recovery_waits_for_pending_cleanup_resources_between_polls(cx: &mut TestAppCo
     assert!(cancelled.as_mut().poll(&mut context).is_pending());
     drop(cancelled);
     let mut unwinding = fixture.mount.read_with(cx, |mount, _| {
-        mount.test_pending_cleanup_worker(async { panic!("injected pending cleanup worker unwind") })
+        mount
+            .test_pending_cleanup_worker(async { panic!("injected pending cleanup worker unwind") })
     });
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

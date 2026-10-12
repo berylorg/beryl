@@ -163,10 +163,12 @@ fn run_capture(
     let context = lifecycle
         .stop
         .dynamic_tool_context(pending.thread_id, pending.turn_id);
+    let mut history = super::super::converge::LiveHistoryProgress::default();
+    target.arm_history_wake();
     let result = (|| loop {
         #[cfg(feature = "test-faults")]
         crate::cas_projection::test_faults::abandon_live_event_target_if_requested(&mut target);
-        match target.poll(LIVE_POLL_INTERVAL) {
+        match target.poll(Duration::ZERO) {
             LiveEventPoll::Approval(approval) => {
                 if approval.thread_id() != target.cas_thread_id()
                     || approval.turn_id() != &cas_turn_id
@@ -238,7 +240,43 @@ fn run_capture(
                     Some(&lifecycle.stop),
                 );
             }
-            LiveEventPoll::Quiet => {}
+            LiveEventPoll::Quiet => {
+                if target.take_history_changed() {
+                    history.restart();
+                }
+                if !history.pending() {
+                    std::thread::park_timeout(LIVE_POLL_INTERVAL);
+                    continue;
+                }
+                let before = store.home_revision()?;
+                if let Err(primary) =
+                    history.step(store, storage, pending.thread_id, pending.turn_id, limit)
+                {
+                    if matches!(primary, OrdinaryTurnExecutionError::ConcurrentChange { .. })
+                        || (matches!(
+                            primary,
+                            OrdinaryTurnExecutionError::HomeCommandNotCommitted(_)
+                        ) && store.home_revision()? != before)
+                    {
+                        history.restart();
+                        continue;
+                    }
+                    if let Some(outcome) = converge_target_loss(
+                        store,
+                        storage,
+                        target,
+                        &pending,
+                        active_binding_revision,
+                        TurnIncompleteReason::WorkerStopped,
+                        limit,
+                        context_compaction_timeout,
+                        Some(&lifecycle.stop),
+                    )? {
+                        return Ok(outcome);
+                    }
+                    return Err(primary);
+                }
+            }
             LiveEventPoll::Closed(reason) => {
                 if let Some(outcome) = converge_target_loss(
                     store,

@@ -89,7 +89,7 @@ fn replaced_source_or_block_invalidates_without_acquisition() {
     let (fixture, binding) = Fixture::code(b"a\n", 1);
     let mut query = open(&fixture, &binding);
     fixture.reads.borrow_mut().clear();
-    let before = query.ledger;
+    let before = query.ledger.clone();
     let mut old = anchor(&binding, binding.range.start);
     old.block_start += 1;
     assert_eq!(query.resolve_anchor(&fixture, old).unwrap(), None);

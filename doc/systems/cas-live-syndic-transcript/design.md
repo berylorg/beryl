@@ -367,7 +367,10 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   suspected missing canonical fact enter repair-required once exact CAS/Syndic turn correlation and
   terminal outcome make the bounded repair eligible. Before then, unresolved terminal state remains
   explicit and does not authorize repair or history completion.
-- Transcript-visible live fragments may be shown process-locally before durable takeover. They have no canonical or repair authority and are relinquished only after exact Syndic prefix agreement.
+- Transcript-visible content is saved as bounded Beryl/Syndic history chunks and reaches
+  presentation through coherent Syndic projection frontiers. There is no process-local CAS-text
+  presentation bypass. Item completion and terminal auditing do not gate saved streaming chunk
+  visibility; their canonical lifecycle and completeness proofs remain distinct.
 
 ## Provider Narrative And Item Authority
 

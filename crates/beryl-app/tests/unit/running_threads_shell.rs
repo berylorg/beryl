@@ -1,4 +1,25 @@
 use super::*;
+
+#[test]
+fn code_save_admission_preserves_existing_source_read_capacity_at_boundary() {
+    let workers = crate::main_window::conversation_composer_mount::worker::WorkerLifetime::default();
+    let admission = workers.admission(RUNNING_READ_RESOURCE_CAPACITY - 2);
+    let mut leases = Vec::new();
+    for _ in 0..7 { leases.push(admission.acquire().unwrap()); }
+    assert_eq!(workers.retained(), 7);
+    assert!(running_resource_capacity_available(workers.retained()));
+    assert!(admission.acquire().is_none());
+    let read_output = workers.track(|| ());
+    assert_eq!(workers.retained(), 8);
+    assert!(!running_resource_capacity_available(workers.retained()));
+    assert!(admission.acquire().is_none());
+    drop(read_output);
+    leases.clear();
+    assert!(admission.available());
+}
+
+#[path = "running_threads_shell/resource_subscription.rs"]
+mod resource_subscription;
 use crate::cas_projection::{
     MinimumTurnCaptureReserve, ProcessScheduledExecutionProvider, ProjectionConnectionService,
     ProjectionServiceConfig, ScheduledExecutionSessions,

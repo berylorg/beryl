@@ -276,7 +276,7 @@ fn display_cursor_rejects_stale_root_and_impossible_fragment_before_reads() {
     let mut query = open(&fixture, &binding);
     for cursor in [stale, bad] {
         let reads = fixture.reads.borrow().len();
-        let ledger = query.ledger;
+        let ledger = query.ledger.clone();
         assert!(
             query
                 .authenticated_range_display(

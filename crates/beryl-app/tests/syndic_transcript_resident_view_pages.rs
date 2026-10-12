@@ -40,6 +40,7 @@ fn record(
             position: Some(position),
             turn_id: Some(SyndicTurnId(format!("turn-{id}"))),
             item_id: Some(SyndicItemId(format!("item-{id}"))),
+            block_id: None,
             projection_id: Some(projection_id),
             resource_id: None,
             source_range: Some(position.0..position.0 + 1),

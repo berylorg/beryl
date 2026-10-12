@@ -370,18 +370,18 @@ Assistant Markdown should be parsed into a structured block projection.
 
 The projection can split large rendered content into smaller blocks that are easier for Beryl to page, virtualize, and render.
 
-Short paragraphs, short lists, short code blocks, and small tables can remain inline in the turn item page.
+Short paragraphs, short lists, and small tables can remain inline in the turn item page. Inline code spans remain part of their surrounding Markdown block.
 
 Large paragraphs can be indexed into sentence or span chunks for viewport rendering. The projection should still preserve the fact that the text came from one original Markdown paragraph, because splitting it into separate Markdown paragraphs would change output semantics.
 
-Large code blocks should become independently loadable code block resources.
+Every recognized fenced code block becomes an independently loadable Code resource, including an empty body and an unfinished opening fence. Recognition and publication use saved Beryl/Syndic history, independently of CAS item completion.
 
 Large Markdown tables should become independently loadable table resources.
 
 Inline Markdown projection uses deterministic storage thresholds:
 
 - A paragraph above 16,384 UTF-8 bytes is indexed into source-preserving span chunks whose payload is at most 8,192 UTF-8 bytes, split only at valid source boundaries.
-- A code block is externalized when its body exceeds 4,096 UTF-8 bytes or 64 logical lines. Its inline preview is at most 8 lines and 2,048 UTF-8 bytes.
+- A fenced code block is always externalized. Its preview is at most 8 lines and 2,048 UTF-8 bytes. An empty body has an exact zero-length source range at the end of its recognized opening fence and zero logical lines. Each coherent source snapshot publishes its descriptor; saved source growth replaces the immutable snapshot while retaining the same presented block identity.
 - A table is externalized when it exceeds 32 body rows, 12 columns, or 8,192 UTF-8 source bytes. Its inline preview contains the header and at most 4 body rows within 4,096 UTF-8 bytes.
 - One turn-item page carries at most 65,536 UTF-8 bytes of inline Markdown source. Additional large structures are represented through ordered resources rather than enlarging the page.
 
@@ -424,7 +424,7 @@ rejection; it is never resolved by choosing another identity nondeterministicall
 
 # Lazy Markdown Widgets
 
-Large code blocks and large tables should have dedicated Beryl widgets with their own scroll viewport.
+All fenced code blocks and large tables have dedicated Beryl widgets with their own scroll viewport.
 
 Those widgets should request only the visible range they need, and should be able to release data that is no longer visible.
 

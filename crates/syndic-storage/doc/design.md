@@ -117,6 +117,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   staging, build, settlement, materialization, restoration, and sealed-text range operations.
 - Accepted-input, capture, item, activity, transcript, projection, resource, binding, execution, and
   recovery reads and package mutation contributions required by the owning system services.
+- `latest_item_projection_build` and its candidate counterpart return at most one item-owned
+  build using a reverse indexed seek under the caller's byte bound. A published head does not name
+  later abandoned construction generations. Callers distinguish active parsing from superseded
+  progress and stabilize this observation with their exact source/head reads before mutation.
 - `pending_dispatch_evidence` supplies home/generation/revision-bound pending identity, canonical
   input references and authenticated dispatch provenance to ordinary execution and recovery. Its
   bounded read snapshot does not settle live execution or cleanup custody; those obligations remain

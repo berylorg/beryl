@@ -4,9 +4,20 @@ mod access;
 mod command;
 mod gate;
 mod item;
+mod live;
+mod projection;
 mod snapshot;
 mod transcript;
 pub(crate) use gate::TerminalHistoryCompletion;
+pub(super) use live::LiveHistoryProgress;
+
+#[cfg(all(test, feature = "test-faults"))]
+mod streaming_projection {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/streaming_item_projection.rs"
+    ));
+}
 
 use access::HistoryAccess;
 use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};

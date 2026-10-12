@@ -1,5 +1,6 @@
 use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, DomainReader};
 use beryl_model::SyndicContentId;
+use std::sync::Arc;
 
 use super::{Binding, ByteRange, construction::ConstructionError, ledger::Ledger};
 use crate::{
@@ -53,6 +54,26 @@ impl SourceRecords for DomainReader<'_, SyndicDomain> {
     }
 }
 
+fn source_chunk(
+    records: &impl SourceRecords,
+    ledger: &mut Ledger,
+    key: &ContentChunkKey,
+) -> Result<Arc<ContentChunkRecord>, ConstructionError> {
+    if let Some(chunk) = &ledger.source_chunk
+        && chunk.content_id() == key.owner
+        && chunk.ordinal() == key.ordinal
+    {
+        return Ok(chunk.clone());
+    }
+    let bytes = ContentChunksFamily::MAX_VALUE_BYTES
+        + ContentChunksFamily::MAX_KEY_BYTES
+        + beryl_home_store::RECORD_VERSION_BYTES;
+    ledger.reserve_read(1, bytes, bytes)?;
+    let chunk = Arc::new(records.chunk(key)?);
+    ledger.source_chunk = Some(chunk.clone());
+    Ok(chunk)
+}
+
 fn predecessor<F: Family>(
     records: &impl SourceRecords,
     ledger: &mut Ledger,
@@ -68,7 +89,7 @@ struct WindowReader<'a, R> {
     ledger: &'a mut Ledger,
     content: SyndicContentId,
     encoded_frontier: u64,
-    cache: Option<ContentChunkRecord>,
+    cache: Option<Arc<ContentChunkRecord>>,
     output: Vec<u8>,
 }
 
@@ -110,14 +131,14 @@ impl<R: SourceRecords> WindowReader<'_, R> {
                 .as_ref()
                 .is_none_or(|chunk| chunk.ordinal() != span.ordinal())
             {
-                let bytes = ContentChunksFamily::MAX_VALUE_BYTES
-                    + ContentChunksFamily::MAX_KEY_BYTES
-                    + beryl_home_store::RECORD_VERSION_BYTES;
-                self.ledger.reserve_read(1, bytes, bytes)?;
-                self.cache = Some(self.records.chunk(&ContentChunkKey {
-                    owner: self.content,
-                    ordinal: span.ordinal(),
-                })?);
+                self.cache = Some(source_chunk(
+                    self.records,
+                    self.ledger,
+                    &ContentChunkKey {
+                        owner: self.content,
+                        ordinal: span.ordinal(),
+                    },
+                )?);
             }
             let chunk = self.cache.as_ref().ok_or(ConstructionError::Corrupt)?;
             if chunk.content_id() != self.content

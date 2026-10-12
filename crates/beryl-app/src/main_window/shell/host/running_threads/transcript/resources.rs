@@ -19,8 +19,12 @@ impl PendingMeasuredResource {
         self,
         cx: &mut Context<MainWindowShellRoot>,
     ) {
-        self.panel
-            .update(cx, |panel, _| panel.discard_staged_activation());
+        self.panel.update(cx, |panel, panel_cx| {
+            if !panel.reject_code_source_candidate(&self.request.demand) {
+                panel.discard_staged_activation();
+            }
+            panel_cx.notify();
+        });
     }
 }
 
@@ -83,7 +87,12 @@ impl MainWindowShellRoot {
             if !panel.update(cx, |panel, _| {
                 panel.update_resource_allocation(demand, allocation)
             }) {
-                panel.update(cx, |panel, _| panel.discard_staged_activation());
+                panel.update(cx, |panel, panel_cx| {
+                    if !panel.reject_code_source_candidate(demand) {
+                        panel.discard_staged_activation();
+                    }
+                    panel_cx.notify();
+                });
                 return true;
             }
             if !panel.read(cx).measurement_current(window) {
@@ -108,7 +117,12 @@ impl MainWindowShellRoot {
                 )
                 .is_err()
             {
-                panel.update(cx, |panel, _| panel.discard_staged_activation());
+                panel.update(cx, |panel, panel_cx| {
+                    if !panel.reject_code_source_candidate(demand) {
+                        panel.discard_staged_activation();
+                    }
+                    panel_cx.notify();
+                });
             }
             cx.notify();
             return true;
@@ -252,13 +266,26 @@ impl MainWindowShellRoot {
                                 });
                             cx.notify();
                         } else {
-                            panel.update(cx, |panel, _| panel.reject_resource_demand(demand));
+                            panel.update(cx, |panel, panel_cx| {
+                                panel.reject_resource_demand(demand);
+                                panel_cx.notify();
+                            });
                         }
                     }
                     Err(crate::transcript_provider::TranscriptAttachmentError::Capacity) => {
-                        panel.update(cx, |panel, _| panel.reject_resource_demand(demand));
+                        panel.update(cx, |panel, panel_cx| {
+                            panel.reject_resource_demand(demand);
+                            panel_cx.notify();
+                        });
                     }
-                    Err(_) => {}
+                    Err(_) => {
+                        panel.update(cx, |panel, panel_cx| {
+                            if panel.reject_code_source_action(&demand) {
+                                panel.reject_resource_demand(demand);
+                                panel_cx.notify();
+                            }
+                        });
+                    }
                 }
             });
         }));

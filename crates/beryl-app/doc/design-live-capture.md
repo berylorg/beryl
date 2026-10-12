@@ -10,6 +10,28 @@ fixed points belong to the
 This supplement owns app buffering, ordered ingestion, custody transfer, capture adaptation, audit,
 and bounded repair coordination.
 
+## Saved-History Projection Scheduling
+
+The ordinary execution flight owns incremental live item and selected-transcript construction
+under its existing worker custody. Each exact router target retains one payload-free, coalesced
+saved-history notification; existing target capacity bounds these slots. Successful source
+publication makes that notification available after its post-commit hold releases. Failed,
+authority-lost or compaction publication does not schedule ordinary transcript construction.
+
+The driver retains one turn-item ordinal cursor and construction stage. It reads one saved index
+record per item step and performs at most one durable construction command per step. Source
+notifications restart discovery against the latest saved source; pending construction continues
+without another provider frame. Approval and terminal controls are checked between steps. Source
+publication, queued controls and closure wake the armed driver directly. The existing bounded idle
+wait is a lifecycle fallback, not a pacing interval for saved content or a history rebuild timer.
+
+Construction reads canonical Syndic source snapshots and publishes coherent selected history.
+It neither freezes live source nor finalizes items or releases the terminal gate. Exact terminal
+settlement retains those responsibilities and shares the same construction commands. A concurrent
+snapshot change or a proven noncommit with an advanced Home revision restarts bounded discovery;
+other command outcomes retain ordinary error and reconciliation custody. No CAS text, extra worker,
+per-event work queue or renderer suffix is introduced.
+
 ## Outage Buffer
 
 - The ordered ingester owns a separate unpublished-observation assembler for CAS's late route.

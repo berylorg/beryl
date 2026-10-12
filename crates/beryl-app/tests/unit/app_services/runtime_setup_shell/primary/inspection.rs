@@ -114,7 +114,13 @@ fn fenced_picker_rejects_real_search_edits_and_paste_before_mutation_but_allows_
     gpui::VisualTestContext::from_window(window.into(), cx).simulate_keystrokes("shift-tab");
     window
         .update(cx, |_, window, app| {
-            assert!(input.read(app).focus_handle(app).is_focused(window));
+            assert!(
+                input.read(app).focus_handle(app).is_focused(window),
+                "inspection focus: actual={:?}, expected={:?}, viewport={:?}",
+                window.focused(app),
+                input.read(app).focus_handle(app),
+                window.viewport_size()
+            );
         })
         .unwrap();
     let command = PickerCommand::AddRuntime;
@@ -172,7 +178,13 @@ fn fenced_picker_rejects_real_search_edits_and_paste_before_mutation_but_allows_
     );
     window
         .update(cx, |_, window, app| {
-            assert!(input.read(app).focus_handle(app).is_focused(window));
+            assert!(
+                input.read(app).focus_handle(app).is_focused(window),
+                "inspection focus: actual={:?}, expected={:?}, viewport={:?}",
+                window.focused(app),
+                input.read(app).focus_handle(app),
+                window.viewport_size()
+            );
         })
         .unwrap();
     gpui::VisualTestContext::from_window(window.into(), cx).simulate_mouse_up(

@@ -455,6 +455,13 @@ completed older generations remain coherent history. Terminal closure freezes so
 a visible item advances the finalized frontier. Operational items may advance after freezing because
 they own no transcript projection.
 
+Selected transcript construction publishes coherent saved item projections across the captured
+item frontier, including live narrative snapshots. The finalized-item frontier and history
+completeness remain independent terminal integrity facts. A current transcript generation binds
+the exact current item revision and projection set; retained older entries authenticate their
+recorded source revision through the saved projection set and captured source frame. Resource
+snapshots may precede their append-only narrative source without changing their saved bytes.
+
 A resource record stores bounded metadata and an exact immutable content or byte-range source.
 Projection-resource mappings name resources; they do not copy payloads. Textual range reads are
 explicit, bounded, and cursorable. Provider credentials and unnormalized transport envelopes are

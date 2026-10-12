@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
+fn pending_tail_publishes_saved_content_without_finalizing_history() {
     let home = TestHome::new("transcript-complete-tail-gate");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -11,10 +11,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         .publish()
         .unwrap();
     let thread = create_thread(&store, storage.clone());
-    let authored = format!(
-        "```text\n{}\n```\n",
-        "x".repeat(MARKDOWN_CODE_INLINE_MAX_BYTES + 1)
-    );
+    let authored = format!("```text\n{}\n```\n", "x".repeat(4097));
     let pending = submit_text(
         &store,
         storage.clone(),
@@ -39,17 +36,22 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     let (pending_generation, _) = start_transcript_build(&store, storage.clone(), thread);
     let pending_build =
         finish_transcript_build(&store, storage.clone(), thread, pending_generation);
-    assert_eq!(pending_build.entry_count(), 0);
+    assert_eq!(pending_build.entry_count(), 1);
     assert!(!pending_build.history_complete());
     let pending_path = path_turns(&store, storage.clone(), thread, pending_generation);
     assert_eq!(pending_path.len(), 1);
     assert_eq!(pending_path[0].finalized_item_count(), 0);
-    assert!(transcript_entries(&store, storage.clone(), thread, pending_generation).is_empty());
+    let pending_entries = transcript_entries(&store, storage.clone(), thread, pending_generation);
+    assert_eq!(pending_entries.len(), 1);
+    assert_eq!(
+        pending_entries[0].projection_id(),
+        initial_projection_ids[0]
+    );
     let pending_head = storage
         .transcript_view_head(&store, thread, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(pending_head.entry_count(), 0);
+    assert_eq!(pending_head.entry_count(), 1);
     assert_eq!(pending_head.lifecycle(), ProjectionLifecycle::Current);
     assert!(
         !storage
@@ -161,7 +163,7 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
         thread,
         started_transcript_generation,
     );
-    assert_eq!(started_transcript.entry_count(), 0);
+    assert_eq!(started_transcript.entry_count(), 1);
     admit_item_frame(
         &store,
         storage.clone(),

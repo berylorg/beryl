@@ -1,5 +1,11 @@
 use super::*;
 
+#[path = "code_anchors.rs"]
+mod code_anchors;
+
+#[path = "code_mount.rs"]
+mod code_mount;
+
 #[gpui::test]
 fn refreshed_indexed_resources_share_the_queue_without_outer_scrolling(cx: &mut TestAppContext) {
     use crate::transcript_provider::{
@@ -220,6 +226,69 @@ fn metadata_response(
         column_count: None,
         preview_range: Some(0..10),
     })
+}
+
+#[gpui::test]
+fn code_panel_rebinds_lost_indexed_residency_without_replacing_its_mount(cx: &mut TestAppContext) {
+    use super::super::super::IndexedResourceQuery;
+
+    let window = mounted_panel(cx, resource_seed(1, ResourceKind::Code));
+    draw_frames(cx, window, 5);
+    let panel = window.update(cx, |root, _, _| root.panel.clone()).unwrap();
+    let demand = panel.update(cx, |panel, _| {
+        let demand = panel.resource_demand().unwrap();
+        assert!(panel.stage_resource_response(&demand, metadata_response(&demand), None));
+        demand
+    });
+    draw_frames(cx, window, 5);
+    window
+        .update(cx, |root, window, cx| {
+            root.panel.update(cx, |panel, _| {
+                assert!(panel.measurement_current(window));
+                panel.publish_resource_candidate(&demand);
+            });
+        })
+        .unwrap();
+    draw_frames(cx, window, 5);
+    let (id, anchor) = panel.update(cx, |panel, _| {
+        assert_eq!(panel.code_panels.len(), 1);
+        let mounted = &mut panel.code_panels[0];
+        mounted.viewport.scroll.borrow_mut().set_lines(2000);
+        mounted.viewport.scroll.borrow_mut().set_offset(1007.0);
+        mounted.viewport.scroll.borrow_mut().horizontal = 45.0;
+        mounted
+            .viewport
+            .adopt(&code_anchors::range_response(code_anchors::binding(1), 50));
+        let anchor = mounted.viewport.anchor.unwrap();
+        let id = mounted.id;
+        panel.code_wheel_owner.set(Some(id));
+        let owner = panel
+            .host
+            .indexed_resource_owner(&demand.resource_id)
+            .unwrap();
+        assert!(panel.host.set_indexed_resource_demand(&owner, None));
+        (id, anchor)
+    });
+    draw_frames(cx, window, 5);
+    panel.update(cx, |panel, _| {
+        let mounted = &panel.code_panels[0];
+        assert_eq!(mounted.id, id);
+        assert_eq!(panel.code_wheel_owner.get(), Some(id));
+        assert_eq!(mounted.viewport.scroll.borrow().top_line, 50);
+        assert_eq!(mounted.viewport.scroll.borrow().remainder, 7.0);
+        assert_eq!(mounted.viewport.scroll.borrow().horizontal, 45.0);
+        assert!(mounted.viewport.remapping);
+        let owner = panel
+            .host
+            .indexed_resource_owner(&demand.resource_id)
+            .unwrap();
+        let inner = owner.indexed.unwrap();
+        assert_eq!(inner.root, None);
+        assert!(
+            matches!(inner.query, IndexedResourceQuery::Anchor { anchor: requested, .. }
+            if requested == anchor)
+        );
+    });
 }
 
 #[gpui::test]

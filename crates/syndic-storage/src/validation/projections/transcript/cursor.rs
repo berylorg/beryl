@@ -60,7 +60,7 @@ impl PrefixFold {
         build: &TranscriptBuildRecord,
         path: &crate::TranscriptPathTurnRecord,
     ) -> Result<(), SyndicValidationError> {
-        for item_value in 1..=path.finalized_item_count() {
+        for item_value in 1..=path.item_count() {
             let item = TurnItemOrdinal::new(item_value)
                 .map_err(|_| invariant("transcript publishing item ordinal is invalid"))?;
             self.complete_item(reader, build, path.turn_id(), item)?;
@@ -76,13 +76,13 @@ impl PrefixFold {
         next_item: TurnItemOrdinal,
         next_projection: ProjectionOrdinal,
     ) -> Result<(), SyndicValidationError> {
-        if path.finalized_item_count() == 0 {
+        if path.item_count() == 0 {
             if next_item != TurnItemOrdinal::FIRST || next_projection != ProjectionOrdinal::FIRST {
                 return Err(invariant("empty turn publishing cursor is invalid"));
             }
             return Ok(());
         }
-        if next_item.get() > path.finalized_item_count() {
+        if next_item.get() > path.item_count() {
             return Err(invariant(
                 "transcript publishing item cursor exceeds its snapshot",
             ));

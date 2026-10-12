@@ -31,6 +31,7 @@ fn provenance(
         position: Some(TranscriptViewPosition(10)),
         turn_id: Some(SyndicTurnId("turn-media".to_string())),
         item_id: Some(SyndicItemId("item-media".to_string())),
+        block_id: None,
         projection_id: Some(projection_id.clone()),
         resource_id: Some(resource_id.clone()),
         source_range: Some(10..11),
@@ -62,6 +63,7 @@ fn view_record_named(
             position: Some(TranscriptViewPosition(position)),
             turn_id: Some(SyndicTurnId(format!("turn-media-{position}"))),
             item_id: Some(SyndicItemId(format!("item-media-{position}"))),
+            block_id: None,
             projection_id: Some(projection_id),
             resource_id: None,
             source_range: Some(position..position + 1),
@@ -178,6 +180,15 @@ fn seed_two_media_presentation() -> ResidentTranscriptCore {
     let second_projection_id = projection_id("second-media");
     let first_resource_id = resource_id("first");
     let second_resource_id = resource_id("second");
+    let mut second_source = provenance(
+        &view_id,
+        &second_projection_id,
+        &second_resource_id,
+        Some(0..16),
+    );
+    second_source.position = Some(TranscriptViewPosition(20));
+    second_source.source_range = Some(20..21);
+    second_source.copy_source_range = Some(20..21);
     let mut provider = InMemorySyndicTranscriptProvider::new();
     provider
         .set_revision(REVISION)
@@ -213,12 +224,7 @@ fn seed_two_media_presentation() -> ResidentTranscriptCore {
             second_projection_id.clone(),
             second_resource_id.clone(),
             ResourceKind::GeneratedImage,
-            provenance(
-                &view_id,
-                &second_projection_id,
-                &second_resource_id,
-                Some(0..16),
-            ),
+            second_source,
         ))
         .insert_resource(
             metadata(first_resource_id.clone(), ResourceKind::GeneratedImage),

@@ -19,7 +19,7 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - [Shell boundary](shell-boundary.md) is the normative supplemental shell-facing host boundary for activation, rendering, scrolling, diagnostics, selection, quote, menus, media actions, and provider demand.
 - `doc/features/transcript/design.md` owns user-visible transcript behavior.
 - `doc/systems/syndic-conversation-history/design.md` owns durable history, canonical items, transcript views, Markdown projections, resources, and replay.
-- `doc/systems/cas-live-syndic-transcript/design.md` owns normalized live-event routing and durable CAS capture; this system consumes only its exact target-scoped presentation facts.
+- `doc/systems/cas-live-syndic-transcript/design.md` owns normalized live-event routing and durable CAS capture; this system consumes captured content only through Syndic history and projection pages.
 - `doc/systems/bounded-resource-dataflow/design.md` owns the risk-based page, working-set,
   backpressure, decoded-media, layout, and GPU constraints that this system consumes.
 
@@ -45,17 +45,19 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 
 ## Live Tail
 
-- The exact routed live-turn stream may contribute one bounded transient suffix to the active transcript-visible item while durable CAS capture independently coalesces that same ordered text into Syndic.
-- The suffix is process-local presentation state keyed by exact thread, turn, item, kind, and logical-text frontier. It never becomes canonical history, a recovery source, a second item, or authority for history commands.
-- The transcript host publishes each arrived bounded text fragment of one normalized delta on the
-  next GUI frame that consumes it while retaining the delta's exact observation identity and order.
-  It keeps no paced character-reveal queue and does not replay original timestamps; multiple
-  fragments already pending at one frame boundary may naturally publish together. Fragmentation is
-  transport only and never invents another provider delta or durable source event.
-- Resident durable projection and transient suffix form one visible record. As Syndic projection catches up, the host removes only the exact matching prefix from transient ownership; a mismatch, gap, stale identity, or reversed frontier fails closed rather than guessing or duplicating text.
-- The host retains no second whole-item live model. Its transient suffix and pending fragment
-  channel stay bounded independently of total response size, while already reconciled text belongs
-  only to ordinary resident Syndic projection data.
+- Streaming authored content follows the same CAS-to-Syndic-history-to-residency-to-renderer path
+  as completed content. Capture saves bounded Beryl/Syndic chunks; coherent source and projection
+  frontiers make those chunks eligible for ordinary resident presentation while capture continues.
+- CAS thread, turn and item identities remain exact capture provenance. CAS item completion and
+  turn termination do not determine rendering chunk boundaries or gate streaming visibility.
+- The transcript host publishes newly admitted history-backed chunks on the next GUI frame that
+  consumes them. It keeps no paced character-reveal queue and does not replay original timestamps;
+  multiple chunks already ready at one frame boundary may naturally publish together.
+- Successive coherent Syndic frontiers preserve authored order, stable presentation identity and
+  the reading anchor without duplicate text or a blank intermediate record. Stale or conflicting
+  results follow the existing generation rejection rules.
+- The host retains only its bounded resident working set. It has no parallel CAS-text suffix or
+  second whole-message live model. Carets and other non-content UI affordances remain local state.
 
 ## Repair Publication
 
@@ -78,8 +80,8 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - Explicit incomplete convergence likewise advances through one Syndic-backed host generation. It
   publishes only the durable content and incomplete provenance selected by Syndic and admits no
   partial repair snapshot.
-- The atomic host-generation switch disposes every transient live suffix and other turn-local
-  provisional presentation evidence owned by the superseded generation. After anchor rebasing and
+- The atomic host-generation switch disposes every turn-local presentation state owned by the
+  superseded generation. After anchor rebasing and
   the switch, it releases the old generation's projection pages, presentation records,
   measurements and layout, widget state, resource slices, pins, and capacity charges. Selection
   ranges, menu targets, and demand facts are rejected rather than retaining stale provenance.
@@ -92,6 +94,10 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - Demand facts include visible presentation range, overscan range, missing leading or trailing range, current semantic anchor, measured geometry, manual scroll direction, explicit navigation target, live-tail intent, resource range demand, the bounded focus pin, active selection pin, open menu pin, media preview pin, copy or quote pin, obsolete resident range, and stale measurement or revision observations.
 - The host evaluates demand under residency policy and decides what to load, retain, pin, evict, release, reject, cancel, or retry.
 - Rejections become stable fallback or clamp state rather than unbounded memory growth.
+- Range-backed no-wrap Code uses the presentation-owned
+  [bounded layout index](renderer-architecture.md#indexed-no-wrap-code-layout) to resolve horizontal
+  pixel targets into exact source windows. Its disposable font-dependent geometry is built outside
+  rendering and remains under the existing host's demand, capacity and disposal ownership.
 
 ## Async Request Identity And Disposal
 
@@ -155,7 +161,7 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 ## Resource Bounds
 
 - Large code, table, generated-image, attachment, and comparable resources are represented by Syndic resource metadata and range-readable resource data.
-- Beryl admits only resource ranges needed for the current viewport, nested-widget viewport, copy action, or active UI pin.
+- Beryl admits only resource ranges needed for the current viewport, nested-widget viewport, admitted Copy/Save source action, or active UI pin.
 - Transcript presentation owns practical item and byte budgets for resident projection data,
   presentation records, resource slices, measured geometry, widget state, and active UI pins.
   Decoded and uploaded media additionally consume the shared coarse media and GPU cache budgets.

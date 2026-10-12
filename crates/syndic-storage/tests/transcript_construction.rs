@@ -10,14 +10,13 @@ use beryl_model::{
 use syndic_storage::{
     AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource, CreateThread,
     DraftEditHistoryPolicyV1, FinalizeNextTurnItem, FreezeNextTurnItem, ItemProjectionGeneration,
-    MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES, ProjectionLifecycle,
-    ProviderCommandExecutionV1, ProviderCommandSourceV1, ProviderCommandStatusV1,
-    ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderTextV1,
-    ProviderUserMessageV1, SourceEventPayload, StartItemProjectionBuild, StartTranscriptBuild,
-    SyndicMutationError, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration, TranscriptPosition,
-    TurnDepth, TurnEndStatus, TurnItemOrdinal,
+    MARKDOWN_SPAN_MAX_BYTES, ProjectionLifecycle, ProviderCommandExecutionV1,
+    ProviderCommandSourceV1, ProviderCommandStatusV1, ProviderFrameOrdinalV1, ProviderItemFrameV1,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderTextV1, ProviderUserMessageV1, SourceEventPayload,
+    StartItemProjectionBuild, StartTranscriptBuild, SyndicMutationError, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, TranscriptBuildPhase, TranscriptBuildRecord,
+    TranscriptGeneration, TranscriptPosition, TurnDepth, TurnEndStatus, TurnItemOrdinal,
 };
 
 use support::{
@@ -450,5 +449,7 @@ mod multi_batch;
 mod operational_snapshot;
 #[path = "transcript_construction/pending_tail.rs"]
 mod pending_tail;
+#[path = "transcript_construction/streaming_history.rs"]
+mod streaming_history;
 #[path = "transcript_construction/superseded_build.rs"]
 mod superseded_build;

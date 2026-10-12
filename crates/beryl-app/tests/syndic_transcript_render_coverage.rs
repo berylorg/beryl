@@ -33,6 +33,7 @@ fn provenance(
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{position}"))),
         item_id: Some(SyndicItemId(format!("item-{position}"))),
+        block_id: None,
         projection_id: Some(projection_id.clone()),
         resource_id,
         source_range: source_range.clone(),

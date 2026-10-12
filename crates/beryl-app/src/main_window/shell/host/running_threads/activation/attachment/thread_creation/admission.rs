@@ -130,6 +130,10 @@ impl MainWindowShellRoot {
             .zip(self.runtime_setup.fixture_thread_lease.take());
         #[cfg(target_os = "windows")]
         let admit = || {
+            let invocation = self.running_selection_invocation(cx)?;
+            if invocation.window_id() != invoking {
+                return Err("Thread creation original invoking controller changed".into());
+            }
             let owner = crate::running_owner::RunningProcessOwner::mounted_owner(cx)
                 .and_then(|owner| owner.upgrade())
                 .ok_or("Thread creation process is unavailable")?;
@@ -138,7 +142,7 @@ impl MainWindowShellRoot {
                 owner
                     .thread_creation_reader()
                     .ok_or("Thread creation source is unavailable")?,
-                Arc::new(owner.admit_thread_creation(invoking, cx)?),
+                Arc::new(owner.admit_thread_creation(invocation, cx)?),
             ))
         };
         #[cfg(all(test, feature = "test-faults", target_os = "windows"))]

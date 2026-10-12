@@ -98,7 +98,7 @@ fn display_cursor_substitution_fails_before_any_record_acquisition() {
         },
     ] {
         fixture.reads.borrow_mut().clear();
-        let before = query.ledger;
+        let before = query.ledger.clone();
         assert!(matches!(
             query.authenticated_display(
                 &fixture,
@@ -263,7 +263,7 @@ fn display_refuses_small_payload_before_source_and_ledger_exhaustion_before_look
     );
     let mut query = open(&fixture, &binding);
     query.ledger.retained = 524_288;
-    let before = query.ledger;
+    let before = query.ledger.clone();
     fixture.reads.borrow_mut().clear();
     assert!(matches!(
         query.authenticated_display(&fixture, binding.range.end, request, None, 65_536),

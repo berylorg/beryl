@@ -1,14 +1,14 @@
 use beryl_app::cas_projection::{
+    ProjectionCoordinatorError,
     test_faults::{
         converge_compaction_restart, converge_compaction_restart_candidate,
         install_compaction_recovery_confirmation_barrier,
     },
-    ProjectionCoordinatorError,
 };
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     CommandOutcome, HomeCandidateError, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
     ReconciliationResolution,
+    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasTurnId,

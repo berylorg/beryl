@@ -37,7 +37,7 @@ pub(super) fn publish_entries(
     {
         return Err(SyndicMutationError::TranscriptBuildConflict);
     }
-    if item_ordinal.get() > path.finalized_item_count() {
+    if item_ordinal.get() > path.item_count() {
         let phase = phase_after_depth(&build, depth)?;
         let entry_count = build.entry_count();
         let digest = build.entry_digest();
@@ -58,7 +58,7 @@ pub(super) fn publish_entries(
         return Err(SyndicMutationError::TranscriptBuildConflict);
     }
     if item.projection_source().is_none() {
-        let phase = phase_after_item(&build, depth, item_ordinal, path.finalized_item_count())?;
+        let phase = phase_after_item(&build, depth, item_ordinal, path.item_count())?;
         let entry_count = build.entry_count();
         let digest = build.entry_digest();
         return finish_publication(reader, build, Vec::new(), phase, entry_count, digest);
@@ -66,9 +66,7 @@ pub(super) fn publish_entries(
     let source = item
         .projection_source()
         .ok_or(SyndicMutationError::TranscriptBuildConflict)?;
-    if !crate::mutation::projection::validate_projection_source(reader, &item, source)? {
-        return Err(SyndicMutationError::TranscriptBuildConflict);
-    }
+    crate::mutation::projection::validate_projection_source(reader, &item, source)?;
     let item_head = point::<ItemProjectionHeadsFamily>(reader, &item.id())?
         .ok_or(SyndicMutationError::TranscriptProjectionUnavailable)?;
     if item_head.lifecycle() != ProjectionLifecycle::Current
@@ -171,7 +169,7 @@ pub(super) fn publish_entries(
             )?,
         })
     } else if last_item_projection == set.projection_count() {
-        phase_after_item(&build, depth, item_ordinal, path.finalized_item_count())?
+        phase_after_item(&build, depth, item_ordinal, path.item_count())?
     } else {
         return Err(SyndicMutationError::TranscriptBuildConflict);
     };

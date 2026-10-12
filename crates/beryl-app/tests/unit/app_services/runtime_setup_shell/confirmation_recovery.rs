@@ -8,6 +8,12 @@ mod failure_gates;
 #[path = "confirmation_recovery/saved_resident.rs"]
 mod saved_resident;
 
+#[path = "../../../support/transcript_resource_wakeups.rs"]
+mod resource_wakeups;
+
+#[path = "../../../support/transcript_code_submission.rs"]
+mod code_loading;
+
 fn recover_creation(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     window: gpui::WindowHandle<MainWindowShellRoot>,
@@ -75,6 +81,15 @@ fn recover_creation_when(
 fn committed_creation_recovers_original_target_in_same_window_after_predecessor_disposal_failure(
     cx: &mut TestAppContext,
 ) {
+    run_committed_creation(false, cx);
+}
+
+#[gpui::test]
+fn recovered_new_thread_loads_stored_code_through_ordinary_provider(cx: &mut TestAppContext) {
+    run_committed_creation(true, cx);
+}
+
+fn run_committed_creation(verify_code_loading: bool, cx: &mut TestAppContext) {
     let (directory, original_owner, original_window, _) = selected_window(cx);
     edit_prior(original_window, "saved before failed creation", cx);
     let original_prior = selection(original_window, cx);
@@ -82,6 +97,7 @@ fn committed_creation_recovers_original_target_in_same_window_after_predecessor_
     dispose_recovered(original_owner, original_window, cx);
     let (owner, window, faults) =
         saved_resident::reopen(&directory, original_prior, original_history, cx);
+    let prior_transcript = resource_wakeups::capture(window, cx);
     owner.borrow_mut().test_enable_resident_frame_capture();
     assert!(
         !cx.update(|app| RunningProcessOwner::test_dispatch_scheduled_resident_frame(&owner, app))
@@ -241,7 +257,11 @@ fn committed_creation_recovers_original_target_in_same_window_after_predecessor_
     .join()
     .unwrap();
     owner.borrow_mut().test_restore_services(process);
+    resource_wakeups::verify_replacement(window, prior_transcript, cx);
+    let code_reader = verify_code_loading
+        .then(|| code_loading::verify(&owner, window, target.claim().thread_id(), cx));
     dispose_recovered(owner, window, cx);
+    drop(code_reader);
     assert_reopens(&directory);
 }
 
@@ -250,6 +270,7 @@ fn unadmitted_creation_recovers_prior_edits_and_history_after_original_save_fail
     cx: &mut TestAppContext,
 ) {
     let (directory, owner, window, faults) = selected_window(cx);
+    let prior_transcript = resource_wakeups::capture(window, cx);
     let native_window = window.window_id();
     edit_prior(window, "latest unsaved prior", cx);
     let prior = selection(window, cx);
@@ -382,6 +403,7 @@ fn unadmitted_creation_recovers_prior_edits_and_history_after_original_save_fail
     .join()
     .unwrap();
     owner.borrow_mut().test_restore_services(process);
+    resource_wakeups::verify_retained(window, prior_transcript, cx);
     dispose_recovered(owner, window, cx);
     assert_reopens(&directory);
 }

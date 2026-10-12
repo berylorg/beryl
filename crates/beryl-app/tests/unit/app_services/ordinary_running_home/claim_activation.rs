@@ -12,12 +12,16 @@ use syndic_storage::{
     CreateThread, DraftEditHistoryPolicyV1, SyndicPointReadLimit, SyndicTimestamp,
 };
 
+#[path = "claim_activation/code_replacement.rs"]
+mod code_replacement;
 #[path = "claim_activation/collision.rs"]
 mod collision;
 #[path = "claim_activation/control.rs"]
 mod control;
 #[path = "claim_activation/durable_evidence.rs"]
 mod durable_evidence;
+#[path = "claim_activation/first_conversation_code.rs"]
+mod first_conversation_code;
 #[path = "claim_activation/fixture.rs"]
 mod fixture;
 #[path = "claim_activation/lineage_entry.rs"]
@@ -26,8 +30,12 @@ mod lineage_entry;
 mod lineage_fixture;
 #[path = "claim_activation/marker_origin.rs"]
 mod marker_origin;
+#[path = "../../../support/native_transcript_code.rs"]
+mod native_code;
 #[path = "claim_activation/navigation_entry.rs"]
 mod navigation_entry;
+#[path = "claim_activation/new_thread_code.rs"]
+mod new_thread_code;
 #[path = "claim_activation/outcome_evidence.rs"]
 mod outcome_evidence;
 #[path = "claim_activation/page_custody.rs"]

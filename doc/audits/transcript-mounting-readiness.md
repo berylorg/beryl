@@ -89,7 +89,7 @@ measurement correction. Geometry invalidation closes affected transient targets.
 
 This is one viewport behavior boundary: measurement publication, cache invalidation, bounded
 frame refill, native input and content-free diagnostics are its supporting work. It does not
-accept resource delivery, Markdown, nested widgets, focus-pin mounting, live suffixes or the
+accept resource delivery, Markdown, nested widgets, focus-pin mounting, streaming history publication or the
 whole Checkpoint 4 transcript item. Their owning authority is present; they remain separate
 observable outcomes after the viewport has a qualified geometry foundation.
 
@@ -706,3 +706,37 @@ big-endian fields; one-byte tags remain explicit. No blocking finding remained. 
 confirmed inventory uniqueness, registration size, local Markdown targets and whitespace.
 No production code, codec fixtures, runtime queries or rendering behavior are accepted here;
 construction/query/provider/residency verification is the next implementation boundary.
+## Mounted Indexed Code Acceptance
+
+Accepted on 2026-10-12 under the transcript feature, Code widget and presentation-system contracts.
+The production Syndic panel realizes bounded readonly no-wrap Code for every recognized saved fence,
+including empty and unfinished bodies, without a CAS item-completion gate. Bounded range demand,
+font-observed geometry, coherent outer measurement, independent inner scrolling, exact source
+anchors, resident selection and clipboard-limited Copy passed native and semantic qualification.
+Save streams complete exact bytes through worker-owned staging; explicit native Yes permits
+replacement. New choices preserve collision protection. Cancellation and retirement fence publication
+before its one-shot election; elected publication and original-root shutdown drain retain custody
+through worker completion. Cleanup refusal reports a possible owned temporary output.
+
+Combined final Beryl qualification passed 138/138 cases in 329.518 seconds
+(`e54f387e-28b1-4d3c-ba83-f0da7bfe903f`): 83 panel, 22 native integration, 31 provider and two admission
+cases. Actual Windows Save scenarios and checked clipboard passed 23/23 in 2.713 seconds
+(`908f3ef1-f450-4c9f-abbc-f746a604e649`). Native mounted Copy captured the checked writer invocation;
+the privileged administrator-only clipboard target was not run. Prior unchanged dependency evidence
+is GPUI 63 cases (`dfe2207c-b27f-4139-8a24-8d696f49dbe8`) and text-input 90 exact-geometry cases
+(`e13aff1f-680f-420a-83d0-ce182bc94bce`); provider/publication 123 and storage 144 cases were reused.
+The cumulative streaming-family fixture uses a sixty-second watchdog with unchanged per-step
+assertions. Retained failure records explain publication election, refusal/retry, staged delivery,
+font/layout capacity, native choice authority and shutdown custody.
+
+Independent behavior and dependency-delivery reviews found no remaining blocker. Published GPUI is
+`14d9622001ecbfa0db4a5530b989b649690472a1`, scrollbar `25e09652f356bc2cb163c78912bfa7a61534aacd`,
+text-input `aa9dfd3b727450556570637c133de319a1f78d7e` and settings
+`f4c6b19e880f25fe06edd4c2fd64cbca9dd40091`. Canonical isolated locked metadata proves one GPUI
+and the published widget sources; only fourteen expected Git-source entries changed in the root
+lock. Production checks passed for all widgets and Beryl (canonical 35.58 seconds, local 12.48);
+the analyzer restarted successfully afterward. Review matched all 22 Beryl and four native GPUI
+Save-owned source/test hashes to accepted inputs. Text-input's published two-line continuation
+correction matches the unchanged accepted behavior; no retained prior raw test hash is claimed.
+Temporary verification inputs and fixture homes reached their last review consumer at acceptance;
+this record and version control retain the durable outcome. Table mounting remains unaccepted.

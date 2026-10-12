@@ -34,6 +34,35 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   results, and releases bounded state under the
   [transcript-presentation system](../../../doc/systems/transcript-presentation/design.md).
 
+- The Code Save adapter binds one native destination choice and one bounded writer to the exact
+  host, source binding/root and action identity. It uses the existing selected-history Source
+  demand, retains at most one admitted source page/write in flight, and performs filesystem work
+  off GPUI. A uniquely created same-directory staging file owns incomplete output; it cannot
+  replace the destination. Complete publication is one atomic filesystem operation after current
+  source/action qualification. Replacement requires native-confirmed overwrite authority for the
+  accepted path; a new-file choice uses non-replacing publication and refuses a later collision.
+  A nonblocking one-shot
+  election is the publication linearization point: cancellation/retirement wins before it, while
+  admitted publication finishes afterward. Foreground retirement never waits on a filesystem call.
+  Cancellation, refusal, failed acquisition/write/publication and retirement before election close
+  the worker-owned writer and remove its exact staging file off GPUI. An OS cleanup refusal
+  releases worker handles and returns a distinct terminal failure; one staging file may remain
+  at the selected directory, without claiming disposal or scheduling automatic effect retries.
+  The adapter neither reopens retired demand nor retries a destination effect.
+  Save admission acquires one opaque lease through a weak capability from the invoking window's
+  existing running-resource worker lifetime. Save admission leaves the two slots required by the
+  existing read-capacity predicate under its nine-worker limit; total retained work after Save
+  admission is at most seven. Capacity refusal opens no picker or writer and queues no later retry.
+  The lease covers the pending native choice, then
+  transfers to the background writer through terminal close/cleanup or elected publication; it
+  retains no service, provider or GPUI entity. The existing close/Exit resource-drain predicate
+  awaits this lease before native removal or process quit. Suspension fences new Save admission
+  and cancels pre-election actions without blocking GPUI; already elected publication settles.
+  A pending native choice is awaited through its ordinary completion, with no late action revival.
+  Typed picker cancellation remains distinct from picker failure. The
+  [transcript feature](../../../doc/features/transcript/design.md#selection-copy-quote-and-menus)
+  owns the visible command policy and outcomes.
+
 ## Activity, Status, Notices, And Audio
 
 - Running-thread attachment consumes a worker-prepared canonical transcript seed from a bounded

@@ -16,6 +16,7 @@ mod delivery_recovery;
 mod non_idle_gate;
 mod pages;
 mod pending_dispatch;
+mod projection_progress;
 mod promotion;
 mod queries;
 mod range;

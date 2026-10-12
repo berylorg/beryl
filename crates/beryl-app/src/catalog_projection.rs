@@ -81,7 +81,15 @@ pub fn prepare_thread_catalog_projection(
     thread_id: SyndicThreadId,
 ) -> Result<ThreadCatalogProjectionPreparation, CatalogProjectionBuildError> {
     let home_revision = store.home_revision()?;
-    let Some(prepared_summary) = syndic.prepare_thread_catalog_summary(store, thread_id)? else {
+    let prepared_summary = match syndic.prepare_thread_catalog_summary(store, thread_id) {
+        Err(SyndicReadError::ConcurrentChange { .. })
+            if store.home_revision()? != home_revision =>
+        {
+            return Err(CatalogProjectionBuildError::ConcurrentPreparation);
+        }
+        other => other?,
+    };
+    let Some(prepared_summary) = prepared_summary else {
         return if store.home_revision()? == home_revision {
             Ok(ThreadCatalogProjectionPreparation::ThreadMissing)
         } else {

@@ -41,7 +41,7 @@ fn late_code_lookup_reads_exact_closure_one_locator_and_one_page() {
     assert_eq!(query.root.language.as_deref(), Some("rust"));
     query.line(&fixture, 4_094).unwrap();
     assert_eq!(fixture.reads.borrow().len(), 8);
-    let before = query.ledger;
+    let before = query.ledger.clone();
     assert!(query.line(&fixture, 4_096).is_err());
     assert_eq!(query.ledger, before);
     assert!(
@@ -235,7 +235,7 @@ fn query_read_allowance_refuses_before_any_acquisition() {
     let mut query = open(&fixture, &binding);
     query.ledger.records = 520;
     fixture.reads.borrow_mut().clear();
-    let before = query.ledger;
+    let before = query.ledger.clone();
     assert!(matches!(
         query.line(&fixture, 1),
         Err(ConstructionError::Limit)

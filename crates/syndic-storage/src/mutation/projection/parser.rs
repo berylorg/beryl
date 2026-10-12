@@ -267,7 +267,6 @@ fn process_line(
                         language,
                         preview,
                         logical_lines,
-                        body_bytes,
                         resource_digest,
                         outputs,
                     )?;

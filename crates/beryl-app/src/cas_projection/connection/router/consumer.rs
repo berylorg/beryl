@@ -360,7 +360,7 @@ impl LiveEventTarget {
             .expect("live-event target retains its projection until drop")
     }
 
-    fn registration(&self) -> &super::TargetRegistration {
+    pub(super) fn registration(&self) -> &super::TargetRegistration {
         self.registration
             .as_ref()
             .expect("live-event target retains its registration until drop")

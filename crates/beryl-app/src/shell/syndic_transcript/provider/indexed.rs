@@ -2,6 +2,9 @@ use super::TranscriptProviderResponseKind;
 use beryl_model::ProjectionRevision;
 use std::sync::Arc;
 use syndic_storage::indexed_resource as index;
+pub(crate) use syndic_storage::{
+    ResourceKind as IndexedResourceKind, indexed_resource as resource_index,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum IndexedResourceQuery {
@@ -20,6 +23,10 @@ pub(crate) enum IndexedResourceQuery {
         anchor: index::SourceAnchor,
         bytes: usize,
     },
+    Source {
+        range: index::ByteRange,
+        bytes: usize,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,6 +41,13 @@ pub(crate) enum IndexedResourceValue {
     Range(index::Response),
     Display(index::DisplayResponse),
     Anchor(index::AnchorResponse),
+    Source(IndexedSourceResponse),
+}
+
+pub(crate) struct IndexedSourceResponse {
+    pub(crate) binding: index::Binding,
+    pub(crate) range: index::ByteRange,
+    pub(crate) bytes: Vec<u8>,
 }
 
 pub(crate) struct IndexedResourceResponse {

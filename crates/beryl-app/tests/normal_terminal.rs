@@ -48,6 +48,8 @@ mod server;
 mod steering_loss;
 #[path = "normal_terminal/stop_retention.rs"]
 mod stop_retention;
+#[path = "normal_terminal/streaming_history.rs"]
+mod streaming_history;
 #[path = "normal_terminal/verification.rs"]
 mod verification;
 

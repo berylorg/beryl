@@ -42,6 +42,65 @@ fn finish_terminal(router: &Arc<super::EventRouter>, thread: &CasThreadId, turn:
 }
 
 #[test]
+fn saved_history_notification_coalesces_only_after_post_commit_release() {
+    let (router, registration, thread, turn) =
+        exact_target(81, "history-release", "history-release-turn");
+    let held = router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .finish_held()
+        .unwrap();
+    assert!(!registration.history_wake.take_changed());
+    held.release();
+    router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .finish()
+        .unwrap();
+    assert!(registration.history_wake.take_changed());
+    assert!(!registration.history_wake.take_changed());
+    router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .settle_authority_lost();
+    assert!(!registration.history_wake.take_changed());
+    router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .fail()
+        .unwrap();
+    assert!(!registration.history_wake.take_changed());
+}
+
+#[test]
+fn saved_history_publication_wakes_the_armed_driver_without_a_poll_timer() {
+    let (router, registration, thread, turn) =
+        exact_target(82, "history-wake", "history-wake-turn");
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+    let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        registration.history_wake.arm();
+        ready_tx.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !registration.history_wake.take_changed() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            assert!(!remaining.is_zero(), "saved history wake was lost");
+            std::thread::park_timeout(remaining);
+        }
+        done_tx.send(()).unwrap();
+    });
+    ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .finish()
+        .unwrap();
+    let woke = done_rx.recv_timeout(Duration::from_secs(1));
+    worker.join().unwrap();
+    woke.expect("publication must wake the driver before its idle timeout");
+}
+
+#[test]
 fn first_ordered_source_control_binds_and_carries_pending_activation() {
     let router = router(28);
     let registration = register(&router, "cas-source-first", 28, 28, None);

@@ -95,6 +95,17 @@ impl Future for SubmissionAdvanceTestGate {
 }
 
 impl MainWindowConversationComposerMount {
+    #[cfg(test)]
+    pub(crate) fn test_use_storage_only_submission(&mut self) {
+        assert!(!self.submission.is_active());
+        self.submission
+            .request_source
+            .as_mut()
+            .unwrap()
+            .execution_wake =
+            crate::cas_projection::SubmissionExecutionWake::storage_only_for_test();
+    }
+
     pub fn test_begin_submission_start(
         &mut self,
         selection: MainWindowComposerSelectionIdentity,

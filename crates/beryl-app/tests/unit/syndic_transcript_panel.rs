@@ -10,6 +10,15 @@ use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
 #[path = "syndic_transcript_panel/resources.rs"]
 mod resources;
 
+#[path = "syndic_transcript_panel/code_viewport.rs"]
+mod code_viewport_tests;
+
+#[path = "syndic_transcript_panel/code_appearance.rs"]
+mod code_appearance_tests;
+
+#[path = "syndic_transcript_panel/code_layout.rs"]
+mod code_layout_tests;
+
 struct NestedPanel {
     panel: Entity<SyndicTranscriptPanel>,
     body_height: f32,
@@ -480,6 +489,7 @@ fn seed(record_count: u64) -> PreparedTranscriptActivation {
             position: Some(TranscriptViewPosition(position)),
             turn_id: None,
             item_id: None,
+            block_id: None,
             projection_id: Some(projection_id.clone()),
             resource_id: None,
             source_range: None,

@@ -34,7 +34,9 @@ Keep storage access, projection ownership, Markdown parsing, and resource byte l
 
 `Transcript chunk` means a bounded render unit derived from resident Syndic projection data. Chunks are atomic to the outer transcript renderer, though they may contain nested widgets with their own bounded rendering.
 
-`Transient live suffix` means the bounded exact text frontier received from the routed normalized live-turn stream but not yet covered by the resident Syndic projection. It is local presentation state attached to one authored record, not durable transcript content.
+`Streaming history frontier` means a coherent revision-bound range of captured Syndic history and
+its projection chunks published while capture continues. It uses the ordinary residency path;
+CAS item completion does not define its rendering boundaries.
 
 `Repair publication generation` means one immutable host generation prepared from a single selected
 Syndic transcript-view generation after repair-pending, complete snapshot-backed repair, or explicit
@@ -75,12 +77,11 @@ measured-candidate publication.
 The target pipeline is:
 
 ```text
-Syndic transcript view
+CAS capture
+-> bounded saved Syndic history chunks and coherent projection frontiers
+-> Syndic transcript view
 -> transcript residency
 -> resident Syndic data
-normalized CAS live deltas
--> bounded transient live suffix
-resident Syndic data + transient live suffix
 -> presentation data + applicable synthetic context at an exact branch boundary
 -> realized frame window
 -> renderer
@@ -101,7 +102,9 @@ Required provenance includes the owning turn or transcript-view position when kn
 
 Beryl-local records such as synthetic discussion context, live carets, budget fallbacks, and transient affordances must declare that they are local UI state rather than Syndic-authored transcript content.
 
-A transient live suffix carries exact routed thread, turn, item, kind, and logical-text-frontier identity. It may extend one resident authored record before durable projection catches up, but it cannot supply stable historical command provenance or survive as recovery authority.
+Streaming records carry the exact Syndic source range, projection revision and capture provenance
+of their saved chunks. The host does not append raw CAS text to a resident record. Completion and
+history-command eligibility remain separate facts from chunk persistence and visibility.
 
 Repair provenance carries the selected Syndic transcript-view generation, exact turn and projection
 revisions, snapshot-backed source identity when repaired, and one pending, repaired, or incomplete
@@ -112,7 +115,7 @@ A synthetic discussion-context group retains exact Syndic envelope provenance an
 ## Repair Publication
 
 Transcript residency accepts repair replacement only as a complete bounded Syndic provider result
-for one selected transcript-view generation. It does not consume a CAS repair response, live suffix,
+for one selected transcript-view generation. It does not consume a CAS repair response, raw live text,
 outage buffer, GUI record, or partial repair page as canonical repair input.
 
 The residency and presentation layers prepare one new host generation that selects the affected
@@ -130,8 +133,8 @@ the switch releases the superseded projection pages, presentation records, measu
 widget state, resource slices, pins, and every associated capacity charge. It does not transfer
 record provenance or stale geometry.
 
-Any transient live suffix or provisional turn-local evidence attached to the superseded generation
-is disposed in the same switch. It is never compared with, appended to, or copied into the
+Any turn-local presentation state attached to the superseded generation
+is disposed in the same switch. It is never appended to or copied into the
 snapshot-backed repaired generation. An incomplete publication follows the same generation boundary
 and exposes no partial snapshot content.
 
@@ -231,18 +234,31 @@ Live-tail following and live-turn reading anchors are explicit viewport modes. M
 
 Autoscroll must be stateful and must not issue competing viewport corrections for every layout, stream, or resource event.
 
-The renderer publishes all arrived bounded normalized-text fragments available to a frame as one
-current snapshot while preserving their parent-delta identity and order. It neither delays them
-behind a fixed-rate reveal cursor nor replays their characters or original arrival timestamps;
-frame scheduling is the only permitted visual coalescing of already received fragments.
+The renderer publishes newly admitted bounded Syndic projection chunks available to a frame as
+one current snapshot while preserving source order and provenance. It neither delays them behind
+a fixed-rate reveal cursor nor replays their characters or original arrival timestamps; frame
+scheduling is the only permitted visual coalescing of already admitted chunks.
 
-Durable reconciliation preserves the authored record identity and replaces only a transient prefix proven equal to the newly resident Syndic projection. It never briefly renders both copies or clears the record between them.
+Successive coherent history frontiers preserve authored record identity and reading anchors.
+They never briefly render duplicate ranges or clear the record between them.
+
+For authored projection chunks with saved item and source-range provenance, presentation identity
+uses the selected view, saved item and source-block start. Fenced Code carries Syndic's saved
+Markdown block identity, derived from the owning saved item and opening-fence start; its presentation
+identity uses that block identity and the selected view. The code-body start is an exact read boundary,
+not the block identity: it can move while an unfinished opening info string gains bytes or its line
+ending. It does not use the replaceable immutable
+projection/resource snapshot or transcript generation. Exact snapshot identities and revisions
+remain in provenance and continue to fence reads, actions and measurement facts. A Code panel may
+retain its mount across a successor projection for that same saved block; its indexed binding must
+still prove source-prefix compatibility before restoring the reading anchor. Unrelated source
+replacement retains the existing reset behavior.
 
 ## Large Content
 
 Very large transcript records and synthetic context groups render through bounded chunks or stable fallbacks. A large row or context group may stream chunk presentation around the current anchor without providing continuous pixel geometry for unloaded chunks.
 
-Code blocks, tables, generated images, attachments, and comparable heavy resources are represented by Syndic resource metadata and explicit range-readable resource data. Beryl presentation records point at those resources and admit only the ranges needed for the current viewport, nested-widget viewport, copy action, or active UI pin.
+Code blocks, tables, generated images, attachments, and comparable heavy resources are represented by Syndic resource metadata and explicit range-readable resource data. Beryl presentation records point at those resources and admit only the ranges needed for the current viewport, nested-widget viewport, admitted Copy/Save source action, or active UI pin.
 
 Code and table panels own their internal visible-range rendering, selection, copy affordances, and local fallbacks. The outer transcript renderer treats the panel shell as one bounded presentation record with measured outer geometry.
 
@@ -252,6 +268,100 @@ records, resource slices, measured geometry, widget state, and active UI pins; s
 caches bound decoded or uploaded resources across windows.
 
 Visual fallbacks remain necessary when content cannot be admitted or rendered within Beryl's resource policy. Images are the clearest case because an oversized raster cannot be made safe by an inner lazy scroller. Pathological inline layout, unsupported resources, decode failures, and stale or rejected resource ranges also need stable local fallbacks.
+
+## Indexed No-Wrap Code Layout
+
+Beryl presentation owns a font-environment-specific layout index for range-backed Code. Syndic's
+structural companion remains independent of fonts and supplies exact logical lines, source ranges
+and bounded Display windows. Layout input is exclusively admitted saved Beryl/Syndic content. CAS
+items, raw capture text and painted strings are never layout or source-action authority.
+
+The layout binding names the exact transcript host/activation, selected view, saved block,
+immutable resource/root/source range, projection revision and measurement environment. The
+environment includes resolved fonts and fallback generation, font size and shaping features,
+line metrics, tab policy and the canonical segment policy. Paint-only color changes preserve
+geometry. A change to any geometry input creates a new layout epoch; results from another epoch
+cannot be published or used to clamp the current viewport.
+
+### Construction And Ownership
+
+The existing transcript host and residency own layout demand, source admission, cancellation,
+capacity and publication. The selected-history provider continues to read the source through its
+ordinary indexed/raw resource queries. There is no widget loader, independent source cache, new
+CAS path or durable font-dependent Syndic companion. The index is disposable presentation state.
+
+An admitted layout job advances in bounded work quanta outside render and prepaint. Source reads
+stay within the existing 65,536-byte response ceiling; one canonical shaping segment contains at
+most 8,192 UTF-8 bytes. Each job has configured segment-work, checkpoint-count, retained-byte and
+semantic-item ceilings independent of source length and viewport size. Those limits include peak
+coexistence with the previous coherent publication and share the host's presentation/resource
+capacity. Input pages, decoder/grapheme carry, continuations, checkpoints and output fragments
+are all bounded and charged. Capacity refusal leaves the prior coherent surface intact and exposes
+local unavailability; it does not grow the limits or keep an unbounded pending queue.
+
+Canonical segments are determined by source grapheme boundaries and the configured segment cap,
+independently of storage pages, Display response sizes or arrival timing. Beryl uses the owned
+GPUI canonical bounded streaming-layout boundary: each segment is an independent shaping context
+and carries compact inline placement to its successor. Construction and painting use the same
+segments, font inputs and tab policy; isolated arbitrary transport fragments cannot establish
+cumulative geometry. The default Code tab policy uses stops at eight space advances of the resolved
+primary body font, measured from the logical-line origin. A tab retains its exact one-byte source
+span and receives the bounded advance to the next stop; continuation across source/segment edges
+does not restart tab alignment. Its source-covering geometry is consumer-supplied to the canonical
+layout boundary. A nonpositive or unrepresentable stop follows local layout fallback.
+A grapheme exceeding the segment cap is scanned through bounded pages to
+its exact end and represented by a bounded source-covering oversize-layout atom. That explicit
+local fallback preserves source selection/Copy/Save and does not allocate the complete grapheme.
+Malformed source, unsupported layout or unrepresentable geometry similarly produces a typed local
+fallback rather than lossy authored text or a guessed pixel-to-byte conversion.
+
+A sparse checkpoint contains the exact logical line, source byte position, canonical segment
+position, cumulative inline advance and compact resumable shaping/placement state. It retains no
+source text or glyph payload. The index keeps a configured fixed-capacity monotonic checkpoint set
+and terminal aggregates, using deterministic compaction when needed. It does not retain an entry
+or shaped result for every source line or fragment. Compaction preserves checkpoint facts; replay
+between surviving checkpoints may take additional bounded work quanta. This bounds residency,
+not total indexing time or worst-case target-resolution latency. A cache miss rebuilds derived
+layout through the same owner and bounded jobs; no raw byte ratio substitutes for layout.
+
+### Horizontal Queries And Publication
+
+A horizontal target names a logical line and exact inline pixel displacement. Resolution chooses
+a valid checkpoint at or before the target, resumes bounded canonical layout and returns only the
+source-covering segments intersecting the viewport plus configured bounded overscan. Each result
+includes exact source spans, inline placement, hit mapping and line identity. A later segment is
+placed using its admitted cumulative advance, not at the line origin or as an additional row.
+Source-byte Display demand follows the resolved source window and retains its exact immutable
+binding and UTF-8 boundary rules. Target resolution never shapes an entire pathological line into
+one allocation, and renderer work never scans its unseen prefix.
+
+Indexing starts at an exact source origin or an index-produced checkpoint and publishes progress
+without claiming completion. Terminal line widths and the resource-wide maximum width become
+exact only after their corresponding scan completes. An incomplete prefix is not the complete
+horizontal extent. Vertical logical-line extent continues to come from the structural companion.
+Horizontal movement may record a desired target while layout is pending; the previous coherent
+window remains painted with an explicit bounded loading/fallback state until the matching target
+is ready. It must not turn an unresolved target into a blank viewport or silently discard the
+desired offset by clamping to a prefix width. Exact complete extent alone authorizes terminal
+horizontal clamping. Source/font replacement discards incompatible geometry; publication is
+atomic for the exact current binding, epoch and target request.
+
+The viewport retains a source anchor, intra-line source offset and visual displacement. A
+same-source revision first resolves that anchor through the admitted successor binding, then
+builds geometry for the new epoch; it cannot reuse old cumulative widths merely because bytes are
+prefix-compatible. Panel identity, focus, wheel ownership and valid source selection survive this
+reconciliation. Host replacement, obsolete demand, cancellation or unmount releases source pages,
+layout state, shaped fragments, checkpoints and every associated charge. Late results cannot
+recreate retired demand. Copy and Save always use exact admitted source ranges, independently of
+checkpoint coverage, oversize atoms or realized glyphs.
+
+Acceptance exercises real no-wrap horizontal traversal of a line larger than one Display fragment,
+canonical segmentation independent of response boundaries, Unicode/font fallback and tabs,
+oversize graphemes, partial readiness, source/font invalidation, exact terminal extent and clamp,
+source-anchor preservation, stale-result refusal and disposal. Growth cases hold all work/residency
+limits fixed. Content-free diagnostics expose layout epoch continuity, progress/completion kind,
+checkpoint/fragment counts, charged capacity and pending/ready/refused target state, never text,
+raw identities, source positions or copied content.
 
 ## Geometry And Remeasurement
 
@@ -319,13 +429,14 @@ If virtualization, release, remeasurement, or missing data destroys stable selec
 - Budget fallbacks are explicit Beryl UI records tied to Syndic provenance, not assistant-authored content.
 - Synthetic discussion context is an explicit Beryl presentation group tied to Syndic envelope provenance, not a Syndic or CAS turn.
 - Presentation records preserve Syndic provenance and revision identity.
-- A transient live suffix is bounded non-authoritative presentation state and becomes durable only through exact Syndic-prefix reconciliation.
+- Streaming authored content is read from saved Syndic history chunks through ordinary residency;
+  no parallel CAS-text suffix supplies renderer content.
 - Repair publication consumes only a complete Syndic-selected generation with generation-owned
   pending, repaired, or incomplete provenance; CAS snapshots, live or outage state, GUI text, and
   partial repair data never enter renderer presentation directly.
 - A repair publication atomically switches the affected turn's generation, compact head, source
   authority, and provenance while keeping its content paged and range-backed; it disposes the
-  superseded transient suffix and never renders a mixed-generation or blank intermediate turn.
+  superseded presentation state and never renders a mixed-generation or blank intermediate turn.
 - Every asynchronous residency result matches its complete host, activation, authority-generation,
   range, and request-id key or is discarded with all returned capacity released; host, window, and
   provider-service disposal cancel all outstanding demand.

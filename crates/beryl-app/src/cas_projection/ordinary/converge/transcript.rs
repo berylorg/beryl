@@ -16,22 +16,34 @@ pub(super) fn converge_selected_transcript(
     limit: SyndicPointReadLimit,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     loop {
-        let current = snapshot::transcript(store, storage, thread_id, limit)?;
-        if validate_snapshot(&current)? {
+        if step(store, storage, thread_id, limit)? {
             return Ok(());
         }
-        match current.build.as_ref() {
-            Some(build) => {
-                if !active_build(&current, build) {
-                    return Err(OrdinaryTurnExecutionError::Invariant(
-                        "selected transcript build is not resumable",
-                    ));
-                }
-                advance_build(store, storage, thread_id, limit, &current, build)?;
-            }
-            None => start_build(store, storage, thread_id, limit, &current)?,
-        }
     }
+}
+
+pub(super) fn step(
+    store: HistoryAccess<'_>,
+    storage: &SyndicStorage,
+    thread_id: SyndicThreadId,
+    limit: SyndicPointReadLimit,
+) -> Result<bool, OrdinaryTurnExecutionError> {
+    let current = snapshot::transcript(store, storage, thread_id, limit)?;
+    if validate_snapshot(&current)? {
+        return Ok(true);
+    }
+    match current.build.as_ref() {
+        Some(build) => {
+            if !active_build(&current, build) {
+                return Err(OrdinaryTurnExecutionError::Invariant(
+                    "selected transcript build is not resumable",
+                ));
+            }
+            advance_build(store, storage, thread_id, limit, &current, build)?;
+        }
+        None => start_build(store, storage, thread_id, limit, &current)?,
+    }
+    Ok(false)
 }
 
 /// Returns true exactly when this stable snapshot is already current.

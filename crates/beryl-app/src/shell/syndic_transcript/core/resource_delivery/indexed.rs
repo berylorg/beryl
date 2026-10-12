@@ -1,5 +1,6 @@
 use super::super::super::provider::{
     IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
+    resource_index as index,
 };
 use super::*;
 
@@ -22,16 +23,18 @@ pub(super) struct IndexedEntry {
     demand: ResourceTranscriptDemand,
     pub(super) inner: IndexedResourceDemand,
     pub(super) response: Option<Arc<IndexedResourceResponse>>,
+    pages: Vec<Arc<IndexedResourceResponse>>,
+    layout_bytes: usize,
 }
 
 impl IndexedResidency {
     pub(in super::super) fn encoded_bytes(&self) -> usize {
-        self.entries
-            .iter()
-            .filter_map(|entry| entry.response.as_ref())
-            .fold(0usize, |bytes, response| {
-                bytes.saturating_add(response.encoded_bytes)
-            })
+        self.entries.iter().fold(0usize, |bytes, entry| {
+            entry.pages.iter().chain(entry.response.iter()).fold(
+                bytes.saturating_add(entry.layout_bytes),
+                |bytes, response| bytes.saturating_add(response.encoded_bytes),
+            )
+        })
     }
 
     pub(super) fn demand_for(
@@ -82,7 +85,8 @@ impl ResidentTranscriptCore {
         if !self.indexed_owner_current(demand) {
             return false;
         }
-        if !self.resource_demands().contains(demand) {
+        if !self.resource_demands().contains(demand) && !self.code_panel_demands().contains(demand)
+        {
             // An admitted inner response suppresses its read, but its exact original owner may
             // still replace or dispose that inner viewport without moving the outer viewport.
             let current = self
@@ -107,6 +111,60 @@ impl ResidentTranscriptCore {
         {
             return false;
         }
+        let layout_bytes = self
+            .indexed_resources
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.demand.resource_id == demand.resource_id
+                    && entry.demand.view_id == demand.view_id
+                    && entry.demand.record_id == demand.record_id
+                    && entry.demand.provenance == demand.provenance
+                    && entry.demand.activation_revision == demand.activation_revision
+                    && entry.demand.revision == demand.revision
+            })
+            .map_or(0, |entry| entry.layout_bytes);
+        let pages = inner
+            .as_ref()
+            .and_then(|inner| {
+                let entry = self.indexed_resources.entries.iter().find(|entry| {
+                    entry.demand.resource_id == demand.resource_id
+                        && entry.demand.view_id == demand.view_id
+                        && entry.demand.record_id == demand.record_id
+                        && entry.demand.kind == demand.kind
+                        && entry.demand.provenance == demand.provenance
+                        && entry.demand.activation_revision == demand.activation_revision
+                        && entry.demand.revision == demand.revision
+                })?;
+                let response = entry.response.as_ref()?;
+                let IndexedResourceValue::Range(range) = &response.value else {
+                    return None;
+                };
+                let IndexedResourceQuery::Range {
+                    request,
+                    cursor: Some(cursor),
+                    ..
+                } = &inner.query
+                else {
+                    return None;
+                };
+                if !matches!(request, index::Request::Code { lines }
+                    if lines.start <= lines.end && lines.end - lines.start <= 16)
+                    || range.request_complete
+                    || range.items.is_empty()
+                    || range.cursor.fragment_offset != 0
+                    || *cursor != range.cursor
+                    || inner.revision != entry.inner.revision
+                    || inner.root != response.root.as_ref().map(|root| root.digest)
+                    || entry.pages.len() >= 15
+                {
+                    return None;
+                }
+                let mut pages = entry.pages.clone();
+                pages.push(response.clone());
+                Some(pages)
+            })
+            .unwrap_or_default();
         self.indexed_resources
             .entries
             .retain(|entry| entry.demand.resource_id != demand.resource_id);
@@ -119,10 +177,66 @@ impl ResidentTranscriptCore {
                 demand: owner,
                 inner,
                 response: None,
+                pages,
+                layout_bytes,
             });
         }
         self.refresh_budget_accounting();
         true
+    }
+
+    pub(crate) fn reserve_code_layout(
+        &mut self,
+        demand: &ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        if demand.kind != ResourceKind::Code || !self.indexed_owner_current(demand) {
+            return false;
+        }
+        let Some(position) = self
+            .indexed_resources
+            .entries
+            .iter()
+            .position(|entry| entry.demand == *demand)
+        else {
+            return false;
+        };
+        let previous = self.indexed_resources.entries[position].layout_bytes;
+        let used = self
+            .resident
+            .resource_slice_bytes
+            .saturating_add(self.indexed_resources.encoded_bytes())
+            .saturating_sub(previous);
+        if used.saturating_add(bytes) > self.policy.max_resource_bytes {
+            return false;
+        }
+        self.indexed_resources.entries[position].layout_bytes = bytes;
+        self.refresh_budget_accounting();
+        true
+    }
+
+    pub(crate) fn can_reserve_code_layout(
+        &self,
+        demand: &ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        if demand.kind != ResourceKind::Code || !self.indexed_owner_current(demand) {
+            return false;
+        }
+        let Some(entry) = self
+            .indexed_resources
+            .entries
+            .iter()
+            .find(|entry| entry.demand == *demand)
+        else {
+            return false;
+        };
+        self.resident
+            .resource_slice_bytes
+            .saturating_add(self.indexed_resources.encoded_bytes())
+            .saturating_sub(entry.layout_bytes)
+            .saturating_add(bytes)
+            <= self.policy.max_resource_bytes
     }
 
     pub(crate) fn indexed_resource_response(
@@ -138,6 +252,40 @@ impl ResidentTranscriptCore {
             .and_then(|entry| entry.response.clone())
     }
 
+    pub(crate) fn indexed_resource_pages(
+        &self,
+        resource: &ResourceId,
+    ) -> Vec<Arc<IndexedResourceResponse>> {
+        self.indexed_resources
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.demand.resource_id == *resource && self.indexed_owner_current(&entry.demand)
+            })
+            .map(|entry| {
+                entry
+                    .pages
+                    .iter()
+                    .chain(entry.response.iter())
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn indexed_resource_owner(
+        &self,
+        resource: &ResourceId,
+    ) -> Option<ResourceTranscriptDemand> {
+        self.indexed_resources
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.demand.resource_id == *resource && self.indexed_owner_current(&entry.demand)
+            })
+            .map(|entry| entry.demand.clone())
+    }
+
     pub(crate) fn prepare_indexed_resource_response(
         &self,
         demand: &ResourceTranscriptDemand,
@@ -150,7 +298,8 @@ impl ResidentTranscriptCore {
         let allowance = match &inner.query {
             IndexedResourceQuery::Range { bytes, .. }
             | IndexedResourceQuery::Display { bytes, .. }
-            | IndexedResourceQuery::Anchor { bytes, .. } => *bytes,
+            | IndexedResourceQuery::Anchor { bytes, .. }
+            | IndexedResourceQuery::Source { bytes, .. } => *bytes,
         };
         if response.encoded_bytes == 0
             || response.encoded_bytes > allowance.min(65_536)
@@ -197,6 +346,21 @@ impl ResidentTranscriptCore {
                     return None;
                 }
             }
+            (IndexedResourceQuery::Source { range, .. }, IndexedResourceValue::Source(value)) => {
+                if demand.kind != ResourceKind::Code
+                    || !indexed_binding_matches(demand, inner, &response, &value.binding)
+                    || inner.root.is_none()
+                    || value.range != *range
+                    || range.start >= range.end
+                    || range.start < value.binding.range.start
+                    || range.end > value.binding.range.end
+                    || range.end - range.start > 8192
+                    || value.bytes.len() as u64 != range.end - range.start
+                    || value.bytes.len() > response.encoded_bytes
+                {
+                    return None;
+                }
+            }
             _ => return None,
         }
         let mut candidate = self.clone();
@@ -207,6 +371,47 @@ impl ResidentTranscriptCore {
             .find(|entry| {
                 entry.inner == *inner && entry.demand.resource_id == demand.resource_id
             })?;
+        if !entry.pages.is_empty() {
+            let IndexedResourceValue::Range(range) = &response.value else {
+                return None;
+            };
+            let IndexedResourceQuery::Range {
+                request: index::Request::Code { lines },
+                cursor: Some(cursor),
+                ..
+            } = &inner.query
+            else {
+                return None;
+            };
+            let index::Position::Code(start) = cursor.next else {
+                return None;
+            };
+            let index::Position::Code(end) = range.cursor.next else {
+                return None;
+            };
+            if range.items.is_empty()
+                || end < start
+                || (end == start && range.cursor.fragment_offset == 0)
+                || end > lines.end
+                || entry
+                    .pages
+                    .iter()
+                    .map(|page| match &page.value {
+                        IndexedResourceValue::Range(value) => value.items.len(),
+                        _ => 0,
+                    })
+                    .sum::<usize>()
+                    + range.items.len()
+                    > (lines.end - lines.start).min(16) as usize
+                || range.binding
+                    != match &entry.pages.last()?.value {
+                        IndexedResourceValue::Range(value) => value.binding.clone(),
+                        _ => return None,
+                    }
+            {
+                return None;
+            }
+        }
         entry.demand = demand.clone();
         entry.response = Some(response);
         candidate.refresh_budget_accounting();
