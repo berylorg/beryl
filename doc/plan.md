@@ -98,26 +98,41 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 763: Mount The Indexed Transcript Table Panel (finished)
+# Phase 766: Establish Inline Table Cell Interaction Readiness (finished)
 
-Independent review accepted bounded indexed Table mounting, whole-cell selection, exact selected
-Markdown/stripped Copy, fallback actions and original-root Save with preserved Code behavior.
-Combined qualification passed 177/177, affected integration 130/130 and theme 10/10; production
-checking passed. Durable bounds, evidence and native limits are in the
-[mounting audit](audits/transcript-mounting-readiness.md#mounted-indexed-table-acceptance).
-Small inline Table interaction remains the next separate boundary.
+Independent source/authority review accepted complete typed inline preparation, projection-owned
+residency, bounded paint and direct source actions under unchanged storage thresholds. Whole-table
+cell Copy requires a complete eligible rectangle without fallback rows; explicit fallback actions
+and Save preserve other source. No runtime acceptance is claimed. See the
+[readiness audit](audits/transcript-mounting-readiness.md#inline-table-interaction-readiness).
 
-# Phase 766: Establish Inline Table Cell Interaction Readiness (pending)
+# Phase 767: Mount Inline Table Cell Interaction (wip)
 
-Qualify the bounded inline Table projection and its current renderer consumer against the
-Operator's whole-cell selection and selected-source Copy contract. Small Tables intentionally
-remain inline under the existing storage thresholds; indexed-resource mounting does not accept
-their interaction. Resolve the prepared cell/source owner, stable identities, bounded geometry,
-selection lifecycle and both Copy methods in owning authority, with independent readiness review
-before implementation. Preserve the existing storage thresholds and accepted indexed Table path.
+Mount genuine small inline Tables through ordinary saved-history provider preparation and measured
+presentation, following the
+[inline system contract](systems/syndic-conversation-history/design.md#inline-table-structure-preparation),
+storage preparation boundary, app design and canonical Table widget. Implement Syndic's pure bounded
+preparation API using the existing grammar, retain typed complete cells/source in projection payloads,
+and charge all retained allocations before publication. Preserve storage thresholds, schema and
+existing residency budgets; unavailable/capacity outcomes remain typed and source-preserving.
 
-# Phase 767: Mount Inline Table Cell Interaction (pending)
+Separate indexed query/binding mechanics from shared Table geometry, cell selection, export and
+file publication. Inline actions use their admitted immutable source directly, without synthetic
+resources or a second storage reader. Qualify both rectangle admission and export for the bounded
+396-position inline owner while retaining indexed 128-descriptor windows and bounded paint.
+Preserve global first/second distinct Copy behavior, selected-only exact Markdown, stripped text,
+writer refusal and native-confirmed replacement. Crossing fallback preserves selection; raw-row
+actions and full Save preserve exact source. Source changes, inline-to-resource replacement, stale
+callbacks, outer eviction and activation/view retirement must release actions and interaction state.
 
-After readiness, mount small inline Tables with whole-cell rectangular selection, exact selected
-Markdown and stripped-text Copy through the shared transcript contract. Verify native interaction,
-bounded retention, remeasurement and disposal before accepting uniform Table interaction.
+Verify canonical grammar/source ranges, allocation admission, maximum inline offscreen selection,
+CRLF/escaping/empty/missing cells and fallback. Native fixtures must actually remain inline and
+exercise click/Shift/drag/keyboard selection, both Copy methods, checked writer refusal, Save,
+two-axis wheel routing, actual resize/font remeasurement and disposal. Run affected storage/provider,
+transcript integration and indexed Table/Code regressions plus production checking; independently
+review the complete mounted boundary before acceptance.
+
+Current checkpoint: readiness accepted; no inline implementation changes yet. Existing provider
+still maps inline Table to Text, and existing selection/export/Save owners require resource-specific
+adaptation as recorded in the audit. Implement the prepared model and consumer together rather than
+accepting callable helpers alone. Preserve previously accepted indexed behavior and its evidence.

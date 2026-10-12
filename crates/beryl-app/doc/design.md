@@ -98,6 +98,14 @@ internal contract.
   rebound by coincidence.
 - Renderer-facing code consumes only prepared bounded app projections. Storage, backend, and
   provider workers return typed bounded values containing no GPUI state.
+  Inline Table payloads retain their typed complete source and Syndic-prepared cells through
+  projection admission and measured presentation. They use the projection owner and budgets,
+  with a direct inline source adapter for shared Table interaction, export and Save; they never
+  masquerade as indexed resources. Exact allocation charging covers source, descriptors and
+  prepared display data before publication. The panel retains only bounded interaction state
+  and the admitted shared model, paints the shared bounded rectangle and rejects callbacks from
+  obsolete source or presentation bindings. Replacement/eviction releases pending actions and
+  selection under the [inline Table contract](../../../doc/systems/syndic-conversation-history/design.md#inline-table-structure-preparation).
 - `TranscriptProviderReader` prepares indexed resource ranges, display fragments and source
   anchors through its existing selected-history resource reservation and mutation observation.
   Requests qualify the resource revision, optional exact root and complete inner query, including

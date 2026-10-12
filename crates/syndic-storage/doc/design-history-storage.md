@@ -491,6 +491,18 @@ The package stores facts needed by system services but does not own transcript s
 presentation ordering policy, activity-row scheduling, title generation, retention UX, or renderer
 residency.
 
+## Inline Table Preparation Boundary
+
+The package exposes a pure bounded preparation operation for a recognized complete inline Table
+projection payload. It validates the Table kind, single-span source binding and existing inline
+limits, then returns immutable source-relative row/cell facts, column alignment and bounded mapped
+display fragments using the same grammar as resource construction. Empty, missing and surplus-row
+fallback remain distinct. The result supplies its retained allocation charge for caller admission;
+invalid structure and insufficient allowance are explicit errors, never a partial Ready model.
+It performs no Home read, companion construction, schema mutation or GPUI work. Its ownership,
+limits and consumer lifecycle follow the
+[inline Table system contract](../../../doc/systems/syndic-conversation-history/design.md#inline-table-structure-preparation).
+
 ## Public Bounds
 
 - Metadata-only thread, turn-state, history-summary, binding, execution-snapshot,

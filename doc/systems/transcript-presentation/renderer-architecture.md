@@ -61,9 +61,9 @@ The scroll controller owns the semantic anchor, realized frame window, manual pi
 
 The renderer constructs GPUI elements only from the current resident presentation snapshot. It never calls Syndic or `syndic-storage` directly. It may report viewport facts, measured geometry, visible ranges, adjacent-range demand, resource-range demand, and obsolete resident ranges to transcript residency.
 
-Nested code, table, and media widgets render from resident resource slices and report range demand through the same residency channel. They do not fetch storage directly.
+Resource-backed nested code, table, and media widgets render from resident resource slices and report range demand through the same residency channel. Inline Tables consume their admitted projection model. Neither form fetches storage directly.
 
-Code/Table descriptors and projected cell fragments follow Syndic's
+Resource-backed Code/Table descriptors and projected cell fragments follow Syndic's
 [indexed structural-query contract](../syndic-conversation-history/design.md#indexed-text-resource-structure-queries).
 The selected-history provider transports the exact completed companion binding and continuation;
 residency admits and charges those values together with their source ranges. Inner viewport changes
@@ -141,6 +141,13 @@ and exposes no partial snapshot content.
 ## Transcript Projection Boundary
 
 Syndic provides the parsed and indexed transcript projections. Beryl's transcript path does not rediscover Markdown block structure from raw assistant text and does not discover code blocks, tables, or media by reparsing raw Markdown in the render path.
+
+Recognized inline Tables preserve their typed block and complete bounded source through the
+[inline preparation boundary](../syndic-conversation-history/design.md#inline-table-structure-preparation).
+Their prepared cell model belongs to projection residency and measured presentation, with shared
+Table interaction and a direct source adapter. Inline source residency may cover offscreen selected
+cells; grid paint retains the bounded visible rectangle. It introduces no resource demand, companion
+root or independent residency cache.
 
 Beryl may adapt resident Syndic projection records into presentation records, split very large projection records into render-budget chunks, and create stable local fallbacks. These adaptations must preserve Syndic source identity, ordering, copy semantics, and invalidation revisions.
 

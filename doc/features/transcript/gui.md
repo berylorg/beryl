@@ -29,11 +29,13 @@ The transcript view also composes applicable records from `transcript.context-re
 
 The feature selects tail-oriented placement unless an explicit navigation command provides another target. During selected-thread activation, it keeps the prior coherent `transcript view` visible in activation-pending state until the replacement content and initial viewport state can publish together.
 
-Every recognized fenced code block configures a project-local `code panel`, including an empty or small unfinished block. Its panel appears when coherent saved Beryl/Syndic history publishes the recognized block descriptor and grows as that history advances. CAS item completion is not a visibility gate. Inline code spans retain their surrounding text treatment. Large tables configure project-local `table panel` widgets. Transcript image references use the readonly-inline variant of the project-local `image marker`. The transcript feature supplies source ranges, presented resource state, media labels, and fallbacks; `doc/features/image-assets/design.md` owns image command eligibility and outcomes, and the canonical widgets own their reusable rendering and interaction mechanics.
+Every recognized fenced code block configures a project-local `code panel`, including an empty or small unfinished block. Its panel appears when coherent saved Beryl/Syndic history publishes the recognized block descriptor and grows as that history advances. CAS item completion is not a visibility gate. Inline code spans retain their surrounding text treatment. Every recognized Table configures a project-local `table panel`, including small inline Tables. Transcript image references use the readonly-inline variant of the project-local `image marker`. The transcript feature supplies source ranges, presented resource state, media labels, and fallbacks; `doc/features/image-assets/design.md` owns image command eligibility and outcomes, and the canonical widgets own their reusable rendering and interaction mechanics.
 
 For range-backed code and table resources, the feature configures clipboard-limited Copy and
 streaming `Save…` commands over the same exact source identity; it never derives either command from
-painted or currently realized content.
+painted or currently realized content. Inline Tables expose the same cell selection, Copy and
+`Save…` commands over their admitted complete source. Offscreen selected cells remain eligible
+when the owner already holds their coherent descriptors; paint stays bounded to the visible window.
 
 The transcript owner routes keyboard Copy uniformly across the `transcript view`, `code panel`
 and `table panel` using the two methods in the feature design: the first `Ctrl+C` press requests

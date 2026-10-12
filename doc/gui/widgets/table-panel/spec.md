@@ -6,7 +6,7 @@ Sometimes known as: data table panel, transcript table
 
 # Purpose
 
-Presents large tabular transcript content through bounded row-and-column realization, stable range selection, copy affordances, and independently routed scrolling.
+Presents tabular transcript content through bounded row-and-column realization, stable range selection, copy affordances, and independently routed scrolling. The owner may supply a complete small inline model or bounded windows of a larger resource.
 
 # References
 
@@ -49,14 +49,16 @@ Pointer hover alone never transfers vertical wheel ownership from the transcript
 
 Arrow keys move the focused cell through realized row and column identities. Home and End move to the first and last column of the focused row. Page Up and Page Down move by one visible row page while preserving the focused column. Owner-supplied explicit navigation may request a nonresident stable row or column and produces range demand rather than a synthetic blank grid.
 
-Shift-modified navigation extends a rectangular selection through resident eligible cells. Selection identity is expressed by stable row and column identities, not visible indices. Selection cannot span an unrealized gap; attempting to extend through one reports demand and preserves the last coherent resident selection.
+Shift-modified navigation extends a rectangular selection through resident eligible cells. Selection identity is expressed by stable row and column identities, not visible indices. Selection cannot span a gap in admitted source descriptors; attempting to extend through one reports demand and preserves the last coherent resident selection. A complete inline owner may supply eligible descriptors outside the painted window. Navigation reveals their focused endpoint and selection may include them without realizing their paint elements or issuing resource demand.
 
 Each eligible cell is an indivisible selection unit. Pointer activation selects that whole cell;
 Shift-modified pointer activation extends the rectangle to the activated cell. The widget never
 creates character-level selection inside a cell or a continuous text span crossing cell boundaries.
 The owner receives the selected cell identities for Copy, not painted text endpoints.
 Pointer dragging moves the rectangle endpoint in whole-cell steps and obeys the same resident-gap
-rule as keyboard extension.
+rule as keyboard extension. Source residency and paint realization are distinct: an offscreen cell
+with a coherent owner-supplied descriptor is eligible, while a pending or unavailable descriptor is
+not.
 
 Copy requests use the owner-supplied source representation for the selected stable range and
 reconstruct a contiguous platform value only after its exact logical size fits the admitted

@@ -979,6 +979,53 @@ invalidated partial-eviction approach. Execution logs and positively registered 
 homes reached their last review consumer at acceptance; their exact owned cleanup does not extend
 to shared caches or the unidentified fixtures documented by the preceding Copy boundary.
 
+## Inline Table Interaction Readiness
+
+The 2026-10-12 source inspection establishes a separate inline consumer boundary. Storage
+`mutation/projection/parser/output.rs::emit_table` emits one complete Table span with ordinal one
+when source bytes, body rows and columns fit the existing thresholds. The stored payload retains
+`MarkdownBlockKind::Table`, block identity, exact source interval and complete bytes. Provider
+`transcript_provider/source.rs::read_bounded_activation` currently erases the kind into `Text`;
+`core.rs::presentation_record_for_projection` publishes `TextChunk`, and the ordinary panel paints
+that source as text. No prepared cell model reaches that consumer today.
+
+The [system decision](../systems/syndic-conversation-history/design.md#inline-table-structure-preparation)
+and storage/app boundary decisions select pure Syndic preparation in the provider worker and typed
+projection residency. Existing `table_syntax` and resource Table derivation supply the grammar;
+the bounded preparation API is a required implementation prerequisite, not an existing capability.
+No persisted format, storage threshold, structural companion or resource demand is needed.
+
+Implementation must separate resource-specific owner/query mechanics in `table_viewport`,
+`table_source_actions` and `table_save` from shared cell geometry, rectangle selection, export and
+file publication. `TableExport::selected` currently refuses more than 128 cells; that resource
+window limit must remain enforced for indexed inputs while inline export accommodates its complete
+396-position model. Rectangles crossing typed whole-row fallback remain unavailable, preserving
+the previous coherent selection; whole-table cell Copy requires all positions eligible. Raw-row
+actions and whole-source Save remain the explicit source-preserving fallback paths.
+`TableViewport::selection_cells` independently caps rectangles at 128 and
+`whole_table_selection` depends on that admission; both need an explicit inline-owner bound rather
+than a global cap increase. The model remains complete for offscreen selection, while paint uses the
+smaller shared viewport window. Merely converting small Tables into indexed resources or parsing
+cells in the widget would violate the selected ownership boundary.
+
+Qualification must use genuinely inline fixtures through ordinary saved-history projection and
+provider preparation, including a maximum-boundary Table and threshold-crossing replacement.
+Native evidence must distinguish whole-cell selection and selected raw-source exports from text
+selection, preserve empty/missing and fallback facts, exercise the first/second Copy gesture and
+checked writer refusal, and verify actual resize/font geometry, scrolling, stale callbacks and
+release. Save must qualify its inline source adapter under the existing native-choice and atomic
+publication contract. External indexed Table and Code regressions remain required when shared
+interaction or action code changes. No inline mounting acceptance or runtime verification is
+claimed by this inspection.
+
+Independent read-only review accepted readiness on 2026-10-12 after checking the complete authority
+boundary against storage, provider, presentation, selection, export and Save source seams. It
+confirmed the unchanged storage thresholds, projection admission, bounded paint and source-qualified
+action retirement, and resolved whole-table Copy eligibility around fallback rows as documented
+above. No supported-guarantee blocker remains. Documentation whitespace checking passed. This
+review ran no Cargo or native tests, changed no source and created no temporary artifacts. Inline
+mounting remains unaccepted until the implementation and native qualification boundary completes.
+
 ## Mounted Indexed Table Acceptance
 
 Independent completion review accepted the external indexed Table panel on 2026-10-12. Header,
@@ -1001,7 +1048,8 @@ identities, and truncated cell tooltips use bounded owner-projected fragments.
 First distinct `Ctrl+C` exports selected raw cell spelling and whitespace as Markdown; a quick
 second distinct press exports best-effort stripped text. Held repeats do not advance the gesture.
 Partial exports include only selected cells and required separators, with selected-column delimiter
-syntax for selected headers. Selecting every eligible table cell reproduces the complete original
+syntax for selected headers. Selecting every table cell in a coherent rectangle with no fallback
+row reproduces the complete original
 source, including CRLF, delimiter spelling, empty rows and cells. Text exports omit empty rows and
 trailing empty/missing cells while preserving interior gaps and literal code. The shared conservative
 scanner retains ambiguous markup. Pending first-Copy supersession, checked-writer refusal and

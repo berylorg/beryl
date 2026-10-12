@@ -1810,6 +1810,68 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   becomes ordered source-preserving fallback spans; this may reduce styling locally but never
   drops bytes, changes authored text, or expands memory with the complete item.
 
+## Inline Table Structure Preparation
+
+Recognized inline Tables retain their stored block kind, block identity, exact source range and
+complete source through selected-history preparation. Existing inline thresholds remain unchanged:
+at most 8,192 UTF-8 source bytes, 32 body rows and 12 columns. One inline Table is one complete
+Markdown span; it is not a resource reference and needs no structural companion or durable write.
+
+Syndic owns a bounded, pure preparation operation over that admitted inline projection payload.
+It uses the same Table grammar and cell presentation rules as indexed construction, returning
+checked source-relative row/cell ranges, header-defined columns and alignment, empty/missing cell
+facts and typed whole-row fallback. Exact source is retained once with the prepared value; cell
+descriptors refer into it. Preparation is performed in the selected-history worker, never in
+render, layout or an input callback. No synthetic resource identity, index root or resource query
+is created for an inline Table. Invalid structure or exhausted preparation capacity yields an
+explicit local unavailable representation retaining source authority; it cannot publish a partial
+grid or silently turn a recognized Table into ordinary selectable text.
+
+The complete inline model has at most 396 cell positions (33 rows including the header times 12
+columns), 33 row descriptors and 12 alignment entries. Surplus rows occupy their original ordinal
+as whole-row fallback instead of selectable cells. Display fragments and source mappings remain
+bounded by the admitted source and preparation allowance. The provider includes all retained source,
+descriptor, mapping and display allocations in its existing projection response charge; residency
+admits them under its existing projection and presentation budgets. Sharing an immutable allocation
+does not license an uncharged clone or a new independent cache. Capacity refusal retains the
+existing typed rejection path; neither storage thresholds nor residency budgets expand implicitly.
+
+Inline cell identity combines the owning view/item/block identity with header/body role, row ordinal
+and column ordinal. Revision and exact source binding qualify callbacks and actions, rather than
+font, theme, viewport or wrapping becoming identity. A changed source cannot inherit a selection
+by ordinal coincidence. Same-source remeasurement preserves coherent selection, focus and scroll;
+source replacement, outer eviction, view retirement or activation replacement releases the model,
+actions and interaction state. Inline-to-resource replacement reuses the presented block identity
+for outer anchoring but retires inline cell selection and pending actions before mounting its new
+resource binding.
+
+The app publishes a typed inline Table presentation through ordinary measured projection adoption.
+It uses the shared Table geometry and whole-cell selection semantics while consuming its inline
+owner directly. Paint remains windowed to at most fifteen body rows, one header row and eight
+columns, with visible cells taking priority over overscan. Complete source residency does not
+authorize a full 396-cell render tree. Width/font/theme remeasurement, nested two-axis wheel routing,
+focus reveal and content-free diagnostics follow the Table panel contract.
+
+Copy resolves the selected rectangle against the complete prepared model, including offscreen
+cells, without resource demand. The shared source export rules apply to both storage forms; partial
+exports retain only selected raw cells, and selecting every table cell in one coherent rectangle
+with no fallback row retains the complete original source. A rectangle intersecting a whole-row
+fallback is unavailable and preserves its previous coherent selection; selecting eligible cells
+on one side of that row does not imply whole-table selection. Explicit raw-row actions and complete
+source Save preserve fallback bytes without treating fallback paint as cells. Export admission
+accommodates the bounded 396-position inline model without
+changing the indexed window's 128-descriptor limit. The common first/second distinct Copy gesture,
+checked clipboard writer, supersession and source/currentness election remain authoritative.
+Whole-row fallback actions consume their explicit raw interval. Save uses the admitted immutable
+inline source through the shared native replacement and atomic file-publication contract, without
+creating a storage reader. Copy/Save temporary output and writer custody retain their existing
+action budgets and cancellation rules independently of projection residency.
+
+Acceptance requires grammar parity, source-range and allocation accounting checks, genuine inline
+producer/provider fixtures, native whole-cell interaction and both Copy methods, maximum-size
+offscreen selection, measured resize/font changes, source replacement and eviction/disposal.
+Indexed Table and Code regression evidence remains a separate affected-boundary requirement.
+
 ## Indexed Text Resource Structure Queries
 
 ### Ownership And Publication
