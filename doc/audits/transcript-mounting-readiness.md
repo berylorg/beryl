@@ -819,14 +819,15 @@ native mounted Table interaction or clipboard/Save behavior. The production `ber
 check passed under the same local stable locked/offline configuration. Independent review accepted
 this exact-source prerequisite after the corrected tests and production check completed.
 
-The remaining clipboard clarification follows from the feature's selected-cell Markdown contract
-and the structural system's requirement to distinguish authored empty and absent cells. A fixed
-rectangular Markdown export gives both the same empty slot. The proposed convention preserves raw
-selected cell intervals, emits explicit empty slots, omits trailing missing slots and represents an
-entirely missing selected row as a blank line. A selected header would include selected-column
-delimiter syntax; body-only selection would invent no header. Operator response is pending; the
-dependent export behavior is not implemented. Bounded header/body retention, two-axis mounting and
-native Table acceptance remain outstanding.
+Operator subsequently clarified the empty-content behavior: Markdown must preserve the original
+table verbatim, including empty rows and cells; text mode omits empty rows and trailing empty or
+missing cells. The feature records this product behavior and the structural system retains
+empty/missing distinctions in descriptors and raw source authority, allowing the text export's
+intentional omission. A remaining selection-scope clarification concerns verbatim whole-table
+source versus selected-cell source with necessary export separators for a partial rectangle.
+The existing feature still prohibits including unselected columns; no implicit scope change is
+implemented. Bounded header/body retention, two-axis mounting, export and native Table acceptance
+remain outstanding.
 
 ## Shared Transcript Keyboard Copy Acceptance
 

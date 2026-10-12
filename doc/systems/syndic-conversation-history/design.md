@@ -1906,8 +1906,10 @@ fallback indication. Supported transformations, such as an escaped separator, ca
 that map each displayed fragment to its exact authored bytes. No painted string becomes copy
 authority. Copy/Save use the selected source representation and admitted byte-range reads under
 the feature/widget contract; separators, omitted whitespace, ellipses and status labels cannot be
-inferred as authored content from paint. Empty and missing cells remain distinguishable in that
-representation.
+inferred as authored content from paint. Source descriptors and raw source representations retain
+the distinction between empty and missing cells. Clipboard exports follow the feature's selected
+Copy mode; a text-mode export may intentionally omit structural emptiness without altering the
+source descriptors or raw source authority.
 
 One admitted display fragment contains at most 8,192 UTF-8 bytes, with encoded mappings charged
 against the response byte ceiling. A long Code line supports direct byte-window lookup within its

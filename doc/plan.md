@@ -136,12 +136,13 @@ source validation, stale-result rejection and measured publication, then mount t
 its stable selection and source actions in the ordinary transcript renderer; no widget loader or
 independent resource cache is permitted.
 
-Clipboard representation clarification is pending Operator response: preserve explicit empty cells
-and omit trailing missing cells, or permit clipboard text to conflate them as fixed blank slots.
-The proposed source-preserving format uses a blank line for an entirely missing selected row,
-includes a selected-column delimiter only when the header is selected, and invents no body-only
-header. Do not implement the dependent export behavior until that decision is resolved in feature
-authority. Independent exact-source and demand prerequisites may proceed.
+Operator clarified that Markdown preserves the original table verbatim, including empty rows and
+cells, while text mode omits empty rows and trailing empty/missing cells. Feature and system
+authority now record those settled mode requirements. The remaining question is whether a partial
+rectangle keeps only selected cells with necessary export separators, as the existing feature
+contract requires, or copies the complete original table irrespective of selection. Do not choose
+that selection-scope change implicitly. Dependent Markdown export awaits Operator clarification;
+independent bounded retention and mounting prerequisites may proceed.
 
 Acceptance requires focused provider/core tests for bounded header/body continuation, exact source
 and anchors, replacement/release and refusal; native mounted scrolling on both axes, focus/range

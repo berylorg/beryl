@@ -115,6 +115,11 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
   literal code remains literal content in both methods. Unsupported or ambiguous syntax remains
   readable rather than dropping uncertain content. Neither method copies fallback labels,
   truncation ellipses or pending placeholders as authored text.
+- Whole-table Markdown Copy reproduces the original table source verbatim, including authored
+  empty rows and cells, delimiters, escaping, whitespace and line endings. It does not normalize
+  the table or pad missing cells. Table text-mode Copy omits empty rows and trailing empty or
+  missing cells, while retaining interior empty cells between nonempty selected cells. These
+  omissions apply only to Table text-mode Copy; literal code retains its existing behavior.
 - Copy reconstructs a contiguous clipboard representation only after the selected source and
   resulting representation fit their explicit admitted limits. Rejection is explicit and preserves
   the selection. A nested resource that supports arbitrary-size source ranges exposes streaming
