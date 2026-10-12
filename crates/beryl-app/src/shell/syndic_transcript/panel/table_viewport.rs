@@ -1,3 +1,7 @@
+#[path = "table_viewport/content.rs"]
+mod content;
+#[path = "table_viewport/indexed.rs"]
+mod indexed;
 use super::super::provider::resource_index as index;
 use super::super::{
     IndexedResourceDemand, IndexedResourceQuery, IndexedResourceResponse, IndexedResourceValue,
@@ -123,7 +127,7 @@ impl TableScroll {
 }
 
 pub(super) struct TableViewport {
-    pub owner: ResourceTranscriptDemand,
+    pub owner: super::table_owner::TableOwner,
     pub revision: beryl_model::ProjectionRevision,
     pub root: Option<index::Root>,
     pub binding: Option<index::Binding>,
@@ -138,6 +142,44 @@ pub(super) struct TableViewport {
     pub source_continuity: &'static str,
     anchor_horizontal: f32,
     pages: Vec<Arc<IndexedResourceResponse>>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TableCellSource {
+    pub raw: Option<index::ByteRange>,
+}
+
+impl TableCellSource {
+    pub(super) fn indexed(id: TableCellId, item: &index::Item) -> Result<Self, &'static str> {
+        let raw = match item {
+            index::Item::Descriptor(index::IndexedDescriptor {
+                descriptor:
+                    index::Descriptor::TableCell {
+                        role, row, column, ..
+                    },
+                absolute_raw: Some(raw),
+            }) if *role == id.role && *row == id.row && *column == id.column => Some(*raw),
+            index::Item::Missing { role, row, column }
+                if *role == id.role && *row == id.row && *column == id.column =>
+            {
+                None
+            }
+            _ => return Err("Copy unavailable: non-cell selection"),
+        };
+        Ok(Self { raw })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct RawTableRow {
+    pub raw: Option<index::ByteRange>,
+}
+pub(super) struct TablePaintCell {
+    pub id: TableCellId,
+    pub fallback: bool,
+    pub text: gpui::SharedString,
+    pub alignment: Option<index::Alignment>,
+    pub tooltip: bool,
+    pub remaining: bool,
 }
 impl TableViewport {
     pub(super) fn set_tracks(&mut self, height: f32, width: f32) -> bool {
@@ -156,29 +198,17 @@ impl TableViewport {
             gpui_scrollbar::Axis::Horizontal,
             column * width + column_residual,
         );
-        self.selection = None;
+        if self.owner.inline().is_none() {
+            self.selection = None;
+        }
         true
-    }
-    pub(super) fn charge(&self) -> usize {
-        65536
-            + self
-                .pages
-                .iter()
-                .filter_map(|page| match &page.value {
-                    IndexedResourceValue::Range(range) => range.presentations.as_ref(),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|presentation| presentation.fragment.as_ref())
-                .map(|fragment| fragment.text.len())
-                .sum::<usize>()
     }
     pub(super) fn new(
         owner: ResourceTranscriptDemand,
         revision: beryl_model::ProjectionRevision,
     ) -> Self {
         Self {
-            owner,
+            owner: super::table_owner::TableOwner::Indexed(owner),
             revision,
             root: None,
             binding: None,
@@ -204,157 +234,13 @@ impl TableViewport {
             })),
         }
     }
-    pub(super) fn source_pages(&self) -> &[Arc<IndexedResourceResponse>] {
-        &self.pages
-    }
-    pub(super) fn realized_ranges(&self) -> (index::OrdinalRange, index::OrdinalRange) {
-        let mut rows = index::OrdinalRange { start: 0, end: 0 };
-        let mut columns = rows;
-        for page in &self.pages {
-            if let IndexedResourceValue::Range(range) = &page.value
-                && let index::Request::Table {
-                    role,
-                    rows: page_rows,
-                    columns: page_columns,
-                } = range.cursor.request
-            {
-                columns = page_columns;
-                if role == index::RowRole::Body {
-                    rows = page_rows;
-                }
-            }
-        }
-        (rows, columns)
-    }
-    pub(super) fn capture_anchor(&mut self) {
-        let Some(binding) = &self.binding else {
-            return;
-        };
-        let scroll = self.scroll.borrow();
-        let row = (scroll.vertical / scroll.row_height).floor() as u64;
-        let column = (scroll.horizontal / scroll.column_width).floor() as u64;
-        let target = self
-            .cells()
-            .into_iter()
-            .filter(|(cell, _)| {
-                cell.role == index::RowRole::Body && cell.row >= row && cell.column >= column
-            })
-            .min_by_key(|(cell, _)| (cell.row, cell.column))
-            .and_then(|(cell, item)| match item {
-                index::Item::Descriptor(descriptor) => Some((cell, descriptor)),
-                _ => None,
-            })
-            .or_else(|| {
-                self.fallback_rows()
-                    .into_iter()
-                    .filter(|(cell, _)| cell.row >= row)
-                    .min_by_key(|(cell, _)| cell.row)
-            });
-        if let Some((cell, descriptor)) = target
-            && let Some(raw) = descriptor.absolute_raw
-        {
-            self.anchor = Some(index::SourceAnchor {
-                source: binding.source,
-                block_start: binding.range.start,
-                kind: syndic_storage::ResourceKind::Table,
-                position: raw.start,
-                visual_offset: (cell.row as f32 * scroll.row_height - scroll.vertical).round()
-                    as i64,
-            });
-            self.anchor_horizontal = cell.column as f32 * scroll.column_width - scroll.horizontal;
-        } else {
-            self.anchor = None;
-        }
-    }
-    pub(super) fn rebind(
-        &mut self,
-        owner: ResourceTranscriptDemand,
-        revision: beryl_model::ProjectionRevision,
-    ) {
-        self.capture_anchor();
-        self.owner = owner;
-        self.revision = revision;
-        self.root = None;
-        self.binding = None;
-        self.pages.clear();
-        self.selection = None;
-        self.focus = None;
-        self.pending_focus = None;
-        self.dragging = false;
-        self.remapping = self.anchor.is_some();
-        self.source_continuity = if self.remapping {
-            "pending"
-        } else {
-            "invalidated"
-        };
-    }
-    pub(super) fn cells(&self) -> Vec<(TableCellId, index::Item)> {
-        self.pages
-            .iter()
-            .filter_map(|page| match &page.value {
-                IndexedResourceValue::Range(range) => Some(range),
-                _ => None,
-            })
-            .flat_map(|range| range.items.iter())
-            .filter_map(|item| {
-                let cell = match item {
-                    index::Item::Descriptor(index::IndexedDescriptor {
-                        descriptor:
-                            index::Descriptor::TableCell {
-                                role, row, column, ..
-                            },
-                        ..
-                    })
-                    | index::Item::Missing { role, row, column } => TableCellId {
-                        role: *role,
-                        row: *row,
-                        column: *column,
-                    },
-                    _ => return None,
-                };
-                Some((cell, item.clone()))
-            })
-            .collect()
-    }
-    pub(super) fn fallback_rows(&self) -> Vec<(TableCellId, index::IndexedDescriptor)> {
-        self.pages
-            .iter()
-            .filter_map(|page| match &page.value {
-                IndexedResourceValue::Range(range) => Some(range),
-                _ => None,
-            })
-            .flat_map(|range| range.items.iter())
-            .filter_map(|item| match item {
-                index::Item::Descriptor(
-                    descriptor @ index::IndexedDescriptor {
-                        descriptor:
-                            index::Descriptor::TableRow {
-                                role,
-                                ordinal,
-                                disposition: index::RowDisposition::WholeRowFallback,
-                                ..
-                            },
-                        ..
-                    },
-                ) => Some((
-                    TableCellId {
-                        role: *role,
-                        row: *ordinal,
-                        column: 0,
-                    },
-                    descriptor.clone(),
-                )),
-                _ => None,
-            })
-            .collect()
-    }
     pub(super) fn fallback_row(&self, cell: TableCellId) -> bool {
         self.fallback_rows()
             .iter()
             .any(|(row, _)| row.role == cell.role && row.row == cell.row)
     }
     pub(super) fn hit(&self, position: gpui::Point<gpui::Pixels>) -> Option<TableCellId> {
-        let root = self.root.as_ref()?;
+        let (body_rows, columns) = self.counts()?;
         let scroll = self.scroll.borrow();
         let (role, bounds) = if scroll.header_bounds.contains(&position) {
             (index::RowRole::Header, scroll.header_bounds)
@@ -374,7 +260,7 @@ impl TableViewport {
                 .floor()
                 .max(0.0) as u64
         };
-        (column < root.columns && (role == index::RowRole::Header || row < root.body_rows))
+        (column < columns && (role == index::RowRole::Header || row < body_rows))
             .then_some(TableCellId { role, row, column })
     }
     pub(super) fn request_cell(&mut self, cell: TableCellId, extend: bool) -> bool {
@@ -386,6 +272,9 @@ impl TableViewport {
             self.pending_focus = None;
             true
         } else {
+            if self.owner.inline().is_some() {
+                return false;
+            }
             self.pending_focus = Some((cell, extend));
             self.reveal(cell);
             false
@@ -396,8 +285,12 @@ impl TableViewport {
         mut cell: TableCellId,
         forward: bool,
     ) -> Option<TableCellId> {
-        let last = self.root.as_ref()?.body_rows;
-        for _ in 0..=15 {
+        let last = self.counts()?.0;
+        for _ in 0..=if self.owner.inline().is_some() {
+            32
+        } else {
+            15
+        } {
             if !self.fallback_row(cell) {
                 return Some(cell);
             }
@@ -411,7 +304,7 @@ impl TableViewport {
         }
         None
     }
-    pub(super) fn selection_cells(&self) -> Option<Vec<(TableCellId, index::Item)>> {
+    pub(super) fn selection_cells(&self) -> Option<Vec<(TableCellId, TableCellSource)>> {
         let selection = self.selection.as_ref()?;
         let rows = selection
             .anchor
@@ -419,7 +312,13 @@ impl TableViewport {
             .abs_diff(selection.head.ordinal())
             + 1;
         let columns = selection.anchor.column.abs_diff(selection.head.column) + 1;
-        if rows.checked_mul(columns)? > 128 {
+        if rows.checked_mul(columns)?
+            > if self.owner.inline().is_some() {
+                396
+            } else {
+                128
+            }
+        {
             return None;
         }
         let cells: Vec<_> = self
@@ -430,16 +329,16 @@ impl TableViewport {
         (cells.len() as u64 == rows * columns).then_some(cells)
     }
     pub(super) fn whole_table_selection(&self) -> bool {
-        let Some(root) = &self.root else {
+        let Some((body_rows, column_count)) = self.counts() else {
             return false;
         };
         let Some(selection) = &self.selection else {
             return false;
         };
         selection.anchor.ordinal().min(selection.head.ordinal()) == 0
-            && selection.anchor.ordinal().max(selection.head.ordinal()) == root.body_rows
+            && selection.anchor.ordinal().max(selection.head.ordinal()) == body_rows
             && selection.anchor.column.min(selection.head.column) == 0
-            && selection.anchor.column.max(selection.head.column) + 1 == root.columns
+            && selection.anchor.column.max(selection.head.column) + 1 == column_count
             && self.selection_cells().is_some()
     }
     pub(super) fn select(&mut self, cell: TableCellId, extend: bool) -> bool {
@@ -486,190 +385,6 @@ impl TableViewport {
                 scroll.vertical
             };
             scroll.set_offset(gpui_scrollbar::Axis::Vertical, vertical);
-        }
-    }
-    pub(super) fn adopt(
-        &mut self,
-        response: Option<&IndexedResourceResponse>,
-        pages: Vec<Arc<IndexedResourceResponse>>,
-    ) {
-        if let Some(response) = response
-            && let Some(root) = &response.root
-        {
-            if self
-                .root
-                .as_ref()
-                .is_some_and(|old| old.digest != root.digest)
-            {
-                self.selection = None;
-                self.focus = None;
-                self.pages.clear();
-            }
-            self.root = Some(root.clone());
-            let mut scroll = self.scroll.borrow_mut();
-            scroll.rows = root.body_rows;
-            scroll.columns = root.columns;
-            if let IndexedResourceValue::Range(range) = &response.value {
-                self.binding = Some(range.binding.clone());
-            }
-            if let IndexedResourceValue::Anchor(value) = &response.value {
-                self.binding = Some(value.binding.clone());
-                if self.remapping
-                    && let Some(old) = self.anchor
-                {
-                    if let Some(resolved) = &value.resolved
-                        && old.source.can_extend(value.binding.source)
-                        && resolved.anchor.source == value.binding.source
-                        && resolved.anchor.block_start == old.block_start
-                    {
-                        let coordinate = match &resolved.descriptor.descriptor {
-                            index::Descriptor::TableCell {
-                                role, row, column, ..
-                            } => Some((*role, *row, *column)),
-                            index::Descriptor::TableRow { role, ordinal, .. } => {
-                                Some((*role, *ordinal, 0))
-                            }
-                            _ => None,
-                        };
-                        if let Some((role, row, column)) = coordinate {
-                            let vertical = if role == index::RowRole::Header {
-                                0.0
-                            } else {
-                                row as f32 * scroll.row_height - old.visual_offset as f32
-                            };
-                            let horizontal =
-                                column as f32 * scroll.column_width - self.anchor_horizontal;
-                            scroll.set_offset(gpui_scrollbar::Axis::Vertical, vertical);
-                            scroll.set_offset(gpui_scrollbar::Axis::Horizontal, horizontal);
-                            self.anchor = Some(resolved.anchor);
-                            self.source_continuity = "preserved";
-                        } else {
-                            self.anchor = None;
-                            self.source_continuity = "invalidated";
-                        }
-                    } else {
-                        self.anchor = None;
-                        self.source_continuity = "invalidated";
-                        scroll.vertical = 0.0;
-                        scroll.horizontal = 0.0;
-                        self.feedback = "Table source anchor invalidated";
-                    }
-                    self.remapping = false;
-                }
-            }
-        }
-        if !pages.is_empty() {
-            self.pages = pages;
-        }
-        if self.selection.is_some() && self.selection_cells().is_none() {
-            self.selection = None;
-            self.feedback = "Table selection invalidated";
-        }
-        let cells = self.cells();
-        if self
-            .focus
-            .is_none_or(|focus| !cells.iter().any(|(cell, _)| *cell == focus))
-        {
-            let old = self.focus;
-            self.focus = cells
-                .iter()
-                .min_by_key(|(cell, _)| {
-                    old.map_or(0, |old| {
-                        old.ordinal()
-                            .abs_diff(cell.ordinal())
-                            .saturating_add(old.column.abs_diff(cell.column))
-                    })
-                })
-                .map(|(cell, _)| *cell);
-        }
-        if let Some((cell, _)) = self.pending_focus
-            && self.fallback_row(cell)
-        {
-            self.pending_focus = None;
-            self.dragging = false;
-            self.feedback = "Table row requires source actions";
-        }
-        if let Some((cell, extend)) = self.pending_focus
-            && cells.iter().any(|(resident, _)| *resident == cell)
-        {
-            self.pending_focus = None;
-            if extend && self.selection.is_none() {
-                self.focus = Some(cell);
-            } else {
-                self.select(cell, extend);
-            }
-        }
-    }
-    pub(super) fn query(
-        &self,
-        response: Option<&IndexedResourceResponse>,
-    ) -> IndexedResourceDemand {
-        if self.remapping
-            && let Some(anchor) = self.anchor
-        {
-            return IndexedResourceDemand {
-                revision: self.revision,
-                root: self.root.as_ref().map(|root| root.digest),
-                query: IndexedResourceQuery::Anchor {
-                    anchor,
-                    bytes: 8192,
-                },
-            };
-        }
-        let (rows, columns) = self.scroll.borrow().ranges();
-        let header = index::Request::Table {
-            role: index::RowRole::Header,
-            rows: index::OrdinalRange { start: 0, end: 1 },
-            columns,
-        };
-        let body = index::Request::Table {
-            role: index::RowRole::Body,
-            rows,
-            columns,
-        };
-        if response.is_none()
-            && let Some(current) = &self.owner.indexed
-            && matches!(&current.query, IndexedResourceQuery::Range { request, .. }
-                if *request == header || *request == body)
-        {
-            return current.clone();
-        }
-        let mut request = header;
-        let mut cursor = None;
-        if let Some(response) = response
-            && let IndexedResourceValue::Range(range) = &response.value
-        {
-            if range.cursor.request == header || range.cursor.request == body {
-                if !range.request_complete {
-                    request = range.cursor.request;
-                    cursor = Some(range.cursor);
-                } else if range.cursor.request == header
-                    && self.root.as_ref().is_some_and(|root| root.body_rows > 0)
-                {
-                    request = body;
-                } else {
-                    return self.owner.indexed.clone().unwrap_or(IndexedResourceDemand {
-                        revision: self.revision,
-                        root: self.root.as_ref().map(|root| root.digest),
-                        query: IndexedResourceQuery::Range {
-                            request: range.cursor.request,
-                            cursor: None,
-                            descriptors: 128,
-                            bytes: WINDOW_RESPONSE_BYTES,
-                        },
-                    });
-                }
-            }
-        }
-        IndexedResourceDemand {
-            revision: self.revision,
-            root: self.root.as_ref().map(|root| root.digest),
-            query: IndexedResourceQuery::Range {
-                request,
-                cursor,
-                descriptors: 128,
-                bytes: WINDOW_RESPONSE_BYTES,
-            },
         }
     }
 }

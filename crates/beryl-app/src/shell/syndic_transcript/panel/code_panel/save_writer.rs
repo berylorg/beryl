@@ -102,7 +102,7 @@ fn cleanup(stage: Option<tempfile::NamedTempFile>) -> Result<(), &'static str> {
     Ok(())
 }
 
-pub(super) async fn run(
+pub(in super::super::super) async fn run(
     mut receiver: oneshot::Receiver<SaveWork>,
     gate: Arc<AtomicU8>,
     mut _options: SaveWriterOptions,

@@ -278,7 +278,9 @@ impl ResidentTranscriptCore {
                 .iter()
                 .map(|slice| slice.bytes.len())
                 .sum::<usize>();
-            let bytes = bytes.saturating_add(candidate.indexed_resources.encoded_bytes());
+            let bytes = bytes
+                .saturating_add(candidate.indexed_resources.encoded_bytes())
+                .saturating_add(candidate.inline_table_layout_bytes());
             if range.bytes.len() > candidate.policy.max_resource_slice_bytes
                 || bytes
                     .checked_add(range.bytes.len())

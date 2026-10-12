@@ -20,6 +20,8 @@ mod code_viewport_tests;
 mod code_appearance_tests;
 #[path = "syndic_transcript_panel/context_appearance.rs"]
 mod context_appearance_tests;
+#[path = "syndic_transcript_panel/inline_table.rs"]
+mod inline_table_tests;
 
 #[path = "syndic_transcript_panel/code_layout.rs"]
 mod code_layout_tests;

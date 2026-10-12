@@ -566,7 +566,10 @@
 - [ ] Complete transcript mounting with realized-frame rendering, anchors, selection, nested widgets and resource demand through immutable bounded pages or generations; [mounting readiness](../../audits/transcript-mounting-readiness.md).
 - [x] Mounted external indexed Tables with bounded two-axis windows, whole-cell selection,
   selected-source Copy and original-root Save; [acceptance](../../audits/transcript-mounting-readiness.md#mounted-indexed-table-acceptance).
-  Small inline Table cell interaction and remaining transcript contributions retain separate gates.
+- [x] Mounted small inline Tables through bounded pure preparation and typed projection residency,
+  with whole-cell selection, direct source Copy/Save and native qualification;
+  [acceptance](../../audits/transcript-mounting-readiness.md#mounted-inline-table-acceptance).
+  Remaining transcript contributions retain separate gates.
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.

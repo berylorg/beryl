@@ -654,6 +654,7 @@ mod domain;
 mod draft_piece;
 mod error;
 mod footprint;
+pub mod inline_table;
 mod membership;
 mod mutation;
 pub use mutation::ThreadAcquisitionContribution;

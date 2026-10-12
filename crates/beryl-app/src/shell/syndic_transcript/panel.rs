@@ -14,10 +14,12 @@ mod code_viewport;
 mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
+mod inline_table_actions;
 #[path = "panel/table_appearance.rs"]
 mod table_appearance;
 #[path = "panel/table_export.rs"]
 mod table_export;
+mod table_owner;
 #[path = "panel/table_panel.rs"]
 mod table_panel;
 #[path = "panel/table_save.rs"]
@@ -328,10 +330,13 @@ impl SyndicTranscriptPanel {
         self.reject_code_source_action(&demand);
         self.reject_table_source_action(&demand);
         if demand.kind == ResourceKind::Table
-            && let Some(table) = self
-                .table_panels
-                .iter_mut()
-                .find(|table| table.viewport.owner.resource_id == demand.resource_id)
+            && let Some(table) = self.table_panels.iter_mut().find(|table| {
+                table
+                    .viewport
+                    .owner
+                    .indexed()
+                    .is_some_and(|owner| owner.resource_id == demand.resource_id)
+            })
         {
             table.viewport.feedback = "Table range unavailable";
         }
@@ -671,57 +676,57 @@ impl SyndicTranscriptPanel {
         snapshot.frame.retained_preparation_measurements = retained;
         snapshot.frame.layout_observations_last_frame = work;
         snapshot.code_panels = self.code_diagnostics();
-        snapshot.table_panels = self
-            .table_panels
-            .iter()
-            .map(|table| {
-                let scroll = table.viewport.scroll.borrow();
-                let (rows, columns) = table.viewport.realized_ranges();
-                let first_row = (scroll.vertical / scroll.row_height).floor() as u64;
-                let first_column = (scroll.horizontal / scroll.column_width).floor() as u64;
-                super::diagnostics::TablePanelDiagnostics {
-                    id: table.id,
-                    revision: table.viewport.revision.get(),
-                    rows: scroll.rows,
-                    columns: scroll.columns,
-                    visible_rows: first_row
-                        ..(first_row
-                            + (f32::from(scroll.bounds.size.height) / scroll.row_height).ceil()
-                                as u64)
-                            .min(scroll.rows),
-                    realized_rows: rows.start..rows.end,
-                    visible_columns: first_column
-                        ..(first_column
-                            + (f32::from(scroll.bounds.size.width) / scroll.column_width).ceil()
-                                as u64)
-                            .min(scroll.columns),
-                    realized_columns: columns.start..columns.end,
-                    row_overscan: table_viewport::ROW_OVERSCAN,
-                    column_overscan: table_viewport::COLUMN_OVERSCAN,
-                    cells: table.viewport.cells().len(),
-                    fallback_rows: table.viewport.fallback_rows().len(),
-                    pending: self
-                        .host
-                        .resource_demands()
-                        .iter()
-                        .any(|owner| owner.resource_id == table.viewport.owner.resource_id),
-                    offsets: (scroll.horizontal, scroll.vertical),
-                    selected_for_wheel: self.table_wheel_owner.get() == Some(table.id),
-                    focused: table
-                        .viewport
-                        .focus
-                        .map(|cell| (cell.ordinal(), cell.column)),
-                    selection: table.viewport.selection.as_ref().map(|selection| {
-                        (
-                            (selection.anchor.ordinal(), selection.anchor.column),
-                            (selection.head.ordinal(), selection.head.column),
-                        )
-                    }),
-                    vertical_scrollbar: scroll.extent(gpui_scrollbar::Axis::Vertical) > 0.0,
-                    horizontal_scrollbar: scroll.extent(gpui_scrollbar::Axis::Horizontal) > 0.0,
-                }
-            })
-            .collect();
+        snapshot.table_panels =
+            self.table_panels
+                .iter()
+                .map(|table| {
+                    let scroll = table.viewport.scroll.borrow();
+                    let (rows, columns) = table.viewport.realized_ranges();
+                    let first_row = (scroll.vertical / scroll.row_height).floor() as u64;
+                    let first_column = (scroll.horizontal / scroll.column_width).floor() as u64;
+                    super::diagnostics::TablePanelDiagnostics {
+                        id: table.id,
+                        revision: table.viewport.revision.get(),
+                        rows: scroll.rows,
+                        columns: scroll.columns,
+                        visible_rows: first_row
+                            ..(first_row
+                                + (f32::from(scroll.bounds.size.height) / scroll.row_height).ceil()
+                                    as u64)
+                                .min(scroll.rows),
+                        realized_rows: rows.start..rows.end,
+                        visible_columns: first_column
+                            ..(first_column
+                                + (f32::from(scroll.bounds.size.width) / scroll.column_width).ceil()
+                                    as u64)
+                                .min(scroll.columns),
+                        realized_columns: columns.start..columns.end,
+                        row_overscan: table_viewport::ROW_OVERSCAN,
+                        column_overscan: table_viewport::COLUMN_OVERSCAN,
+                        cells: table.viewport.paint_cells().len(),
+                        fallback_rows: table.viewport.fallback_rows().len(),
+                        pending: self.host.resource_demands().iter().any(|owner| {
+                            table.viewport.owner.indexed().is_some_and(|table_owner| {
+                                owner.resource_id == table_owner.resource_id
+                            })
+                        }),
+                        offsets: (scroll.horizontal, scroll.vertical),
+                        selected_for_wheel: self.table_wheel_owner.get() == Some(table.id),
+                        focused: table
+                            .viewport
+                            .focus
+                            .map(|cell| (cell.ordinal(), cell.column)),
+                        selection: table.viewport.selection.as_ref().map(|selection| {
+                            (
+                                (selection.anchor.ordinal(), selection.anchor.column),
+                                (selection.head.ordinal(), selection.head.column),
+                            )
+                        }),
+                        vertical_scrollbar: scroll.extent(gpui_scrollbar::Axis::Vertical) > 0.0,
+                        horizontal_scrollbar: scroll.extent(gpui_scrollbar::Axis::Horizontal) > 0.0,
+                    }
+                })
+                .collect();
         snapshot
     }
 
@@ -1511,7 +1516,7 @@ fn render_realized_record(
                 )
             } else if let Some(table) = table_panels
                 .iter()
-                .find(|table| table.viewport.owner.record_id == record.id)
+                .find(|table| table.viewport.owner.record_id() == &record.id)
             {
                 table_panel::render(
                     table,
@@ -1662,6 +1667,16 @@ fn render_record_content(
         return callout.into_any_element();
     }
     match &record.kind {
+        ResidentPresentationRecordKind::InlineTable { .. } => {
+            table_panel::shell(table_appearance, table_row_height)
+                .child("Table loading")
+                .into_any_element()
+        }
+        ResidentPresentationRecordKind::InlineTableUnavailable { .. } => {
+            table_panel::shell(table_appearance, table_row_height)
+                .child("Table structure unavailable")
+                .into_any_element()
+        }
         ResidentPresentationRecordKind::TextChunk { text, .. } => div()
             .w_full()
             .min_w(px(0.0))

@@ -239,6 +239,52 @@ impl access::ActivationReadSource<'_> {
             };
             let projection_id = ProjectionRecordId(projection.id().to_string());
             let (payload, source_range, payload_bytes) = match projection.payload() {
+                payload @ syndic_storage::ProjectionPayload::InlineMarkdown {
+                    block_kind: syndic_storage::MarkdownBlockKind::Table,
+                    source_range,
+                    ..
+                } => {
+                    let allowance = ATTACHMENT_MAX_BYTES
+                        .saturating_sub(bytes)
+                        .saturating_sub(1024 + 2 * std::mem::size_of::<usize>());
+                    match syndic_storage::inline_table::prepare_inline_table(
+                        payload.clone(),
+                        allowance,
+                    ) {
+                        Ok(prepared) => {
+                            let charge =
+                                prepared.retained_bytes() + 2 * std::mem::size_of::<usize>();
+                            (
+                                ProjectionPayload::InlineTable {
+                                    prepared: std::sync::Arc::new(prepared),
+                                },
+                                Some(source_range.start()..source_range.end()),
+                                charge,
+                            )
+                        }
+                        Err(error) => {
+                            let reason = error.kind();
+                            let source = match error.into_payload() {
+                                syndic_storage::ProjectionPayload::InlineMarkdown {
+                                    source,
+                                    ..
+                                } => source,
+                                _ => return Err(TranscriptAttachmentError::Identity),
+                            };
+                            let charge =
+                                source.len().next_multiple_of(std::mem::align_of::<usize>())
+                                    + 2 * std::mem::size_of::<usize>();
+                            (
+                                ProjectionPayload::InlineTableUnavailable {
+                                    source: std::sync::Arc::from(source),
+                                    reason,
+                                },
+                                Some(source_range.start()..source_range.end()),
+                                charge,
+                            )
+                        }
+                    }
+                }
                 syndic_storage::ProjectionPayload::InlineMarkdown {
                     source,
                     source_range,
@@ -348,6 +394,10 @@ impl access::ActivationReadSource<'_> {
                 copy_source_range: source_range,
             };
             let kind = match &payload {
+                ProjectionPayload::InlineTable { .. }
+                | ProjectionPayload::InlineTableUnavailable { .. } => {
+                    ProjectionRecordKind::InlineTable
+                }
                 ProjectionPayload::Text { .. } => ProjectionRecordKind::TextChunk,
                 ProjectionPayload::ResourceReference { .. } => {
                     ProjectionRecordKind::ResourceReference

@@ -178,11 +178,19 @@ pub(crate) struct ProjectionRecordId(pub(crate) String);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionRecordKind {
     TextChunk,
+    InlineTable,
     ResourceReference,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPayload {
+    InlineTable {
+        prepared: std::sync::Arc<syndic_storage::inline_table::PreparedInlineTable>,
+    },
+    InlineTableUnavailable {
+        source: std::sync::Arc<str>,
+        reason: syndic_storage::inline_table::InlineTablePreparationErrorKind,
+    },
     Text {
         text: std::sync::Arc<str>,
         plain_text: Option<std::sync::Arc<str>>,

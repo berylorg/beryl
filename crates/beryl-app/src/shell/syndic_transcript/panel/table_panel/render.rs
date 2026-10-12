@@ -2,7 +2,7 @@ use super::*;
 
 pub(in super::super) struct RenderSource {
     id: u64,
-    resource: super::super::super::ResourceId,
+    owner: super::super::table_owner::TableOwner,
     revision: beryl_model::ProjectionRevision,
     root: Option<index::Root>,
 }
@@ -15,7 +15,7 @@ impl RenderSource {
     pub(in super::super) fn for_viewport(id: u64, viewport: &TableViewport) -> Rc<Self> {
         Rc::new(Self {
             id,
-            resource: viewport.owner.resource_id.clone(),
+            owner: viewport.owner.clone(),
             revision: viewport.revision.clone(),
             root: viewport.root.clone(),
         })
@@ -23,7 +23,26 @@ impl RenderSource {
 
     pub(in super::super) fn matches(&self, id: u64, viewport: &TableViewport) -> bool {
         id == self.id
-            && viewport.owner.resource_id == self.resource
+            && match (&viewport.owner, &self.owner) {
+                (
+                    super::super::table_owner::TableOwner::Indexed(current),
+                    super::super::table_owner::TableOwner::Indexed(old),
+                ) => {
+                    current.resource_id == old.resource_id
+                        && current.record_id == old.record_id
+                        && current.activation_revision == old.activation_revision
+                }
+                (
+                    super::super::table_owner::TableOwner::Inline(current),
+                    super::super::table_owner::TableOwner::Inline(old),
+                ) => {
+                    current.record_id == old.record_id
+                        && current.view_id == old.view_id
+                        && current.activation_revision == old.activation_revision
+                        && current.prepared == old.prepared
+                }
+                _ => false,
+            }
             && viewport.revision == self.revision
             && viewport.root == self.root
     }
@@ -108,228 +127,194 @@ pub(in super::super) fn render(
         .h(px(appearance.viewport_height(row_height)))
         .w_full()
         .overflow_hidden();
-    for page in table.viewport.source_pages() {
-        let IndexedResourceValue::Range(range) = &page.value else {
-            continue;
+    for paint in table.viewport.paint_cells() {
+        let cell = paint.id;
+        let TableCellId { role, row, column } = cell;
+        let fallback = paint.fallback;
+        let selected = table
+            .viewport
+            .selection
+            .as_ref()
+            .is_some_and(|selection| selection.contains(cell));
+        let focused = table.viewport.focus == Some(cell);
+        let text = paint.text;
+        let mut element = div()
+            .id(SharedString::from(format!(
+                "table-cell-{id}-{:?}-{role:?}-{row}-{column}",
+                source.owner.record_id()
+            )))
+            .absolute()
+            .left(px(column as f32 * width - x))
+            .top(px(if role == index::RowRole::Header {
+                0.0
+            } else {
+                row as f32 * row_height - y
+            }))
+            .w(px(if fallback {
+                width * (realized_columns.end - realized_columns.start) as f32
+            } else {
+                width
+            }))
+            .h(px(row_height))
+            .px(px(8.0))
+            .py(px(5.0))
+            .border_r_1()
+            .border_b_1()
+            .border_color(if role == index::RowRole::Header {
+                appearance.header_cell_border
+            } else {
+                appearance.cell_border
+            })
+            .font(if role == index::RowRole::Header {
+                appearance.header_font.clone()
+            } else {
+                appearance.font.clone()
+            })
+            .text_size(px(if role == index::RowRole::Header {
+                appearance.header_font_size
+            } else {
+                appearance.font_size
+            }))
+            .bg(if selected {
+                appearance.selected
+            } else if role == index::RowRole::Header {
+                appearance.header_cell_background
+            } else {
+                appearance.cell_background
+            })
+            .text_color(if selected {
+                appearance.selected_foreground
+            } else if fallback {
+                appearance.unavailable
+            } else if role == index::RowRole::Header {
+                appearance.header_cell_foreground
+            } else {
+                appearance.cell_foreground
+            })
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .when(focused, |cell| {
+                let color = appearance.focused;
+                cell.child(
+                    canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            let mut outline =
+                                gpui::outline(bounds, color, gpui::BorderStyle::Solid);
+                            outline.border_widths = px(2.0).into();
+                            window.paint_quad(outline);
+                        },
+                    )
+                    .absolute()
+                    .size_full(),
+                )
+            });
+        element = match paint.alignment {
+            Some(index::Alignment::Center) => element.text_center(),
+            Some(index::Alignment::Right) => element.text_right(),
+            _ => element,
         };
-        for (slot, item) in range.items.iter().enumerate() {
-            let (role, row, column, fallback) = match item {
-                index::Item::Descriptor(index::IndexedDescriptor {
-                    descriptor:
-                        index::Descriptor::TableCell {
-                            role, row, column, ..
-                        },
-                    ..
-                })
-                | index::Item::Missing { role, row, column } => (*role, *row, *column, false),
-                index::Item::Descriptor(index::IndexedDescriptor {
-                    descriptor:
-                        index::Descriptor::TableRow {
-                            role,
-                            ordinal,
-                            disposition: index::RowDisposition::WholeRowFallback,
-                            ..
-                        },
-                    ..
-                }) => (*role, *ordinal, realized_columns.start, true),
-                _ => continue,
-            };
-            let cell = TableCellId { role, row, column };
-            let selected = table
-                .viewport
-                .selection
-                .as_ref()
-                .is_some_and(|selection| selection.contains(cell));
-            let focused = table.viewport.focus == Some(cell);
-            let presentation = range
-                .presentations
-                .as_ref()
-                .and_then(|values| values.get(slot));
-            let text = presentation
-                .and_then(|value| value.fragment.as_ref())
-                .map(|fragment| SharedString::from(fragment.text.clone()))
-                .unwrap_or_default();
-            let mut element = div()
-                .id(SharedString::from(format!(
-                    "table-cell-{id}-{:?}-{role:?}-{row}-{column}",
-                    source.resource
-                )))
-                .absolute()
-                .left(px(column as f32 * width - x))
-                .top(px(if role == index::RowRole::Header {
-                    0.0
-                } else {
-                    row as f32 * row_height - y
-                }))
-                .w(px(if fallback {
-                    width * (realized_columns.end - realized_columns.start) as f32
-                } else {
-                    width
-                }))
-                .h(px(row_height))
-                .px(px(8.0))
-                .py(px(5.0))
-                .border_r_1()
-                .border_b_1()
-                .border_color(if role == index::RowRole::Header {
-                    appearance.header_cell_border
-                } else {
-                    appearance.cell_border
-                })
-                .font(if role == index::RowRole::Header {
-                    appearance.header_font.clone()
-                } else {
-                    appearance.font.clone()
-                })
-                .text_size(px(if role == index::RowRole::Header {
-                    appearance.header_font_size
-                } else {
-                    appearance.font_size
-                }))
-                .bg(if selected {
-                    appearance.selected
-                } else if role == index::RowRole::Header {
-                    appearance.header_cell_background
-                } else {
-                    appearance.cell_background
-                })
-                .text_color(if selected {
-                    appearance.selected_foreground
-                } else if fallback {
-                    appearance.unavailable
-                } else if role == index::RowRole::Header {
-                    appearance.header_cell_foreground
-                } else {
-                    appearance.cell_foreground
-                })
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .when(focused, |cell| {
-                    let color = appearance.focused;
-                    cell.child(
-                        canvas(
-                            |_, _, _| {},
-                            move |bounds, _, window, _| {
-                                let mut outline =
-                                    gpui::outline(bounds, color, gpui::BorderStyle::Solid);
-                                outline.border_widths = px(2.0).into();
-                                window.paint_quad(outline);
-                            },
-                        )
-                        .absolute()
-                        .size_full(),
-                    )
-                });
-            element = match presentation.and_then(|value| value.alignment) {
-                Some(index::Alignment::Center) => element.text_center(),
-                Some(index::Alignment::Right) => element.text_right(),
-                _ => element,
-            };
-            if fallback {
-                let copy_source = source.clone();
-                let save_source = source.clone();
-                let fallback_row = div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .min_w(px(0.0))
-                            .flex_1()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .child("Source row fallback · ")
-                            .child(text),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("table-row-copy-{id}-{row}")))
-                            .flex_none()
-                            .cursor_pointer()
-                            .child("Copy row")
-                            .on_click(cx.listener(move |panel, _, _, cx| {
-                                if copy_source.current(panel) {
-                                    panel.begin_table_row_copy(id, row, cx);
-                                }
-                                cx.stop_propagation();
-                            })),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("table-row-save-{id}-{row}")))
-                            .flex_none()
-                            .cursor_pointer()
-                            .child("Save row…")
-                            .on_click(cx.listener(move |panel, _, window, cx| {
-                                if save_source.current(panel) {
-                                    panel.begin_table_row_save(id, row, window, cx);
-                                }
-                                cx.stop_propagation();
-                            })),
-                    );
-                #[cfg(test)]
-                let fallback_row = {
-                    let measured = table.fallback_bounds.clone();
-                    fallback_row.on_children_prepainted(move |bounds, _, _| {
-                        if let Some((copy, save)) =
-                            bounds.get(1).copied().zip(bounds.get(2).copied())
-                        {
-                            let mut measured = measured.borrow_mut();
-                            if measured.len() < 15 {
-                                measured.push((row, copy, save));
+        if fallback {
+            let copy_source = source.clone();
+            let save_source = source.clone();
+            let fallback_row = div()
+                .size_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .flex_1()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child("Source row fallback · ")
+                        .child(text),
+                )
+                .child(
+                    div()
+                        .id(SharedString::from(format!("table-row-copy-{id}-{row}")))
+                        .flex_none()
+                        .cursor_pointer()
+                        .child("Copy row")
+                        .on_click(cx.listener(move |panel, _, _, cx| {
+                            if copy_source.current(panel) {
+                                panel.begin_table_row_copy(id, row, cx);
                             }
-                        }
-                    })
-                };
-                element = element.child(fallback_row);
-            } else {
-                let pointer_source = source.clone();
-                if let Some(fragment) = presentation.and_then(|value| value.fragment.as_ref()) {
-                    let tooltip_text = text.clone();
-                    let remaining = fragment.remaining.end > fragment.remaining.start;
-                    let appearance = appearance.clone();
-                    element = element.tooltip(move |_, cx| {
-                        cx.new(|_| CellTooltip {
-                            text: tooltip_text.clone(),
-                            remaining,
-                            appearance: appearance.clone(),
-                        })
-                        .into()
-                    });
-                }
-                element = element.child(text).on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
-                        if !pointer_source.current(panel) {
                             cx.stop_propagation();
-                            return;
-                        }
-                        if let Some(table) =
-                            panel.table_panels.iter_mut().find(|table| table.id == id)
-                        {
-                            window.focus(&table.focus);
-                            table.viewport.select(cell, event.modifiers.shift);
-                            table.viewport.dragging = true;
-                            panel.table_wheel_owner.set(Some(id));
-                            panel.code_wheel_owner.set(None);
-                            panel.keyboard_copy.gesture.reset();
-                        }
-                        cx.stop_propagation();
-                        cx.notify();
-                    }),
+                        })),
+                )
+                .child(
+                    div()
+                        .id(SharedString::from(format!("table-row-save-{id}-{row}")))
+                        .flex_none()
+                        .cursor_pointer()
+                        .child("Save row…")
+                        .on_click(cx.listener(move |panel, _, window, cx| {
+                            if save_source.current(panel) {
+                                panel.begin_table_row_save(id, row, window, cx);
+                            }
+                            cx.stop_propagation();
+                        })),
                 );
+            #[cfg(test)]
+            let fallback_row = {
+                let measured = table.fallback_bounds.clone();
+                fallback_row.on_children_prepainted(move |bounds, _, _| {
+                    if let Some((copy, save)) = bounds.get(1).copied().zip(bounds.get(2).copied()) {
+                        let mut measured = measured.borrow_mut();
+                        if measured.len() < 15 {
+                            measured.push((row, copy, save));
+                        }
+                    }
+                })
+            };
+            element = element.child(fallback_row);
+        } else {
+            let pointer_source = source.clone();
+            if paint.tooltip {
+                let tooltip_text = text.clone();
+                let remaining = paint.remaining;
+                let appearance = appearance.clone();
+                element = element.tooltip(move |_, cx| {
+                    cx.new(|_| CellTooltip {
+                        text: tooltip_text.clone(),
+                        remaining,
+                        appearance: appearance.clone(),
+                    })
+                    .into()
+                });
             }
-            if role == index::RowRole::Header {
-                header_row = header_row.child(element);
-            } else {
-                body = body.child(element);
-            }
+            element = element.child(text).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
+                    if !pointer_source.current(panel) {
+                        cx.stop_propagation();
+                        return;
+                    }
+                    if let Some(table) = panel.table_panels.iter_mut().find(|table| table.id == id)
+                    {
+                        window.focus(&table.focus);
+                        table.viewport.select(cell, event.modifiers.shift);
+                        table.viewport.dragging = true;
+                        panel.table_wheel_owner.set(Some(id));
+                        panel.code_wheel_owner.set(None);
+                        panel.keyboard_copy.gesture.reset();
+                    }
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            );
+        }
+        if role == index::RowRole::Header {
+            header_row = header_row.child(element);
+        } else {
+            body = body.child(element);
         }
     }
     drop(scroll);
-    if table.viewport.source_pages().is_empty() {
+    if table.viewport.source_pages().is_empty() && table.viewport.owner.inline().is_none() {
         body = body.child(
             div()
                 .text_color(appearance.pending)
@@ -444,9 +429,9 @@ pub(in super::super) fn render(
             body = body.child(bar);
         }
     }
-    let count = table.viewport.root.as_ref().map_or_else(
+    let count = table.viewport.counts().map_or_else(
         || "Table loading".to_owned(),
-        |root| format!("Table · {} rows · {} columns", root.body_rows, root.columns),
+        |(rows, columns)| format!("Table · {rows} rows · {columns} columns"),
     );
     let header = div()
         .flex()
@@ -503,7 +488,9 @@ fn command(
     let source = RenderSource::capture(table);
     let pointer_source = source.clone();
     let click_source = source.clone();
-    let enabled = !pending && table.viewport.binding.is_some() && !table.actions.pending();
+    let enabled = !pending
+        && (table.viewport.binding.is_some() || table.viewport.owner.inline().is_some())
+        && !table.actions.pending();
     let focus = if saving {
         table.save_focus.clone()
     } else {

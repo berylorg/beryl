@@ -8,9 +8,9 @@ use futures_channel::oneshot;
 use std::sync::{Arc, atomic::AtomicU8};
 
 pub(in super::super) const SAVE_STATE_BYTES: usize = 256 * 1024 + 8192 + 8192;
-const ACTIVE: u8 = 0;
-const CANCELLED: u8 = 1;
-const PUBLISHING: u8 = 2;
+pub(in super::super) const ACTIVE: u8 = 0;
+pub(in super::super) const CANCELLED: u8 = 1;
+pub(in super::super) const PUBLISHING: u8 = 2;
 
 pub(in super::super) struct TextResourceSave {
     owner: ResourceTranscriptDemand,
@@ -37,6 +37,7 @@ impl Drop for TextResourceSave {
 
 #[path = "save_writer.rs"]
 mod writer;
+pub(in super::super) use writer::run as run_save_writer;
 #[cfg(test)]
 pub(in super::super) use writer::{SaveFault, SaveWriterGate};
 pub(in super::super) use writer::{SaveOperation, SaveResult, SaveWork, SaveWriterOptions};

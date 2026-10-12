@@ -503,6 +503,13 @@ It performs no Home read, companion construction, schema mutation or GPUI work. 
 limits and consumer lifecycle follow the
 [inline Table system contract](../../../doc/systems/syndic-conversation-history/design.md#inline-table-structure-preparation).
 
+The public `inline_table::prepare_inline_table` operation consumes `ProjectionPayload` and a
+retained-byte allowance. `PreparedInlineTable` owns the original source allocation and exposes
+its block/source binding, source-relative row and cell ranges, alignment and retained-byte charge.
+Display mappings refer into that same source allocation. `InlineTablePreparationError` preserves
+the consumed payload for the caller's explicit unavailable representation; its kind distinguishes
+invalid structure from insufficient capacity.
+
 ## Public Bounds
 
 - Metadata-only thread, turn-state, history-summary, binding, execution-snapshot,

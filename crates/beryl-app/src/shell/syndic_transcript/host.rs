@@ -136,6 +136,18 @@ impl SyndicTranscriptHost {
         self.core.reserve_indexed_layout(demand, bytes)
     }
 
+    pub(crate) fn inline_table_current(&self, owner: &super::core::InlineTableOwner) -> bool {
+        self.core.inline_table_current(owner)
+    }
+
+    pub(crate) fn reserve_inline_table_layout(
+        &mut self,
+        owner: &super::core::InlineTableOwner,
+        bytes: usize,
+    ) -> bool {
+        self.core.reserve_inline_table_layout(owner, bytes)
+    }
+
     pub(crate) fn can_reserve_indexed_layout(
         &self,
         demand: &super::ResourceTranscriptDemand,

@@ -93,6 +93,13 @@ pub(crate) struct ResidentPresentationRecordId(pub(crate) String);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ResidentPresentationRecordKind {
+    InlineTable {
+        prepared: std::sync::Arc<syndic_storage::inline_table::PreparedInlineTable>,
+    },
+    InlineTableUnavailable {
+        source: std::sync::Arc<str>,
+        reason: syndic_storage::inline_table::InlineTablePreparationErrorKind,
+    },
     TextChunk {
         narrative_kind: TranscriptNarrativeKind,
         text: std::sync::Arc<str>,

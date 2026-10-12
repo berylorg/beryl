@@ -1026,6 +1026,63 @@ above. No supported-guarantee blocker remains. Documentation whitespace checking
 review ran no Cargo or native tests, changed no source and created no temporary artifacts. Inline
 mounting remains unaccepted until the implementation and native qualification boundary completes.
 
+## Mounted Inline Table Acceptance
+
+Independent completion review accepted this boundary on 2026-10-12 with no blocking finding.
+Final qualification covers ordinary saved-history inline Table preparation, typed
+provider/resident publication and measured Table mounting. Syndic validates the stored complete
+Table span and existing grammar under unchanged 8,192-byte, 32-body-row and 12-column thresholds.
+The prepared immutable source, relative cell/row ranges, alignment and missing/empty/fallback facts
+remain bounded to 396 positions. Invalid structure and capacity refusal preserve typed source
+authority. Retained source, model and Arc allocations are charged before publication; layout and
+action reservations share existing admission ledgers without a new cache or budget expansion.
+
+Shared owner-neutral cell and raw-row facts support geometry, selection and export. Inline owners
+consume preparation directly; indexed owners retain their authenticated query/binding path and
+128-descriptor cap. Paint remains bounded to fifteen body rows, one header and eight columns.
+Complete inline source residency permits offscreen selection and Copy without resource demand.
+Same-source resize/font changes preserve inline selection and focus. Source replacement,
+inline-to-resource replacement, outer eviction and view retirement close obsolete interaction and
+action ownership while preserving the outer block anchor where applicable.
+
+Native qualification covers cell click, Shift-click, drag and keyboard rectangles; both distinct
+Copy gestures and held-repeat rejection; checked writer refusal; exact selected Markdown and
+complete CRLF source; empty/missing cells and stripped omission; maximum 396-cell offscreen Copy;
+fallback-crossing refusal and raw-row Copy/Save; two-axis wheel routing; actual resize/font
+remeasurement; confirmed replacement and disposal. Inline Save consumes immutable source through
+the shared cancellation, native-choice and atomic publication boundary. Source replacement and
+allocation tests complement native evidence; an explicit obsolete-release integration test proves
+model/source expiry, zero layout charge and rejected obsolete ownership after outer eviction.
+
+Final checks passed with stable Cargo, local LLVM configuration, locked offline dependencies,
+one build/test job, debug information zero and nonincremental builds:
+
+- Storage preparation/indexed derivation: 136/136 in 66.580 seconds,
+  `75362990-d9ed-42b5-a09e-0b55b6549f5b`.
+- Ordinary producer/projection boundaries: 29/29 in 160.395 seconds,
+  `f9c6ea14-d84d-4cb2-90bf-1329ca07637c`.
+- Combined app/core/provider/native: 231/231 in 464.469 seconds,
+  `bf1c4398-6540-435e-a087-a4a76e62e8dc`, including all five inline native cases and 37 native cases total.
+- Twelve transcript integration binaries: 131/131 in 0.761 seconds,
+  `f057358c-f579-475d-b7d7-b7f39acffe29`.
+- Four state theme binaries: 10/10 in 0.304 seconds,
+  `6cbc1269-7155-412b-8de6-4b72e3413e99`.
+- Production `beryl-app --lib` check without test-fault features: exit zero in 22.15 seconds.
+
+Thirty-eight shared changed Rust inputs remained identical across final runs; the additional
+outer-eviction integration test was separately frozen and passed. No manifest, lockfile, storage
+schema or owned dependency fork changed. Earlier development failures are superseded by this
+final input set; the [owner-reservation lesson](../failures/inline-table-action-owner.md) records
+the significant correction.
+
+Native evidence uses real GPUI windows, routed test input, genuine saved-history producer/provider
+fixtures, measured geometry, checked clipboard/picker seams and filesystem publication. It does
+not qualify OS clipboard or common-dialog automation, or the complete user composer workflow.
+Remaining transcript contributions and diagnostic-child activation keep their separate gates.
+All seventy positively attributed native fixture/output directories are verified absent. Reviewed
+task execution artifacts have reached their final consumer and are reclaimed; shared caches and
+unrelated temporary resources remain outside this cleanup boundary.
+
 ## Mounted Indexed Table Acceptance
 
 Independent completion review accepted the external indexed Table panel on 2026-10-12. Header,

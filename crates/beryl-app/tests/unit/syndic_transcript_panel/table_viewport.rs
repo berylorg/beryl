@@ -66,7 +66,7 @@ fn table_inflight_body_and_continuation_survive_response_absent_render_frames(
             ..
         }
     ));
-    viewport.owner.indexed = Some(body.clone());
+    viewport.owner.indexed_mut().unwrap().indexed = Some(body.clone());
     for _ in 0..3 {
         assert_eq!(viewport.query(None), body);
     }
@@ -91,7 +91,7 @@ fn table_inflight_body_and_continuation_survive_response_absent_render_frames(
             ..
         }
     ));
-    viewport.owner.indexed = Some(continuation.clone());
+    viewport.owner.indexed_mut().unwrap().indexed = Some(continuation.clone());
     assert_eq!(viewport.query(None), continuation);
     let IndexedResourceValue::Range(range) = &mut header.value else {
         panic!()

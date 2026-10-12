@@ -287,15 +287,23 @@ impl Fixture {
     }
 
     fn seed_projection(&self, text: &str, revision: u64) {
+        self.seed_projection_kind(text, revision, syndic_storage::MarkdownBlockKind::Paragraph);
+    }
+
+    fn seed_projection_kind(
+        &self,
+        text: &str,
+        revision: u64,
+        block_kind: syndic_storage::MarkdownBlockKind,
+    ) {
         use beryl_model::{
             ContentRevision, SyndicContentDigest, SyndicContentId, SyndicItemId,
             SyndicProjectionId, SyndicTurnId,
         };
         use syndic_storage::{
             CanonicalItemRecord, ContentEncoding, ContentReference, ContentSummary,
-            ItemProjectionGeneration, MarkdownBlockId, MarkdownBlockKind, ProjectionOrdinal,
-            ProjectionRecord, ProjectionSourceRange, TranscriptPosition, TranscriptViewEntryRecord,
-            TurnItemOrdinal,
+            ItemProjectionGeneration, MarkdownBlockId, ProjectionOrdinal, ProjectionRecord,
+            ProjectionSourceRange, TranscriptPosition, TranscriptViewEntryRecord, TurnItemOrdinal,
         };
         let thread_id = self.request(1).thread_id;
         let thread = self
@@ -349,7 +357,7 @@ impl Fixture {
                 ProjectionOrdinal::new(1).unwrap(),
                 syndic_storage::ProjectionPayload::inline_markdown(
                     MarkdownBlockId::from_bytes([16; 32]),
-                    MarkdownBlockKind::Paragraph,
+                    block_kind,
                     1,
                     ProjectionSourceRange::new(0, text.len() as u64).unwrap(),
                     text,
@@ -739,3 +747,5 @@ fn canonical_projection_bytes_publish_with_stable_source_identity_for_unchanged_
 
 #[path = "transcript_provider/copy_text.rs"]
 mod copy_text;
+#[path = "transcript_provider/inline_table.rs"]
+mod inline_table;

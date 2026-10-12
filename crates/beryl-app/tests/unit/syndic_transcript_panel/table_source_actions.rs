@@ -262,9 +262,9 @@ fn table_copy_publication_checks_native_budget_refusal_selection_and_superseded_
         let id = table.id;
         let owner = panel
             .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id)
+            .indexed_resource_owner(&table.viewport.owner.indexed().unwrap().resource_id)
             .unwrap();
-        table.viewport.owner = owner.clone();
+        table.viewport.owner = super::super::super::table_owner::TableOwner::Indexed(owner.clone());
         table.viewport.revision = fixture.binding.resource.revision;
         table
             .viewport

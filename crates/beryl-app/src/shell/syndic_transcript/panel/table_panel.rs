@@ -171,16 +171,82 @@ impl SyndicTranscriptPanel {
         for mut table in self.retired_table_panels.drain(..) {
             table.retire(window, cx);
         }
-        self.table_panels.retain_mut(|table|{
-            let retained=self.host.selected_view_id()==Some(&table.viewport.owner.view_id)
-                && frame.records.iter().any(|record|record.record_id==table.viewport.owner.record_id)
-                && snapshot.records.iter().any(|record|record.id==table.viewport.owner.record_id
-                    && matches!(&record.kind,super::super::ResidentPresentationRecordKind::ResourceReference{resource_id,resource_kind:ResourceKind::Table,..} if resource_id==&table.viewport.owner.resource_id || super::code_panel::saved_code_successor(&table.viewport.owner,record)));
-            if !retained{table.retire(window,cx);self.host.reserve_indexed_layout(&table.viewport.owner,0);self.host.set_indexed_resource_demand(&table.viewport.owner,None);if self.table_wheel_owner.get()==Some(table.id){self.table_wheel_owner.set(None);}}
+        self.table_panels.retain_mut(|table| {
+            let record_id = table.viewport.owner.record_id();
+            let retained = self.host.selected_view_id() == Some(table.viewport.owner.view_id())
+                && frame.records.iter().any(|record| &record.record_id == record_id)
+                && snapshot.records.iter().any(|record| &record.id == record_id && match &table.viewport.owner {
+                    super::table_owner::TableOwner::Indexed(owner) => matches!(&record.kind, super::super::ResidentPresentationRecordKind::ResourceReference { resource_id, resource_kind: ResourceKind::Table, .. }
+                        if resource_id == &owner.resource_id || super::code_panel::saved_code_successor(owner, record)),
+                    super::table_owner::TableOwner::Inline(owner) => snapshot.activation_revision == owner.activation_revision
+                        && matches!(&record.kind, super::super::ResidentPresentationRecordKind::InlineTable { prepared } if prepared == &owner.prepared),
+                });
+            if !retained {
+                table.retire(window, cx);
+                match &table.viewport.owner {
+                    super::table_owner::TableOwner::Indexed(owner) => { self.host.reserve_indexed_layout(owner, 0); self.host.set_indexed_resource_demand(owner, None); }
+                    super::table_owner::TableOwner::Inline(owner) => { self.host.reserve_inline_table_layout(owner, 0); }
+                }
+                if self.table_wheel_owner.get() == Some(table.id) { self.table_wheel_owner.set(None); }
+            }
             retained
         });
         if self.staged.is_some() {
             return;
+        }
+        for record in snapshot.records.iter().filter(|record| {
+            frame
+                .records
+                .iter()
+                .any(|frame| frame.record_id == record.id)
+        }) {
+            let super::super::ResidentPresentationRecordKind::InlineTable { prepared } =
+                &record.kind
+            else {
+                continue;
+            };
+            let Some(view_id) = self.host.selected_view_id().cloned() else {
+                continue;
+            };
+            let owner = super::super::core::InlineTableOwner {
+                view_id,
+                record_id: record.id.clone(),
+                activation_revision: snapshot.activation_revision,
+                provenance: record.provenance.clone(),
+                prepared: prepared.clone(),
+            };
+            if let Some(table) = self
+                .table_panels
+                .iter_mut()
+                .find(|table| table.viewport.owner.record_id() == &record.id)
+            {
+                if table.viewport.owner.provider_revision()
+                    != owner
+                        .provenance
+                        .projection_revision
+                        .expect("admitted inline revision")
+                {
+                    table.actions.cancel("Table source revision changed");
+                }
+                table.viewport.revision = beryl_model::ProjectionRevision::new(
+                    owner
+                        .provenance
+                        .projection_revision
+                        .expect("admitted inline revision")
+                        .0,
+                )
+                .expect("checked projection revision");
+                table.viewport.owner = super::table_owner::TableOwner::Inline(owner);
+            } else {
+                if !self.host.reserve_inline_table_layout(&owner, 65_536 + 4096) {
+                    continue;
+                }
+                let viewport = TableViewport::inline(owner);
+                let mut table =
+                    MountedTablePanel::new(viewport, self.table_wheel_owner.clone(), cx);
+                table.actions.save_admission = self.save_admission.clone();
+                self.table_panels.push(table);
+            }
         }
         for demand in self.host.table_panel_demands() {
             if demand.indexed.is_some()
@@ -200,12 +266,12 @@ impl SyndicTranscriptPanel {
             if let Some(table) = self
                 .table_panels
                 .iter_mut()
-                .find(|table| table.viewport.owner.record_id == demand.record_id)
+                .find(|table| table.viewport.owner.record_id() == &demand.record_id)
             {
                 table.actions.cancel("Table source changed");
                 table.viewport.rebind(demand, revision);
                 if self.host.set_indexed_resource_demand(
-                    &table.viewport.owner,
+                    table.viewport.owner.indexed().expect("indexed Table mount"),
                     Some(table.viewport.query(None)),
                 ) {
                     cx.notify();
@@ -214,10 +280,10 @@ impl SyndicTranscriptPanel {
                 continue;
             }
             let viewport = TableViewport::new(demand, revision);
-            if self
-                .host
-                .set_indexed_resource_demand(&viewport.owner, Some(viewport.query(None)))
-            {
+            if self.host.set_indexed_resource_demand(
+                viewport.owner.indexed().expect("indexed Table mount"),
+                Some(viewport.query(None)),
+            ) {
                 let mut table =
                     MountedTablePanel::new(viewport, self.table_wheel_owner.clone(), cx);
                 table.actions.save_admission = self.save_admission.clone();
@@ -228,13 +294,47 @@ impl SyndicTranscriptPanel {
         }
         let row_height = self.table_appearance.row_height(cx);
         for table in &mut self.table_panels {
-            let resource = table.viewport.owner.resource_id.clone();
+            if let Some(owner) = table.viewport.owner.inline().cloned() {
+                let (available, height) = {
+                    let scroll = table.viewport.scroll.borrow();
+                    (
+                        f32::from(scroll.bounds.size.width),
+                        row_height.unwrap_or(scroll.row_height),
+                    )
+                };
+                table
+                    .viewport
+                    .set_tracks(height, self.table_appearance.column_width(available));
+                if !self.host.reserve_inline_table_layout(
+                    &owner,
+                    table.viewport.charge() + table.actions.charge(),
+                ) {
+                    table.actions.cancel("Table capacity refused");
+                    table.viewport.feedback = "Table capacity refused";
+                    self.host.reserve_inline_table_layout(
+                        &owner,
+                        table.viewport.charge() + table.actions.charge(),
+                    );
+                }
+                let id = table.id;
+                cx.defer_in(window, move |panel, _, cx| {
+                    panel.advance_table_source_actions(id, cx);
+                });
+                continue;
+            }
+            let resource = table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table mount")
+                .resource_id
+                .clone();
             let Some(owner) = self.host.indexed_resource_owner(&resource) else {
                 continue;
             };
             let response = self.host.indexed_resource_response(&resource);
             let pages = self.host.indexed_table_window(&resource);
-            table.viewport.owner = owner;
+            table.viewport.owner = super::table_owner::TableOwner::Indexed(owner);
             let (available, height) = {
                 let scroll = table.viewport.scroll.borrow();
                 (
@@ -249,10 +349,12 @@ impl SyndicTranscriptPanel {
                 self.keyboard_copy.gesture.reset();
             }
             table.viewport.adopt(response.as_deref(), pages);
-            self.host
-                .acknowledge_table_window(&table.viewport.owner, table.viewport.source_pages());
+            self.host.acknowledge_table_window(
+                table.viewport.owner.indexed().expect("indexed Table mount"),
+                table.viewport.source_pages(),
+            );
             table.actions.observe(
-                &table.viewport.owner,
+                table.viewport.owner.indexed().expect("indexed Table mount"),
                 table.viewport.revision,
                 response.as_deref(),
             );
@@ -260,10 +362,10 @@ impl SyndicTranscriptPanel {
                 .viewport
                 .charge()
                 .saturating_add(table.actions.charge());
-            if !self
-                .host
-                .reserve_indexed_layout(&table.viewport.owner, charge)
-            {
+            if !self.host.reserve_indexed_layout(
+                table.viewport.owner.indexed().expect("indexed Table mount"),
+                charge,
+            ) {
                 table.actions.cancel("Table resource capacity refused");
                 table.viewport.feedback = "Table resource capacity refused";
                 continue;
@@ -272,7 +374,13 @@ impl SyndicTranscriptPanel {
                 table
                     .actions
                     .query()
-                    .or_else(|| table.viewport.owner.indexed.clone())
+                    .or_else(|| {
+                        table
+                            .viewport
+                            .owner
+                            .indexed()
+                            .and_then(|owner| owner.indexed.clone())
+                    })
                     .unwrap_or_else(|| table.viewport.query(response.as_deref()))
             } else {
                 table.viewport.query(response.as_deref())
@@ -283,12 +391,13 @@ impl SyndicTranscriptPanel {
                 && table
                     .viewport
                     .owner
-                    .indexed
-                    .as_ref()
+                    .indexed()
+                    .and_then(|owner| owner.indexed.as_ref())
                     .is_none_or(|current| *current != query)
-                && self
-                    .host
-                    .set_indexed_resource_demand(&table.viewport.owner, Some(query))
+                && self.host.set_indexed_resource_demand(
+                    table.viewport.owner.indexed().expect("indexed Table mount"),
+                    Some(query),
+                )
             {
                 table.viewport.feedback = "Table range loading";
                 cx.notify();
@@ -314,7 +423,7 @@ impl SyndicTranscriptPanel {
         let Some(table) = self.table_panels.iter_mut().find(|table| table.id == id) else {
             return;
         };
-        let Some(root) = &table.viewport.root else {
+        let Some((body_rows, columns)) = table.viewport.counts() else {
             return;
         };
         let Some(cell) = table.viewport.focus else {
@@ -328,13 +437,27 @@ impl SyndicTranscriptPanel {
             .max(1.0) as u64;
         let target = match event.keystroke.key.as_str() {
             "up" => TableCellId::at(row.saturating_sub(1), column),
-            "down" => TableCellId::at((row + 1).min(root.body_rows), column),
+            "down" => TableCellId::at((row + 1).min(body_rows), column),
             "left" => TableCellId::at(row, column.saturating_sub(1)),
-            "right" => TableCellId::at(row, (column + 1).min(root.columns.saturating_sub(1))),
-            "home" => TableCellId::at(row, 0),
-            "end" => TableCellId::at(row, root.columns.saturating_sub(1)),
+            "right" => TableCellId::at(row, (column + 1).min(columns.saturating_sub(1))),
+            "home" => TableCellId::at(
+                if event.keystroke.modifiers.control {
+                    0
+                } else {
+                    row
+                },
+                0,
+            ),
+            "end" => TableCellId::at(
+                if event.keystroke.modifiers.control {
+                    body_rows
+                } else {
+                    row
+                },
+                columns.saturating_sub(1),
+            ),
             "pageup" => TableCellId::at(row.saturating_sub(page), column),
-            "pagedown" => TableCellId::at((row + page).min(root.body_rows), column),
+            "pagedown" => TableCellId::at((row + page).min(body_rows), column),
             "escape" => {
                 table.viewport.selection = None;
                 self.keyboard_copy.gesture.reset();

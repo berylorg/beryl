@@ -1,12 +1,43 @@
 use super::*;
 impl SyndicTranscriptPanel {
+    pub(crate) fn inline_table_source_for_test(&self) -> Option<&str> {
+        Some(
+            self.table_panels
+                .first()?
+                .viewport
+                .owner
+                .inline()?
+                .prepared
+                .source(),
+        )
+    }
+    pub(crate) fn inline_table_viewport_for_test(
+        &self,
+    ) -> Option<(
+        gpui::Bounds<gpui::Pixels>,
+        gpui::Bounds<gpui::Pixels>,
+        f32,
+        f32,
+    )> {
+        let table = self.table_panels.first()?;
+        table.viewport.owner.inline()?;
+        let scroll = table.viewport.scroll.borrow();
+        Some((
+            scroll.bounds,
+            scroll.header_bounds,
+            scroll.row_height,
+            scroll.column_width,
+        ))
+    }
     pub(crate) fn table_query_state_for_test(&self) -> String {
         let state = self
             .table_panels
             .first()
             .map(|table| {
-                self.host
-                    .indexed_table_state_for_test(&table.viewport.owner.resource_id)
+                table.viewport.owner.indexed().map_or_else(
+                    || "inline".to_owned(),
+                    |owner| self.host.indexed_table_state_for_test(&owner.resource_id),
+                )
             })
             .unwrap_or_else(|| "unmounted".to_owned());
         format!(
@@ -37,20 +68,25 @@ impl SyndicTranscriptPanel {
     }
     pub(crate) fn table_commands_current_for_test(&self) -> bool {
         self.table_panels.first().is_some_and(|table| {
-            !table.viewport.source_pages().is_empty()
-                && table.actions.binding == table.viewport.binding
-                && table.actions.root == table.viewport.root.as_ref().map(|root| root.digest)
+            table
+                .viewport
+                .owner
+                .inline()
+                .is_some_and(|owner| self.host.inline_table_current(owner))
+                || !table.viewport.source_pages().is_empty()
+                    && table.actions.binding == table.viewport.binding
+                    && table.actions.root == table.viewport.root.as_ref().map(|root| root.digest)
         })
     }
     pub(crate) fn table_copy_pending_for_test(&self) -> bool {
         self.table_panels
             .first()
-            .is_some_and(|table| table.actions.pending() && table.actions.save.is_none())
+            .is_some_and(|table| table.actions.copy_pending())
     }
     pub(crate) fn table_save_pending_for_test(&self) -> bool {
-        self.table_panels
-            .first()
-            .is_some_and(|table| table.actions.save.is_some())
+        self.table_panels.first().is_some_and(|table| {
+            table.actions.save.is_some() || table.actions.inline.save.is_some()
+        })
     }
     pub(crate) fn table_viewport_for_test(
         &self,
@@ -64,7 +100,7 @@ impl SyndicTranscriptPanel {
         let table = self.table_panels.first()?;
         let scroll = table.viewport.scroll.borrow();
         Some((
-            table.viewport.owner.resource_id.clone(),
+            table.viewport.owner.indexed()?.resource_id.clone(),
             scroll.bounds,
             scroll.header_bounds,
             scroll.row_height,

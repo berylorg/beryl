@@ -353,9 +353,7 @@ pub(crate) fn drain_cells(
             }
             position += 1;
         }
-        let cell = &source[start..position];
-        let leading = cell.len() - cell.trim_start_matches([' ', '\t']).len();
-        let trimmed = cell[leading..].trim_end_matches([' ', '\t']);
+        let trimmed = table_syntax::trimmed_cell(source, start..position);
         let absolute = |offset: usize| {
             raw.start
                 .checked_add(offset as u64)
@@ -370,15 +368,10 @@ pub(crate) fn drain_cells(
                 end: absolute(position)?,
             },
             trimmed: ByteRange {
-                start: absolute(start + leading)?,
-                end: absolute(start + leading + trimmed.len())?,
+                start: absolute(trimmed.start)?,
+                end: absolute(trimmed.end)?,
             },
-            presentation: if trimmed.bytes().any(|byte| {
-                matches!(
-                    byte,
-                    b'\\' | b'`' | b'*' | b'_' | b'[' | b']' | b'<' | b'>' | b'&' | b'~'
-                )
-            }) {
+            presentation: if table_syntax::literal_fallback(&source[trimmed]) {
                 CellPresentation::LiteralFallback
             } else {
                 CellPresentation::Literal

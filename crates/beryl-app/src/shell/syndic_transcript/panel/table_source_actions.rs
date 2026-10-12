@@ -19,6 +19,7 @@ pub(super) struct TableSourceActions {
     pub revision: Option<beryl_model::ProjectionRevision>,
     pub sequence: u64,
     pub save: Option<TextResourceSave>,
+    pub inline: super::inline_table_actions::InlineTableActions,
     pub save_admission: crate::main_window::WorkerAdmission,
     copy: Option<TableCopy>,
     #[cfg(test)]
@@ -67,9 +68,35 @@ pub(super) fn clear_table_source_refusal(
     rejected.len() != before
 }
 
+pub(super) fn publish_copy(
+    actions: &mut TableSourceActions,
+    text: String,
+    cx: &mut gpui::App,
+) -> Result<(), &'static str> {
+    if text.len() > super::table_export::COPY_BYTES {
+        return Err("Copy unavailable: representation exceeds 64 KiB");
+    }
+    let budget = text.len() * 3 + 2 + 65_536;
+    let item = gpui::ClipboardItem::new_string(text);
+    let limits = gpui::ClipboardLimits {
+        total_bytes: budget,
+        text_bytes: budget,
+        metadata_bytes: 1,
+        image_bytes: 1,
+    };
+    #[cfg(test)]
+    if let Some(writer) = &mut actions.writer {
+        return writer(&item, limits, cx).map_err(|_| "Copy unavailable: clipboard refused");
+    }
+    #[cfg(not(test))]
+    let _ = actions;
+    cx.write_to_clipboard_checked(&item, limits)
+        .map_err(|_| "Copy unavailable: clipboard refused")
+}
+
 impl TableSourceActions {
     pub fn copy_pending(&self) -> bool {
-        self.copy.is_some()
+        self.copy.is_some() || self.inline.copy.is_some()
     }
     #[cfg(test)]
     pub fn assembled_copy_for_test(&self) -> Option<&[u8]> {
@@ -78,16 +105,18 @@ impl TableSourceActions {
     pub fn charge(&self) -> usize {
         4096 + self.copy.as_ref().map_or(0, |_| COPY_CHARGE)
             + self.save.as_ref().map_or(0, |_| SAVE_STATE_BYTES)
+            + self.inline.charge()
     }
     pub fn pending(&self) -> bool {
-        self.copy.is_some() || self.save.is_some()
+        self.copy_pending() || self.save.is_some() || self.inline.save.is_some()
     }
     pub fn cancel_copy(&mut self, feedback: &'static str) {
         self.copy = None;
+        self.inline.copy = None;
         self.feedback = feedback;
     }
     pub fn cancel_save(&mut self, feedback: &'static str) {
-        if self.save.take().is_some() {
+        if self.save.take().is_some() || self.inline.save.take().is_some() {
             self.feedback = feedback;
         }
     }
@@ -139,7 +168,7 @@ impl TableSourceActions {
             self.feedback = "Copy unavailable: no eligible cell selection";
             return false;
         };
-        let export = TableExport::selected(
+        let export = TableExport::selected_cells(
             cells,
             viewport.source_pages(),
             binding,
@@ -157,7 +186,7 @@ impl TableSourceActions {
             .fallback_rows()
             .into_iter()
             .find(|(id, _)| *id == row)
-            .and_then(|(_, descriptor)| descriptor.absolute_raw);
+            .and_then(|(_, descriptor)| descriptor.raw);
         let Some(range) = range else {
             self.feedback = "Copy unavailable: raw row missing";
             return false;
@@ -185,7 +214,7 @@ impl TableSourceActions {
         let (Some(binding), Some(root)) = (&viewport.binding, &viewport.root) else {
             return false;
         };
-        if owner_bytes(&viewport.owner) > 4096
+        if owner_bytes(viewport.owner.indexed().expect("indexed Table action")) > 4096
             || self.binding.as_ref() != Some(binding)
             || self.root != Some(root.digest)
             || self.revision != Some(viewport.revision)
@@ -204,7 +233,7 @@ impl TableSourceActions {
         }
         self.sequence = sequence;
         self.copy = Some(TableCopy {
-            owner: identity(&viewport.owner),
+            owner: identity(viewport.owner.indexed().expect("indexed Table action")),
             binding: binding.clone(),
             root: root.digest,
             revision: viewport.revision,
@@ -362,6 +391,14 @@ impl SyndicTranscriptPanel {
         cx: &mut Context<Self>,
     ) {
         self.supersede_resource_copies();
+        if self
+            .table_panels
+            .iter()
+            .any(|table| table.id == id && table.viewport.owner.inline().is_some())
+        {
+            self.begin_inline_table_copy(id, row, method, cx);
+            return;
+        }
         let Some(table) = self.table_panels.iter_mut().find(|table| table.id == id) else {
             return;
         };
@@ -370,10 +407,14 @@ impl SyndicTranscriptPanel {
             cx.notify();
             return;
         }
-        let Some(owner) = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id)
-        else {
+        let Some(owner) = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        ) else {
             table.actions.feedback = "Copy unavailable: retired source";
             cx.notify();
             return;
@@ -410,16 +451,27 @@ impl SyndicTranscriptPanel {
         if self.staged.is_some() {
             return false;
         }
+        if self
+            .table_panels
+            .iter()
+            .any(|table| table.id == id && table.viewport.owner.inline().is_some())
+        {
+            return self.advance_inline_table_save(id, cx);
+        }
         if self.advance_table_save(id, cx) {
             return true;
         }
         let Some(table) = self.table_panels.iter_mut().find(|table| table.id == id) else {
             return false;
         };
-        let Some(owner) = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id)
-        else {
+        let Some(owner) = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        ) else {
             table
                 .actions
                 .cancel("Source action unavailable: retired source");
@@ -502,9 +554,14 @@ impl SyndicTranscriptPanel {
         {
             return;
         }
-        let owner = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id);
+        let owner = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        );
         if self.staged.is_some()
             || owner
                 .as_ref()
@@ -514,26 +571,7 @@ impl SyndicTranscriptPanel {
                 .actions
                 .cancel_copy("Copy unavailable: selection or source changed");
         } else {
-            let result = result.and_then(|text| {
-                if text.len() > super::table_export::COPY_BYTES {
-                    return Err("Copy unavailable: representation exceeds 64 KiB");
-                }
-                let budget = text.len() * 3 + 2 + 65_536;
-                let item = gpui::ClipboardItem::new_string(text);
-                let limits = gpui::ClipboardLimits {
-                    total_bytes: budget,
-                    text_bytes: budget,
-                    metadata_bytes: 1,
-                    image_bytes: 1,
-                };
-                #[cfg(test)]
-                if let Some(writer) = &mut table.actions.writer {
-                    return writer(&item, limits, cx)
-                        .map_err(|_| "Copy unavailable: clipboard refused");
-                }
-                cx.write_to_clipboard_checked(&item, limits)
-                    .map_err(|_| "Copy unavailable: clipboard refused")
-            });
+            let result = result.and_then(|text| publish_copy(&mut table.actions, text, cx));
             table.actions.cancel_copy(result.err().unwrap_or("Copied"));
         }
         if let Some(owner) = owner {
@@ -549,7 +587,11 @@ impl SyndicTranscriptPanel {
     ) -> bool {
         if !self.resource_candidate_current(demand)
             || !self.table_panels.iter().any(|table| {
-                table.viewport.owner.resource_id == demand.resource_id
+                table
+                    .viewport
+                    .owner
+                    .indexed()
+                    .is_some_and(|owner| owner.resource_id == demand.resource_id)
                     && table.actions.query().as_ref() == demand.indexed.as_ref()
             })
         {
@@ -566,11 +608,13 @@ impl SyndicTranscriptPanel {
         if self.staged.is_some() || self.resource_demand().as_ref() != Some(demand) {
             return false;
         }
-        let Some(table) = self
-            .table_panels
-            .iter_mut()
-            .find(|table| table.viewport.owner.resource_id == demand.resource_id)
-        else {
+        let Some(table) = self.table_panels.iter_mut().find(|table| {
+            table
+                .viewport
+                .owner
+                .indexed()
+                .is_some_and(|owner| owner.resource_id == demand.resource_id)
+        }) else {
             return false;
         };
         let Some(owner) = self.host.indexed_resource_owner(&demand.resource_id) else {

@@ -1,7 +1,7 @@
 use super::super::provider::resource_index as index;
 use super::super::{IndexedResourceResponse, IndexedResourceValue};
 use super::copy_keyboard::CopyMethod;
-use super::table_viewport::TableCellId;
+use super::table_viewport::{TableCellId, TableCellSource};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -23,63 +23,28 @@ pub(super) struct TableExport {
 }
 
 impl TableExport {
+    #[cfg(test)]
     pub fn selected(
         cells: Vec<(TableCellId, index::Item)>,
         pages: &[Arc<IndexedResourceResponse>],
         binding: &index::Binding,
         whole: bool,
     ) -> Result<Self, &'static str> {
-        if cells.is_empty() || cells.len() > 128 {
-            return Err("Copy unavailable: unresolved selection");
-        }
-        let mut result = Self {
-            ranges: Vec::with_capacity(cells.len()),
-            cells: Vec::with_capacity(cells.len()),
-            source_bytes: 0,
-            whole,
-        };
-        if whole {
-            result.add_range(binding.range)?;
-        }
-        let mut previous = None;
-        for (id, item) in cells {
-            if previous.is_some_and(|old| old >= id) {
-                return Err("Copy unavailable: incoherent selection");
-            }
-            previous = Some(id);
-            let range = match item {
-                index::Item::Descriptor(index::IndexedDescriptor {
-                    descriptor:
-                        index::Descriptor::TableCell {
-                            role, row, column, ..
-                        },
-                    absolute_raw: Some(range),
-                }) if role == id.role && row == id.row && column == id.column => Some(range),
-                index::Item::Missing { role, row, column }
-                    if role == id.role && row == id.row && column == id.column =>
-                {
-                    None
-                }
-                _ => return Err("Copy unavailable: non-cell selection"),
-            };
-            let bytes = if let Some(range) = range {
-                if range.start < binding.range.start || range.end > binding.range.end {
-                    return Err("Copy unavailable: source binding changed");
-                }
-                if whole {
-                    usize::try_from(range.start - binding.range.start)
-                        .map_err(|_| "Copy unavailable: capacity")?
-                        ..usize::try_from(range.end - binding.range.start)
-                            .map_err(|_| "Copy unavailable: capacity")?
-                } else {
-                    let start = result.source_bytes;
-                    result.add_range(range)?;
-                    start..result.source_bytes
-                }
-            } else {
-                0..0
-            };
-            let alignment = pages
+        let cells = cells
+            .into_iter()
+            .map(|(id, item)| TableCellSource::indexed(id, &item).map(|source| (id, source)))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::selected_cells(cells, pages, binding, whole)
+    }
+
+    pub fn selected_cells(
+        cells: Vec<(TableCellId, TableCellSource)>,
+        pages: &[Arc<IndexedResourceResponse>],
+        binding: &index::Binding,
+        whole: bool,
+    ) -> Result<Self, &'static str> {
+        Self::selected_source(cells, binding.range, whole, 128, |id| {
+            pages
                 .iter()
                 .find_map(|page| {
                     let IndexedResourceValue::Range(value) = &page.value else {
@@ -106,14 +71,102 @@ impl TableExport {
                         }
                     })
                 })
-                .unwrap_or(index::Alignment::Unspecified);
+                .unwrap_or(index::Alignment::Unspecified)
+        })
+    }
+
+    pub fn inline(
+        cells: Vec<(TableCellId, TableCellSource)>,
+        model: &syndic_storage::inline_table::PreparedInlineTable,
+        whole: bool,
+    ) -> Result<Self, &'static str> {
+        Self::selected_source(
+            cells,
+            index::ByteRange {
+                start: 0,
+                end: model.source().len() as u64,
+            },
+            whole,
+            396,
+            |id| {
+                model
+                    .alignments()
+                    .get(id.column as usize)
+                    .copied()
+                    .unwrap_or(index::Alignment::Unspecified)
+            },
+        )
+    }
+
+    fn selected_source(
+        cells: Vec<(TableCellId, TableCellSource)>,
+        source: index::ByteRange,
+        whole: bool,
+        capacity: usize,
+        alignment: impl Fn(TableCellId) -> index::Alignment,
+    ) -> Result<Self, &'static str> {
+        if cells.is_empty() || cells.len() > capacity {
+            return Err("Copy unavailable: unresolved selection");
+        }
+        let mut result = Self {
+            ranges: Vec::with_capacity(cells.len()),
+            cells: Vec::with_capacity(cells.len()),
+            source_bytes: 0,
+            whole,
+        };
+        if whole {
+            result.add_range(source)?;
+        }
+        let mut previous = None;
+        for (id, cell) in cells {
+            if previous.is_some_and(|old| old >= id) {
+                return Err("Copy unavailable: incoherent selection");
+            }
+            previous = Some(id);
+            let range = cell.raw;
+            let bytes = if let Some(range) = range {
+                if range.start < source.start || range.end > source.end || range.end < range.start {
+                    return Err("Copy unavailable: source binding changed");
+                }
+                if whole {
+                    usize::try_from(range.start - source.start)
+                        .map_err(|_| "Copy unavailable: capacity")?
+                        ..usize::try_from(range.end - source.start)
+                            .map_err(|_| "Copy unavailable: capacity")?
+                } else {
+                    let start = result.source_bytes;
+                    result.add_range(range)?;
+                    start..result.source_bytes
+                }
+            } else {
+                0..0
+            };
             result.cells.push(ExportCell {
                 id,
                 bytes,
-                alignment,
+                alignment: alignment(id),
             });
         }
         Ok(result)
+    }
+
+    pub fn assemble_inline(&self, source: &str) -> Result<Vec<u8>, &'static str> {
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(self.source_bytes)
+            .map_err(|_| "Copy unavailable: allocation")?;
+        for range in &self.ranges {
+            bytes.extend_from_slice(
+                source
+                    .as_bytes()
+                    .get(range.start as usize..range.end as usize)
+                    .ok_or("Copy unavailable: source range")?,
+            );
+        }
+        if bytes.len() != self.source_bytes {
+            return Err("Copy unavailable: source range");
+        }
+        Ok(bytes)
     }
 
     pub fn raw(range: index::ByteRange) -> Result<Self, &'static str> {

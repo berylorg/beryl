@@ -52,6 +52,49 @@ pub(crate) fn columns(line: &str) -> Option<u64> {
     (count > 1).then_some(count)
 }
 
+pub(crate) fn cells(line: &str) -> impl Iterator<Item = Range<usize>> + '_ {
+    let bounds = cell_bounds(line);
+    let mut position = bounds.start;
+    let mut done = false;
+    let mut escaped = false;
+    let mut in_code = false;
+    std::iter::from_fn(move || {
+        if done {
+            return None;
+        }
+        let start = position;
+        while position < bounds.end {
+            if separator(line.as_bytes()[position], &mut escaped, &mut in_code) {
+                break;
+            }
+            position += 1;
+        }
+        let range = start..position;
+        if position == bounds.end {
+            done = true;
+        } else {
+            position += 1;
+        }
+        Some(range)
+    })
+}
+
+pub(crate) fn trimmed_cell(source: &str, raw: Range<usize>) -> Range<usize> {
+    let cell = &source[raw.clone()];
+    let leading = cell.len() - cell.trim_start_matches([' ', '\t']).len();
+    let trimmed = cell[leading..].trim_end_matches([' ', '\t']);
+    raw.start + leading..raw.start + leading + trimmed.len()
+}
+
+pub(crate) fn literal_fallback(trimmed: &str) -> bool {
+    trimmed.bytes().any(|byte| {
+        matches!(
+            byte,
+            b'\\' | b'`' | b'*' | b'_' | b'[' | b']' | b'<' | b'>' | b'&' | b'~'
+        )
+    })
+}
+
 pub(crate) fn delimiter_cells(line: &str) -> impl Iterator<Item = &str> {
     let source = content(line).trim();
     let source = source.strip_prefix('|').unwrap_or(source);

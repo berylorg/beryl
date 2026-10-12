@@ -289,6 +289,7 @@ impl ResidentTranscriptCore {
             .resident
             .resource_slice_bytes
             .saturating_add(self.indexed_resources.encoded_bytes())
+            .saturating_add(self.inline_table_layout_bytes())
             .saturating_sub(previous);
         if used.saturating_add(bytes) > self.policy.max_resource_bytes {
             return false;
@@ -330,6 +331,7 @@ impl ResidentTranscriptCore {
         self.resident
             .resource_slice_bytes
             .saturating_add(self.indexed_resources.encoded_bytes())
+            .saturating_add(self.inline_table_layout_bytes())
             .saturating_sub(entry.layout_bytes)
             .saturating_add(bytes)
             <= self.policy.max_resource_bytes

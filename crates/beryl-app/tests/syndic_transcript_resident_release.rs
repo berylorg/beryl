@@ -366,6 +366,118 @@ fn obsolete_release_preserves_visible_anchor_and_selection_pin() {
 }
 
 #[test]
+fn obsolete_inline_table_releases_model_layout_and_source_ownership() {
+    let source = "| first | second |\r\n|:---|---:|\r\n| a | b |\r\n";
+    let prepared = std::sync::Arc::new(
+        syndic_storage::inline_table::prepare_inline_table(
+            syndic_storage::ProjectionPayload::InlineMarkdown {
+                block_id: syndic_storage::MarkdownBlockId::from_bytes([88; 32]),
+                block_kind: syndic_storage::MarkdownBlockKind::Table,
+                span_ordinal: 1,
+                source_range: syndic_storage::ProjectionSourceRange::new(0, source.len() as u64)
+                    .unwrap(),
+                source: source.into(),
+            },
+            usize::MAX,
+        )
+        .unwrap(),
+    );
+    let lifetime = std::sync::Arc::downgrade(&prepared);
+    let view = view_id();
+    let mut provider = InMemorySyndicTranscriptProvider::new();
+    provider.set_revision(REVISION);
+    let table_projection_id = projection_id("table");
+    let mut table_view = view_record(
+        &view,
+        10,
+        "table",
+        table_projection_id.clone(),
+        TranscriptNarrativeKind::AssistantCommentary,
+    );
+    table_view.provenance.block_id = Some([88; 32]);
+    table_view.provenance.source_range = Some(0..source.len() as u64);
+    table_view.provenance.copy_source_range = table_view.provenance.source_range.clone();
+    provider.insert_projection_record(ProjectionRecord {
+        id: table_projection_id,
+        revision: ProviderRevision(0),
+        kind: ProjectionRecordKind::InlineTable,
+        payload: ProjectionPayload::InlineTable { prepared },
+        provenance: table_view.provenance.clone(),
+    });
+    provider.insert_projection_record(text_projection(&view, 20, "text"));
+    provider.insert_view_records(
+        view.clone(),
+        vec![
+            table_view,
+            view_record(
+                &view,
+                20,
+                "text",
+                projection_id("text"),
+                TranscriptNarrativeKind::AssistantCommentary,
+            ),
+        ],
+    );
+    let mut core = ResidentTranscriptCore::new(ResidentTranscriptPolicy::default());
+    admit_start_page_and_projections(&mut core, &mut provider, &view);
+    drop(provider);
+    let revision = core.presentation_snapshot().presentation_revision;
+    let owner = {
+        let snapshot = core.presentation_snapshot();
+        let record = &snapshot.records[0];
+        let ResidentPresentationRecordKind::InlineTable { prepared } = &record.kind else {
+            panic!("typed inline Table")
+        };
+        InlineTableOwner {
+            view_id: view,
+            record_id: record.id.clone(),
+            activation_revision: snapshot.activation_revision,
+            provenance: record.provenance.clone(),
+            prepared: prepared.clone(),
+        }
+    };
+    core.push_demand_fact(DemandFact::new(
+        revision,
+        DemandFactKind::VisibleRange { range: 0..1 },
+    ));
+    core.push_demand_fact(DemandFact::new(
+        revision,
+        DemandFactKind::CurrentAnchor {
+            record_id: Some(owner.record_id.clone()),
+            position: Some(TranscriptViewPosition(10)),
+        },
+    ));
+    assert!(core.inline_table_current(&owner));
+    assert!(core.reserve_inline_table_layout(&owner, 65_536));
+    assert_eq!(core.core_snapshot().resident.resource_bytes, 65_536);
+    let text_id = presentation_record_id_by_text(&core, "text-text");
+    core.push_demand_fact(DemandFact::new(
+        revision,
+        DemandFactKind::VisibleRange { range: 1..2 },
+    ));
+    core.push_demand_fact(DemandFact::new(
+        revision,
+        DemandFactKind::CurrentAnchor {
+            record_id: Some(text_id),
+            position: Some(TranscriptViewPosition(20)),
+        },
+    ));
+    core.push_demand_fact(DemandFact::new(
+        revision,
+        DemandFactKind::ObsoleteRange { range: 0..1 },
+    ));
+    assert_eq!(core.release_obsolete_resident_data(), 1);
+    assert!(!core.inline_table_current(&owner));
+    assert!(!core.reserve_inline_table_layout(&owner, 65_536));
+    let snapshot = core.core_snapshot();
+    assert_eq!(snapshot.resident.resource_bytes, 0);
+    assert_eq!(snapshot.resident.projection_record_count, 1);
+    assert_eq!(presentation_texts(&snapshot), vec!["text-text"]);
+    drop(owner);
+    assert!(lifetime.upgrade().is_none());
+}
+
+#[test]
 fn resource_pin_preserves_metadata_and_slice_during_obsolete_release() {
     let (mut core, mut provider, resource_id) = seed_resource_presentation();
     let metadata_request = core

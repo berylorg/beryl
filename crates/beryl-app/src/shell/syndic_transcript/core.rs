@@ -47,8 +47,11 @@ const FALLBACK_RECORD_ESTIMATED_BYTES: usize = 96;
 const GEOMETRY_PLACEHOLDER_BYTES_PER_RECORD: usize = 32;
 const PIN_PLACEHOLDER_BYTES: usize = 64;
 
+#[path = "core/inline_table.rs"]
+mod inline_table;
 #[path = "core/resource_delivery.rs"]
 mod resource_delivery;
+pub(crate) use inline_table::InlineTableOwner;
 pub(crate) use resource_delivery::ResourceTranscriptDemand;
 
 #[derive(Clone, Debug)]
@@ -65,6 +68,7 @@ pub(crate) struct ResidentTranscriptCore {
     active_context_menu_target: Option<ResidentTranscriptContextMenuTarget>,
     active_media_action_target: Option<ResidentTranscriptMediaActionTarget>,
     indexed_resources: resource_delivery::IndexedResidency,
+    inline_table_layouts: Vec<inline_table::InlineTableLayout>,
 }
 
 impl Default for ResidentTranscriptCore {
@@ -150,6 +154,7 @@ impl ResidentTranscriptCore {
             active_context_menu_target: None,
             active_media_action_target: None,
             indexed_resources: Default::default(),
+            inline_table_layouts: Vec::new(),
         }
     }
 
@@ -967,6 +972,7 @@ impl ResidentTranscriptCore {
         self.prune_stale_pins();
         self.refresh_resident_record_counts();
         self.reconcile_indexed_resources(&self.protected_presentation_record_ids());
+        self.reconcile_inline_tables();
         self.refresh_budget_accounting();
 
         self.record_release_decision(ResidentReleaseDecision {
@@ -2607,6 +2613,7 @@ impl ResidentTranscriptCore {
 
     fn trim_resource_slices_to_policy(&mut self) {
         while resource_slice_bytes(&self.resident.resource_slices)
+            .saturating_add(self.inline_table_layout_bytes())
             .saturating_add(self.indexed_resources.encoded_bytes())
             > self.policy.max_resource_bytes
             && !self.resident.resource_slices.is_empty()
@@ -2624,6 +2631,7 @@ impl ResidentTranscriptCore {
 
     fn clear_resource_residency(&mut self) {
         self.indexed_resources = Default::default();
+        self.inline_table_layouts.clear();
         self.clear_active_media_action_target_state();
         self.resident.resource_metadata = Arc::default();
         self.resident.resource_slices = Arc::default();
@@ -2691,6 +2699,7 @@ impl ResidentTranscriptCore {
     }
 
     fn refresh_budget_accounting(&mut self) {
+        self.reconcile_inline_tables();
         self.resident.resource_metadata_count = self.resident.resource_metadata.len();
         self.resident.resource_slice_count = self.resident.resource_slices.len();
         self.resident.projection_bytes =
@@ -2700,7 +2709,8 @@ impl ResidentTranscriptCore {
         self.resident.resource_bytes = self
             .resident
             .resource_slice_bytes
-            .saturating_add(self.indexed_resources.encoded_bytes());
+            .saturating_add(self.indexed_resources.encoded_bytes())
+            .saturating_add(self.inline_table_layout_bytes());
         self.resident.geometry_bytes = self
             .presentation
             .records
@@ -3087,6 +3097,13 @@ fn projection_estimated_bytes(records: &[ProjectionRecord]) -> usize {
     records
         .iter()
         .map(|record| match &record.payload {
+            ProjectionPayload::InlineTable { prepared } => prepared
+                .retained_bytes()
+                .saturating_add(2 * std::mem::size_of::<usize>()),
+            ProjectionPayload::InlineTableUnavailable { source, .. } => source
+                .len()
+                .next_multiple_of(std::mem::align_of::<usize>())
+                .saturating_add(2 * std::mem::size_of::<usize>()),
             ProjectionPayload::Text { text, plain_text } => text
                 .len()
                 .saturating_add(plain_text.as_deref().map_or(0, str::len)),
@@ -3219,6 +3236,24 @@ fn presentation_record_for_projection(
     presentation_revision: u64,
 ) -> ResidentPresentationRecord {
     let (kind, estimated_bytes) = match &projection_record.payload {
+        ProjectionPayload::InlineTable { prepared } => (
+            ResidentPresentationRecordKind::InlineTable {
+                prepared: prepared.clone(),
+            },
+            prepared
+                .retained_bytes()
+                .saturating_add(2 * std::mem::size_of::<usize>()),
+        ),
+        ProjectionPayload::InlineTableUnavailable { source, reason } => (
+            ResidentPresentationRecordKind::InlineTableUnavailable {
+                source: source.clone(),
+                reason: *reason,
+            },
+            source
+                .len()
+                .next_multiple_of(std::mem::align_of::<usize>())
+                .saturating_add(2 * std::mem::size_of::<usize>()),
+        ),
         ProjectionPayload::Text { text, plain_text } => (
             ResidentPresentationRecordKind::TextChunk {
                 narrative_kind: view_record.narrative_kind.clone(),
@@ -3247,6 +3282,18 @@ fn presentation_record_for_projection(
             &projection_record.payload,
             projection_record.provenance.block_id,
         ) {
+            (
+                ProjectionPayload::InlineTable { .. }
+                | ProjectionPayload::InlineTableUnavailable { .. }
+                | ProjectionPayload::ResourceReference {
+                    resource_kind: ResourceKind::Table,
+                    ..
+                },
+                Some(block),
+            ) => ResidentPresentationRecordId(format!(
+                "view:{}:table:{block:?}",
+                projection_record.provenance.view_id.0
+            )),
             (
                 ProjectionPayload::ResourceReference {
                     resource_kind: ResourceKind::Code,

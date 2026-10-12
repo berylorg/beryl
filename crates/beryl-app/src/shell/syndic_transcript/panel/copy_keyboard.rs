@@ -24,7 +24,7 @@ pub(super) enum CopyTarget {
     Table {
         id: u64,
         revision: super::super::ProviderRevision,
-        root: [u8; 32],
+        root: Option<[u8; 32]>,
         selection: super::table_viewport::TableSelection,
     },
 }
@@ -119,10 +119,20 @@ impl SyndicTranscriptPanel {
         for table in &mut self.table_panels {
             if table.actions.copy_pending() {
                 table.actions.cancel_copy("Copy superseded");
-                self.host.reserve_indexed_layout(
-                    &table.viewport.owner,
-                    table.viewport.charge() + table.actions.charge(),
-                );
+                match &table.viewport.owner {
+                    super::table_owner::TableOwner::Indexed(owner) => {
+                        self.host.reserve_indexed_layout(
+                            owner,
+                            table.viewport.charge() + table.actions.charge(),
+                        );
+                    }
+                    super::table_owner::TableOwner::Inline(owner) => {
+                        self.host.reserve_inline_table_layout(
+                            owner,
+                            table.viewport.charge() + table.actions.charge(),
+                        );
+                    }
+                }
             }
         }
     }
@@ -144,8 +154,12 @@ impl SyndicTranscriptPanel {
             .and_then(|table| {
                 Some(CopyTarget::Table {
                     id,
-                    revision: table.viewport.owner.revision,
-                    root: table.viewport.root.as_ref()?.digest,
+                    revision: table.viewport.owner.provider_revision(),
+                    root: if table.viewport.owner.inline().is_some() {
+                        None
+                    } else {
+                        Some(table.viewport.root.as_ref()?.digest)
+                    },
                     selection: table.viewport.selection.clone()?,
                 })
             });

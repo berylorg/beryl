@@ -34,7 +34,9 @@ pub(super) fn run_table_fixture(
             };
             if let Err(payload) = outcome {
                 *result.borrow_mut() = Some(payload);
-                retire_code_fixture(window, &panel, cx).await;
+                if window.read_with(cx, |_, _| ()).is_ok() {
+                    retire_code_fixture(window, &panel, cx).await;
+                }
             }
         })
     });
@@ -141,7 +143,7 @@ pub(super) fn cell_point(
     row: u64,
     column: u64,
 ) -> gpui::Point<gpui::Pixels> {
-    let (_, bounds, header, height, width) = panel.table_viewport_for_test().unwrap();
+    let (bounds, header, height, width) = table_geometry(panel).unwrap();
     let diagnostics = panel.diagnostic_snapshot();
     let table = &diagnostics.table_panels[0];
     assert!(table.realized_columns.contains(&column));
@@ -160,6 +162,20 @@ pub(super) fn cell_point(
         .intersect(if row == 0 { &header } else { &bounds });
     assert!(visible.size.width > px(0.0) && visible.size.height > px(0.0));
     visible.center()
+}
+
+pub(super) fn table_geometry(
+    panel: &SyndicTranscriptPanel,
+) -> Option<(
+    gpui::Bounds<gpui::Pixels>,
+    gpui::Bounds<gpui::Pixels>,
+    f32,
+    f32,
+)> {
+    panel
+        .table_viewport_for_test()
+        .map(|(_, bounds, header, height, width)| (bounds, header, height, width))
+        .or_else(|| panel.inline_table_viewport_for_test())
 }
 
 pub(super) async fn ready(
@@ -209,9 +225,8 @@ async fn ready_with_visibility(
                         .table_panels
                         .first()
                         .is_some_and(|table| table.cells > 0 && !table.pending)
-                        && panel
-                            .table_viewport_for_test()
-                            .is_some_and(|(_, bounds, _, _, _)| bounds.size.height > px(0.0))
+                        && table_geometry(panel)
+                            .is_some_and(|(bounds, _, _, _)| bounds.size.height > px(0.0))
                         && panel.measured_frame_for_test().is_some()
                         && panel.table_commands_current_for_test()
                 })

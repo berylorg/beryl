@@ -27,6 +27,14 @@ impl SyndicTranscriptPanel {
         self.begin_table_save_range(id, Some(row), cx);
     }
     fn begin_table_save_range(&mut self, id: u64, row: Option<u64>, cx: &mut Context<Self>) {
+        if self
+            .table_panels
+            .iter()
+            .any(|table| table.id == id && table.viewport.owner.inline().is_some())
+        {
+            self.begin_inline_table_save(id, row, cx);
+            return;
+        }
         let Some(table) = self.table_panels.iter_mut().find(|table| table.id == id) else {
             return;
         };
@@ -35,10 +43,14 @@ impl SyndicTranscriptPanel {
             cx.notify();
             return;
         }
-        let Some(owner) = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id)
-        else {
+        let Some(owner) = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        ) else {
             table.actions.feedback = "Save unavailable: retired source";
             cx.notify();
             return;
@@ -54,7 +66,7 @@ impl SyndicTranscriptPanel {
                 .fallback_rows()
                 .into_iter()
                 .find(|(id, _)| id.role == index::RowRole::Body && id.row == row)
-                .and_then(|(_, descriptor)| descriptor.absolute_raw)
+                .and_then(|(_, descriptor)| descriptor.raw)
             else {
                 table.actions.feedback = "Save unavailable: raw row missing";
                 cx.notify();
@@ -142,9 +154,14 @@ impl SyndicTranscriptPanel {
         else {
             return;
         };
-        let owner = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id);
+        let owner = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        );
         if owner.as_ref().is_none_or(|owner| {
             !save.current_exact(
                 owner,
@@ -189,13 +206,18 @@ impl SyndicTranscriptPanel {
         cx.notify();
     }
     pub(super) fn refresh_table_source_reservation(&mut self, id: u64) {
-        if let Some(table) = self.table_panels.iter().find(|table| table.id == id)
-            && let Some(owner) = self
-                .host
-                .indexed_resource_owner(&table.viewport.owner.resource_id)
-        {
-            self.host
-                .reserve_indexed_layout(&owner, table.viewport.charge() + table.actions.charge());
+        if let Some(table) = self.table_panels.iter().find(|table| table.id == id) {
+            let bytes = table.viewport.charge() + table.actions.charge();
+            match &table.viewport.owner {
+                super::table_owner::TableOwner::Inline(owner) => {
+                    self.host.reserve_inline_table_layout(owner, bytes);
+                }
+                super::table_owner::TableOwner::Indexed(owner) => {
+                    if let Some(owner) = self.host.indexed_resource_owner(&owner.resource_id) {
+                        self.host.reserve_indexed_layout(&owner, bytes);
+                    }
+                }
+            }
         }
     }
     fn await_table_save(
@@ -233,9 +255,14 @@ impl SyndicTranscriptPanel {
         else {
             return;
         };
-        let owner = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id);
+        let owner = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        );
         if result == SaveResult::Published {
             table.actions.cancel_save("Saved");
         } else if let SaveResult::Failed(reason) = result {
@@ -269,10 +296,14 @@ impl SyndicTranscriptPanel {
         let Some(save) = &table.actions.save else {
             return false;
         };
-        let Some(owner) = self
-            .host
-            .indexed_resource_owner(&table.viewport.owner.resource_id)
-        else {
+        let Some(owner) = self.host.indexed_resource_owner(
+            &table
+                .viewport
+                .owner
+                .indexed()
+                .expect("indexed Table action")
+                .resource_id,
+        ) else {
             table
                 .actions
                 .cancel_save("Save unavailable: retired source");
