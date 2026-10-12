@@ -740,3 +740,57 @@ Save-owned source/test hashes to accepted inputs. Text-input's published two-lin
 correction matches the unchanged accepted behavior; no retained prior raw test hash is claimed.
 Temporary verification inputs and fixture homes reached their last review consumer at acceptance;
 this record and version control retain the durable outcome. Table mounting remains unaccepted.
+
+## Mounted Indexed Table Readiness
+
+Readiness inspection on 2026-10-12 continued from accepted Code mounting. This checkpoint is source
+evidence and a proposed product clarification; it does not accept Table rendering or interaction.
+
+The [Table widget](../gui/widgets/table-panel/spec.md) requires bounded realization on both axes,
+stable header/body row and column identities, owner-projected cell fragments, rectangular selection,
+aligned headers, local whole-row fallback and measured outer geometry. The
+[structural-query authority](../systems/syndic-conversation-history/design.md#indexed-text-resource-structure-queries)
+already defines exact immutable binding, row/column query continuation, raw/trimmed source ranges,
+explicit empty versus missing cells, alignment and source-anchor lookup. The feature
+[composition](../features/transcript/gui.md#transcript-region) configures both Copy and streaming Save.
+
+Existing implementation facts:
+
+- `syndic-storage/src/resource_structure.rs::Descriptor` supplies Table row, cell and column
+  descriptors. `resource_structure/query_response.rs::Request::Table` addresses one header/body
+  role and bounded row/column ranges; `Item::Missing` distinguishes absent authored cells.
+- `beryl-app/src/transcript_provider/resources/indexed.rs` transports range, display and anchor
+  results through the existing selected-history worker. The focused provider case
+  `selected_narrow_table_delivery_preserves_empty_missing_alignment_and_exact_source` exercises
+  a narrow rectangle with explicit empty/missing cells and Center alignment. This inspection
+  does not claim a new test run or mounted native acceptance.
+- `transcript_provider/resources/indexed/source.rs::read_code_source_response` admits only Code
+  bindings, and the Source query authenticates its root through an empty Code request. Generalize
+  this exact-source path for Table rather than adding widget-owned storage reads.
+- `shell/syndic_transcript/core/resource_delivery.rs::code_panel_demands` enumerates only ready
+  Code panels. `core/resource_delivery/indexed.rs` retains continuation pages only for a bounded
+  Code-line request and validates Source responses only for Code. Table mounting needs bounded
+  rectangle/header retention and ready-panel enumeration through this same admission owner.
+- `shell/syndic_transcript/panel.rs` mounts retained Code panels; Table still follows the generic
+  resource shell. Code's native Save publication and shutdown custody are qualified reuse inputs,
+  whose Table integration still requires behavior evidence.
+
+The readiness inspection identified a product decision about the clipboard representation of a
+partial rectangle. For a source row `x|y|z`, selecting only the middle cell could produce its source spelling,
+the complete original row, or a spreadsheet-oriented value. These differ in included columns,
+Markdown escaping, whitespace and treatment of missing cells. Current authority says the owner
+supplies the representation and prohibits treating painted text as source, but does not select
+one of these product behaviors.
+
+The initial proposal was selected-cell Markdown with source spelling preserved and export syntax
+distinguished from authored bytes. Operator resolved and broadened the target on 2026-10-12:
+transcript-wide keyboard Copy supports two methods, with one distinct `Ctrl+C` press copying
+Markdown and a quick second distinct press copying best-effort stripped text. The initial inverse
+ordering was explicitly corrected by the Operator before implementation. This removes the format
+clarification blocker; the feature design records the corrected product contract.
+
+Shared source-based conversion and keyboard routing now have a separate preceding acceptance
+boundary. Table then integrates both methods, including header/delimiter inclusion and explicit
+empty/missing-cell behavior. Whole-source Save and raw-row fallback actions retain their source
+authority. The other identified gaps remain bounded Table mounting prerequisites. No new keyboard,
+conversion or mounted Table runtime acceptance is claimed by this documentation update.

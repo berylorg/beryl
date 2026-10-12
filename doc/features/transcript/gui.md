@@ -35,6 +35,12 @@ For range-backed code and table resources, the feature configures clipboard-limi
 streaming `Save…` commands over the same exact source identity; it never derives either command from
 painted or currently realized content.
 
+The transcript owner routes keyboard Copy uniformly across the `transcript view`, `code panel`
+and `table panel` using the two methods in the feature design: the first `Ctrl+C` press requests
+Markdown and a quick second distinct press requests stripped text for the same selection. Nested
+widget handlers participate in that owner routing without also firing an outer Copy. The code
+panel's own bare-text Copy action retains its canonical contract.
+
 ## Transcript Menus And Previews
 
 Mount-into: main-window.overlays

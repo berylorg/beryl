@@ -100,9 +100,24 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - A rendered synthetic discussion-context item permits ordinary text selection and copy but never quote harvesting, replacement edit, branch creation, or an ordinary turn context menu.
 - In streamed huge-content mode, transcript-level selection does not span through unrendered chunks.
 - Nested widgets expose their own copy and selection contracts for their visible resource ranges.
-- Copy reconstructs a contiguous clipboard representation only after the exact selected logical
-  range fits the explicit platform clipboard limit. Rejection is explicit and preserves the
-  selection. A nested resource that supports arbitrary-size source ranges exposes streaming
+- Transcript keyboard Copy has two methods across ordinary narrative, synthetic discussion
+  context and nested text resources. One distinct `Ctrl+C` press copies Markdown; a quick second
+  distinct press copies a best-effort plain-text representation with Markdown formatting removed.
+  The first press starts its copy immediately without waiting to distinguish a double press. The
+  second replaces that clipboard value for the same unchanged eligible selection. Key autorepeat
+  does not count as the second press; changed selection, focus, source identity or revision breaks
+  the sequence. This contract belongs to the transcript and does not change composer/text-field
+  hotkeys or image-file Copy.
+- Markdown Copy preserves selected source spelling, escaping and authored whitespace. A Table
+  rectangle copies the selected cells as Markdown rather than expanding to unselected columns.
+  Export separators are representation syntax, not invented authored content. Plain Copy strips
+  presentation markup on a best-effort basis while preserving readable content and line structure;
+  literal code remains literal content in both methods. Unsupported or ambiguous syntax remains
+  readable rather than dropping uncertain content. Neither method copies fallback labels,
+  truncation ellipses or pending placeholders as authored text.
+- Copy reconstructs a contiguous clipboard representation only after the selected source and
+  resulting representation fit their explicit admitted limits. Rejection is explicit and preserves
+  the selection. A nested resource that supports arbitrary-size source ranges exposes streaming
   `Save…` as the non-clipboard path; neither action reads renderer text or painted pixels as source.
 - Code's `Save…` opens the native save dialog for the complete exact source, including content
   outside the realized window. An existing destination is replaced only after the user confirms

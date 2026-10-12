@@ -107,8 +107,37 @@ and canonical locked metadata resolve one GPUI; widget and root production check
 analyzer restarted. Durable qualification and reused evidence are in the
 [mounting audit](audits/transcript-mounting-readiness.md#mounted-indexed-code-acceptance).
 
+# Phase 764: Implement The Transcript Two-Method Keyboard Copy Contract (pending)
+
+Operator selected transcript-wide keyboard Copy on 2026-10-12, correcting its order to one
+distinct `Ctrl+C` press for Markdown and a quick second distinct press for best-effort stripped
+text. The [transcript feature](features/transcript/design.md#selection-copy-quote-and-menus) owns
+that product contract. Establish its shared bounded representation and gesture routing before
+Table mounting; this is a distinct acceptance boundary, not an expansion of the Table widget.
+
+Readiness must qualify the source-owned plain-text conversion, partial-selection mappings,
+bounded gesture interval and async supersession through the existing provider/residency owner.
+Do not implement conversion by stripping rendered strings or reparsing Markdown on the GUI thread.
+Verify real native keyboard input across ordinary transcript, synthetic context and mounted Code:
+immediate first copy, second-method replacement, literal-code preservation, key autorepeat,
+changed selection/focus/source, overlapping completions, capacity/write failure and disposal.
+Table mounting subsequently integrates the accepted shared contract and qualifies both rectangle
+representations in its own native acceptance boundary. Save remains source-based.
+
 # Phase 763: Mount The Indexed Transcript Table Panel (pending)
 
 Mount the authoritative Table panel with bounded row/column virtualization, owner-projected cells,
 alignment/header and whole-row fallback, exact source actions and anchors. Verify actual native
 interaction, inner demand/disposal and coherent measured outer geometry.
+
+Readiness checkpoint on 2026-10-12: indexed Table descriptors, alignment, missing/empty distinctions
+and anchor transport exist. Mounted source reads, bounded continuation retention and ready-panel
+demand enumeration still have Code-only restrictions; generalize those bounded prerequisites within
+this acceptance boundary. Preserve the accepted Code behavior and original-root Save custody.
+
+Operator resolved the representation choice: first `Ctrl+C` copies selected-cell Markdown; a
+quick second distinct press copies best-effort stripped text. Integrate the shared transcript Copy
+contract after its preceding acceptance boundary, including Table header/delimiter handling,
+empty/missing cells and explicit raw-row fallback actions. Do not silently expand a selection to
+unselected columns or substitute displayed values for original Markdown source. Findings are in the
+[Table readiness checkpoint](audits/transcript-mounting-readiness.md#mounted-indexed-table-readiness).

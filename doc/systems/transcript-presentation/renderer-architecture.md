@@ -417,6 +417,16 @@ Synthetic discussion-context chunks permit selection and copy when their geometr
 
 In streamed huge-content mode, transcript-level selection does not span through unrendered chunks. Nested widgets expose their own copy and selection contracts for resident resource ranges.
 
+The transcript Copy owner captures one exact eligible selection and its source/revision binding,
+then requests the feature-selected Markdown or stripped-text representation through admitted
+source data. Both methods preserve that provenance; stripped text is a derived representation,
+never text harvested from paint. Representation work observes the existing bounded worker and
+residency ownership: widgets do not reparse Markdown, fetch storage or retain another complete
+transcript model. Each clipboard publication checks that its captured selection and source remain
+current. A later method request supersedes an earlier unfinished representation so late Markdown
+completion cannot replace the requested stripped-text result. Failed or rejected representation
+requests preserve the selection and do not publish a partial clipboard value.
+
 If virtualization, release, remeasurement, or missing data destroys stable selection geometry, the selection or quote affordance closes instead of pinning unbounded offscreen content.
 
 ## Invariants
