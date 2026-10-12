@@ -136,13 +136,13 @@ source validation, stale-result rejection and measured publication, then mount t
 its stable selection and source actions in the ordinary transcript renderer; no widget loader or
 independent resource cache is permitted.
 
-Operator clarified that Markdown preserves the original table verbatim, including empty rows and
-cells, while text mode omits empty rows and trailing empty/missing cells. Feature and system
-authority now record those settled mode requirements. The remaining question is whether a partial
-rectangle keeps only selected cells with necessary export separators, as the existing feature
-contract requires, or copies the complete original table irrespective of selection. Do not choose
-that selection-scope change implicitly. Dependent Markdown export awaits Operator clarification;
-independent bounded retention and mounting prerequisites may proceed.
+Operator resolved selection scope: cells are indivisible selection units, and Copy includes only
+selected cells. Partial Markdown exports preserve raw selected cell spelling, whitespace and empty
+cells with necessary separators; selecting all cells permits verbatim whole-table source Copy.
+Selected headers include selected-column delimiters; body-only selection adds no header. Text
+exports omit empty rows and trailing empty/missing cells while preserving interior gaps. Feature,
+widget and system authority now resolve the clipboard blocker. Continue bounded retention,
+cell selection, mounting and shared Copy integration through the existing measured host.
 
 Acceptance requires focused provider/core tests for bounded header/body continuation, exact source
 and anchors, replacement/release and refusal; native mounted scrolling on both axes, focus/range

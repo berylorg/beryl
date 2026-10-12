@@ -823,11 +823,12 @@ Operator subsequently clarified the empty-content behavior: Markdown must preser
 table verbatim, including empty rows and cells; text mode omits empty rows and trailing empty or
 missing cells. The feature records this product behavior and the structural system retains
 empty/missing distinctions in descriptors and raw source authority, allowing the text export's
-intentional omission. A remaining selection-scope clarification concerns verbatim whole-table
-source versus selected-cell source with necessary export separators for a partial rectangle.
-The existing feature still prohibits including unselected columns; no implicit scope change is
-implemented. Bounded header/body retention, two-axis mounting, export and native Table acceptance
-remain outstanding.
+intentional omission. Operator then resolved selection scope: each cell is an indivisible
+selection unit, and only selected cells are copied. A partial rectangle preserves selected raw
+cell spelling with necessary export separators; selecting all cells permits verbatim whole-table
+source. The feature and widget record cell selection rather than character endpoints or text spans
+crossing cells. The clipboard clarification blocker is resolved. Bounded header/body retention,
+two-axis mounting, export and native Table acceptance remain outstanding.
 
 ## Shared Transcript Keyboard Copy Acceptance
 

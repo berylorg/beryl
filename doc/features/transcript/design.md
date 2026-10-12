@@ -120,6 +120,13 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
   the table or pad missing cells. Table text-mode Copy omits empty rows and trailing empty or
   missing cells, while retaining interior empty cells between nonempty selected cells. These
   omissions apply only to Table text-mode Copy; literal code retains its existing behavior.
+- Table selection uses whole cells as indivisible units, with a rectangular range of stable cell
+  identities. It never selects character endpoints or a continuous text span across cell boundaries.
+  Copy includes only selected cells. Partial-table Markdown Copy preserves their exact raw cell
+  spelling, escaping, whitespace and empty cells, adding only necessary export separators. A
+  selected header includes delimiter syntax for selected columns; body-only selection adds no
+  unselected header. Selecting all table cells permits verbatim whole-table source Copy without
+  changing partial-selection scope.
 - Copy reconstructs a contiguous clipboard representation only after the selected source and
   resulting representation fit their explicit admitted limits. Rejection is explicit and preserves
   the selection. A nested resource that supports arbitrary-size source ranges exposes streaming

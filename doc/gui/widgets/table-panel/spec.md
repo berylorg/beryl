@@ -51,6 +51,11 @@ Arrow keys move the focused cell through realized row and column identities. Hom
 
 Shift-modified navigation extends a rectangular selection through resident eligible cells. Selection identity is expressed by stable row and column identities, not visible indices. Selection cannot span an unrealized gap; attempting to extend through one reports demand and preserves the last coherent resident selection.
 
+Each eligible cell is an indivisible selection unit. Pointer activation selects that whole cell;
+Shift-modified pointer activation extends the rectangle to the activated cell. The widget never
+creates character-level selection inside a cell or a continuous text span crossing cell boundaries.
+The owner receives the selected cell identities for Copy, not painted text endpoints.
+
 Copy requests use the owner-supplied source representation for the selected stable range and
 reconstruct a contiguous platform value only after its exact logical size fits the admitted
 clipboard limit. Rejection preserves the stable selection. Owner-supplied `Save…` may stream a
