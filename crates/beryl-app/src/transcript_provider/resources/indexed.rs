@@ -134,35 +134,45 @@ impl TranscriptProviderReader {
                 )
                 .map(|value| transport(value, IndexedResourceValue::Anchor))
                 .map_err(indexed_error),
-            IndexedResourceQuery::Source { bytes, .. } => self
-                .syndic
-                .read_frozen_indexed_resource_range(
-                    &self.home,
-                    &frozen,
-                    &binding,
-                    request.root,
-                    index::Request::Code {
+            IndexedResourceQuery::Source { bytes, .. } => (|| {
+                let structure = match binding.metadata.kind() {
+                    syndic_storage::ResourceKind::Code => index::Request::Code {
                         lines: index::OrdinalRange { start: 0, end: 0 },
                     },
-                    None,
-                    index::ResponseLimits {
-                        descriptors: 1,
-                        bytes: (*bytes).min(8192),
+                    syndic_storage::ResourceKind::Table => index::Request::Table {
+                        role: index::RowRole::Body,
+                        rows: index::OrdinalRange { start: 0, end: 0 },
+                        columns: index::OrdinalRange { start: 0, end: 0 },
                     },
-                )
-                .map_err(indexed_error)
-                .and_then(|value| match value {
-                    index::IndexedResourceResult::Pending => Ok(IndexedResourceResponse {
-                        root: None,
-                        value: IndexedResourceValue::Pending,
-                        encoded_bytes: 1,
-                    }),
-                    index::IndexedResourceResult::Ready {
-                        root,
-                        encoded_bytes,
-                        ..
-                    } => self.read_code_source_response(&request, &binding, root, encoded_bytes),
-                }),
+                    _ => return Err(TranscriptAttachmentError::Unavailable),
+                };
+                self.syndic
+                    .read_frozen_indexed_resource_range(
+                        &self.home,
+                        &frozen,
+                        &binding,
+                        request.root,
+                        structure,
+                        None,
+                        index::ResponseLimits {
+                            descriptors: 1,
+                            bytes: (*bytes).min(8192),
+                        },
+                    )
+                    .map_err(indexed_error)
+                    .and_then(|value| match value {
+                        index::IndexedResourceResult::Pending => Ok(IndexedResourceResponse {
+                            root: None,
+                            value: IndexedResourceValue::Pending,
+                            encoded_bytes: 1,
+                        }),
+                        index::IndexedResourceResult::Ready {
+                            root,
+                            encoded_bytes,
+                            ..
+                        } => self.read_source_response(&request, &binding, root, encoded_bytes),
+                    })
+            })(),
         };
         self.home
             .release_frozen_read(&frozen)

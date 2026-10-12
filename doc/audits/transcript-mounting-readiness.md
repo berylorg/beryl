@@ -795,6 +795,39 @@ empty/missing-cell behavior. Whole-source Save and raw-row fallback actions reta
 authority. The other identified gaps remain bounded Table mounting prerequisites. No new keyboard,
 conversion or mounted Table runtime acceptance is claimed by this documentation update.
 
+### Exact Table Source Prerequisite Checkpoint
+
+Continuation on 2026-10-12 generalized the selected-history Source path to Code and Table.
+The provider authenticates the exact companion with an empty query of the backing's kind,
+then reads at most 8,192 original source bytes per page under the existing root, backing,
+revision, budget and publication election. Residency additionally requires the response metadata
+kind to match its Code/Table owner. No Table renderer, clipboard export or alternate loader is
+introduced by this prerequisite.
+
+Eleven focused current cases passed with unchanged production inputs: five existing provider
+cases and the Code admission case from `aab58c34-bcc4-46bc-bff9-f6eb1be38e99`, three ready Table
+provider cases and corrected admitted-payload release from
+`582c9adf-4cd3-45dc-984b-fb683f87d3d5`, and the corrected companion-discovery case from
+`4ab252d3-cd3c-4836-9cb6-7a77530939f3`. The earlier runs also contained superseded fixture failures,
+which are excluded from that current count. Fixtures were corrected to use a resource-relative
+header interval, force a split UTF-8 scalar, and distinguish exact-root refusal from rootless
+Pending discovery. An incidental unchanged stable-source-identity case also passed. All runs used
+the local stable Cargo configuration, locked/offline dependencies, one build job, no debug data or
+incremental compilation, `test-faults` and serial nextest. Independent semantic review found no
+source defect. These tests exercise provider/storage and the GPUI test host; they do not prove
+native mounted Table interaction or clipboard/Save behavior. The production `beryl-app --lib`
+check passed under the same local stable locked/offline configuration. Independent review accepted
+this exact-source prerequisite after the corrected tests and production check completed.
+
+The remaining clipboard clarification follows from the feature's selected-cell Markdown contract
+and the structural system's requirement to distinguish authored empty and absent cells. A fixed
+rectangular Markdown export gives both the same empty slot. The proposed convention preserves raw
+selected cell intervals, emits explicit empty slots, omits trailing missing slots and represents an
+entirely missing selected row as a blank line. A selected header would include selected-column
+delimiter syntax; body-only selection would invent no header. Operator response is pending; the
+dependent export behavior is not implemented. Bounded header/body retention, two-axis mounting and
+native Table acceptance remain outstanding.
+
 ## Shared Transcript Keyboard Copy Acceptance
 
 Accepted on 2026-10-12 after independent semantic review. Mounted ordinary transcript and Code

@@ -6,6 +6,9 @@ mod code_anchors;
 #[path = "code_mount.rs"]
 mod code_mount;
 
+#[path = "table_source_admission.rs"]
+mod table_source_admission;
+
 #[gpui::test]
 fn refreshed_indexed_resources_share_the_queue_without_outer_scrolling(cx: &mut TestAppContext) {
     use crate::transcript_provider::{

@@ -1,7 +1,7 @@
 use super::*;
 
 impl TranscriptProviderReader {
-    pub(super) fn read_code_source_response(
+    pub(super) fn read_source_response(
         &self,
         request: &TranscriptIndexedResourceRequest,
         binding: &index::Binding,
@@ -12,7 +12,10 @@ impl TranscriptProviderReader {
             return Err(TranscriptAttachmentError::Identity);
         };
         if request.root != Some(root.digest)
-            || binding.metadata.kind() != syndic_storage::ResourceKind::Code
+            || !matches!(
+                binding.metadata.kind(),
+                syndic_storage::ResourceKind::Code | syndic_storage::ResourceKind::Table
+            )
             || range.start >= range.end
             || range.start < binding.range.start
             || range.end > binding.range.end

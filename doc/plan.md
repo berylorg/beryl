@@ -108,7 +108,7 @@ and the production check passed. Durable evidence and native limits are in the
 [mounting audit](audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
 Indexed Table mounting remains the next separate acceptance boundary.
 
-# Phase 763: Mount The Indexed Transcript Table Panel (pending)
+# Phase 763: Mount The Indexed Transcript Table Panel (wip)
 
 Mount the authoritative Table panel with bounded row/column virtualization, owner-projected cells,
 alignment/header and whole-row fallback, exact source actions and anchors. Verify actual native
@@ -125,3 +125,26 @@ contract after its preceding acceptance boundary, including Table header/delimit
 empty/missing cells and explicit raw-row fallback actions. Do not silently expand a selection to
 unselected columns or substitute displayed values for original Markdown source. Findings are in the
 [Table readiness checkpoint](audits/transcript-mounting-readiness.md#mounted-indexed-table-readiness).
+
+Current milestone: the selected-history exact Source path and Table Source admission are
+implemented through the existing provider/residency owner. Eleven focused prerequisite cases
+pass, including exact raw pages, refusal/currentness, Code regression and admitted-payload release;
+independent semantic review and the production library check passed. This accepts only the
+exact-source prerequisite; mounted Table behavior remains unaccepted.
+Next implement bounded header/body indexed retention, preserving Code continuation,
+source validation, stale-result rejection and measured publication, then mount the two-axis panel,
+its stable selection and source actions in the ordinary transcript renderer; no widget loader or
+independent resource cache is permitted.
+
+Clipboard representation clarification is pending Operator response: preserve explicit empty cells
+and omit trailing missing cells, or permit clipboard text to conflate them as fixed blank slots.
+The proposed source-preserving format uses a blank line for an entirely missing selected row,
+includes a selected-column delimiter only when the header is selected, and invents no body-only
+header. Do not implement the dependent export behavior until that decision is resolved in feature
+authority. Independent exact-source and demand prerequisites may proceed.
+
+Acceptance requires focused provider/core tests for bounded header/body continuation, exact source
+and anchors, replacement/release and refusal; native mounted scrolling on both axes, focus/range
+navigation, both Copy methods, fallback actions and streaming Save with native replacement custody;
+and measured outer geometry across resize/theme changes. Run affected combined qualification and
+production checks, then independent semantic review before marking this boundary finished.

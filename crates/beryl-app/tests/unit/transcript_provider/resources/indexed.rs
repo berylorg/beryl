@@ -2,6 +2,9 @@ use super::*;
 use beryl_home_store::{CommandCancellation, CurrentDomainCommand};
 use syndic_storage::indexed_resource as index;
 
+#[path = "table_source.rs"]
+mod table_source;
+
 #[test]
 fn indexed_source_pages_use_saved_raw_bytes_with_exact_root_and_release_custody() {
     let fixture = Fixture::new();

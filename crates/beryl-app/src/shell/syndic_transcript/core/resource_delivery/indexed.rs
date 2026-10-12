@@ -347,7 +347,12 @@ impl ResidentTranscriptCore {
                 }
             }
             (IndexedResourceQuery::Source { range, .. }, IndexedResourceValue::Source(value)) => {
-                if demand.kind != ResourceKind::Code
+                if !matches!(demand.kind, ResourceKind::Code | ResourceKind::Table)
+                    || !matches!(
+                        (&demand.kind, value.binding.metadata.kind()),
+                        (ResourceKind::Code, syndic_storage::ResourceKind::Code)
+                            | (ResourceKind::Table, syndic_storage::ResourceKind::Table)
+                    )
                     || !indexed_binding_matches(demand, inner, &response, &value.binding)
                     || inner.root.is_none()
                     || value.range != *range

@@ -109,6 +109,11 @@ internal contract.
   Syndic root/source facts and canonical payload charges without duplicating their binding.
   Missing companions return an explicit Pending tag (one encoded byte); failures never become
   empty Ready results.
+  Exact Source reads admit Code and Table backing only, authenticate their respective structural
+  companion through an empty typed query, and require the captured root. Each page contains at
+  most 8,192 exact source bytes within the backing range; arbitrary byte boundaries may split a
+  UTF-8 scalar. Consumers retain bounded carry when decoding contiguous pages. Source responses
+  keep the same owner, revision, cancellation and publication election as structural queries.
   `prepare_resource_delivery` and `publish_resource_delivery_if_current` dispatch raw and indexed
   requests within the same tracked selected-history worker and publication election. The native
   resource completion stages either kind through the existing measured resource candidate.
