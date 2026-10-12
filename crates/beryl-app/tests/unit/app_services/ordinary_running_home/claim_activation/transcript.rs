@@ -142,6 +142,7 @@ pub(super) async fn assert_recovered_with_records(
             let ResidentPresentationRecordKind::TextChunk {
                 narrative_kind,
                 text,
+                ..
             } = &record.kind
             else {
                 panic!("recovered resident transcript did not mount the authored text projection");

@@ -72,6 +72,7 @@ fn text_projection(view_id: &TranscriptViewId, position: u64, name: &str) -> Pro
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
         payload: ProjectionPayload::Text {
+            plain_text: None,
             text: format!("text-{name}").into(),
         },
         provenance: provenance(

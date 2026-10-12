@@ -32,7 +32,8 @@ use super::{
         ResidentSelectionCommand, ResidentSelectionOutcome, ResidentSelectionRecordGeometry,
         ResidentSelectionUnavailable, ResidentTranscriptCopyPayload,
         ResidentTranscriptQuotePayload, ResidentTranscriptQuoteTarget, ResidentTranscriptSelection,
-        resident_copy_markdown, resident_quote_markdown, resident_selected_record,
+        resident_copy_markdown, resident_copy_plain_text, resident_quote_markdown,
+        resident_selected_record,
     },
     snapshot::{
         LocalPresentationReason, ResidentFallbackTarget, ResidentPresentationRecord,
@@ -1252,6 +1253,45 @@ impl ResidentTranscriptCore {
     ) -> Result<ResidentTranscriptCopyPayload, ResidentSelectionUnavailable> {
         let mut markdown = String::new();
         let mut records = Vec::new();
+        let mut source_bytes = 0usize;
+        let mut plain_bytes = Some(0usize);
+        for selected in &selection.records {
+            let record = self
+                .presentation
+                .records
+                .iter()
+                .find(|record| record.id == selected.record_id)
+                .ok_or_else(|| ResidentSelectionUnavailable::RecordNotResident {
+                    record_id: selected.record_id.clone(),
+                })?;
+            source_bytes = source_bytes
+                .checked_add(resident_copy_markdown(record)?.len())
+                .filter(|bytes| *bytes <= 65_536)
+                .ok_or(ResidentSelectionUnavailable::CopyCapacity)?;
+            plain_bytes = match (plain_bytes, resident_copy_plain_text(record)) {
+                (Some(bytes), Some(text)) => Some(
+                    bytes
+                        .checked_add(text.len())
+                        .filter(|bytes| *bytes <= 65_536)
+                        .ok_or(ResidentSelectionUnavailable::CopyCapacity)?,
+                ),
+                _ => None,
+            };
+        }
+        markdown
+            .try_reserve_exact(source_bytes)
+            .map_err(|_| ResidentSelectionUnavailable::CopyAllocation)?;
+        records
+            .try_reserve_exact(selection.records.len())
+            .map_err(|_| ResidentSelectionUnavailable::CopyAllocation)?;
+        let mut plain_text = if let Some(bytes) = plain_bytes {
+            let mut text = String::new();
+            text.try_reserve_exact(bytes)
+                .map_err(|_| ResidentSelectionUnavailable::CopyAllocation)?;
+            Some(text)
+        } else {
+            None
+        };
 
         for selected_record in &selection.records {
             let Some(record) = self
@@ -1272,6 +1312,12 @@ impl ResidentTranscriptCore {
             }
 
             markdown.push_str(resident_copy_markdown(record)?);
+            if let Some(text) = &mut plain_text {
+                text.push_str(
+                    resident_copy_plain_text(record)
+                        .ok_or(ResidentSelectionUnavailable::CopyCapacity)?,
+                );
+            }
             records.push(current_selected_record);
         }
 
@@ -1282,7 +1328,7 @@ impl ResidentTranscriptCore {
         Ok(ResidentTranscriptCopyPayload {
             presentation_revision: self.presentation.presentation_revision,
             markdown,
-            plain_text: None,
+            plain_text,
             records,
         })
     }
@@ -2897,7 +2943,9 @@ fn projection_estimated_bytes(records: &[ProjectionRecord]) -> usize {
     records
         .iter()
         .map(|record| match &record.payload {
-            ProjectionPayload::Text { text } => text.len(),
+            ProjectionPayload::Text { text, plain_text } => text
+                .len()
+                .saturating_add(plain_text.as_deref().map_or(0, str::len)),
             ProjectionPayload::ResourceReference { label, .. } => {
                 64 + label.as_deref().map(str::len).unwrap_or(0)
             }
@@ -3024,12 +3072,14 @@ fn presentation_record_for_projection(
     presentation_revision: u64,
 ) -> ResidentPresentationRecord {
     let (kind, estimated_bytes) = match &projection_record.payload {
-        ProjectionPayload::Text { text } => (
+        ProjectionPayload::Text { text, plain_text } => (
             ResidentPresentationRecordKind::TextChunk {
                 narrative_kind: view_record.narrative_kind.clone(),
                 text: text.clone(),
+                plain_text: plain_text.clone(),
             },
-            text.len(),
+            text.len()
+                .saturating_add(plain_text.as_deref().map_or(0, str::len)),
         ),
         ProjectionPayload::ResourceReference {
             resource_id,

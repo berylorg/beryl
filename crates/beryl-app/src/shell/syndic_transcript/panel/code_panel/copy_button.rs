@@ -85,11 +85,9 @@ fn render_control(
             }),
         )
         .on_key_down(
-            cx.listener(move |panel, event: &gpui::KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.control
-                    && event.keystroke.key.eq_ignore_ascii_case("c")
-                {
-                    panel.begin_code_copy(id, true, cx);
+            cx.listener(move |panel, event: &gpui::KeyDownEvent, window, cx| {
+                if super::super::copy_keyboard::is_copy(event) {
+                    panel.copy_code_key(id, event, window, cx);
                     cx.stop_propagation();
                 } else if enabled
                     && !event.is_held

@@ -106,7 +106,10 @@ fn text_projection(
         id: projection_id.clone(),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text { text: text.into() },
+        payload: ProjectionPayload::Text {
+            plain_text: None,
+            text: text.into(),
+        },
         provenance: provenance(view_id, position, &projection_id, copy_source_range),
     }
 }
@@ -120,7 +123,10 @@ fn text_projection_with_provenance(
         id: projection_id(name),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text { text: text.into() },
+        payload: ProjectionPayload::Text {
+            plain_text: None,
+            text: text.into(),
+        },
         provenance,
     }
 }
@@ -158,6 +164,13 @@ fn handle_provider_request(
 }
 
 fn seed_text_presentation(records: &[(&str, &str, Option<Range<u64>>)]) -> ResidentTranscriptCore {
+    seed_text_presentation_with_plain(records, &[])
+}
+
+fn seed_text_presentation_with_plain(
+    records: &[(&str, &str, Option<Range<u64>>)],
+    plain: &[Option<&str>],
+) -> ResidentTranscriptCore {
     let view_id = view_id();
     let mut provider = InMemorySyndicTranscriptProvider::new();
     let mut view_records = Vec::new();
@@ -173,13 +186,12 @@ fn seed_text_presentation(records: &[(&str, &str, Option<Range<u64>>)]) -> Resid
             projection_id,
             copy_source_range.clone(),
         ));
-        provider.insert_projection_record(text_projection(
-            &view_id,
-            position,
-            name,
-            text,
-            copy_source_range.clone(),
-        ));
+        let mut projection =
+            text_projection(&view_id, position, name, text, copy_source_range.clone());
+        if let ProjectionPayload::Text { plain_text, .. } = &mut projection.payload {
+            *plain_text = plain.get(index).copied().flatten().map(Into::into);
+        }
+        provider.insert_projection_record(projection);
     }
 
     provider.insert_view_records(view_id.clone(), view_records);
@@ -524,6 +536,50 @@ fn multi_record_selection_preserves_resident_markdown_order() {
             .collect::<Vec<_>>(),
         vec![10..16, 20..30, 30..39]
     );
+}
+
+#[test]
+fn copy_uses_only_complete_admitted_plain_representation() {
+    for (plain, expected) in [
+        ([Some("first "), Some("second")], Some("first second")),
+        ([Some("first "), None], None),
+    ] {
+        let mut core = seed_text_presentation_with_plain(
+            &[
+                ("first", "first ", Some(10..16)),
+                ("second", "**second**", Some(20..30)),
+            ],
+            &plain,
+        );
+        let window = realize_selection_frame(&mut core);
+        assert!(matches!(
+            core.apply_resident_selection(selection_command_for_frame_records(
+                window.presentation_revision,
+                &window.records,
+            )),
+            ResidentSelectionOutcome::Selected(_)
+        ));
+        let payload = core.resident_copy_payload().unwrap();
+        assert_eq!(payload.markdown, "first **second**");
+        assert_eq!(payload.plain_text.as_deref(), expected);
+    }
+}
+
+#[test]
+fn oversized_copy_rejects_before_publication_and_preserves_selection() {
+    let text = "x".repeat(65_537);
+    let mut core = seed_text_presentation(&[("answer", &text, Some(0..65_537))]);
+    let window = realize_selection_frame(&mut core);
+    let outcome = core.apply_resident_selection(selection_command_for_frame_records(
+        window.presentation_revision,
+        &window.records,
+    ));
+    assert!(matches!(outcome, ResidentSelectionOutcome::Selected(_)));
+    assert_eq!(
+        core.resident_copy_payload(),
+        Err(ResidentSelectionUnavailable::CopyCapacity)
+    );
+    assert!(core.resident_selection().is_some());
 }
 
 #[test]

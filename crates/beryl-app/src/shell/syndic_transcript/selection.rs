@@ -192,6 +192,8 @@ pub(crate) enum ResidentSelectionUnavailable {
     NoActiveQuoteTarget,
     NoRealizedFrame,
     EmptySelection,
+    CopyCapacity,
+    CopyAllocation,
     StalePresentationRevision {
         observed: u64,
         current: u64,
@@ -272,6 +274,13 @@ pub(crate) fn resident_copy_markdown(
         _ => Err(ResidentSelectionUnavailable::NonContentRecord {
             record_id: record.id.clone(),
         }),
+    }
+}
+
+pub(crate) fn resident_copy_plain_text(record: &ResidentPresentationRecord) -> Option<&str> {
+    match &record.kind {
+        ResidentPresentationRecordKind::TextChunk { plain_text, .. } => plain_text.as_deref(),
+        _ => None,
     }
 }
 

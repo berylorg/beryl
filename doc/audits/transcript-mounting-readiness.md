@@ -794,3 +794,47 @@ boundary. Table then integrates both methods, including header/delimiter inclusi
 empty/missing-cell behavior. Whole-source Save and raw-row fallback actions retain their source
 authority. The other identified gaps remain bounded Table mounting prerequisites. No new keyboard,
 conversion or mounted Table runtime acceptance is claimed by this documentation update.
+
+## Shared Transcript Keyboard Copy Acceptance
+
+Accepted on 2026-10-12 after independent semantic review. Mounted ordinary transcript and Code
+route distinct Ctrl+C presses through one gesture owner: first copies Markdown immediately;
+a second within 600 ms requests best-effort stripped text. Held autorepeat does not advance the
+pair; the next press after a completed pair starts Markdown again. Selection, raw rendered focus,
+window activation, source identity and retirement invalidate pairing. A focus change alone does
+not cancel an otherwise valid accepted Code source read; a later keyboard request supersedes it.
+
+Ordinary Copy preserves existing whole-record selection. Code preserves byte endpoints and literal
+source in both methods. The activation worker derives and charges stripped text alongside original
+source before provider admission. Bounded scanning conservatively preserves uncertain syntax and
+continuation spans whose opening literal context may be unloaded. The GUI consumes admitted source
+representations without parsing or reconstructing painted text. Copy is bounded to 65,536 UTF-8
+bytes; the native clipboard budget separately admits UTF-16 and allocation overhead. Missing
+selection/source, capacity refusal and checked-writer refusal report unavailability without partial
+publication. Ordinary rejection feedback does not alter selection geometry.
+
+Combined local qualification passed 155/155 in 123.360 seconds
+(`ead83c6f-ce86-4ba4-814f-5a0b83a73f54`): panel, provider, native ordinary/Code Copy and unchanged
+Code Save regressions. After clipboard accounting and explicit empty-Code-selection feedback were
+corrected, affected integration and keyboard qualification passed 97/97 in 8.006 seconds
+(`93ecb488-b2fd-445b-8972-2fbb2ae6ed7f`). The final keyboard/native suite passed 6/6 in 13.076 seconds
+(`d7d3bc7e-40b0-4cdf-a56e-c163f07ae79a`), including pending-request supersession, repeat, focus reset,
+empty selection, refusal and retirement. Native windows receive GPUI platform keyboard input;
+checked-writer seams preserve the Operator clipboard. This is not privileged clipboard mutation
+or Windows SendInput qualification.
+
+Runs used stable Cargo/nextest, explicit `.cargo/local.toml`, locked offline resolution, one job,
+serial tests, debug disabled and nonincremental compilation. The final production library check
+passed in 13.40 seconds with existing warnings. No manifest or dependency revision changed;
+the preceding mounted-Code publication and canonical one-GPUI evidence remains applicable.
+Independent review accepted the final conversion, accounting, source binding, command custody and
+failure behavior. Synthetic context is not yet mounted; Table remains unaccepted. Their native
+integration is qualified by the following separate plan boundaries.
+
+Source-context and refresh lessons are retained in
+[source context](../failures/transcript-copy-source-context.md) and
+[resource refresh](../failures/transcript-copy-resource-refresh.md). Execution logs and positively
+identified native fixture homes reached their last review consumer at acceptance. Early native
+runs preceded fixture-ledger registration; their unidentified homes cannot be safely reclaimed
+from shared Temp. The [fixture-ledger lesson](../failures/native-copy-fixture-ledger.md) records
+that attribution limit; shared caches and unrelated temporary material remain untouched.

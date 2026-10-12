@@ -118,6 +118,7 @@ fn text_projection(view_id: &TranscriptViewId, position: u64, name: &str) -> Pro
         revision: REVISION,
         kind: ProjectionRecordKind::TextChunk,
         payload: ProjectionPayload::Text {
+            plain_text: None,
             text: format!("text-{name}").into(),
         },
         provenance: provenance(view_id, position, &projection_id),
@@ -173,6 +174,7 @@ fn immutable_publication_shares_authored_bytes_across_viewport_updates() {
     let authored: Arc<str> = "a resident authored chunk".into();
     let mut projection = text_projection(&view, 1, "shared");
     projection.payload = ProjectionPayload::Text {
+        plain_text: None,
         text: Arc::clone(&authored),
     };
     let mut core = ResidentTranscriptCore::empty();

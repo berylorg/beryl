@@ -35,7 +35,10 @@ content it describes; it is not a separate presentation record, command target, 
 
 A synthetic-context group has an owner-supplied stable semantic identity and insertion boundary, structural heading, one or more bounded readonly text chunks, optional compact provenance, and an unavailable state. Multiple chunks share the group identity and render as one contextual item without becoming a second viewport or independently scrolling panel.
 
-The transient affordance layer holds selection actions and menu anchors only while their exact realized geometry remains valid. Menus themselves use the referenced built-in widgets in the owning window overlay.
+The transient affordance layer holds selection actions, menu anchors and optional owner-supplied
+noninteractive Copy rejection feedback only while their exact realized geometry remains valid.
+Copy feedback is not an authored record, selectable content or another scroll surface. Menus
+themselves use the referenced built-in widgets in the owning window overlay.
 
 Live authored-content records consume host-supplied bounded presentation chunks derived from saved
 Beryl/Syndic history. They use the same resident snapshot boundary as completed records. CAS item

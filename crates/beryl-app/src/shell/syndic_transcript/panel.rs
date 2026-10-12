@@ -10,6 +10,8 @@ mod code_layout_mount;
 mod code_panel;
 #[path = "panel/code_viewport.rs"]
 mod code_viewport;
+#[path = "panel/copy_keyboard.rs"]
+mod copy_keyboard;
 
 use gpui::{
     Action, AnyElement, App, Context, FocusHandle, Focusable, MouseButton, Render, SharedString,
@@ -80,6 +82,7 @@ struct ResourceQueuePosition {
 }
 
 pub(crate) struct SyndicTranscriptPanel {
+    keyboard_copy: copy_keyboard::KeyboardCopy,
     focus_handle: FocusHandle,
     host: SyndicTranscriptHost,
     last_frame_window: Option<RealizedFrameWindow>,
@@ -110,6 +113,7 @@ impl gpui::EventEmitter<ResourceViewportDemandChanged> for SyndicTranscriptPanel
 impl SyndicTranscriptPanel {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            keyboard_copy: Default::default(),
             focus_handle: cx.focus_handle(),
             host: SyndicTranscriptHost::empty(),
             last_frame_window: None,
@@ -554,6 +558,8 @@ impl SyndicTranscriptPanel {
     }
 
     fn close_invalid_geometry(&mut self) {
+        self.keyboard_copy.gesture.invalidate_records();
+        self.keyboard_copy.feedback = "";
         self.host.clear_resident_selection();
         self.host.clear_resident_quote_target();
         self.host.clear_resident_context_menu_target();
@@ -593,6 +599,8 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn retire(&mut self) {
+        self.reset_keyboard_copy();
+        self.keyboard_copy = Default::default();
         for code in &mut self.code_panels {
             code.actions.cancel_copy("");
             code.actions.cancel_save("");
@@ -737,6 +745,7 @@ impl SyndicTranscriptPanel {
         &mut self,
         record_ids: &[ResidentPresentationRecordId],
     ) -> ResidentSelectionOutcome {
+        self.reset_keyboard_copy();
         if self.staged.is_some()
             || self
                 .geometry
@@ -1025,6 +1034,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
+        self.observe_copy_focus(window, cx);
         if !self.code_release_registered {
             cx.on_release_in(window, |panel, window, app| {
                 for code in panel
@@ -1205,22 +1215,29 @@ impl SyndicTranscriptPanel {
                     cx.stop_propagation();
                 }),
             )
-            .on_key_down(cx.listener(|panel, event: &gpui::KeyDownEvent, _, cx| {
-                let height = panel
-                    .geometry
-                    .as_ref()
-                    .map(|geometry| f32::from(geometry.environment.viewport.height))
-                    .unwrap_or(0.0);
-                let delta = match event.keystroke.key.as_str() {
-                    "up" => -40.0,
-                    "down" => 40.0,
-                    "pageup" => -height,
-                    "pagedown" => height,
-                    _ => return,
-                };
-                panel.queue_manual_delta(delta, cx);
-                cx.stop_propagation();
-            }))
+            .on_key_down(
+                cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
+                    if copy_keyboard::is_copy(event) {
+                        panel.copy_records_key(event, window, cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    let height = panel
+                        .geometry
+                        .as_ref()
+                        .map(|geometry| f32::from(geometry.environment.viewport.height))
+                        .unwrap_or(0.0);
+                    let delta = match event.keystroke.key.as_str() {
+                        "up" => -40.0,
+                        "down" => 40.0,
+                        "pageup" => -height,
+                        "pagedown" => height,
+                        _ => return,
+                    };
+                    panel.queue_manual_delta(delta, cx);
+                    cx.stop_propagation();
+                }),
+            )
             .children(
                 source_message
                     .map(|message| div().px_4().py_2().text_sm().opacity(0.72).child(message)),
@@ -1236,6 +1253,21 @@ impl SyndicTranscriptPanel {
                 self.staged.is_some(),
                 cx,
             ))
+            .children(
+                self.keyboard_copy
+                    .feedback
+                    .starts_with("Copy unavailable")
+                    .then(|| {
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .px_4()
+                            .py_2()
+                            .text_sm()
+                            .child(self.keyboard_copy.feedback)
+                    }),
+            )
     }
 }
 

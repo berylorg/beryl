@@ -185,6 +185,7 @@ pub(crate) enum ProjectionRecordKind {
 pub(crate) enum ProjectionPayload {
     Text {
         text: std::sync::Arc<str>,
+        plain_text: Option<std::sync::Arc<str>>,
     },
     ResourceReference {
         resource_id: ResourceId,

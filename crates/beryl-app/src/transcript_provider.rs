@@ -18,6 +18,7 @@ use crate::{
     syndic_transcript::{PreparedTranscriptActivation, TranscriptActivationPlacement},
 };
 
+mod copy_text;
 #[cfg(test)]
 mod indexed_read_gate;
 mod resources;

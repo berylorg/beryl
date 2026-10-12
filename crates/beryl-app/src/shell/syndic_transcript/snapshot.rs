@@ -96,6 +96,7 @@ pub(crate) enum ResidentPresentationRecordKind {
     TextChunk {
         narrative_kind: TranscriptNarrativeKind,
         text: std::sync::Arc<str>,
+        plain_text: Option<std::sync::Arc<str>>,
     },
     ResourceReference {
         resource_id: ResourceId,

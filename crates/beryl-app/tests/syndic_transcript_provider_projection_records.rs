@@ -48,7 +48,10 @@ fn text_projection(
         id,
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text { text: text.into() },
+        payload: ProjectionPayload::Text {
+            plain_text: None,
+            text: text.into(),
+        },
         provenance,
     }
 }

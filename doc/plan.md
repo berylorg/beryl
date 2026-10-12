@@ -98,31 +98,23 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 762: Mount The Indexed Transcript Code Panel (finished)
+# Phase 764: Implement The Transcript Two-Method Keyboard Copy Contract (finished)
 
-Independent behavior and delivery review accepted bounded mounted Code, no-wrap/font geometry,
-source anchors, selection/Copy, confirmed native replacement Save and original-root shutdown custody.
-Combined Beryl passed 138/138; native Save/checked clipboard passed 23/23. Published dependency pins
-and canonical locked metadata resolve one GPUI; widget and root production checks passed and the
-analyzer restarted. Durable qualification and reused evidence are in the
-[mounting audit](audits/transcript-mounting-readiness.md#mounted-indexed-code-acceptance).
+Independent semantic review accepted Markdown-first and stripped-second keyboard Copy across
+mounted ordinary transcript and Code, bounded source-owned conversion/accounting, failure feedback,
+supersession and disposal. Combined qualification passed 155/155; affected integration passed
+97/97; final keyboard/native cases passed 6/6 and the production check passed. Durable evidence,
+limits and cleanup attribution are in the
+[mounting audit](audits/transcript-mounting-readiness.md#shared-transcript-keyboard-copy-acceptance).
+Synthetic context and Table integrate this accepted shared contract in their separate boundaries.
 
-# Phase 764: Implement The Transcript Two-Method Keyboard Copy Contract (pending)
+# Phase 765: Mount Synthetic Discussion Context And Integrate Shared Copy (pending)
 
-Operator selected transcript-wide keyboard Copy on 2026-10-12, correcting its order to one
-distinct `Ctrl+C` press for Markdown and a quick second distinct press for best-effort stripped
-text. The [transcript feature](features/transcript/design.md#selection-copy-quote-and-menus) owns
-that product contract. Establish its shared bounded representation and gesture routing before
-Table mounting; this is a distinct acceptance boundary, not an expansion of the Table widget.
-
-Readiness must qualify the source-owned plain-text conversion, partial-selection mappings,
-bounded gesture interval and async supersession through the existing provider/residency owner.
-Do not implement conversion by stripping rendered strings or reparsing Markdown on the GUI thread.
-Verify real native keyboard input across ordinary transcript, synthetic context and mounted Code:
-immediate first copy, second-method replacement, literal-code preservation, key autorepeat,
-changed selection/focus/source, overlapping completions, capacity/write failure and disposal.
-Table mounting subsequently integrates the accepted shared contract and qualifies both rectangle
-representations in its own native acceptance boundary. Save remains source-based.
+Mount the renderer-authorized immutable branch-context envelope at its exact insertion boundary
+through bounded source admission and chunk adaptation. Establish stable local context provenance,
+selection geometry and copy-only eligibility, then qualify both shared keyboard Copy methods with
+native input. This separate prerequisite supplies the synthetic surface absent from the current
+provider and presentation pipeline; keep quote, edit, branch and turn-menu restrictions intact.
 
 # Phase 763: Mount The Indexed Transcript Table Panel (pending)
 

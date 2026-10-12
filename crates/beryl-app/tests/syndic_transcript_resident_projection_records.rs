@@ -48,7 +48,10 @@ fn text_projection(
         id,
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text { text: text.into() },
+        payload: ProjectionPayload::Text {
+            plain_text: None,
+            text: text.into(),
+        },
         provenance,
     }
 }
@@ -242,6 +245,7 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
     assert_eq!(
         text_record.kind,
         ResidentPresentationRecordKind::TextChunk {
+            plain_text: None,
             narrative_kind: TranscriptNarrativeKind::AssistantFinalAnswer,
             text: "assistant text chunk".into()
         }

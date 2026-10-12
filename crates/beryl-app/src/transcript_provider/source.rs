@@ -238,14 +238,25 @@ impl access::ActivationReadSource<'_> {
                 syndic_storage::ProjectionPayload::InlineMarkdown {
                     source,
                     source_range,
+                    span_ordinal,
                     ..
-                } => (
-                    ProjectionPayload::Text {
-                        text: std::sync::Arc::from(source.as_ref()),
-                    },
-                    Some(source_range.start()..source_range.end()),
-                    source.len(),
-                ),
+                } => {
+                    let plain_text =
+                        super::copy_text::stripped_span(source.as_ref(), *span_ordinal)
+                            .map_err(|_| TranscriptAttachmentError::Capacity)?;
+                    let payload_bytes = source
+                        .len()
+                        .checked_add(plain_text.len())
+                        .ok_or(TranscriptAttachmentError::Capacity)?;
+                    (
+                        ProjectionPayload::Text {
+                            text: std::sync::Arc::from(source.as_ref()),
+                            plain_text: Some(std::sync::Arc::from(plain_text)),
+                        },
+                        Some(source_range.start()..source_range.end()),
+                        payload_bytes,
+                    )
+                }
                 syndic_storage::ProjectionPayload::ResourceReference {
                     resource_id,
                     preview,
@@ -287,11 +298,19 @@ impl access::ActivationReadSource<'_> {
                         preview.len(),
                     )
                 }
-                syndic_storage::ProjectionPayload::Empty => {
-                    (ProjectionPayload::Text { text: "".into() }, None, 0)
-                }
+                syndic_storage::ProjectionPayload::Empty => (
+                    ProjectionPayload::Text {
+                        text: "".into(),
+                        plain_text: Some("".into()),
+                    },
+                    None,
+                    0,
+                ),
                 syndic_storage::ProjectionPayload::ImageMarker { source_offset, .. } => (
-                    ProjectionPayload::Text { text: "".into() },
+                    ProjectionPayload::Text {
+                        text: "".into(),
+                        plain_text: Some("".into()),
+                    },
                     Some(*source_offset..*source_offset),
                     0,
                 ),

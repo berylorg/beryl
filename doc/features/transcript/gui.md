@@ -41,6 +41,11 @@ Markdown and a quick second distinct press requests stripped text for the same s
 widget handlers participate in that owner routing without also firing an outer Copy. The code
 panel's own bare-text Copy action retains its canonical contract.
 
+An ordinary keyboard Copy rejection supplies a noninteractive label in the transcript's transient
+affordance layer. The label is presentation feedback, never an authored record or copied content,
+and does not change record measurement or scrolling geometry. It disappears when its presentation
+geometry is invalidated. Nested Code continues to use its canonical action feedback.
+
 ## Transcript Menus And Previews
 
 Mount-into: main-window.overlays

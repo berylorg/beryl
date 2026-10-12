@@ -86,7 +86,12 @@ impl SyndicTranscriptPanel {
         );
         true
     }
-    pub(super) fn begin_code_copy(&mut self, id: u64, selected: bool, cx: &mut Context<Self>) {
+    pub(in super::super) fn begin_code_copy(
+        &mut self,
+        id: u64,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) {
         if self.staged.is_some() {
             if let Some(panel) = self.code_panels.iter_mut().find(|panel| panel.id == id) {
                 panel.actions.feedback = "Copy unavailable: presentation changing";

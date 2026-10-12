@@ -55,6 +55,7 @@ fn presentation_record(
     ResidentPresentationRecord {
         id: record_id(name),
         kind: ResidentPresentationRecordKind::TextChunk {
+            plain_text: None,
             narrative_kind: TranscriptNarrativeKind::AssistantCommentary,
             text: format!("text-{name}").into(),
         },

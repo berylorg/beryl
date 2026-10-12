@@ -1,6 +1,8 @@
 use super::*;
 #[path = "code_save.rs"]
 mod code_save;
+#[path = "transcript_keyboard_copy.rs"]
+mod transcript_keyboard_copy;
 use sha2::{Digest, Sha256};
 use std::{
     cell::{Cell, RefCell},
@@ -229,6 +231,20 @@ fn native_code_selection_copy_uses_raw_offscreen_ranges_and_atomic_successor_end
                     ready(window, &panel, cx).await;
                     with_native(window, cx, |native, app| {
                         key(native, app, "ctrl-c");
+                        if attempt == 0 {
+                            let before = panel.read(app).code_copy_progress_for_test();
+                            assert!(panel.read(app).code_copy_pending_for_test());
+                            native.dispatch_input_for_test(
+                                PlatformInput::KeyDown(gpui::KeyDownEvent {
+                                    keystroke: gpui::Keystroke::parse("ctrl-c").unwrap(),
+                                    is_held: true,
+                                }),
+                                app,
+                            );
+                            assert_eq!(panel.read(app).code_copy_progress_for_test(), before);
+                            key(native, app, "ctrl-c");
+                            assert!(panel.read(app).code_copy_pending_for_test());
+                        }
                         eprintln!(
                             "atom Copy admission: {:?}, {:?}",
                             panel.read(app).code_copy_feedback_for_test(),
@@ -578,6 +594,21 @@ fn native_code_copy_preflight_refusal_releases_owned_failure_and_retired_actions
                     .unwrap();
                 let selected = BODY_START + 1..BODY_START + 4;
                 with_native(window, cx, |native, app| {
+                    let viewport = panel.read(app).code_viewport_for_test().unwrap().1;
+                    let blank = point(viewport.left() + px(2.0), viewport.bottom() - px(10.0));
+                    code_interaction::press(native, app, blank);
+                    code_interaction::release(native, app, blank);
+                    assert_eq!(panel.read(app).code_selection_for_test(), None);
+                    key(native, app, "ctrl-c");
+                    assert!(!panel.read(app).code_copy_pending_for_test());
+                    assert!(
+                        panel
+                            .read(app)
+                            .code_copy_feedback_for_test()
+                            .unwrap()
+                            .contains("selection unavailable")
+                    );
+                    assert_eq!(writes.get(), 0);
                     let start = panel
                         .read(app)
                         .code_source_point_for_test(selected.start)

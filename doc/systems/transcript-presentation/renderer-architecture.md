@@ -427,6 +427,13 @@ current. A later method request supersedes an earlier unfinished representation 
 completion cannot replace the requested stripped-text result. Failed or rejected representation
 requests preserve the selection and do not publish a partial clipboard value.
 
+For ordinary whole-record selection, the existing attachment worker derives the stripped source
+representation before provider admission. Original and derived bytes both count toward residency;
+the presentation owner transports them with the same source/revision binding. Contiguous Copy
+reconstruction preflights each representation against its admitted bound. A continuation span
+whose preceding delimiter context is unavailable keeps its source spelling, protecting literals
+opened in unloaded source. GUI command routing consumes admitted representations without parsing.
+
 If virtualization, release, remeasurement, or missing data destroys stable selection geometry, the selection or quote affordance closes instead of pinning unbounded offscreen content.
 
 ## Invariants

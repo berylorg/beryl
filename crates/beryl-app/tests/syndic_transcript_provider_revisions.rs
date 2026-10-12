@@ -77,7 +77,10 @@ fn text_projection(
         id: projection_id.clone(),
         revision: ProviderRevision(0),
         kind: ProjectionRecordKind::TextChunk,
-        payload: ProjectionPayload::Text { text: text.into() },
+        payload: ProjectionPayload::Text {
+            plain_text: None,
+            text: text.into(),
+        },
         provenance: provenance(
             view_id,
             position,
@@ -270,7 +273,7 @@ fn assert_stale(
 
 fn projection_text(set: &ProjectionRecordSet) -> &str {
     match &set.records[0].payload {
-        ProjectionPayload::Text { text } => text.as_ref(),
+        ProjectionPayload::Text { text, .. } => text.as_ref(),
         other => panic!("expected text projection payload, got {other:?}"),
     }
 }

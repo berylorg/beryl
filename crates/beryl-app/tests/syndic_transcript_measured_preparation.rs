@@ -16,6 +16,7 @@ fn snapshot(count: usize) -> Arc<ResidentTranscriptSnapshot> {
             .map(|index| ResidentPresentationRecord {
                 id: ResidentPresentationRecordId(format!("record-{index}")),
                 kind: ResidentPresentationRecordKind::TextChunk {
+                    plain_text: None,
                     narrative_kind: TranscriptNarrativeKind::AssistantCommentary,
                     text: "variable geometry".into(),
                 },

@@ -7,6 +7,9 @@ use super::super::{
 use super::*;
 use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
 
+#[path = "syndic_transcript_panel/copy_keyboard.rs"]
+mod copy_keyboard_tests;
+
 #[path = "syndic_transcript_panel/resources.rs"]
 mod resources;
 
@@ -78,6 +81,7 @@ fn long_tail_seed() -> PreparedTranscriptActivation {
         unreachable!()
     };
     projections.records.last_mut().unwrap().payload = ProjectionPayload::Text {
+        plain_text: None,
         text: "Long transcript paragraph ".repeat(500).into(),
     };
     activation
@@ -508,6 +512,7 @@ fn seed(record_count: u64) -> PreparedTranscriptActivation {
             revision,
             kind: ProjectionRecordKind::TextChunk,
             payload: ProjectionPayload::Text {
+                plain_text: None,
                 text: format!("authored row {position}").into(),
             },
             provenance,

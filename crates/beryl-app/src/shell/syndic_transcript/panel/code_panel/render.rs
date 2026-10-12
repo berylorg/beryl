@@ -161,6 +161,7 @@ pub(in super::super) fn render(
                         selection::hit(&code.layout, &code.viewport, event.position)
                     {
                         code.actions.select(source, true);
+                        panel.keyboard_copy.gesture.reset();
                         app.notify();
                     }
                 }
@@ -189,6 +190,7 @@ pub(in super::super) fn render(
                         selection::hit(&code.layout, &code.viewport, event.position)
                     {
                         code.actions.select(source, event.modifiers.shift);
+                        panel.keyboard_copy.gesture.reset();
                         code.actions.dragging = true;
                     }
                 }
@@ -214,7 +216,7 @@ pub(in super::super) fn render(
         );
     let scroll = panel.viewport.scroll.clone();
     viewport = viewport.on_key_down(cx.listener(
-        move |panel, event: &gpui::KeyDownEvent, _, cx| {
+        move |panel, event: &gpui::KeyDownEvent, window, cx| {
             if !panel
                 .code_panels
                 .iter()
@@ -222,8 +224,8 @@ pub(in super::super) fn render(
             {
                 return;
             }
-            if event.keystroke.modifiers.control && event.keystroke.key.eq_ignore_ascii_case("c") {
-                panel.begin_code_copy(id, true, cx);
+            if super::super::copy_keyboard::is_copy(event) {
+                panel.copy_code_key(id, event, window, cx);
                 cx.stop_propagation();
                 return;
             }

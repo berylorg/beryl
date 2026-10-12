@@ -720,12 +720,13 @@ fn canonical_projection_bytes_publish_with_stable_source_identity_for_unchanged_
                 panic!("canonical projection payload was missing")
             };
             assert_eq!(records.records.len(), 1);
-            let crate::syndic_transcript::ProjectionPayload::Text { text } =
+            let crate::syndic_transcript::ProjectionPayload::Text { text, plain_text } =
                 &records.records[0].payload
             else {
                 panic!("authored text payload was missing")
             };
             assert_eq!(text.as_ref(), "authored source");
+            assert_eq!(plain_text.as_deref(), Some("authored source"));
         })
         .unwrap();
     let mut refresh = fixture.request(2);
@@ -733,3 +734,6 @@ fn canonical_projection_bytes_publish_with_stable_source_identity_for_unchanged_
     let prepared = fixture.reader.prepare_attachment(refresh, &cancel).unwrap();
     assert_eq!(prepared.source_identity(), identity);
 }
+
+#[path = "transcript_provider/copy_text.rs"]
+mod copy_text;
