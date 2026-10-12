@@ -46,6 +46,11 @@ impl SyndicTranscriptPanel {
             super::save::SaveFault::Write
         });
     }
+    pub(crate) fn code_save_fault_pending_for_test(&self) -> bool {
+        self.code_panels
+            .first()
+            .is_some_and(|code| code.actions.save_fault.is_some())
+    }
     pub(crate) fn code_layout_work_for_test(&self) -> Option<String> {
         let code = self.code_panels.first()?;
         let scroll = code.viewport.scroll.borrow();

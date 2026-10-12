@@ -22,6 +22,8 @@ mod code_long_line;
 
 #[path = "indexed_resources/code_native_mount.rs"]
 mod code_native_mount;
+#[path="indexed_resources/table_native_mount.rs"]
+mod table_native_mount;
 
 #[path = "indexed_resources/code_history_revision.rs"]
 mod code_history_revision;

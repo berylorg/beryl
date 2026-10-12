@@ -1,10 +1,10 @@
 use super::*;
 #[path = "code_save.rs"]
 mod code_save;
-#[path = "transcript_keyboard_copy.rs"]
-mod transcript_keyboard_copy;
 #[path = "discussion_context_keyboard_copy.rs"]
 mod discussion_context_keyboard_copy;
+#[path = "transcript_keyboard_copy.rs"]
+mod transcript_keyboard_copy;
 use sha2::{Digest, Sha256};
 use std::{
     cell::{Cell, RefCell},

@@ -544,7 +544,7 @@ pub(super) fn release_layout(
     }
 }
 
-fn saved_code_successor(
+pub(super) fn saved_code_successor(
     owner: &super::super::ResourceTranscriptDemand,
     record: &super::super::ResidentPresentationRecord,
 ) -> bool {

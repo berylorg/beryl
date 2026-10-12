@@ -268,15 +268,40 @@ fn native_code_layout_traverses_saved_hundred_kilobyte_line_with_bounded_canonic
     );
 }
 
-async fn wait_until(
+pub(super) async fn wait_until(
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut AsyncApp,
+    ready: impl FnMut(&mut AsyncApp) -> bool,
+    message: &str,
+) {
+    wait_until_with_visibility(window, cx, ready, message, true).await;
+}
+
+pub(super) async fn wait_until_unminimized(
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut AsyncApp,
+    ready: impl FnMut(&mut AsyncApp) -> bool,
+    message: &str,
+) {
+    wait_until_with_visibility(window, cx, ready, message, false).await;
+}
+
+pub(super) async fn wait_until_with_visibility(
     window: WindowHandle<MainWindowShellRoot>,
     cx: &mut AsyncApp,
     mut ready: impl FnMut(&mut AsyncApp) -> bool,
     message: &str,
+    minimize: bool,
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        code_history_revision::draw(window, cx);
+        with_native(window, cx, |native, app| {
+            native.draw_and_present_for_test(app);
+            if minimize {
+                native.minimize_window();
+            }
+        })
+        .unwrap();
         if ready(cx) {
             return;
         }
@@ -648,7 +673,7 @@ fn native_code_layout_refusal_preserves_atomic_multiline_paint_and_recovers_on_n
     );
 }
 
-async fn retire_code_fixture(
+pub(super) async fn retire_code_fixture(
     window: WindowHandle<MainWindowShellRoot>,
     panel: &Entity<SyndicTranscriptPanel>,
     cx: &mut AsyncApp,
@@ -689,7 +714,7 @@ async fn retire_code_fixture(
     cx.update(|app| app.quit()).unwrap();
 }
 
-fn with_native<R>(
+pub(super) fn with_native<R>(
     window: WindowHandle<MainWindowShellRoot>,
     cx: &mut AsyncApp,
     run: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,

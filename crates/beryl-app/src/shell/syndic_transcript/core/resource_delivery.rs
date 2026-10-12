@@ -46,6 +46,13 @@ impl ResidentTranscriptCore {
             .collect()
     }
 
+    pub(crate) fn table_panel_demands(&self) -> Vec<ResourceTranscriptDemand> {
+        self.collect_resource_demands(true)
+            .into_iter()
+            .filter(|demand| demand.kind == ResourceKind::Table)
+            .collect()
+    }
+
     fn collect_resource_demands(&self, include_ready_code: bool) -> Vec<ResourceTranscriptDemand> {
         let mut demands = Vec::new();
         let protected = self.protected_presentation_record_ids();
@@ -96,7 +103,8 @@ impl ResidentTranscriptCore {
                     let missing = resource_preview_range(metadata)
                         .and_then(|preview| self.missing_resource_interval(metadata, preview));
                     if missing.is_none()
-                        && !(include_ready_code && *resource_kind == ResourceKind::Code)
+                        && !(include_ready_code
+                            && matches!(resource_kind, ResourceKind::Code | ResourceKind::Table))
                     {
                         continue;
                     }

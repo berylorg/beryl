@@ -20,7 +20,9 @@ impl PendingMeasuredResource {
         cx: &mut Context<MainWindowShellRoot>,
     ) {
         self.panel.update(cx, |panel, panel_cx| {
-            if !panel.reject_code_source_candidate(&self.request.demand) {
+            if !(panel.reject_code_source_candidate(&self.request.demand)
+                || panel.reject_table_source_candidate(&self.request.demand))
+            {
                 panel.discard_staged_activation();
             }
             panel_cx.notify();
@@ -88,7 +90,9 @@ impl MainWindowShellRoot {
                 panel.update_resource_allocation(demand, allocation)
             }) {
                 panel.update(cx, |panel, panel_cx| {
-                    if !panel.reject_code_source_candidate(demand) {
+                    if !(panel.reject_code_source_candidate(demand)
+                        || panel.reject_table_source_candidate(demand))
+                    {
                         panel.discard_staged_activation();
                     }
                     panel_cx.notify();
@@ -118,7 +122,9 @@ impl MainWindowShellRoot {
                 .is_err()
             {
                 panel.update(cx, |panel, panel_cx| {
-                    if !panel.reject_code_source_candidate(demand) {
+                    if !(panel.reject_code_source_candidate(demand)
+                        || panel.reject_table_source_candidate(demand))
+                    {
                         panel.discard_staged_activation();
                     }
                     panel_cx.notify();
@@ -280,7 +286,9 @@ impl MainWindowShellRoot {
                     }
                     Err(_) => {
                         panel.update(cx, |panel, panel_cx| {
-                            if panel.reject_code_source_action(&demand) {
+                            if panel.reject_code_source_action(&demand)
+                                || panel.reject_table_source_action(&demand)
+                            {
                                 panel.reject_resource_demand(demand);
                                 panel_cx.notify();
                             }

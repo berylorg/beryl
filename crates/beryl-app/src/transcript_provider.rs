@@ -19,6 +19,11 @@ use crate::{
 };
 
 mod copy_text;
+
+pub(crate) fn stripped_copy_source(source: &str) -> Result<String, ()> {
+    copy_text::stripped_source(source).map_err(|_| ())
+}
+
 #[cfg(test)]
 mod indexed_read_gate;
 mod resources;

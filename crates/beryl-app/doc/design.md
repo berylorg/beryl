@@ -114,6 +114,10 @@ internal contract.
   most 8,192 exact source bytes within the backing range; arbitrary byte boundaries may split a
   UTF-8 scalar. Consumers retain bounded carry when decoding contiguous pages. Source responses
   keep the same owner, revision, cancellation and publication election as structural queries.
+  The host's source-action worker may apply the shared bounded stripped-Copy converter to admitted
+  exact source after assembly. It retains the original selection/source identity and capacity
+  custody until currentness elects publication or rejection. Conversion never runs in the widget
+  renderer, discovers block structure or creates another storage reader.
   `prepare_resource_delivery` and `publish_resource_delivery_if_current` dispatch raw and indexed
   requests within the same tracked selected-history worker and publication election. The native
   resource completion stages either kind through the existing measured resource candidate.
@@ -133,6 +137,22 @@ internal contract.
   inner replacement or Pending refresh cannot keep an eligible peer behind that resource;
   discarded candidates do not consume a turn, obsolete activations ignore the position and
   retirement releases it.
+  Table Header, Body, Source and anchor requests share this indexed owner and serialize through
+  its single inner query. Header/Body continuation retains its exact query and cursor during
+  response-absent frames while the measured desired rectangle remains unchanged. Header/Body
+  requests use a 16,384-byte response allowance, keeping legal cross-chunk display reads within
+  the existing query ledger without increasing its limits. Source, anchor and Code allowances
+  retain their respective contracts. A coherent
+  window requires complete exact-root, binding and rectangle agreement; standalone bounded Body
+  queries remain admissible without publishing a headerless grid. Each current or replacement
+  window holds at most 128 descriptors across fifteen body rows, one header row and eight columns,
+  with at most 128 response pages per Table window and 256 descriptors across both windows.
+  Code retains its separate sixteen-page continuation limit. Actual shared
+  response allocations count once within the owner; copied viewport state is charged separately.
+  Final replacement promotion retains the former coherent window's charge until measured
+  publication and exact viewport adoption acknowledge its release. Another inner query is refused
+  during that bounded overlap. Rejection, stale acknowledgment and disposal cannot bypass the
+  existing budget or retain an unbounded third window.
 - `ProjectionConnectionService::step_resource_construction` admits at most one companion
   command under the existing master command gate and ordinary projection worker capacity.
   It observes one exact durable build frontier and releases frozen custody before dispatch;

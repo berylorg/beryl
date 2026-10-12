@@ -8,6 +8,16 @@ mod code_mount;
 
 #[path = "table_source_admission.rs"]
 mod table_source_admission;
+#[path="table_export.rs"]
+mod table_export_tests;
+#[path="table_source_actions.rs"]
+mod table_source_actions_tests;
+#[path="table_save.rs"]
+mod table_save_tests;
+#[path="table_retention.rs"]
+mod table_retention_tests;
+#[path="table_viewport.rs"]
+mod table_viewport_tests;
 
 #[gpui::test]
 fn refreshed_indexed_resources_share_the_queue_without_outer_scrolling(cx: &mut TestAppContext) {

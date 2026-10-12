@@ -98,54 +98,26 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 765: Mount Synthetic Discussion Context And Integrate Shared Copy (finished)
+# Phase 763: Mount The Indexed Transcript Table Panel (finished)
 
-Independent semantic review accepted exact branch-boundary context admission, stable local
-provenance, bounded themed chunks, Copy-only eligibility and both shared keyboard Copy methods.
-Native scrolling, remeasurement, group retention/remount, unavailable context and disposal passed.
-Combined qualification passed 167/167, affected integration 96/96 and theme 9/9; storage qualification
-and the production check passed. Durable evidence and native limits are in the
-[mounting audit](audits/transcript-mounting-readiness.md#synthetic-discussion-context-acceptance).
-Indexed Table mounting remains the next separate acceptance boundary.
+Independent review accepted bounded indexed Table mounting, whole-cell selection, exact selected
+Markdown/stripped Copy, fallback actions and original-root Save with preserved Code behavior.
+Combined qualification passed 177/177, affected integration 130/130 and theme 10/10; production
+checking passed. Durable bounds, evidence and native limits are in the
+[mounting audit](audits/transcript-mounting-readiness.md#mounted-indexed-table-acceptance).
+Small inline Table interaction remains the next separate boundary.
 
-# Phase 763: Mount The Indexed Transcript Table Panel (wip)
+# Phase 766: Establish Inline Table Cell Interaction Readiness (pending)
 
-Mount the authoritative Table panel with bounded row/column virtualization, owner-projected cells,
-alignment/header and whole-row fallback, exact source actions and anchors. Verify actual native
-interaction, inner demand/disposal and coherent measured outer geometry.
+Qualify the bounded inline Table projection and its current renderer consumer against the
+Operator's whole-cell selection and selected-source Copy contract. Small Tables intentionally
+remain inline under the existing storage thresholds; indexed-resource mounting does not accept
+their interaction. Resolve the prepared cell/source owner, stable identities, bounded geometry,
+selection lifecycle and both Copy methods in owning authority, with independent readiness review
+before implementation. Preserve the existing storage thresholds and accepted indexed Table path.
 
-Readiness checkpoint on 2026-10-12: indexed Table descriptors, alignment, missing/empty distinctions
-and anchor transport exist. Mounted source reads, bounded continuation retention and ready-panel
-demand enumeration still have Code-only restrictions; generalize those bounded prerequisites within
-this acceptance boundary. Preserve the accepted Code behavior and original-root Save custody.
+# Phase 767: Mount Inline Table Cell Interaction (pending)
 
-Operator resolved the representation choice: first `Ctrl+C` copies selected-cell Markdown; a
-quick second distinct press copies best-effort stripped text. Integrate the shared transcript Copy
-contract after its preceding acceptance boundary, including Table header/delimiter handling,
-empty/missing cells and explicit raw-row fallback actions. Do not silently expand a selection to
-unselected columns or substitute displayed values for original Markdown source. Findings are in the
-[Table readiness checkpoint](audits/transcript-mounting-readiness.md#mounted-indexed-table-readiness).
-
-Current milestone: the selected-history exact Source path and Table Source admission are
-implemented through the existing provider/residency owner. Eleven focused prerequisite cases
-pass, including exact raw pages, refusal/currentness, Code regression and admitted-payload release;
-independent semantic review and the production library check passed. This accepts only the
-exact-source prerequisite; mounted Table behavior remains unaccepted.
-Next implement bounded header/body indexed retention, preserving Code continuation,
-source validation, stale-result rejection and measured publication, then mount the two-axis panel,
-its stable selection and source actions in the ordinary transcript renderer; no widget loader or
-independent resource cache is permitted.
-
-Operator resolved selection scope: cells are indivisible selection units, and Copy includes only
-selected cells. Partial Markdown exports preserve raw selected cell spelling, whitespace and empty
-cells with necessary separators; selecting all cells permits verbatim whole-table source Copy.
-Selected headers include selected-column delimiters; body-only selection adds no header. Text
-exports omit empty rows and trailing empty/missing cells while preserving interior gaps. Feature,
-widget and system authority now resolve the clipboard blocker. Continue bounded retention,
-cell selection, mounting and shared Copy integration through the existing measured host.
-
-Acceptance requires focused provider/core tests for bounded header/body continuation, exact source
-and anchors, replacement/release and refusal; native mounted scrolling on both axes, focus/range
-navigation, both Copy methods, fallback actions and streaming Save with native replacement custody;
-and measured outer geometry across resize/theme changes. Run affected combined qualification and
-production checks, then independent semantic review before marking this boundary finished.
+After readiness, mount small inline Tables with whole-cell rectangular selection, exact selected
+Markdown and stripped-text Copy through the shared transcript contract. Verify native interaction,
+bounded retention, remeasurement and disposal before accepting uniform Table interaction.

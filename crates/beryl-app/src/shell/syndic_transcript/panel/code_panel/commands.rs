@@ -92,6 +92,7 @@ impl SyndicTranscriptPanel {
         selected: bool,
         cx: &mut Context<Self>,
     ) {
+        self.supersede_resource_copies();
         if self.staged.is_some() {
             if let Some(panel) = self.code_panels.iter_mut().find(|panel| panel.id == id) {
                 panel.actions.feedback = "Copy unavailable: presentation changing";

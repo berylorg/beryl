@@ -9,6 +9,7 @@ pub(crate) struct SyndicTranscriptDiagnosticSnapshot {
     pub(crate) frame: ResidentFrameDiagnostics,
     pub(crate) demand_facts: DemandFactSinkSnapshot,
     pub(crate) code_panels: Vec<CodePanelDiagnostics>,
+    pub(crate) table_panels: Vec<TablePanelDiagnostics>,
 }
 
 impl SyndicTranscriptDiagnosticSnapshot {
@@ -18,6 +19,7 @@ impl SyndicTranscriptDiagnosticSnapshot {
             frame: ResidentFrameDiagnostics::default(),
             demand_facts: DemandFactSinkSnapshot::default(),
             code_panels: Vec::new(),
+            table_panels: Vec::new(),
         }
     }
 
@@ -143,6 +145,29 @@ pub(crate) struct CodePanelDiagnostics {
     pub(crate) layout_fragments: usize,
     pub(crate) layout_charged_bytes: usize,
     pub(crate) complete_inline_extent: Option<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TablePanelDiagnostics {
+    pub(crate) id: u64,
+    pub(crate) revision: u64,
+    pub(crate) rows: u64,
+    pub(crate) columns: u64,
+    pub(crate) visible_rows: std::ops::Range<u64>,
+    pub(crate) realized_rows: std::ops::Range<u64>,
+    pub(crate) visible_columns: std::ops::Range<u64>,
+    pub(crate) realized_columns: std::ops::Range<u64>,
+    pub(crate) row_overscan: u64,
+    pub(crate) column_overscan: u64,
+    pub(crate) cells: usize,
+    pub(crate) fallback_rows: usize,
+    pub(crate) pending: bool,
+    pub(crate) offsets: (f32, f32),
+    pub(crate) selected_for_wheel: bool,
+    pub(crate) focused: Option<(u64, u64)>,
+    pub(crate) selection: Option<((u64, u64), (u64, u64))>,
+    pub(crate) vertical_scrollbar: bool,
+    pub(crate) horizontal_scrollbar: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

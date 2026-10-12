@@ -14,6 +14,18 @@ mod code_viewport;
 mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
+#[path = "panel/table_appearance.rs"]
+mod table_appearance;
+#[path = "panel/table_export.rs"]
+mod table_export;
+#[path = "panel/table_panel.rs"]
+mod table_panel;
+#[path = "panel/table_save.rs"]
+mod table_save;
+#[path = "panel/table_source_actions.rs"]
+mod table_source_actions;
+#[path = "panel/table_viewport.rs"]
+mod table_viewport;
 
 use gpui::{
     Action, AnyElement, App, Context, FocusHandle, Focusable, MouseButton, Render, SharedString,
@@ -99,6 +111,10 @@ pub(crate) struct SyndicTranscriptPanel {
     code_appearance: code_appearance::CodeAppearance,
     context_appearance: context_appearance::ContextAppearance,
     code_panels: Vec<code_panel::MountedCodePanel>,
+    table_panels: Vec<table_panel::MountedTablePanel>,
+    retired_table_panels: Vec<table_panel::MountedTablePanel>,
+    table_wheel_owner: std::rc::Rc<std::cell::Cell<Option<u64>>>,
+    table_appearance: table_appearance::TableAppearance,
     save_admission: crate::main_window::WorkerAdmission,
     retired_code_panels: Vec<code_panel::MountedCodePanel>,
     code_release_registered: bool,
@@ -131,6 +147,10 @@ impl SyndicTranscriptPanel {
             code_appearance: code_appearance::CodeAppearance::default(),
             context_appearance: context_appearance::ContextAppearance::default(),
             code_panels: Vec::new(),
+            table_panels: Vec::new(),
+            retired_table_panels: Vec::new(),
+            table_wheel_owner: std::rc::Rc::default(),
+            table_appearance: Default::default(),
             save_admission: Default::default(),
             retired_code_panels: Vec::new(),
             code_release_registered: false,
@@ -306,6 +326,15 @@ impl SyndicTranscriptPanel {
 
     pub(crate) fn reject_resource_demand(&mut self, demand: super::ResourceTranscriptDemand) {
         self.reject_code_source_action(&demand);
+        self.reject_table_source_action(&demand);
+        if demand.kind == ResourceKind::Table
+            && let Some(table) = self
+                .table_panels
+                .iter_mut()
+                .find(|table| table.viewport.owner.resource_id == demand.resource_id)
+        {
+            table.viewport.feedback = "Table range unavailable";
+        }
         if self.resource_demand().as_ref() == Some(&demand) {
             self.advance_resource_queue(&demand);
         }
@@ -505,6 +534,8 @@ impl SyndicTranscriptPanel {
             code_appearance::CodeAppearance::prepare(appearance.prepared().appearance());
         self.context_appearance =
             context_appearance::ContextAppearance::prepare(appearance.prepared().appearance());
+        self.table_appearance =
+            table_appearance::TableAppearance::prepare(appearance.prepared().appearance());
         self.appearance = Some(appearance);
         self.geometry = None;
         self.close_invalid_geometry();
@@ -611,6 +642,9 @@ impl SyndicTranscriptPanel {
             code.actions.cancel_copy("");
             code.actions.cancel_save("");
         }
+        for table in &mut self.table_panels {
+            table.actions.cancel("");
+        }
         self.host.retire();
         self.last_frame_window = None;
         self.published_snapshot = None;
@@ -621,6 +655,8 @@ impl SyndicTranscriptPanel {
         self.rejected_resource.clear();
         self.resource_queue_position = None;
         self.retired_code_panels.append(&mut self.code_panels);
+        self.retired_table_panels.append(&mut self.table_panels);
+        self.table_wheel_owner.set(None);
         self.code_wheel_owner.set(None);
     }
 
@@ -635,6 +671,57 @@ impl SyndicTranscriptPanel {
         snapshot.frame.retained_preparation_measurements = retained;
         snapshot.frame.layout_observations_last_frame = work;
         snapshot.code_panels = self.code_diagnostics();
+        snapshot.table_panels = self
+            .table_panels
+            .iter()
+            .map(|table| {
+                let scroll = table.viewport.scroll.borrow();
+                let (rows, columns) = table.viewport.realized_ranges();
+                let first_row = (scroll.vertical / scroll.row_height).floor() as u64;
+                let first_column = (scroll.horizontal / scroll.column_width).floor() as u64;
+                super::diagnostics::TablePanelDiagnostics {
+                    id: table.id,
+                    revision: table.viewport.revision.get(),
+                    rows: scroll.rows,
+                    columns: scroll.columns,
+                    visible_rows: first_row
+                        ..(first_row
+                            + (f32::from(scroll.bounds.size.height) / scroll.row_height).ceil()
+                                as u64)
+                            .min(scroll.rows),
+                    realized_rows: rows.start..rows.end,
+                    visible_columns: first_column
+                        ..(first_column
+                            + (f32::from(scroll.bounds.size.width) / scroll.column_width).ceil()
+                                as u64)
+                            .min(scroll.columns),
+                    realized_columns: columns.start..columns.end,
+                    row_overscan: table_viewport::ROW_OVERSCAN,
+                    column_overscan: table_viewport::COLUMN_OVERSCAN,
+                    cells: table.viewport.cells().len(),
+                    fallback_rows: table.viewport.fallback_rows().len(),
+                    pending: self
+                        .host
+                        .resource_demands()
+                        .iter()
+                        .any(|owner| owner.resource_id == table.viewport.owner.resource_id),
+                    offsets: (scroll.horizontal, scroll.vertical),
+                    selected_for_wheel: self.table_wheel_owner.get() == Some(table.id),
+                    focused: table
+                        .viewport
+                        .focus
+                        .map(|cell| (cell.ordinal(), cell.column)),
+                    selection: table.viewport.selection.as_ref().map(|selection| {
+                        (
+                            (selection.anchor.ordinal(), selection.anchor.column),
+                            (selection.head.ordinal(), selection.head.column),
+                        )
+                    }),
+                    vertical_scrollbar: scroll.extent(gpui_scrollbar::Axis::Vertical) > 0.0,
+                    horizontal_scrollbar: scroll.extent(gpui_scrollbar::Axis::Horizontal) > 0.0,
+                }
+            })
+            .collect();
         snapshot
     }
 
@@ -1050,6 +1137,13 @@ impl SyndicTranscriptPanel {
                 {
                     code.retire(window, app);
                 }
+                for mut table in panel
+                    .table_panels
+                    .drain(..)
+                    .chain(panel.retired_table_panels.drain(..))
+                {
+                    table.retire(window, app);
+                }
             })
             .detach();
             self.code_release_registered = true;
@@ -1118,6 +1212,7 @@ impl SyndicTranscriptPanel {
         }
         let geometry = self.geometry.as_mut().unwrap();
         if geometry.ready.is_none() && !geometry.published {
+            let table_row_height = self.table_appearance.row_height(cx).unwrap_or(28.0);
             geometry.ready = geometry.preparation.advance(32, |record| {
                 let mut element = div()
                     .w(viewport_size.width)
@@ -1137,6 +1232,8 @@ impl SyndicTranscriptPanel {
                         record,
                         self.code_appearance.header_height(),
                         &self.context_appearance,
+                        &self.table_appearance,
+                        table_row_height,
                     ))
                     .into_any_element();
                 f32::from(
@@ -1185,6 +1282,7 @@ impl SyndicTranscriptPanel {
 
         report_nested_resource_demands(&snapshot, &frame_window, &mut self.host);
         self.reconcile_code_panels(&snapshot, &frame_window, window, cx);
+        self.reconcile_table_panels(&snapshot, &frame_window, window, cx);
         self.reconcile_resident_selection_with_frame(&snapshot, &frame_window);
         self.reconcile_resident_quote_target_with_frame(&snapshot, &frame_window);
         self.reconcile_resident_context_menu_target_with_frame(&snapshot, &frame_window);
@@ -1220,6 +1318,7 @@ impl SyndicTranscriptPanel {
                 MouseButton::Left,
                 cx.listener(|panel, _, window, cx| {
                     panel.code_wheel_owner.set(None);
+                    panel.table_wheel_owner.set(None);
                     window.focus(&panel.focus_handle);
                     cx.notify();
                 }),
@@ -1263,10 +1362,12 @@ impl SyndicTranscriptPanel {
                 &frame_window,
                 &selected_record_ids,
                 &self.code_panels,
+                &self.table_panels,
                 &self.host,
                 &self.code_wheel_owner,
                 &self.code_appearance,
                 &self.context_appearance,
+                &self.table_appearance,
                 self.staged.is_some(),
                 cx,
             ))
@@ -1301,10 +1402,12 @@ fn render_frame_window(
     frame_window: &RealizedFrameWindow,
     selected_record_ids: &[ResidentPresentationRecordId],
     code_panels: &[code_panel::MountedCodePanel],
+    table_panels: &[table_panel::MountedTablePanel],
     host: &SyndicTranscriptHost,
     wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
     code_appearance: &code_appearance::CodeAppearance,
     context_appearance: &context_appearance::ContextAppearance,
+    table_appearance: &table_appearance::TableAppearance,
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> gpui::Div {
@@ -1331,10 +1434,12 @@ fn render_frame_window(
             frame_record,
             record_is_selected(&record.id, selected_record_ids),
             code_panels,
+            table_panels,
             host,
             wheel_owner,
             code_appearance,
             context_appearance,
+            table_appearance,
             commands_pending,
             cx,
         ));
@@ -1349,10 +1454,12 @@ fn render_realized_record(
     frame_record: &RealizedFrameRecord,
     is_selected: bool,
     code_panels: &[code_panel::MountedCodePanel],
+    table_panels: &[table_panel::MountedTablePanel],
     host: &SyndicTranscriptHost,
     wheel_owner: &std::rc::Rc<std::cell::Cell<Option<u64>>>,
     code_appearance: &code_appearance::CodeAppearance,
     context_appearance: &context_appearance::ContextAppearance,
+    table_appearance: &table_appearance::TableAppearance,
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
@@ -1402,12 +1509,25 @@ fn render_realized_record(
                     commands_pending,
                     cx,
                 )
+            } else if let Some(table) = table_panels
+                .iter()
+                .find(|table| table.viewport.owner.record_id == record.id)
+            {
+                table_panel::render(
+                    table,
+                    table_appearance,
+                    code_appearance,
+                    commands_pending,
+                    cx,
+                )
             } else {
                 render_record_content(
                     snapshot,
                     record,
                     code_appearance.header_height(),
                     context_appearance,
+                    table_appearance,
+                    table_appearance.row_height(cx).unwrap_or(28.0),
                 )
             },
         )
@@ -1462,6 +1582,8 @@ fn render_record_content(
     record: &ResidentPresentationRecord,
     code_header_height: f32,
     appearance: &context_appearance::ContextAppearance,
+    table_appearance: &table_appearance::TableAppearance,
+    table_row_height: f32,
 ) -> AnyElement {
     if let super::ResidentRecordSource::LocalContext { group, chunk_index } =
         &record.provenance.source
@@ -1556,6 +1678,10 @@ fn render_record_content(
             if *resource_kind == ResourceKind::Code {
                 code_viewport::shell(code_header_height)
                     .child("Code loading")
+                    .into_any_element()
+            } else if *resource_kind == ResourceKind::Table {
+                table_panel::shell(table_appearance, table_row_height)
+                    .child("Table loading")
                     .into_any_element()
             } else {
                 render_resource_reference(

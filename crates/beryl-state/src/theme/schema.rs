@@ -169,6 +169,16 @@ fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
     ) {
         return CONTEXT_TEXT;
     }
+    if matches!(id, "table-panel.cell" | "table-panel.header-cell") {
+        return &[
+            ThemePropertyId::Background,
+            ThemePropertyId::Border,
+            ThemePropertyId::Foreground,
+            ThemePropertyId::FontFamily,
+            ThemePropertyId::FontSize,
+            ThemePropertyId::FontWeight,
+        ];
+    }
     if id == "root" {
         return ROOT;
     }
@@ -201,6 +211,9 @@ fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
         | "activity.indicator.ok"
         | "activity.indicator.error"
         | "activity.resize_handle" => COLOR,
+        "table-panel.cell.focused" => COLOR,
+        "table-panel.cell.selected" => BACKGROUND_FOREGROUND,
+        "table-panel.cell.pending" | "table-panel.cell.unavailable" => FOREGROUND,
 
         "app.window" | "transcript.shell" | "status.line" | "activity.panel" => {
             BACKGROUND_FOREGROUND
@@ -338,6 +351,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if let Some(palette) = table_palette(id) {
+        return palette;
+    }
     if let Some(palette) = context_palette(id) {
         return palette;
     }
@@ -411,6 +427,45 @@ fn palette(id: &str) -> Palette {
         value.font_size = 12.0;
     }
     value
+}
+
+fn table_palette(id: &str) -> Option<Palette> {
+    let base = Palette {
+        background: [0x0f, 0x17, 0x2a],
+        border: [0x33, 0x41, 0x55],
+        foreground: [0xdb, 0xe4, 0xef],
+        font_family: "Inter",
+        font_size: 14.0,
+        font_weight: 400,
+    };
+    Some(match id {
+        "table-panel" => Palette {
+            border: [0x47, 0x55, 0x69],
+            foreground: [0xe5, 0xe7, 0xeb],
+            ..base
+        },
+        "table-panel.header" | "table-panel.cell" => base,
+        "table-panel.header-cell" => Palette {
+            background: [0x11, 0x18, 0x27],
+            foreground: [0xf1, 0xf5, 0xf9],
+            font_weight: 650,
+            ..base
+        },
+        "table-panel.cell.selected" => Palette {
+            background: [0x1e, 0x3a, 0x5f],
+            foreground: [0xf8, 0xfa, 0xfc],
+            ..base
+        },
+        "table-panel.cell.focused" => Palette {
+            border: [0x38, 0xbd, 0xf8],
+            ..base
+        },
+        "table-panel.cell.pending" | "table-panel.cell.unavailable" => Palette {
+            foreground: [0x94, 0xa3, 0xb8],
+            ..base
+        },
+        _ => return None,
+    })
 }
 
 fn context_palette(id: &str) -> Option<Palette> {
@@ -751,6 +806,14 @@ const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
     ("transcript-view.context-heading", Some("text")),
     ("transcript-view.context-body", Some("text")),
     ("transcript-view.context-provenance", Some("text.subtle")),
+    ("table-panel", Some("surface.inset")),
+    ("table-panel.header", Some("surface.inset")),
+    ("table-panel.cell", Some("text")),
+    ("table-panel.header-cell", Some("table-panel.cell")),
+    ("table-panel.cell.selected", Some("selection")),
+    ("table-panel.cell.focused", Some("focus.ring")),
+    ("table-panel.cell.pending", Some("text.subtle")),
+    ("table-panel.cell.unavailable", Some("text.subtle")),
     ("markdown.paragraph", Some("text")),
     ("markdown.heading", Some("text.value")),
     ("markdown.emphasis", Some("markdown.paragraph")),

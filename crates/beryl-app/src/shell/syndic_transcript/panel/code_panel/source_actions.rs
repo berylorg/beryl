@@ -19,7 +19,7 @@ pub(in super::super) struct CodeSourceActions {
     revision: Option<beryl_model::ProjectionRevision>,
     remap: Option<SelectionRemap>,
     pub copy: Option<CodeCopy>,
-    pub save: Option<super::save::CodeSave>,
+    pub save: Option<super::save::TextResourceSave>,
     pub save_admission: crate::main_window::WorkerAdmission,
     pub feedback: &'static str,
     sequence: u64,
@@ -59,7 +59,7 @@ pub(in super::super) struct CodeCopy {
     pub last_query: Option<IndexedResourceDemand>,
 }
 
-pub(super) fn identity(owner: &ResourceTranscriptDemand) -> ResourceTranscriptDemand {
+pub(in super::super) fn identity(owner: &ResourceTranscriptDemand) -> ResourceTranscriptDemand {
     ResourceTranscriptDemand {
         indexed: None,
         activation_revision: owner.activation_revision,
@@ -77,7 +77,7 @@ pub(super) fn identity(owner: &ResourceTranscriptDemand) -> ResourceTranscriptDe
     }
 }
 
-pub(super) fn identity_matches(
+pub(in super::super) fn identity_matches(
     saved: &ResourceTranscriptDemand,
     current: &ResourceTranscriptDemand,
 ) -> bool {
@@ -91,7 +91,7 @@ pub(super) fn identity_matches(
         && saved.metadata == current.metadata
 }
 
-pub(super) fn owner_bytes(owner: &ResourceTranscriptDemand) -> usize {
+pub(in super::super) fn owner_bytes(owner: &ResourceTranscriptDemand) -> usize {
     owner.view_id.0.len()
         + owner.record_id.0.len()
         + owner.resource_id.0.len()

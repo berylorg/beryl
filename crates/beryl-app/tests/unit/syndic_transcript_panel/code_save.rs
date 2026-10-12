@@ -1,5 +1,5 @@
 use super::super::super::super::code_panel::{
-    save::{CodeSave, SAVE_STATE_BYTES, SaveFault, SaveOperation, SaveResult, SaveWriterOptions},
+    save::{TextResourceSave, SAVE_STATE_BYTES, SaveFault, SaveOperation, SaveResult, SaveWriterOptions},
     source_actions::CodeSourceActions,
 };
 use super::*;
@@ -30,7 +30,7 @@ fn directory() -> std::path::PathBuf {
 }
 
 fn request(
-    save: &mut CodeSave,
+    save: &mut TextResourceSave,
     executor: &gpui::BackgroundExecutor,
     operation: SaveOperation,
 ) -> SaveResult {
@@ -51,7 +51,7 @@ fn code_save_writer_publishes_exact_complete_bytes_and_confirmed_replacement(
         actions.select(6, true);
         let selection = actions.selection;
         assert!(actions.copy_budget(false).is_none());
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(&executor, SaveWriterOptions::default());
         let path = directory().join("output.txt");
         std::fs::write(&path, b"original").unwrap();
@@ -96,7 +96,7 @@ fn code_save_writer_empty_source_creates_empty_destination(cx: &mut TestAppConte
             viewport.revision,
             Some(&code_line_response(1, 0)),
         );
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(&executor, SaveWriterOptions::default());
         let path = directory().join("empty.txt");
         assert_eq!(
@@ -129,7 +129,7 @@ fn code_save_writer_retirement_before_election_discards_stage_and_preserves_dest
                 viewport.revision,
                 Some(&code_line_response(1, 10)),
             );
-            let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+            let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
             let _ = save.attach_writer(&executor, SaveWriterOptions::default());
             let path = directory().join("cancelled.txt");
             if existing {
@@ -172,7 +172,7 @@ fn code_save_writer_elected_publication_survives_owner_disposal_once(cx: &mut Te
             viewport.revision,
             Some(&code_line_response(1, 4)),
         );
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(&executor, SaveWriterOptions::default());
         let path = directory().join("elected.txt");
         request(&mut save, &executor, open(path.clone()));
@@ -208,7 +208,7 @@ fn code_save_writer_write_and_publication_failures_preserve_destination_and_clea
                     viewport.revision,
                     Some(&code_line_response(1, 4)),
                 );
-                let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+                let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
                 let _ = save.attach_writer(&executor, SaveWriterOptions { fault: Some(fault), ..Default::default() });
                 let path = directory().join("failed.txt");
                 if existing {
@@ -254,7 +254,7 @@ fn code_save_custody_and_refusal_keep_selection_with_bounded_action_state(cx: &m
         actions.select(20, false);
         actions.select(80, true);
         let selected = actions.selection;
-        let mut save = CodeSave::new(&mut actions, &owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &owner).unwrap();
         owner.presentation_revision += 1;
         assert!(save.current(&actions, &owner));
         owner.activation_revision += 1;
@@ -286,7 +286,7 @@ fn code_save_new_destination_collision_never_replaces_a_late_created_file(cx: &m
             viewport.revision,
             Some(&code_line_response(1, 4)),
         );
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(&executor, SaveWriterOptions::default());
         let path = directory().join("collision.txt");
         request(
@@ -326,7 +326,7 @@ fn code_save_staging_acquisition_failure_leaves_new_destination_absent(cx: &mut 
             viewport.revision,
             Some(&code_line_response(1, 4)),
         );
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(&executor, SaveWriterOptions::default());
         let directory = directory();
         let path = directory.join("absent-parent").join("output.txt");
@@ -351,7 +351,7 @@ fn code_save_cleanup_failure_is_a_terminal_explicit_outcome(cx: &mut TestAppCont
             viewport.revision,
             Some(&code_line_response(1, 4)),
         );
-        let mut save = CodeSave::new(&mut actions, &viewport.owner).unwrap();
+        let mut save = TextResourceSave::new(&mut actions, &viewport.owner).unwrap();
         let _ = save.attach_writer(
             &executor,
             SaveWriterOptions {

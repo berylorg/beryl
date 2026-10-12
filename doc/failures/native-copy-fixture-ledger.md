@@ -14,3 +14,15 @@ names and sizes are unavailable. No shared Temp sweep is authorized by this evid
 Enable the fixture ledger before the first native run, retain complete failure output through
 review, and use the ledger for cleanup after the last consumer. Do not claim complete cleanup
 when successful or aborted fixtures have lost their ownership records.
+
+Indexed Table qualification exposed a second failure mode: the retained ordinary-command fixture
+appended its home to the ledger only after the native callback returned. A ready-timeout panic
+aborted the process before registration. Enabling the environment variable alone did not protect
+that exit. The fixture now records the exact home immediately after creation, before preparation
+and native startup, and requires an absolute ledger path. Table test readiness failures also retire
+their exact fixture before reporting a failed result outside the native callback.
+
+All five homes from the failing Table run remained attributable through its retained full output's
+`mounted ordinary command fixture:` lines. They were reclaimed using verified exact paths after
+their last consumer, and all five were confirmed absent. This attribution does not recover or
+authorize a sweep of the older unidentified homes.

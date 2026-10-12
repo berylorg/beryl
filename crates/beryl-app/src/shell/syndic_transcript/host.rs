@@ -24,6 +24,7 @@ pub(crate) struct SyndicTranscriptHost {
     core: ResidentTranscriptCore,
     scroll_controller: RealizedFrameScrollController,
     last_frame_window: Option<RealizedFrameWindow>,
+    measured_presentation_revision: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,6 +51,7 @@ impl SyndicTranscriptHost {
             core: ResidentTranscriptCore::empty(),
             scroll_controller: RealizedFrameScrollController::new(),
             last_frame_window: None,
+            measured_presentation_revision: None,
         }
     }
 
@@ -119,6 +121,53 @@ impl SyndicTranscriptHost {
         self.core.code_panel_demands()
     }
 
+    pub(crate) fn table_panel_demands(&self) -> Vec<super::ResourceTranscriptDemand> {
+        if self.last_frame_window.is_none() {
+            return Vec::new();
+        }
+        self.core.table_panel_demands()
+    }
+
+    pub(crate) fn reserve_indexed_layout(
+        &mut self,
+        demand: &super::ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        self.core.reserve_indexed_layout(demand, bytes)
+    }
+
+    pub(crate) fn can_reserve_indexed_layout(
+        &self,
+        demand: &super::ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        self.core.can_reserve_indexed_layout(demand, bytes)
+    }
+
+    pub(crate) fn indexed_table_window(
+        &self,
+        resource: &super::ResourceId,
+    ) -> Vec<std::sync::Arc<super::provider::IndexedResourceResponse>> {
+        self.core.indexed_table_window(resource)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn indexed_table_state_for_test(&self, resource: &super::ResourceId) -> String {
+        self.core.indexed_table_state_for_test(resource)
+    }
+
+    pub(crate) fn acknowledge_table_window(
+        &mut self,
+        owner: &super::ResourceTranscriptDemand,
+        pages: &[std::sync::Arc<super::provider::IndexedResourceResponse>],
+    ) -> bool {
+        if self.measured_presentation_revision != Some(self.shared_snapshot().presentation_revision)
+        {
+            return false;
+        }
+        self.core.acknowledge_table_window(owner, pages)
+    }
+
     pub(crate) fn prepare_resource_response(
         &self,
         demand: &super::ResourceTranscriptDemand,
@@ -132,6 +181,7 @@ impl SyndicTranscriptHost {
             core: self.core.prepare_resource_response(demand, response)?,
             scroll_controller: self.scroll_controller.clone(),
             last_frame_window: self.last_frame_window.clone(),
+            measured_presentation_revision: self.measured_presentation_revision,
         })
     }
 
@@ -207,6 +257,7 @@ impl SyndicTranscriptHost {
                         .prepare_indexed_resource_response(demand, response)?,
                     scroll_controller: self.scroll_controller.clone(),
                     last_frame_window: self.last_frame_window.clone(),
+                    measured_presentation_revision: self.measured_presentation_revision,
                 })
             }
         }
@@ -225,6 +276,7 @@ impl SyndicTranscriptHost {
             core: self.core.prepare_adjacent_extension(prepared)?,
             scroll_controller: self.scroll_controller.clone(),
             last_frame_window: None,
+            measured_presentation_revision: None,
         })
     }
 
@@ -275,6 +327,9 @@ impl SyndicTranscriptHost {
 
     pub(crate) fn accept_measured_frame(&mut self, mut window: RealizedFrameWindow) {
         let snapshot = self.shared_snapshot();
+        self.measured_presentation_revision = (window.presentation_revision
+            == snapshot.presentation_revision)
+            .then_some(window.presentation_revision);
         if let Some(previous) = &self.last_frame_window {
             let before = previous.overscan_range.start
                 ..previous.overscan_range.end.min(window.overscan_range.start);

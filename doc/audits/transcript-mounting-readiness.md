@@ -978,3 +978,65 @@ The [group-residency lesson](../failures/discussion-context-group-residency.md) 
 invalidated partial-eviction approach. Execution logs and positively registered native fixture
 homes reached their last review consumer at acceptance; their exact owned cleanup does not extend
 to shared caches or the unidentified fixtures documented by the preceding Copy boundary.
+
+## Mounted Indexed Table Acceptance
+
+Independent completion review accepted the external indexed Table panel on 2026-10-12. Header,
+Body, Source and anchor requests serialize through the existing indexed owner; the widget neither
+loads storage nor reparses Markdown structure. A coherent window covers at most fifteen body rows,
+one header row and eight columns, with 128 descriptors and response pages. Current and replacement
+windows retain at most 256 descriptors under the existing resource budget. Shared response
+allocations count once; distinct windows and copied viewport state remain charged. Final promotion
+keeps the former window charged until measured publication and exact viewport adoption acknowledge
+release. Table Header/Body requests use a 16,384-byte allowance under the unchanged query ledger;
+Code retains its separate sixteen-page continuation limit.
+
+Native qualification proves two-axis nested wheel routing over body, column headers and command
+header without outer co-scroll; whole-cell click, Shift-click, drag and keyboard rectangles;
+resident-gap preservation/demand; stable focus; actual width/font remeasurement; bounded replacement
+and disposal. Ordinary navigation skips known fallback rows, while an unrealizable rectangular
+extension preserves its last coherent selection. Paint callbacks reject obsolete owner/source
+identities, and truncated cell tooltips use bounded owner-projected fragments.
+
+First distinct `Ctrl+C` exports selected raw cell spelling and whitespace as Markdown; a quick
+second distinct press exports best-effort stripped text. Held repeats do not advance the gesture.
+Partial exports include only selected cells and required separators, with selected-column delimiter
+syntax for selected headers. Selecting every eligible table cell reproduces the complete original
+source, including CRLF, delimiter spelling, empty rows and cells. Text exports omit empty rows and
+trailing empty/missing cells while preserving interior gaps and literal code. The shared conservative
+scanner retains ambiguous markup. Pending first-Copy supersession, checked-writer refusal and
+selection preservation are qualified alongside existing global Code/Table supersession.
+
+Typed surplus-row fallback has explicit exact raw-row Copy/Save actions. Native complete-selection
+Copy refuses source above the clipboard limit before writer invocation and preserves its rectangle;
+Save streams the full source independently of that limit. Table and Code share the original-root
+Save implementation, native replacement-choice custody, atomic publication and cancellation/release
+fences. Checked fault injection preserves the destination and removes staging output, with explicit
+writer-admission and failure-feedback evidence. All affected Code behavior remains qualified.
+
+Final frozen-input qualification passed:
+
+- Combined panel/core/provider/native: 177/177 in 397.502 seconds,
+  `081c1e94-09d8-4cd0-9ef5-2bada8a9aef5`, including all six Table native cases and 32 native cases total.
+- Twelve affected transcript integration binaries: 130/130 in 0.691 seconds,
+  `b189b2d0-7cc6-41b2-b3f0-8452fde5e933`.
+- Four theme binaries: 10/10 in 0.304 seconds,
+  `34d0e9c8-0761-4951-942b-7a955fc0ba89`.
+- Production `beryl-app --lib` check without test-fault features: passed in 13.90 seconds.
+
+Independent review reconciled 112 shared source/authority inputs across these runs with no drift;
+the final theme/production manifests contained 146 identical inputs. Verification used the stable
+toolchain, local LLVM configuration, locked offline dependencies, one build/test job, no normal
+debug information and nonincremental builds. No dependency or fork revision changed.
+
+Native evidence uses actual GPUI windows and routed test input, checked clipboard/picker seams,
+measured geometry and real filesystem publication. It does not qualify OS clipboard/common-dialog
+automation or end-to-end Table creation. Existing storage/projection classification and preview
+limits remain separate contracts. Small inline Tables retain a separate cell-interaction readiness
+and mounting boundary; this acceptance does not complete uniform Table interaction.
+
+The [window-admission lesson](../failures/indexed-table-window-admission.md) and
+[fixture lesson](../failures/native-table-fixture-construction.md) preserve the invalidated approaches.
+Temporary observers are removed. Retained execution evidence and positively attributed native homes
+have reached their last review consumer and are reclaimed at this boundary; unrelated shared caches
+and the preceding Copy boundary's unidentified fixtures remain outside cleanup ownership.

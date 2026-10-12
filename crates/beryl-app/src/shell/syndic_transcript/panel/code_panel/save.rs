@@ -12,21 +12,22 @@ const ACTIVE: u8 = 0;
 const CANCELLED: u8 = 1;
 const PUBLISHING: u8 = 2;
 
-pub(in super::super) struct CodeSave {
+pub(in super::super) struct TextResourceSave {
     owner: ResourceTranscriptDemand,
-    binding: index::Binding,
-    root: [u8; 32],
-    revision: beryl_model::ProjectionRevision,
-    sequence: u64,
-    position: u64,
+    pub(in super::super) binding: index::Binding,
+    pub(in super::super) root: [u8; 32],
+    pub(in super::super) revision: beryl_model::ProjectionRevision,
+    pub(in super::super) sequence: u64,
+    range: index::ByteRange,
+    pub(in super::super) position: u64,
     pub(in super::super) busy: bool,
     prepared: bool,
-    retry_refusal: bool,
+    pub(in super::super) retry_refusal: bool,
     gate: Arc<AtomicU8>,
     sender: Option<oneshot::Sender<SaveWork>>,
 }
 
-impl Drop for CodeSave {
+impl Drop for TextResourceSave {
     fn drop(&mut self) {
         let _ = self
             .gate
@@ -39,7 +40,7 @@ mod writer;
 #[cfg(test)]
 pub(in super::super) use writer::{SaveFault, SaveWriterGate};
 pub(in super::super) use writer::{SaveOperation, SaveResult, SaveWork, SaveWriterOptions};
-impl CodeSave {
+impl TextResourceSave {
     pub(in super::super) fn new(
         actions: &mut CodeSourceActions,
         owner: &ResourceTranscriptDemand,
@@ -49,13 +50,38 @@ impl CodeSave {
         }
         let sequence = actions.next_sequence()?;
         let binding = actions.binding.clone()?;
+        Self::new_exact(
+            owner,
+            binding.clone(),
+            actions.root?,
+            actions.save_revision()?,
+            sequence,
+            binding.range,
+        )
+    }
+    pub(in super::super) fn new_exact(
+        owner: &ResourceTranscriptDemand,
+        binding: index::Binding,
+        root: [u8; 32],
+        revision: beryl_model::ProjectionRevision,
+        sequence: u64,
+        range: index::ByteRange,
+    ) -> Option<Self> {
+        if owner_bytes(owner) > 4096
+            || range.start < binding.range.start
+            || range.end > binding.range.end
+            || range.end < range.start
+        {
+            return None;
+        }
         Some(Self {
             owner: identity(owner),
-            position: binding.range.start,
+            position: range.start,
             binding,
-            root: actions.root?,
-            revision: actions.save_revision()?,
+            root,
+            revision,
             sequence,
+            range,
             busy: true,
             prepared: false,
             retry_refusal: true,
@@ -108,14 +134,34 @@ impl CodeSave {
         }
         current
     }
+    pub(in super::super) fn current_exact(
+        &self,
+        owner: &ResourceTranscriptDemand,
+        binding: Option<&index::Binding>,
+        root: Option<[u8; 32]>,
+        revision: Option<beryl_model::ProjectionRevision>,
+        sequence: u64,
+    ) -> bool {
+        identity_matches(&self.owner, owner)
+            && binding == Some(&self.binding)
+            && root == Some(self.root)
+            && revision == Some(self.revision)
+            && sequence == self.sequence
+    }
     pub(in super::super) fn query(
         &self,
         actions: &CodeSourceActions,
     ) -> Option<IndexedResourceDemand> {
+        self.query_exact(actions.binding.as_ref())
+    }
+    pub(in super::super) fn query_exact(
+        &self,
+        binding: Option<&index::Binding>,
+    ) -> Option<IndexedResourceDemand> {
         if self.busy
             || self.sender.is_none()
-            || self.position >= self.binding.range.end
-            || actions.binding.as_ref() != Some(&self.binding)
+            || self.position >= self.range.end
+            || binding != Some(&self.binding)
         {
             return None;
         }
@@ -125,11 +171,34 @@ impl CodeSave {
             query: IndexedResourceQuery::Source {
                 range: index::ByteRange {
                     start: self.position,
-                    end: self.binding.range.end.min(self.position.checked_add(8192)?),
+                    end: self.range.end.min(self.position.checked_add(8192)?),
                 },
                 bytes: 16384,
             },
         })
+    }
+    pub(in super::super) fn acknowledged(&mut self, result: SaveResult) {
+        self.busy = false;
+        match result {
+            SaveResult::Wrote(bytes) => {
+                self.position += bytes as u64;
+                self.retry_refusal = true;
+            }
+            SaveResult::Prepared => self.prepared = true,
+            _ => {}
+        }
+    }
+    pub(in super::super) fn next_work(&mut self) -> Option<oneshot::Receiver<SaveResult>> {
+        if self.busy || self.position != self.range.end {
+            return None;
+        }
+        if !self.prepared {
+            return self.work(SaveOperation::Prepare);
+        }
+        if !self.elect() {
+            return None;
+        }
+        self.work(SaveOperation::Publish)
     }
     pub(in super::super) fn work(
         &mut self,
@@ -204,14 +273,23 @@ impl SyndicTranscriptPanel {
         for code in &mut self.code_panels {
             code.actions.save_admission = self.save_admission.clone();
         }
+        for table in &mut self.table_panels {
+            table.actions.save_admission = self.save_admission.clone();
+        }
     }
 
     pub(crate) fn fence_code_saves(&mut self, cx: &mut Context<Self>) {
         for code in &mut self.code_panels {
             code.actions.cancel_save("");
         }
+        for table in &mut self.table_panels {
+            table.actions.cancel("");
+        }
         for position in 0..self.code_panels.len() {
             self.refresh_save_reservation(self.code_panels[position].id);
+        }
+        for position in 0..self.table_panels.len() {
+            self.refresh_table_source_reservation(self.table_panels[position].id);
         }
         cx.notify();
     }
@@ -238,7 +316,7 @@ impl SyndicTranscriptPanel {
             cx.notify();
             return;
         }
-        let Some(save) = CodeSave::new(&mut code.actions, &owner) else {
+        let Some(save) = TextResourceSave::new(&mut code.actions, &owner) else {
             return;
         };
         let Some(lease) = code.actions.save_admission.acquire() else {
@@ -440,17 +518,8 @@ impl SyndicTranscriptPanel {
         cx.notify();
     }
 
-    fn next_save_work(save: &mut CodeSave) -> Option<oneshot::Receiver<SaveResult>> {
-        if save.busy || save.position != save.binding.range.end {
-            return None;
-        }
-        if !save.prepared {
-            return save.work(SaveOperation::Prepare);
-        }
-        if !save.elect() {
-            return None;
-        }
-        save.work(SaveOperation::Publish)
+    fn next_save_work(save: &mut TextResourceSave) -> Option<oneshot::Receiver<SaveResult>> {
+        save.next_work()
     }
 
     pub(super) fn advance_code_save(&mut self, id: u64, cx: &mut Context<Self>) -> bool {

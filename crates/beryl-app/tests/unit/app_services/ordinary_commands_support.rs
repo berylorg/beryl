@@ -250,6 +250,20 @@ fn run_mounted_case_with_workers(
         "mounted ordinary command fixture: {}",
         directory.path().display()
     );
+    if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
+        let ledger_path = std::path::PathBuf::from(ledger);
+        assert!(ledger_path.is_absolute(), "native fixture ledger must be absolute");
+        let mut ledger = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(ledger_path)
+            .unwrap();
+        std::io::Write::write_all(
+            &mut ledger,
+            format!("{}\n", directory.path().display()).as_bytes(),
+        )
+        .unwrap();
+    }
     if let Some(prepare) = prepare {
         prepare(directory.path());
     }
@@ -434,18 +448,6 @@ fn run_mounted_case_with_workers(
     drop(owner);
     let Some(restored_count) = restored_count else {
         let retained_path = directory.keep();
-        if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
-            let mut ledger = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(ledger)
-                .unwrap();
-            std::io::Write::write_all(
-                &mut ledger,
-                format!("{}\n", retained_path.display()).as_bytes(),
-            )
-            .unwrap();
-        }
         eprintln!(
             "retained ordinary command fixture awaiting process cleanup: {}",
             retained_path.display()

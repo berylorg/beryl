@@ -55,6 +55,8 @@ Each eligible cell is an indivisible selection unit. Pointer activation selects 
 Shift-modified pointer activation extends the rectangle to the activated cell. The widget never
 creates character-level selection inside a cell or a continuous text span crossing cell boundaries.
 The owner receives the selected cell identities for Copy, not painted text endpoints.
+Pointer dragging moves the rectangle endpoint in whole-cell steps and obeys the same resident-gap
+rule as keyboard extension.
 
 Copy requests use the owner-supplied source representation for the selected stable range and
 reconstruct a contiguous platform value only after its exact logical size fits the admitted
@@ -79,6 +81,16 @@ The root frame receives a bounded outer allocation from its transcript presentat
 The grid viewport owns independent inline and block scroll offsets. Column headers remain aligned with body columns during horizontal scrolling. Row headers remain aligned with body rows during vertical scrolling when those optional headers are configured.
 
 Realized rows and columns are laid out only from resident range descriptors. Owner-supplied measured or estimated track sizes establish the current grid window; later coherent measurements preserve the focused cell or owner-supplied table anchor rather than resetting both scroll axes.
+
+Cell typography inherits the active transcript body font. The default owner estimate uses the
+greater of the cell role's font-derived minimum track width and available viewport inline size
+divided by seven full tracks, rounded upward. An unaligned scroll offset may add one partially
+visible track, keeping realization within the owner's eight-column capacity even with a small
+font or wide allocation. Overscan may
+shrink when visible tracks consume that capacity. The uniform row height equals the greater
+of the cell minimum height and the rounded-up font ascent plus descent, block padding and border.
+The viewport is bounded by its maximum height and its target row count plus the configured header.
+The same track and viewport geometry is used for demand, paint and outer measurement.
 
 The horizontal and vertical scrollbar affordances occupy panel edges without changing the table's source row or column identities. The complete outer panel remains one measured transcript presentation record while its grid window scrolls internally.
 
@@ -187,10 +199,12 @@ Default variant: column-header.
 
 .table-panel__viewport {
   --max-height: 360px;
+  --target-rows: 10;
 }
 
 .table-panel__cell {
   --min-height: 28px;
+  --min-track-width: calc(12em + 2 * var(--padding-x) + var(--border-width));
   --padding-x: 8px;
   --padding-y: 5px;
   --border-width: 1px;

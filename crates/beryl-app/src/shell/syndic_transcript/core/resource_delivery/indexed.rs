@@ -3,6 +3,11 @@ use super::super::super::provider::{
     resource_index as index,
 };
 use super::*;
+#[path = "indexed/admission.rs"]
+mod admission;
+#[path = "indexed/table_window.rs"]
+mod table_window;
+use table_window::{admit_table_page, table_request_bounded};
 
 #[derive(Clone, Default)]
 pub(in super::super) struct IndexedResidency {
@@ -24,16 +29,33 @@ pub(super) struct IndexedEntry {
     pub(super) inner: IndexedResourceDemand,
     pub(super) response: Option<Arc<IndexedResourceResponse>>,
     pages: Vec<Arc<IndexedResourceResponse>>,
+    table_window: Vec<Arc<IndexedResourceResponse>>,
+    table_retired_window: Vec<Arc<IndexedResourceResponse>>,
+    table_staging: Vec<Arc<IndexedResourceResponse>>,
     layout_bytes: usize,
 }
 
 impl IndexedResidency {
     pub(in super::super) fn encoded_bytes(&self) -> usize {
         self.entries.iter().fold(0usize, |bytes, entry| {
-            entry.pages.iter().chain(entry.response.iter()).fold(
-                bytes.saturating_add(entry.layout_bytes),
-                |bytes, response| bytes.saturating_add(response.encoded_bytes),
-            )
+            entry
+                .pages
+                .iter()
+                .chain(entry.response.iter().filter(|response| {
+                    !entry
+                        .table_window
+                        .iter()
+                        .chain(entry.table_staging.iter())
+                        .chain(entry.table_retired_window.iter())
+                        .any(|page| Arc::ptr_eq(page, response))
+                }))
+                .chain(entry.table_window.iter())
+                .chain(entry.table_staging.iter())
+                .chain(entry.table_retired_window.iter())
+                .fold(
+                    bytes.saturating_add(entry.layout_bytes),
+                    |bytes, response| bytes.saturating_add(response.encoded_bytes),
+                )
         })
     }
 
@@ -102,6 +124,14 @@ impl ResidentTranscriptCore {
             return false;
         }
         if inner.is_some()
+            && self.indexed_resources.entries.iter().any(|entry| {
+                entry.demand.resource_id == demand.resource_id
+                    && !entry.table_retired_window.is_empty()
+            })
+        {
+            return false;
+        }
+        if inner.is_some()
             && self.indexed_resources.entries.len() >= self.policy.max_pending_provider_requests
             && !self
                 .indexed_resources
@@ -165,6 +195,43 @@ impl ResidentTranscriptCore {
                 Some(pages)
             })
             .unwrap_or_default();
+        let retained_table = self
+            .indexed_resources
+            .entries
+            .iter()
+            .find(|entry| {
+                demand.kind == ResourceKind::Table
+                    && entry.demand.resource_id == demand.resource_id
+                    && entry.demand.view_id == demand.view_id
+                    && entry.demand.record_id == demand.record_id
+                    && entry.demand.provenance == demand.provenance
+                    && entry.demand.activation_revision == demand.activation_revision
+                    && entry.demand.revision == demand.revision
+                    && inner.as_ref().is_some_and(|next| {
+                        next.revision == entry.inner.revision
+                            && next.root
+                                == entry
+                                    .response
+                                    .as_ref()
+                                    .and_then(|response| {
+                                        response.root.as_ref().map(|root| root.digest)
+                                    })
+                                    .or(entry.inner.root)
+                    })
+            })
+            .map(|entry| {
+                let staging = match (inner.as_ref().map(|inner| &inner.query),entry.table_staging.last().map(|page|&page.value)) {
+                    (Some(IndexedResourceQuery::Range{request,cursor,..}),Some(IndexedResourceValue::Range(previous)))
+                        if table_request_bounded(request) && match cursor {
+                            Some(cursor)=>*cursor==previous.cursor && cursor.request==*request && !previous.request_complete,
+                            None=>previous.request_complete && matches!((previous.cursor.request,*request),
+                                (index::Request::Table{role:index::RowRole::Header,columns:prior,..},index::Request::Table{role:index::RowRole::Body,columns:next,..}) if prior==next),
+                        } =>entry.table_staging.clone(),
+                    _=>Vec::new(),
+                };
+                (entry.table_window.clone(), staging, entry.table_retired_window.clone())
+            })
+            .unwrap_or_default();
         self.indexed_resources
             .entries
             .retain(|entry| entry.demand.resource_id != demand.resource_id);
@@ -178,6 +245,9 @@ impl ResidentTranscriptCore {
                 inner,
                 response: None,
                 pages,
+                table_window: retained_table.0,
+                table_staging: retained_table.1,
+                table_retired_window: retained_table.2,
                 layout_bytes,
             });
         }
@@ -190,7 +260,20 @@ impl ResidentTranscriptCore {
         demand: &ResourceTranscriptDemand,
         bytes: usize,
     ) -> bool {
-        if demand.kind != ResourceKind::Code || !self.indexed_owner_current(demand) {
+        if demand.kind != ResourceKind::Code {
+            return false;
+        }
+        self.reserve_indexed_layout(demand, bytes)
+    }
+
+    pub(crate) fn reserve_indexed_layout(
+        &mut self,
+        demand: &ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        if !matches!(demand.kind, ResourceKind::Code | ResourceKind::Table)
+            || !self.indexed_owner_current(demand)
+        {
             return false;
         }
         let Some(position) = self
@@ -220,7 +303,20 @@ impl ResidentTranscriptCore {
         demand: &ResourceTranscriptDemand,
         bytes: usize,
     ) -> bool {
-        if demand.kind != ResourceKind::Code || !self.indexed_owner_current(demand) {
+        if demand.kind != ResourceKind::Code {
+            return false;
+        }
+        self.can_reserve_indexed_layout(demand, bytes)
+    }
+
+    pub(crate) fn can_reserve_indexed_layout(
+        &self,
+        demand: &ResourceTranscriptDemand,
+        bytes: usize,
+    ) -> bool {
+        if !matches!(demand.kind, ResourceKind::Code | ResourceKind::Table)
+            || !self.indexed_owner_current(demand)
+        {
             return false;
         }
         let Some(entry) = self
@@ -286,147 +382,6 @@ impl ResidentTranscriptCore {
             .map(|entry| entry.demand.clone())
     }
 
-    pub(crate) fn prepare_indexed_resource_response(
-        &self,
-        demand: &ResourceTranscriptDemand,
-        response: Arc<IndexedResourceResponse>,
-    ) -> Option<Self> {
-        if !self.resource_demands().contains(demand) {
-            return None;
-        }
-        let inner = demand.indexed.as_ref()?;
-        let allowance = match &inner.query {
-            IndexedResourceQuery::Range { bytes, .. }
-            | IndexedResourceQuery::Display { bytes, .. }
-            | IndexedResourceQuery::Anchor { bytes, .. }
-            | IndexedResourceQuery::Source { bytes, .. } => *bytes,
-        };
-        if response.encoded_bytes == 0
-            || response.encoded_bytes > allowance.min(65_536)
-            || response.encoded_bytes > self.policy.max_resource_slice_bytes
-        {
-            return None;
-        }
-        match (&inner.query, &response.value) {
-            (_, IndexedResourceValue::Pending)
-                if response.root.is_none() && response.encoded_bytes == 1 => {}
-            (
-                IndexedResourceQuery::Range {
-                    request,
-                    descriptors,
-                    ..
-                },
-                IndexedResourceValue::Range(value),
-            ) => {
-                if !indexed_binding_matches(demand, inner, &response, &value.binding)
-                    || value.cursor.request != *request
-                    || value.items.len() > (*descriptors).min(256)
-                    || response.root.as_ref().is_none_or(|root| {
-                        root.key != value.cursor.build || root.digest != value.cursor.root_digest
-                    })
-                {
-                    return None;
-                }
-            }
-            (
-                IndexedResourceQuery::Display { request, .. },
-                IndexedResourceValue::Display(value),
-            ) => {
-                if !indexed_binding_matches(demand, inner, &response, &value.binding)
-                    || value.cursor.request != *request
-                    || response.root.as_ref().is_none_or(|root| {
-                        root.key != value.cursor.build || root.digest != value.cursor.root
-                    })
-                {
-                    return None;
-                }
-            }
-            (IndexedResourceQuery::Anchor { .. }, IndexedResourceValue::Anchor(value)) => {
-                if !indexed_binding_matches(demand, inner, &response, &value.binding) {
-                    return None;
-                }
-            }
-            (IndexedResourceQuery::Source { range, .. }, IndexedResourceValue::Source(value)) => {
-                if !matches!(demand.kind, ResourceKind::Code | ResourceKind::Table)
-                    || !matches!(
-                        (&demand.kind, value.binding.metadata.kind()),
-                        (ResourceKind::Code, syndic_storage::ResourceKind::Code)
-                            | (ResourceKind::Table, syndic_storage::ResourceKind::Table)
-                    )
-                    || !indexed_binding_matches(demand, inner, &response, &value.binding)
-                    || inner.root.is_none()
-                    || value.range != *range
-                    || range.start >= range.end
-                    || range.start < value.binding.range.start
-                    || range.end > value.binding.range.end
-                    || range.end - range.start > 8192
-                    || value.bytes.len() as u64 != range.end - range.start
-                    || value.bytes.len() > response.encoded_bytes
-                {
-                    return None;
-                }
-            }
-            _ => return None,
-        }
-        let mut candidate = self.clone();
-        let entry = candidate
-            .indexed_resources
-            .entries
-            .iter_mut()
-            .find(|entry| {
-                entry.inner == *inner && entry.demand.resource_id == demand.resource_id
-            })?;
-        if !entry.pages.is_empty() {
-            let IndexedResourceValue::Range(range) = &response.value else {
-                return None;
-            };
-            let IndexedResourceQuery::Range {
-                request: index::Request::Code { lines },
-                cursor: Some(cursor),
-                ..
-            } = &inner.query
-            else {
-                return None;
-            };
-            let index::Position::Code(start) = cursor.next else {
-                return None;
-            };
-            let index::Position::Code(end) = range.cursor.next else {
-                return None;
-            };
-            if range.items.is_empty()
-                || end < start
-                || (end == start && range.cursor.fragment_offset == 0)
-                || end > lines.end
-                || entry
-                    .pages
-                    .iter()
-                    .map(|page| match &page.value {
-                        IndexedResourceValue::Range(value) => value.items.len(),
-                        _ => 0,
-                    })
-                    .sum::<usize>()
-                    + range.items.len()
-                    > (lines.end - lines.start).min(16) as usize
-                || range.binding
-                    != match &entry.pages.last()?.value {
-                        IndexedResourceValue::Range(value) => value.binding.clone(),
-                        _ => return None,
-                    }
-            {
-                return None;
-            }
-        }
-        entry.demand = demand.clone();
-        entry.response = Some(response);
-        candidate.refresh_budget_accounting();
-        if candidate.resident.resource_bytes > candidate.policy.max_resource_bytes {
-            return None;
-        }
-        candidate.bump_resource_presentation();
-        Some(candidate)
-    }
-
     pub(in super::super) fn reconcile_indexed_resources(
         &mut self,
         protected: &[ResidentPresentationRecordId],
@@ -460,20 +415,4 @@ impl ResidentTranscriptCore {
                 } if *resource_id == demand.resource_id && *resource_kind == demand.kind)
             })
     }
-}
-
-fn indexed_binding_matches(
-    demand: &ResourceTranscriptDemand,
-    inner: &IndexedResourceDemand,
-    response: &IndexedResourceResponse,
-    binding: &syndic_storage::indexed_resource::Binding,
-) -> bool {
-    response.root.as_ref().is_some_and(|root| {
-        root.key.resource == binding.resource
-            && binding.metadata.revision() == inner.revision
-            && binding.resource.id.to_string() == demand.resource_id.0
-            && demand.provenance.source_range.as_ref()
-                == Some(&(binding.range.start..binding.range.end))
-            && inner.root.is_none_or(|digest| digest == root.digest)
-    })
 }

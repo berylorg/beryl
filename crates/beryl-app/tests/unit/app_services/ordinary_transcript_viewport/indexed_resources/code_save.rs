@@ -1,5 +1,48 @@
 use super::*;
 
+fn run_code_save_fixture(
+    count: u8,
+    chunks: usize,
+    prepare: impl FnOnce(&std::path::Path) + 'static,
+    scenario: impl for<'a> FnOnce(
+        std::rc::Rc<std::cell::RefCell<RunningProcessOwner>>,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    let failure = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let result = failure.clone();
+    run_mounted_with_prepared_home_retained(count, chunks, prepare, move |owner, faults, cx| {
+        Box::pin(async move {
+            let window = windows(&owner)[0];
+            let panel = window
+                .read_with(cx, |root, _| root.test_transcript_panel())
+                .unwrap();
+            let outcome = {
+                let mut future = scenario(owner, faults, cx);
+                std::future::poll_fn(|context| {
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        future.as_mut().poll(context)
+                    })) {
+                        Ok(std::task::Poll::Pending) => std::task::Poll::Pending,
+                        Ok(std::task::Poll::Ready(())) => std::task::Poll::Ready(Ok(())),
+                        Err(payload) => std::task::Poll::Ready(Err(payload)),
+                    }
+                })
+                .await
+            };
+            if let Err(payload) = outcome {
+                *result.borrow_mut() = Some(payload);
+                retire_code_fixture(window, &panel, cx).await;
+            }
+        })
+    });
+    if let Some(payload) = failure.borrow_mut().take() {
+        std::panic::resume_unwind(payload);
+    }
+}
+
 fn body() -> String {
     "short🍒\r\n".to_owned() + &"x".repeat(300_000) + "\r\n"
 }
@@ -53,7 +96,7 @@ async fn completed(
 
 #[test]
 fn native_code_save_streams_complete_large_source_with_replacement_and_local_failures() {
-    run_mounted_with_prepared_home_retained(
+    run_code_save_fixture(
         1,
         0,
         |path| seed_history_text(path, 1, Some(&format!("```text\n{}```", body()))),
@@ -121,6 +164,19 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
                 );
                 for publication in [false, true] {
                     ready(window, &panel, cx).await;
+                    wait_until(
+                        window,
+                        cx,
+                        |cx| {
+                            panel
+                                .read_with(cx, |panel, _| {
+                                    panel.code_save_unavailable_for_test().is_none()
+                                })
+                                .unwrap()
+                        },
+                        "Code fault Save must be eligible for native command admission",
+                    )
+                    .await;
                     panel
                         .update(cx, |panel, _| {
                             panel.code_set_save_choice_for_test(Ok(Some(gpui::SavePathChoice {
@@ -134,13 +190,25 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
                     completed(window, &panel, cx).await;
                     assert_eq!(std::fs::read(&path).unwrap(), b"original");
                     assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
+                    let (feedback, fault_pending, unavailable) = panel
+                        .read_with(cx, |panel, _| {
+                            (
+                                panel.code_copy_feedback_for_test(),
+                                panel.code_save_fault_pending_for_test(),
+                                panel.code_save_unavailable_for_test(),
+                            )
+                        })
+                        .unwrap();
+                    eprintln!(
+                        "native Code Save fault outcome: publication={publication}, fault_pending={fault_pending}, unavailable={unavailable:?}, feedback={feedback:?}"
+                    );
                     assert!(
-                        panel
-                            .read_with(cx, |panel, _| panel
-                                .code_copy_feedback_for_test()
-                                .unwrap()
-                                .contains("failed"))
-                            .unwrap()
+                        !fault_pending,
+                        "Code fault writer was never admitted: feedback={feedback:?}, unavailable={unavailable:?}"
+                    );
+                    assert!(
+                        feedback.is_some_and(|feedback| feedback.contains("failed")),
+                        "Code fault Save outcome: feedback={feedback:?}, unavailable={unavailable:?}"
                     );
                     assert_eq!(
                         panel
@@ -192,7 +260,9 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
                     })
                     .unwrap();
                 let gate = window
-                    .update(cx, |root, _, _| root.test_hold_indexed_code_source_read(revision))
+                    .update(cx, |root, _, _| {
+                        root.test_hold_indexed_code_source_read(revision)
+                    })
                     .unwrap();
                 panel
                     .update(cx, |panel, _| {
@@ -254,7 +324,9 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
                 assert_eq!(std::fs::read(&path).unwrap(), body().as_bytes());
                 ready(window, &panel, cx).await;
                 let gate = window
-                    .update(cx, |root, _, _| root.test_hold_indexed_code_source_read(revision))
+                    .update(cx, |root, _, _| {
+                        root.test_hold_indexed_code_source_read(revision)
+                    })
                     .unwrap();
                 let retired_path = directory.join("retired.txt");
                 panel
@@ -290,7 +362,17 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
                 )
                 .await;
                 assert!(!retired_path.exists());
-                wait_until(window, cx, |cx| window.read_with(cx, |root, _| root.running_thread_reads_drained()).unwrap(), "Root disposal must wait for Source read and Save staging cleanup").await;
+                wait_until(
+                    window,
+                    cx,
+                    |cx| {
+                        window
+                            .read_with(cx, |root, _| root.running_thread_reads_drained())
+                            .unwrap()
+                    },
+                    "Root disposal must wait for Source read and Save staging cleanup",
+                )
+                .await;
                 assert_eq!(std::fs::read(&path).unwrap(), body().as_bytes());
                 retire_code_fixture(window, &panel, cx).await;
             })
@@ -300,7 +382,7 @@ fn native_code_save_streams_complete_large_source_with_replacement_and_local_fai
 
 #[test]
 fn native_code_save_empty_source_and_late_picker_retirement_preserve_output() {
-    run_mounted_with_prepared_home_retained(
+    run_code_save_fixture(
         1,
         0,
         |path| seed_history_text(path, 1, Some("```text\n```")),
@@ -349,26 +431,75 @@ fn native_code_save_empty_source_and_late_picker_retirement_preserve_output() {
                     Some("Saved")
                 );
                 for publish in [false, true] {
-                    let held_path = directory.join(if publish { "elected.txt" } else { "cancelled.txt" });
-                    let gate = panel.update(cx, |panel, _| {
-                        panel.code_set_save_choice_for_test(Ok(Some(gpui::SavePathChoice { path: held_path.clone(), replace_existing: false })));
-                        panel.code_hold_save_writer_for_test(publish)
-                    }).unwrap();
+                    let held_path = directory.join(if publish {
+                        "elected.txt"
+                    } else {
+                        "cancelled.txt"
+                    });
+                    let gate = panel
+                        .update(cx, |panel, _| {
+                            panel.code_set_save_choice_for_test(Ok(Some(gpui::SavePathChoice {
+                                path: held_path.clone(),
+                                replace_existing: false,
+                            })));
+                            panel.code_hold_save_writer_for_test(publish)
+                        })
+                        .unwrap();
                     with_native(window, cx, |native, app| click_save(native, app, &panel)).unwrap();
-                    wait_until(window, cx, |_| gate.entered(), "Save must reach the held filesystem operation").await;
-                    window.update(cx, |root, window, cx| {
-                        root.test_suspend_code_saves_for_close(window, cx);
-                        assert!(!root.running_thread_reads_drained());
-                        assert!(!root.release_suspended_running_thread_sources());
-                    }).unwrap();
+                    wait_until(
+                        window,
+                        cx,
+                        |_| gate.entered(),
+                        "Save must reach the held filesystem operation",
+                    )
+                    .await;
+                    window
+                        .update(cx, |root, window, cx| {
+                            root.test_suspend_code_saves_for_close(window, cx);
+                            assert!(!root.running_thread_reads_drained());
+                            assert!(!root.release_suspended_running_thread_sources());
+                        })
+                        .unwrap();
                     with_native(window, cx, |native, app| click_save(native, app, &panel)).unwrap();
-                    assert!(!panel.read_with(cx, |panel, _| panel.code_save_pending_for_test()).unwrap());
+                    assert!(
+                        !panel
+                            .read_with(cx, |panel, _| panel.code_save_pending_for_test())
+                            .unwrap()
+                    );
                     gate.release();
-                    wait_until(window, cx, |cx| window.read_with(cx, |root, _| root.running_thread_reads_drained()).unwrap(), "Root drain must await cleanup or elected publication").await;
+                    wait_until(
+                        window,
+                        cx,
+                        |cx| {
+                            window
+                                .read_with(cx, |root, _| root.running_thread_reads_drained())
+                                .unwrap()
+                        },
+                        "Root drain must await cleanup or elected publication",
+                    )
+                    .await;
                     assert_eq!(held_path.exists(), publish);
-                    if publish { assert_eq!(std::fs::read(&held_path).unwrap(), b""); }
-                    window.update(cx, |root, window, cx| root.test_resume_code_saves_after_close(window, cx)).unwrap();
-                    wait_until(window, cx, |cx| panel.read_with(cx, |panel, _| panel.code_save_unavailable_for_test().is_none()).unwrap(), "Save must observe terminal lease release before re-enabling").await;
+                    if publish {
+                        assert_eq!(std::fs::read(&held_path).unwrap(), b"");
+                    }
+                    window
+                        .update(cx, |root, window, cx| {
+                            root.test_resume_code_saves_after_close(window, cx)
+                        })
+                        .unwrap();
+                    wait_until(
+                        window,
+                        cx,
+                        |cx| {
+                            panel
+                                .read_with(cx, |panel, _| {
+                                    panel.code_save_unavailable_for_test().is_none()
+                                })
+                                .unwrap()
+                        },
+                        "Save must observe terminal lease release before re-enabling",
+                    )
+                    .await;
                 }
                 let late = panel
                     .update(cx, |panel, _| panel.code_defer_save_choice_for_test())
@@ -391,7 +522,17 @@ fn native_code_save_empty_source_and_late_picker_retirement_preserve_output() {
                     replace_existing: false,
                 })))
                 .unwrap();
-                wait_until(window, cx, |cx| window.read_with(cx, |root, _| root.running_thread_reads_drained()).unwrap(), "Root drain must retain a cancelled native picker until completion").await;
+                wait_until(
+                    window,
+                    cx,
+                    |cx| {
+                        window
+                            .read_with(cx, |root, _| root.running_thread_reads_drained())
+                            .unwrap()
+                    },
+                    "Root drain must retain a cancelled native picker until completion",
+                )
+                .await;
                 assert!(!directory.join("retired.txt").exists());
                 assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 2);
                 retire_code_fixture(window, &panel, cx).await;

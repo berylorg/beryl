@@ -21,6 +21,12 @@ pub(super) enum CopyTarget {
         root: [u8; 32],
         range: Range<u64>,
     },
+    Table {
+        id: u64,
+        revision: super::super::ProviderRevision,
+        root: [u8; 32],
+        selection: super::table_viewport::TableSelection,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,6 +106,64 @@ pub(super) fn is_copy(event: &KeyDownEvent) -> bool {
 }
 
 impl SyndicTranscriptPanel {
+    pub(super) fn supersede_resource_copies(&mut self) {
+        for code in &mut self.code_panels {
+            if code.actions.copy.is_some() {
+                code.actions.cancel_copy("Copy superseded");
+                self.host.reserve_code_layout(
+                    &code.viewport.owner,
+                    code.layout.charge() + code.actions.charge(),
+                );
+            }
+        }
+        for table in &mut self.table_panels {
+            if table.actions.copy_pending() {
+                table.actions.cancel_copy("Copy superseded");
+                self.host.reserve_indexed_layout(
+                    &table.viewport.owner,
+                    table.viewport.charge() + table.actions.charge(),
+                );
+            }
+        }
+    }
+    pub(super) fn copy_table_key(
+        &mut self,
+        id: u64,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.is_held {
+            return;
+        }
+        self.observe_copy_focus(window, cx);
+        let target = self
+            .table_panels
+            .iter()
+            .find(|table| table.id == id)
+            .and_then(|table| {
+                Some(CopyTarget::Table {
+                    id,
+                    revision: table.viewport.owner.revision,
+                    root: table.viewport.root.as_ref()?.digest,
+                    selection: table.viewport.selection.clone()?,
+                })
+            });
+        let Some(target) = target else {
+            self.reset_keyboard_copy();
+            if let Some(table) = self.table_panels.iter_mut().find(|table| table.id == id) {
+                table.actions.feedback = "Copy unavailable: no eligible cell selection";
+            }
+            cx.notify();
+            return;
+        };
+        let method = self
+            .keyboard_copy
+            .gesture
+            .press(target, false, Instant::now())
+            .unwrap();
+        self.begin_table_copy(id, method, cx);
+    }
     #[cfg(test)]
     pub(crate) fn set_keyboard_copy_writer_for_test(
         &mut self,
@@ -157,11 +221,7 @@ impl SyndicTranscriptPanel {
             return;
         }
         self.observe_copy_focus(window, cx);
-        for code in &mut self.code_panels {
-            if code.actions.copy.is_some() {
-                code.actions.cancel_copy("Copy superseded");
-            }
-        }
+        self.supersede_resource_copies();
         let Some(selection) = self.host.resident_selection() else {
             self.reset_keyboard_copy();
             self.keyboard_copy.feedback = "Copy unavailable: no eligible selection";
@@ -223,11 +283,7 @@ impl SyndicTranscriptPanel {
             return;
         }
         self.observe_copy_focus(window, cx);
-        for code in &mut self.code_panels {
-            if code.actions.copy.is_some() {
-                code.actions.cancel_copy("Copy superseded");
-            }
-        }
+        self.supersede_resource_copies();
         let target = self
             .code_panels
             .iter()
