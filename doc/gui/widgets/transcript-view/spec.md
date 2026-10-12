@@ -26,6 +26,12 @@ Widgets:
 
 The transcript view consists of a root surface, viewport, realized frame, ordered presentation records, optional record-status/provenance parts, optional synthetic-context groups, optional nested-widget hosts, selection layer, transient affordance layer, and stable local fallback-record parts. Every local fallback record uses both the base record part and the fallback-record part, so it retains ordinary record geometry while receiving fallback-specific styling.
 
+Prepared narrative records contain narrative-block and narrative-text parts, with optional
+list-marker parts. Block states identify heading level, quote, list or thematic break; text states
+identify emphasis, strong emphasis, strike, inline code or link label. These parts consume prepared
+facts and never classify source during rendering. Authored literal fallback uses ordinary narrative
+text treatment rather than the unavailable-record part.
+
 Each realized presentation record has an owner-supplied stable identity, revision, provenance classification, measured outer geometry, and authored-content, synthetic-context, or local-presentation classification. Authored content records may contain text runs, image markers, code panels, table panels, or other owner-supplied bounded nested widgets.
 
 An authored-content record may include one optional noninteractive record-status/provenance part. The
@@ -61,6 +67,12 @@ chunks, or resource ranges.
 
 The transcript view reads as one continuous conversation surface rather than a stack of loading pages. Content records preserve their owner-supplied narrative hierarchy and Markdown presentation.
 
+Narrative typography derives from the active body typography. Heading levels use their role scale
+and weight; quote/list indentation follows the body scale. Emphasis, strong, strike and inline-code
+treatments compose without resetting unrelated active styles. Link labels are visually distinguished
+but preparation alone does not make them actionable. List markers are presentation structure, not
+additional copied source. Continuation fragments do not repeat markers or add block spacing.
+
 Synthetic-context groups remain visually distinct from authored turns while participating in the same vertical flow. Their heading, quoted body, and provenance read as one contextual callout rather than a message bubble or status panel.
 
 Local fallback records are visually distinct from authored conversation content. Activation-pending treatment keeps the previous coherent frame visible but dimmed and inert until its replacement is published atomically.
@@ -92,6 +104,14 @@ Missing, pending, stale, rejected, or loading data never becomes a selectable co
 Wheel, touchpad, keyboard, and programmatic manual scrolling apply exact pixel displacement. Manual scroll intent detaches automatic tail placement before demand resulting from that input is evaluated. Reaching a coherent resident edge clamps movement until the host supplies adjacent coherent records or a stable terminal fallback.
 
 Selection begins and extends only through realized authored-content or synthetic-context records with stable geometry and owner-supplied selectable provenance. Transcript-level selection does not cross unrealized chunks. Copy and affordance requests report exact selected presentation identities, revisions, ranges, classification, and geometry to the owning feature.
+
+In the interactive narrative variant, left-click establishes a text endpoint, pointer drag extends
+it and Shift-click extends from the current anchor. Hit testing and highlighting use the same
+owner-prepared mapped fragments and current measured layout as paint. Empty space, metadata,
+unavailable labels and private measurement candidates supply no endpoint. A transformed display
+unit remains indivisible. Nested Code/Table interaction stays with its canonical widget and does
+not extend an outer text range across that panel. Selection overlays do not change layout. Font,
+width or revision changes retire invalid geometry before accepting another endpoint.
 
 Synthetic-context records may be selectable and copyable while remaining ineligible for owner-supplied quote, branch, edit, or turn-menu commands. Pointer or keyboard invocation creates no command target when the host marks that contextual classification non-actionable.
 
@@ -251,6 +271,44 @@ Spec CSS:
   white-space: nowrap;
 }
 
+.transcript-view__narrative-block {
+  padding-inline-start: var(--indent);
+  font-weight: var(--font-weight);
+}
+
+.transcript-view__narrative-block[data-state~="quote"] {
+  border-inline-start: var(--border-width) solid var(--border-color);
+}
+
+.transcript-view__narrative-block[data-state~="thematic-break"] {
+  border-block-start: var(--border-width) solid var(--border-color);
+}
+
+.transcript-view__narrative-text {
+  color: var(--foreground);
+  font-weight: inherit;
+}
+
+.transcript-view__narrative-text[data-state~="strong"] {
+  font-weight: var(--font-weight);
+}
+
+.transcript-view__narrative-text[data-state~="emphasis"] {
+  font-style: var(--font-style);
+}
+
+.transcript-view__narrative-text[data-state~="strike"] {
+  text-decoration: var(--text-decoration);
+}
+
+.transcript-view__narrative-text[data-state~="inline-code"] {
+  font-family: var(--font-family);
+}
+
+.transcript-view__narrative-text[data-state~="link-label"] {
+  color: var(--foreground);
+}
+
 .transcript-view__record-status[data-state~="pending"],
 .transcript-view__record-status[data-state~="repaired"],
 .transcript-view__record-status[data-state~="incomplete"] {
@@ -333,6 +391,34 @@ Default variant: interactive narrative.
 # UI Roles
 
 ```css
+.transcript-view__narrative-block {
+  --indent: 0px;
+  --border-width: 0px;
+  --border-color: #475569;
+  --font-scale: 1;
+  --font-weight: 400;
+}
+
+.transcript-view__narrative-block[data-state~="heading-1"] { --font-scale: 1.75; --font-weight: 700; }
+.transcript-view__narrative-block[data-state~="heading-2"] { --font-scale: 1.5; --font-weight: 700; }
+.transcript-view__narrative-block[data-state~="heading-3"] { --font-scale: 1.25; --font-weight: 700; }
+.transcript-view__narrative-block[data-state~="heading-4"] { --font-scale: 1.125; --font-weight: 700; }
+.transcript-view__narrative-block[data-state~="heading-5"] { --font-scale: 1; --font-weight: 700; }
+.transcript-view__narrative-block[data-state~="heading-6"] { --font-scale: 1; --font-weight: 600; }
+.transcript-view__narrative-block[data-state~="quote"] { --indent: 12px; --border-width: 2px; }
+.transcript-view__narrative-block[data-state~="list"] { --indent: 20px; }
+.transcript-view__narrative-block[data-state~="thematic-break"] { --border-width: 1px; }
+
+.transcript-view__narrative-text {
+  --foreground: #e5e7eb;
+}
+
+.transcript-view__narrative-text[data-state~="emphasis"] { --font-style: italic; }
+.transcript-view__narrative-text[data-state~="strong"] { --font-weight: 700; }
+.transcript-view__narrative-text[data-state~="strike"] { --text-decoration: line-through; }
+.transcript-view__narrative-text[data-state~="inline-code"] { --font-family: monospace; }
+.transcript-view__narrative-text[data-state~="link-label"] { --foreground: #7dd3fc; }
+
 .transcript-view {
   --background: transparent;
   --foreground: #e5e7eb;

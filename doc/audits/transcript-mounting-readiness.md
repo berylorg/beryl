@@ -789,6 +789,100 @@ evidence reuse, with no supported-guarantee blocker. Documentation whitespace ch
 The review performed no tests, edits or artifact creation. The next evidence-only boundary is
 ordinary narrative presentation, whose generic Text consumer still flattens stored block facts.
 
+## Narrative Source And Interaction Qualification
+
+Inspected production source at `3487f5ee` on 2026-10-12 for root-plan phase 769.
+This qualifies narrative implementation readiness, not mounted narrative acceptance. The
+source diagnosis preceded target contract reconciliation. The controlling authorities remain the
+[transcript feature](../features/transcript/design.md#selection-copy-quote-and-menus),
+[transcript view](../gui/widgets/transcript-view/spec.md#interaction),
+[Markdown projection](../systems/syndic-conversation-history/concepts.md#markdown-projection) and
+[renderer architecture](../systems/transcript-presentation/renderer-architecture.md).
+
+### Stored Facts And Production Consumers
+
+Storage `record/projection/item/payload.rs::ProjectionPayload::InlineMarkdown` retains block
+identity, typed block kind, exact source range, source and span ordinal. The recognized kinds in
+`record/projection/item.rs::MarkdownBlockKind` include Paragraph, Heading(1–6), BlockQuote, List,
+ThematicBreak and Fallback, alongside separately mounted Code and Table. Large paragraph spans
+are this same payload form; a conceptual sentence/span chunk does not imply another stored type.
+`mutation/projection/parser/output.rs` preserves one block identity and exact ordered source
+intervals. Genuine unsplit paragraph/fallback payloads reach 16,384 UTF-8 bytes; split payloads
+are at most 8,192 bytes. Long fresh lines become bounded Fallback fragments. The public inline
+constructor permits 65,536 bytes, so a consumer cannot infer the narrower producer limits from
+the payload variant alone.
+
+App `transcript_provider/source.rs::read_bounded_activation` handles Table separately, but turns
+ordinary inline Markdown into `ProjectionPayload::Text`. Block identity and source range survive
+in provenance; block kind and span ordinal do not survive as presentation facts. The ordinal only
+informs precomputed stripped Copy. `shell/syndic_transcript/snapshot.rs` publishes `TextChunk`
+with original and optional stripped source, without typed narrative runs or source/display maps.
+`panel.rs::render_record_content` paints raw source as a `SharedString`. Natural measurement uses
+the same constructor through `layout_as_root`, qualifying matching raw-text geometry rather than
+Markdown hierarchy, inline styling or character hit geometry.
+
+Outer left-click currently focuses the transcript; realized-row handlers provide right-click
+context targeting. `renderer_selection.rs` accepts explicit whole-record identities with stable
+row geometry. `selection.rs::ResidentSelectedRecord` contains the whole copy-source interval,
+without character endpoints. Existing keyboard Copy genuinely dispatches the first Markdown and
+quick second stripped request through the checked writer, but this does not establish native
+pointer selection. Table cell selection and Code source positions are separate accepted models;
+neither silently supplies ordinary narrative selection.
+
+### Readiness Decisions
+
+The owning authorities now resolve the following implementation boundaries:
+
+- Syndic's pure preparation boundary for already admitted block/span payloads, including retained
+  source authority, supported inline formatting, source/display mappings and conservative literal
+  behavior when preceding delimiter context is unavailable. Preserve block-group continuity across
+  physical spans without whole-paragraph reads, a new history route or render-time parsing.
+- App transport and resident ownership of typed narrative facts, allocation admission, explicit
+  preparation refusal and release on source/view replacement, eviction and disposal. Current source
+  plus stripped-source charging cannot stand in for charging added run and mapping allocations.
+- Bounded inner preparation and shaping work, alongside the existing measured-frame observation
+  bound. Preparation admits at most 65,536 source/display bytes, 4,096 runs and 16 nested delimiter
+  levels; shaping receives at most 4,096 display bytes per fragment and 32 fragments per span.
+  Fragment observations share the existing 32-observation GUI-frame allowance. A bounded record
+  count alone does not qualify per-record layout work.
+- Shared prepared input for measurement and paint, current geometry for hit testing, character
+  endpoints and exact source-range binding. A fully selected construct includes its own syntax;
+  partial selection invents no balancing delimiters, and transformed display units are indivisible.
+  Slicing the precomputed whole-record stripped string has no
+  current source mapping proof. Preserve the accepted Copy gesture, size and publication election.
+- Native routed pointer selection followed by both Copy methods, without injecting whole-record
+  selection. Cover wrapping, Unicode, continuation spans, source growth/replacement, remeasurement,
+  unrealized boundaries and retirement. Quote, branch/menu commands and diagnostic-child activation
+  retain distinct acceptance boundaries.
+
+Selected-thread publication retains typed Pending source facts with natural measured row
+placeholders and does not wait for Markdown parsing. Tracked post-publication preparation consumes
+already admitted immutable source under the host reservation and existing request-count limit;
+its exact request/currentness election precedes measured Ready adoption. Same-record growth keeps
+the prior coherent model visible. Appended syntax can change a construct's treatment, while an
+unchanged-source terminal transition reuses its published model. This reconciles preparation with
+the feature's activation and live-continuity rules without a new history route. Widget anatomy and
+theme roles now cover the prepared block/run treatments and mapped pointer interaction.
+
+### Evidence And Limits
+
+Source investigation and targeted root validation performed no production edits, builds, native
+launches or new tests. Existing `syndic-storage/tests/projection_boundaries.rs` cases exercise
+paragraph threshold, exact source intervals, shared block identity and span ordinals. App
+`tests/unit/transcript_provider/copy_text.rs` covers conservative literal continuation Copy.
+`tests/syndic_transcript_measured_preparation.rs` uses injected heights to exercise bounded record
+traversal, not Markdown shaping. Native `transcript_keyboard_copy.rs` routes real keyboard events
+but installs selection programmatically. Those seams remain useful; none supplies missing native
+character selection or styled narrative acceptance. Runtime acceptance remains the next mounted
+boundary; this readiness change does not add that evidence.
+
+Independent semantic review accepted the complete revised readiness boundary on 2026-10-12.
+It identified and rechecked the post-publication parsing and live-continuity interactions above,
+then found no remaining supported-guarantee blocker. Review covered the source diagnosis,
+system/package ownership, numerical limits, mapped selection/Copy and widget anatomy/roles.
+Documentation whitespace checking passed. The review made no edits, builds, launches, tests or
+temporary artifacts. No runtime evidence is claimed from this documentation-only phase.
+
 ## Mounted Indexed Table Readiness
 
 Readiness inspection on 2026-10-12 continued from accepted Code mounting. This checkpoint is source

@@ -376,6 +376,65 @@ limits fixed. Content-free diagnostics expose layout epoch continuity, progress/
 checkpoint/fragment counts, charged capacity and pending/ready/refused target state, never text,
 raw identities, source positions or copied content.
 
+## Prepared Narrative And Character Geometry
+
+The selected-history provider transports Syndic's
+[prepared narrative](../syndic-conversation-history/design.md#narrative-structure-preparation)
+as a typed projection value, retaining block kind, shared block identity, span ordinal, original
+source and source/display maps. Resident presentation does not flatten it into an untyped text
+record. Synthetic context and authored literal text use explicit literal mappings under their
+existing classification and source authority; no fabricated Syndic block identity is required.
+All retained source, runs, derived display and mappings are admitted under existing response,
+projection and presentation budgets. Selected-thread publication does not wait for Markdown
+preparation. The coherent seed retains typed block/span/source facts in a Pending preparation state
+with a stable row-owned placeholder; the placeholder has natural measured geometry but supplies
+no selection or authored Copy text. After seed publication, the tracked selected-history worker
+prepares that already admitted immutable payload under a reserved allowance, without another
+history read or complete-item reconstruction. The owning host admits at most one pending narrative
+preparation per record under its existing provider-request count limit. It coalesces replacement
+source requests and cancels obsolete work; it does not launch a worker per run or glyph. Each result
+matches the complete host/view, activation, record/source revision and request key before admission
+and current measured replacement. Old and candidate ownership stays charged until adoption or
+rejection; failure, cancellation, eviction and disposal release the reservation. Ready results do
+not install a later activation scroll correction. Typed preparation refusal becomes a stable local unavailable
+presentation, not selectable fallback-label text. Its retained source remains authority for any
+separately admitted exact source action.
+
+Same-record source growth keeps the prior coherent prepared presentation visible while replacement
+prepares; it does not blank that record or insert another row. A changed source may resolve formerly
+ambiguous syntax under the feature's live presentation rule. An unchanged-source terminal transition
+reuses the admitted model rather than reparsing solely because CAS completed. Its source revision
+and publication key, not completion status, decide replacement and selection invalidation.
+
+Natural measurement, paint, selection highlight and hit testing consume the same prepared runs
+and resolved appearance. One text-shaping fragment receives at most 4,096 UTF-8 display bytes
+and 4,096 style runs; a source span has at most 32 such fragments, including literal fallback.
+Fragment construction occurs in bounded preparation, not every paint. At most 32 new fragment
+layout observations occur per GUI frame, sharing rather than multiplying the measured-frame's
+existing 32-observation allowance. A partly measured record is private candidate state and cannot
+publish character geometry. Fragment boundaries carry no paragraph spacing or authored line break.
+Ambiguous boundary shaping uses a local literal treatment; it never allocates the complete history
+or follows unloaded delimiter context. Published geometry is limited to the realized frame and
+bounded overscan. Obsolete preparation and crossed-record geometry release their ownership.
+
+Character endpoints bind current host/view, presentation/source revision, record identity and exact
+source position through the prepared mapping and published layout key. Native hit stops respect
+UTF-8 and indivisible transformed units; omitted syntax cannot become a separate painted target.
+Selection crosses only coherent realized selectable narrative records, never a missing chunk or
+nested Code/Table boundary by ordinal coincidence. Selection retains bounded endpoint facts,
+not an independently cloned model. Copy captures mapped selected source intervals and requests
+either exact Markdown source or its bounded mapped text representation under the common Copy
+owner. Source/view replacement, geometry invalidation, eviction, activation or disposal closes
+selection and rejects obsolete action completion. Same-source anchor preservation does not by
+itself prove selection geometry current.
+
+Acceptance requires genuine saved block/span delivery through the production provider and native
+rendered pointer drag/Shift extension followed by both Copy methods. Measured wrapping, Unicode,
+omitted syntax, literal continuation, capacity refusal, live source replacement, unrealized edges,
+font/width changes and disposal must qualify the same published layout/source binding. Programmatic
+whole-record selection, injected row heights and element construction alone do not establish this
+boundary. Quote, branch/menu commands and diagnostic-child workflow retain separate acceptance.
+
 ## Geometry And Remeasurement
 
 The renderer does not need to know chunk heights ahead of realization. It does need measured geometry for realized records.
@@ -440,12 +499,16 @@ current. A later method request supersedes an earlier unfinished representation 
 completion cannot replace the requested stripped-text result. Failed or rejected representation
 requests preserve the selection and do not publish a partial clipboard value.
 
-For ordinary whole-record selection, the existing attachment worker derives the stripped source
+For literal whole-record selection, the attachment worker derives the stripped source
 representation before provider admission. Original and derived bytes both count toward residency;
 the presentation owner transports them with the same source/revision binding. Contiguous Copy
 reconstruction preflights each representation against its admitted bound. A continuation span
 whose preceding delimiter context is unavailable keeps its source spelling, protecting literals
 opened in unloaded source. GUI command routing consumes admitted representations without parsing.
+
+Prepared narrative character selection instead uses its admitted source/display mapping. Its
+selected text representation is bounded and source-qualified; a whole-record stripped string
+cannot be sliced by source offsets without that mapping proof.
 
 If virtualization, release, remeasurement, or missing data destroys stable selection geometry, the selection or quote affordance closes instead of pinning unbounded offscreen content.
 

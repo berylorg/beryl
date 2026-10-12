@@ -98,25 +98,56 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 768: Establish Inline Code Panel Mounting Readiness (finished)
+# Phase 769: Establish Narrative Presentation Mounting Readiness (finished)
 
-Inspection confirmed every recognized fence already uses the accepted Code resource path,
-including small, empty and unfinished blocks. No inline Code implementation is needed.
-Independent review accepted the documentation-only correction and unchanged verification reuse;
-see [qualification](audits/transcript-mounting-readiness.md#fenced-code-storage-form-qualification).
+Source diagnosis and independent review accepted pure bounded narrative preparation, typed
+post-publication ownership, measured mapped character selection and exact Copy contracts.
+Activation and live-continuity interactions are reconciled in their owning authorities;
+[qualification](audits/transcript-mounting-readiness.md#narrative-source-and-interaction-qualification).
+Documentation-only; no mounted narrative behavior or new runtime tests are claimed.
 
-# Phase 769: Establish Narrative Presentation Mounting Readiness (wip)
+# Phase 770: Mount Prepared Narrative And Character Selection (wip)
 
-Inspect ordinary saved Markdown blocks through selected-history preparation, resident presentation
-and measured narrative rendering. Reconcile retained block/span facts, source-to-display mappings,
-bounded preparation/paint and genuine pointer selection with the transcript's Markdown and Copy
-contracts. Resolve missing ownership, lifecycle, supported limits and native evidence in their
-owning authorities before scheduling implementation; keep quote/branch/menu and diagnostic-child
-acceptance separate where they require distinct outcomes. This phase authorizes diagnosis and
-readiness review only.
+Mount ordinary saved Markdown through the production selected-history provider and transcript
+panel under [Syndic preparation](systems/syndic-conversation-history/design.md#narrative-structure-preparation),
+[prepared narrative geometry](systems/transcript-presentation/renderer-architecture.md#prepared-narrative-and-character-geometry)
+and the [transcript view](gui/widgets/transcript-view/spec.md). Completion is readable projected
+block/inline formatting with genuine routed character selection and both source-qualified Copy
+methods in the measured resident viewport. Supporting preparation, provider, worker, theme and
+geometry changes share this mounted behavior's acceptance boundary.
 
-Current checkpoint: the ordinary provider flattens non-Table inline Markdown into Text, resident
-presentation publishes TextChunk, and selection currently represents whole-record source ranges.
-Inspect genuine stored block/span facts and their production consumers next, then reconcile the
-owning system/package and GUI authorities before deriving an implementation phase. No narrative
-implementation is authorized yet. Keep the conditional exact terminal repair boundary unchanged.
+Preserve typed Pending source facts in initial selected publication; parsing runs afterward through
+tracked preparation over already admitted source. Implement pure bounded source/run mapping,
+explicit literal continuation/fallback and checked source-owning refusal. Carry exact block/span
+facts and allocation charges through typed resident adoption; reserve old/candidate ownership and
+release on failure, cancellation, replacement, eviction, activation and disposal. Keep prior coherent
+same-record content during growth and reuse unchanged prepared source on completion. No schema,
+storage thresholds, history route or working-set expansion is authorized.
+
+Use the same bounded prepared fragments and resolved typography for natural measurement, paint,
+highlight and pointer hit mapping. Share the existing per-frame observation allowance, publish no
+partial candidate geometry, and preserve exact manual scroll/semantic anchors. Mount click-drag and
+Shift extension with exact source endpoints, indivisible transformed units and coherent realized
+boundaries. Preserve the common first-Markdown/quick-second-stripped gesture and clipboard election;
+selected-source spelling, partial formatting and rejection cannot be derived from painted strings
+or an unmapped whole-record stripped slice. Keep Code/Table interaction distinct.
+
+Verify genuine saved producer/provider fixtures, grammar and source/display maps, CRLF/escaping,
+maximum source/run/depth/fragment limits, allocation refusal and release. Native evidence must route
+pointer selection through painted geometry before both Copy methods, rather than injecting selection.
+Cover wrapping/Unicode, multiple realized spans, continuation literals, Shift/reversed ranges,
+unrealized/nested boundaries, source growth/replacement, font/width changes and retirement. Run
+focused storage/provider/core and native checks, affected indexed Code/Table Copy/Save and synthetic
+context regressions, production checks and independent complete-boundary review. Checked clipboard
+seams remain acceptable; do not claim OS clipboard/common-dialog or complete composer qualification.
+
+Current checkpoint: design readiness is accepted; no narrative runtime changes have begun. Start
+with the pure source model and typed Pending/Ready provider ownership, then integrate the measured
+native consumer before acceptance. Keep the conditional exact terminal repair boundary unchanged.
+
+# Phase 771: Establish Remaining Transcript Command Mounting Readiness (pending)
+
+Qualify real mapped selection for Quote, branch discussion and transcript menus against their exact
+eligibility/provenance authorities before deriving separate mounted command outcomes. Diagnostic-child
+activation and complete transcript workflow remain separate evidence boundaries; readiness alone
+does not accept any of those commands or workflows.

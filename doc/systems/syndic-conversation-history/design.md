@@ -1810,6 +1810,46 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   becomes ordered source-preserving fallback spans; this may reduce styling locally but never
   drops bytes, changes authored text, or expands memory with the complete item.
 
+## Narrative Structure Preparation
+
+Syndic owns pure bounded preparation of admitted ordinary InlineMarkdown payloads. The operation
+retains their block kind, shared block identity, exact source interval and span ordinal, with the
+original source held once. It returns immutable block treatment, inline display runs and checked
+source-relative mappings. It performs no Home IO, durable writes or projection reclassification;
+Code and Table retain their distinct preparation paths. Selected-history workers invoke it under
+the app's post-publication preparation lifecycle. Neither presentation adaptation nor GPUI render,
+layout or input parses Markdown.
+
+Preparation supports the recognized paragraph, heading, quote, list and thematic-break treatment
+and bounded inline emphasis, strong emphasis, strikethrough, backtick code, escapes, inline link
+labels and line breaks. Link destinations remain source facts; this preparation grants no navigation
+action. Unsupported or ambiguous constructs retain literal spelling locally. Fallback blocks remain
+literal. A continuation span whose opening delimiter context is unavailable remains literal rather
+than guessing formatting from unloaded source. Shared block identity and ordinal preserve paragraph
+continuity; a physical span never introduces another paragraph margin or list/quote marker.
+
+One preparation accepts at most 65,536 source bytes, emits at most 65,536 display bytes and 4,096
+runs, and examines at most 16 nested inline delimiter levels. Mapping entries are bounded by source
+byte length plus one; source ranges and transformed display units are checked UTF-8 boundaries.
+Preparation receives a retained-byte allowance covering source, display, runs and mappings under
+existing projection budgets. It preflights owned allocation capacities before publication. An
+unsupported construct or exceeded syntax/run/depth limit produces a coherent literal representation
+of the affected admitted span, never a partially styled model. Invalid binding or insufficient
+allowance yields a typed source-owning refusal. Refusal does not silently discard canonical text,
+invent an empty Ready result or expand the working set. Literal mapping may use identity ranges
+instead of allocating one entry per byte. Source and derived allocation sharing retain one charge.
+
+Mappings distinguish authored text, omitted syntax and indivisible transformed display units.
+They support exact selected source intervals and selected display text without reading painted
+strings or slicing an unrelated whole-record stripped representation. Preparation does not balance
+or invent Markdown for partial selection. Its source facts qualify the feature's selection/export
+contract; app geometry and interaction remain owned by transcript presentation.
+
+Acceptance requires genuine saved projection fixtures, exact CRLF/escaping/source mappings,
+block/span continuity, unsupported and continuation literal behavior, maximum input and syntax
+limits, checked allocation refusal and complete release. Preparation alone is not mounted
+Markdown or pointer-selection acceptance.
+
 ## Inline Table Structure Preparation
 
 Recognized inline Tables retain their stored block kind, block identity, exact source range and

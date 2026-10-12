@@ -45,6 +45,11 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - Assistant text remains visually continuous and in order as captured history grows and later
   completes. The transition must not duplicate, omit, reorder, blank, or visibly restyle matching
   content.
+  An appended source revision that completes or changes Markdown syntax may update that
+  construct's presentation; for example, a closing emphasis delimiter can resolve a previously
+  literal open construct. This is a source change, not an animation or completion-time restyle.
+  Marking an unchanged source complete retains its already published treatment and geometry
+  until an ordinary appearance or viewport change requires remeasurement.
 - Streaming visibility does not by itself authorize selection-derived history commands; each
   command still requires its exact historical provenance and eligibility proof.
 - If text shown live cannot be established as the complete historical record, the transcript does
@@ -96,6 +101,13 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 ## Selection, Copy, Quote, And Menus
 
+- Ordinary narrative text selects character ranges by click-drag and Shift extension through
+  coherent rendered text. Formatting does not expand selection to unselected visible words.
+  Markdown Copy preserves the exact source of that range, including intervening syntax. When a
+  complete formatted construct is selected, its own syntax is included; a partial construct does
+  not acquire invented closing/opening delimiters. Escaped or otherwise transformed display units
+  are indivisible selection units with their complete original spelling. Stripped Copy uses the
+  selected readable text and line structure. Table selection retains its distinct whole-cell rule.
 - Selection, Markdown-preserving copy, quote harvesting, and context menus operate only on rendered records whose provenance and geometry are stable.
 - A rendered synthetic discussion-context item permits ordinary text selection and copy but never quote harvesting, replacement edit, branch creation, or an ordinary turn context menu.
 - In streamed huge-content mode, transcript-level selection does not span through unrendered chunks.

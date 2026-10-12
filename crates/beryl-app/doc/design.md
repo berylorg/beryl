@@ -98,6 +98,16 @@ internal contract.
   rebound by coincidence.
 - Renderer-facing code consumes only prepared bounded app projections. Storage, backend, and
   provider workers return typed bounded values containing no GPUI state.
+  Ordinary Markdown retains Syndic-prepared block/span facts, exact source and display mappings
+  through provider admission and resident presentation under the
+  [narrative preparation contract](../../../doc/systems/syndic-conversation-history/design.md#narrative-structure-preparation).
+  Selected seed publication retains typed Pending source facts and does not wait for Markdown
+  parsing. Tracked post-publication preparation consumes already admitted source under the host's
+  reserved allowance and exact request/currentness election; it introduces no new storage reader.
+  Added allocations consume existing projection/presentation budgets before measured publication;
+  refusal stays typed and local. The measured-frame owner uses the same prepared fragments for
+  paint and character hit geometry, with source-qualified selection and Copy. Replacement,
+  eviction, activation and disposal retire mappings, geometry and pending selection actions.
   Inline Table payloads retain their typed complete source and Syndic-prepared cells through
   projection admission and measured presentation. They use the projection owner and budgets,
   with a direct inline source adapter for shared Table interaction, export and Save; they never

@@ -491,6 +491,16 @@ The package stores facts needed by system services but does not own transcript s
 presentation ordering policy, activity-row scheduling, title generation, retention UX, or renderer
 residency.
 
+## Narrative Preparation Boundary
+
+The package exposes pure bounded preparation over ordinary admitted InlineMarkdown payloads,
+returning immutable source-relative display runs and block/span facts under the
+[narrative system contract](../../../doc/systems/syndic-conversation-history/design.md#narrative-structure-preparation).
+The caller supplies a retained allocation allowance. Preparation retains exact source authority
+on typed refusal, distinguishes literal fallback from prepared styling, and performs no storage
+read, schema change or GPUI work. All source, display and mapping allocations participate in its
+reported retained charge; no independently retained uncharged model is returned.
+
 ## Inline Table Preparation Boundary
 
 The package exposes a pure bounded preparation operation for a recognized complete inline Table
