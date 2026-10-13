@@ -20,8 +20,8 @@ pub enum DraftReplacementAdvancePreparationV1 {
 
 pub struct DraftReplacementImageSourceV1 {
     pub(super) prepared: PreparedDraftReplacementImportV1,
-    pub(super) build: DraftPieceBuildRecordV1,
-    pub(super) session: DraftEditorCandidateSessionV1,
+    pub(super) build: Box<DraftPieceBuildRecordV1>,
+    pub(super) session: Box<DraftEditorCandidateSessionV1>,
     pub(super) marker_id: beryl_model::SyndicDraftMarkerId,
     pub(super) label: beryl_model::ImageLabelOrdinal,
 }
@@ -99,21 +99,17 @@ impl SyndicStorage {
             prepared.operation_id(),
         );
         let build = r
-            .point::<DraftPieceBuildsFamily>(&key)?
+            .boxed_point::<DraftPieceBuildsFamily>(&key)?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         if build.canonical_header() != prepared.canonical_header || !import_build_is_exact(&build) {
             return Err(DraftReplacementErrorV1::Conflict);
         }
-        let DraftEditorCandidateSessionRecordV1::Head(session) = r
-            .point::<DraftEditorCandidateSessionsFamily>(
-                &DraftEditorCandidateSessionRecordKeyV1::head(build.draft_id(), build.session_id()),
-            )?
-            .ok_or(DraftReplacementErrorV1::Conflict)?
-        else {
-            return Err(DraftReplacementErrorV1::Conflict);
-        };
+        let session = r.session_head(&DraftEditorCandidateSessionRecordKeyV1::head(
+            build.draft_id(),
+            build.session_id(),
+        ))?;
         let receipt = r
-            .point::<DraftPieceBuildProgressFamily>(&build.progress_receipt().key())?
+            .boxed_point::<DraftPieceBuildProgressFamily>(&build.progress_receipt().key())?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         if session.draft_id() != build.draft_id()
             || session.session_id() != build.session_id()
@@ -172,11 +168,12 @@ impl SyndicStorage {
     }
 }
 
+#[inline(never)]
 pub(super) fn prepare_step(
     storage: &SyndicStorage,
     store: &HomeStore,
-    build: DraftPieceBuildRecordV1,
-    session: DraftEditorCandidateSessionV1,
+    build: Box<DraftPieceBuildRecordV1>,
+    session: Box<DraftEditorCandidateSessionV1>,
     association: Option<beryl_model::HistoricalInputMarkerAssociationV1>,
 ) -> Result<PreparedDraftReplacementAdvanceV1, DraftReplacementErrorV1> {
     let DraftPieceBuildFrontierV1::SealedImport(f) = build.frontier() else {
@@ -233,8 +230,8 @@ pub(super) fn prepare_step(
     Ok(PreparedDraftReplacementAdvanceV1 {
         scope: ImportCommandScope::capture(storage, store)?,
         home_generation: storage.home_generation,
-        source: Box::new(build),
-        source_session: Box::new(session),
+        source: build,
+        source_session: session,
         target: Box::new(target),
         receipt: Box::new(receipt),
         target_session: Box::new(target_session),

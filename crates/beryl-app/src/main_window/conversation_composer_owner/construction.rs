@@ -38,6 +38,7 @@ impl MainWindowConversationComposer {
             prepared.service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Selected,
+            prepared.submission_intent,
             prepared.activation_seeds,
             prepared.residency_bound,
             None,
@@ -77,9 +78,10 @@ impl MainWindowConversationComposer {
         let residency_bound = config.residency_bound()?;
         Ok(Self::construct(
             config,
-            service,
+            service.clone(),
             clipboard_writer,
             MainWindowConversationComposerRoute::Pending(receipt),
+            service.selected_submission_intent(selection),
             activation_seeds,
             residency_bound,
             None,
@@ -101,11 +103,13 @@ impl MainWindowConversationComposer {
         }
         let residency_bound = config.residency_bound()?;
         let receipt = prepared.receipt();
+        let submission_intent = prepared.submission_intent();
         Ok(Self::construct(
             config,
             service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Pending(receipt),
+            submission_intent,
             prepared.into_seeds(),
             residency_bound,
             None,
@@ -132,11 +136,13 @@ impl MainWindowConversationComposer {
             return Err("restored conversation composer selection is stale".to_owned());
         }
         let residency_bound = config.residency_bound()?;
+        let submission_intent = service.selected_submission_intent(selection);
         Ok(Self::construct(
             config,
             service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Selected,
+            submission_intent,
             VecDeque::new(),
             residency_bound,
             Some((environment, candidate, current)),
@@ -150,6 +156,7 @@ impl MainWindowConversationComposer {
         service: Arc<MainWindowConversationComposerService>,
         clipboard_writer: ComposerClipboardWriter,
         route: MainWindowConversationComposerRoute,
+        replacement_intent: Option<syndic_storage::DraftSubmissionIntent>,
         activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
         residency_bound: MainWindowComposerResidencyBound,
         prepublication: Option<(
@@ -263,6 +270,7 @@ impl MainWindowConversationComposer {
             startup_release_completion: None,
             scheduled: false,
             last_error: None,
+            historical_edit_availability: None,
             submission_availability: Err(
                 crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable,
             ),
@@ -273,6 +281,13 @@ impl MainWindowConversationComposer {
             submission_observation_epoch: std::sync::Arc::new(()),
             quote_insertion: None,
             quote_feedback: None,
+            historical_replacement: None,
+            replacement_intent,
+            historical_replacement_feedback: None,
+            #[cfg(feature = "test-faults")]
+            historical_rebind_test: (false, 0),
+            #[cfg(feature = "test-faults")]
+            historical_realization_hold: false,
             _input_subscription: None,
             _input_event_subscription: None,
         };
@@ -283,6 +298,7 @@ impl MainWindowConversationComposer {
         if matches!(this.route, MainWindowConversationComposerRoute::Selected) {
             this.install_interactive_subscription(window, cx);
         }
+        this.sync_mutation_gate(cx);
         this.schedule_pump(window, cx);
         this
     }

@@ -93,30 +93,39 @@ impl MainWindowConversationComposer {
         if !self.failed_editor_drained(cx) {
             return Ok(None);
         }
-        self.bound_service()?
-            .qualify_failed_resident_source(self.selection)?;
+        let (selection, historical_prior) = self
+            .bound_service()?
+            .failed_resident_selection(self.selection)?;
         let protection = self
             .input
             .update(cx, |input, cx| {
-                if input.history_frontier() != self.selection.binding().range_history_frontier()
-                    || !input.surface().is_some_and(|surface| {
-                        surface.binding() == self.selection.binding().range_binding()
-                    })
-                {
-                    return Err(gpui_text_input::RangeTextInputError::Stale);
-                }
+                let surface = input
+                    .surface()
+                    .ok_or(gpui_text_input::RangeTextInputError::Stale)?;
+                let published = if surface.binding() == selection.binding().range_binding() {
+                    selection.binding()
+                } else {
+                    historical_prior
+                        .filter(|prior| surface.binding() == prior.range_binding())
+                        .ok_or(gpui_text_input::RangeTextInputError::Stale)?
+                };
                 input.set_enabled(false, cx);
-                input.protect_resident(cx)
+                if historical_prior.is_some() {
+                    input.protect_published_resident(published.range_history_frontier(), cx)
+                } else {
+                    input.protect_resident(cx)
+                }
             })
             .map_err(|e| format!("failed resident protection refused: {e:?}"))?;
         self.failed_resident.as_mut().unwrap().capture_taken = true;
         self.phase = MainWindowConversationComposerPhase::RecoveryFenced;
         self.admitted_positions = None;
         self.scheduled = false;
+        self.retire_failed_historical_replacement();
         cx.notify();
         Ok(Some(MainWindowFailedResidentCapture {
             ticket,
-            selection: self.selection,
+            selection,
             protection,
             restoration: protection.seed(),
             current_ticket: None,

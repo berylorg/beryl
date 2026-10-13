@@ -3,12 +3,35 @@ use beryl_home_store::{HomeCandidateRecoveryAccess, HomeGeneration};
 use syndic_storage::*;
 
 #[derive(Clone, Copy)]
-pub(super) enum InitialActivationAccess<'a, 'b> {
+pub(in crate::composer_host) enum InitialActivationAccess<'a, 'b> {
     Ordinary(&'a HomeStore),
     Candidate(&'a HomeCandidateRecoveryAccess<'b>),
 }
 
 impl InitialActivationAccess<'_, '_> {
+    pub(in crate::composer_host) fn submission_intent(
+        self,
+        storage: &SyndicStorage,
+        selector: DraftEditorCurrentSelectorV1,
+    ) -> Result<DraftSubmissionIntent, ComposerHostError> {
+        let limit = SyndicPointReadLimit::new(65_536).unwrap();
+        let draft = match self {
+            Self::Ordinary(store) => storage.draft(store, selector.draft_id(), limit)?,
+            Self::Candidate(access) => {
+                storage.draft_candidate(access, selector.draft_id(), limit)?
+            }
+        }
+        .ok_or(ComposerHostError::MissingCurrentDraft)?;
+        if draft.thread_id() != selector.thread_id()
+            || draft.revision() != selector.selector_revision()
+            || draft.piece_root() != selector.root()
+            || draft.history() != selector.history()
+        {
+            return Err(ComposerHostError::DurableSelectorChanged);
+        }
+        Ok(draft.submission_intent())
+    }
+
     pub(super) fn home_id(self) -> beryl_model::BerylHomeId {
         match self {
             Self::Ordinary(store) => store.home_id(),

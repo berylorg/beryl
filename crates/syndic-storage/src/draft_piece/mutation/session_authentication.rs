@@ -148,88 +148,117 @@ pub(super) fn authenticate_candidate_history(
         .sealed_import_operation_id()
         .is_some()
     {
-        let newest =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
-        if !super::super::checkpoint::candidate_is_exact_in_transaction(reader, head, &newest)? {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        return Ok(());
+        return authenticate_imported_history(reader, head);
     }
     if head.newest_candidate_generation() == head.published_candidate_generation()
         && head.newest_candidate_generation() != 0
     {
-        let published =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &head.published_history().key())?;
-        let newest =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
-        if published.reference() != head.published_history()
-            || newest.reference() != head.newest_history()
-            || !(published == newest
-                && matches!(
-                    published.reference().key(),
-                    DraftEditHistoryFrontierKeyV1::Publication { session_id, .. }
-                        if session_id == head.session_id()
-                )
-                || published.fork_session(head.session_id()).as_ref() == Some(&newest))
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
+        authenticate_published_history(reader, head)?;
     } else if head.newest_candidate_generation() != head.published_candidate_generation() {
-        let root = head.newest_root();
-        let newest_history =
-            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
-        if newest_history.reference() != head.newest_history() {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        authenticate_draft_edit_history_frontier_v1(reader, &newest_history)?;
-        let journal_head = newest_history
-            .journal_head()
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let newest_transition =
-            required::<DraftEditHistoryTransitionsFamily>(reader, &journal_head.key())?;
-        if newest_transition.reference() != journal_head {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        if newest_transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
-            if !historical_candidate_session_is_exact(
-                reader,
-                head,
-                newest_transition.operation_id(),
-            )? {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            return Ok(());
-        }
-        let key = DraftPieceSettlementKeyV1::new(
-            head.draft_id(),
-            head.session_id(),
-            newest_transition.operation_id(),
-        );
-        let stored_root = required::<DraftPieceRootsFamily>(reader, &root.key())?;
-        let settlement = required::<DraftPieceSettlementsFamily>(reader, &key)?;
-        let build = point_build(reader, &key)?;
-        let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
-            return Err(SyndicMutationError::IdentityCollision);
-        };
-        if stored_root.reference() != root
-            || !settlement_closure_is_exact(&settlement)
-            || !settlement_terminal_build_is_exact(&settlement, build.as_ref())
-            || !super::super::session::adopted_head_matches_current(
-                adoption.adopted_session(),
-                head,
+        authenticate_unpublished_history(reader, head)?;
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn authenticate_imported_history(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<(), SyndicMutationError> {
+    let newest = build_custody::required_record::<DraftEditHistoryFrontiersFamily>(
+        reader,
+        &head.newest_history().key(),
+    )?;
+    if !super::super::checkpoint::candidate_is_exact_in_transaction(reader, head, &newest)? {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn authenticate_published_history(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<(), SyndicMutationError> {
+    let published = build_custody::required_record::<DraftEditHistoryFrontiersFamily>(
+        reader,
+        &head.published_history().key(),
+    )?;
+    let newest = build_custody::required_record::<DraftEditHistoryFrontiersFamily>(
+        reader,
+        &head.newest_history().key(),
+    )?;
+    if published.reference() != head.published_history()
+        || newest.reference() != head.newest_history()
+        || !(published == newest
+            && matches!(
+                published.reference().key(),
+                DraftEditHistoryFrontierKeyV1::Publication { session_id, .. }
+                    if session_id == head.session_id()
             )
-            || !matches!(
-                settlement.outcome(),
-                DraftPieceSettlementOutcomeV1::Committed {
-                    successor,
-                    candidate_generation,
-                    ..
-                } if *successor == root
-                    && *candidate_generation == head.newest_candidate_generation()
-            )
-        {
+            || published.fork_session(head.session_id()).as_ref() == Some(newest.as_ref()))
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn authenticate_unpublished_history(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<(), SyndicMutationError> {
+    let root = head.newest_root();
+    let newest_history = build_custody::required_record::<DraftEditHistoryFrontiersFamily>(
+        reader,
+        &head.newest_history().key(),
+    )?;
+    if newest_history.reference() != head.newest_history() {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    authenticate_draft_edit_history_frontier_v1(reader, &newest_history)?;
+    let journal_head = newest_history
+        .journal_head()
+        .ok_or(SyndicMutationError::IdentityCollision)?;
+    let newest_transition = build_custody::required_record::<DraftEditHistoryTransitionsFamily>(
+        reader,
+        &journal_head.key(),
+    )?;
+    if newest_transition.reference() != journal_head {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
+    if newest_transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
+        if !historical_candidate_session_is_exact(reader, head, newest_transition.operation_id())? {
             return Err(SyndicMutationError::IdentityCollision);
         }
+        return Ok(());
+    }
+    let key = DraftPieceSettlementKeyV1::new(
+        head.draft_id(),
+        head.session_id(),
+        newest_transition.operation_id(),
+    );
+    let stored_root = build_custody::required_record::<DraftPieceRootsFamily>(reader, &root.key())?;
+    let settlement = build_custody::required_record::<DraftPieceSettlementsFamily>(reader, &key)?;
+    let build = build_custody::optional_authenticated_build(reader, &key)?;
+    let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
+        return Err(SyndicMutationError::IdentityCollision);
+    };
+    if stored_root.reference() != root
+        || !settlement_closure_is_exact(&settlement)
+        || !settlement_terminal_build_is_exact(&settlement, build.as_deref())
+        || !super::super::session::adopted_head_matches_current(adoption.adopted_session(), head)
+        || !matches!(
+            settlement.outcome(),
+            DraftPieceSettlementOutcomeV1::Committed {
+                successor,
+                candidate_generation,
+                ..
+            } if *successor == root
+                && *candidate_generation == head.newest_candidate_generation()
+        )
+    {
+        return Err(SyndicMutationError::IdentityCollision);
     }
     Ok(())
 }

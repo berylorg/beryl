@@ -34,6 +34,8 @@ mod compaction_custody;
 mod completion;
 #[path = "normal_terminal/exact_stop_feedback.rs"]
 mod exact_stop_feedback;
+#[path = "normal_terminal/historical_edit_availability.rs"]
+mod historical_edit_availability;
 #[path = "normal_terminal/loss.rs"]
 mod loss;
 #[path = "normal_terminal/ordinary_custody.rs"]
@@ -42,6 +44,8 @@ mod ordinary_custody;
 mod permission_work;
 #[path = "accepted_delivery_recovery/repair_startup.rs"]
 mod repair_startup;
+#[path = "normal_terminal/replacement_delivery.rs"]
+mod replacement_delivery;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "normal_terminal/steering_loss.rs"]

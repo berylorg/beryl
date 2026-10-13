@@ -138,17 +138,21 @@ pub(super) async fn assert_recovered_with_records(
                 ResidentTranscriptSnapshotState::ProviderBacked { .. }
             ));
             assert_eq!(snapshot.records.len(), expected_count);
-            let record = &snapshot.records[0];
-            let ResidentPresentationRecordKind::TextChunk {
-                narrative_kind,
-                text,
-                ..
-            } = &record.kind
-            else {
-                panic!("recovered resident transcript did not mount the authored text projection");
+            let authored = snapshot.records[0].authored_parts();
+            assert_eq!(authored.len(), 1, "the exact recovered text projection must remain one authored part");
+            let record = &authored[0];
+            let text = match &record.kind {
+                ResidentPresentationRecordKind::NarrativeReady { prepared } => prepared.source(),
+                ResidentPresentationRecordKind::NarrativePending { source } => {
+                    let syndic_storage::ProjectionPayload::InlineMarkdown { source, .. } = source.as_ref() else {
+                        panic!("pending recovered authored projection must retain exact inline Markdown");
+                    };
+                    source.as_ref()
+                }
+                kind => panic!("recovered exact authored projection has unexpected kind: {kind:?}"),
             };
-            assert_eq!(*narrative_kind, TranscriptNarrativeKind::UserInput);
-            assert_eq!(text.as_ref(), TARGET_TEXT);
+            assert_eq!(root.test_transcript_panel().read(app).narrative_kind_for_test(&record.id), Some(TranscriptNarrativeKind::UserInput));
+            assert_eq!(text, TARGET_TEXT);
             let ResidentRecordSource::Syndic(source) = &record.provenance.source else {
                 panic!("recovered target transcript used local or copied presentation provenance");
             };

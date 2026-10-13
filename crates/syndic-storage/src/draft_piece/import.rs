@@ -28,6 +28,7 @@ mod cancellation_model;
 mod command;
 mod outcome;
 mod outcome_state;
+mod recovery;
 mod termination;
 pub use cancellation::PreparedDraftReplacementCancellationV1;
 pub use outcome::DraftReplacementCommandOutcomeV1;

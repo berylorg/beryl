@@ -295,6 +295,9 @@ impl MainWindowConversationComposer {
             self.pump_dispatch(request, window, cx);
             return;
         }
+        if self.pump_historical_replacement(window, cx) {
+            return;
+        }
         if matches!(self.phase, MainWindowConversationComposerPhase::Fencing) {
             self.input.update(cx, |input, input_cx| {
                 gpui::EntityInputHandler::unmark_text(input, window, input_cx)
@@ -576,8 +579,8 @@ impl MainWindowConversationComposer {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn test_edit_position_proof_ready(&self, cx: &gpui::App) -> bool {
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn test_edit_position_proof_ready(&self, cx: &gpui::App) -> bool {
         if !self.is_live()
             || self.route != MainWindowConversationComposerRoute::Selected
             || self.active_flight.is_some()
@@ -602,8 +605,8 @@ impl MainWindowConversationComposer {
             ))
     }
 
-    #[cfg(test)]
-    pub(crate) fn test_edit_position_proof_diagnostics(&self, cx: &gpui::App) -> String {
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn test_edit_position_proof_diagnostics(&self, cx: &gpui::App) -> String {
         let input = self.input.read(cx);
         let surface = input.surface();
         let positions = surface.map(|surface| {

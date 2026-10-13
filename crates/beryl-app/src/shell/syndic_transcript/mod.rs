@@ -63,8 +63,8 @@ pub(crate) use media_action::{
     ResidentTranscriptMediaActionTarget, ResidentTranscriptMediaPayload,
 };
 pub(crate) use panel::{
-    QuoteInsertionRequested, ResourceViewportDemandChanged, SYNDIC_TRANSCRIPT_KEY_CONTEXT,
-    SyndicTranscriptPanel,
+    HistoricalReplacementRequested, ImageMarkerInspectionRequested, QuoteInsertionRequested, ResourceViewportDemandChanged,
+    SYNDIC_TRANSCRIPT_KEY_CONTEXT, SyndicTranscriptPanel,
 };
 pub(crate) use provider::*;
 pub(crate) use renderer_context_menu::{

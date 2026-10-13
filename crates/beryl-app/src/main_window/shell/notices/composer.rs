@@ -22,15 +22,16 @@ struct ComposerNoticeFeedback {
     last_arbiter_change: Option<(usize, u64, u64, u64, u64, u64)>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 enum ComposerFeedbackSource {
     Mutation(MainWindowComposerMutationFeedback),
     Clipboard(MainWindowComposerClipboardFeedback),
     Quote(crate::main_window::conversation_composer_owner::ComposerQuoteFeedback),
+    HistoricalReplacement(String),
 }
 
 impl ComposerFeedbackSource {
-    fn persistent(self) -> bool {
+    fn persistent(&self) -> bool {
         matches!(
             self,
             Self::Mutation(MainWindowComposerMutationFeedback {
@@ -42,8 +43,9 @@ impl ComposerFeedbackSource {
         )
     }
 
-    fn text(self) -> (&'static str, &'static str) {
+    fn text(&self) -> (&str, &str) {
         match self {
+            Self::HistoricalReplacement(reason) => ("Historical editing is unavailable", reason.as_str()),
             Self::Quote(feedback) => match feedback.kind {
                 crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::TooLarge => (
                     "Quote selection is too large",
@@ -135,17 +137,36 @@ impl MainWindowShellRoot {
                 .as_ref()
                 .map(|owner| cx.observe(owner, |_, _, cx| cx.notify()));
         }
+        let historical_dismissed =
+            self.notices
+                .composer
+                .feedback
+                .as_ref()
+                .is_some_and(|feedback| {
+                    matches!(
+                        feedback.source,
+                        ComposerFeedbackSource::HistoricalReplacement(_)
+                    ) && feedback.attempted
+                        && feedback
+                            .token
+                            .as_ref()
+                            .is_some_and(|token| !self.notices.arbiter.contains(token))
+                });
+        if historical_dismissed && let Some(owner) = &owner {
+            owner.update(cx, |owner, _| owner.clear_historical_replacement_feedback());
+        }
         let source = owner.and_then(|owner| {
             let composer = owner.read(cx);
             let mutation = composer
                 .mutation_feedback()
                 .map(ComposerFeedbackSource::Mutation);
-            if mutation.is_some_and(ComposerFeedbackSource::persistent) {
+            if mutation.as_ref().is_some_and(|source| source.persistent()) {
                 mutation
             } else {
                 composer
-                    .quote_feedback()
-                    .map(ComposerFeedbackSource::Quote)
+                    .historical_replacement_feedback()
+                    .map(|reason| ComposerFeedbackSource::HistoricalReplacement(reason.to_owned()))
+                    .or_else(|| composer.quote_feedback().map(ComposerFeedbackSource::Quote))
                     .or_else(|| {
                         composer
                             .clipboard_feedback()
@@ -159,7 +180,7 @@ impl MainWindowShellRoot {
             .composer
             .feedback
             .as_ref()
-            .map(|feedback| feedback.source)
+            .map(|feedback| feedback.source.clone())
             != source
         {
             self.clear_composer_notice();

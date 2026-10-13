@@ -1744,3 +1744,64 @@ implementation and raw evidence with no remaining blocker. All 183 positively re
 prerequisite/import fixture directories are verified absent; reviewed execution artifacts are
 reclaimed. No task-owned process or session mutation remains. Mounted Edit remains disabled;
 this acceptance does not accept its separate GUI workflow.
+
+## Mounted Historical Replacement Editing Acceptance
+
+Accepted 2026-10-13 from `bf9847043cb14ce50bfa8892ec05025895056d6b` plus the scoped mounted
+replacement changes. Production Edit is enabled without a test-only override. Exact current
+user-turn origins in narrative, Code/Table and bounded inline image groups feed the same serialized
+selected-composer lifecycle. Import preserves sealed text, image identity/labels, same-session
+ownership and the immutable Undo baseline; coherent publication installs mode and dimming together.
+Escape changes metadata while preserving content, caret, selection and history. Submission uses
+the original exact-root admission and replacement parentage, with idle-only eligibility, once-per-
+attempt space admission, original uncertainty custody and accepted-delivery-failure preservation.
+
+Failed-home retirement carries historical work in the existing move-only failed-resident owner.
+All original scopes are observed before cleanup, and fresh candidate cleanup never replays an old
+capability. Committed unpresented import qualifies its saved successor and uses protected
+changed-source preparation on the same widget; unchanged-source restoration retains its stricter
+position contract. Private heap ownership fixes the default Windows worker stack without changing
+canonical storage encoding or authentication. The accepted widget fork is
+`c9420ea81486b122d2727ac05383890d805d84f6`.
+
+Evidence includes:
+
+- Widget prepublication regression: all 68 cases in `773f617a-96f5-4fc7-a335-acb4e6ea4242`,
+  with complete independent correction review and the published fork above.
+- Storage checkpoint/import/mutation/history/encoding: 149 of 149,
+  `7650d172-5cb2-4839-95c9-a88ffa2f5d7b`.
+- Host/slot recovery, native import/restoration/edit/Undo/Redo/cancel, idle exclusion, reserve
+  refusals, original acceptance custody and actual execution connection loss: 21 passing cases
+  in `735879c1-c755-4cb8-b92f-d2b892490064`. Its two failing native cases were corrected separately.
+- Native Code activation and fresh range routing:
+  `2e4c3ff6-68ae-454a-8299-ac4290ae7b74`.
+- Broader composer/transcript regressions: 122 unaffected passes in
+  `cd4aa5d4-5522-4e9f-a0ed-4bd176aebdc2`; its duplicate Quote-range failure was corrected and the
+  entire selection/Copy/Quote target passed 23 of 23 in `a11cbc98-7585-4c98-a754-0c6a5fde0bbf`.
+- Shared and replacement submission outcomes, including definite noncommit and terminal
+  Unavailable: all 54, `7d4974b5-667e-42c4-9226-bf4d2aac0095`.
+- Final production exposure: all 118 selected panel/Code/Table and native cases in
+  `e01fef4c-23a5-42f0-87eb-6fcd2f78653b`. This includes both real nonempty-composer menu refusals
+  and the complete image workflow: visible exact origins, cross-marker drag, pointer/Enter/Space,
+  Shift+F10, inspection dismissal/focus return, actual Edit/import, dimming and Escape cancellation.
+  The enabled production image workflow also passed independently in
+  `3245cf6c-9fa1-4a3c-b46c-c901d8770229`.
+
+Canonical locked metadata and no-feature app/executable checks passed with local dependency
+patches absent, then the ignored local configuration was restored. The final production check
+took 14.63 seconds. Checks use the one-job LLVM, nonincremental and no-normal-debug configuration;
+native worker qualification uses the default Windows worker stack. A larger named fixture
+preparation stack is not worker acceptance evidence. Complete independent semantic/adversarial
+review accepted the implementation and final production exposure with no remaining findings.
+
+The [recovery custody](../failures/historical-replacement-recovery-custody.md),
+[worker stack](../failures/composer-history-worker-stack.md),
+[deferred rebind](../failures/replacement-deferred-rebind.md) and
+[native interaction evidence](../failures/native-transcript-interaction-evidence.md) records
+preserve the corrected approaches. Branch discussion creation, diagnostic child activation and
+complete combined transcript acceptance remain separate planned boundaries.
+
+All positively registered mounted/import/save fixtures are verified absent, and no task-owned
+native or debugger process remains. Local configuration is restored and documentation retrieval
+is Current with zero failed or blocked chunks. Reviewed execution artifacts are reclaimed after
+the acceptance commit; shared Cargo/analyzer caches remain available for the next phase.

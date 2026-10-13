@@ -53,6 +53,10 @@ impl ComposerHostRetiredClose {
             initial_responses: Vec::new(),
             unavailable: false,
             durable_selector: self.selector,
+            submission_intent: Some(
+                super::super::activation::access::InitialActivationAccess::Candidate(access)
+                    .submission_intent(&host.storage, self.selector)?,
+            ),
             published_candidate_generation: self.checkpoint.candidate_generation(),
             published_pair: syndic_storage::DraftRootHistoryPairV1::new(
                 self.selector.root(),

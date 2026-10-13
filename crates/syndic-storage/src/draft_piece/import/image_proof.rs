@@ -88,8 +88,8 @@ impl SyndicStorage {
                 self.revision(store)?,
                 super::super::proof_dispatch::SourceInput::HistoricalInput(
                     HistoricalImportSource {
-                        build: Box::new(image.build.clone()),
-                        session: Box::new(image.session.clone()),
+                        build: image.build.clone(),
+                        session: image.session.clone(),
                         page: page.clone(),
                     },
                 ),

@@ -20,6 +20,7 @@ fn provenance(
     projection_id: &ProjectionRecordId,
 ) -> SyndicSourceProvenance {
     SyndicSourceProvenance {
+        transcript_entry: None,
         view_id: view_id.clone(),
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{position}"))),

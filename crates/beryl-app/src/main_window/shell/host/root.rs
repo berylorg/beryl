@@ -139,6 +139,7 @@ impl MainWindowShellRoot {
             shell_focus,
             notices,
             home_warning_startup: None,
+            transcript_image_preview: None,
         };
         root.subscribe_notices(window, cx);
         root.subscribe_quote(window, cx);
@@ -301,6 +302,8 @@ impl Render for MainWindowShellRoot {
         self.sync_runtime_setup(window, cx);
         self.sync_thread_switcher(window, cx);
         self.sync_notices(window, cx);
+        self.sync_historical_record_dimming(cx);
+        let image_preview = self.render_transcript_image_preview(window, cx);
         let lineage = self.render_selected_lineage(cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
@@ -411,6 +414,7 @@ impl Render for MainWindowShellRoot {
             .children(setup_picker)
             .children(switcher_picker)
             .child(self.notices.widget.clone())
+            .children(image_preview)
             .into_any_element()
     }
 }

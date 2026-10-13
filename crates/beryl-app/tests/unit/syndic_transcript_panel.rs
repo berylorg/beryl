@@ -516,6 +516,7 @@ fn seed(record_count: u64) -> PreparedTranscriptActivation {
     for position in 0..record_count {
         let projection_id = ProjectionRecordId(format!("text-{position}"));
         let provenance = SyndicSourceProvenance {
+            transcript_entry: None,
             view_id: view_id.clone(),
             position: Some(TranscriptViewPosition(position)),
             turn_id: None,

@@ -47,6 +47,8 @@ const FALLBACK_RECORD_ESTIMATED_BYTES: usize = 96;
 const GEOMETRY_PLACEHOLDER_BYTES_PER_RECORD: usize = 32;
 const PIN_PLACEHOLDER_BYTES: usize = 64;
 
+#[path = "core/inline_parts.rs"]
+mod inline_parts;
 #[path = "core/inline_table.rs"]
 mod inline_table;
 #[path = "core/mapped_quote.rs"]
@@ -1078,7 +1080,7 @@ impl ResidentTranscriptCore {
         self.presentation
             .records
             .iter()
-            .any(|record| &record.id == record_id)
+            .any(|record| record.authored_part(record_id).is_some())
     }
 
     fn validate_resident_selection(
@@ -1285,7 +1287,11 @@ impl ResidentTranscriptCore {
             .records
             .iter()
             .enumerate()
-            .find(|(_, record)| record.id == geometry.record_id)
+            .find_map(|(index, record)| {
+                record
+                    .authored_part(&geometry.record_id)
+                    .map(|part| (index, part))
+            })
             .ok_or_else(|| ResidentContextMenuUnavailable::RecordNotResident {
                 record_id: geometry.record_id.clone(),
             })
@@ -1537,7 +1543,14 @@ impl ResidentTranscriptCore {
             push_unique_record_id(&mut record_ids, record_id.clone());
         }
         for record_id in &self.resident.active_menu_pins {
-            push_unique_record_id(&mut record_ids, record_id.clone());
+            if let Some(record) = self
+                .presentation
+                .records
+                .iter()
+                .find(|record| record.authored_part(record_id).is_some())
+            {
+                push_unique_record_id(&mut record_ids, record.id.clone());
+            }
         }
         for record_id in &self.resident.active_media_pins {
             push_unique_record_id(&mut record_ids, record_id.clone());
@@ -1631,13 +1644,19 @@ impl ResidentTranscriptCore {
     ) -> Vec<ProjectionRecordId> {
         let mut projection_ids = Vec::new();
         for record in self.presentation.records.iter() {
-            if !record_id_in(record_ids, &record.id) {
+            if !record_id_in(record_ids, &record.id)
+                && !record
+                    .authored_parts()
+                    .iter()
+                    .any(|part| record_id_in(record_ids, &part.id))
+            {
                 continue;
             }
-            let Some(projection_id) = &record.provenance.projection_id else {
-                continue;
-            };
-            push_unique_projection_id(&mut projection_ids, projection_id.clone());
+            for part in record.authored_parts() {
+                if let Some(projection_id) = &part.provenance.projection_id {
+                    push_unique_projection_id(&mut projection_ids, projection_id.clone());
+                }
+            }
         }
         projection_ids
     }
@@ -1735,6 +1754,12 @@ impl ResidentTranscriptCore {
         let presentation_revision = self.presentation.presentation_revision;
         for record in Arc::make_mut(&mut self.presentation.records) {
             record.provenance.presentation_revision = presentation_revision;
+            if let ResidentPresentationRecordKind::AuthoredInlineParts { parts } = &mut record.kind
+            {
+                for part in Arc::make_mut(parts) {
+                    part.provenance.presentation_revision = presentation_revision;
+                }
+            }
         }
     }
 
@@ -1772,6 +1797,7 @@ impl ResidentTranscriptCore {
             .presentation
             .records
             .iter()
+            .flat_map(ResidentPresentationRecord::authored_parts)
             .map(|record| record.id.clone())
             .collect::<Vec<_>>();
         self.resident
@@ -2833,6 +2859,7 @@ impl ResidentTranscriptCore {
             &resource_ids,
         );
         self.apply_fallback_records_to_presentation();
+        inline_parts::group_inline_parts(Arc::make_mut(&mut self.presentation.records));
         self.refresh_budget_accounting();
     }
 
@@ -3131,6 +3158,9 @@ fn projection_estimated_bytes(records: &[ProjectionRecord]) -> usize {
     records
         .iter()
         .map(|record| match &record.payload {
+            ProjectionPayload::ImageMarker(_) => {
+                std::mem::size_of::<super::provider::TranscriptImageMarker>()
+            }
             ProjectionPayload::NarrativePending { source }
             | ProjectionPayload::NarrativeUnavailable { source, .. } => {
                 narrative_source_bytes(source)
@@ -3277,6 +3307,10 @@ fn presentation_record_for_projection(
     presentation_revision: u64,
 ) -> ResidentPresentationRecord {
     let (kind, estimated_bytes) = match &projection_record.payload {
+        ProjectionPayload::ImageMarker(marker) => (
+            ResidentPresentationRecordKind::ImageMarker(*marker),
+            std::mem::size_of::<super::provider::TranscriptImageMarker>(),
+        ),
         ProjectionPayload::NarrativePending { source } => (
             ResidentPresentationRecordKind::NarrativePending {
                 source: source.clone(),
@@ -3344,6 +3378,12 @@ fn presentation_record_for_projection(
             &projection_record.payload,
             projection_record.provenance.block_id,
         ) {
+            (ProjectionPayload::ImageMarker(marker), _) => ResidentPresentationRecordId(format!(
+                "view:{}:projection:{}:marker:{}",
+                projection_record.provenance.view_id.0,
+                projection_record.id.0,
+                marker.marker.marker_id(),
+            )),
             (
                 ProjectionPayload::InlineTable { .. }
                 | ProjectionPayload::InlineTableUnavailable { .. }

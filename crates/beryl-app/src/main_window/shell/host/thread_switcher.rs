@@ -64,7 +64,7 @@ struct ReadFence {
 pub(super) struct ThreadSwitcherContribution {
     pub(super) picker: Option<Entity<ThreadRootPicker>>,
     subscription: Option<gpui::Subscription>,
-    focus: gpui::FocusHandle,
+    pub(super) focus: gpui::FocusHandle,
     reader: Option<PublishedCatalogQueryReader>,
     opening: Arc<()>,
     anchor: Option<PublishedCatalogCollection>,

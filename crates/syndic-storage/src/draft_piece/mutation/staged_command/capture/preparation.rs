@@ -71,12 +71,26 @@ pub(super) fn advance(
     value: Box<PreparedDraftPieceAdvanceV1>,
 ) -> CapturedPreparation {
     let prepared = AdvanceMutation {
-        prepared: *value,
+        prepared: value,
         writer_progress_allowed: true,
     }
     .prepare(reader)?;
-    let target = match &prepared {
-        Some((value, _)) => CapturedState {
+    let target = advance_target(
+        reader,
+        source,
+        prepared.as_ref().map(|(value, _)| value.as_ref()),
+    )?;
+    Ok((PreparedCommandMutation::Advance(Box::new(prepared)), target))
+}
+
+#[inline(never)]
+fn advance_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: &CapturedState,
+    prepared: Option<&PreparedDraftPieceAdvanceV1>,
+) -> Result<Box<CapturedState>, SyndicMutationError> {
+    let target = match prepared {
+        Some(value) => CapturedState {
             staging: source.staging.clone(),
             build: Some(value.next.as_ref().clone()),
             session: value.next_session.clone(),
@@ -85,10 +99,7 @@ pub(super) fn advance(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((
-        PreparedCommandMutation::Advance(Box::new(prepared)),
-        Box::new(target),
-    ))
+    Ok(Box::new(target))
 }
 
 pub(super) fn settle(

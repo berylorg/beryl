@@ -36,10 +36,25 @@ impl MainWindowConversationComposerService {
         selection: MainWindowComposerSelectionIdentity,
     ) -> Result<(), String> {
         self.qualify_failed_resident_home(selection)?;
-        if self.selected_identity() != Some(selection) {
+        self.failed_resident_selection(selection)?;
+        Ok(())
+    }
+
+    pub(in crate::main_window) fn failed_resident_selection(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(MainWindowComposerSelectionIdentity, Option<crate::composer_host::ComposerHostBinding>), String> {
+        self.qualify_failed_resident_home(selection)?;
+        let slot = self.slot.lock().map_err(|_| "failed resident source lock failed")?;
+        let current = slot.selected_identity().ok_or("failed resident source is absent")?;
+        let host = slot.selected_host().ok_or("failed resident host is absent")?;
+        if current.window_id() != selection.window_id()
+            || current.claim() != selection.claim()
+            || !host.historical_recovery_accepts_binding(selection.binding())
+        {
             return Err("failed resident selected source changed".into());
         }
-        Ok(())
+        Ok((current, host.historical_recovery_prior_binding()))
     }
 
     pub(in crate::main_window) fn qualify_failed_resident_home(

@@ -60,7 +60,7 @@ impl SyndicTranscriptHost {
             .presentation
             .records
             .iter()
-            .find(|record| &record.id == id)?
+            .find_map(|record| record.authored_part(id))?
             .provenance
             .projection_id
             .as_ref()?;
@@ -116,6 +116,18 @@ impl SyndicTranscriptHost {
 
     pub(crate) fn narrative_current(&self, owner: &super::NarrativeOwner) -> bool {
         self.core.narrative_current(owner)
+    }
+
+    pub(crate) fn inline_parts_current(&self, record: &super::ResidentPresentationRecord) -> bool {
+        self.core.inline_parts_current(record)
+    }
+
+    pub(crate) fn inline_parts_layout_allowance(&self, record: &super::ResidentPresentationRecord) -> usize {
+        self.core.inline_parts_layout_allowance(record)
+    }
+
+    pub(crate) fn reserve_inline_parts_layout(&mut self, record: &super::ResidentPresentationRecord, bytes: usize) -> bool {
+        self.core.reserve_inline_parts_layout(record, bytes)
     }
 
     pub(crate) fn narrative_layout_allowance(&self, owner: &super::NarrativeOwner) -> usize {
@@ -662,7 +674,7 @@ impl SyndicTranscriptHost {
             .presentation
             .records
             .iter()
-            .find(|record| record.id == target.record.record_id)?;
+            .find_map(|record| record.authored_part(&target.record.record_id))?;
         let current = super::context_menu::resident_context_menu_record(
             record,
             target.record.geometry.clone(),

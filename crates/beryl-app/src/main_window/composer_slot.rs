@@ -22,6 +22,7 @@ pub(crate) use failed_claim_cleanup::{
     MainWindowCompletedThreadSuccessorProgress, MainWindowFailedClaimRetirement,
 };
 mod fresh_candidate;
+mod historical_replacement;
 mod surviving_native_close;
 pub use failed_resident::MainWindowFailedComposerRetirement;
 pub(in crate::main_window) mod dispatch;

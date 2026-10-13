@@ -15,7 +15,7 @@ use beryl_home_store::{
 #[derive(Clone)]
 pub struct PreparedDraftReplacementImportTerminationV1 {
     pub(crate) observation: super::outcome_state::CommandObservation,
-    pub(crate) scope: ImportCommandScope,
+    pub(crate) scope: super::recovery::TerminationScope,
     pub(crate) source: Box<DraftPieceBuildRecordV1>,
     pub(crate) before: Box<DraftEditorCandidateSessionV1>,
     pub(crate) after: Box<DraftEditorCandidateSessionV1>,
@@ -39,26 +39,38 @@ impl SyndicStorage {
             storage: self,
             store,
         };
+        let prepared = self.prepare_replacement_import_termination_from_reader(
+            &r,
+            key,
+            super::recovery::TerminationScope::Ordinary(ImportCommandScope::capture(self, store)?),
+        )?;
+        if self.revision(store)? != revision {
+            return Err(DraftReplacementErrorV1::Conflict);
+        }
+        Ok(prepared)
+    }
+    pub(super) fn prepare_replacement_import_termination_from_reader(
+        &self,
+        r: &impl SourceReader,
+        key: DraftPieceSettlementKeyV1,
+        scope: super::recovery::TerminationScope,
+    ) -> Result<PreparedDraftReplacementImportTerminationV1, DraftReplacementErrorV1> {
         let source = r
-            .point::<DraftPieceBuildsFamily>(&key)?
+            .boxed_point::<DraftPieceBuildsFamily>(&key)?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         if !import_build_is_exact(&source)
             || !matches!(
                 source.lifecycle(),
                 DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
             )
-            || r.point::<DraftPieceSettlementsFamily>(&key)?.is_some()
+            || r.contains::<DraftPieceSettlementsFamily>(&key)?
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
-        let DraftEditorCandidateSessionRecordV1::Head(before) = r
-            .point::<DraftEditorCandidateSessionsFamily>(
-                &DraftEditorCandidateSessionRecordKeyV1::head(key.draft_id(), key.session_id()),
-            )?
-            .ok_or(DraftReplacementErrorV1::Conflict)?
-        else {
-            return Err(DraftReplacementErrorV1::Conflict);
-        };
+        let before = r.session_head(&DraftEditorCandidateSessionRecordKeyV1::head(
+            key.draft_id(),
+            key.session_id(),
+        ))?;
         let after = before
             .clear_active_operation(&custody(&source))
             .ok_or(DraftReplacementErrorV1::Conflict)?;
@@ -77,14 +89,11 @@ impl SyndicStorage {
                 source.successor(),
             )),
         )?;
-        if self.revision(store)? != revision {
-            return Err(DraftReplacementErrorV1::Conflict);
-        }
         Ok(PreparedDraftReplacementImportTerminationV1 {
             observation: Default::default(),
-            scope: ImportCommandScope::capture(self, store)?,
-            source: Box::new(source),
-            before: Box::new(before),
+            scope,
+            source,
+            before,
             after: Box::new(after),
             terminal: Box::new(terminal),
             receipt: Box::new(receipt),
@@ -97,7 +106,7 @@ impl SyndicStorage {
         p: PreparedDraftReplacementImportTerminationV1,
     ) -> MutationContribution {
         p.scope
-            .handle
+            .handle()
             .clone()
             .contribution(revision, Terminate { p })
     }

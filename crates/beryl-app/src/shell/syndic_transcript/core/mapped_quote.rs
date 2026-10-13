@@ -24,21 +24,28 @@ impl ResidentTranscriptCore {
         let mut previous = None;
         let mut parts = Vec::new();
         for (id, local) in ranges {
-            let (index, record) = snapshot
+            let (order, index, record) = snapshot
                 .records
                 .iter()
                 .enumerate()
-                .find(|(_, record)| &record.id == id)
+                .flat_map(|(index, record)| {
+                    record
+                        .authored_parts()
+                        .iter()
+                        .map(move |part| (index, part))
+                })
+                .enumerate()
+                .find_map(|(order, (index, part))| (&part.id == id).then_some((order, index, part)))
                 .ok_or_else(|| ResidentSelectionUnavailable::RecordNotResident {
                     record_id: id.clone(),
                 })?;
-            if !realized.contains(&index) || previous.is_some_and(|previous| previous + 1 != index)
+            if !realized.contains(&index) || previous.is_some_and(|previous| previous + 1 != order)
             {
                 return Err(ResidentSelectionUnavailable::RecordNotRealized {
                     record_id: id.clone(),
                 });
             }
-            previous = Some(index);
+            previous = Some(order);
             let ResidentRecordSource::Syndic(source) = &record.provenance.source else {
                 return Err(ResidentSelectionUnavailable::NonContentRecord {
                     record_id: id.clone(),

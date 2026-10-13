@@ -63,10 +63,20 @@ pub(super) fn subscribe_quote(
 
 impl MainWindowShellRoot {
     pub(super) fn subscribe_quote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.running_threads.image_preview_subscription = Some(
+            super::transcript_image_preview::subscribe(&self.running_threads.transcript, window, cx),
+        );
         self.running_threads.quote_subscription = Some(subscribe_quote(
             &self.running_threads.transcript,
             window,
             cx,
         ));
+        self.running_threads.historical_replacement_subscription = Some(
+            super::historical_replacement::subscribe_historical_replacement(
+                &self.running_threads.transcript,
+                window,
+                cx,
+            ),
+        );
     }
 }

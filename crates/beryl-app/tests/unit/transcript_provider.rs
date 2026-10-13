@@ -110,6 +110,8 @@ mod candidate_activation;
 mod discussion_context;
 #[path = "transcript_provider/resources.rs"]
 mod resources;
+#[path = "transcript_provider/image_markers.rs"]
+mod image_markers;
 #[path = "transcript_provider/selected_title.rs"]
 mod selected_title;
 #[path = "transcript_provider/selected_title_history.rs"]

@@ -195,6 +195,65 @@ its duplicate composer service reference; later selection does not retain an obs
 as current authority. Lifecycle attention routing uses those cached coherent view identities and
 acknowledges only the exact displayed token after successful activation or notice dismissal.
 
+## Historical Replacement Operation Lifetime
+
+The [historical replacement adapter](design-catalog-and-composer.md#historical-replacement-adapter)
+uses the existing selected-composer operation ownership and tracked worker/drain boundary. The
+transcript and native menu retain only qualified presentation targets and weak callbacks; the
+selected owner retains the bounded source descriptor, one current proof/build quantum and exact
+original command/outcome custody. No transcript row, widget or retired observer owns a store or
+an independent background mutation lane.
+
+Thread switching, window close, selected-slot disposal and home retirement fence new replacement
+dispatch and await release or exact transfer of this operation's resources. Unadmitted source
+qualification can be cancelled. An admitted begin/advance, start, cancellation or termination
+reaches its original typed terminal through retained reconciliation and cleanup custody, even
+when the invoking widget or callback is gone. Dropping a completion observer neither abandons
+that operation nor authorizes another write. A committed start remains durable after native
+disposal; ordinary restoration derives its mode from the exact published draft intent.
+
+Prepared selected and pending presentations capture the submission intent associated with their
+exact composer selection before publication election. The pending election checks that captured
+intent alongside its current receipt and selection under the existing slot lock. Native composer
+construction consumes the captured value without reacquiring that lock; it cannot infer ordinary
+mode from an unavailable intent or substitute an observation of a different selected host.
+
+Completion publication rechecks the same selected window, paired claim, thread, host and graph
+generation. A stale result can settle its owned operation but cannot adopt into another selected
+editor or publish dimming there. Original uncertainty blocks dependent selected-path mutation,
+flush completion and graph replacement until the existing recovery/disposal boundary can retain
+or settle it exactly. Same-home recovery may inspect the original retained scope through the
+qualified replacement graph; it cannot execute an old prepared capability in that generation.
+Other healthy windows remain independent. This contribution creates no new native window,
+restoration protocol, global task registry or alternate home-retirement path.
+
+Historical-operation retirement extends the existing failed-resident capture and move-only
+`ComposerHostFailedResident` contribution, not healthy clean-close custody. It carries one exact
+operation stage, original begin/advance reconciliation or start/cancel/termination observation,
+immutable import identity, prior coherent checkpoint and authenticated successor facts. Conversion
+removes old service, Asset and worker capabilities; refusal returns or retains the actual owner.
+Candidate settlement runs in the existing failed-resident preparation before graph construction
+and publication. It first classifies original admitted scopes through fresh typed candidate access.
+An authenticated still-open import permits only freshly prepared candidate-generation nonselecting
+termination of that same import. A committed start qualifies its saved imported successor without
+another save; committed cancellation changes metadata only. Every candidate cleanup command retains
+its own original outcome across retries, and unavailable/collision cannot release dependent gates.
+
+Capture of a committed but unpresented import retains the exact prior coherent editor publication,
+original/imported selector correspondence and actual logical-rebind/frontier/publication progress.
+These stages may differ without becoming an ordinary unchanged-source recovery. The same native
+input stays fenced and paintable while its original queued effects drain. An owner-authenticated
+import successor uses the widget's separate protected changed-source preparation/adoption boundary,
+with its exact imported caret, directed selection and history baseline, fresh bounded candidate
+reads and combined predecessor/successor capacity. Unchanged-source recovery keeps its strict
+positions/content/history contract. The genuine protected predecessor remains authoritative for
+its published view even when the replaced durable root is no longer current; changed-source
+preparation validates the authenticated imported positions against the fresh target, rather than
+requiring another read of that obsolete root. Preserved-source recovery still validates its saved
+positions against candidate storage. Failed or cancelled preparation preserves the prior protected
+publication and original import custody; only coherent successor/editor-mode/dimming publication
+and complete graph settlement release the existing recovery fences.
+
 ## Startup Failure Presentation
 
 `startup_surface::StartupSurface::open_busy` and `open_failure` mount the dedicated windows from

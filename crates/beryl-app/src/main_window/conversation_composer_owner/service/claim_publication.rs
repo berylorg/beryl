@@ -8,6 +8,7 @@ pub(in crate::main_window) struct MainWindowComposerClaimPreparedPresentation {
     service: Arc<MainWindowConversationComposerService>,
     receipt: MainWindowComposerActivationReceipt,
     selection: MainWindowComposerSelectionIdentity,
+    submission_intent: Option<syndic_storage::DraftSubmissionIntent>,
     seeds: std::collections::VecDeque<crate::main_window::conversation_composer_owner::MainWindowConversationComposerActivationSeed>,
 }
 
@@ -38,6 +39,7 @@ impl MainWindowComposerClaimPreparedPresentation {
         if window_close.is_some()
             || slot.pending_receipt() != Some(self.receipt)
             || slot.pending_identity(self.receipt) != Some(self.selection)
+            || slot.selected_submission_intent(self.selection) != self.submission_intent
         {
             return Err((
                 self,
@@ -51,6 +53,11 @@ impl MainWindowComposerClaimPreparedPresentation {
     }
     pub(in crate::main_window) fn selection(&self) -> MainWindowComposerSelectionIdentity {
         self.selection
+    }
+    pub(in crate::main_window) fn submission_intent(
+        &self,
+    ) -> Option<syndic_storage::DraftSubmissionIntent> {
+        self.submission_intent
     }
     pub(in crate::main_window::conversation_composer_owner) fn into_seeds(self) -> std::collections::VecDeque<crate::main_window::conversation_composer_owner::MainWindowConversationComposerActivationSeed>{
         self.seeds
@@ -208,6 +215,7 @@ impl MainWindowConversationComposerService {
             service: Arc::clone(self),
             receipt,
             selection,
+            submission_intent: self.selected_submission_intent(selection),
             seeds,
         })
     }

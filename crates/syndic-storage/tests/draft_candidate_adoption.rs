@@ -2204,6 +2204,9 @@ fn settled_head(
         syndic_storage::DraftPieceSettlementClosureV1::Noncommit(noncommit) => {
             noncommit.observed_session().clone()
         }
+        syndic_storage::DraftPieceSettlementClosureV1::SealedImport(_) => {
+            panic!("ordinary mutation fixture produced a sealed import settlement")
+        }
     }
 }
 

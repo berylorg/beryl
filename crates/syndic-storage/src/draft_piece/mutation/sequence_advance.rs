@@ -190,11 +190,11 @@ fn validate_previous_proof(
 }
 
 pub(super) fn submit(
-    prepared: PreparedDraftPieceAdvanceV1,
+    prepared: Box<PreparedDraftPieceAdvanceV1>,
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<
     Option<(
-        PreparedDraftPieceAdvanceV1,
+        Box<PreparedDraftPieceAdvanceV1>,
         Option<PreparedDraftMarkerWriterConsumptionV1>,
     )>,
     SyndicMutationError,
@@ -208,57 +208,48 @@ pub(super) fn submit(
         prepared.expected.session_id(),
         prepared.expected.operation_id(),
     );
-    if source
+    if !source
         .budget
-        .recheck::<DraftPieceBuildsFamily>(reader, &key)?
-        .as_ref()
-        != Some(prepared.expected.as_ref())
-        || source
+        .recheck_matches::<DraftPieceBuildsFamily>(reader, &key, &prepared.expected)?
+        || !source
             .budget
-            .recheck::<DraftPieceBuildProgressFamily>(reader, &source.receipt.key())?
-            .as_ref()
-            != Some(source.receipt.as_ref())
-        || source
-            .budget
-            .recheck::<DraftEditorCandidateSessionsFamily>(
+            .recheck_matches::<DraftPieceBuildProgressFamily>(
                 reader,
-                &DraftEditorCandidateSessionRecordKeyV1::head(key.draft_id(), key.session_id()),
+                &source.receipt.key(),
+                &source.receipt,
             )?
-            != Some(DraftEditorCandidateSessionRecordV1::Head(
-                prepared.expected_session.clone(),
-            ))
+        || !session_matches(&source.budget, reader, key, &prepared.expected_session)?
     {
         return Err(SyndicMutationError::IdentityCollision);
     }
     if let Some(staging) = &source.staging {
-        if source
+        if !source
             .budget
-            .recheck::<DraftMutationStagingHeadsFamily>(reader, &staging.identity())?
-            .as_ref()
-            != Some(staging)
+            .recheck_matches::<DraftMutationStagingHeadsFamily>(
+                reader,
+                &staging.identity(),
+                staging,
+            )?
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
     }
     if let Some(writer) = &source.writer {
-        if source
+        if !source
             .budget
-            .recheck::<DraftMarkerAdmissionHeadsFamily>(reader, &writer.owner())?
-            .as_ref()
-            != Some(writer)
+            .recheck_matches::<DraftMarkerAdmissionHeadsFamily>(reader, &writer.owner(), writer)?
         {
             return Err(SyndicMutationError::IdentityCollision);
         }
     }
     if let Some(consumption) = &source.writer_consumption {
-        if source
+        if !source
             .budget
-            .recheck::<DraftMarkerAdmissionCapacityFamily>(
+            .recheck_matches::<DraftMarkerAdmissionCapacityFamily>(
                 reader,
                 &DraftMarkerAdmissionCapacityKeyV1,
+                consumption.prior_capacity(),
             )?
-            .as_ref()
-            != Some(consumption.prior_capacity())
             || source.writer.as_ref() != Some(consumption.prior_head())
         {
             return Err(SyndicMutationError::IdentityCollision);
@@ -266,4 +257,19 @@ pub(super) fn submit(
     }
     let writer_consumption = source.writer_consumption.clone();
     Ok(Some((prepared, writer_consumption)))
+}
+
+#[inline(never)]
+fn session_matches(
+    budget: &BuildBudget,
+    reader: &DomainReader<'_, SyndicDomain>,
+    key: DraftPieceSettlementKeyV1,
+    expected: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicMutationError> {
+    Ok(
+        matches!(budget.recheck::<DraftEditorCandidateSessionsFamily>(
+        reader,
+        &DraftEditorCandidateSessionRecordKeyV1::head(key.draft_id(), key.session_id()),
+    )?, Some(DraftEditorCandidateSessionRecordV1::Head(head)) if &head == expected),
+    )
 }

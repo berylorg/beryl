@@ -27,6 +27,7 @@ fn provenance(
     resource_range: Option<Range<u64>>,
 ) -> SyndicSourceProvenance {
     SyndicSourceProvenance {
+        transcript_entry: None,
         view_id: view_id.clone(),
         position: Some(TranscriptViewPosition(10)),
         turn_id: Some(SyndicTurnId("turn-media".to_string())),
@@ -59,6 +60,7 @@ fn view_record_named(
         projection_id: projection_id.clone(),
         narrative_kind: TranscriptNarrativeKind::AssistantGeneratedMedia,
         provenance: SyndicSourceProvenance {
+            transcript_entry: None,
             view_id: view_id.clone(),
             position: Some(TranscriptViewPosition(position)),
             turn_id: Some(SyndicTurnId(format!("turn-media-{position}"))),

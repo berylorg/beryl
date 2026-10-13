@@ -61,6 +61,7 @@ fn presentation_record(
         },
         provenance: ResidentRecordProvenance {
             source: ResidentRecordSource::Syndic(SyndicSourceProvenance {
+                transcript_entry: None,
                 view_id: view_id(),
                 position: Some(TranscriptViewPosition(position)),
                 turn_id: Some(SyndicTurnId(format!("turn-{name}"))),

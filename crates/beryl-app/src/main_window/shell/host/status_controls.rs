@@ -222,6 +222,7 @@ impl MainWindowShellRoot {
             .generation
             .fetch_add(1, Ordering::AcqRel);
         self.status_controls.worker = Some(worker);
+        self.clear_historical_edit_availability(cx);
         self.status_controls.snapshot = ExactSelectedOperationSnapshot::unavailable();
         self.status_controls.selection = None;
         self.start_status_poll(window, cx);
@@ -278,6 +279,7 @@ impl MainWindowShellRoot {
         }
         let selection = self.status_selection(cx);
         if selection != self.status_controls.selection {
+            self.clear_historical_edit_availability(cx);
             self.apply_submission_availability(
                 Err(crate::cas_projection::SubmissionUnavailable::AuthorityUnavailable),
                 cx,
@@ -337,10 +339,11 @@ impl MainWindowShellRoot {
                                 let eligible = worker.selected_runtime_retry_eligible(selection, &execution, failure);
                                 (execution, failure, eligible)
                             });
-                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection))
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection), worker.selected_historical_edit_availability(selection))
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
+                        root.apply_historical_edit_observation(selection, generation, submission_epoch.clone(), result.5, window, cx);
                         root.apply_submission_observation(selection, generation, submission_epoch, result.4, window, cx);
                         root.apply_compaction_observation(selection, generation, result.3, window, cx);
                         root.apply_runtime_failure_observation(
@@ -432,6 +435,52 @@ impl MainWindowShellRoot {
         self.status_controls.snapshot = result;
         self.sync_status_controls(window, cx);
         cx.notify();
+    }
+
+    fn clear_historical_edit_availability(&mut self, cx: &mut Context<Self>) {
+        let contribution = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount.as_ref())
+            .and_then(|mount| mount.read(cx).contribution());
+        if let Some(contribution) = contribution {
+            contribution.update(cx, |composer, cx| {
+                composer.clear_historical_edit_availability(cx)
+            });
+        }
+    }
+
+    fn apply_historical_edit_observation(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        generation: u64,
+        epoch: Option<std::sync::Weak<()>>,
+        availability: Result<(), crate::cas_projection::HistoricalEditUnavailable>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync_status_controls(window, cx);
+        if self.status_controls.generation.load(Ordering::Acquire) != generation
+            || self.status_selection(cx) != Some(selection)
+            || !epoch.as_ref().is_some_and(|epoch| {
+                epoch.strong_count() != 0
+                    && self
+                        .submission_observation_epoch(cx)
+                        .is_some_and(|current| current.ptr_eq(epoch))
+            })
+        {
+            return;
+        }
+        let contribution = self
+            .controller
+            .as_ref()
+            .and_then(|controller| controller.composer_mount.as_ref())
+            .and_then(|mount| mount.read(cx).contribution());
+        if let Some(contribution) = contribution {
+            contribution.update(cx, |composer, cx| {
+                composer.set_historical_edit_availability(selection, availability, cx);
+            });
+        }
     }
 
     fn apply_submission_availability(

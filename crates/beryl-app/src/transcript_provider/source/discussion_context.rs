@@ -266,6 +266,7 @@ impl access::ActivationReadSource<'_> {
         let view_id = context.provenance.view_id.clone();
         let projection_id = ProjectionRecordId(entry.projection_id().to_string());
         let provenance = SyndicSourceProvenance {
+            transcript_entry: None,
             view_id: view_id.clone(),
             position: Some(TranscriptViewPosition(boundary)),
             turn_id: Some(SyndicTurnId(item.turn_id().to_string())),

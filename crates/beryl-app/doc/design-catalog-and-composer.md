@@ -562,6 +562,127 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Every success, cancellation, failure, supersession, session disposal, generation loss, and
   service disposal releases the exact flight, page, cursor, reservation, and custody.
 
+## Historical Replacement Adapter
+
+The transcript shell controller dispatches historical Edit through the selected composer owner.
+It authenticates the exact transcript entity, activation and presentation revision, current
+realized source and frame anchor, selected paired window claim and home generation before
+consuming the menu target. The captured request contains only bounded immutable Syndic source
+facts; it contains no harvested text, displayed Markdown or image collection. Narrative, Code,
+Table and image origins use their exact owning canonical user-input item and transcript entry.
+Transport turn identities or current record order alone cannot establish that ownership.
+Synthetic context, fallback, operational and unqualified media records remain ineligible.
+
+Canonical user-input image-marker projections retain their exact marker identity, final label,
+atom and marker ordinals, zero-width source offset, item/projection revision and current transcript
+entry proof. They are typed image references, never authored text or generic byte resources.
+Bounded resident preparation groups adjacent same-item inline-compatible narrative parts and
+markers while preserving explicit block boundaries and every part's original provenance. The
+group shares one bounded streaming layout and outer frame record; no complete turn is flattened,
+no additional scroll surface is created, and each marker's actual painted bounds remain its
+command origin. Group eviction, source or geometry replacement retires those child anchors.
+
+A marker descriptor grants no original-image byte authority. Until an exact qualified original
+preparation service is mounted, readonly inspection preserves that marker identity in the canonical
+local-unavailable preview, and Copy and Save remain visible but disabled with the preparation
+unavailable reason. This local presentation gate neither changes durable asset admission nor
+prevents exact historical Edit qualification. The shell supplies the stable thread-selector
+fallback, with focus returning first to the exact eligible marker, then the active transcript
+anchor, then that trigger. Inspection and contextual commands remain unavailable without that
+fallback; the existing transient menu/preview ownership is bounded to one current marker.
+
+Each selected composer owner has one serialized historical-replacement operation. It shares
+the existing mutation, history, publication and submission exclusion and tracked worker lifetime;
+it adds no second editor, detached queue or per-record storage owner. Initial eligibility captures
+the ordinary exact selector, active clean empty session, source item/content/Asset expectations,
+selected-path proof, idle gate and app-owned activation, compaction, resolution and handoff gates.
+An ordinary dirty flush must settle through its existing lane before import; a nonempty successor
+is refused. Quiescence includes local composition and admitted editor work, so a captured empty
+storage root cannot discard unpublished authored intent.
+
+The operation moves through exact source qualification, bounded import/proof quanta, prepared
+start, original-outcome classification and saved-candidate adoption. It retains one current
+quantum and its original prepared command, source expectation/proof consumer and outcome custody.
+Image quanta compose the existing Syndic Source and Asset Witness roles and consume only their
+original proof receipt. They preserve historical identities and final labels rather than passing
+through ordinary marker allocation. No phase assembles the whole source or marker set in memory.
+Begin, advance, start and nonselecting termination settle their original scopes before another
+quantum or selection is admitted. Unavailable reads retain those exact scopes; a later cursor or
+visible receipt cannot stand in for an unresolved original command. A cancelled or stale operation
+terminates nonselecting import only through its exact eligible command and original outcome.
+
+The mounted worker owns storage/proof handles and original command custody. Transcript targets
+and callbacks remain non-owning. Closing, unmounting or retiring the view fences publication and
+transfers exact admitted work to the ordinary tracked drain; it never abandons an accepted start
+or executes it again. App-selected-owner gates remain held until that operation settles. A healthy
+foreign or replacement-generation handle cannot authorize old prepared execution; legitimate
+same-home recovery may classify only the original retained scope and immutable receipt namespace.
+
+A proven committed start adopts the `SealedImport` selection's authenticated after-session,
+successor selector, immutable baseline and mutable Session fork as a clean saved checkpoint in
+the same draft and editor session. A private authenticated adoption helper updates the host
+binding, storage candidate, durable selector and published candidate/root/history facts together,
+then updates the selected slot's identity, dispatcher and draft-state observations. It does not
+invoke an ordinary edit settlement, pretend a publication receipt exists, open another editor
+session or reuse preserved-resident prepublication adoption for changed content.
+
+The external range-backed editor receives a legitimate source `rebind` to the imported successor,
+with exact legal caret and directed selection. Rebind initially installs unavailable history;
+the adapter installs the actual imported frontier only after the exact successor binding becomes
+current. An immediate rebind can perform both control steps in one GUI update. Busy rebind retains
+this same admitted successor and quiescent progress; widget prepaint may complete that retained
+intent, so the adapter observes exact completion while retaining interaction and publication gates.
+It holds fresh-source request fulfillment/delivery until the imported history frontier is installed,
+then allows successor realization and releases those gates only at coherent publication. It does
+not recapture input, execute another import or expose unavailable history as the completed import
+baseline. The imported baseline starts with its exact Undo/Redo availability. Coherent editor
+realization, restored replacement
+intent and owner-supplied affected-record dimming publish together; the prior coherent source
+remains authoritative during staging. Source and atom pages stay under existing bounded demand
+and obsolete-response fences. Transcript history, geometry, focus pins and selected-path
+membership are unchanged by starting edit mode.
+
+At a chosen caret or selection anchor containing zero-width markers, bounded directional root
+lookup derives the actual neighboring marker edge. A leading marker-only input at UTF-8 zero
+uses `BeforeAll` and its exact first-marker gap; `Unambiguous` or `NoObjects` cannot stand in for
+that position. The first real edit records its actual before-edit composite positions, so Undo
+returns to the imported baseline without fabricating an import history transition.
+
+Escape follows higher-priority popup dismissal before dispatching cancellation. Cancellation is
+a separate metadata operation serialized after existing admitted edit/publication work reaches
+its exact outcome; it initiates no extra flush. Its proven receipt adopts only the after-session
+and selector. Candidate generation/root/history/extent, published/newest split, dirty generation,
+logical positions and history availability remain unchanged. Consequently the range binding and
+history frontier remain identical, and the same editor, resident pages, caret, directed selection,
+scroll and Undo state remain attached. Clearing the exact durable intent and transcript dimming
+publishes together. An indeterminate or unavailable outcome retains the prior coherent mode and
+original custody and does not enable another cancellation or replacement submission.
+
+Ordinary activation and restart restore the closed durable draft intent alongside the current
+binding and derive replacement mode from that authenticated intent. Mode is never inferred from
+editor text, a menu identity or a transport turn id. Replacement Enter requires its exact idle,
+no-accepted/queued-work gate and uses the existing `FirstAcceptance` command's replacement-intent
+validation and target parentage. It cannot enter steering or compaction-time queueing. The existing
+marker sealing/materialization, once-per-attempt free-space admission, execution-wake guard,
+original-outcome custody and successor preparation remain authoritative; no new acceptance
+mutation or model-dispatch path is introduced.
+
+The selected replacement path and fresh successor composer publish through the existing coherent
+selected-slot/transcript boundary only after exact durable acceptance. Noncommit preserves the
+original path, intent and edited input; unresolved or terminal unavailable acceptance preserves
+their last coherent presentation and dependent gates. Later delivery failure preserves the
+accepted replacement turn and its exact failed/incomplete state. Neither that failure nor recovery
+rolls back old-tail side effects. Current target/entry/source/path drift is refused explicitly;
+it never substitutes another historical position or treats unavailable classification as noncommit.
+
+Failed-home historical work transfers through the existing failed-resident owner with the exact
+stage and prior/imported correspondence defined in
+[operation lifetime](design-shell-lifecycle.md#historical-replacement-operation-lifetime).
+Candidate original-scope classification precedes saved checkpoint qualification. Metadata-only
+outcomes use ordinary unchanged-resident renewal; an originally committed but unpresented import
+uses the separate protected changed-source boundary and its authenticated baseline positions.
+Neither path replays import, guesses a successor or substitutes a clean-close checkpoint.
+
 ## Activation And Title Adapters
 
 - Selected and pending composers share the sole widget settlement coordinator and host-operation

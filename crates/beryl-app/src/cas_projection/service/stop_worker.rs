@@ -1,6 +1,8 @@
 use std::sync::Weak;
 
 mod context;
+mod historical_edit;
+pub use historical_edit::HistoricalEditUnavailable;
 mod submission;
 pub use submission::SubmissionProof;
 pub use submission::SubmissionUnavailable;

@@ -10,6 +10,7 @@ fn prepared(chunk_count: usize) -> PreparedTranscriptActivation {
     for position in 1..=2 {
         let id = ProjectionRecordId(format!("authored-{position}"));
         let source = SyndicSourceProvenance {
+            transcript_entry: None,
             view_id: view.clone(),
             position: Some(TranscriptViewPosition(position)),
             turn_id: Some(SyndicTurnId(format!("turn-{position}"))),

@@ -73,6 +73,18 @@ pub(super) struct NarrativeAppearance {
     strikethrough: bool,
     code_family: SharedString,
     link_color: Rgba,
+    pub(super) marker: NarrativeMarkerAppearance,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct NarrativeMarkerAppearance {
+    pub(super) foreground: Rgba,
+    pub(super) background: Rgba,
+    pub(super) selected_foreground: Rgba,
+    pub(super) selected_background: Rgba,
+    pub(super) hover_background: Rgba,
+    pub(super) hover_foreground: Rgba,
+    pub(super) focus: Rgba,
 }
 
 impl Default for NarrativeAppearance {
@@ -163,6 +175,15 @@ impl NarrativeAppearance {
         };
         Self {
             blocks,
+            marker: NarrativeMarkerAppearance {
+                foreground: color("transcript.image_marker", Property::Foreground),
+                background: color("transcript.image_marker", Property::TextBackground),
+                selected_foreground: color("transcript.selection", Property::Foreground),
+                selected_background: color("transcript.selection", Property::TextBackground),
+                hover_background: color("interaction.hover", Property::Background),
+                hover_foreground: color("interaction.hover", Property::Foreground),
+                focus: color("accent_marker", Property::Color),
+            },
             emphasis: match emphasis {
                 ThemeFontStyle::Normal => FontStyle::Normal,
                 ThemeFontStyle::Italic => FontStyle::Italic,

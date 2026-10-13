@@ -26,6 +26,7 @@ fn provenance(
     copy_source_range: Option<Range<u64>>,
 ) -> SyndicSourceProvenance {
     SyndicSourceProvenance {
+        transcript_entry: None,
         view_id: view_id.clone(),
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{position}"))),

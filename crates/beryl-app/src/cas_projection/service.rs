@@ -107,6 +107,7 @@ pub(crate) use shutdown_settlement::{
 mod stop_feedback;
 mod stop_worker;
 pub use stop_worker::ExactStopWorker;
+pub use stop_worker::HistoricalEditUnavailable;
 pub use stop_worker::SubmissionProof;
 pub use stop_worker::SubmissionUnavailable;
 pub(in crate::cas_projection) use stop_worker::manual_compaction::ManualCompactionAuthority;

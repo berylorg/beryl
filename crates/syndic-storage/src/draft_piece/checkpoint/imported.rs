@@ -8,9 +8,9 @@ pub(super) fn published_is_exact<R: CheckpointReader>(
     let Some(c) = receipt(reader, head.published_history())? else {
         return Ok(false);
     };
-    let current_draft = reader.point::<DraftsFamily>(&head.draft_id())?;
-    let reverse = reader.point::<DraftByThreadFamily>(&head.thread_id())?;
-    let thread = reader.point::<ThreadsFamily>(&head.thread_id())?;
+    let current_draft = reader.boxed_point::<DraftsFamily>(&head.draft_id())?;
+    let reverse = reader.boxed_point::<DraftByThreadFamily>(&head.thread_id())?;
+    let thread = reader.boxed_point::<ThreadsFamily>(&head.thread_id())?;
     let (Some(draft), Some(reverse), Some(thread)) = (current_draft, reverse, thread) else {
         return Ok(false);
     };
@@ -48,7 +48,7 @@ pub(super) fn candidate_is_exact<R: CheckpointReader>(
         return Ok(false);
     };
     let mutable = reader
-        .point::<DraftEditHistoryFrontiersFamily>(&c.after_mutable_history.reference().key())?;
+        .boxed_point::<DraftEditHistoryFrontiersFamily>(&c.after_mutable_history.reference().key())?;
     Ok(c.baseline.as_ref() == frontier
         && head.newest_candidate_generation() == c.after_session.newest_candidate_generation()
         && head.newest_root() == c.imported_root
@@ -59,7 +59,7 @@ pub(super) fn candidate_is_exact<R: CheckpointReader>(
         && head.dirty_generation() == c.after_session.dirty_generation()
         && same_opening(&c.after_session, head)
         && head.session_generation() >= c.after_session.session_generation()
-        && mutable.as_ref() == Some(c.after_mutable_history.as_ref())
+        && mutable.as_deref() == Some(c.after_mutable_history.as_ref())
         && published_is_exact(reader, head)?)
 }
 pub(super) fn baseline_fork_is_exact<R: CheckpointReader>(
@@ -70,12 +70,13 @@ pub(super) fn baseline_fork_is_exact<R: CheckpointReader>(
     let Some(c) = receipt(reader, baseline.reference())? else {
         return Ok(false);
     };
-    let actual = reader.point::<DraftEditHistoryFrontiersFamily>(&fork.reference().key())?;
+    let actual = reader.boxed_point::<DraftEditHistoryFrontiersFamily>(&fork.reference().key())?;
     Ok(c.baseline.as_ref() == baseline
         && c.after_mutable_history.as_ref() == fork
-        && actual.as_ref() == Some(fork))
+        && actual.as_deref() == Some(fork))
 }
 
+#[inline(never)]
 fn receipt<R: CheckpointReader>(
     reader: &R,
     reference: DraftEditHistoryFrontierReferenceV1,
@@ -89,7 +90,7 @@ fn receipt<R: CheckpointReader>(
         return Ok(None);
     };
     let key = DraftPieceSettlementKeyV1::new(draft_id, session_id, operation_id);
-    let stored = reader.point::<DraftPieceSettlementsFamily>(&key)?;
+    let stored = reader.boxed_point::<DraftPieceSettlementsFamily>(&key)?;
     let Some(stored) = stored else {
         return Ok(None);
     };
@@ -99,7 +100,7 @@ fn receipt<R: CheckpointReader>(
     if !settlement_closure_is_exact(&stored) || c.baseline.reference() != reference {
         return Ok(None);
     }
-    let terminal = reader.point::<DraftPieceBuildsFamily>(&key)?;
+    let terminal = reader.boxed_point::<DraftPieceBuildsFamily>(&key)?;
     let Some(terminal) = terminal else {
         return Ok(None);
     };
@@ -107,7 +108,7 @@ fn receipt<R: CheckpointReader>(
         return Ok(None);
     }
     let progress =
-        reader.point::<DraftPieceBuildProgressFamily>(&stored.terminal_receipt().key())?;
+        reader.boxed_point::<DraftPieceBuildProgressFamily>(&stored.terminal_receipt().key())?;
     let Some(progress) = progress else {
         return Ok(None);
     };
@@ -120,23 +121,22 @@ fn receipt<R: CheckpointReader>(
         return Ok(None);
     };
     if reader
-        .point::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
+        .contains::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
             draft_id,
             session_id,
             operation_id,
             next,
         ))?
-        .is_some()
     {
         return Ok(None);
     }
-    let root = reader.point::<DraftPieceRootsFamily>(&c.imported_root.key())?;
-    let baseline = reader.point::<DraftEditHistoryFrontiersFamily>(&reference.key())?;
-    let item = reader.point::<CanonicalItemsFamily>(&c.basis.item_id())?;
+    let root = reader.boxed_point::<DraftPieceRootsFamily>(&c.imported_root.key())?;
+    let baseline = reader.boxed_point::<DraftEditHistoryFrontiersFamily>(&reference.key())?;
+    let item = reader.boxed_point::<CanonicalItemsFamily>(&c.basis.item_id())?;
     if root
         .as_ref()
         .is_none_or(|r| r.reference() != c.imported_root)
-        || baseline.as_ref() != Some(c.baseline.as_ref())
+        || baseline.as_deref() != Some(c.baseline.as_ref())
         || !reader.authenticate_frontier(&c.baseline)?
         || item.as_ref().is_none_or(|i| {
             i.id() != c.basis.item_id()

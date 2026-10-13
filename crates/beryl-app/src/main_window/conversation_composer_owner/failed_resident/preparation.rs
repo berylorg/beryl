@@ -233,9 +233,27 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
         if environment.config().binding != seed.binding {
             return Err("failed resident environment has another source".into());
         }
-        let (session, reservation) = input
-            .prepare_resident_successor(capture.protection, seed, environment.clone(), combined)
-            .map_err(|e| format!("failed resident preparation refused: {e:?}"))?;
+        let prepared = if self
+            .custody
+            .source()
+            .is_some_and(|source| source.source_replacement())
+        {
+            input.prepare_source_replacement_successor(
+                capture.protection,
+                seed,
+                environment.clone(),
+                combined,
+            )
+        } else {
+            input.prepare_resident_successor(
+                capture.protection,
+                seed,
+                environment.clone(),
+                combined,
+            )
+        };
+        let (session, reservation) =
+            prepared.map_err(|e| format!("failed resident preparation refused: {e:?}"))?;
         self.worker
             .bind_prepublication(session.generation(), &environment)?;
         self.session = Some(session);
@@ -386,6 +404,7 @@ impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
         let old = capture.ticket;
         let ticket = MainWindowFailedResidentTicket { selection, ..old };
         resident.selection = selection;
+        resident.replacement_intent = service.selected_submission_intent(selection);
         resident.service = Some(service.clone());
         resident.clipboard_writer =
             Some(MainWindowConversationComposer::production_clipboard_writer());

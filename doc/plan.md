@@ -56,6 +56,10 @@ prerequisites, stopping only for a blocker requiring product-level attention. Th
 releases the New Thread mounting pause below; derive and accept its missing capability before
 ordinary confirmation mounting, without substituting a multi-command creation/activation flow.
 
+On 2026-10-13 the Operator reaffirmed that the historical-replacement recovery, worker-stack and
+image-origin gaps are technical prerequisites, not product-level decisions. Resolve their bounded
+authority and implementation autonomously within the replacement-editing acceptance boundary.
+
 At every phase boundary, explain any blocker directly to the Operator and suggest concrete next
 steps. Evidence links supplement that explanation rather than replacing it.
 
@@ -98,34 +102,17 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 778: Establish Durable Historical Replacement Drafts (finished)
+# Phase 774: Mount Exact Historical Replacement Editing (finished)
 
-Accepted bounded sealed-input import, atomic replacement selection with Asset copy-on-write,
-immutable history baseline, cancellation preservation and original-outcome reconciliation.
-Qualified 169 distinct cases, ordinary byte preservation, dependent production libraries and
-complete independent semantic/adversarial review. All 183 registered prerequisite/import fixtures
-are absent. See the [outcome](audits/transcript-mounting-readiness.md#historical-replacement-draft-acceptance).
-Mounted Edit remains disabled until its separate workflow below is accepted.
-
-# Phase 774: Mount Exact Historical Replacement Editing (pending)
-
-Connect the exact user-turn menu action to historical eligibility, draft loading, edit-mode dimming
-and cancellation, and replacement submission through existing selected-path and transcript-entry
-proof admission. Preserve ordinary draft and transcript behavior and accept gates, failures and
-reconciliation before enabling the menu action.
-
-After the durable prerequisite, qualify the complete replacement lifecycle against
-[conversation threads](features/conversation-threads/design.md#replacement-editing),
-[composer](features/composer/design.md), and
-[selected-path storage](systems/syndic-conversation-history/design.md#turn-parentage-and-replacement).
-Trace exact menu provenance through durable draft intent, sealed historical input import,
-editor restoration and submission admission before changing the disabled row. Preserve text,
-image identity and labels, cancellation Undo/caret state, current-path membership, and coherent
-publication. Cover narrative, Code/Table-only and image-bearing historical user inputs through
-their exact current menu origins. Verify stale targets, busy/queued work, nonempty drafts, unavailable source/assets,
-once-per-attempt free-space admission, noncommit, indeterminate reconciliation, terminal unavailable
-and accepted delivery failure. Complete focused storage/app and mounted native workflow evidence,
-production validation and independent semantic review; branch creation remains separate.
+Accepted exact current user-turn Edit through narrative, Code/Table and canonical image origins,
+bounded sealed import, same-widget mode/dimming, preserved cancellation/Undo and replacement
+submission. Failed-home recovery retains original custody and qualifies protected changed-source
+adoption through the existing owner. Production Edit is enabled without a fixture override.
+Storage 149/149, submission 54/54, final panel/native 118/118, affected composer/transcript/Quote
+regressions, canonical locked app/executable checks and complete independent review passed.
+See the [accepted workflow](audits/transcript-mounting-readiness.md#mounted-historical-replacement-editing-acceptance)
+for source identities, evidence and resolved failures. The prerequisite and mounted acceptance
+records retain the earlier durable-draft outcome. Continue with captured branch discussion.
 
 # Phase 775: Mount Captured Branch Discussion Creation (pending)
 

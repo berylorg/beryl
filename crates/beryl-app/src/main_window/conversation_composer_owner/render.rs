@@ -259,13 +259,18 @@ impl Render for MainWindowConversationComposer {
         });
         div()
             .id(("conversation-composer-root", cx.entity_id()))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if this.submission_outcome.is_some() && event.keystroke.key != "enter" {
                     this.submission_outcome = None;
                     cx.notify();
                 }
                 if event.keystroke.key == "escape" && this.paste_pending() {
                     this.cancel_captured_paste(cx);
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape"
+                    && this.historical_replacement_target().is_some()
+                {
+                    this.cancel_historical_replacement(window, cx);
                     cx.stop_propagation();
                 }
             }))

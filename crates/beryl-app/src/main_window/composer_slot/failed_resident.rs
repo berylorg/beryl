@@ -38,7 +38,9 @@ impl MainWindowComposerSlot {
             || self.native_lineage_suspension.is_some()
             || self.selected.as_ref().is_none_or(|selected| {
                 !selected.dispatcher.is_drained()
-                    || selected.host.binding() != Some(selected.identity.binding())
+                    || !selected
+                        .host
+                        .historical_recovery_accepts_binding(selected.identity.binding())
                     || selected.dispatcher.binding != selected.identity.binding()
             })
         {
@@ -80,6 +82,39 @@ impl MainWindowComposerSlot {
 }
 
 impl MainWindowFailedComposerRetirement {
+    pub fn observe_historical_recovery(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &SyndicStorage,
+    ) -> Result<(), String> {
+        self.host
+            .as_mut()
+            .ok_or("historical recovery owner is unavailable")?
+            .observe_historical_recovery(candidate, storage)
+    }
+    pub fn settle_historical_recovery(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &SyndicStorage,
+    ) -> Result<(), String> {
+        self.host
+            .as_mut()
+            .ok_or("historical recovery owner is unavailable")?
+            .settle_historical_recovery(candidate, storage)
+    }
+    pub fn historical_prior_binding(&self) -> Option<crate::composer_host::ComposerHostBinding> {
+        self.host
+            .as_ref()
+            .and_then(|host| host.historical_prior_binding())
+    }
+
+    pub fn historical_restoration(
+        &self,
+    ) -> Option<crate::composer_host::ComposerHostHistoricalRestoration> {
+        self.host
+            .as_ref()
+            .and_then(|host| host.historical_restoration())
+    }
     pub(crate) fn from_failed_claim_cleanup(
         selection: MainWindowComposerSelectionIdentity,
         host: ComposerHostFailedResident,
@@ -200,6 +235,7 @@ impl MainWindowFailedComposerRetirement {
         state: &beryl_state::BerylState,
         restored: Option<&beryl_state::SessionWindowRemovalEvidence>,
     ) -> Result<bool, String> {
+        self.settle_historical_recovery(candidate, storage)?;
         self.qualify_member(candidate, state, restored)?;
         self.host
             .as_mut()
@@ -214,6 +250,7 @@ impl MainWindowFailedComposerRetirement {
         state: &beryl_state::BerylState,
         restored: Option<&beryl_state::SessionWindowRemovalEvidence>,
     ) -> Result<syndic_storage::DraftEditorCandidateActivationBindingV1, String> {
+        self.settle_historical_recovery(candidate, storage)?;
         self.qualify_member(candidate, state, restored)?;
         self.host
             .as_mut()
@@ -232,6 +269,7 @@ impl MainWindowFailedComposerRetirement {
         evidence: syndic_storage::DraftEditorCandidatePublicationEvidenceV1,
         cancellation: CommandCancellation,
     ) -> Result<(), String> {
+        self.settle_historical_recovery(candidate, storage)?;
         self.qualify_member(candidate, state, restored)?;
         self.host.as_mut().unwrap().publish_candidate(
             candidate,
@@ -270,6 +308,9 @@ impl MainWindowFailedComposerRetirement {
                 self,
                 "failed resident reconstruction is already owned".into(),
             ));
+        }
+        if let Err(error) = self.settle_historical_recovery(candidate, &storage) {
+            return Err((self, error));
         }
         let window = match self.qualify_member(candidate, state, restored) {
             Ok(window) => window,

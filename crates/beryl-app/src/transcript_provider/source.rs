@@ -195,7 +195,7 @@ impl access::ActivationReadSource<'_> {
         let revision = ProviderRevision(head.revision().get());
         let mut views = Vec::with_capacity(entries.len());
         let mut projections = Vec::with_capacity(entries.len());
-        let mut rejections = Vec::new();
+        let rejections = Vec::new();
         let mut bytes = 0_usize;
         let mut expected_position = if tail { requested_end - 1 } else { first };
         for entry in &entries {
@@ -218,6 +218,8 @@ impl access::ActivationReadSource<'_> {
             if projection.id() != entry.projection_id()
                 || projection.revision() != entry.projection_revision()
                 || projection.item_id() != entry.item_id()
+                || item.id() != entry.item_id()
+                || item.turn_id() != projection.turn_id()
                 || item.revision() != entry.item_revision()
             {
                 return Err(TranscriptAttachmentError::Stale);
@@ -346,13 +348,20 @@ impl access::ActivationReadSource<'_> {
                     None,
                     0,
                 ),
-                syndic_storage::ProjectionPayload::ImageMarker { source_offset, .. } => (
-                    ProjectionPayload::Text {
-                        text: "".into(),
-                        plain_text: Some("".into()),
-                    },
+                syndic_storage::ProjectionPayload::ImageMarker {
+                    atom_ordinal,
+                    marker_ordinal,
+                    source_offset,
+                    marker,
+                } => (
+                    ProjectionPayload::ImageMarker(crate::syndic_transcript::TranscriptImageMarker {
+                        atom_ordinal: *atom_ordinal,
+                        marker_ordinal: *marker_ordinal,
+                        source_offset: *source_offset,
+                        marker: *marker,
+                    }),
                     Some(*source_offset..*source_offset),
-                    0,
+                    std::mem::size_of::<crate::syndic_transcript::TranscriptImageMarker>(),
                 ),
             };
             let record_bytes = payload_bytes
@@ -369,6 +378,10 @@ impl access::ActivationReadSource<'_> {
             }
             bytes = next_bytes;
             let provenance = SyndicSourceProvenance {
+                transcript_entry: Some(syndic_storage::CurrentTranscriptEntryProof::new(
+                    entry.generation(),
+                    entry.position(),
+                )),
                 view_id: view_id.clone(),
                 position: Some(TranscriptViewPosition(entry.position().get())),
                 turn_id: Some(SyndicTurnId(projection.turn_id().to_string())),
@@ -378,12 +391,16 @@ impl access::ActivationReadSource<'_> {
                     .block_id()
                     .map(|block| block.as_bytes()),
                 projection_id: Some(projection_id.clone()),
-                resource_id: None,
+                resource_id: match &payload {
+                    ProjectionPayload::ResourceReference { resource_id, .. } => Some(resource_id.clone()),
+                    _ => None,
+                },
                 source_range: source_range.clone(),
                 resource_range: None,
                 copy_source_range: source_range,
             };
             let kind = match &payload {
+                ProjectionPayload::ImageMarker(_) => ProjectionRecordKind::ImageMarker,
                 ProjectionPayload::InlineTable { .. }
                 | ProjectionPayload::InlineTableUnavailable { .. } => {
                     ProjectionRecordKind::InlineTable
@@ -396,24 +413,13 @@ impl access::ActivationReadSource<'_> {
                     ProjectionRecordKind::ResourceReference
                 }
             };
-            if matches!(
-                projection.payload(),
-                syndic_storage::ProjectionPayload::ImageMarker { .. }
-            ) {
-                rejections.push(crate::syndic_transcript::TranscriptProviderRejection {
-                    target: crate::syndic_transcript::TranscriptProviderTarget::ProjectionRecord(projection_id.clone()),
-                    reason: crate::syndic_transcript::TranscriptProviderRejectionReason::UnsupportedResourceKind,
-                    revision: Some(ProviderRevision(projection.revision().get())), message: None,
-                });
-            } else {
-                projections.push(ProjectionRecord {
-                    id: projection_id.clone(),
-                    revision: ProviderRevision(projection.revision().get()),
-                    kind,
-                    payload,
-                    provenance: provenance.clone(),
-                });
-            }
+            projections.push(ProjectionRecord {
+                id: projection_id.clone(),
+                revision: ProviderRevision(projection.revision().get()),
+                kind,
+                payload,
+                provenance: provenance.clone(),
+            });
             views.push(TranscriptViewRecord {
                 id: TranscriptViewRecordId(format!(
                     "{}:{}:{}",

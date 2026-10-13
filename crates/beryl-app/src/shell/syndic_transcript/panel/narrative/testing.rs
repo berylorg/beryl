@@ -1,6 +1,26 @@
 use super::*;
 
 impl SyndicTranscriptPanel {
+    pub(crate) fn narrative_hit_for_test(&self, position: Point<Pixels>) -> Option<(ResidentPresentationRecordId, usize)> {
+        self.narrative_hit(position).map(|endpoint| (endpoint.record, endpoint.display))
+    }
+
+    pub(crate) fn narrative_hit_diagnostic_for_test(&self, position: Point<Pixels>) -> String {
+        let groups = self.inline_parts_geometry.iter().map(|group| {
+            let glyphs = group.text.iter().map(|text| {
+                let hit = group.bounds.get().and_then(|bounds| text.layout.as_ref().and_then(|layout|
+                    layout.hit(position - bounds.origin - point(px(text.block.indent), px(0.0)))));
+                (text.owner.record_id.clone(), hit, text.valid())
+            }).collect::<Vec<_>>();
+            (group.bounds.get(), self.host.inline_parts_current(&group.record), glyphs)
+        }).collect::<Vec<_>>();
+        format!("position={position:?}, viewport={:?}, groups={groups:?}", self.narrative_viewport_bounds)
+    }
+
+    pub(crate) fn narrative_selection_ranges_for_test(&self) -> Option<Vec<(ResidentPresentationRecordId, Range<usize>)>> {
+        self.narrative_ranges(self.narrative_selection.as_ref()?)
+    }
+
     pub(crate) fn narrative_geometry_current_for_test(&self, window: &Window) -> bool {
         self.character_geometry_current(window)
     }
@@ -129,6 +149,7 @@ impl SyndicTranscriptPanel {
     ) -> Vec<(ResidentPresentationRecordId, String, String, usize)> {
         self.narrative_geometry
             .iter()
+            .chain(self.inline_parts_geometry.iter().flat_map(|group| group.text.iter()))
             .filter(|value| value.layout.is_some() && self.host.narrative_current(&value.owner))
             .map(|value| {
                 (
@@ -146,6 +167,7 @@ impl SyndicTranscriptPanel {
     ) -> Vec<(ResidentPresentationRecordId, String, String)> {
         self.narrative_geometry
             .iter()
+            .chain(self.inline_parts_geometry.iter().flat_map(|group| group.text.iter()))
             .filter(|value| value.layout.is_some() && self.host.narrative_current(&value.owner))
             .map(|value| {
                 (
@@ -163,6 +185,12 @@ impl SyndicTranscriptPanel {
         id: &ResidentPresentationRecordId,
         index: usize,
     ) -> Option<Point<Pixels>> {
+        if let Some((group, text)) = self.inline_parts_geometry.iter().find_map(|group| {
+            group.text.iter().find(|text| &text.owner.record_id == id && self.host.narrative_current(&text.owner))
+                .map(|text| (group, text))
+        }) {
+            return Some(group.bounds.get()?.origin + point(px(text.block.indent), px(1.0)) + text.layout.as_ref()?.position(index)?);
+        }
         let bounds = self.narrative_viewport_bounds?;
         let row = self
             .last_frame_window

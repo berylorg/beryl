@@ -87,6 +87,22 @@ impl FailedResidentSource {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn settle_failed_historical_residents(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &SyndicStorage,
+    ) -> Result<(), String> {
+        for source in &mut self.failed_residents {
+            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+                .observe_historical_recovery(candidate, storage)?;
+        }
+        for source in &mut self.failed_residents {
+            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+                .settle_historical_recovery(candidate, storage)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn retain_failed_claim(
         &mut self,
         operation: Box<RetiredClaimOperation>,
@@ -295,6 +311,13 @@ impl ProcessServiceOwner {
             return Ok(());
         };
         let storage = SyndicStorage::reacquire_candidate(candidate).map_err(|e| e.to_string())?;
+        for source in &mut self.failed_residents {
+            if cancellation.is_cancelled() {
+                return Err("historical resident settlement was cancelled".into());
+            }
+            source.retired.as_mut().ok_or("failed resident retirement is unavailable")?
+                .settle_historical_recovery(candidate, &storage)?;
+        }
         let state = BerylState::reacquire_candidate(candidate).map_err(|e| e.to_string())?;
         if !markers.is_bound_to(candidate) {
             markers

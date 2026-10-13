@@ -75,6 +75,7 @@ pub(crate) use runtime_interest::RuntimeModelReadError;
 mod runtime_work;
 mod scheduled_ordinary;
 mod service;
+pub use service::HistoricalEditUnavailable;
 pub use service::SubmissionProof;
 pub use service::SubmissionUnavailable;
 pub use service::{ExactOperationOrigin, ExactParentState, ExactSelectedOperationSnapshot};

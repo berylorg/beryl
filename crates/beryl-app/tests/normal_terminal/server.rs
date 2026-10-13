@@ -50,7 +50,7 @@ enum ServerScenario {
     },
     ResumeNondispatch(Box<str>),
     ResumeDelayedRejection(Box<str>),
-    ConnectionLoss,
+    ConnectionLoss(Box<str>),
     ControlledConnectionLoss,
     AcceptedStop,
     StopFeedbackTerminal(&'static str),
@@ -178,7 +178,11 @@ impl NormalTerminalServer {
     }
 
     pub fn spawn_connection_loss() -> Self {
-        Self::spawn_scenario(ServerScenario::ConnectionLoss)
+        Self::spawn_connection_loss_on_thread(CAS_THREAD_ID)
+    }
+
+    pub fn spawn_connection_loss_on_thread(cas_thread_id: impl Into<Box<str>>) -> Self {
+        Self::spawn_scenario(ServerScenario::ConnectionLoss(cas_thread_id.into()))
     }
 
     pub fn spawn_controlled_connection_loss() -> Self {
@@ -514,10 +518,10 @@ fn run_server(
             complete_delayed_turn_start_rejection(&mut socket, &events, &commands, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }
-        ServerScenario::ConnectionLoss => {
-            complete_projection(&mut socket);
+        ServerScenario::ConnectionLoss(cas_thread_id) => {
+            complete_projection_on_thread(&mut socket, &cas_thread_id);
             events.send(ServerEvent::ProjectionReady).unwrap();
-            complete_connection_loss(&mut socket, CAS_THREAD_ID);
+            complete_connection_loss(&mut socket, &cas_thread_id);
         }
         ServerScenario::ControlledConnectionLoss => {
             complete_projection(&mut socket);
@@ -669,13 +673,17 @@ pub(crate) fn complete_admission(socket: &mut WebSocket<TcpStream>) {
 }
 
 pub(crate) fn complete_projection(socket: &mut WebSocket<TcpStream>) {
+    complete_projection_on_thread(socket, CAS_THREAD_ID);
+}
+
+fn complete_projection_on_thread(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
     let request = read_json(socket).unwrap();
     assert_eq!(request["jsonrpc"], "2.0");
     assert_eq!(request["method"], "thread/start");
     assert_eq!(request["params"]["ephemeral"], false);
     assert!(request["params"].get("input").is_none());
     let id = request["id"].as_u64().unwrap();
-    send_thread_load_response(socket, id, CAS_THREAD_ID, false);
+    send_thread_load_response(socket, id, cas_thread_id, false);
 }
 
 fn complete_resume_projection(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {

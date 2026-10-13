@@ -104,7 +104,7 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
             }
             .reserve_reconciliation(reservation),
             CommandKind::Advance(value) => AdvanceMutation {
-                prepared: value.as_ref().clone(),
+                prepared: value.clone(),
                 writer_progress_allowed: self.writer_progress_allowed,
             }
             .reserve_reconciliation(reservation),
@@ -166,8 +166,11 @@ fn qualify_source(
     source: &mut CapturedState,
     terminal: bool,
 ) -> Result<(), SyndicMutationError> {
-    let staging = required::<DraftMutationStagingHeadsFamily>(reader, &source.staging.identity())?;
-    if staging != source.staging {
+    let staging = build_custody::required_record::<DraftMutationStagingHeadsFamily>(
+        reader,
+        &source.staging.identity(),
+    )?;
+    if *staging != source.staging {
         return Err(SyndicMutationError::IdentityCollision);
     }
     crate::draft_piece::staging::authenticate_staging_head_reader(reader, &staging)?;
@@ -175,11 +178,14 @@ fn qualify_source(
         .build
         .as_ref()
         .ok_or(SyndicMutationError::IdentityCollision)?;
-    let current = required_build(reader, &build_key(expected))?;
-    if current == *expected {
+    let current = build_custody::required_authenticated_build(reader, &build_key(expected))?;
+    if *current == *expected {
         source.session = session_head(reader, current.draft_id(), current.session_id())?;
     } else if terminal {
-        let settled = required::<DraftPieceSettlementsFamily>(reader, &build_key(expected))?;
+        let settled = build_custody::required_record::<DraftPieceSettlementsFamily>(
+            reader,
+            &build_key(expected),
+        )?;
         if settled.terminal_source() != Some(expected) {
             return Err(SyndicMutationError::IdentityCollision);
         }

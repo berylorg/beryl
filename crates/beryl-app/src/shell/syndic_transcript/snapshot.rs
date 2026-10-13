@@ -88,11 +88,28 @@ pub(crate) struct ResidentPresentationRecord {
     pub(crate) estimated_bytes: usize,
 }
 
+impl ResidentPresentationRecord {
+    pub(crate) fn authored_parts(&self) -> &[Self] {
+        match &self.kind {
+            ResidentPresentationRecordKind::AuthoredInlineParts { parts } => parts,
+            _ => std::slice::from_ref(self),
+        }
+    }
+
+    pub(crate) fn authored_part(&self, id: &ResidentPresentationRecordId) -> Option<&Self> {
+        self.authored_parts().iter().find(|part| part.id == *id)
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ResidentPresentationRecordId(pub(crate) String);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ResidentPresentationRecordKind {
+    AuthoredInlineParts {
+        parts: std::sync::Arc<[ResidentPresentationRecord]>,
+    },
+    ImageMarker(super::provider::TranscriptImageMarker),
     NarrativePending {
         source: std::sync::Arc<syndic_storage::ProjectionPayload>,
     },

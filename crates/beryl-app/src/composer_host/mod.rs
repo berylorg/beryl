@@ -2,6 +2,7 @@ mod activation;
 #[cfg(test)]
 mod disposal_execution_observation;
 mod error;
+mod historical_replacement;
 mod history;
 mod lifecycle;
 mod model;
@@ -27,6 +28,7 @@ pub(crate) use disposal_execution_observation::{
     ComposerHostDisposalExecutionSnapshot,
 };
 pub use error::ComposerHostError;
+pub use historical_replacement::*;
 pub use history::{ComposerHostHistoryStatus, ComposerHostRetainedHistoryIntent};
 pub use lifecycle::*;
 pub use model::*;
@@ -54,6 +56,7 @@ struct ActiveComposerHost {
     initial_responses: Vec<ComposerHostResponse>,
     unavailable: bool,
     durable_selector: syndic_storage::DraftEditorCurrentSelectorV1,
+    submission_intent: Option<syndic_storage::DraftSubmissionIntent>,
     published_candidate_generation: u64,
     published_pair: syndic_storage::DraftRootHistoryPairV1,
     session_disposed: bool,
@@ -71,6 +74,13 @@ pub struct SyndicComposerHost {
     last_mutation_build_diagnostics: Option<mutation::outcome::BuildDiagnostics>,
     detached_mutations: Vec<ComposerHostPendingMutation>,
     pending_history: Option<history::ComposerHostPendingHistory>,
+    historical_replacement: Option<Box<historical_replacement::PendingHistoricalReplacement>>,
+    historical_preflush: Option<historical_replacement::HistoricalPreflush>,
+    historical_generation: u64,
+    #[cfg(feature = "test-faults")]
+    historical_after_execute_fault: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
     detached_history: Vec<history::ComposerHostPendingHistory>,
     settlement_custody_capacity: usize,
     last_mutation_identity:
@@ -157,6 +167,11 @@ impl SyndicComposerHost {
             last_mutation_build_diagnostics: None,
             detached_mutations: Vec::new(),
             pending_history: None,
+            historical_replacement: None,
+            historical_preflush: None,
+            historical_generation: 0,
+            #[cfg(feature = "test-faults")]
+            historical_after_execute_fault: None,
             detached_history: Vec::new(),
             settlement_custody_capacity: capacity.get(),
             last_mutation_identity: None,
@@ -273,11 +288,14 @@ impl SyndicComposerHost {
         usize::from(self.pending_mutation.is_some())
             + self.detached_mutations.len()
             + usize::from(self.pending_history.is_some())
+            + usize::from(self.historical_replacement.is_some())
             + self.detached_history.len()
     }
 
     fn live_operation_pending(&self) -> bool {
-        self.pending_mutation.is_some() || self.pending_history.is_some()
+        self.pending_mutation.is_some()
+            || self.pending_history.is_some()
+            || self.historical_replacement.is_some()
     }
 
     pub(crate) fn submission_pending(&self) -> bool {

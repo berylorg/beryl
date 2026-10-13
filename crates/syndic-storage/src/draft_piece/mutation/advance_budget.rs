@@ -182,6 +182,19 @@ impl BuildBudget {
         })
         .map_err(|_| SyndicMutationError::IdentityCollision)
     }
+
+    #[inline(never)]
+    pub(super) fn recheck_matches<F: Family>(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+        key: &F::Key,
+        expected: &F::Value,
+    ) -> Result<bool, SyndicMutationError>
+    where
+        F::Value: PartialEq,
+    {
+        Ok(self.recheck::<F>(reader, key)?.as_ref() == Some(expected))
+    }
 }
 
 #[derive(Clone)]

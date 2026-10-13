@@ -16,15 +16,21 @@ pub(in super::super) struct QuoteState {
     turn: Option<TurnCapture>,
     popup: Option<AnchoredContextMenu>,
     anchor: Option<Bounds<Pixels>>,
+    marker_origin: Option<(
+        super::super::ResidentTranscriptContextMenuTarget,
+        gpui::FocusHandle,
+    )>,
+    edit_disabled_reason: Option<&'static str>,
+    #[cfg(test)]
+    last_open_diagnostic: Option<String>,
 }
 
 struct TurnCapture {
     target: super::super::ResidentTranscriptContextMenuTarget,
     activation: u64,
     selection: Option<NarrativeSelection>,
-    layout: usize,
-    source: usize,
-    source_len: usize,
+    anchor: Option<crate::syndic_transcript::RealizedFrameAnchor>,
+    narrative: Option<(usize, usize, usize)>,
 }
 
 pub(in super::super) struct QuoteCapture {
@@ -41,6 +47,10 @@ impl Drop for QuoteCapture {
 }
 
 impl SyndicTranscriptPanel {
+    pub(crate) fn set_historical_edit_disabled_reason(&mut self, reason: Option<&'static str>) {
+        self.quote_state.edit_disabled_reason = reason;
+    }
+
     pub(in super::super) fn invalidate_transcript_menu(&mut self) {
         self.quote_state.capture = None;
         self.quote_state.turn = None;
@@ -48,9 +58,26 @@ impl SyndicTranscriptPanel {
     }
 
     fn transcript_menu_rows(&self) -> QuoteRows {
+        let edit_reason = if self
+            .quote_state
+            .turn
+            .as_ref()
+            .is_some_and(|capture| capture.target.record.historical_target().is_none())
+        {
+            Some("This message has no exact current editing source.")
+        } else {
+            self.quote_state.edit_disabled_reason
+        };
         QuoteRows {
             quote: self.quote_state.capture.is_some(),
             edit: self.quote_state.turn.is_some(),
+            edit_reason,
+            image: self.quote_state.turn.as_ref().is_some_and(|capture| {
+                matches!(
+                    capture.target.record.content_kind,
+                    crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
+                )
+            }),
         }
     }
 
@@ -65,17 +92,56 @@ impl SyndicTranscriptPanel {
             && self.host.resident_context_menu_target().as_ref() == Some(&capture.target)
             && self.host.context_menu_narrative_kind(&capture.target)
                 == Some(TranscriptNarrativeKind::UserInput)
+            && (!matches!(
+                capture.target.record.content_kind,
+                crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
+            ) || self.image_marker_bounds(&capture.target.record.record_id, window)
+                == self.quote_state.anchor)
             && self.last_frame_window.as_ref().is_some_and(|frame| {
-                super::super::resident_context_menu_frame_loss(&snapshot, frame, &capture.target)
+                frame.anchor == capture.anchor
+                    && super::super::resident_context_menu_frame_loss(
+                        &snapshot,
+                        frame,
+                        &capture.target,
+                    )
                     .is_none()
             })
-            && self
-                .mapped_geometry(&capture.target.record.record_id)
-                .is_some_and(|geometry| {
-                    geometry.layout() as *const _ as usize == capture.layout
-                        && geometry.source().as_ptr() as usize == capture.source
-                        && geometry.source().len() == capture.source_len
+            && capture
+                .narrative
+                .is_none_or(|(layout, source, source_len)| {
+                    self.mapped_geometry(&capture.target.record.record_id)
+                        .is_some_and(|geometry| {
+                            geometry.layout() as *const _ as usize == layout
+                                && geometry.source().as_ptr() as usize == source
+                                && geometry.source().len() == source_len
+                        })
                 })
+    }
+
+    pub(crate) fn historical_replacement_request_current(
+        &self,
+        request: &super::super::HistoricalReplacementRequested,
+        window: &Window,
+    ) -> bool {
+        let snapshot = self.host.shared_snapshot();
+        self.quote_state.serial == request.request
+            && !request.cancellation.is_cancelled()
+            && self.character_geometry_current(window)
+            && snapshot.activation_revision == request.activation
+            && snapshot.presentation_revision == request.presentation
+            && request.target.presentation_revision == request.presentation
+            && request.target.record.historical_target().is_some()
+            && self.host.context_menu_narrative_kind(&request.target)
+                == Some(TranscriptNarrativeKind::UserInput)
+            && self.last_frame_window.as_ref().is_some_and(|frame| {
+                frame.anchor == request.anchor
+                    && super::super::resident_context_menu_frame_loss(
+                        &snapshot,
+                        frame,
+                        &request.target,
+                    )
+                    .is_none()
+            })
     }
 
     fn transcript_menu_current(&self, window: &Window) -> bool {
@@ -166,6 +232,50 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_transcript_menu(None, pointer, window, cx);
+    }
+
+    pub(in super::super) fn open_record_menu(
+        &mut self,
+        record: &ResidentPresentationRecordId,
+        pointer: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.image_marker_bounds(record, window).is_some()
+            && self.image_marker_focus_fallback.is_none()
+        {
+            return;
+        }
+        if self.quote_state.popup.is_some()
+            && self.transcript_menu_current(window)
+            && self.quote_state.turn.as_ref().is_some_and(|capture| {
+                capture.target.record.record_id == *record
+                    && matches!(
+                        capture.target.record.content_kind,
+                        crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
+                    )
+            })
+        {
+            return;
+        }
+        self.open_transcript_menu(Some(record), Some(pointer), window, cx);
+    }
+
+    fn open_transcript_menu(
+        &mut self,
+        record: Option<&ResidentPresentationRecordId>,
+        pointer: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(test)]
+        {
+            self.quote_state.last_open_diagnostic = Some(format!(
+                "record={record:?}, pointer={pointer:?}, geometry_current={}",
+                self.character_geometry_current(window)
+            ));
+        }
         let record_target = self
             .host
             .resident_context_menu_target()
@@ -192,7 +302,23 @@ impl SyndicTranscriptPanel {
         if !self.character_geometry_current(window) {
             return;
         }
-        let endpoint = if let Some(pointer) = pointer {
+        let endpoint = if let Some(record) = record {
+            self.narrative_hit(pointer.unwrap())
+                .filter(|hit| {
+                    &hit.record == record
+                        || self.published_snapshot.as_ref().is_some_and(|snapshot| {
+                            snapshot.records.iter().any(|row| {
+                                &row.id == record && row.authored_part(&hit.record).is_some()
+                            })
+                        })
+                })
+                .or_else(|| {
+                    Some(NarrativeEndpoint {
+                        record: record.clone(),
+                        display: 0,
+                    })
+                })
+        } else if let Some(pointer) = pointer {
             self.narrative_hit(pointer)
         } else {
             self.narrative_selection
@@ -235,20 +361,40 @@ impl SyndicTranscriptPanel {
                     }
                 }
             });
-        let turn = match self.apply_realized_context_menu_target_for_record_id(&endpoint.record) {
+        let target_outcome =
+            self.apply_realized_context_menu_target_for_record_id(&endpoint.record);
+        #[cfg(test)]
+        {
+            self.quote_state
+                .last_open_diagnostic
+                .as_mut()
+                .unwrap()
+                .push_str(&format!(
+                    ", endpoint={:?}, admission={target_outcome:?}",
+                    endpoint.record
+                ));
+        }
+        let turn = match target_outcome {
             super::super::ResidentContextMenuOutcome::Targeted(target)
                 if self.host.context_menu_narrative_kind(&target)
                     == Some(TranscriptNarrativeKind::UserInput) =>
             {
-                self.mapped_geometry(&endpoint.record)
-                    .map(|geometry| TurnCapture {
-                        target,
-                        activation: self.host.shared_snapshot().activation_revision,
-                        selection: self.narrative_selection.clone(),
-                        layout: geometry.layout() as *const _ as usize,
-                        source: geometry.source().as_ptr() as usize,
-                        source_len: geometry.source().len(),
-                    })
+                Some(TurnCapture {
+                    target,
+                    activation: self.host.shared_snapshot().activation_revision,
+                    selection: self.narrative_selection.clone(),
+                    anchor: self
+                        .last_frame_window
+                        .as_ref()
+                        .and_then(|frame| frame.anchor.clone()),
+                    narrative: self.mapped_geometry(&endpoint.record).map(|geometry| {
+                        (
+                            geometry.layout() as *const _ as usize,
+                            geometry.source().as_ptr() as usize,
+                            geometry.source().len(),
+                        )
+                    }),
+                })
             }
             _ => None,
         };
@@ -271,7 +417,12 @@ impl SyndicTranscriptPanel {
                 .as_ref()?
                 .records
                 .iter()
-                .find(|row| row.record_id == head.record)?;
+                .find(|row| {
+                    self.published_snapshot
+                        .as_ref()
+                        .and_then(|snapshot| snapshot.records.get(row.index))
+                        .is_some_and(|record| record.authored_part(&head.record).is_some())
+                })?;
             let geometry = self.mapped_geometry(&head.record)?;
             let position = geometry.layout().position(head.display)?;
             let origin = match &geometry {
@@ -292,10 +443,26 @@ impl SyndicTranscriptPanel {
         let Some(anchor) = anchor else {
             return;
         };
+        let marker_bounds = turn.as_ref().and_then(|capture| {
+            matches!(
+                capture.target.record.content_kind,
+                crate::syndic_transcript::ResidentContextMenuContentKind::ImageMarker(_)
+            )
+            .then(|| self.image_marker_bounds(&capture.target.record.record_id, window))
+            .flatten()
+        });
+        self.quote_state.marker_origin = turn
+            .as_ref()
+            .filter(|_| marker_bounds.is_some())
+            .and_then(|capture| {
+                self.image_marker_focus_handle(&capture.target.record.record_id)
+                    .map(|focus| (capture.target.clone(), focus))
+            });
         self.quote_state.serial = serial;
         self.quote_state.capture = capture;
         self.quote_state.turn = turn;
-        self.quote_state.anchor = Some(Bounds::new(anchor, size(px(1.), px(1.))));
+        self.quote_state.anchor =
+            marker_bounds.or_else(|| Some(Bounds::new(anchor, size(px(1.), px(1.)))));
         let mut popup = AnchoredContextMenu::open(serial, window, cx);
         let rows = self.transcript_menu_rows();
         popup.reconcile(&rows);
@@ -311,8 +478,29 @@ impl SyndicTranscriptPanel {
     }
 
     pub(in super::super) fn close_quote_menu(&mut self, window: &mut Window) {
+        let marker = self.quote_state.marker_origin.take();
+        let fallback = marker
+            .as_ref()
+            .and_then(|_| self.image_marker_return_focus(window))
+            .unwrap_or_else(|| self.focus_handle.clone());
         if let Some(mut popup) = self.quote_state.popup.take() {
-            popup.dismiss(window, &self.focus_handle);
+            popup.dismiss(window, &fallback);
+            if let Some((target, focus)) = marker {
+                let eligible = self
+                    .image_marker_bounds(&target.record.record_id, window)
+                    .is_some()
+                    && self.last_frame_window.as_ref().is_some_and(|frame| {
+                        super::super::resident_context_menu_frame_loss(
+                            &self.host.shared_snapshot(),
+                            frame,
+                            &target,
+                        )
+                        .is_none()
+                    });
+                if !eligible && focus.is_focused(window) {
+                    window.focus(&fallback);
+                }
+            }
         }
         self.quote_state.anchor = None;
         self.quote_state.turn = None;
@@ -351,37 +539,53 @@ impl SyndicTranscriptPanel {
 struct QuoteRows {
     quote: bool,
     edit: bool,
+    image: bool,
+    edit_reason: Option<&'static str>,
 }
 impl MenuCollection for QuoteRows {
     fn len(&self) -> usize {
-        usize::from(self.quote) + usize::from(self.edit)
+        usize::from(self.quote) + usize::from(self.edit) + 2 * usize::from(self.image)
     }
     fn index_of(&self, id: &str) -> Option<usize> {
         if self.quote && id == "transcript-quote" {
             Some(0)
         } else if self.edit && id == "transcript-edit-message" {
+            Some(usize::from(self.quote) + 2 * usize::from(self.image))
+        } else if self.image && id == "transcript-image-copy" {
             Some(usize::from(self.quote))
+        } else if self.image && id == "transcript-image-save" {
+            Some(usize::from(self.quote) + 1)
         } else {
             None
         }
     }
     fn row(&self, index: usize) -> MenuRow {
-        assert!(index < self.len() && self.len() <= 2);
+        assert!(index < self.len() && self.len() <= 4);
         let quote = self.quote && index == 0;
-        let id = if quote {
-            "transcript-quote"
+        let media_index = index.saturating_sub(usize::from(self.quote));
+        let (id, label, reason) = if quote {
+            ("transcript-quote", "Quote", None)
+        } else if self.image && media_index < 2 {
+            (
+                if media_index == 0 {
+                    "transcript-image-copy"
+                } else {
+                    "transcript-image-save"
+                },
+                if media_index == 0 { "Copy" } else { "Save" },
+                Some("The original image is not available in this transcript view."),
+            )
         } else {
-            "transcript-edit-message"
+            ("transcript-edit-message", "Edit message", self.edit_reason)
         };
         MenuRow {
             index,
             id: Some(Arc::from(id)),
-            label: if quote { "Quote" } else { "Edit message" }.into(),
+            label: label.into(),
             kind: MenuRowKind::Command,
             selected: false,
-            enabled: quote,
-            disabled_reason: (!quote)
-                .then(|| "Historical message editing is not available yet.".into()),
+            enabled: quote || (id == "transcript-edit-message" && reason.is_none()),
+            disabled_reason: reason.map(Into::into),
             selector: id.into(),
         }
     }
@@ -411,6 +615,26 @@ fn quote_input(
             }
             MenuIntent::Focus(_) => cx.notify(),
             MenuIntent::Activate { id, .. } => {
+                if id.as_ref() == "transcript-edit-message" {
+                    let Some(capture) = &panel.quote_state.turn else {
+                        return;
+                    };
+                    let request = super::super::HistoricalReplacementRequested {
+                        target: capture.target.clone(),
+                        request: panel.quote_state.serial,
+                        activation: capture.activation,
+                        presentation: capture.target.presentation_revision,
+                        anchor: capture.anchor.clone(),
+                        cancellation: beryl_home_store::CommandCancellation::new(),
+                    };
+                    if !panel.historical_replacement_request_current(&request, window) {
+                        return;
+                    }
+                    panel.close_quote_menu(window);
+                    cx.emit(request);
+                    cx.notify();
+                    return;
+                }
                 if id.as_ref() != "transcript-quote" {
                     return;
                 }

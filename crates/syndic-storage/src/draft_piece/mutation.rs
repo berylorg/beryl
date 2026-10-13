@@ -131,7 +131,7 @@ impl StageFragmentMutation {
 
 #[derive(Clone)]
 struct AdvanceMutation {
-    prepared: PreparedDraftPieceAdvanceV1,
+    prepared: Box<PreparedDraftPieceAdvanceV1>,
     writer_progress_allowed: bool,
 }
 
@@ -367,7 +367,7 @@ impl SyndicStorage {
         self.handle.contribution(
             prepared.expected_revision,
             AdvanceMutation {
-                prepared,
+                prepared: Box::new(prepared),
                 writer_progress_allowed,
             },
         )
@@ -1957,7 +1957,7 @@ impl DomainMutation<SyndicDomain> for StageFragmentMutation {
 impl DomainMutation<SyndicDomain> for AdvanceMutation {
     type Error = SyndicMutationError;
     type Prepared = Option<(
-        PreparedDraftPieceAdvanceV1,
+        Box<PreparedDraftPieceAdvanceV1>,
         Option<PreparedDraftMarkerWriterConsumptionV1>,
     )>;
 

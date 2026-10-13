@@ -316,6 +316,8 @@ mod legacy_reconciliation;
 mod process_admission;
 #[path = "exact_root_submission/repair_admission.rs"]
 mod repair_admission;
+#[path = "exact_root_submission/replacement.rs"]
+mod replacement;
 fn advance_to_accepting(
     host: &mut beryl_app::composer_host::SyndicComposerHost,
     store: &beryl_home_store::HomeStore,

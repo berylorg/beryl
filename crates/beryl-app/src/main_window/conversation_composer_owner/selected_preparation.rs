@@ -5,6 +5,7 @@ pub struct MainWindowConversationComposerPreparedSelection {
     pub(super) service: Arc<MainWindowConversationComposerService>,
     pub(super) residency_bound: MainWindowComposerResidencyBound,
     pub(super) activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
+    pub(super) submission_intent: Option<syndic_storage::DraftSubmissionIntent>,
     assets: beryl_state::AssetState,
 }
 
@@ -22,11 +23,13 @@ impl MainWindowConversationComposerPreparedSelection {
         let initial = service.take_initial_presentation(config.selection())?;
         let activation_seeds =
             MainWindowConversationComposer::activation_seeds(config.selection(), initial)?;
+        let submission_intent = service.selected_submission_intent(config.selection());
         Ok(Self {
             config,
             service,
             residency_bound,
             activation_seeds,
+            submission_intent,
             assets,
         })
     }

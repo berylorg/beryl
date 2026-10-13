@@ -538,6 +538,9 @@ impl MainWindowConversationComposer {
                 return Err("conversation composer is retained for recovery".to_owned());
             }
             MainWindowConversationComposerPhase::Live => {
+                if let Some(replacement) = &self.historical_replacement {
+                    replacement.cancel();
+                }
                 self.cancel_captured_paste(cx);
                 self.phase = MainWindowConversationComposerPhase::Fencing;
                 self.private_clipboard_owner.expire_origin(self.selection);
@@ -600,6 +603,7 @@ impl MainWindowConversationComposer {
         matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
             && self.active_flight.is_none()
             && self.pending_dispatch.is_none()
+            && self.historical_replacement.is_none()
             && self.last_error.is_none()
             && self
                 .input
@@ -613,6 +617,7 @@ impl MainWindowConversationComposer {
         matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
             && self.active_flight.is_none()
             && self.pending_dispatch.is_none()
+            && self.historical_replacement.is_none()
             && self.last_error.is_none()
             && self.input.update(cx, |input, _| input.is_quiescent())
             && self.input.update(cx, |input, _| {

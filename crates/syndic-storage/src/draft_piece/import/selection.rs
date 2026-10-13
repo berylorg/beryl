@@ -58,7 +58,7 @@ impl SyndicStorage {
             p.operation_id(),
         );
         let source = r
-            .point::<DraftPieceBuildsFamily>(&key)?
+            .boxed_point::<DraftPieceBuildsFamily>(&key)?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         if source.canonical_header() != p.canonical_header
             || !import_build_is_exact(&source)
@@ -66,28 +66,20 @@ impl SyndicStorage {
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
-        let DraftEditorCandidateSessionRecordV1::Head(before) = r
-            .point::<DraftEditorCandidateSessionsFamily>(
-                &DraftEditorCandidateSessionRecordKeyV1::head(
-                    source.draft_id(),
-                    source.session_id(),
-                ),
-            )?
-            .ok_or(DraftReplacementErrorV1::Conflict)?
-        else {
-            return Err(DraftReplacementErrorV1::Conflict);
-        };
+        let before = r.session_head(&DraftEditorCandidateSessionRecordKeyV1::head(
+            source.draft_id(),
+            source.session_id(),
+        ))?;
         let prior = r
-            .point::<DraftEditHistoryFrontiersFamily>(&source.predecessor_history().key())?
+            .boxed_point::<DraftEditHistoryFrontiersFamily>(&source.predecessor_history().key())?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         let mutable = r
-            .point::<DraftEditHistoryFrontiersFamily>(&DraftEditHistoryFrontierKeyV1::session(
-                source.draft_id(),
-                source.session_id(),
-            ))?
+            .boxed_point::<DraftEditHistoryFrontiersFamily>(
+                &DraftEditHistoryFrontierKeyV1::session(source.draft_id(), source.session_id()),
+            )?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         let draft = r
-            .point::<DraftsFamily>(&source.draft_id())?
+            .boxed_point::<DraftsFamily>(&source.draft_id())?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         if at < draft.updated_at() {
             return Err(DraftReplacementErrorV1::Conflict);
@@ -121,7 +113,7 @@ impl SyndicStorage {
             at,
         );
         let prior_summary = r
-            .point::<HistorySummariesFamily>(&draft.thread_id())?
+            .boxed_point::<HistorySummariesFamily>(&draft.thread_id())?
             .ok_or(DraftReplacementErrorV1::Conflict)?;
         let successor_summary = HistorySummaryRecord::new(
             prior_summary.thread_id(),
@@ -138,17 +130,17 @@ impl SyndicStorage {
         let selection = DraftSealedImportSelectionV1 {
             prior_selector: p.basis.selector,
             successor_selector,
-            before_session: Box::new(before),
+            before_session: before,
             after_session: after,
             imported_root: root,
-            prior_history: Box::new(prior),
+            prior_history: prior,
             baseline: Box::new(baseline),
-            before_mutable_history: Box::new(mutable),
+            before_mutable_history: mutable,
             after_mutable_history: Box::new(fork),
             basis: p.basis,
-            prior_draft: Box::new(draft),
+            prior_draft: draft,
             successor_draft: Box::new(next_draft),
-            prior_summary: Box::new(prior_summary),
+            prior_summary: prior_summary,
             successor_summary: Box::new(successor_summary),
         };
         if !selection.is_locally_exact(&source) {
@@ -176,7 +168,7 @@ impl SyndicStorage {
         Ok(PreparedDraftReplacementStartV1 {
             observation: Default::default(),
             scope: p.scope.clone(),
-            source: Box::new(source),
+            source,
             selection: Box::new(selection),
             terminal: Box::new(terminal),
             receipt: Box::new(receipt),

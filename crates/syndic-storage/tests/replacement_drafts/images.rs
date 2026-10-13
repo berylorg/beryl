@@ -128,6 +128,15 @@ fn empty_and_marker_only_sources_complete_without_fabricated_text_leaves() {
         assert_eq!(root.summary().logical_utf8_bytes(), 0);
         assert_eq!(root.summary().marker_count(), u64::from(marker_only));
         assert!(text(&f, root).is_empty());
+        let validated = f.storage.draft_piece_text_demand(
+            &f.store, root, syndic_storage::DraftPieceTextDemandV1::Validate(0), 4,
+        ).unwrap();
+        assert_eq!(validated.start(), 0);
+        assert_eq!(validated.end(), 0);
+        assert!(validated.bytes().is_empty());
+        assert!(f.storage.draft_piece_text_demand(
+            &f.store, root, syndic_storage::DraftPieceTextDemandV1::Validate(1), 4,
+        ).is_err());
         start(&f, &p);
         assert_eq!(f.head().newest_root(), root);
     }

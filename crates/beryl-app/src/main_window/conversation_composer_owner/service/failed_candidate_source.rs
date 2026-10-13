@@ -14,6 +14,7 @@ pub struct MainWindowFailedResidentCandidateSource {
     selector: syndic_storage::DraftEditorCurrentSelectorV1,
     seed: RangeRestorationSeed,
     predecessor: RangeRestorationSeed,
+    source_replacement: bool,
 }
 
 impl MainWindowFailedResidentCandidateSource {
@@ -33,8 +34,12 @@ impl MainWindowFailedResidentCandidateSource {
         String,
     > {
         retained.qualify_adopted_return(selection)?;
-        if predecessor.binding != retained.selection().binding().range_binding()
-            || predecessor.history != Some(retained.selection().binding().range_history_frontier())
+        let prior = retained
+            .historical_prior_binding()
+            .filter(|prior| predecessor.binding == prior.range_binding())
+            .unwrap_or(retained.selection().binding());
+        if predecessor.binding != prior.range_binding()
+            || predecessor.history != Some(prior.range_history_frontier())
         {
             return Err("adopted return original predecessor seed changed".into());
         }
@@ -72,6 +77,7 @@ impl MainWindowFailedResidentCandidateSource {
         storage: syndic_storage::SyndicStorage,
         state: beryl_state::BerylState,
         predecessor: RangeRestorationSeed,
+        seed: RangeRestorationSeed,
         window: beryl_state::SessionWindowRecord,
         selector: syndic_storage::DraftEditorCurrentSelectorV1,
     ) -> Box<Self> {
@@ -83,37 +89,55 @@ impl MainWindowFailedResidentCandidateSource {
             selection,
             window,
             selector,
-            seed: RangeRestorationSeed {
-                binding: selection.binding().range_binding(),
-                history: Some(selection.binding().range_history_frontier()),
-                ..predecessor
-            },
+            seed,
             predecessor,
+            source_replacement: false,
         })
     }
 
     pub fn new(
         candidate: &mut HomeRecoveryCandidate,
-        retired: MainWindowFailedComposerRetirement,
+        mut retired: MainWindowFailedComposerRetirement,
         storage: syndic_storage::SyndicStorage,
         state: &beryl_state::BerylState,
         seed: RangeRestorationSeed,
         restored: Option<&beryl_state::SessionWindowRemovalEvidence>,
     ) -> Result<Self, (MainWindowFailedComposerRetirement, String)> {
-        let binding = retired.selection().binding();
+        let current_binding = retired.selection().binding();
+        let binding = retired
+            .historical_prior_binding()
+            .filter(|prior| seed.binding == prior.range_binding())
+            .unwrap_or(current_binding);
         if seed.binding != binding.range_binding()
             || seed.history != Some(binding.range_history_frontier())
             || seed.selection.head != seed.caret
         {
             return Err((retired, "failed resident predecessor seed changed".into()));
         }
-        let positions = (|| {
-            let access = candidate.recovery_access().map_err(|e| e.to_string())?;
-            validate_positions(&access, &storage, binding, seed)
-        })();
-        if let Err(error) = positions {
+        if let Err(error) = retired.qualify_saved(candidate, &storage, state, restored) {
             return Err((retired, error));
         }
+        let positions = (|| {
+            let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+            let imported = retired
+                .historical_restoration()
+                .filter(|restoration| seed.binding == restoration.prior_binding().range_binding())
+                .and_then(|restoration| {
+                    restoration
+                        .imported_position()
+                        .map(|position| (restoration.candidate().root(), position))
+                })
+                .map(|(root, position)| imported_source_position(&access, &storage, root, position))
+                .transpose()?;
+            if imported.is_none() {
+                validate_positions(&access, &storage, binding, seed)?;
+            }
+            Ok(imported)
+        })();
+        let imported_caret = match positions {
+            Ok(caret) => caret,
+            Err(error) => return Err((retired, error)),
+        };
         let (slot, window, retired) =
             retired.reconstruct(candidate, storage.clone(), state, restored)?;
         let service = Arc::new(MainWindowConversationComposerService::from_boxed_slot(
@@ -123,11 +147,22 @@ impl MainWindowFailedResidentCandidateSource {
         let selection = service.selected_identity().unwrap();
         let selector = retired.saved_selector().unwrap();
         let predecessor = seed;
-        let seed = RangeRestorationSeed {
+        let mut seed = RangeRestorationSeed {
             binding: selection.binding().range_binding(),
             history: Some(selection.binding().range_history_frontier()),
             ..seed
         };
+        if let Some(caret) = imported_caret {
+            seed.caret = caret;
+            seed.selection = gpui_text_input::RangeSourceSelection {
+                anchor: caret,
+                head: caret,
+            };
+            seed.scroll = gpui_text_input::RangeRestorationScrollAnchor {
+                position: caret,
+                intra_anchor: gpui::px(0.0),
+            };
+        }
         Ok(Self {
             service,
             storage,
@@ -138,6 +173,7 @@ impl MainWindowFailedResidentCandidateSource {
             selector,
             seed,
             predecessor,
+            source_replacement: imported_caret.is_some(),
         })
     }
 
@@ -149,6 +185,9 @@ impl MainWindowFailedResidentCandidateSource {
     }
     pub fn predecessor(&self) -> RangeRestorationSeed {
         self.predecessor
+    }
+    pub(crate) fn source_replacement(&self) -> bool {
+        self.source_replacement
     }
     pub fn predecessor_selection(&self) -> MainWindowComposerSelectionIdentity {
         self.retained.selection()
@@ -350,7 +389,7 @@ impl MainWindowFailedResidentCandidateSource {
                 *request,
             )
             .map(MainWindowComposerCandidateRead::Page)
-            .map_err(|e| e.to_string()),
+            .map_err(|e| format!("failed resident text page refused: {e}")),
             RangePrepublicationEffect::ObjectPage { request, .. } => {
                 translate::candidate_object_page(
                     &source.storage,
@@ -359,7 +398,7 @@ impl MainWindowFailedResidentCandidateSource {
                     *request,
                 )
                 .map(MainWindowComposerCandidateRead::ObjectPage)
-                .map_err(|e| e.to_string())
+                .map_err(|e| format!("failed resident object page refused: {e}"))
             }
         }
     }
@@ -405,4 +444,72 @@ fn validate_positions(
         .validate_draft_piece_restoration_candidate(access, restoration)
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+fn imported_source_position(
+    access: &HomeCandidateRecoveryAccess<'_>,
+    storage: &syndic_storage::SyndicStorage,
+    root: syndic_storage::DraftPieceRootReferenceV1,
+    position: syndic_storage::DraftCompositePositionV1,
+) -> Result<gpui_text_input::SourcePosition, String> {
+    use gpui_text_input::{
+        ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor, InlineObjectOrder,
+        SourcePosition,
+    };
+    use syndic_storage::{
+        DraftCompositeGapWitnessV1, DraftPieceMarkerDemandV1, DraftPieceMarkerDirectionV1,
+        DraftPieceMarkerScopeV1,
+    };
+    let neighbor = |id: beryl_model::SyndicDraftMarkerId, order: u64| {
+        InlineObjectNeighbor::new(
+            InlineObjectId::new(u128::from_be_bytes(*id.as_bytes())),
+            InlineObjectOrder::new(u128::from(order)),
+        )
+    };
+    let boundary = |direction| -> Result<InlineObjectNeighbor, String> {
+        let page = storage
+            .draft_piece_marker_demand_candidate(
+                access,
+                root,
+                DraftPieceMarkerDemandV1::new(
+                    DraftPieceMarkerScopeV1::ExactAnchor(position.utf8_offset()),
+                    direction,
+                    None,
+                    1,
+                    4096,
+                ),
+            )
+            .map_err(|error| error.to_string())?;
+        let marker = page
+            .markers()
+            .first()
+            .filter(|marker| marker.anchor() == position.utf8_offset())
+            .ok_or("imported baseline marker neighbor is unavailable")?;
+        Ok(neighbor(
+            marker.marker().marker_id(),
+            marker.marker().order_key(),
+        ))
+    };
+    let gap = match position.gap() {
+        DraftCompositeGapWitnessV1::Unambiguous => InlineObjectGap::NoObjects,
+        DraftCompositeGapWitnessV1::BeforeAll => {
+            InlineObjectGap::Before(boundary(DraftPieceMarkerDirectionV1::Forward)?)
+        }
+        DraftCompositeGapWitnessV1::AfterAll => {
+            InlineObjectGap::After(boundary(DraftPieceMarkerDirectionV1::Backward)?)
+        }
+        DraftCompositeGapWitnessV1::Between {
+            left_order_key,
+            left_marker_id,
+            right_order_key,
+            right_marker_id,
+        } => InlineObjectGap::Between {
+            preceding: neighbor(left_marker_id, left_order_key),
+            following: neighbor(right_marker_id, right_order_key),
+        },
+    };
+    Ok(SourcePosition::new(
+        ByteOffset::new(position.utf8_offset()),
+        gap,
+    ))
 }

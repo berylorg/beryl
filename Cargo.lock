@@ -570,7 +570,7 @@ dependencies = [
  "gpui",
  "gpui-scrollbar",
  "gpui-settings-window",
- "gpui-text-input",
+ "gpui-text-input 0.1.0 (git+https://github.com/berylorg/gpui-text-input.git?rev=c9420ea81486b122d2727ac05383890d805d84f6)",
  "gpui_sum_tree",
  "jsonc-parser",
  "rodio",
@@ -2523,7 +2523,7 @@ source = "git+https://github.com/berylorg/gpui-settings-window.git?rev=f4c6b19e8
 dependencies = [
  "gpui",
  "gpui-scrollbar",
- "gpui-text-input",
+ "gpui-text-input 0.1.0 (git+https://github.com/berylorg/gpui-text-input.git?rev=aa9dfd3b727450556570637c133de319a1f78d7e)",
  "raw-window-handle",
  "windows 0.61.3",
 ]
@@ -2531,7 +2531,17 @@ dependencies = [
 [[package]]
 name = "gpui-text-input"
 version = "0.1.0"
-source = "git+https://github.com/berylorg/gpui-text-input.git?rev=1366c97b0e56c63fee12e0bd0dddb888bb8bad14#1366c97b0e56c63fee12e0bd0dddb888bb8bad14"
+source = "git+https://github.com/berylorg/gpui-text-input.git?rev=aa9dfd3b727450556570637c133de319a1f78d7e#aa9dfd3b727450556570637c133de319a1f78d7e"
+dependencies = [
+ "gpui",
+ "gpui-scrollbar",
+ "unicode-segmentation 1.13.2 (git+https://github.com/berylorg/unicode-segmentation-fork.git?rev=2badf6af53c261e0f39da75bd25036d45e6278d2)",
+]
+
+[[package]]
+name = "gpui-text-input"
+version = "0.1.0"
+source = "git+https://github.com/berylorg/gpui-text-input.git?rev=c9420ea81486b122d2727ac05383890d805d84f6#c9420ea81486b122d2727ac05383890d805d84f6"
 dependencies = [
  "gpui",
  "gpui-scrollbar",

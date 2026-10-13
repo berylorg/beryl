@@ -24,7 +24,8 @@ pub(crate) fn resident_context_menu_command_for_realized_record_id(
 
     let (frame_record, record) =
         realized_record_for_context_menu(snapshot, frame_window, record_id)?;
-    let geometry = context_menu_geometry_from_frame_record(frame_record);
+    let mut geometry = context_menu_geometry_from_frame_record(frame_record);
+    geometry.record_id = record.id.clone();
     if !geometry.is_stable() {
         return Err(ResidentContextMenuUnavailable::UnstableGeometry {
             record_id: record_id.clone(),
@@ -49,14 +50,18 @@ pub(crate) fn realized_resident_context_menu_record_ids(
     frame_window
         .records
         .iter()
-        .filter_map(|frame_record| {
-            let geometry = context_menu_geometry_from_frame_record(frame_record);
-            if !geometry.is_stable() {
-                return None;
+        .flat_map(|frame_record| {
+            let mut records = Vec::new();
+            if let Ok(record) = snapshot_record_for_frame_record(snapshot, frame_record) {
+                for part in record.authored_parts() {
+                    let mut geometry = context_menu_geometry_from_frame_record(frame_record);
+                    geometry.record_id = part.id.clone();
+                    if geometry.is_stable() && resident_context_menu_record(part, geometry).is_ok() {
+                        records.push(part.id.clone());
+                    }
+                }
             }
-            let record = snapshot_record_for_frame_record(snapshot, frame_record).ok()?;
-            resident_context_menu_record(record, geometry).ok()?;
-            Some(frame_record.record_id.clone())
+            records
         })
         .collect()
 }
@@ -89,7 +94,8 @@ fn validate_context_menu_target_still_realized(
 ) -> Result<(), ResidentContextMenuUnavailable> {
     let (frame_record, record) =
         realized_record_for_context_menu(snapshot, frame_window, &target.record.record_id)?;
-    let geometry = context_menu_geometry_from_frame_record(frame_record);
+    let mut geometry = context_menu_geometry_from_frame_record(frame_record);
+    geometry.record_id = record.id.clone();
     if !geometry.is_stable() {
         return Err(ResidentContextMenuUnavailable::UnstableGeometry {
             record_id: target.record.record_id.clone(),
@@ -115,12 +121,13 @@ fn realized_record_for_context_menu<'a>(
     let Some(frame_record) = frame_window
         .records
         .iter()
-        .find(|frame_record| &frame_record.record_id == record_id)
+        .find(|frame_record| snapshot.records.get(frame_record.index)
+            .is_some_and(|record| record.id == frame_record.record_id && record.authored_part(record_id).is_some()))
     else {
         return if snapshot
             .records
             .iter()
-            .any(|record| &record.id == record_id)
+            .any(|record| record.authored_part(record_id).is_some())
         {
             Err(ResidentContextMenuUnavailable::RecordNotRealized {
                 record_id: record_id.clone(),
@@ -131,7 +138,9 @@ fn realized_record_for_context_menu<'a>(
             })
         };
     };
-    let record = snapshot_record_for_frame_record(snapshot, frame_record)?;
+    let record = snapshot_record_for_frame_record(snapshot, frame_record)?
+        .authored_part(record_id)
+        .ok_or_else(|| ResidentContextMenuUnavailable::RecordNotResident { record_id: record_id.clone() })?;
 
     Ok((frame_record, record))
 }

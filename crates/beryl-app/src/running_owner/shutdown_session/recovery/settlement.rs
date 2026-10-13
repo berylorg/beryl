@@ -195,9 +195,20 @@ impl RunningProcessOwner {
         + Send
         + 'static,
     ) {
+        let mut services = services.or_else(|| owner.borrow_mut().process.services.take());
         let retained = owner.clone();
         let work = app.background_executor().spawn(async move {
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                if let Some(services) = services.as_mut() {
+                    let storage =
+                        syndic_storage::SyndicStorage::reacquire_candidate(&candidate.candidate)
+                            .map_err(|error| {
+                                CandidateSettlementError::Candidate(error.to_string())
+                            })?;
+                    services
+                        .settle_failed_historical_residents(&mut candidate.candidate, &storage)
+                        .map_err(CandidateSettlementError::Candidate)?;
+                }
                 operation(&mut original, &mut candidate, services.as_ref())
             }))
             .unwrap_or_else(|_| {

@@ -18,28 +18,21 @@ pub enum DraftReplacementCommandOutcomeV1 {
 }
 
 impl SyndicStorage {
-    fn read_replacement_draft_start(
+    pub(super) fn read_replacement_draft_start(
         &self,
-        store: &HomeStore,
+        r: &impl SourceReader,
         p: &PreparedDraftReplacementStartV1,
         committed: bool,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        if store.home_id() != p.scope.home_id {
-            return Err(DraftReplacementErrorV1::Proof);
-        }
-        let r = StoreSourceReader {
-            storage: self,
-            store,
-        };
         if committed {
-            if get::<DraftPieceSettlementsFamily>(&r, &p.settlement.key())? != *p.settlement
-                || get::<DraftPieceBuildsFamily>(&r, &p.settlement.key())? != *p.terminal
-                || get::<DraftPieceBuildProgressFamily>(&r, &p.receipt.key())? != *p.receipt
+            if get::<DraftPieceSettlementsFamily>(r, &p.settlement.key())? != *p.settlement
+                || get::<DraftPieceBuildsFamily>(r, &p.settlement.key())? != *p.terminal
+                || get::<DraftPieceBuildProgressFamily>(r, &p.receipt.key())? != *p.receipt
                 || get::<DraftEditHistoryFrontiersFamily>(
-                    &r,
+                    r,
                     &p.selection.baseline.reference().key(),
                 )? != *p.selection.baseline
-                || get::<DraftPieceRootsFamily>(&r, &p.selection.imported_root.key())?.reference()
+                || get::<DraftPieceRootsFamily>(r, &p.selection.imported_root.key())?.reference()
                     != p.selection.imported_root
             {
                 return Err(DraftReplacementErrorV1::Conflict);
@@ -55,37 +48,30 @@ impl SyndicStorage {
                 .is_some()
             || r.point::<DraftEditHistoryFrontiersFamily>(&c.baseline.reference().key())?
                 .is_some()
-            || get::<DraftPieceBuildsFamily>(&r, &p.settlement.key())? != *p.source
+            || get::<DraftPieceBuildsFamily>(r, &p.settlement.key())? != *p.source
             || get::<DraftEditorCandidateSessionsFamily>(
-                &r,
+                r,
                 &super::command::head_key(&c.before_session),
             )? != DraftEditorCandidateSessionRecordV1::Head(*c.before_session.clone())
-            || get::<DraftsFamily>(&r, &c.prior_draft.id())? != *c.prior_draft
-            || get::<HistorySummariesFamily>(&r, &c.prior_summary.thread_id())? != *c.prior_summary
+            || get::<DraftsFamily>(r, &c.prior_draft.id())? != *c.prior_draft
+            || get::<HistorySummariesFamily>(r, &c.prior_summary.thread_id())? != *c.prior_summary
             || get::<DraftEditHistoryFrontiersFamily>(
-                &r,
+                r,
                 &c.before_mutable_history.reference().key(),
             )? != *c.before_mutable_history
-            || get::<DraftByThreadFamily>(&r, &c.prior_selector.thread_id())?
+            || get::<DraftByThreadFamily>(r, &c.prior_selector.thread_id())?
                 != reverse(c.prior_selector)
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
         Ok(DraftReplacementCommandOutcomeV1::NotCommitted)
     }
-    fn read_replacement_intent_cancellation(
+    pub(super) fn read_replacement_intent_cancellation(
         &self,
-        store: &HomeStore,
+        r: &impl SourceReader,
         p: &PreparedDraftReplacementCancellationV1,
         committed: bool,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        if store.home_id() != p.scope.home_id {
-            return Err(DraftReplacementErrorV1::Proof);
-        }
-        let r = StoreSourceReader {
-            storage: self,
-            store,
-        };
         let c = &p.receipt;
         let receipt = r.point::<DraftEditorCandidateSessionsFamily>(&c.key())?;
         if committed {
@@ -100,37 +86,30 @@ impl SyndicStorage {
             ));
         }
         if receipt.is_some()
-            || get::<DraftsFamily>(&r, &c.prior_draft.id())? != *c.prior_draft
-            || get::<DraftByThreadFamily>(&r, &c.prior_selector.thread_id())?
+            || get::<DraftsFamily>(r, &c.prior_draft.id())? != *c.prior_draft
+            || get::<DraftByThreadFamily>(r, &c.prior_selector.thread_id())?
                 != reverse(c.prior_selector)
-            || get::<DraftEditorCandidateSessionsFamily>(&r, &super::command::head_key(&c.before))?
+            || get::<DraftEditorCandidateSessionsFamily>(r, &super::command::head_key(&c.before))?
                 != DraftEditorCandidateSessionRecordV1::Head(*c.before.clone())
-            || get::<DraftEditHistoryFrontiersFamily>(&r, &c.newest_history.reference().key())?
+            || get::<DraftEditHistoryFrontiersFamily>(r, &c.newest_history.reference().key())?
                 != *c.newest_history
-            || get::<DraftEditHistoryFrontiersFamily>(&r, &c.mutable_history.reference().key())?
+            || get::<DraftEditHistoryFrontiersFamily>(r, &c.mutable_history.reference().key())?
                 != *c.mutable_history
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
         Ok(DraftReplacementCommandOutcomeV1::NotCommitted)
     }
-    fn read_replacement_import_termination(
+    pub(super) fn read_replacement_import_termination(
         &self,
-        store: &HomeStore,
+        r: &impl SourceReader,
         p: &PreparedDraftReplacementImportTerminationV1,
         committed: bool,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        if store.home_id() != p.scope.home_id {
-            return Err(DraftReplacementErrorV1::Proof);
-        }
-        let r = StoreSourceReader {
-            storage: self,
-            store,
-        };
         if committed {
-            if get::<DraftPieceSettlementsFamily>(&r, &p.settlement.key())? != *p.settlement
-                || get::<DraftPieceBuildsFamily>(&r, &p.settlement.key())? != *p.terminal
-                || get::<DraftPieceBuildProgressFamily>(&r, &p.receipt.key())? != *p.receipt
+            if get::<DraftPieceSettlementsFamily>(r, &p.settlement.key())? != *p.settlement
+                || get::<DraftPieceBuildsFamily>(r, &p.settlement.key())? != *p.terminal
+                || get::<DraftPieceBuildProgressFamily>(r, &p.receipt.key())? != *p.receipt
             {
                 return Err(DraftReplacementErrorV1::Conflict);
             }
@@ -140,8 +119,8 @@ impl SyndicStorage {
             .is_some()
             || r.point::<DraftPieceBuildProgressFamily>(&p.receipt.key())?
                 .is_some()
-            || get::<DraftPieceBuildsFamily>(&r, &p.settlement.key())? != *p.source
-            || get::<DraftEditorCandidateSessionsFamily>(&r, &super::command::head_key(&p.before))?
+            || get::<DraftPieceBuildsFamily>(r, &p.settlement.key())? != *p.source
+            || get::<DraftEditorCandidateSessionsFamily>(r, &super::command::head_key(&p.before))?
                 != DraftEditorCandidateSessionRecordV1::Head(*p.before.clone())
         {
             return Err(DraftReplacementErrorV1::Conflict);
@@ -157,24 +136,45 @@ impl SyndicStorage {
         outcome: CommandOutcome,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
         p.observation.retain(outcome)?;
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_draft_start(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_draft_start(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn resume_replacement_draft_start(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementStartV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_draft_start(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_draft_start(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn inspect_replacement_draft_start(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementStartV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_draft_start(store, p, p.observation.known()?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_draft_start(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.known()?,
+        )
     }
     pub fn reconcile_replacement_intent_cancellation(
         &self,
@@ -183,24 +183,45 @@ impl SyndicStorage {
         outcome: CommandOutcome,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
         p.observation.retain(outcome)?;
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_intent_cancellation(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_intent_cancellation(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn resume_replacement_intent_cancellation(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementCancellationV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_intent_cancellation(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_intent_cancellation(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn inspect_replacement_intent_cancellation(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementCancellationV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_intent_cancellation(store, p, p.observation.known()?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_intent_cancellation(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.known()?,
+        )
     }
     pub fn reconcile_replacement_import_termination(
         &self,
@@ -209,24 +230,45 @@ impl SyndicStorage {
         outcome: CommandOutcome,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
         p.observation.retain(outcome)?;
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_import_termination(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_import_termination(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn resume_replacement_import_termination(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementImportTerminationV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_import_termination(store, p, p.observation.resume(store)?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_import_termination(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.resume(store)?,
+        )
     }
     pub fn inspect_replacement_import_termination(
         &self,
         store: &HomeStore,
         p: &PreparedDraftReplacementImportTerminationV1,
     ) -> Result<DraftReplacementCommandOutcomeV1, DraftReplacementErrorV1> {
-        require_home(store, p.scope.home_id)?;
-        self.read_replacement_import_termination(store, p, p.observation.known()?)
+        require_home(store, p.scope.home_id())?;
+        self.read_replacement_import_termination(
+            &StoreSourceReader {
+                storage: self,
+                store,
+            },
+            p,
+            p.observation.known()?,
+        )
     }
 }
 fn require_home(

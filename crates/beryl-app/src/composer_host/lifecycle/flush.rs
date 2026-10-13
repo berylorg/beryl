@@ -140,6 +140,7 @@ impl SyndicComposerHost {
                 && purpose == ComposerHostFlushPurpose::Submission
             {
                 self.lifecycle.barrier = None;
+                self.seal_historical_preflush(flush);
                 return Ok(ComposerHostFlushCapture::Satisfied(purpose));
             }
             return Ok(ComposerHostFlushCapture::State(state));
@@ -179,6 +180,7 @@ impl SyndicComposerHost {
                     ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
                 } else {
                     self.lifecycle.barrier = None;
+                    self.seal_historical_preflush(flush);
                     ComposerHostFlushCapture::Satisfied(purpose)
                 }
             }
@@ -276,6 +278,7 @@ impl SyndicComposerHost {
                 && purpose == ComposerHostFlushPurpose::Submission
             {
                 self.lifecycle.barrier = None;
+                self.seal_historical_preflush(flush);
                 return Ok(ComposerHostFlushAdvance::Satisfied(purpose));
             }
             return Ok(ComposerHostFlushAdvance::Progress(state));

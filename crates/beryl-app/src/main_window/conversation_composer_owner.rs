@@ -38,6 +38,7 @@ pub(crate) use failed_claim_capture::{
     MainWindowFailedClaimCapture, MainWindowFailedClaimGuiAuthority, MainWindowFailedClaimResources,
 };
 mod fresh_candidate;
+mod historical_replacement;
 pub(crate) use fresh_candidate::{
     MainWindowFreshClaimWidgetBatch, MainWindowFreshClaimWidgetReply,
 };
@@ -168,6 +169,10 @@ pub enum MainWindowConversationComposerEvent {
     SubmitPropagated {
         selection: MainWindowComposerSelectionIdentity,
     },
+    ReplacementModeChanged {
+        selection: MainWindowComposerSelectionIdentity,
+        intent: syndic_storage::DraftSubmissionIntent,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -237,6 +242,13 @@ pub struct MainWindowConversationComposer {
     mutation_evidence: Option<dispatch::ActiveComposerMutationEvidence>,
     quote_insertion: Option<quote::ComposerQuoteInsertion>,
     quote_feedback: Option<quote::ComposerQuoteFeedback>,
+    historical_replacement: Option<historical_replacement::MountedHistoricalReplacement>,
+    replacement_intent: Option<syndic_storage::DraftSubmissionIntent>,
+    historical_replacement_feedback: Option<String>,
+    #[cfg(feature = "test-faults")]
+    historical_rebind_test: (bool, usize),
+    #[cfg(feature = "test-faults")]
+    historical_realization_hold: bool,
     last_mutation_admission_failure:
         Option<std::sync::Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>>,
     mutation_feedback: Option<MainWindowComposerMutationFeedback>,
@@ -269,6 +281,10 @@ pub struct MainWindowConversationComposer {
     scheduled: bool,
     last_error: Option<String>,
     submission_availability: Result<(), crate::cas_projection::SubmissionUnavailable>,
+    historical_edit_availability: Option<(
+        MainWindowComposerSelectionIdentity,
+        Result<(), crate::cas_projection::HistoricalEditUnavailable>,
+    )>,
     submission_proof: Option<crate::cas_projection::SubmissionProof>,
     submission_observation_epoch: std::sync::Arc<()>,
     submission_outcome: Option<crate::cas_projection::SubmissionUnavailable>,
@@ -289,6 +305,9 @@ impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversatio
 
 impl Drop for MainWindowConversationComposer {
     fn drop(&mut self) {
+        if let Some(replacement) = self.historical_replacement.as_ref() {
+            replacement.cancel();
+        }
         if let Some(paste) = self.paste.as_ref() {
             paste.cancellation.cancel();
         }
@@ -300,6 +319,42 @@ impl Drop for MainWindowConversationComposer {
 }
 
 impl MainWindowConversationComposer {
+    pub fn historical_edit_unavailable(
+        &self,
+    ) -> Option<crate::cas_projection::HistoricalEditUnavailable> {
+        self.historical_edit_availability
+            .filter(|(selection, _)| *selection == self.selection)
+            .map_or(
+                Some(crate::cas_projection::HistoricalEditUnavailable::AuthorityUnavailable),
+                |(_, availability)| availability.err(),
+            )
+    }
+
+    pub(in crate::main_window) fn set_historical_edit_availability(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        availability: Result<(), crate::cas_projection::HistoricalEditUnavailable>,
+        cx: &mut Context<Self>,
+    ) {
+        if selection != self.selection {
+            return;
+        }
+        let observation = Some((selection, availability));
+        if self.historical_edit_availability != observation {
+            self.historical_edit_availability = observation;
+            cx.notify();
+        }
+    }
+
+    pub(in crate::main_window) fn clear_historical_edit_availability(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        if self.historical_edit_availability.take().is_some() {
+            cx.notify();
+        }
+    }
+
     pub fn submission_unavailable(&self) -> Option<crate::cas_projection::SubmissionUnavailable> {
         self.submission_proof
             .as_ref()

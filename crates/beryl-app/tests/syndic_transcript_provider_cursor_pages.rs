@@ -36,6 +36,7 @@ fn record(
         projection_id: projection_id.clone(),
         narrative_kind: TranscriptNarrativeKind::AssistantCommentary,
         provenance: SyndicSourceProvenance {
+            transcript_entry: None,
             view_id: view_id.clone(),
             position: Some(position),
             turn_id: Some(SyndicTurnId(format!("turn-{id}"))),

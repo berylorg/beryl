@@ -1,6 +1,12 @@
 use super::*;
 
 impl SyndicTranscriptPanel {
+    pub(crate) fn transcript_menu_open_diagnostic_for_test(&self) -> Option<&str> {
+        self.quote_state.last_open_diagnostic.as_deref()
+    }
+    pub(crate) fn transcript_menu_focused_id_for_test(&self) -> Option<&str> {
+        self.quote_state.popup.as_ref()?.focused_id()
+    }
     pub(crate) fn transcript_menu_row_position_for_test(
         &self,
         index: usize,

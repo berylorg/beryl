@@ -1,14 +1,39 @@
+use super::super::DraftEditorCandidateSessionsFamily;
 use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, DomainReader, HomeStore};
 use beryl_model::SyndicContentId;
 
 use crate::{
     ContentByteSpanRecord, ContentLifecycle, ContentPieceOrdinal, ContentPieceRecord,
-    ContentReference, SyndicPointReadLimit, SyndicReadError, SyndicStorage, codec::*,
+    ContentReference, DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
+    DraftEditorCandidateSessionV1, SyndicPointReadLimit, SyndicReadError, SyndicStorage, codec::*,
     domain::SyndicDomain,
 };
 
 pub(super) trait SourceReader {
     fn point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, SyndicReadError>;
+    #[inline(never)]
+    fn boxed_point<F: Family>(
+        &self,
+        key: &F::Key,
+    ) -> Result<Option<Box<F::Value>>, SyndicReadError> {
+        Ok(self.point::<F>(key)?.map(Box::new))
+    }
+
+    #[inline(never)]
+    fn contains<F: Family>(&self, key: &F::Key) -> Result<bool, SyndicReadError> {
+        Ok(self.point::<F>(key)?.is_some())
+    }
+
+    #[inline(never)]
+    fn session_head(
+        &self,
+        key: &DraftEditorCandidateSessionRecordKeyV1,
+    ) -> Result<Box<DraftEditorCandidateSessionV1>, super::request::DraftReplacementErrorV1> {
+        match self.point::<DraftEditorCandidateSessionsFamily>(key)? {
+            Some(DraftEditorCandidateSessionRecordV1::Head(head)) => Ok(Box::new(head)),
+            _ => Err(super::request::DraftReplacementErrorV1::Conflict),
+        }
+    }
     fn byte_span(
         &self,
         owner: SyndicContentId,

@@ -13,7 +13,7 @@ use super::super::{ComposerHostBinding, ComposerHostError, SyndicComposerHost};
 const HISTORY_MARKER_NEIGHBOR_BYTES: usize = 4_096;
 
 impl SyndicComposerHost {
-    pub(super) fn history_position(
+    pub(in crate::composer_host) fn history_position(
         &self,
         store: &HomeStore,
         binding: ComposerHostBinding,

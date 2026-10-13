@@ -289,6 +289,16 @@ impl SyndicComposerHost {
             .storage
             .input_gate(store, thread_id, submission_point_limit())?
             .ok_or(ComposerHostError::MissingCurrentDraft)?;
+        if self.submission_intent() != Some(current.draft().submission_intent()) {
+            return Err(ComposerHostError::DurableSelectorChanged.into());
+        }
+        if matches!(
+            current.draft().submission_intent(),
+            syndic_storage::DraftSubmissionIntent::Replacement(_)
+        ) && (gate.state() != &syndic_storage::InputGateState::Idle || gate.live_count() != 0)
+        {
+            return Err(ComposerHostError::LifecycleBlocked.into());
+        }
         let build = DraftComposerBuildKeyV1::new(
             selector.root(),
             DraftComposerFormatV1::ComposerV1,

@@ -181,11 +181,21 @@ pub(crate) struct ProjectionRecordId(pub(crate) String);
 pub(crate) enum ProjectionRecordKind {
     TextChunk,
     InlineTable,
+    ImageMarker,
     ResourceReference,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TranscriptImageMarker {
+    pub(crate) atom_ordinal: syndic_storage::ComposerAtomOrdinal,
+    pub(crate) marker_ordinal: syndic_storage::InputMarkerOrdinal,
+    pub(crate) source_offset: u64,
+    pub(crate) marker: syndic_storage::ComposerImageMarker,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPayload {
+    ImageMarker(TranscriptImageMarker),
     NarrativePending {
         source: std::sync::Arc<syndic_storage::ProjectionPayload>,
     },
@@ -266,6 +276,7 @@ pub(crate) enum ResourceKind {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SyndicSourceProvenance {
+    pub(crate) transcript_entry: Option<syndic_storage::CurrentTranscriptEntryProof>,
     pub(crate) view_id: TranscriptViewId,
     pub(crate) position: Option<TranscriptViewPosition>,
     pub(crate) turn_id: Option<SyndicTurnId>,

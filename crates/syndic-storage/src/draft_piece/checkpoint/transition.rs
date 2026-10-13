@@ -9,7 +9,7 @@ pub(super) fn transition_is_exact<R: CheckpointReader>(
         return Ok(false);
     };
     let Some(transition) =
-        reader.point::<DraftEditHistoryTransitionsFamily>(&journal_head.key())?
+        reader.boxed_point::<DraftEditHistoryTransitionsFamily>(&journal_head.key())?
     else {
         return Ok(false);
     };
@@ -22,6 +22,7 @@ pub(super) fn transition_is_exact<R: CheckpointReader>(
     ordinary_transition_is_exact(reader, head, frontier, &transition)
 }
 
+#[inline(never)]
 fn ordinary_transition_is_exact<R: CheckpointReader>(
     reader: &R,
     head: &DraftEditorCandidateSessionV1,
@@ -33,17 +34,18 @@ fn ordinary_transition_is_exact<R: CheckpointReader>(
         head.session_id(),
         transition.operation_id(),
     );
-    let settlement = reader.point::<DraftPieceSettlementsFamily>(&key)?;
+    let settlement = reader.boxed_point::<DraftPieceSettlementsFamily>(&key)?;
     ordinary_build_is_exact(
         reader,
         head,
         frontier,
         transition,
         &key,
-        settlement.as_ref(),
+        settlement.as_deref(),
     )
 }
 
+#[inline(never)]
 fn ordinary_build_is_exact<R: CheckpointReader>(
     reader: &R,
     head: &DraftEditorCandidateSessionV1,
@@ -52,8 +54,8 @@ fn ordinary_build_is_exact<R: CheckpointReader>(
     key: &DraftPieceSettlementKeyV1,
     settlement: Option<&DraftPieceSettlementV1>,
 ) -> Result<bool, R::Error> {
-    let build = reader.point::<DraftPieceBuildsFamily>(key)?;
-    let (Some(settlement), Some(build)) = (settlement, build.as_ref()) else {
+    let build = reader.boxed_point::<DraftPieceBuildsFamily>(key)?;
+    let (Some(settlement), Some(build)) = (settlement, build.as_deref()) else {
         return Ok(false);
     };
     if !build_progress_is_exact(reader, build)? {
@@ -70,12 +72,13 @@ fn ordinary_build_is_exact<R: CheckpointReader>(
         && adoption.transition() == transition)
 }
 
+#[inline(never)]
 fn build_progress_is_exact<R: CheckpointReader>(
     reader: &R,
     build: &DraftPieceBuildRecordV1,
 ) -> Result<bool, R::Error> {
     let Some(receipt) =
-        reader.point::<DraftPieceBuildProgressFamily>(&build.progress_receipt().key())?
+        reader.boxed_point::<DraftPieceBuildProgressFamily>(&build.progress_receipt().key())?
     else {
         return Ok(false);
     };
@@ -88,13 +91,12 @@ fn build_progress_is_exact<R: CheckpointReader>(
         return Ok(false);
     };
     if reader
-        .point::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
+        .contains::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
             build.draft_id(),
             build.session_id(),
             build.operation_id(),
             next_ordinal,
         ))?
-        .is_some()
         || !progress_receipt_matches_build(&receipt, build)
         || !reader.authenticate_progress(&receipt)?
     {

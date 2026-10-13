@@ -31,6 +31,8 @@ mod narrative_native;
 mod quote_insertion;
 #[path = "indexed_resources/turn_menus.rs"]
 mod turn_menus;
+#[path = "indexed_resources/image_markers.rs"]
+mod image_markers;
 
 #[path = "indexed_resources/narrative_source_revision.rs"]
 mod narrative_source_revision;

@@ -14,6 +14,10 @@ use crate::composer_marker_seal::DraftMarkerSealServiceError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComposerHostError {
+    #[error("historical replacement failed: {0}")]
+    HistoricalReplacement(#[from] syndic_storage::DraftReplacementErrorV1),
+    #[error("historical image proof failed: {0}")]
+    HistoricalAsset(#[from] beryl_state::AssetHistoricalInputError),
     #[error("Beryl home is unavailable: {0:?}")]
     HomeUnavailable(HomeHealthState),
     #[error("composer host belongs to another Beryl home")]

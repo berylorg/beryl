@@ -15,6 +15,9 @@ impl SyndicComposerHost {
             return Err(ComposerHostError::LifecycleBlocked);
         }
         self.lifecycle.service_disposed = true;
+        if !self.drain_historical_replacement_for_disposal(store)? {
+            return Ok(ComposerHostServiceDisposalCompletion::Pending);
+        }
         match self.drain_evidenced_mutations_for_disposal(store) {
             Ok(()) => {}
             Err(ComposerHostError::MutationWorkPending) => {

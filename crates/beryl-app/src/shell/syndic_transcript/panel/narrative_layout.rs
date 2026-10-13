@@ -10,6 +10,9 @@ use syndic_storage::narrative::{
     NarrativeFragment, NarrativeRun, NarrativeStyle, PreparedNarrative,
 };
 
+mod inline_parts;
+pub(super) use inline_parts::{InlinePartsLayout, InlinePartsPreparation};
+
 pub(super) trait NarrativeDisplay {
     fn display(&self) -> &str;
     fn runs(&self) -> &[NarrativeRun];
@@ -46,6 +49,7 @@ pub(super) struct NarrativeLayout {
     pub(super) width: Pixels,
     pub(super) line_height: Pixels,
     pub(super) charge: usize,
+    logical_base: usize,
 }
 
 impl NarrativeLayoutPreparation {
@@ -175,6 +179,7 @@ impl NarrativeLayoutPreparation {
             width: self.binding.wrap_width,
             line_height: self.binding.line_height,
             charge: self.charge + size_of::<NarrativeLayout>() + 2 * size_of::<usize>(),
+            logical_base: 0,
         })))
     }
 
@@ -296,7 +301,7 @@ impl NarrativeLayout {
                 let b = distance(right);
                 a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1))
             })
-            .map(|map| map.logical_position.byte_offset as usize)
+            .and_then(|map| (map.logical_position.byte_offset as usize).checked_sub(self.logical_base))
     }
 
     pub(super) fn paint(
@@ -315,8 +320,8 @@ impl NarrativeLayout {
                 if let Some(selected) = &selected {
                     let maps = maps(fragment);
                     for pair in maps.windows(2) {
-                        let start = pair[0].logical_position.byte_offset as usize;
-                        let end = pair[1].logical_position.byte_offset as usize;
+                        let start = (pair[0].logical_position.byte_offset as usize).saturating_sub(self.logical_base);
+                        let end = (pair[1].logical_position.byte_offset as usize).saturating_sub(self.logical_base);
                         if start >= selected.end || end <= selected.start {
                             continue;
                         }
@@ -351,7 +356,7 @@ impl NarrativeLayout {
             .iter()
             .flat_map(|value| value.fragments.iter())
             .flat_map(maps)
-            .find(|map| map.logical_position.byte_offset == index as u64)
+            .find(|map| map.logical_position.byte_offset == index.saturating_add(self.logical_base) as u64)
             .map(|map| map.position)
     }
 }

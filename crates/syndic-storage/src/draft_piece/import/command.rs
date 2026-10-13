@@ -1,6 +1,7 @@
 use super::super::*;
 use super::{
     admission::{authenticate_source, required},
+    read::SourceReader,
     request::*,
 };
 use crate::{codec::*, domain::SyndicDomain};
@@ -27,44 +28,37 @@ impl DomainMutation<SyndicDomain> for BeginImport {
         if !self.generation_matches {
             return Err(DraftReplacementErrorV1::Proof);
         }
-        let (build, receipt, head) = initial_transition(&self.prepared)?;
+        let transition = initial_transition(&self.prepared)?;
+        let (build, receipt, head) = transition.as_ref();
         let key = DraftPieceSettlementKeyV1::new(
             build.draft_id(),
             build.session_id(),
             build.operation_id(),
         );
-        let existing = super::read::SourceReader::point::<DraftPieceBuildsFamily>(reader, &key)?;
-        if existing.as_ref() == Some(&build) {
-            authenticate_transition(reader, &build, &receipt, &head)?;
+        let existing = reader.boxed_point::<DraftPieceBuildsFamily>(&key)?;
+        if existing.as_deref() == Some(build) {
+            authenticate_transition(reader, build, receipt, head)?;
             return Ok(None);
         }
         if existing.is_some()
-            || super::read::SourceReader::point::<DraftPieceSettlementsFamily>(reader, &key)?
-                .is_some()
-            || super::read::SourceReader::point::<DraftPieceBuildProgressFamily>(
-                reader,
-                &receipt.key(),
-            )?
-            .is_some()
-            || super::read::SourceReader::point::<DraftPieceRootsFamily>(
-                reader,
-                &DraftPieceRootKeyV1::editor_candidate(
-                    build.draft_id(),
-                    build.session_id(),
-                    build.operation_id(),
-                ),
-            )?
-            .is_some()
+            || reader.contains::<DraftPieceSettlementsFamily>(&key)?
+            || reader.contains::<DraftPieceBuildProgressFamily>(&receipt.key())?
+            || reader.contains::<DraftPieceRootsFamily>(&DraftPieceRootKeyV1::editor_candidate(
+                build.draft_id(),
+                build.session_id(),
+                build.operation_id(),
+            ))?
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
         authenticate_source(reader, self.prepared.basis)?;
-        let current = required::<DraftEditorCandidateSessionsFamily>(
-            reader,
-            &head_key(&self.prepared.source_session),
-        )?;
-        if current
-            != DraftEditorCandidateSessionRecordV1::Head(*self.prepared.source_session.clone())
+        let current = reader
+            .boxed_point::<DraftEditorCandidateSessionsFamily>(&head_key(
+                &self.prepared.source_session,
+            ))?
+            .ok_or(DraftReplacementErrorV1::Conflict)?;
+        if !matches!(current.as_ref(), DraftEditorCandidateSessionRecordV1::Head(head)
+            if head == self.prepared.source_session.as_ref())
         {
             return Err(DraftReplacementErrorV1::Conflict);
         }
@@ -78,7 +72,7 @@ impl DomainMutation<SyndicDomain> for BeginImport {
         )? {
             return Err(DraftReplacementErrorV1::Ineligible);
         }
-        Ok(Some(Box::new((build, receipt, head))))
+        Ok(Some(transition))
     }
     fn reserve_reconciliation(
         &self,
@@ -100,9 +94,10 @@ impl DomainMutation<SyndicDomain> for BeginImport {
     }
 }
 
-pub(super) fn initial_transition(
+#[inline(never)]
+fn initial_transition(
     prepared: &PreparedDraftReplacementImportV1,
-) -> Result<ImportTransition, DraftReplacementErrorV1> {
+) -> Result<Box<ImportTransition>, DraftReplacementErrorV1> {
     let h = prepared.header;
     let zero = DraftPieceBuildBoundaryV1::new(0, 0);
     let frontier = DraftSealedImportFrontierV1 {
@@ -160,7 +155,7 @@ pub(super) fn initial_transition(
         .source_session
         .with_active_operation(custody(&build))
         .ok_or(DraftReplacementErrorV1::Conflict)?;
-    Ok((build, receipt, head))
+    Ok(Box::new((build, receipt, head)))
 }
 
 pub(super) fn custody(build: &DraftPieceBuildRecordV1) -> DraftEditorActiveOperationV1 {

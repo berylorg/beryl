@@ -20,6 +20,8 @@ mod selection_invocation;
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
+mod historical_replacement;
+mod transcript_image_preview;
 mod model_controls;
 mod quote;
 mod selected;
@@ -689,6 +691,7 @@ pub struct MainWindowShellRoot {
     pub(super) shell_focus: gpui::FocusHandle,
     pub(super) notices: notices::MainWindowShellNotices,
     pub(super) home_warning_startup: Option<Arc<()>>,
+    transcript_image_preview: Option<transcript_image_preview::TranscriptImagePreview>,
 }
 
 mod root;

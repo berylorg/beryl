@@ -24,6 +24,7 @@ fn source_provenance(
 ) -> SyndicSourceProvenance {
     let projection_id = projection_id(name);
     SyndicSourceProvenance {
+        transcript_entry: None,
         view_id: view_id(),
         position: Some(TranscriptViewPosition(position)),
         turn_id: Some(SyndicTurnId(format!("turn-{name}"))),
@@ -234,6 +235,80 @@ fn prepared_narrative_context_menu_requires_authored_nonempty_stable_source() {
         resident_context_menu_record(&record, geometry),
         Err(ResidentContextMenuUnavailable::MissingStableProvenance { .. })
     ));
+}
+
+#[test]
+fn historical_menu_source_requires_exact_entry_identity_and_position() {
+    let thread = beryl_model::SyndicThreadId::from_bytes([31; 16]);
+    let turn = beryl_model::SyndicTurnId::from_bytes([32; 16]);
+    let item = beryl_model::SyndicItemId::from_bytes([33; 16]);
+    let mut record = text_record(13, "historical", 0, Some(0..8));
+    let ResidentRecordSource::Syndic(source) = &mut record.provenance.source else {
+        panic!()
+    };
+    source.view_id = TranscriptViewId(thread.to_string());
+    source.turn_id = Some(SyndicTurnId(turn.to_string()));
+    source.item_id = Some(SyndicItemId(item.to_string()));
+    source.position = Some(TranscriptViewPosition(
+        syndic_storage::TranscriptPosition::FIRST.get(),
+    ));
+    let proof = syndic_storage::CurrentTranscriptEntryProof::new(
+        syndic_storage::TranscriptGeneration::FIRST,
+        syndic_storage::TranscriptPosition::FIRST,
+    );
+    source.transcript_entry = Some(proof);
+    let geometry = ResidentSelectionRecordGeometry::new(record.id.clone(), 0., 32.);
+    let mut target = resident_context_menu_record(&record, geometry).unwrap();
+    let captured = target.historical_target().unwrap();
+    assert_eq!(
+        (
+            captured.thread_id,
+            captured.turn_id,
+            captured.item_id,
+            captured.transcript
+        ),
+        (thread, turn, item, proof)
+    );
+    target.source.position = Some(TranscriptViewPosition(proof.position().get() + 1));
+    assert!(target.historical_target().is_none());
+    target.source.position = Some(TranscriptViewPosition(proof.position().get()));
+    target.source.transcript_entry = None;
+    assert!(target.historical_target().is_none());
+    target.source.transcript_entry = Some(proof);
+    target.source.item_id = Some(SyndicItemId("transport-item".into()));
+    assert!(target.historical_target().is_none());
+}
+
+#[test]
+fn inline_table_menu_keeps_exact_canonical_source_without_narrative_geometry() {
+    let text = "| a | b |\n|---|---|\n| 1 | 2 |\n";
+    let payload = syndic_storage::ProjectionPayload::inline_markdown(
+        syndic_storage::MarkdownBlockId::from_bytes([34; 32]),
+        syndic_storage::MarkdownBlockKind::Table,
+        1,
+        syndic_storage::ProjectionSourceRange::new(0, text.len() as u64).unwrap(),
+        text,
+    )
+    .unwrap();
+    let mut record = text_record(13, "table", 20, None);
+    record.kind = ResidentPresentationRecordKind::InlineTable {
+        prepared: std::sync::Arc::new(
+            syndic_storage::inline_table::prepare_inline_table(payload, 131_072).unwrap(),
+        ),
+    };
+    let geometry = ResidentSelectionRecordGeometry::new(record.id.clone(), 0., 64.);
+    let target = resident_context_menu_record(&record, geometry).unwrap();
+    assert_eq!(
+        target.content_kind,
+        ResidentContextMenuContentKind::InlineTable
+    );
+    assert_eq!(target.source, source_provenance("table", 20, None));
+    assert_eq!(target.record_id, record.id);
+    record.kind = ResidentPresentationRecordKind::InlineTableUnavailable {
+        source: text.into(),
+        reason: syndic_storage::inline_table::InlineTablePreparationErrorKind::Capacity,
+    };
+    assert!(resident_context_menu_record(&record, target.geometry).is_err());
 }
 
 #[test]

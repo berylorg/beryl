@@ -3313,7 +3313,7 @@ pub struct DraftPieceSettlementV1 {
     selection: DraftCompositePositionV1,
     build_digest: Option<DraftPieceDigestV1>,
     canonical_header: Vec<u8>,
-    terminal_source: Option<DraftPieceBuildRecordV1>,
+    terminal_source: Option<Box<DraftPieceBuildRecordV1>>,
     terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
     outcome: DraftPieceSettlementOutcomeV1,
     closure: Box<DraftPieceSettlementClosureV1>,
@@ -3353,7 +3353,7 @@ impl DraftPieceSettlementV1 {
             selection,
             build_digest,
             canonical_header,
-            terminal_source,
+            terminal_source: terminal_source.map(Box::new),
             terminal_receipt,
             outcome,
             closure: Box::new(closure),
@@ -3393,7 +3393,7 @@ impl DraftPieceSettlementV1 {
             selection,
             build_digest,
             canonical_header,
-            terminal_source,
+            terminal_source: terminal_source.map(Box::new),
             terminal_receipt,
             outcome,
             closure,
@@ -3440,7 +3440,10 @@ impl DraftPieceSettlementV1 {
         &self.canonical_header
     }
     pub const fn terminal_source(&self) -> Option<&DraftPieceBuildRecordV1> {
-        self.terminal_source.as_ref()
+        match self.terminal_source.as_ref() {
+            Some(source) => Some(source),
+            None => None,
+        }
     }
     pub const fn terminal_receipt(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
         self.terminal_receipt

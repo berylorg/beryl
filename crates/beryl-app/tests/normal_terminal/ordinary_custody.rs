@@ -12,7 +12,7 @@ use beryl_app::{
 };
 use syndic_storage::{PendingDispatchEvidence, SyndicPointReadLimit, TurnLifecycle};
 
-fn prepare(
+pub(super) fn prepare(
     fixture: &Fixture,
     server: &NormalTerminalServer,
     admission_event: bool,
@@ -59,7 +59,7 @@ fn prepare(
     (session, projection)
 }
 
-fn execute(
+pub(super) fn execute(
     fixture: &Fixture,
     projection: LoadedCasProjection,
     cancellation: &ProjectionCancellationToken,
@@ -121,7 +121,7 @@ fn refused(
     *projection
 }
 
-fn close(
+pub(super) fn close(
     fixture: Fixture,
     session: AdmittedProjectionSession,
     projection: Option<LoadedCasProjection>,

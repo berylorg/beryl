@@ -1,10 +1,34 @@
-use super::code_long_line::{retire_code_fixture, with_native};
+use super::code_long_line::{retire_code_fixture, wait_until, with_native};
 use super::narrative_native::{
     drag, key, point_at, pointer, ready, record, require_fixture_ledger,
 };
 use super::*;
 use crate::syndic_transcript::TranscriptNarrativeKind;
-use gpui::{Focusable, MouseButton, MouseDownEvent, PlatformInput};
+use gpui::{EntityInputHandler, Focusable, MouseButton, MouseDownEvent, PlatformInput};
+
+const RETAINED_DRAFT: &str = "draft";
+
+async fn nonempty_composer(
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut AsyncApp,
+) -> gpui::Entity<MainWindowConversationComposer> {
+    let resident = composer(window, cx).await;
+    with_native(window, cx, |native, app| {
+        resident.read(app).gpui_input().update(app, |input, cx| {
+            input.focus(native);
+            input.replace_text_in_range(None, RETAINED_DRAFT, native, cx);
+        });
+    }).unwrap();
+    wait_until(window, cx, |cx| resident.read_with(cx, |resident, app| {
+        assert_eq!(resident.last_error(), None);
+        resident.selection_identity().binding().logical_extent().logical_utf8_bytes() == RETAINED_DRAFT.len() as u64
+            && resident.gpui_input().read(app).is_quiescent()
+            && resident.gpui_input().read(app).is_surface_current_and_interactive()
+            && resident.test_edit_position_proof_ready(app)
+            && !resident.test_has_active_flight()
+    }).unwrap(), "the real nonempty composer must settle before menu refusal assertions").await;
+    resident
+}
 
 fn context_pointer(
     native: &mut gpui::Window,
@@ -35,7 +59,7 @@ fn assert_disabled_edit(panel: &crate::syndic_transcript::SyndicTranscriptPanel,
         &(
             "Edit message".into(),
             false,
-            Some("Historical message editing is not available yet.".into()),
+            Some("Empty the composer before editing a historical message.".into()),
         )
     );
     assert!(panel.resident_context_menu_target().is_some());
@@ -55,7 +79,7 @@ fn native_user_turn_menu_pointer_keyboard_disabled_edit_and_selection_closure() 
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();
                 ready(window, &panel, cx, &["turn **café"]).await;
-                let resident = composer(window, cx).await;
+                let resident = nonempty_composer(window, cx).await;
                 with_native(window, cx, |native, app| {
                     let (id, _, display) = record(panel.read(app), "turn **café");
                     assert_eq!(
@@ -107,7 +131,7 @@ fn native_user_turn_menu_pointer_keyboard_disabled_edit_and_selection_closure() 
                             .binding()
                             .logical_extent()
                             .logical_utf8_bytes(),
-                        0
+                        RETAINED_DRAFT.len() as u64
                     );
                     key(native, app, "escape");
                     assert!(!panel.read(app).quote_menu_open_for_test());
@@ -138,7 +162,7 @@ fn native_user_turn_menu_pointer_keyboard_disabled_edit_and_selection_closure() 
                             .binding()
                             .logical_extent()
                             .logical_utf8_bytes(),
-                        0
+                        RETAINED_DRAFT.len() as u64
                     );
                     key(native, app, "escape");
                     context_pointer(native, app, point_at(panel.read(app), &id, start + 1));
@@ -168,7 +192,7 @@ fn native_user_turn_menu_pointer_keyboard_disabled_edit_and_selection_closure() 
                             .binding()
                             .logical_extent()
                             .logical_utf8_bytes(),
-                        0
+                        RETAINED_DRAFT.len() as u64
                     );
                 })
                 .unwrap();
@@ -192,6 +216,7 @@ fn native_user_turn_menu_geometry_invalidation_and_retirement_close_exact_target
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();
                 ready(window, &panel, cx, &["retiring exact"]).await;
+                let _resident = nonempty_composer(window, cx).await;
                 with_native(window, cx, |native, app| {
                     let (id, _, _) = record(panel.read(app), "retiring exact");
                     context_pointer(native, app, point_at(panel.read(app), &id, 2));

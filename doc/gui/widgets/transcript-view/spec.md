@@ -34,6 +34,14 @@ text treatment rather than the unavailable-record part.
 
 Each realized presentation record has an owner-supplied stable identity, revision, provenance classification, measured outer geometry, and authored-content, synthetic-context, or local-presentation classification. Authored content records may contain text runs, image markers, code panels, table panels, or other owner-supplied bounded nested widgets.
 
+An owner-prepared authored record may group a bounded slice of inline narrative parts and image
+markers into one streaming layout. Each part retains its own stable identity, revision and
+provenance; grouping introduces no new scroll surface and does not flatten nonresident content.
+Part hit testing, marker activation and menu anchoring use the same current measured layout as
+paint. A child target additionally names its exact containing frame record; it is retired when
+either identity, revision or geometry changes. Markers remain indivisible inline atoms and do not
+force an additional line. Grouping respects owner-supplied block boundaries.
+
 An authored-content record may include one optional noninteractive record-status/provenance part. The
 part carries an owner-supplied visible label and one pending, repaired,
 or incomplete provenance state. It belongs to the same host generation and record identity as the
@@ -77,6 +85,9 @@ Synthetic-context groups remain visually distinct from authored turns while part
 
 Local fallback records are visually distinct from authored conversation content. Activation-pending treatment keeps the previous coherent frame visible but dimmed and inert until its replacement is published atomically.
 
+Owner-supplied record dimming reduces a record's visual prominence while retaining readable
+content and its nested widgets. It is independent of activation-pending treatment.
+
 When present, the record-status/provenance part reads as compact supporting provenance attached to
 its record. Pending, repaired, and incomplete treatments remain distinguishable without competing
 with the authored content hierarchy or resembling an interactive badge.
@@ -92,6 +103,9 @@ selection-active, selection-unavailable, menu-anchored, and nested-scroll-routed
 
 Presentation records support authored content, synthetic context, local fallback, live, incomplete, context unavailable, resource pending, resource unavailable, and remeasurement pending states supplied by the owning feature and host.
 
+Each presentation record independently supports a `dimmed` visual state supplied by its owner.
+The widget does not infer affected records from transcript text, turn identity or history.
+
 The optional record-status/provenance part supports `present`, `pending`, `repaired`, and
 `incomplete` states. `present` means the part participates in the current record; when present it has
 exactly one of `pending`, `repaired`, or `incomplete`. Absence means the part is not realized and
@@ -100,6 +114,10 @@ does not reserve layout space.
 Missing, pending, stale, rejected, or loading data never becomes a selectable content-record state.
 
 # Interaction
+
+Record dimming preserves selection, Copy, Quote, scrolling, focus and nested-widget interaction.
+It grants no command authority and does not make a record inert. The owner still supplies each
+command's exact provenance and availability.
 
 Wheel, touchpad, keyboard, and programmatic manual scrolling apply exact pixel displacement. Manual scroll intent detaches automatic tail placement before demand resulting from that input is evaluated. Reaching a coherent resident edge clamps movement until the host supplies adjacent coherent records or a stable terminal fallback.
 
@@ -207,7 +225,7 @@ observation, and obsolete environment or generation observations cannot advance 
 
 Live-tail growth and durable reconciliation retain the same outer record identity. They may change its measured extent, but they do not insert a second row or reset the current semantic anchor solely because the authoritative frontier advanced.
 
-The selection and transient-affordance layers overlay the realized frame without changing record measurement or scroll geometry. Activation-pending dimming likewise does not alter layout.
+The selection and transient-affordance layers overlay the realized frame without changing record measurement or scroll geometry. Activation-pending and record dimming likewise do not alter layout.
 
 The one accepted focus pin may extend realization only enough to retain its exact record and
 minimum nested-widget state. It never expands the visible range, overscan, virtual extent, or
@@ -251,6 +269,10 @@ Spec CSS:
 .transcript-view__record {
   min-inline-size: 0;
   inline-size: 100%;
+}
+
+.transcript-view__record[data-state~="dimmed"] {
+  opacity: var(--opacity);
 }
 
 .transcript-view__record-status {
@@ -422,6 +444,10 @@ Default variant: interactive narrative.
 .transcript-view {
   --background: transparent;
   --foreground: #e5e7eb;
+}
+
+.transcript-view__record[data-state~="dimmed"] {
+  --opacity: 0.55;
 }
 
 .transcript-view__viewport {

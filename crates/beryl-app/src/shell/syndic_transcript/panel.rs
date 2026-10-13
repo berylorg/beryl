@@ -15,6 +15,7 @@ mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
 mod inline_table_actions;
+mod inline_parts;
 mod narrative;
 mod narrative_appearance;
 mod narrative_layout;
@@ -47,6 +48,26 @@ pub(crate) struct QuoteInsertionRequested {
     pub(crate) activation: u64,
     pub(crate) presentation: u64,
     pub(crate) cancellation: beryl_home_store::CommandCancellation,
+}
+
+#[derive(Clone)]
+pub(crate) struct HistoricalReplacementRequested {
+    pub(crate) target: super::ResidentTranscriptContextMenuTarget,
+    pub(crate) request: u64,
+    pub(crate) activation: u64,
+    pub(crate) presentation: u64,
+    pub(crate) anchor: Option<super::RealizedFrameAnchor>,
+    pub(crate) cancellation: beryl_home_store::CommandCancellation,
+}
+
+#[derive(Clone)]
+pub(crate) struct ImageMarkerInspectionRequested {
+    pub(crate) request: u64,
+    pub(crate) target: super::ResidentTranscriptContextMenuTarget,
+    pub(crate) activation: u64,
+    pub(crate) presentation: u64,
+    pub(crate) bounds: gpui::Bounds<gpui::Pixels>,
+    pub(crate) focus: FocusHandle,
 }
 use super::{
     DemandFact, DemandFactKind, LocalPresentationReason, ManualTranscriptScrollCommand,
@@ -122,6 +143,7 @@ struct ResourceQueuePosition {
 }
 
 pub(crate) struct SyndicTranscriptPanel {
+    dimmed_records: std::collections::HashSet<ResidentPresentationRecordId>,
     keyboard_copy: copy_keyboard::KeyboardCopy,
     focus_handle: FocusHandle,
     host: SyndicTranscriptHost,
@@ -144,6 +166,11 @@ pub(crate) struct SyndicTranscriptPanel {
     narrative_appearance: narrative_appearance::NarrativeAppearance,
     narrative_geometry: Vec<narrative::NarrativeGeometry>,
     narrative_candidate_geometry: Vec<narrative::NarrativeGeometry>,
+    inline_parts_geometry: Vec<inline_parts::InlinePartsGeometry>,
+    inline_parts_candidate_geometry: Vec<inline_parts::InlinePartsGeometry>,
+    image_inspection_serial: u64,
+    image_inspection_pending: Option<u64>,
+    image_marker_focus_fallback: Option<FocusHandle>,
     literal_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
     literal_candidate_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
     narrative_selection: Option<narrative::NarrativeSelection>,
@@ -164,14 +191,22 @@ pub(crate) struct SyndicTranscriptPanel {
 
 impl gpui::EventEmitter<ResourceViewportDemandChanged> for SyndicTranscriptPanel {}
 impl gpui::EventEmitter<QuoteInsertionRequested> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<HistoricalReplacementRequested> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<ImageMarkerInspectionRequested> for SyndicTranscriptPanel {}
 
 impl SyndicTranscriptPanel {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            dimmed_records: Default::default(),
             keyboard_copy: Default::default(),
             narrative_appearance: Default::default(),
             narrative_geometry: Vec::new(),
             narrative_candidate_geometry: Vec::new(),
+            inline_parts_geometry: Vec::new(),
+            inline_parts_candidate_geometry: Vec::new(),
+            image_inspection_serial: 0,
+            image_inspection_pending: None,
+            image_marker_focus_fallback: None,
             literal_geometry: Vec::new(),
             literal_candidate_geometry: Vec::new(),
             narrative_selection: None,
@@ -607,6 +642,18 @@ impl SyndicTranscriptPanel {
         self.close_invalid_geometry();
     }
 
+    pub(crate) fn set_record_dimming(
+        &mut self,
+        records: std::collections::HashSet<ResidentPresentationRecordId>,
+    ) {
+        self.dimmed_records = records;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn dimmed_record_ids_for_test(&self) -> &std::collections::HashSet<ResidentPresentationRecordId> {
+        &self.dimmed_records
+    }
+
     pub(crate) fn measurement_diagnostics(&self) -> (bool, usize, usize) {
         self.geometry
             .as_ref()
@@ -653,6 +700,7 @@ impl SyndicTranscriptPanel {
         self.staged = None;
         self.geometry = None;
         self.narrative_candidate_geometry.clear();
+        self.inline_parts_candidate_geometry.clear();
         self.literal_candidate_geometry.clear();
     }
 
@@ -664,6 +712,7 @@ impl SyndicTranscriptPanel {
     }
 
     fn close_invalid_geometry(&mut self) {
+        self.image_inspection_pending = None;
         self.cancel_literal_copy();
         self.narrative_selection = None;
         self.invalidate_transcript_menu();
@@ -733,6 +782,12 @@ impl SyndicTranscriptPanel {
             retained
         });
         self.literal_geometry = std::mem::take(&mut self.literal_candidate_geometry);
+        self.inline_parts_candidate_geometry.retain(|geometry| {
+            let retained = frame.records.iter().any(|record| record.record_id == geometry.record.id);
+            if !retained { self.host.reserve_inline_parts_layout(&geometry.record, 0); }
+            retained
+        });
+        self.inline_parts_geometry = std::mem::take(&mut self.inline_parts_candidate_geometry);
         self.host.release_previous_narrative_layout();
         self.prune_rejected_resources();
         self.published_snapshot = Some(self.host.shared_snapshot());
@@ -753,6 +808,8 @@ impl SyndicTranscriptPanel {
         self.host.retire();
         self.narrative_geometry.clear();
         self.narrative_candidate_geometry.clear();
+        self.inline_parts_geometry.clear();
+        self.inline_parts_candidate_geometry.clear();
         self.literal_geometry.clear();
         self.literal_candidate_geometry.clear();
         self.last_frame_window = None;
@@ -1302,6 +1359,7 @@ impl SyndicTranscriptPanel {
             && !changed;
         if changed || (settled && self.pending_delta != 0.0) {
             self.narrative_candidate_geometry.clear();
+            self.inline_parts_candidate_geometry.clear();
             self.literal_candidate_geometry.clear();
             let mut state = target.scroll_state();
             if self
@@ -1339,7 +1397,8 @@ impl SyndicTranscriptPanel {
                     .literal_geometry
                     .iter()
                     .map(|value| value.charge())
-                    .sum::<usize>();
+                    .sum::<usize>()
+                + self.inline_parts_geometry.iter().map(|value| value.charge()).sum::<usize>();
             self.staged
                 .as_mut()
                 .map(|staged| &mut staged.host)
@@ -1355,6 +1414,15 @@ impl SyndicTranscriptPanel {
                 .map(|staged| &mut staged.host)
                 .unwrap_or(&mut self.host);
             geometry.ready = geometry.preparation.advance_with_retained_observations(32, |record, observations, retained| {
+                self.inline_parts_candidate_geometry.retain(|value| {
+                    let keep = value.record.id == record.id || retained.iter().any(|row| row.record_id == value.record.id);
+                    if !keep { measurement_host.reserve_inline_parts_layout(&value.record, 0); }
+                    keep
+                });
+                if matches!(record.kind, ResidentPresentationRecordKind::AuthoredInlineParts { .. } | ResidentPresentationRecordKind::ImageMarker(_)) {
+                    return inline_parts::measure(&mut self.inline_parts_candidate_geometry, measurement_host,
+                        &self.inline_parts_geometry, &snapshot, record, &self.narrative_appearance, viewport_size.width, observations, window, cx);
+                }
                 narrative::prune_candidates(
                     &mut self.narrative_candidate_geometry,
                     &mut self.literal_candidate_geometry,
@@ -1565,6 +1633,7 @@ impl SyndicTranscriptPanel {
                 &snapshot,
                 &frame_window,
                 &selected_record_ids,
+                &self.dimmed_records,
                 &self.code_panels,
                 &self.table_panels,
                 &self.host,
@@ -1573,6 +1642,7 @@ impl SyndicTranscriptPanel {
                 &self.context_appearance,
                 &self.table_appearance,
                 &self.narrative_geometry,
+                &self.inline_parts_geometry,
                 &self.literal_geometry,
                 &self
                     .narrative_selection
@@ -1660,6 +1730,7 @@ fn render_frame_window(
     snapshot: &ResidentTranscriptSnapshot,
     frame_window: &RealizedFrameWindow,
     selected_record_ids: &[ResidentPresentationRecordId],
+    dimmed_records: &std::collections::HashSet<ResidentPresentationRecordId>,
     code_panels: &[code_panel::MountedCodePanel],
     table_panels: &[table_panel::MountedTablePanel],
     host: &SyndicTranscriptHost,
@@ -1668,6 +1739,7 @@ fn render_frame_window(
     context_appearance: &context_appearance::ContextAppearance,
     table_appearance: &table_appearance::TableAppearance,
     narrative_geometry: &[narrative::NarrativeGeometry],
+    inline_geometry: &[inline_parts::InlinePartsGeometry],
     literal_geometry: &[narrative_literal_geometry::LiteralGeometry],
     narrative_ranges: &[(ResidentPresentationRecordId, Range<usize>)],
     commands_pending: bool,
@@ -1695,6 +1767,7 @@ fn render_frame_window(
             record,
             frame_record,
             record_is_selected(&record.id, selected_record_ids),
+            dimmed_records.contains(&record.id),
             code_panels,
             table_panels,
             host,
@@ -1703,6 +1776,7 @@ fn render_frame_window(
             context_appearance,
             table_appearance,
             narrative_geometry,
+            inline_geometry,
             literal_geometry,
             narrative_ranges,
             commands_pending,
@@ -1718,6 +1792,7 @@ fn render_realized_record(
     record: &ResidentPresentationRecord,
     frame_record: &RealizedFrameRecord,
     is_selected: bool,
+    is_dimmed: bool,
     code_panels: &[code_panel::MountedCodePanel],
     table_panels: &[table_panel::MountedTablePanel],
     host: &SyndicTranscriptHost,
@@ -1726,11 +1801,13 @@ fn render_realized_record(
     context_appearance: &context_appearance::ContextAppearance,
     table_appearance: &table_appearance::TableAppearance,
     narrative_geometry: &[narrative::NarrativeGeometry],
+    inline_geometry: &[inline_parts::InlinePartsGeometry],
     literal_geometry: &[narrative_literal_geometry::LiteralGeometry],
     narrative_ranges: &[(ResidentPresentationRecordId, Range<usize>)],
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
+    let menu_record = record.id.clone();
     div()
         .debug_selector(|| format!("syndic-transcript-record:{}", record.id.0))
         .id(SharedString::from(format!(
@@ -1744,18 +1821,21 @@ fn render_realized_record(
         .h(px(frame_record.height_px))
         .min_h(px(frame_record.height_px))
         .overflow_hidden()
+        .when(is_dimmed, |row| row.opacity(0.55))
         .px(px(16.0))
         .pt(px(record_vertical_padding(snapshot, record).0))
         .pb(px(record_vertical_padding(snapshot, record).1))
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
-                panel.open_quote_menu(Some(event.position), window, cx);
+                panel.open_record_menu(&menu_record, event.position, window, cx);
                 cx.stop_propagation();
             }),
         )
         .child(
-            if let Some(geometry) = narrative_geometry
+            if let Some(geometry) = inline_geometry.iter().find(|geometry| geometry.record.id == record.id) {
+                inline_parts::render(geometry, narrative_ranges, cx)
+            } else if let Some(geometry) = narrative_geometry
                 .iter()
                 .find(|geometry| geometry.owner.record_id == record.id)
             {
@@ -1977,6 +2057,28 @@ fn render_ordinary_record_content(
     table_row_height: f32,
 ) -> AnyElement {
     match &record.kind {
+        ResidentPresentationRecordKind::AuthoredInlineParts { .. } => div().child("Inline content preparing").into_any_element(),
+        ResidentPresentationRecordKind::ImageMarker(marker) => div()
+            .flex()
+            .items_center()
+            .child(
+                div()
+                    .debug_selector(|| format!("transcript-image-marker:{}", marker.marker.marker_id()))
+                    .px(px(5.0))
+                    .py(px(1.0))
+                    .border_1()
+                    .border_color(gpui::rgb(0x64748b))
+                    .rounded(px(5.0))
+                    .bg(gpui::rgb(0x172554))
+                    .text_color(gpui::rgb(0x94a3b8))
+                    .text_size(px(12.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .line_height(px(16.0))
+                    .whitespace_nowrap()
+                    .opacity(0.8)
+                    .child(format!("Image {}", marker.marker.label())),
+            )
+            .into_any_element(),
         ResidentPresentationRecordKind::InlineTable { .. } => {
             table_panel::shell(table_appearance, table_row_height)
                 .child("Table loading")

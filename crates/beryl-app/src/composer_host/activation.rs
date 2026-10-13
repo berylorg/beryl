@@ -8,7 +8,7 @@ use syndic_storage::{
 
 use super::*;
 
-mod access;
+pub(super) mod access;
 use access::InitialActivationAccess;
 
 impl SyndicComposerHost {
@@ -218,6 +218,7 @@ impl SyndicComposerHost {
             initial_responses: Vec::new(),
             unavailable: false,
             durable_selector: selector,
+            submission_intent: None,
             published_candidate_generation: head.published_candidate_generation(),
             published_pair: syndic_storage::DraftRootHistoryPairV1::new(
                 head.published_root(),
@@ -225,6 +226,17 @@ impl SyndicComposerHost {
             ),
             session_disposed: false,
         }));
+        match access.submission_intent(&self.storage, selector) {
+            Ok(intent) => self.active.as_mut().unwrap().submission_intent = Some(intent),
+            Err(error) => {
+                if retain_open_on_terminal {
+                    self.active.as_mut().unwrap().unavailable = true;
+                } else {
+                    self.active = None;
+                }
+                return Err(error);
+            }
+        }
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.activation_after_open_fault.take() {
             if let InitialActivationAccess::Ordinary(store) = access {

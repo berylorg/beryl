@@ -1,3 +1,6 @@
+use super::super::historical_replacement::{
+    ComposerHostHistoricalRestoration, RetiredHistoricalReplacement,
+};
 use super::super::publication::{PreparedPublication, RetainedComposerCommandOutcome};
 use super::*;
 use beryl_home_store::{HomeCandidateRecoveryAccess, HomeCommand, HomeRecoveryCandidate};
@@ -8,6 +11,9 @@ use syndic_storage::{
 };
 
 pub struct ComposerHostFailedResident {
+    historical_prior: Option<ComposerHostBinding>,
+    historical: Option<RetiredHistoricalReplacement>,
+    historical_applied: bool,
     binding: ComposerHostBinding,
     checkpoint: DraftEditorCandidateActivationBindingV1,
     captured_checkpoint: DraftEditorCandidateActivationBindingV1,
@@ -90,8 +96,10 @@ impl SyndicComposerHost {
             || self.pending_mutation.is_some()
             || !self.detached_mutations.is_empty()
             || self.pending_history.is_some()
+            || (self.historical_replacement.is_some() && active.submission_intent.is_none())
             || !self.detached_history.is_empty()
-            || self.settlement_custody_in_use() != 0
+            || self.settlement_custody_in_use()
+                != usize::from(self.historical_replacement.is_some())
             || self.submission_pending()
             || self
                 .publication
@@ -115,8 +123,19 @@ impl SyndicComposerHost {
         {
             return Err(self);
         }
+        let historical_prior = self.historical_recovery_prior_binding();
         let active = self.active.take().unwrap();
+        let historical = self.historical_replacement.take().map(|pending| {
+            RetiredHistoricalReplacement::capture(
+                pending,
+                active.durable_selector,
+                active.submission_intent.unwrap(),
+            )
+        });
         Ok(ComposerHostFailedResident {
+            historical_prior,
+            historical,
+            historical_applied: false,
             binding: active.binding,
             checkpoint: active.storage_candidate,
             captured_checkpoint: active.storage_candidate,
@@ -137,6 +156,82 @@ impl SyndicComposerHost {
 }
 
 impl ComposerHostFailedResident {
+    pub fn observe_historical_recovery(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &syndic_storage::SyndicStorage,
+    ) -> Result<(), String> {
+        self.require_candidate(candidate)?;
+        let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+        if let Some(historical) = self.historical.as_mut() {
+            historical.observe(&access, storage)?;
+        }
+        if let Some(original) = self.original.as_mut() {
+            original.outcome.reconcile(&access)?;
+        }
+        if let Some((_, outcome)) = self.recovery.as_mut() {
+            outcome.reconcile(&access)?;
+        }
+        Ok(())
+    }
+    pub fn settle_historical_recovery(
+        &mut self,
+        candidate: &mut HomeRecoveryCandidate,
+        storage: &syndic_storage::SyndicStorage,
+    ) -> Result<(), String> {
+        self.require_candidate(candidate)?;
+        let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+        self.settle_historical(&access, storage)
+    }
+    pub fn historical_prior_binding(&self) -> Option<ComposerHostBinding> {
+        self.historical_prior
+    }
+
+    pub fn historical_restoration(&self) -> Option<ComposerHostHistoricalRestoration> {
+        self.historical
+            .as_ref()
+            .and_then(RetiredHistoricalReplacement::restoration)
+    }
+
+    fn settle_historical(
+        &mut self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        storage: &syndic_storage::SyndicStorage,
+    ) -> Result<(), String> {
+        if self.historical_applied || self.historical.is_none() {
+            return Ok(());
+        }
+        let restored = self.historical.as_mut().unwrap().settle(access, storage)?;
+        if let Some(original) = &mut self.original {
+            if original.binding.home_id() != self.binding.home_id()
+                || original.binding.home_generation() != self.binding.home_generation()
+                || original.binding.candidate().session_id() != self.checkpoint.session_id()
+            {
+                return Err("original historical publication belongs to another source".into());
+            }
+            if original.outcome.reconcile(access)? {
+                match storage
+                    .reconcile_draft_editor_candidate_publication_candidate(
+                        access,
+                        &original.prepared.syndic,
+                        original.outcome.committed_classification().unwrap(),
+                    )
+                    .map_err(|e| e.to_string())?
+                {
+                    syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(..)
+                    | syndic_storage::DraftEditorCandidatePublicationOutcomeV1::ExactReplay(_) => {}
+                    _ => return Err("original historical publication is not exact".into()),
+                }
+            }
+        }
+        self.checkpoint = restored.candidate();
+        self.selector = restored.selector();
+        if restored.imported_position().is_some() {
+            self.activation_checkpoint = restored.candidate();
+        }
+        self.historical_applied = true;
+        Ok(())
+    }
     pub fn binding(&self) -> ComposerHostBinding {
         self.binding
     }
@@ -185,6 +280,7 @@ impl ComposerHostFailedResident {
     ) -> Result<bool, String> {
         self.require_candidate(candidate)?;
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+        self.settle_historical(&access, storage)?;
         let correspondence = if let Some((prepared, outcome)) = &mut self.recovery {
             if !outcome.reconcile(&access)? {
                 return Ok(false);
@@ -198,7 +294,8 @@ impl ComposerHostFailedResident {
                     )
                     .map_err(|e| e.to_string())?,
             )
-        } else if let Some(original) = &mut self.original {
+        } else if let Some(original) = self.original.as_mut().filter(|_| self.historical.is_none())
+        {
             if original.binding.home_id() != self.binding.home_id()
                 || original.binding.home_generation() != self.binding.home_generation()
                 || original.binding.candidate().session_id() != self.checkpoint.session_id()
@@ -483,6 +580,15 @@ impl ComposerHostFailedResident {
                 initial_responses: Vec::new(),
                 unavailable: false,
                 durable_selector: saved.selector(),
+                submission_intent: Some(
+                    super::super::activation::access::InitialActivationAccess::Candidate(
+                        &candidate
+                            .recovery_access()
+                            .map_err(|error| error.to_string())?,
+                    )
+                    .submission_intent(&host.storage, saved.selector())
+                    .map_err(|error| error.to_string())?,
+                ),
                 published_candidate_generation: saved.candidate().candidate_generation(),
                 published_pair: syndic_storage::DraftRootHistoryPairV1::new(
                     saved.selector().root(),

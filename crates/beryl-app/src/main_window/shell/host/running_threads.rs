@@ -89,6 +89,10 @@ pub(super) struct RunningThreadsContribution {
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     resource_subscription: Option<gpui::Subscription>,
     pub(super) quote_subscription: Option<gpui::Subscription>,
+    pub(super) historical_replacement_subscription: Option<gpui::Subscription>,
+    pub(super) image_preview_subscription: Option<gpui::Subscription>,
+    pub(super) historical_dimming_key:
+        Option<(u64, u64, Option<syndic_storage::ReplacementEditIntent>)>,
     quote_presentation_subscription: Option<gpui::Subscription>,
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
@@ -193,7 +197,16 @@ impl RunningThreadsContribution {
         self.quote_presentation_subscription =
             Some(Self::quote_presentation_subscription(&transcript, cx));
         self.quote_subscription = Some(super::quote::subscribe_quote(&transcript, window, cx));
+        self.image_preview_subscription = Some(super::transcript_image_preview::subscribe(&transcript, window, cx));
+        self.historical_replacement_subscription = Some(
+            super::historical_replacement::subscribe_historical_replacement(
+                &transcript,
+                window,
+                cx,
+            ),
+        );
         self.transcript = transcript;
+        self.historical_dimming_key = None;
     }
 
     fn resume_read_admission(&mut self) {
@@ -246,6 +259,9 @@ impl RunningThreadsContribution {
             transcript,
             resource_subscription: Some(resource_subscription),
             quote_subscription: None,
+            historical_replacement_subscription: None,
+            image_preview_subscription: None,
+            historical_dimming_key: None,
             quote_presentation_subscription: Some(quote_presentation_subscription),
             transcript_provider: None,
             transcript_task: None,
@@ -555,6 +571,8 @@ impl MainWindowShellRoot {
         self.running_threads.views_retired = true;
         self.running_threads.resource_subscription = None;
         self.running_threads.quote_subscription = None;
+        self.running_threads.historical_replacement_subscription = None;
+        self.running_threads.image_preview_subscription = None;
         self.running_threads.quote_presentation_subscription = None;
         if let Some(picker) = self.running_threads.picker.take() {
             picker.update(cx, |picker, picker_cx| picker.dismiss(window, picker_cx));

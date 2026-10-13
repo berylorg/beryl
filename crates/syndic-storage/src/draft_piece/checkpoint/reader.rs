@@ -5,6 +5,16 @@ pub(super) trait CheckpointReader {
 
     fn point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, Self::Error>;
 
+    #[inline(never)]
+    fn boxed_point<F: Family>(&self, key: &F::Key) -> Result<Option<Box<F::Value>>, Self::Error> {
+        Ok(self.point::<F>(key)?.map(Box::new))
+    }
+
+    #[inline(never)]
+    fn contains<F: Family>(&self, key: &F::Key) -> Result<bool, Self::Error> {
+        Ok(self.point::<F>(key)?.is_some())
+    }
+
     fn authenticate_frontier(
         &self,
         frontier: &DraftEditHistoryFrontierV1,

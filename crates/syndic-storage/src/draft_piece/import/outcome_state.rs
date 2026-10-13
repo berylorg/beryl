@@ -1,5 +1,8 @@
 use super::request::DraftReplacementErrorV1;
-use beryl_home_store::{CommandOutcome, HomeStore, ReconciliationHandle, ReconciliationResolution};
+use beryl_home_store::{
+    CommandOutcome, HomeCandidateRecoveryAccess, HomeStore, ReconciliationHandle,
+    ReconciliationResolution,
+};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -38,6 +41,20 @@ impl CommandObservation {
         Ok(())
     }
     pub(crate) fn resume(&self, store: &HomeStore) -> Result<bool, DraftReplacementErrorV1> {
+        self.resume_with(|handle| Ok(store.retry_reconciliation(handle)?))
+    }
+    pub(crate) fn resume_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<bool, DraftReplacementErrorV1> {
+        self.resume_with(|handle| Ok(store.retry_reconciliation(handle)?))
+    }
+    fn resume_with(
+        &self,
+        reconcile: impl FnOnce(
+            &ReconciliationHandle,
+        ) -> Result<ReconciliationResolution, DraftReplacementErrorV1>,
+    ) -> Result<bool, DraftReplacementErrorV1> {
         let current = self
             .0
             .lock()
@@ -49,7 +66,7 @@ impl CommandObservation {
             State::Noncommit => Ok(false),
             State::Collision => Err(DraftReplacementErrorV1::Conflict),
             State::Pending(handle) => {
-                let resolution = store.retry_reconciliation(&handle)?;
+                let resolution = reconcile(&handle)?;
                 let next = match resolution {
                     ReconciliationResolution::ExactNew { .. } => State::Committed,
                     ReconciliationResolution::ExactOld => State::Noncommit,

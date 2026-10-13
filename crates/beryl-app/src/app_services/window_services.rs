@@ -78,6 +78,23 @@ impl PublishedExactStopWorker {
             .with_local_admission(move || lifetime.strong_count() != 0 && proof.elect_local()))
     }
 
+    pub(crate) fn selected_historical_edit_availability(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> Result<(), crate::cas_projection::HistoricalEditUnavailable> {
+        if !self.selection_current(selection) {
+            return Err(crate::cas_projection::HistoricalEditUnavailable::AuthorityUnavailable);
+        }
+        let result = self
+            .worker
+            .selected_historical_edit_availability(selection.claim().thread_id());
+        if self.selection_current(selection) {
+            result
+        } else {
+            Err(crate::cas_projection::HistoricalEditUnavailable::AuthorityUnavailable)
+        }
+    }
+
     pub(crate) fn selected_submission_availability(
         &self,
         selection: crate::main_window::MainWindowComposerSelectionIdentity,

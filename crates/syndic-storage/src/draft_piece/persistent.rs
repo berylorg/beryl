@@ -2820,6 +2820,14 @@ pub(crate) fn read_text_demand<'a>(
             ))
         }
         DraftPieceTextDemandV1::Validate(candidate) => {
+            if extent == 0 {
+                return Ok(DraftPieceTextDemandResultV1::new(
+                    root, demand, 0, 0, Vec::new(),
+                    DraftPieceTextEdgeFactV1::DocumentStart,
+                    DraftPieceTextEdgeFactV1::DocumentEnd,
+                    context.records_read,
+                ));
+            }
             let probe = if candidate == extent {
                 candidate.saturating_sub(1)
             } else {

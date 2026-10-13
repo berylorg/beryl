@@ -219,6 +219,7 @@ impl MainWindowFailedResidentAdoptionReturn {
             storage,
             state,
             capture.restoration(),
+            capture.protection.seed(),
             window,
             selector,
         );

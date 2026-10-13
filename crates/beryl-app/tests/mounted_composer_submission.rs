@@ -5,6 +5,8 @@ mod support;
 
 #[path = "mounted_composer_submission/disabled.rs"]
 mod disabled;
+#[path = "mounted_composer_submission/replacement.rs"]
+mod replacement;
 #[path = "mounted_composer_submission/start.rs"]
 mod start;
 

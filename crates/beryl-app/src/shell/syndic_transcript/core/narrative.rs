@@ -41,6 +41,7 @@ pub(crate) struct LiteralNarrativeOwner {
 enum NarrativeLayoutOwner {
     Prepared(NarrativeOwner),
     Literal(LiteralNarrativeOwner),
+    InlineParts(ResidentPresentationRecord),
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +79,53 @@ fn same_prepared_source(
 }
 
 impl ResidentTranscriptCore {
+    pub(crate) fn inline_parts_current(&self, record: &ResidentPresentationRecord) -> bool {
+        self.presentation
+            .records
+            .iter()
+            .any(|current| current == record)
+    }
+
+    pub(crate) fn inline_parts_layout_allowance(
+        &self,
+        record: &ResidentPresentationRecord,
+    ) -> usize {
+        if !self.inline_parts_current(record) {
+            return 0;
+        }
+        let previous = self
+            .narrative_layouts
+            .iter()
+            .filter(|entry| {
+                matches!(&entry.owner,
+            NarrativeLayoutOwner::InlineParts(current) if current == record)
+            })
+            .map(|entry| entry.bytes)
+            .sum::<usize>();
+        self.policy
+            .max_resource_bytes
+            .saturating_sub(self.resident.resource_bytes.saturating_sub(previous))
+    }
+
+    pub(crate) fn reserve_inline_parts_layout(
+        &mut self,
+        record: &ResidentPresentationRecord,
+        bytes: usize,
+    ) -> bool {
+        if bytes != 0 && bytes > self.inline_parts_layout_allowance(record) {
+            return false;
+        }
+        self.narrative_layouts.retain(|entry| !matches!(&entry.owner, NarrativeLayoutOwner::InlineParts(current) if current == record));
+        if bytes != 0 {
+            self.narrative_layouts.push(NarrativeLayout {
+                owner: NarrativeLayoutOwner::InlineParts(record.clone()),
+                bytes,
+            });
+        }
+        self.refresh_budget_accounting();
+        true
+    }
+
     pub(crate) fn narrative_demand(&self) -> Option<NarrativeTranscriptDemand> {
         let view_id = self.resident.view_id.clone()?;
         let realized = self.presentation.realized_range.as_ref()?;
@@ -110,7 +158,7 @@ impl ResidentTranscriptCore {
                     projection,
                     self.presentation.presentation_revision,
                 );
-                if current.id == record.id
+                if current.authored_part(&record.id).is_some()
                     && !self
                         .narrative_preparations
                         .iter()
@@ -133,7 +181,7 @@ impl ResidentTranscriptCore {
     pub(crate) fn narrative_demand_current(&self, demand: &NarrativeTranscriptDemand) -> bool {
         self.resident.view_id.as_ref() == Some(&demand.view_id)
             && self.presentation.activation_revision == demand.activation_revision
-            && self.presentation.records.iter().enumerate().any(|(index, record)| record.id == demand.record_id
+            && self.presentation.records.iter().enumerate().any(|(index, record)| record.authored_part(&demand.record_id).is_some()
                 && self.presentation.realized_range.as_ref().is_some_and(|range| range.contains(&index)))
             && self.resident.projection_records.iter().any(|record| {
                 record.id == demand.projection_id && record.revision == demand.projection_revision
@@ -260,6 +308,7 @@ impl ResidentTranscriptCore {
                     old.presentation
                         .records
                         .iter()
+                        .flat_map(ResidentPresentationRecord::authored_parts)
                         .find_map(|previous| match &previous.kind {
                             ResidentPresentationRecordKind::NarrativeReady { prepared }
                                 if same_prepared_source(prepared, source) =>
@@ -301,13 +350,19 @@ impl ResidentTranscriptCore {
                 self.presentation.presentation_revision,
             )
             .id;
-            if let Some(previous) = old.presentation.records.iter().find(|previous| {
-                previous.id == id
-                    && matches!(
-                        previous.kind,
-                        ResidentPresentationRecordKind::NarrativeReady { .. }
-                    )
-            }) {
+            if let Some(previous) = old
+                .presentation
+                .records
+                .iter()
+                .flat_map(ResidentPresentationRecord::authored_parts)
+                .find(|previous| {
+                    previous.id == id
+                        && matches!(
+                            previous.kind,
+                            ResidentPresentationRecordKind::NarrativeReady { .. }
+                        )
+                })
+            {
                 self.retained_narratives.push(previous.clone());
             }
         }
@@ -335,7 +390,7 @@ impl ResidentTranscriptCore {
     pub(crate) fn narrative_current(&self, owner: &NarrativeOwner) -> bool {
         self.resident.view_id.as_ref() == Some(&owner.view_id)
             && self.presentation.activation_revision == owner.activation_revision
-            && self.presentation.records.iter().any(|record| record.id == owner.record_id
+            && self.presentation.records.iter().flat_map(ResidentPresentationRecord::authored_parts).any(|record| record.id == owner.record_id
                 && record.provenance == owner.provenance
                 && matches!(&record.kind, ResidentPresentationRecordKind::NarrativeReady { prepared } if prepared == &owner.prepared))
     }
@@ -453,13 +508,14 @@ impl ResidentTranscriptCore {
             .filter(|entry| match &entry.owner {
                 NarrativeLayoutOwner::Prepared(owner) => self.narrative_current(owner),
                 NarrativeLayoutOwner::Literal(owner) => self.literal_narrative_current(owner),
+                NarrativeLayoutOwner::InlineParts(record) => self.inline_parts_current(record),
             })
             .collect();
         self.retained_narratives.retain(|entry| {
             self.presentation
                 .records
                 .iter()
-                .any(|record| record.id == entry.id)
+                .any(|record| record.authored_part(&entry.id).is_some())
         });
     }
 }

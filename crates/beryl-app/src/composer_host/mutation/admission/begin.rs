@@ -13,7 +13,10 @@ impl SyndicComposerHost {
         private_origin: Option<ComposerHostPrivatePasteOrigin>,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostMutationEvidenceOutcome, ComposerHostError> {
-        if self.lifecycle.freezes_admission() || self.submission_pending() {
+        if self.lifecycle.freezes_admission()
+            || self.submission_pending()
+            || self.historical_replacement_pending()
+        {
             return Err(ComposerHostError::LifecycleBlocked);
         }
         if self.pending_history.is_some() {

@@ -73,9 +73,41 @@ pub(crate) struct ResidentContextMenuRecord {
     pub(crate) geometry: ResidentSelectionRecordGeometry,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ResidentHistoricalInputSource {
+    pub(crate) thread_id: beryl_model::SyndicThreadId,
+    pub(crate) turn_id: beryl_model::SyndicTurnId,
+    pub(crate) item_id: beryl_model::SyndicItemId,
+    pub(crate) transcript: syndic_storage::CurrentTranscriptEntryProof,
+}
+
+impl ResidentContextMenuRecord {
+    pub(crate) fn historical_target(&self) -> Option<ResidentHistoricalInputSource> {
+        let transcript = self.source.transcript_entry?;
+        if self.source.position?.0 != transcript.position().get()
+            || !self.geometry.is_stable()
+            || !source_has_stable_context_menu_provenance(
+                &self.source,
+                &self.projection_id,
+                &self.content_kind,
+            )
+        {
+            return None;
+        }
+        Some(ResidentHistoricalInputSource {
+            thread_id: self.source.view_id.0.parse().ok()?,
+            turn_id: self.source.turn_id.as_ref()?.0.parse().ok()?,
+            item_id: self.source.item_id.as_ref()?.0.parse().ok()?,
+            transcript,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ResidentContextMenuContentKind {
     TextChunk,
+    InlineTable,
+    ImageMarker(super::provider::TranscriptImageMarker),
     ResourceReference {
         resource_id: ResourceId,
         resource_kind: ResourceKind,
@@ -122,6 +154,9 @@ pub(crate) fn resident_context_menu_record(
     geometry: ResidentSelectionRecordGeometry,
 ) -> Result<ResidentContextMenuRecord, ResidentContextMenuUnavailable> {
     let content_kind = match &record.kind {
+        ResidentPresentationRecordKind::ImageMarker(marker) => {
+            ResidentContextMenuContentKind::ImageMarker(*marker)
+        }
         ResidentPresentationRecordKind::TextChunk { text, .. } if !text.is_empty() => {
             ResidentContextMenuContentKind::TextChunk
         }
@@ -138,6 +173,9 @@ pub(crate) fn resident_context_menu_record(
             resource_id: resource_id.clone(),
             resource_kind: resource_kind.clone(),
         },
+        ResidentPresentationRecordKind::InlineTable { .. } => {
+            ResidentContextMenuContentKind::InlineTable
+        }
         _ => {
             return Err(ResidentContextMenuUnavailable::NonContentRecord {
                 record_id: record.id.clone(),
@@ -207,7 +245,16 @@ fn source_has_stable_context_menu_provenance(
     }
 
     match content_kind {
-        ResidentContextMenuContentKind::TextChunk => true,
+        ResidentContextMenuContentKind::ImageMarker(marker) => {
+            source.transcript_entry.is_some()
+                && source.source_range.as_ref()
+                    == Some(&(marker.source_offset..marker.source_offset))
+                && source.resource_id.is_none()
+                && source.resource_range.is_none()
+        }
+        ResidentContextMenuContentKind::TextChunk | ResidentContextMenuContentKind::InlineTable => {
+            true
+        }
         ResidentContextMenuContentKind::ResourceReference { resource_id, .. } => {
             source.resource_id.as_ref() == Some(resource_id)
         }
