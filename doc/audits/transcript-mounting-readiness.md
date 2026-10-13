@@ -1354,3 +1354,118 @@ diagnostic-child activation or the remaining transcript commands. Temporary diag
 Reviewed execution artifacts are reclaimed: the exact owned task root and all 245 unique native
 fixture ledger paths are verified absent, with no task processes or reparse points. Unrelated shared
 caches and Operator-owned skill edits remain outside that cleanup.
+
+## Remaining Transcript Command Readiness
+
+Read-only qualification on 2026-10-13 uses accepted source commit `b71e0cad8420cd81084c899dcd962d82ff3eceb8`.
+No command is mounted or accepted by this record. The controlling product contracts are
+[transcript selection and menus](../features/transcript/design.md#selection-copy-quote-and-menus),
+[transcript command composition](../features/transcript/gui.md),
+[composer Quote insertion](../features/composer/design.md),
+[conversation replacement editing](../features/conversation-threads/design.md), and
+[branch creation](../features/branch-discussions/design.md#discuss-in-new-branch).
+[Branch source authentication](../systems/branch-discussion-handoff/design.md) and
+[renderer selection](../systems/transcript-presentation/renderer-architecture.md#selection-and-menus)
+own their internal boundaries. These authorities determine the missing connections; the existing
+whole-record helpers do not define character-selection behavior.
+
+### Mapped Source And Existing Targets
+
+`panel/narrative.rs::NarrativeSelection` binds directed character endpoints to activation and
+presentation revisions. Prepared and literal `MappedGeometry::source_range` maps a display range
+to offsets local to its admitted source span. `panel/narrative/copy.rs::narrative_copy_text(false)`
+reconstructs exact selected Markdown, with a 65,536-byte contiguous representation limit.
+`narrative_copy_capture` instead captures mapped display or literal source parts for stripped Copy;
+it is not a historical command request. Its scalar source/layout bindings and current-election
+checks provide reusable invalidation mechanics, not branch eligibility.
+
+The provider in `crates/beryl-app/src/transcript_provider/source.rs` retains projection source ranges
+in Syndic provenance and Copy ranges; `core.rs::presentation_record_for_projection` transports them
+unchanged. An exact historical command adapter must checked-add local mapped offsets to the admitted
+source-range start, check containment and UTF-8 boundaries, and preserve selected bytes, record,
+projection, revision, activation and current geometry. It must not interpret a local offset as an
+absolute historical offset or replace the selected range with a whole-record range.
+
+The old Quote path (`selection.rs::resident_selected_record`,
+`renderer_quote.rs::resident_quote_command_for_realized_record_ids`, core target validation and
+`quote_payload_for_target`) consumes whole `ResidentSelectedRecord::copy_source_range` values.
+Its record admission accepts `TextChunk`; current prepared `NarrativeReady` does not qualify.
+`panel.rs::apply_realized_quote_target_for_record_ids` has no native character-selection action
+consumer. Reusing that path unchanged would expand selection and omit prepared narrative.
+
+`context_menu.rs::resident_context_menu_record` accepts nonempty `TextChunk` and resource references
+with exact Syndic turn/item/projection/revision provenance. It likewise has no prepared narrative
+admission. `renderer_context_menu.rs` supplies realized-record validation and target invalidation.
+`command.rs` action provenance and Edit/Branch wrappers retain target identity and source ranges,
+but do not establish user-input versus assistant ownership, selected-path eligibility, selected
+character bytes or proven-terminal status. These wrappers are reusable transport, not permission.
+Synthetic discussion context, unavailable labels, pending state and noncontent remain excluded
+from historical command targets even when context text is selectable and copyable.
+
+### Quote Consumer
+
+The composer has ordinary segmented mutation mechanics:
+`main_window/conversation_composer_owner/dispatch.rs::MainWindowConversationComposer::pump_one`
+drains text-input requests into `composer_host/mutation/admission/begin.rs` and
+`composer_host/mutation/execution.rs`. There is no transcript Quote insertion consumer.
+Mounting Quote must capture the saved insertion position and route exact selected eligible text
+through these shared edit, settlement and undo semantics. It must preserve the system clipboard
+and transcript focus, and reject obsolete source or geometry. Clipboard paste is not a substitute.
+Quote's eligibility must follow its own authority; branch's proven-terminal restriction must not
+silently become a Quote restriction.
+
+### Historical Menus And Replacement Editing
+
+Menu targeting requires current prepared narrative admission, genuine pointer/keyboard invocation,
+exact target provenance and owner-supplied rows through the canonical menu widgets. Empty space,
+status chrome, synthetic context and obsolete geometry supply no target. Source/activation/geometry
+changes close the menu instead of retargeting it.
+
+`crates/syndic-storage/src/record/history.rs::ReplacementEditIntent` and mutation admission already
+validate exact target, selected path and transcript-entry proofs. There is no app consumer of that
+intent or mounted start/cancel replacement-edit workflow. Exact user-turn eligibility, explainable
+disabled gates, draft loading, targeted/later-turn dimming, Escape and replacement submission need
+their own workflow acceptance before an enabled `Edit message` row can claim that behavior.
+Menu admission alone does not accept replacement editing.
+
+### Branch Creation Consumer
+
+`crates/syndic-storage/src/discussion_source.rs::prepare_discussion_source` authenticates a
+`DiscussionContextSource`, `SelectedPathProof` and `CurrentTranscriptEntryProof`. Its `authenticate`
+checks current selected path/transcript generation, exact entry/item/projection membership and
+revision, assistant-message ownership, proven-terminal turn lifecycle and finalized item coverage.
+Preparation reads the selected absolute source range and compares exact bytes and byte length;
+command validation authenticates again. A rendered record or successful Copy is insufficient.
+
+The existing source contract binds one projection owner and one contained source interval.
+Capture may combine mapped fragments only when they prove that same owner and contiguous interval.
+Cross-projection or mixed-owner selections remain branch-ineligible; no concatenation, stripped
+representation or similar-text lookup may fabricate a valid source. The immutable envelope keeps
+the exact selected bytes, historical provenance and SHA-256 digest without normalization.
+
+`crates/beryl-app/src/discussion_creation.rs::DiscussionCreationService::prepare` consumes the
+authenticated source, `CreateDiscussion` and cancellation. It prepares durable discussion creation
+and initial catalog publication in one home command with exact runtime/root and claim checks;
+`discussion_creation/recovery.rs` retains outcome reconciliation. No main-window consumer mounts
+this workflow. Mounting needs off-GUI proof acquisition and exact captured request custody,
+65,536-byte selected-text admission, busy/reconciling/collision states, preserved source selection,
+and proven success followed by ordinary activation. Activation Retry must target the already-created
+discussion and never repeat creation. Durable creation and activation remain different elections.
+
+### Derived Acceptance And Evidence Limits
+
+The next outcomes are saved-position Quote insertion from real mapped selection, transcript menu
+mounting, exact historical replacement editing, and captured branch creation with ordinary activation.
+Menus keep Edit unavailable until the exact menu-origin replacement workflow is accepted.
+Each needs native invocation and its owning workflow evidence; reusable service tests alone cannot
+accept the mount. Supporting capture and eligibility adapters belong to the command they enable,
+with reusable facts shared where their contracts agree. No new history route, schema or producer
+classification is needed for this readiness conclusion.
+
+Readiness verification inspected the exact mapped Copy bodies, presentation provenance transport,
+Quote and menu admission, branch source authentication, durable creation/reconciliation, and composer
+mutation entry points. Existing narrative acceptance remains evidence for mapped pointer selection,
+Copy and lifecycle only; no tests were rerun for this documentation-only qualification. Independent
+complete-boundary semantic review accepted the source claims and derived boundaries with no remaining
+blocking findings. Review corrected menu-before-edit ordering before acceptance. Diagnostic-child
+activation and complete transcript workflow remain separate pending evidence boundaries.

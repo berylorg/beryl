@@ -98,17 +98,48 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 770: Mount Prepared Narrative And Character Selection (finished)
+# Phase 771: Establish Remaining Transcript Command Mounting Readiness (finished)
 
-Mounted bounded prepared narrative formatting, mapped character selection and both Copy methods
-through ordinary selected-history publication. Independent complete-boundary review accepted
-storage/provider/core, native lifecycle and affected Code/Table/context regressions;
-[acceptance](audits/transcript-mounting-readiness.md#mounted-narrative-acceptance).
-Final combined checks passed 256/256; production checking and owned-artifact reclamation completed.
+Qualified mapped source ranges, current geometry, Quote/menu target gaps and exact historical
+branch/replacement consumers against source and authority. Independent review accepted the
+[readiness record](audits/transcript-mounting-readiness.md#remaining-transcript-command-readiness)
+and corrected menu-before-edit sequencing. Command mounting and complete workflows remain pending.
 
-# Phase 771: Establish Remaining Transcript Command Mounting Readiness (pending)
+# Phase 772: Mount Mapped Transcript Quote Insertion (pending)
 
-Qualify real mapped selection for Quote, branch discussion and transcript menus against their exact
-eligibility/provenance authorities before deriving separate mounted command outcomes. Diagnostic-child
-activation and complete transcript workflow remain separate evidence boundaries; readiness alone
-does not accept any of those commands or workflows.
+Connect exact current mapped selection to saved-position composer insertion through ordinary
+segmented edit and undo semantics. Accept genuine native selection/action, unchanged clipboard and
+focus, exact selected Markdown, bounded rejection and obsolete-source/geometry cancellation.
+Supporting mapped command capture belongs to this consumer boundary; Quote does not inherit branch's
+proven-terminal restriction.
+
+# Phase 773: Mount Transcript Turn Menus (pending)
+
+Mount canonical pointer/keyboard menus for current realized authored content with exact provenance,
+prepared narrative admission, explainable Edit unavailability and obsolete-anchor closure. Keep
+replacement editing unavailable until its following workflow acceptance; identity wrappers do not
+prove eligibility.
+
+# Phase 774: Mount Exact Historical Replacement Editing (pending)
+
+Connect the exact user-turn menu action to historical eligibility, draft loading, edit-mode dimming
+and cancellation, and replacement submission through existing selected-path and transcript-entry
+proof admission. Preserve ordinary draft and transcript behavior and accept gates, failures and
+reconciliation before enabling the menu action.
+
+# Phase 775: Mount Captured Branch Discussion Creation (pending)
+
+Authenticate one exact current finalized assistant selection and preserve its captured bytes/proofs
+through durable creation, busy/reconciliation/collision outcomes and ordinary activation. Accept
+the selected-text bound, preserved source state and same-discussion activation Retry without repeated
+creation; mixed owners and cross-projection selections remain ineligible.
+
+# Phase 776: Qualify Diagnostic Child Transcript Activation (pending)
+
+Verify ordinary coherent transcript publication and subsequent bounded media preparation in the
+diagnostic child without imposing a stronger activation-readiness gate.
+
+# Phase 777: Accept Complete Mounted Transcript Workflow (pending)
+
+Qualify the combined ordinary transcript workflow, interactions, source/geometry invalidation and
+owned-resource disposal against the remaining Checkpoint 4 transcript gate.
