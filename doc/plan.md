@@ -102,29 +102,34 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 774: Mount Exact Historical Replacement Editing (finished)
+# Phase 775: Mount Captured Branch Discussion Creation (finished)
 
-Accepted exact current user-turn Edit through narrative, Code/Table and canonical image origins,
-bounded sealed import, same-widget mode/dimming, preserved cancellation/Undo and replacement
-submission. Failed-home recovery retains original custody and qualifies protected changed-source
-adoption through the existing owner. Production Edit is enabled without a fixture override.
-Storage 149/149, submission 54/54, final panel/native 118/118, affected composer/transcript/Quote
-regressions, canonical locked app/executable checks and complete independent review passed.
-See the [accepted workflow](audits/transcript-mounting-readiness.md#mounted-historical-replacement-editing-acceptance)
-for source identities, evidence and resolved failures. The prerequisite and mounted acceptance
-records retain the earlier durable-draft outcome. Continue with captured branch discussion.
+Accepted exact finalized assistant selection through narrative and Code, bounded captured-byte
+custody, durable creation/reconciliation/collision, preserved source state and ordinary activation
+with same-child Retry. All 186 combined checks, including 18 native branch cases and 26 mapped
+selection cases, canonical locked production checks and independent review passed. Creation 9/9
+and storage 23/23 evidence remains qualified. See the
+[mounted acceptance](audits/transcript-mounting-readiness.md#mounted-captured-branch-discussion-creation-acceptance)
+for source identities, corrected failures and verification limits.
 
-# Phase 775: Mount Captured Branch Discussion Creation (pending)
-
-Authenticate one exact current finalized assistant selection and preserve its captured bytes/proofs
-through durable creation, busy/reconciliation/collision outcomes and ordinary activation. Accept
-the selected-text bound, preserved source state and same-discussion activation Retry without repeated
-creation; mixed owners and cross-projection selections remain ineligible.
-
-# Phase 776: Qualify Diagnostic Child Transcript Activation (pending)
+# Phase 776: Qualify Diagnostic Child Transcript Activation (wip)
 
 Verify ordinary coherent transcript publication and subsequent bounded media preparation in the
-diagnostic child without imposing a stronger activation-readiness gate.
+diagnostic child without imposing a stronger activation-readiness gate. Authority is the
+[diagnostic child contract](features/diagnostics/design.md#diagnostic-child-controls) and
+[transcript publication](features/transcript/design.md).
+
+Inspect the actual executable diagnostic binding and ordinary activation consumer before choosing
+focused child evidence. Qualify history-heavy and image-heavy selection while bounded media remains
+pending, stable initial placement, later ready or terminal resource outcomes and disposal. Reuse
+unchanged ordinary transcript evidence, run affected protocol/native checks and locked production
+checks, and independently review the complete diagnostic activation boundary.
+
+Current milestone: executable diagnostic dispatch reports transcript features unavailable and does
+not bind thread switching. Determine the bounded existing-service mounting prerequisite before
+implementation; a direct test-only activation path cannot qualify the diagnostic command. Preserve
+ordinary exact target validation, bounded command outcomes and coherent publication, and keep
+resource readiness separate from activation completion. No product decision is required.
 
 # Phase 777: Accept Complete Mounted Transcript Workflow (pending)
 

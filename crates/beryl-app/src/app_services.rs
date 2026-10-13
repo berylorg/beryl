@@ -184,6 +184,7 @@ pub(crate) struct ProcessServiceOwner {
     windows: crate::window_acquisition::RuntimeBackedWindowProcessRegistry,
     enrollments: RuntimeActivityEnrollmentOperations,
     settlements: DiscussionSettlementOperations,
+    discussion_creations: crate::discussion_creation::DiscussionCreationOperations,
     #[cfg(feature = "test-faults")]
     before_initial_publication:
         Option<Box<dyn FnOnce(&mut HomeOpenPublication, &BerylState, &SyndicStorage) + Send>>,
@@ -247,6 +248,10 @@ impl ProcessServiceOwner {
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
             settlements: DiscussionSettlementOperations::new(process.clone(), settlement_slots),
+            discussion_creations: crate::discussion_creation::DiscussionCreationOperations::new(
+                process.clone(),
+                crate::discussion_creation::DISCUSSION_CREATION_SCOPE_CAPACITY,
+            ),
             windows: crate::window_acquisition::RuntimeBackedWindowProcessRegistry::new(
                 process.clone(),
             ),

@@ -1,6 +1,92 @@
 use super::*;
 
 #[test]
+fn incomplete_finalized_sources_are_ineligible_and_cannot_publish_prepared_validation() {
+    let fixture = Fixture::new();
+    let prepared = fixture.prepare();
+    let (source, path, entry) = fixture.selection();
+    let state = fixture
+        .storage
+        .turn_state(&fixture.store, source.turn_id(), limit())
+        .unwrap()
+        .unwrap();
+    let replacement = support::fixture_turn_state_with_finalization(
+        source.turn_id(),
+        state.revision().checked_next().unwrap(),
+        TurnLifecycle::Incomplete,
+        state.source_event_count(),
+        state.item_count(),
+        state.finalized_item_count(),
+        state.updated_at(),
+    );
+    commit(
+        &fixture.store,
+        fixture.storage.clone(),
+        batch([FixtureRecord::TurnState(replacement)]),
+    );
+    assert!(
+        fixture
+            .storage
+            .prepare_discussion_source(
+                &fixture.store,
+                source,
+                path,
+                entry,
+                DiscussionContextText::new("assistant").unwrap()
+            )
+            .is_err()
+    );
+    assert!(matches!(
+        fixture.validate(prepared),
+        CommandOutcome::NotCommitted { .. }
+    ));
+}
+
+#[test]
+fn interrupted_and_failed_replies_keep_exact_finalized_selection_eligibility() {
+    for lifecycle in [TurnLifecycle::Interrupted, TurnLifecycle::Failed] {
+        let fixture = Fixture::new();
+        let (source, path, entry) = fixture.selection();
+        let state = fixture
+            .storage
+            .turn_state(&fixture.store, source.turn_id(), limit())
+            .unwrap()
+            .unwrap();
+        let replacement = support::fixture_turn_state_with_finalization(
+            source.turn_id(),
+            state.revision().checked_next().unwrap(),
+            lifecycle,
+            state.source_event_count(),
+            state.item_count(),
+            state.finalized_item_count(),
+            state.updated_at(),
+        );
+        commit(
+            &fixture.store,
+            fixture.storage.clone(),
+            batch([FixtureRecord::TurnState(replacement)]),
+        );
+        let prepared = fixture
+            .storage
+            .prepare_discussion_source(
+                &fixture.store,
+                source,
+                path,
+                entry,
+                DiscussionContextText::new("assistant").unwrap(),
+            )
+            .unwrap();
+        assert!(matches!(
+            fixture.validate(prepared),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
 fn active_unknown_terminal_and_unfinalized_sources_are_ineligible() {
     for lifecycle in [
         TurnLifecycle::Active,

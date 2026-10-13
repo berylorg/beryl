@@ -137,6 +137,15 @@ impl PreparedTranscriptAttachment {
 }
 
 impl TranscriptAttachmentSourceIdentity {
+    #[cfg(test)]
+    pub(crate) fn matches_published_for_test(
+        &self,
+        head: &TranscriptViewHeadRecord,
+        summary: &syndic_storage::HistorySummaryRecord,
+    ) -> bool {
+        matches!(&self.authority, TranscriptAttachmentAuthority::Published { head: current_head, summary: current_summary } if current_head == head && current_summary == summary)
+    }
+
     pub(crate) fn has_parent_lineage(&self) -> bool {
         self.lineage.total_parent_count() != 0
     }

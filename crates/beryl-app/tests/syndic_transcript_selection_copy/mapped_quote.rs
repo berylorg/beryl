@@ -1,6 +1,110 @@
 use super::*;
 use std::sync::Arc;
 
+fn branch_projection(index: u8, text: &str, start: u64) -> ProjectionRecord {
+    let mut record = projection("branch", u64::from(index), text, start);
+    record.id =
+        ProjectionRecordId(beryl_model::SyndicProjectionId::from_bytes([index; 16]).to_string());
+    record.provenance.view_id =
+        TranscriptViewId(beryl_model::SyndicThreadId::from_bytes([31; 16]).to_string());
+    record.provenance.turn_id = Some(SyndicTurnId(
+        beryl_model::SyndicTurnId::from_bytes([32; 16]).to_string(),
+    ));
+    record.provenance.item_id = Some(SyndicItemId(
+        beryl_model::SyndicItemId::from_bytes([33; 16]).to_string(),
+    ));
+    record.provenance.projection_id = Some(record.id.clone());
+    record.provenance.transcript_entry = Some(syndic_storage::CurrentTranscriptEntryProof::new(
+        syndic_storage::TranscriptGeneration::FIRST,
+        syndic_storage::TranscriptPosition::FIRST,
+    ));
+    record
+}
+
+fn branch_seed(records: Vec<ProjectionRecord>) -> ResidentTranscriptCore {
+    let view = records[0].provenance.view_id.clone();
+    let mut core = ResidentTranscriptCore::empty();
+    core.apply_prepared_activation(
+        prepared_for_view(records, REVISION, view),
+        TranscriptActivationSource::RunningThread,
+    );
+    realize_frame_with_viewport(&mut core, 1000.0);
+    core
+}
+
+fn branch_capture(
+    core: &ResidentTranscriptCore,
+    ranges: &[(usize, Range<usize>)],
+) -> Option<syndic_transcript_core::core::CapturedDiscussionSource> {
+    let snapshot = core.presentation_snapshot();
+    let ranges = ranges
+        .iter()
+        .map(|(index, range)| (snapshot.records[*index].id.clone(), range.clone()))
+        .collect::<Vec<_>>();
+    core.mapped_discussion_source(
+        snapshot.activation_revision,
+        snapshot.presentation_revision,
+        &ranges,
+    )
+}
+
+#[test]
+fn mapped_branch_capture_preserves_exact_utf8_syntax_and_absolute_provenance() {
+    let text = "before **é中** after\r\n";
+    let core = branch_seed(vec![branch_projection(1, text, 412)]);
+    let selected = text.find("**").unwrap()..text.find(" after").unwrap();
+    let captured = branch_capture(&core, &[(0, selected.clone())]).unwrap();
+    assert_eq!(captured.text.as_str(), "**é中**");
+    assert_eq!(captured.source.range().start(), 412 + selected.start as u64);
+    assert_eq!(captured.source.range().end(), 412 + selected.end as u64);
+    assert_eq!(
+        captured.source.thread_id(),
+        beryl_model::SyndicThreadId::from_bytes([31; 16])
+    );
+    assert_eq!(
+        captured.source.turn_id(),
+        beryl_model::SyndicTurnId::from_bytes([32; 16])
+    );
+    assert_eq!(
+        captured.source.item_id(),
+        beryl_model::SyndicItemId::from_bytes([33; 16])
+    );
+    assert!(branch_capture(&core, &[(0, selected.start + 3..selected.end)]).is_none());
+    assert_eq!(
+        branch_capture(&core, &[(0, 0..text.len())])
+            .unwrap()
+            .text
+            .as_str(),
+        text
+    );
+}
+
+#[test]
+fn mapped_branch_capture_rejects_contiguous_different_projection_owners() {
+    let core = branch_seed(vec![
+        branch_projection(1, "first", 0),
+        branch_projection(2, "second", 5),
+    ]);
+    assert!(branch_capture(&core, &[(0, 0..5)]).is_some());
+    assert!(branch_capture(&core, &[(1, 0..6)]).is_some());
+    assert_eq!(
+        quote(&core, &[(0, 0..5), (1, 0..6)]).unwrap(),
+        "firstsecond"
+    );
+    assert!(branch_capture(&core, &[(0, 0..5), (1, 0..6)]).is_none());
+}
+
+#[test]
+fn mapped_branch_capture_bounds_utf8_bytes_without_shortening_context() {
+    let text = "é".repeat(32_769);
+    let core = branch_seed(vec![branch_projection(1, &text, 0)]);
+    let captured = branch_capture(&core, &[(0, 0..65_536)]).unwrap();
+    assert_eq!(captured.text.as_str(), &text[..65_536]);
+    assert!(branch_capture(&core, &[(0, 0..65_538)]).is_none());
+    assert!(branch_capture(&core, &[(0, 0..65_535)]).is_none());
+    assert_eq!(quote(&core, &[(0, 0..2)]).unwrap(), "é");
+}
+
 fn projection(name: &str, position: u64, text: &str, start: u64) -> ProjectionRecord {
     let mut record = text_projection(&view_id(), position, name, text, None);
     record.provenance.source_range = Some(start..start + text.len() as u64);
@@ -13,8 +117,16 @@ fn prepared(records: Vec<ProjectionRecord>) -> PreparedTranscriptActivation {
 }
 
 fn prepared_at(
+    records: Vec<ProjectionRecord>,
+    revision: ProviderRevision,
+) -> PreparedTranscriptActivation {
+    prepared_for_view(records, revision, view_id())
+}
+
+fn prepared_for_view(
     mut records: Vec<ProjectionRecord>,
     revision: ProviderRevision,
+    view: TranscriptViewId,
 ) -> PreparedTranscriptActivation {
     for record in &mut records {
         record.revision = revision;
@@ -32,10 +144,10 @@ fn prepared_at(
         })
         .collect();
     PreparedTranscriptActivation::new(
-        view_id(),
+        view.clone(),
         TranscriptActivationPlacement::Start,
         TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
-            view_id: view_id(),
+            view_id: view.clone(),
             revision,
             history_state: TranscriptProviderHistoryState::Complete,
             records: views,
@@ -46,7 +158,7 @@ fn prepared_at(
         }),
         Some(TranscriptProviderResponseKind::ProjectionRecords(
             ProjectionRecordSet {
-                view_id: view_id(),
+                view_id: view,
                 revision,
                 records,
                 rejections: Vec::new(),

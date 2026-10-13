@@ -16,6 +16,34 @@ impl MainWindowShellRoot {
         previous: Option<NoticeRecordToken>,
         error: &str,
     ) -> Option<NoticeRecordToken> {
+        self.publish_thread_operation_failure(previous, "Thread could not be opened", error, false)
+    }
+
+    pub(in crate::main_window::shell) fn publish_captured_branch_failure(
+        &mut self,
+        previous: Option<NoticeRecordToken>,
+        error: &str,
+        persistent: bool,
+    ) -> Option<NoticeRecordToken> {
+        self.publish_thread_operation_failure(
+            previous,
+            if persistent {
+                "Discussion unavailable"
+            } else {
+                "Discussion could not be created or opened"
+            },
+            error,
+            persistent,
+        )
+    }
+
+    fn publish_thread_operation_failure(
+        &mut self,
+        previous: Option<NoticeRecordToken>,
+        title: &str,
+        error: &str,
+        persistent: bool,
+    ) -> Option<NoticeRecordToken> {
         if self.notices.retired || self.notices.inert || !self.notices.scope_current() {
             return None;
         }
@@ -29,8 +57,12 @@ impl MainWindowShellRoot {
             kind: NoticeKind::Error,
             content: NoticeContent::new(
                 NoticeVariant::Error,
-                NoticeDismissal::Dismissible,
-                "Thread could not be opened",
+                if persistent {
+                    NoticeDismissal::Persistent
+                } else {
+                    NoticeDismissal::Dismissible
+                },
+                title,
                 error,
             ),
         };

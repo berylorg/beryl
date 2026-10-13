@@ -253,8 +253,33 @@ impl CodeLayoutIndex {
         if self.output.len() == self.limits.fragments {
             return Err(CodeLayoutError::Capacity);
         }
-        let bytes = admission.charge.total()?;
-        let items = admission.item_charge.total()?;
+        let raw = match &segment.kind {
+            SegmentKind::Text(text)
+                if text.len() as u64 == segment.source.end - segment.source.start =>
+            {
+                Some(text.as_str())
+            }
+            SegmentKind::Tab if segment.source.end - segment.source.start == 1 => Some("\t"),
+            _ => None,
+        };
+        let bytes = admission
+            .charge
+            .total()?
+            .checked_add(raw.map_or(0, str::len))
+            .and_then(|bytes| {
+                bytes.checked_add(if raw.is_some() {
+                    std::mem::size_of::<[usize; 2]>()
+                } else {
+                    0
+                })
+            })
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Option<Arc<str>>>()))
+            .ok_or(CodeLayoutError::Overflow)?;
+        let items = admission
+            .item_charge
+            .total()?
+            .checked_add(usize::from(raw.is_some()))
+            .ok_or(CodeLayoutError::Overflow)?;
         self.check_capacity(bytes, items)?;
         self.output_bytes = self
             .output_bytes
@@ -267,6 +292,7 @@ impl CodeLayoutIndex {
         self.output.push(PreparedCodeFragment {
             logical_line: self.line,
             source: segment.source.clone(),
+            raw_source: raw.map(Arc::from),
             inline_start: start,
             inline_end: end,
             fragments: admission.fragments.clone(),

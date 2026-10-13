@@ -204,6 +204,7 @@ impl MainWindowShellRoot {
             }
             return;
         }
+        self.finish_captured_branch_activation(result.clone(), false, window, cx);
         self.running_threads.pending_activation = None;
         self.running_threads.ordinary_activation = false;
         self.running_threads.prepared_activation = None;
@@ -237,6 +238,14 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .running_threads
+            .activation_operation
+            .as_ref()
+            .is_some_and(|operation| operation.is_unavailable())
+        {
+            self.finish_captured_branch_activation(Err(error.clone()), true, window, cx);
+        }
         if self.runtime_setup.primary_command
             || matches!(self.runtime_setup.command, Some(PickerCommand::Confirm(_)))
         {

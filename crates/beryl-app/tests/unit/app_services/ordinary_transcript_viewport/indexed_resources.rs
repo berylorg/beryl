@@ -25,14 +25,16 @@ mod code_native_mount;
 #[path = "indexed_resources/table_native_mount.rs"]
 mod table_native_mount;
 
+#[path = "indexed_resources/branch_discussion.rs"]
+mod branch_discussion;
+#[path = "indexed_resources/image_markers.rs"]
+mod image_markers;
 #[path = "indexed_resources/narrative_native.rs"]
 mod narrative_native;
 #[path = "indexed_resources/quote_insertion.rs"]
 mod quote_insertion;
 #[path = "indexed_resources/turn_menus.rs"]
 mod turn_menus;
-#[path = "indexed_resources/image_markers.rs"]
-mod image_markers;
 
 #[path = "indexed_resources/narrative_source_revision.rs"]
 mod narrative_source_revision;

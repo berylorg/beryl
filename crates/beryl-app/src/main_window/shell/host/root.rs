@@ -140,6 +140,7 @@ impl MainWindowShellRoot {
             notices,
             home_warning_startup: None,
             transcript_image_preview: None,
+            branch_discussion: branch_discussion::BranchDiscussionContribution::default(),
         };
         root.subscribe_notices(window, cx);
         root.subscribe_quote(window, cx);
@@ -299,6 +300,7 @@ impl Render for MainWindowShellRoot {
         self.sync_status_controls(window, cx);
         self.sync_model_controls(window, cx);
         self.sync_running_threads(window, cx);
+        self.sync_captured_branch(window, cx);
         self.sync_runtime_setup(window, cx);
         self.sync_thread_switcher(window, cx);
         self.sync_notices(window, cx);

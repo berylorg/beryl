@@ -79,6 +79,13 @@ The widget's own copy action copies bare plain text.
 
 Callers may define richer copy behavior outside the widget, such as Markdown-preserving transcript copy, without changing the widget's plain-text copy contract.
 
+The owning surface may provide text-selection commands through its context menu. The code panel
+reports its stable source identity, exact logical byte range and current measured origin; the
+owner supplies command eligibility, labels, pending state and execution. These commands preserve
+the code selection and focus while the owner classifies their outcome, subject to ordinary source
+invalidation. Owner-supplied pending interaction gates do not replace the panel or add a scroll
+surface. A command requiring exact source bytes cannot substitute a copied export representation.
+
 Optional header controls may include generic actions such as Expand, Collapse, Soft Wrap, Copy, and
 `Save…`. Disabled header commands satisfy `expected-action-availability`.
 

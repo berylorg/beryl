@@ -38,13 +38,13 @@ pub(crate) use context_menu::{
     ResidentContextMenuRecord, ResidentContextMenuUnavailable, ResidentTranscriptContextMenuTarget,
 };
 pub(crate) use core::{
-    LiteralNarrativeOwner, NarrativeOwner, NarrativePreparationResponse, NarrativeTranscriptDemand,
-    ProviderRequestBook, ProviderRequestBookSnapshot, ProviderRequestOutcome,
-    ProviderRequestReason, ProviderRequestRecord, ResidentCoreSnapshot, ResidentFallbackRecord,
-    ResidentGeneration, ResidentPresentationSnapshot, ResidentProviderResponseEffect,
-    ResidentReleaseDecision, ResidentReleaseReason, ResidentReleaseTarget,
-    ResidentSyndicDataSnapshot, ResidentTranscriptCore, ResidentTranscriptPolicy,
-    ResourceTranscriptDemand, narrative_source_bytes,
+    CapturedDiscussionSource, LiteralNarrativeOwner, NarrativeOwner, NarrativePreparationResponse,
+    NarrativeTranscriptDemand, ProviderRequestBook, ProviderRequestBookSnapshot,
+    ProviderRequestOutcome, ProviderRequestReason, ProviderRequestRecord, ResidentCoreSnapshot,
+    ResidentFallbackRecord, ResidentGeneration, ResidentPresentationSnapshot,
+    ResidentProviderResponseEffect, ResidentReleaseDecision, ResidentReleaseReason,
+    ResidentReleaseTarget, ResidentSyndicDataSnapshot, ResidentTranscriptCore,
+    ResidentTranscriptPolicy, ResourceTranscriptDemand, narrative_source_bytes,
 };
 pub(crate) use demand::{DemandFact, DemandFactKind, DemandFactSink, DemandFactSinkSnapshot};
 pub(crate) use diagnostics::{
@@ -63,7 +63,9 @@ pub(crate) use media_action::{
     ResidentTranscriptMediaActionTarget, ResidentTranscriptMediaPayload,
 };
 pub(crate) use panel::{
-    HistoricalReplacementRequested, ImageMarkerInspectionRequested, QuoteInsertionRequested, ResourceViewportDemandChanged,
+    DiscussionActivationRetryRequested, DiscussionCreationRequested,
+    DiscussionSourceQualificationRequested, HistoricalReplacementRequested,
+    ImageMarkerInspectionRequested, QuoteInsertionRequested, ResourceViewportDemandChanged,
     SYNDIC_TRANSCRIPT_KEY_CONTEXT, SyndicTranscriptPanel,
 };
 pub(crate) use provider::*;

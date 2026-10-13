@@ -1805,3 +1805,66 @@ All positively registered mounted/import/save fixtures are verified absent, and 
 native or debugger process remains. Local configuration is restored and documentation retrieval
 is Current with zero failed or blocked chunks. Reviewed execution artifacts are reclaimed after
 the acceptance commit; shared Cargo/analyzer caches remain available for the next phase.
+
+## Mounted Captured Branch Discussion Creation Acceptance
+
+Qualified on 2026-10-13 from `3ba24a039d193b2d27b69238df07b27537f7b50d` plus the scoped mounted
+branch changes. The transcript selection menu authenticates exact finalized assistant text off
+the GUI thread before enabling `Discuss in new branch`. One captured UTF-8 interval and its exact
+source proofs survive creation, reconciliation, noncommit, collision and ordinary activation.
+Active and explicitly Incomplete sources are unavailable; finalized Interrupted and Failed sources
+retain their established eligibility. Mixed owners, cross-projection intervals and selections above
+65,536 bytes cannot mutate storage.
+
+Native narrative and Code selections use the same creation consumer. Code keeps canonical source
+coordinates and authenticated raw bytes in the existing charged prepared-fragment owner. Exact
+CodeLine metadata bridges LF/CRLF only between adjacent prepared blank or genuine raw-bearing
+lines. Oversize placeholders and unrendered gaps supply no selected-text coverage, including a
+newline-only selection after a placeholder. Fresh invocation revisions remain separate from logical
+resource demand ownership; current source, binding, geometry and complete appearance still gate
+each command. Code Quote uses the accepted composer insertion and preserves the Code origin.
+
+The private graph creation scope capacity is 32, independent of handoff settlement capacity.
+A window retains at most 32 ended captures plus its current request, disposing of old reader access
+while keeping exact bytes and outcome evidence. Qualification, creation and reconciliation use
+the existing nine-worker admission and drain protocol, current publication/generation fencing,
+cancellation and fresh same-home reader rebinding. Busy classification preserves nested Code and
+narrative selection/navigation. Proven noncommit permits a deliberate new request. Collision closes
+only its exact scope; ordinary activation can still fail while that retained Home scope prevents
+coherent election. Activation Retry always targets the original created child without recreating it,
+including a previously retained capture whose current source origin differs from another capture.
+
+Evidence includes:
+
+- Public creation service: all 9 cases in `af608ade-d0e0-47c7-b5c6-921e1a870791`, 121.859 seconds.
+  The unchanged Complete-source cases and public service defaults are reused; mounted graph capacity
+  and later source exclusions have their own evidence below.
+- Storage source and creation: all 23 cases in `092f362b-690e-4c6a-925f-09e6b5a09603`,
+  289.569 seconds. This includes prepare and writer Incomplete exclusion and positive Interrupted/
+  Failed eligibility. Storage inputs have not changed since that run.
+- Final combined mounted acceptance: all 186 cases in `9533f61d-4f7b-4a05-a8c2-0a03713719d6`,
+  177.820 seconds. Explicit App library and mapped-selection target selection covers all 18 native
+  branch cases, 26 mapped selection/Copy/Quote/capture cases, panel preparation/layout, existing
+  native Quote/user menus, Code Copy/Save/Unicode/viewport ownership and history-revision fences.
+  Branch cases include exact durable provenance/catalog discovery, ordinary activation, noncommit,
+  held creation/reconciliation, scoped collision, same-child Retry, retained Retry origin, Active/
+  Incomplete refusal, worker capacity/drain, real Code Quote/checked Copy, later horizontal raw
+  capture, LF/CRLF/blank/Tab and placeholder/geometry refusal.
+- Canonical locked metadata and no-feature app/executable checks passed with local dependency
+  patches absent, then the ignored configuration was restored. The production check took
+  22.51 seconds; the accepted widget remains `c9420ea81486b122d2727ac05383890d805d84f6`.
+
+Checks use the one-job LLVM, nonincremental and no-normal-debug configuration, serial native tests
+and the default Windows worker stack. Earlier false native failures were corrected by typed
+fixture readiness and observation of actual published head/summary, queued demand and staged
+delivery before the first invocation. Production source refusal and menu invalidation remain
+intact. The [worker lifetime](../failures/captured-branch-worker-lifetime.md) and
+[native interaction](../failures/native-transcript-interaction-evidence.md) records retain the
+invalidated approaches. Diagnostic child activation and complete mounted transcript qualification
+remain separate acceptance boundaries.
+
+Complete independent semantic review accepted the final implementation and evidence with no
+remaining findings. All registered task fixtures were within the exact owned execution root, with
+no reparse points or external ledger targets; that root and its fixtures are verified absent after
+review. No task-owned native process remains. Local configuration is restored. Documentation
+retrieval is reconciled before acceptance handoff; shared Cargo/analyzer caches remain available.

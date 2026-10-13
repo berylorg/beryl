@@ -47,6 +47,13 @@ const FALLBACK_RECORD_ESTIMATED_BYTES: usize = 96;
 const GEOMETRY_PLACEHOLDER_BYTES_PER_RECORD: usize = 32;
 const PIN_PLACEHOLDER_BYTES: usize = 64;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CapturedDiscussionSource {
+    pub(crate) source: syndic_storage::DiscussionContextSource,
+    pub(crate) entry: syndic_storage::CurrentTranscriptEntryProof,
+    pub(crate) text: syndic_storage::DiscussionContextText,
+}
+
 #[path = "core/inline_parts.rs"]
 mod inline_parts;
 #[path = "core/inline_table.rs"]

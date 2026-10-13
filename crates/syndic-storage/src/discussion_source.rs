@@ -187,6 +187,7 @@ fn authenticate(
         || turn.id() != source.turn_id()
         || state.turn_id() != source.turn_id()
         || !state.lifecycle().is_proven_terminal()
+        || state.lifecycle() == crate::TurnLifecycle::Incomplete
         || state.finalized_item_count() < item.ordinal().get()
     {
         return invalid("discussion source is not the exact finalized assistant projection");

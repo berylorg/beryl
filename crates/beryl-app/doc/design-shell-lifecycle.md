@@ -195,6 +195,49 @@ its duplicate composer service reference; later selection does not retain an obs
 as current authority. Lifecycle attention routing uses those cached coherent view identities and
 acknowledges only the exact displayed token after successful activation or notice dismissal.
 
+## Captured Discussion Creation Lifetime
+
+- The published service graph gives ordinary discussion creation a dedicated 32-operation
+  `DiscussionCreationOperations` budget. It is independent of handoff settlement capacity and does
+  not replace the Home command registry's own admission. Window adapters retain at most 32 ended
+  exact captures alongside their one current request; exhaustion refuses admission explicitly.
+- Menu source qualification, creation and reconciliation run through narrow typed service-reader
+  methods off GPUI. They acquire the existing Running worker capacity before spawning and remain
+  tracked until synchronous work ends. Superseding a GUI task is not worker drainage. Suspension
+  cancels admission and suppresses publication; retirement joins work before releasing source
+  readers. Retained captured bytes and original audit evidence survive without keeping retired
+  service access alive. Same-home resumption acquires fresh service access for that same evidence.
+- Pending classification preserves the invoking selection through owner-supplied interaction
+  gating. Completion and Retry require the current exact request, source, window and service
+  generation. Collision closes that request scope; it does not turn a retained window outcome into
+  a gate on unrelated healthy captures.
+- Proven creation success requests ordinary activation of the original created identity. A proven
+  activation failure retains that identity and returns focus to the coherent source. Selection
+  restoration may consume saved mapped endpoints only after exact current source, range, bytes and
+  measurement-environment qualification. Source or appearance invalidation does not authorize a
+  similar-text lookup, stale geometry, offscreen pin or synthetic command target.
+- A Code-origin capture uses the exact canonical byte coordinates already carried by indexed
+  Source pages or authenticated raw Display fragments and their binding; its projection range
+  excludes fence lines. Match current
+  metadata item/projection identity, root/binding, containing record and transcript-entry proof
+  before admitting selected bytes. Do not add a fence offset or reinterpret a Table export.
+  Layout-owned authenticated raw fragment custody follows the current bounded prepared source
+  ranges after host pages are consumed, including later horizontal fragments. Charge it within
+  the existing layout budget and release bytes no longer required by that realization. Root or
+  binding replacement invalidates custody; capture adds no offscreen demand or full-source load.
+  Prepared Code fragments retain exact authenticated Text and Tab bytes before shaping, with
+  allocation admitted through the existing output-byte/item capacity checks. Their ordinary
+  pruning and invalidation dispose of those bytes together with geometry. Oversize placeholders
+  carry no raw source and cannot establish rendered selected-text coverage.
+  Resource demand identity retains its original presentation revision across legitimate resource
+  publication. Authenticate its current exact source through the existing indexed owner checks,
+  then bind the menu request to the current activation/presentation revisions. Do not treat the
+  old demand stamp as the invocation stamp or relax current command/layout fences. Authenticated
+  CodeLine terminator metadata supplies exact LF/CRLF bridges only between adjacent currently
+  prepared raw lines; no placeholder or unrendered gap can supply selected-text coverage.
+  Selection preservation and Retry retain the invoking origin's current descriptor, including when
+  another ended capture has occupied the same surface in the meantime.
+
 ## Historical Replacement Operation Lifetime
 
 The [historical replacement adapter](design-catalog-and-composer.md#historical-replacement-adapter)

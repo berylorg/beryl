@@ -56,6 +56,14 @@ Transcript context menus are anchored through the `transcript view` to rendered 
 
 The feature supplies Quote and `Discuss in new branch` as distinct command rows for eligible assistant reply selections. Disabled branch discussion remains visible when a close actionable gate can be explained and uses the disabled tooltip contract; selections without stable source provenance expose no branch command.
 
+Eligible assistant Code selections use the same owner-configured anchored menu over the code
+panel's exact current source selection. The feature captures canonical source bytes and provenance
+from matching retained authenticated indexed source bytes, including raw Display fragments;
+Code's bare-text Copy and streaming `Save…` keep their
+own command placements. Branch pending and Retry presentation preserves the invoking Code
+selection and returns focus to its current source origin. Table export rectangles do not become
+branch selections without a separately proven contiguous source interval.
+
 The transcript image-marker contextual surface places Copy and `Save…` as command rows in a
 bounded built-in `context menu` opened by a context-menu gesture on that marker. While its image
 preview is open, the preview's optional contextual-command anchor is the corresponding preview

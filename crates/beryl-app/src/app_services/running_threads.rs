@@ -1,6 +1,7 @@
 use super::*;
 
 mod claim_recovery;
+mod discussion_creation;
 mod lineage;
 mod ordinary_selection;
 mod ordinary_selection_recovery;
@@ -33,6 +34,7 @@ pub(crate) struct PublishedRunningThreadsReader {
     service_generation: crate::cas_projection::ProjectionServiceGeneration,
     observer: beryl_home_store::HomeMutationObserver,
     resource_construction: crate::cas_projection::ResourceConstructionAuthority,
+    discussion_creations: crate::discussion_creation::DiscussionCreationOperations,
 }
 
 impl ProcessServiceOwner {
@@ -87,11 +89,15 @@ impl ProcessServiceOwner {
             service_generation: graph.cas().service_generation(),
             observer: graph.cas().home_mutation_observer(),
             resource_construction: graph.cas().resource_construction_authority(),
+            discussion_creations: self.discussion_creations.clone(),
         })
     }
 }
 
 impl PublishedRunningThreadsReader {
+    pub(crate) fn branch_home_id(&self) -> beryl_model::BerylHomeId {
+        self.home.home_id()
+    }
     pub(crate) fn step_resource_construction(
         &self,
         key: syndic_storage::indexed_resource::BuildKey,
@@ -199,6 +205,10 @@ impl PublishedRunningThreadsReader {
             service_generation: service.service_generation(),
             observer: service.home_mutation_observer(),
             resource_construction: service.resource_construction_authority(),
+            discussion_creations: crate::discussion_creation::DiscussionCreationOperations::new(
+                crate::process_admission::ProcessAdmissionGate::new(),
+                std::num::NonZeroUsize::new(4).unwrap(),
+            ),
         }
     }
 

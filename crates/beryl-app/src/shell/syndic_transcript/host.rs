@@ -122,11 +122,18 @@ impl SyndicTranscriptHost {
         self.core.inline_parts_current(record)
     }
 
-    pub(crate) fn inline_parts_layout_allowance(&self, record: &super::ResidentPresentationRecord) -> usize {
+    pub(crate) fn inline_parts_layout_allowance(
+        &self,
+        record: &super::ResidentPresentationRecord,
+    ) -> usize {
         self.core.inline_parts_layout_allowance(record)
     }
 
-    pub(crate) fn reserve_inline_parts_layout(&mut self, record: &super::ResidentPresentationRecord, bytes: usize) -> bool {
+    pub(crate) fn reserve_inline_parts_layout(
+        &mut self,
+        record: &super::ResidentPresentationRecord,
+        bytes: usize,
+    ) -> bool {
         self.core.reserve_inline_parts_layout(record, bytes)
     }
 
@@ -623,6 +630,28 @@ impl SyndicTranscriptHost {
 
     pub(crate) fn clear_resident_quote_target(&mut self) -> ResidentQuoteOutcome {
         self.core.clear_resident_quote_target()
+    }
+
+    pub(crate) fn resource_discussion_source(
+        &self,
+        owner: &super::ResourceTranscriptDemand,
+        activation: u64,
+        presentation: u64,
+        range: std::ops::Range<u64>,
+        text: String,
+    ) -> Option<super::CapturedDiscussionSource> {
+        self.core
+            .resource_discussion_source(owner, activation, presentation, range, text)
+    }
+
+    pub(crate) fn mapped_discussion_source(
+        &self,
+        activation: u64,
+        revision: u64,
+        ranges: &[(super::ResidentPresentationRecordId, std::ops::Range<usize>)],
+    ) -> Option<super::core::CapturedDiscussionSource> {
+        self.core
+            .mapped_discussion_source(activation, revision, ranges)
     }
 
     pub(crate) fn mapped_quote_markdown(

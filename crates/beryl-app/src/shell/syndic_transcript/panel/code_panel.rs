@@ -46,7 +46,7 @@ mod testing;
 pub(super) struct MountedCodePanel {
     pub(super) viewport: CodeViewport,
     pub(super) id: u64,
-    focus: gpui::FocusHandle,
+    pub(super) focus: gpui::FocusHandle,
     copy_focus: gpui::FocusHandle,
     save_focus: gpui::FocusHandle,
     owner: ScrollbarOwnerKey,

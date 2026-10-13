@@ -22,6 +22,9 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Its first draft stores an immutable context envelope containing version, exact selected UTF-8 text, source thread id, source turn id, source item/projection id, source revision, normalized selected range, context digest, and creation time.
 - Context-envelope V1 computes its context digest as SHA-256 over the exact selected UTF-8 bytes without trimming, normalization, or framing; source provenance and range remain separately versioned envelope fields.
 - Branch creation accepts only a current assistant projection owned by a proven-terminal source turn.
+  An explicitly incomplete source turn remains ineligible, including when its assistant item was
+  finalized before incomplete convergence. Preparation and writer authentication enforce the same
+  exclusion required by the transcript feature.
   It validates the exact source thread, turn, item, finalized projection identity and revision,
   selected range, and selected bytes before creating the Syndic thread, inherited immutable
   execution, attributes and usage seeds, first draft, parent binding, and context-owner link in one

@@ -1,3 +1,6 @@
+mod code;
+mod discussion;
+
 #[cfg(test)]
 mod testing;
 
@@ -21,6 +24,20 @@ pub(in super::super) struct QuoteState {
         gpui::FocusHandle,
     )>,
     edit_disabled_reason: Option<&'static str>,
+    branch_label: Option<&'static str>,
+    branch_disabled_reason: Option<&'static str>,
+    branch_retry: bool,
+    branch_source: Option<crate::syndic_transcript::CapturedDiscussionSource>,
+    branch_qualified: Option<Result<(), &'static str>>,
+    branch_pending: bool,
+    code_capture: Option<code::CodeDiscussionCapture>,
+    preserved_code_selection: Option<code::CodeDiscussionCapture>,
+    preserved_branch_selection: Option<(
+        NarrativeSelection,
+        crate::syndic_transcript::CapturedDiscussionSource,
+        super::super::MeasurementEnvironment,
+    )>,
+    restore_branch_selection: bool,
     #[cfg(test)]
     last_open_diagnostic: Option<String>,
 }
@@ -52,12 +69,17 @@ impl SyndicTranscriptPanel {
     }
 
     pub(in super::super) fn invalidate_transcript_menu(&mut self) {
+        self.quote_state.branch_qualified = None;
         self.quote_state.capture = None;
+        self.quote_state.code_capture = None;
         self.quote_state.turn = None;
         self.host.clear_resident_context_menu_target();
     }
 
     fn transcript_menu_rows(&self) -> QuoteRows {
+        let branch_source = self.discussion_menu_source();
+        let branch_current =
+            branch_source.is_some() && branch_source == self.quote_state.branch_source;
         let edit_reason = if self
             .quote_state
             .turn
@@ -69,7 +91,24 @@ impl SyndicTranscriptPanel {
             self.quote_state.edit_disabled_reason
         };
         QuoteRows {
-            quote: self.quote_state.capture.is_some(),
+            quote: self.quote_state.capture.is_some() || self.quote_state.code_capture.is_some(),
+            branch: branch_source.is_some(),
+            branch_label: if branch_current {
+                self.quote_state
+                    .branch_label
+                    .unwrap_or("Discuss in new branch")
+            } else {
+                "Discuss in new branch"
+            },
+            branch_reason: if branch_current && self.quote_state.branch_label.is_some() {
+                self.quote_state.branch_disabled_reason
+            } else {
+                match &self.quote_state.branch_qualified {
+                    Some(Ok(())) => None,
+                    Some(Err(reason)) => Some(*reason),
+                    None => Some("Checking the exact finalized assistant source."),
+                }
+            },
             edit: self.quote_state.turn.is_some(),
             edit_reason,
             image: self.quote_state.turn.as_ref().is_some_and(|capture| {
@@ -145,6 +184,14 @@ impl SyndicTranscriptPanel {
     }
 
     fn transcript_menu_current(&self, window: &Window) -> bool {
+        if let Some(capture) = &self.quote_state.code_capture {
+            return self.code_discussion_request_current(
+                self.quote_state.serial,
+                capture.activation,
+                capture.presentation,
+                window,
+            );
+        }
         let quote_current = self.quote_state.capture.as_ref().is_none_or(|capture| {
             self.quote_request_current(
                 self.quote_state.serial,
@@ -206,6 +253,9 @@ impl SyndicTranscriptPanel {
         presentation: u64,
         window: &Window,
     ) -> bool {
+        if self.quote_state.code_capture.is_some() {
+            return self.code_discussion_request_current(request, activation, presentation, window);
+        }
         let Some(capture) = &self.quote_state.capture else {
             return false;
         };
@@ -474,14 +524,39 @@ impl SyndicTranscriptPanel {
             window,
         );
         self.quote_state.popup = Some(popup);
+        if let Some(capture) = &self.quote_state.capture {
+            if let Some(captured) = self.host.mapped_discussion_source(
+                capture.selection.activation,
+                capture.selection.revision,
+                &capture.ranges,
+            ) {
+                cx.emit(super::super::DiscussionSourceQualificationRequested(
+                    super::super::DiscussionCreationRequested {
+                        captured,
+                        request: serial,
+                        activation: capture.selection.activation,
+                        presentation: capture.selection.revision,
+                    },
+                ));
+            }
+        }
         cx.notify();
     }
 
     pub(in super::super) fn close_quote_menu(&mut self, window: &mut Window) {
         let marker = self.quote_state.marker_origin.take();
-        let fallback = marker
-            .as_ref()
-            .and_then(|_| self.image_marker_return_focus(window))
+        let code_focus = self.quote_state.code_capture.as_ref().and_then(|capture| {
+            self.code_panels
+                .iter()
+                .find(|code| code.id == capture.id)
+                .map(|code| code.focus.clone())
+        });
+        let fallback = code_focus
+            .or_else(|| {
+                marker
+                    .as_ref()
+                    .and_then(|_| self.image_marker_return_focus(window))
+            })
             .unwrap_or_else(|| self.focus_handle.clone());
         if let Some(mut popup) = self.quote_state.popup.take() {
             popup.dismiss(window, &fallback);
@@ -537,6 +612,9 @@ impl SyndicTranscriptPanel {
 }
 
 struct QuoteRows {
+    branch: bool,
+    branch_label: &'static str,
+    branch_reason: Option<&'static str>,
     quote: bool,
     edit: bool,
     image: bool,
@@ -544,27 +622,38 @@ struct QuoteRows {
 }
 impl MenuCollection for QuoteRows {
     fn len(&self) -> usize {
-        usize::from(self.quote) + usize::from(self.edit) + 2 * usize::from(self.image)
+        usize::from(self.quote)
+            + usize::from(self.branch)
+            + usize::from(self.edit)
+            + 2 * usize::from(self.image)
     }
     fn index_of(&self, id: &str) -> Option<usize> {
         if self.quote && id == "transcript-quote" {
             Some(0)
-        } else if self.edit && id == "transcript-edit-message" {
-            Some(usize::from(self.quote) + 2 * usize::from(self.image))
-        } else if self.image && id == "transcript-image-copy" {
+        } else if self.branch && id == "transcript-discuss-branch" {
             Some(usize::from(self.quote))
+        } else if self.edit && id == "transcript-edit-message" {
+            Some(usize::from(self.quote) + usize::from(self.branch) + 2 * usize::from(self.image))
+        } else if self.image && id == "transcript-image-copy" {
+            Some(usize::from(self.quote) + usize::from(self.branch))
         } else if self.image && id == "transcript-image-save" {
-            Some(usize::from(self.quote) + 1)
+            Some(usize::from(self.quote) + usize::from(self.branch) + 1)
         } else {
             None
         }
     }
     fn row(&self, index: usize) -> MenuRow {
-        assert!(index < self.len() && self.len() <= 4);
+        assert!(index < self.len() && self.len() <= 5);
         let quote = self.quote && index == 0;
-        let media_index = index.saturating_sub(usize::from(self.quote));
+        let media_index = index.saturating_sub(usize::from(self.quote) + usize::from(self.branch));
         let (id, label, reason) = if quote {
             ("transcript-quote", "Quote", None)
+        } else if self.branch && index == usize::from(self.quote) {
+            (
+                "transcript-discuss-branch",
+                self.branch_label,
+                self.branch_reason,
+            )
         } else if self.image && media_index < 2 {
             (
                 if media_index == 0 {
@@ -584,7 +673,9 @@ impl MenuCollection for QuoteRows {
             label: label.into(),
             kind: MenuRowKind::Command,
             selected: false,
-            enabled: quote || (id == "transcript-edit-message" && reason.is_none()),
+            enabled: quote
+                || ((id == "transcript-edit-message" || id == "transcript-discuss-branch")
+                    && reason.is_none()),
             disabled_reason: reason.map(Into::into),
             selector: id.into(),
         }
@@ -615,6 +706,61 @@ fn quote_input(
             }
             MenuIntent::Focus(_) => cx.notify(),
             MenuIntent::Activate { id, .. } => {
+                if id.as_ref() == "transcript-discuss-branch" {
+                    if panel.quote_state.code_capture.is_some() {
+                        panel.activate_code_discussion(window, cx);
+                        return;
+                    }
+                    let Some(capture) = &panel.quote_state.capture else {
+                        return;
+                    };
+                    if !panel.quote_request_current(
+                        panel.quote_state.serial,
+                        capture.selection.activation,
+                        capture.selection.revision,
+                        window,
+                    ) {
+                        return;
+                    }
+                    let Some(captured) = panel.host.mapped_discussion_source(
+                        capture.selection.activation,
+                        capture.selection.revision,
+                        &capture.ranges,
+                    ) else {
+                        return;
+                    };
+                    let Some(environment) = panel
+                        .geometry
+                        .as_ref()
+                        .map(|geometry| geometry.environment.clone())
+                    else {
+                        return;
+                    };
+                    panel.quote_state.preserved_branch_selection =
+                        Some((capture.selection.clone(), captured.clone(), environment));
+                    panel.quote_state.preserved_code_selection = None;
+                    panel.quote_state.restore_branch_selection = false;
+                    if panel.quote_state.branch_retry
+                        && panel.quote_state.branch_source.as_ref() == Some(&captured)
+                    {
+                        cx.emit(super::super::DiscussionActivationRetryRequested(
+                            super::super::DiscussionCreationRequested {
+                                captured,
+                                request: panel.quote_state.serial,
+                                activation: capture.selection.activation,
+                                presentation: capture.selection.revision,
+                            },
+                        ));
+                        return;
+                    }
+                    cx.emit(super::super::DiscussionCreationRequested {
+                        captured,
+                        request: panel.quote_state.serial,
+                        activation: capture.selection.activation,
+                        presentation: capture.selection.revision,
+                    });
+                    return;
+                }
                 if id.as_ref() == "transcript-edit-message" {
                     let Some(capture) = &panel.quote_state.turn else {
                         return;
@@ -636,6 +782,10 @@ fn quote_input(
                     return;
                 }
                 if id.as_ref() != "transcript-quote" {
+                    return;
+                }
+                if panel.quote_state.code_capture.is_some() {
+                    panel.quote_code_discussion(window, cx);
                     return;
                 }
                 let Some(capture) = &panel.quote_state.capture else {

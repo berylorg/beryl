@@ -582,6 +582,9 @@
 - [x] Mounted exact historical replacement editing, same-widget failed-home recovery, dimming,
   cancellation and durable-intent submission; independently accepted the
   [production workflow](../../audits/transcript-mounting-readiness.md#mounted-historical-replacement-editing-acceptance).
+- [x] Mounted captured branch discussion creation with exact narrative/Code source, bounded
+  worker and evidence custody, reconciliation/collision and same-child ordinary activation Retry;
+  independently accepted the [workflow](../../audits/transcript-mounting-readiness.md#mounted-captured-branch-discussion-creation-acceptance).
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.

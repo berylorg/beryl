@@ -141,6 +141,9 @@ pub(in super::super) fn render(
         )
         .on_mouse_move(
             cx.listener(move |panel, event: &gpui::MouseMoveEvent, window, app| {
+                if panel.captured_discussion_interaction_gated() {
+                    return;
+                }
                 visibility.record_viewport_activity(owner, window, app);
                 let Some(code) = panel
                     .code_panels
@@ -170,6 +173,10 @@ pub(in super::super) fn render(
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
+                if panel.captured_discussion_interaction_gated() {
+                    cx.stop_propagation();
+                    return;
+                }
                 let Some(code) = panel
                     .code_panels
                     .iter_mut()
@@ -196,6 +203,13 @@ pub(in super::super) fn render(
                 }
                 cx.stop_propagation();
                 cx.notify();
+            }),
+        )
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
+                panel.open_code_discussion_menu(id, Some(event.position), window, cx);
+                cx.stop_propagation();
             }),
         )
         .on_mouse_up(
@@ -229,6 +243,15 @@ pub(in super::super) fn render(
                 cx.stop_propagation();
                 return;
             }
+            if event.keystroke.key == "f10" && event.keystroke.modifiers.shift {
+                panel.open_code_discussion_menu(id, None, window, cx);
+                cx.stop_propagation();
+                return;
+            }
+            if panel.captured_discussion_interaction_gated() {
+                cx.stop_propagation();
+                return;
+            }
             let mut scroll = scroll.borrow_mut();
             let line_height = scroll.line_height;
             match event.keystroke.key.as_str() {
@@ -251,6 +274,10 @@ pub(in super::super) fn render(
     let visibility = panel.visibility.clone();
     viewport = viewport.on_scroll_wheel(cx.listener(
         move |panel, event: &gpui::ScrollWheelEvent, window, cx| {
+            if panel.captured_discussion_interaction_gated() {
+                cx.stop_propagation();
+                return;
+            }
             if !panel
                 .code_panels
                 .iter()

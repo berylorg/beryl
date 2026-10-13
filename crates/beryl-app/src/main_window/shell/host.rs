@@ -20,8 +20,8 @@ mod selection_invocation;
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
+mod branch_discussion;
 mod historical_replacement;
-mod transcript_image_preview;
 mod model_controls;
 mod quote;
 mod selected;
@@ -30,6 +30,7 @@ mod shutdown_draft;
 mod status_controls;
 mod thread_navigation;
 mod thread_switcher;
+mod transcript_image_preview;
 pub use shutdown_draft::{
     MainWindowShutdownDraft, MainWindowShutdownDraftAdvance, MainWindowShutdownDraftRelease,
 };
@@ -692,6 +693,7 @@ pub struct MainWindowShellRoot {
     pub(super) notices: notices::MainWindowShellNotices,
     pub(super) home_warning_startup: Option<Arc<()>>,
     transcript_image_preview: Option<transcript_image_preview::TranscriptImagePreview>,
+    branch_discussion: branch_discussion::BranchDiscussionContribution,
 }
 
 mod root;

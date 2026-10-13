@@ -37,8 +37,20 @@ pub(super) struct NarrativeGeometry {
 }
 
 impl NarrativeGeometry {
-    pub(super) fn inline_part(owner: NarrativeOwner, block: NarrativeBlockAppearance, layout: Arc<NarrativeLayout>) -> Self {
-        Self { owner, block, layout: Some(layout), marker: None, marker_ready: true, preparation: None, refused: false }
+    pub(super) fn inline_part(
+        owner: NarrativeOwner,
+        block: NarrativeBlockAppearance,
+        layout: Arc<NarrativeLayout>,
+    ) -> Self {
+        Self {
+            owner,
+            block,
+            layout: Some(layout),
+            marker: None,
+            marker_ready: true,
+            preparation: None,
+            refused: false,
+        }
     }
     fn content_height(&self) -> Pixels {
         self.layout
@@ -270,15 +282,23 @@ pub(super) fn render(geometry: &NarrativeGeometry, selected: Option<Range<usize>
 
 impl SyndicTranscriptPanel {
     fn mapped_geometry(&self, id: &ResidentPresentationRecordId) -> Option<MappedGeometry<'_>> {
-        if let Some(value) = self.narrative_geometry.iter()
-            .chain(self.inline_parts_geometry.iter().filter(|geometry| self.host.inline_parts_current(&geometry.record)).flat_map(|geometry| geometry.text.iter()))
+        if let Some(value) = self
+            .narrative_geometry
+            .iter()
+            .chain(
+                self.inline_parts_geometry
+                    .iter()
+                    .filter(|geometry| self.host.inline_parts_current(&geometry.record))
+                    .flat_map(|geometry| geometry.text.iter()),
+            )
             .find(|value| {
-            &value.owner.record_id == id
-                && value.layout.is_some()
-                && !value.refused
-                && value.valid()
-                && self.host.narrative_current(&value.owner)
-        }) {
+                &value.owner.record_id == id
+                    && value.layout.is_some()
+                    && !value.refused
+                    && value.valid()
+                    && self.host.narrative_current(&value.owner)
+            })
+        {
             return Some(MappedGeometry::Prepared(value));
         }
         self.literal_geometry
@@ -303,6 +323,9 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.captured_discussion_interaction_gated() {
+            return;
+        }
         if !self.character_geometry_current(window) {
             self.close_invalid_geometry();
             cx.notify();
@@ -353,14 +376,18 @@ impl SyndicTranscriptPanel {
         let record = frame.records.iter().find(|row| {
             f32::from(local.y) >= row.top_px && f32::from(local.y) < row.top_px + row.height_px
         })?;
-        if let Some(group) = self.inline_parts_geometry.iter().find(|group| group.record.id == record.record_id && self.host.inline_parts_current(&group.record)) {
+        if let Some(group) = self.inline_parts_geometry.iter().find(|group| {
+            group.record.id == record.record_id && self.host.inline_parts_current(&group.record)
+        }) {
             let bounds = group.bounds.get()?;
             for part in group.record.authored_parts() {
                 if matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_))
                     && let Some(marker) = group.marker_bounds(&part.id)
-                    && marker.contains(&position) {
+                    && marker.contains(&position)
+                {
                     return Some(NarrativeEndpoint {
-                        record: part.id.clone(), display: usize::from(position.x >= marker.center().x),
+                        record: part.id.clone(),
+                        display: usize::from(position.x >= marker.center().x),
                     });
                 }
             }
@@ -368,8 +395,12 @@ impl SyndicTranscriptPanel {
                 let layout = text.layout.as_ref()?;
                 let local = position - bounds.origin - point(px(text.block.indent), px(0.0));
                 if let Some(offset) = layout.hit(local)
-                    && let Some(display) = text.owner.prepared.snap_display_endpoint(offset, false) {
-                    return Some(NarrativeEndpoint { record: text.owner.record_id.clone(), display });
+                    && let Some(display) = text.owner.prepared.snap_display_endpoint(offset, false)
+                {
+                    return Some(NarrativeEndpoint {
+                        record: text.owner.record_id.clone(),
+                        display,
+                    });
                 }
             }
             return None;
@@ -417,12 +448,29 @@ impl SyndicTranscriptPanel {
         {
             return None;
         }
-        let parts = frame.records.iter().flat_map(|row| {
-            snapshot.records.get(row.index).filter(|record| record.id == row.record_id)
-                .into_iter().flat_map(move |record| record.authored_parts().iter().map(move |part| (row.index, part)))
-        }).collect::<Vec<_>>();
-        let anchor = parts.iter().position(|(_, record)| record.id == selection.anchor.record)?;
-        let head = parts.iter().position(|(_, record)| record.id == selection.head.record)?;
+        let parts = frame
+            .records
+            .iter()
+            .flat_map(|row| {
+                snapshot
+                    .records
+                    .get(row.index)
+                    .filter(|record| record.id == row.record_id)
+                    .into_iter()
+                    .flat_map(move |record| {
+                        record
+                            .authored_parts()
+                            .iter()
+                            .map(move |part| (row.index, part))
+                    })
+            })
+            .collect::<Vec<_>>();
+        let anchor = parts
+            .iter()
+            .position(|(_, record)| record.id == selection.anchor.record)?;
+        let head = parts
+            .iter()
+            .position(|(_, record)| record.id == selection.head.record)?;
         let (start_index, start, end_index, end) =
             if (anchor, selection.anchor.display) <= (head, selection.head.display) {
                 (
@@ -446,15 +494,22 @@ impl SyndicTranscriptPanel {
             .take(end_index + 1)
             .skip(start_index)
         {
-            if index > start_index && parts[index - 1].0 != *row_index && parts[index - 1].0 + 1 != *row_index {
+            if index > start_index
+                && parts[index - 1].0 != *row_index
+                && parts[index - 1].0 + 1 != *row_index
+            {
                 return None;
             }
             let start = if index == start_index { start } else { 0 };
             if matches!(part.kind, ResidentPresentationRecordKind::ImageMarker(_)) {
                 let end = if index == end_index { end } else { 1 };
-                if start > end || end > 1 { return None; }
-                self.inline_parts_geometry.iter().find(|group| self.host.inline_parts_current(&group.record)
-                    && group.marker_bounds(&part.id).is_some())?;
+                if start > end || end > 1 {
+                    return None;
+                }
+                self.inline_parts_geometry.iter().find(|group| {
+                    self.host.inline_parts_current(&group.record)
+                        && group.marker_bounds(&part.id).is_some()
+                })?;
                 ranges.push((part.id.clone(), start..end));
                 continue;
             }

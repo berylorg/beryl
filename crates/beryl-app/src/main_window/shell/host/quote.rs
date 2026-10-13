@@ -63,9 +63,13 @@ pub(super) fn subscribe_quote(
 
 impl MainWindowShellRoot {
     pub(super) fn subscribe_quote(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.running_threads.image_preview_subscription = Some(
-            super::transcript_image_preview::subscribe(&self.running_threads.transcript, window, cx),
-        );
+        self.subscribe_branch_discussion(window, cx);
+        self.running_threads.image_preview_subscription =
+            Some(super::transcript_image_preview::subscribe(
+                &self.running_threads.transcript,
+                window,
+                cx,
+            ));
         self.running_threads.quote_subscription = Some(subscribe_quote(
             &self.running_threads.transcript,
             window,

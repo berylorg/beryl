@@ -14,8 +14,8 @@ mod code_viewport;
 mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
-mod inline_table_actions;
 mod inline_parts;
+mod inline_table_actions;
 mod narrative;
 mod narrative_appearance;
 mod narrative_layout;
@@ -42,6 +42,17 @@ use gpui::{
 
 gpui::actions!(syndic_transcript, [OpenTranscriptContextMenu]);
 pub(crate) struct ResourceViewportDemandChanged;
+#[derive(Clone)]
+pub(crate) struct DiscussionCreationRequested {
+    pub(crate) captured: super::core::CapturedDiscussionSource,
+    pub(crate) request: u64,
+    pub(crate) activation: u64,
+    pub(crate) presentation: u64,
+}
+#[derive(Clone)]
+pub(crate) struct DiscussionSourceQualificationRequested(pub(crate) DiscussionCreationRequested);
+
+pub(crate) struct DiscussionActivationRetryRequested(pub(crate) DiscussionCreationRequested);
 pub(crate) struct QuoteInsertionRequested {
     pub(crate) markdown: String,
     pub(crate) request: u64,
@@ -191,6 +202,9 @@ pub(crate) struct SyndicTranscriptPanel {
 
 impl gpui::EventEmitter<ResourceViewportDemandChanged> for SyndicTranscriptPanel {}
 impl gpui::EventEmitter<QuoteInsertionRequested> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<DiscussionCreationRequested> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<DiscussionSourceQualificationRequested> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<DiscussionActivationRetryRequested> for SyndicTranscriptPanel {}
 impl gpui::EventEmitter<HistoricalReplacementRequested> for SyndicTranscriptPanel {}
 impl gpui::EventEmitter<ImageMarkerInspectionRequested> for SyndicTranscriptPanel {}
 
@@ -638,6 +652,7 @@ impl SyndicTranscriptPanel {
         self.table_appearance =
             table_appearance::TableAppearance::prepare(appearance.prepared().appearance());
         self.appearance = Some(appearance);
+        self.invalidate_captured_discussion_geometry();
         self.geometry = None;
         self.close_invalid_geometry();
     }
@@ -650,7 +665,9 @@ impl SyndicTranscriptPanel {
     }
 
     #[cfg(test)]
-    pub(crate) fn dimmed_record_ids_for_test(&self) -> &std::collections::HashSet<ResidentPresentationRecordId> {
+    pub(crate) fn dimmed_record_ids_for_test(
+        &self,
+    ) -> &std::collections::HashSet<ResidentPresentationRecordId> {
         &self.dimmed_records
     }
 
@@ -783,8 +800,13 @@ impl SyndicTranscriptPanel {
         });
         self.literal_geometry = std::mem::take(&mut self.literal_candidate_geometry);
         self.inline_parts_candidate_geometry.retain(|geometry| {
-            let retained = frame.records.iter().any(|record| record.record_id == geometry.record.id);
-            if !retained { self.host.reserve_inline_parts_layout(&geometry.record, 0); }
+            let retained = frame
+                .records
+                .iter()
+                .any(|record| record.record_id == geometry.record.id);
+            if !retained {
+                self.host.reserve_inline_parts_layout(&geometry.record, 0);
+            }
             retained
         });
         self.inline_parts_geometry = std::mem::take(&mut self.inline_parts_candidate_geometry);
@@ -1398,7 +1420,11 @@ impl SyndicTranscriptPanel {
                     .iter()
                     .map(|value| value.charge())
                     .sum::<usize>()
-                + self.inline_parts_geometry.iter().map(|value| value.charge()).sum::<usize>();
+                + self
+                    .inline_parts_geometry
+                    .iter()
+                    .map(|value| value.charge())
+                    .sum::<usize>();
             self.staged
                 .as_mut()
                 .map(|staged| &mut staged.host)
@@ -1544,6 +1570,8 @@ impl SyndicTranscriptPanel {
             None
         };
         self.last_frame_window = Some(frame_window.clone());
+        self.restore_captured_discussion_selection(window);
+        self.restore_code_discussion_selection(window);
 
         div()
             .relative()
@@ -1556,6 +1584,10 @@ impl SyndicTranscriptPanel {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|panel, event: &gpui::MouseDownEvent, window, cx| {
+                    if panel.captured_discussion_interaction_gated() {
+                        cx.stop_propagation();
+                        return;
+                    }
                     panel.code_wheel_owner.set(None);
                     panel.table_wheel_owner.set(None);
                     window.focus(&panel.focus_handle);
@@ -1592,6 +1624,10 @@ impl SyndicTranscriptPanel {
             )
             .on_scroll_wheel(
                 cx.listener(|panel, event: &gpui::ScrollWheelEvent, window, cx| {
+                    if panel.captured_discussion_interaction_gated() {
+                        cx.stop_propagation();
+                        return;
+                    }
                     let delta = event.delta.pixel_delta(window.line_height());
                     panel.queue_manual_delta(-f32::from(delta.y), cx);
                     cx.stop_propagation();
@@ -1606,6 +1642,10 @@ impl SyndicTranscriptPanel {
                     }
                     if event.keystroke.key == "f10" && event.keystroke.modifiers.shift {
                         panel.open_quote_menu(None, window, cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    if panel.captured_discussion_interaction_gated() {
                         cx.stop_propagation();
                         return;
                     }
@@ -1649,9 +1689,28 @@ impl SyndicTranscriptPanel {
                     .as_ref()
                     .and_then(|selection| self.narrative_ranges(selection))
                     .unwrap_or_default(),
-                self.staged.is_some(),
+                self.staged.is_some() || self.captured_discussion_interaction_gated(),
                 cx,
             ))
+            .children(self.captured_discussion_interaction_gated().then(|| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|_, _: &gpui::MouseDownEvent, _, cx| cx.stop_propagation()),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|panel, event: &gpui::MouseDownEvent, window, cx| {
+                            panel.open_quote_menu(Some(event.position), window, cx);
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_scroll_wheel(
+                        cx.listener(|_, _: &gpui::ScrollWheelEvent, _, cx| cx.stop_propagation()),
+                    )
+            }))
             .children(
                 self.keyboard_copy
                     .feedback
@@ -1833,7 +1892,10 @@ fn render_realized_record(
             }),
         )
         .child(
-            if let Some(geometry) = inline_geometry.iter().find(|geometry| geometry.record.id == record.id) {
+            if let Some(geometry) = inline_geometry
+                .iter()
+                .find(|geometry| geometry.record.id == record.id)
+            {
                 inline_parts::render(geometry, narrative_ranges, cx)
             } else if let Some(geometry) = narrative_geometry
                 .iter()
@@ -2057,13 +2119,17 @@ fn render_ordinary_record_content(
     table_row_height: f32,
 ) -> AnyElement {
     match &record.kind {
-        ResidentPresentationRecordKind::AuthoredInlineParts { .. } => div().child("Inline content preparing").into_any_element(),
+        ResidentPresentationRecordKind::AuthoredInlineParts { .. } => {
+            div().child("Inline content preparing").into_any_element()
+        }
         ResidentPresentationRecordKind::ImageMarker(marker) => div()
             .flex()
             .items_center()
             .child(
                 div()
-                    .debug_selector(|| format!("transcript-image-marker:{}", marker.marker.marker_id()))
+                    .debug_selector(|| {
+                        format!("transcript-image-marker:{}", marker.marker.marker_id())
+                    })
                     .px(px(5.0))
                     .py(px(1.0))
                     .border_1()

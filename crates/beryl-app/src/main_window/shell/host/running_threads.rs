@@ -82,13 +82,16 @@ pub(super) struct RunningThreadsContribution {
     generation: Arc<AtomicU64>,
     cancellation: ProjectionCancellationToken,
     poll: Option<gpui::Task<()>>,
-    workers: crate::main_window::conversation_composer_mount::worker::WorkerLifetime,
+    pub(super) workers: crate::main_window::conversation_composer_mount::worker::WorkerLifetime,
     pub(super) reads_suspended: bool,
     pub(super) views_retired: bool,
     read_drain_task: Option<gpui::Task<()>>,
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     resource_subscription: Option<gpui::Subscription>,
     pub(super) quote_subscription: Option<gpui::Subscription>,
+    pub(super) branch_subscription: Option<gpui::Subscription>,
+    pub(super) branch_retry_subscription: Option<gpui::Subscription>,
+    pub(super) branch_qualification_subscription: Option<gpui::Subscription>,
     pub(super) historical_replacement_subscription: Option<gpui::Subscription>,
     pub(super) image_preview_subscription: Option<gpui::Subscription>,
     pub(super) historical_dimming_key:
@@ -197,7 +200,16 @@ impl RunningThreadsContribution {
         self.quote_presentation_subscription =
             Some(Self::quote_presentation_subscription(&transcript, cx));
         self.quote_subscription = Some(super::quote::subscribe_quote(&transcript, window, cx));
-        self.image_preview_subscription = Some(super::transcript_image_preview::subscribe(&transcript, window, cx));
+        let (create, retry, qualification) =
+            super::branch_discussion::subscriptions(&transcript, window, cx);
+        self.branch_subscription = Some(create);
+        self.branch_retry_subscription = Some(retry);
+        self.branch_qualification_subscription = Some(qualification);
+        self.image_preview_subscription = Some(super::transcript_image_preview::subscribe(
+            &transcript,
+            window,
+            cx,
+        ));
         self.historical_replacement_subscription = Some(
             super::historical_replacement::subscribe_historical_replacement(
                 &transcript,
@@ -259,6 +271,9 @@ impl RunningThreadsContribution {
             transcript,
             resource_subscription: Some(resource_subscription),
             quote_subscription: None,
+            branch_subscription: None,
+            branch_retry_subscription: None,
+            branch_qualification_subscription: None,
             historical_replacement_subscription: None,
             image_preview_subscription: None,
             historical_dimming_key: None,
@@ -374,6 +389,27 @@ impl MainWindowShellRoot {
     }
 
     #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_transcript_delivery_pending(&self) -> bool {
+        self.running_threads.transcript_task.is_some()
+            || self.running_threads.measured_resource.is_some()
+            || self.running_threads.measured_attachment.is_some()
+            || self.running_threads.recovered_attachment.is_some()
+            || self.running_threads.has_activation_custody()
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_transcript_published_source_matches(
+        &self,
+        head: &syndic_storage::TranscriptViewHeadRecord,
+        summary: &syndic_storage::HistorySummaryRecord,
+    ) -> bool {
+        self.running_threads
+            .transcript_source
+            .as_ref()
+            .is_some_and(|source| source.matches_published_for_test(head, summary))
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn test_fence_pending_adjacent_read(
         &mut self,
         window: &mut Window,
@@ -436,6 +472,9 @@ impl MainWindowShellRoot {
     }
 
     pub(crate) fn release_suspended_running_thread_sources(&mut self) -> bool {
+        if self.running_threads.reads_suspended && self.running_thread_reads_drained() {
+            self.release_captured_branch_sources();
+        }
         if self.running_thread_reads_drained()
             && self.running_threads.reader.is_none()
             && self.running_threads.transcript_provider.is_none()
@@ -452,7 +491,7 @@ impl MainWindowShellRoot {
         released
     }
 
-    fn running_read_capacity_available(&self) -> bool {
+    pub(super) fn running_read_capacity_available(&self) -> bool {
         running_resource_capacity_available(self.running_threads.workers.retained())
     }
 
@@ -473,6 +512,7 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.suspend_captured_branch();
         self.running_threads.reads_suspended = true;
         self.running_threads.workers.suspend(true);
         self.running_threads
@@ -567,10 +607,14 @@ impl MainWindowShellRoot {
             .update(cx, |panel, _| panel.discard_staged_activation());
         self.suspend_running_thread_reads(window, cx);
         self.running_threads.retire_source()?;
+        self.release_captured_branch_sources();
         self.running_threads.read_drain_task = None;
         self.running_threads.views_retired = true;
         self.running_threads.resource_subscription = None;
         self.running_threads.quote_subscription = None;
+        self.running_threads.branch_subscription = None;
+        self.running_threads.branch_retry_subscription = None;
+        self.running_threads.branch_qualification_subscription = None;
         self.running_threads.historical_replacement_subscription = None;
         self.running_threads.image_preview_subscription = None;
         self.running_threads.quote_presentation_subscription = None;
@@ -610,7 +654,8 @@ impl MainWindowShellRoot {
             && selected.revision() == claim.revision()
     }
     fn running_threads_enabled(&self) -> bool {
-        !self.running_threads.reads_suspended
+        !self.captured_branch_pending()
+            && !self.running_threads.reads_suspended
             && !self.running_threads.views_retired
             && !self.startup_interaction_gated()
             && !self.shutdown_interaction_gated
@@ -669,6 +714,7 @@ impl MainWindowShellRoot {
             if self.running_threads.retire_source().is_err() {
                 return;
             }
+            self.release_captured_branch_sources();
             self.running_threads.reader = reader;
             self.running_threads.resume_read_admission();
             self.running_threads.read_drain_task = None;

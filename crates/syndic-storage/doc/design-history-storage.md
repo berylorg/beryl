@@ -149,7 +149,9 @@ The package exposes an opaque prepared discussion-source witness from exact capt
 `DiscussionContextSource`, bounded selected bytes and current source-thread/transcript proofs.
 Preparation proves terminal finalized assistant content, exact current projection-set membership,
 the selected source turn's membership in the named thread's current path, normalized UTF-8 range
-and byte equality. It uses bounded existing text-range reads outside the writer and retains at
+and byte equality. Explicitly incomplete source turns are ineligible even when their selected
+assistant item was finalized; preparation and writer authentication enforce that same exclusion.
+It uses bounded existing text-range reads outside the writer and retains at
 most the admitted 65,536-byte selection plus compact source records. It never copies the source
 message, transcript, thread ancestry or image-label map. Read drift returns a conflict; no alternate
 projection, selection, source thread or range is inferred.

@@ -24,6 +24,9 @@ pub use flight::DiscussionCreationOperations;
 use flight::Flight;
 pub use recovery::DiscussionCreationAuditOutcome;
 
+pub(crate) const DISCUSSION_CREATION_SCOPE_CAPACITY: std::num::NonZeroUsize =
+    std::num::NonZeroUsize::new(32).unwrap();
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CreatedDiscussion {
     pub thread_id: SyndicThreadId,

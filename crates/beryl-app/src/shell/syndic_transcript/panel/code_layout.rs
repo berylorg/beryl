@@ -99,6 +99,7 @@ pub(super) enum CodeLayoutProgress {
 pub(super) struct PreparedCodeFragment {
     pub logical_line: u64,
     pub source: Range<u64>,
+    pub raw_source: Option<Arc<str>>,
     pub inline_start: Pixels,
     pub inline_end: Pixels,
     pub fragments: Arc<[StreamingLayoutFragment]>,

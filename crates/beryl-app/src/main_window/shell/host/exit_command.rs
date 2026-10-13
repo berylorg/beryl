@@ -20,6 +20,9 @@ impl MainWindowShellRoot {
     }
 
     pub(super) fn running_selection_interaction_gated(&self, app: &App) -> bool {
+        if self.captured_branch_pending() {
+            return true;
+        }
         if self.running_threads.pending_activation.is_some() {
             return true;
         }

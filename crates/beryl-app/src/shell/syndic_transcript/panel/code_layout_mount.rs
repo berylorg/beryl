@@ -39,6 +39,7 @@ struct Environment {
 struct Line {
     ordinal: u64,
     source: Range<u64>,
+    separator: (index::ByteRange, &'static str),
     index: CodeLayoutIndex,
     target: Option<(f32, f32)>,
     prepared: Option<PreparedCodeLayout>,
@@ -127,6 +128,31 @@ impl CodeLayoutMount {
         self.root
     }
 
+    pub(super) fn source_seeds(&self) -> impl Iterator<Item = &Arc<IndexedResourceResponse>> {
+        self.seeds.iter()
+    }
+
+    pub(super) fn source_separators(&self) -> impl Iterator<Item = (index::ByteRange, &[u8])> {
+        let raw_line = |line: &Line| {
+            line.prepared.as_ref().is_some_and(|prepared| {
+                line.source.is_empty()
+                    || prepared
+                        .fragments
+                        .iter()
+                        .any(|fragment| fragment.raw_source.is_some())
+            })
+        };
+        self.lines
+            .iter()
+            .filter(move |line| {
+                raw_line(line)
+                    && self.lines.iter().any(|next| {
+                        line.ordinal.checked_add(1) == Some(next.ordinal) && raw_line(next)
+                    })
+            })
+            .map(|line| (line.separator.0, line.separator.1.as_bytes()))
+    }
+
     pub(super) fn reconcile_environment(
         &mut self,
         viewport: &mut CodeViewport,
@@ -179,6 +205,7 @@ impl CodeLayoutMount {
             .iter()
             .fold(512usize * 1024, |charge, line| {
                 charge
+                    .saturating_add(std::mem::size_of::<(index::ByteRange, &'static str)>())
                     .saturating_add(line.index.charged_bytes().unwrap_or(usize::MAX))
                     .saturating_add(
                         line.prepared
@@ -309,11 +336,43 @@ impl CodeLayoutMount {
                     continue;
                 };
                 let index::Descriptor::CodeLine {
-                    ordinal, content, ..
+                    ordinal,
+                    raw,
+                    content,
+                    terminator,
                 } = item.descriptor
                 else {
                     continue;
                 };
+                if raw.start != content.start
+                    || content.end != terminator.start
+                    || raw.end != terminator.end
+                {
+                    return Err(CodeLayoutError::InvalidPage);
+                }
+                let separator_text = match terminator.end.checked_sub(terminator.start) {
+                    Some(0) => "",
+                    Some(1) => "\n",
+                    Some(2) => "\r\n",
+                    _ => return Err(CodeLayoutError::InvalidPage),
+                };
+                let separator = (
+                    index::ByteRange {
+                        start: value
+                            .binding
+                            .range
+                            .start
+                            .checked_add(terminator.start)
+                            .ok_or(CodeLayoutError::Overflow)?,
+                        end: value
+                            .binding
+                            .range
+                            .start
+                            .checked_add(terminator.end)
+                            .ok_or(CodeLayoutError::Overflow)?,
+                    },
+                    separator_text,
+                );
                 if ordinal < range.start
                     || ordinal >= range.end
                     || self.lines.iter().any(|line| line.ordinal == ordinal)
@@ -372,6 +431,7 @@ impl CodeLayoutMount {
                 self.lines.push(Line {
                     ordinal,
                     source,
+                    separator,
                     index,
                     target: None,
                     prepared: None,
@@ -871,6 +931,22 @@ impl CodeLayoutMount {
                 .extent
                 .as_ref()
                 .map_or(0, |extent| extent.index.checkpoint_count())
+    }
+
+    pub(super) fn geometry_current(
+        &self,
+        viewport: &CodeViewport,
+        appearance: &CodeAppearance,
+        window: &Window,
+    ) -> bool {
+        self.state(viewport) == "ready"
+            && self.environment.as_ref().is_some_and(|environment| {
+                window.text_system().font_environment_key() == Some(environment.font_environment)
+                    && environment.scale == window.scale_factor()
+                    && environment.font == appearance.body_font.font
+                    && environment.size == appearance.body_font.size
+                    && environment.line_height == viewport.scroll.borrow().line_height
+            })
     }
 
     pub(super) fn state(&self, viewport: &CodeViewport) -> &'static str {
