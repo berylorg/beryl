@@ -179,6 +179,7 @@ impl MainWindowShellRoot {
             composer.prepare_startup_interaction_release(cx)
         })?;
         let transcript = self.runtime_setup.transcript.take().unwrap();
+        let transcript_source = transcript.prepared.source_identity();
         let cancellation = self.runtime_setup.transcript_cancel.clone();
         flight.publish_first_conversation(|first| {
             transcript
@@ -235,6 +236,7 @@ impl MainWindowShellRoot {
                 .map_err(|error| error.to_string())?
         })?;
         self.running_threads.transcript_provider = Some(transcript.provider);
+        self.running_threads.transcript_source = Some(transcript_source);
         flight.finish_first_conversation()?;
         self.runtime_setup.mount = None;
         self.runtime_setup.flight = None;

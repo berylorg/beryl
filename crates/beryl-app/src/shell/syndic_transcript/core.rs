@@ -49,9 +49,15 @@ const PIN_PLACEHOLDER_BYTES: usize = 64;
 
 #[path = "core/inline_table.rs"]
 mod inline_table;
+#[path = "core/narrative.rs"]
+mod narrative;
 #[path = "core/resource_delivery.rs"]
 mod resource_delivery;
 pub(crate) use inline_table::InlineTableOwner;
+pub(crate) use narrative::{
+    LiteralNarrativeOwner, NarrativeOwner, NarrativePreparationResponse, NarrativeTranscriptDemand,
+    narrative_source_bytes,
+};
 pub(crate) use resource_delivery::ResourceTranscriptDemand;
 
 #[derive(Clone, Debug)]
@@ -69,6 +75,10 @@ pub(crate) struct ResidentTranscriptCore {
     active_media_action_target: Option<ResidentTranscriptMediaActionTarget>,
     indexed_resources: resource_delivery::IndexedResidency,
     inline_table_layouts: Vec<inline_table::InlineTableLayout>,
+    narrative_preparations: Vec<narrative::NarrativeReservation>,
+    narrative_layouts: Vec<narrative::NarrativeLayout>,
+    previous_narrative_layout_bytes: usize,
+    retained_narratives: Vec<ResidentPresentationRecord>,
 }
 
 impl Default for ResidentTranscriptCore {
@@ -155,6 +165,10 @@ impl ResidentTranscriptCore {
             active_media_action_target: None,
             indexed_resources: Default::default(),
             inline_table_layouts: Vec::new(),
+            narrative_preparations: Vec::new(),
+            narrative_layouts: Vec::new(),
+            previous_narrative_layout_bytes: 0,
+            retained_narratives: Vec::new(),
         }
     }
 
@@ -163,7 +177,7 @@ impl ResidentTranscriptCore {
             resident: self.resident.clone(),
             presentation: self.presentation_snapshot(),
             demand_facts: self.demand_facts.snapshot(),
-            provider_requests: self.provider_requests.snapshot(),
+            provider_requests: self.provider_request_snapshot(),
             policy: self.policy,
             generation: self.generation,
         }
@@ -526,7 +540,11 @@ impl ResidentTranscriptCore {
     }
 
     pub(crate) fn provider_request_snapshot(&self) -> ProviderRequestBookSnapshot {
-        self.provider_requests.snapshot()
+        let mut snapshot = self.provider_requests.snapshot();
+        snapshot.pending_count = snapshot
+            .pending_count
+            .saturating_add(self.narrative_preparations.len());
+        snapshot
     }
 
     pub(crate) fn begin_activation(
@@ -537,6 +555,10 @@ impl ResidentTranscriptCore {
             seed.view_id.is_some() && self.has_coherent_presentation_snapshot();
 
         self.bump_generation();
+        self.narrative_preparations.clear();
+        self.narrative_layouts.clear();
+        self.previous_narrative_layout_bytes = 0;
+        self.retained_narratives.clear();
         self.clear_active_selection_state();
         self.clear_active_context_menu_target_state();
         self.clear_active_media_action_target_state();
@@ -2700,17 +2722,23 @@ impl ResidentTranscriptCore {
 
     fn refresh_budget_accounting(&mut self) {
         self.reconcile_inline_tables();
+        self.reconcile_narratives();
         self.resident.resource_metadata_count = self.resident.resource_metadata.len();
         self.resident.resource_slice_count = self.resident.resource_slices.len();
         self.resident.projection_bytes =
             projection_estimated_bytes(&self.resident.projection_records);
-        self.resident.presentation_bytes = presentation_estimated_bytes(&self.presentation);
+        self.resident.presentation_bytes = presentation_estimated_bytes(&self.presentation)
+            .saturating_add(self.narrative_reserved_bytes());
         self.resident.resource_slice_bytes = resource_slice_bytes(&self.resident.resource_slices);
         self.resident.resource_bytes = self
             .resident
             .resource_slice_bytes
             .saturating_add(self.indexed_resources.encoded_bytes())
             .saturating_add(self.inline_table_layout_bytes());
+        self.resident.resource_bytes = self
+            .resident
+            .resource_bytes
+            .saturating_add(self.narrative_layout_bytes());
         self.resident.geometry_bytes = self
             .presentation
             .records
@@ -2746,6 +2774,7 @@ impl ResidentTranscriptCore {
     }
 
     fn rebuild_presentation_records(&mut self) {
+        self.shared_presentation.get_mut().take();
         self.clear_active_selection_state();
         self.clear_active_context_menu_target_state();
         self.clear_active_media_action_target_state();
@@ -2782,6 +2811,9 @@ impl ResidentTranscriptCore {
                 projection_record,
                 presentation_revision,
             ));
+            if let Some(record) = records.last_mut() {
+                self.retain_narrative_presentation(record);
+            }
             if records.len() == self.policy.max_presentation_records {
                 break;
             }
@@ -3097,6 +3129,13 @@ fn projection_estimated_bytes(records: &[ProjectionRecord]) -> usize {
     records
         .iter()
         .map(|record| match &record.payload {
+            ProjectionPayload::NarrativePending { source }
+            | ProjectionPayload::NarrativeUnavailable { source, .. } => {
+                narrative_source_bytes(source)
+            }
+            ProjectionPayload::NarrativeReady { prepared } => prepared
+                .retained_bytes()
+                .saturating_add(2 * std::mem::size_of::<usize>()),
             ProjectionPayload::InlineTable { prepared } => prepared
                 .retained_bytes()
                 .saturating_add(2 * std::mem::size_of::<usize>()),
@@ -3236,6 +3275,27 @@ fn presentation_record_for_projection(
     presentation_revision: u64,
 ) -> ResidentPresentationRecord {
     let (kind, estimated_bytes) = match &projection_record.payload {
+        ProjectionPayload::NarrativePending { source } => (
+            ResidentPresentationRecordKind::NarrativePending {
+                source: source.clone(),
+            },
+            narrative_source_bytes(source),
+        ),
+        ProjectionPayload::NarrativeReady { prepared } => (
+            ResidentPresentationRecordKind::NarrativeReady {
+                prepared: prepared.clone(),
+            },
+            prepared
+                .retained_bytes()
+                .saturating_add(2 * std::mem::size_of::<usize>()),
+        ),
+        ProjectionPayload::NarrativeUnavailable { source, reason } => (
+            ResidentPresentationRecordKind::NarrativeUnavailable {
+                source: source.clone(),
+                reason: *reason,
+            },
+            narrative_source_bytes(source),
+        ),
         ProjectionPayload::InlineTable { prepared } => (
             ResidentPresentationRecordKind::InlineTable {
                 prepared: prepared.clone(),

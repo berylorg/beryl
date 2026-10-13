@@ -35,10 +35,16 @@ pub enum ThemePropertyId {
     FontFamily,
     FontSize,
     FontWeight,
+    Indent,
+    BorderWidth,
+    BorderColor,
+    FontScale,
+    FontStyle,
+    TextDecoration,
 }
 
 impl ThemePropertyId {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 14] = [
         Self::Background,
         Self::Border,
         Self::Color,
@@ -47,6 +53,12 @@ impl ThemePropertyId {
         Self::FontFamily,
         Self::FontSize,
         Self::FontWeight,
+        Self::Indent,
+        Self::BorderWidth,
+        Self::BorderColor,
+        Self::FontScale,
+        Self::FontStyle,
+        Self::TextDecoration,
     ];
 
     #[must_use]
@@ -60,6 +72,12 @@ impl ThemePropertyId {
             Self::FontFamily => "font_family",
             Self::FontSize => "font_size",
             Self::FontWeight => "font_weight",
+            Self::Indent => "indent",
+            Self::BorderWidth => "border_width",
+            Self::BorderColor => "border_color",
+            Self::FontScale => "font_scale",
+            Self::FontStyle => "font_style",
+            Self::TextDecoration => "text_decoration",
         }
     }
 
@@ -83,6 +101,55 @@ pub enum ThemeValueKind {
     FontFamily,
     LogicalPixels,
     FontWeight,
+    FontScale,
+    FontStyle,
+    TextDecoration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ThemeFontStyle {
+    Normal,
+    Italic,
+}
+
+impl ThemeFontStyle {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Italic => "italic",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ThemeTextDecoration {
+    None,
+    LineThrough,
+}
+
+impl ThemeTextDecoration {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::LineThrough => "line-through",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ThemeFontScale(u32);
+
+impl ThemeFontScale {
+    pub fn new(value: f32) -> Result<Self, ThemeValueError> {
+        if !value.is_finite() || value <= 0.0 || value > THEME_LOGICAL_PIXELS_MAX {
+            return Err(ThemeValueError::InvalidFontScale);
+        }
+        Ok(Self(value.to_bits()))
+    }
+
+    pub const fn get(self) -> f32 {
+        f32::from_bits(self.0)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -185,6 +252,9 @@ pub enum ThemeValue {
     FontFamily(ThemeFontFamily),
     LogicalPixels(ThemeLogicalPixels),
     FontWeight(ThemeFontWeight),
+    FontScale(ThemeFontScale),
+    FontStyle(ThemeFontStyle),
+    TextDecoration(ThemeTextDecoration),
 }
 
 impl ThemeValue {
@@ -195,6 +265,9 @@ impl ThemeValue {
             Self::FontFamily(_) => ThemeValueKind::FontFamily,
             Self::LogicalPixels(_) => ThemeValueKind::LogicalPixels,
             Self::FontWeight(_) => ThemeValueKind::FontWeight,
+            Self::FontScale(_) => ThemeValueKind::FontScale,
+            Self::FontStyle(_) => ThemeValueKind::FontStyle,
+            Self::TextDecoration(_) => ThemeValueKind::TextDecoration,
         }
     }
 }
@@ -354,6 +427,7 @@ pub enum ThemeValueError {
     InvalidFontFamily,
     InvalidLogicalPixels,
     InvalidFontWeight,
+    InvalidFontScale,
     RoleIdentityMismatch,
 }
 
@@ -368,6 +442,9 @@ impl fmt::Display for ThemeValueError {
                 "theme logical-pixel value is outside the finite supported range"
             }
             Self::InvalidFontWeight => "theme font weight is outside 100..=900",
+            Self::InvalidFontScale => {
+                "theme font scale is outside the finite positive supported range"
+            }
             Self::RoleIdentityMismatch => "theme role map key disagrees with the role record",
         })
     }

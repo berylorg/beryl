@@ -3,7 +3,9 @@ use std::{collections::VecDeque, sync::Arc};
 use super::super::{
     demand::{DemandFact, DemandFactKind},
     provider::TranscriptPageDirection,
-    snapshot::{ResidentPresentationRecord, ResidentTranscriptSnapshot},
+    snapshot::{
+        ResidentPresentationRecord, ResidentPresentationRecordId, ResidentTranscriptSnapshot,
+    },
 };
 use super::{
     RealizedFrameAnchor, RealizedFrameClamp, RealizedFrameRecord, RealizedFrameRequest,
@@ -105,10 +107,53 @@ impl MeasuredFramePreparation {
         self.work_last_step
     }
 
+    pub(crate) fn retains_record(&self, id: &ResidentPresentationRecordId) -> bool {
+        if self.records.iter().any(|record| &record.record_id == id) {
+            return true;
+        }
+        let current = match self.step {
+            PreparationStep::Seek => Some(self.cursor_index),
+            PreparationStep::Forward => self
+                .records
+                .back()
+                .and_then(|record| record.index.checked_add(1)),
+            PreparationStep::Backward => self
+                .records
+                .front()
+                .and_then(|record| record.index.checked_sub(1)),
+            PreparationStep::Ready | PreparationStep::Taken => None,
+        };
+        current
+            .and_then(|index| self.snapshot.records.get(index))
+            .is_some_and(|record| &record.id == id)
+    }
+
     pub(crate) fn advance(
         &mut self,
         budget: usize,
         mut measure: impl FnMut(&ResidentPresentationRecord) -> f32,
+    ) -> Option<RealizedFrameWindow> {
+        self.advance_with_observations(budget, |record, _| (Some(measure(record)), 1))
+    }
+
+    pub(crate) fn advance_with_observations(
+        &mut self,
+        budget: usize,
+        mut measure: impl FnMut(&ResidentPresentationRecord, usize) -> (Option<f32>, usize),
+    ) -> Option<RealizedFrameWindow> {
+        self.advance_with_retained_observations(budget, |record, remaining, _| {
+            measure(record, remaining)
+        })
+    }
+
+    pub(crate) fn advance_with_retained_observations(
+        &mut self,
+        budget: usize,
+        mut measure: impl FnMut(
+            &ResidentPresentationRecord,
+            usize,
+            &VecDeque<RealizedFrameRecord>,
+        ) -> (Option<f32>, usize),
     ) -> Option<RealizedFrameWindow> {
         self.work_last_step = 0;
         let budget = budget.min(32);
@@ -129,21 +174,21 @@ impl MeasuredFramePreparation {
                 }
                 _ if self.work_last_step == budget => return None,
                 PreparationStep::Seek => {
-                    let height = self.observe(self.cursor_index, &mut measure)?;
+                    let height = self.observe(self.cursor_index, budget, &mut measure)?;
                     self.seek(height);
                 }
                 PreparationStep::Forward => {
                     let last = self.records.back().expect("measured cursor");
                     let index = last.index + 1;
                     let top = last.top_px + last.height_px;
-                    let height = self.observe(index, &mut measure)?;
+                    let height = self.observe(index, budget, &mut measure)?;
                     self.records.push_back(self.record(index, top, height));
                 }
                 PreparationStep::Backward => {
                     let first = self.records.front().expect("measured cursor");
                     let index = first.index - 1;
                     let bottom = first.top_px;
-                    let height = self.observe(index, &mut measure)?;
+                    let height = self.observe(index, budget, &mut measure)?;
                     self.records
                         .push_front(self.record(index, bottom - height, height));
                 }
@@ -154,10 +199,19 @@ impl MeasuredFramePreparation {
     fn observe(
         &mut self,
         index: usize,
-        measure: &mut impl FnMut(&ResidentPresentationRecord) -> f32,
+        budget: usize,
+        measure: &mut impl FnMut(
+            &ResidentPresentationRecord,
+            usize,
+            &VecDeque<RealizedFrameRecord>,
+        ) -> (Option<f32>, usize),
     ) -> Option<f32> {
-        self.work_last_step += 1;
-        let height = measure(&self.snapshot.records[index]);
+        let remaining = budget.saturating_sub(self.work_last_step);
+        let (height, observations) =
+            measure(&self.snapshot.records[index], remaining, &self.records);
+        assert!(observations <= remaining && (height.is_none() || observations > 0));
+        self.work_last_step += observations;
+        let height = height?;
         (height.is_finite() && height > 0.0).then_some(height)
     }
 

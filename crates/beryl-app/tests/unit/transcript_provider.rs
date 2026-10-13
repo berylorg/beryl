@@ -730,13 +730,21 @@ fn canonical_projection_bytes_publish_with_stable_source_identity_for_unchanged_
                 panic!("canonical projection payload was missing")
             };
             assert_eq!(records.records.len(), 1);
-            let crate::syndic_transcript::ProjectionPayload::Text { text, plain_text } =
+            let crate::syndic_transcript::ProjectionPayload::NarrativePending { source } =
                 &records.records[0].payload
             else {
-                panic!("authored text payload was missing")
+                panic!("typed pending narrative payload was missing")
             };
-            assert_eq!(text.as_ref(), "authored source");
-            assert_eq!(plain_text.as_deref(), Some("authored source"));
+            let syndic_storage::ProjectionPayload::InlineMarkdown {
+                source,
+                span_ordinal,
+                ..
+            } = source.as_ref()
+            else {
+                panic!("inline source missing")
+            };
+            assert_eq!(source.as_ref(), "authored source");
+            assert_eq!(*span_ordinal, 1);
         })
         .unwrap();
     let mut refresh = fixture.request(2);
@@ -749,3 +757,5 @@ fn canonical_projection_bytes_publish_with_stable_source_identity_for_unchanged_
 mod copy_text;
 #[path = "transcript_provider/inline_table.rs"]
 mod inline_table;
+#[path = "transcript_provider/narrative.rs"]
+mod narrative_lifecycle;

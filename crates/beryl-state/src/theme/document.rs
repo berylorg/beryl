@@ -8,9 +8,9 @@ use std::{
 use super::resolver::ThemeValidationDiagnostics;
 use super::schema::CANONICAL_THEME_ROLE_COUNT;
 use super::{
-    InstalledThemeId, ThemeColor, ThemeDefinition, ThemeFontFamily, ThemeFontWeight,
-    ThemeLogicalPixels, ThemePropertyId, ThemePropertySource, ThemeRoleDefinition, ThemeRoleId,
-    ThemeValue, ThemeValueKind, canonical_theme_schema,
+    InstalledThemeId, ThemeColor, ThemeDefinition, ThemeFontFamily, ThemeFontScale, ThemeFontStyle,
+    ThemeFontWeight, ThemeLogicalPixels, ThemePropertyId, ThemePropertySource, ThemeRoleDefinition,
+    ThemeRoleId, ThemeTextDecoration, ThemeValue, ThemeValueKind, canonical_theme_schema,
 };
 
 pub const THEME_DOCUMENT_SCHEMA_VERSION: u32 = 1;
@@ -788,6 +788,25 @@ fn parse_property_source(value: RawValue, kind: ThemeValueKind) -> Option<ThemeP
             .and_then(|value| ThemeFontWeight::new(value).ok())
             .map(ThemeValue::FontWeight)
             .map(ThemePropertySource::Concrete),
+        (ThemeValueKind::FontScale, RawValue::Bare(value)) => normalize_number(&value)
+            .and_then(|value| value.parse::<f32>().ok())
+            .and_then(|value| ThemeFontScale::new(value).ok())
+            .map(ThemeValue::FontScale)
+            .map(ThemePropertySource::Concrete),
+        (ThemeValueKind::FontStyle, RawValue::String(value)) => match value.as_str() {
+            "normal" => Some(ThemeFontStyle::Normal),
+            "italic" => Some(ThemeFontStyle::Italic),
+            _ => None,
+        }
+        .map(ThemeValue::FontStyle)
+        .map(ThemePropertySource::Concrete),
+        (ThemeValueKind::TextDecoration, RawValue::String(value)) => match value.as_str() {
+            "none" => Some(ThemeTextDecoration::None),
+            "line-through" => Some(ThemeTextDecoration::LineThrough),
+            _ => None,
+        }
+        .map(ThemeValue::TextDecoration)
+        .map(ThemePropertySource::Concrete),
         _ => None,
     }
 }
@@ -879,6 +898,13 @@ fn serialize_source(source: &ThemePropertySource) -> String {
         }
         ThemePropertySource::Concrete(ThemeValue::LogicalPixels(value)) => value.get().to_string(),
         ThemePropertySource::Concrete(ThemeValue::FontWeight(value)) => value.get().to_string(),
+        ThemePropertySource::Concrete(ThemeValue::FontScale(value)) => value.get().to_string(),
+        ThemePropertySource::Concrete(ThemeValue::FontStyle(value)) => {
+            string_literal(value.as_str())
+        }
+        ThemePropertySource::Concrete(ThemeValue::TextDecoration(value)) => {
+            string_literal(value.as_str())
+        }
         ThemePropertySource::StaticParent => string_literal("static_parent"),
         ThemePropertySource::AmbientParent => string_literal("ambient_parent"),
         ThemePropertySource::Fallback => string_literal("fallback"),

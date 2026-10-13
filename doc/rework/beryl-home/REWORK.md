@@ -569,7 +569,7 @@
 - [x] Mounted small inline Tables through bounded pure preparation and typed projection residency,
   with whole-cell selection, direct source Copy/Save and native qualification;
   [acceptance](../../audits/transcript-mounting-readiness.md#mounted-inline-table-acceptance).
-  Remaining transcript contributions retain separate gates.
+- [x] Mounted bounded prepared narrative formatting and mapped character selection with both source-qualified Copy methods and native lifecycle evidence; [acceptance](../../audits/transcript-mounting-readiness.md#mounted-narrative-acceptance).
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.

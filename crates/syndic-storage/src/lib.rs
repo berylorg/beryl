@@ -657,6 +657,7 @@ mod footprint;
 pub mod inline_table;
 mod membership;
 mod mutation;
+pub mod narrative;
 pub use mutation::ThreadAcquisitionContribution;
 mod native_projection;
 mod pristine_thread;

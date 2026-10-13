@@ -45,6 +45,117 @@ impl Default for SyndicTranscriptHost {
 }
 
 impl SyndicTranscriptHost {
+    #[cfg(test)]
+    pub(crate) fn provider_revision_for_test(&self) -> Option<super::ProviderRevision> {
+        self.core.core_snapshot().resident.provider_revision
+    }
+
+    #[cfg(test)]
+    pub(crate) fn narrative_kind_for_test(
+        &self,
+        id: &super::ResidentPresentationRecordId,
+    ) -> Option<super::TranscriptNarrativeKind> {
+        let snapshot = self.core.core_snapshot();
+        let projection = snapshot
+            .presentation
+            .records
+            .iter()
+            .find(|record| &record.id == id)?
+            .provenance
+            .projection_id
+            .as_ref()?;
+        snapshot
+            .resident
+            .view_records
+            .iter()
+            .find(|record| &record.projection_id == projection)
+            .map(|record| record.narrative_kind.clone())
+    }
+    pub(crate) fn narrative_demand(&self) -> Option<super::NarrativeTranscriptDemand> {
+        self.core.narrative_demand()
+    }
+
+    pub(crate) fn narrative_demand_current(
+        &self,
+        demand: &super::NarrativeTranscriptDemand,
+    ) -> bool {
+        self.core.narrative_demand_current(demand)
+    }
+
+    pub(crate) fn reserve_narrative_preparation(
+        &mut self,
+        demand: &super::NarrativeTranscriptDemand,
+    ) -> Option<usize> {
+        self.core.reserve_narrative_preparation(demand)
+    }
+
+    pub(crate) fn finish_narrative_preparation(
+        &mut self,
+        demand: &super::NarrativeTranscriptDemand,
+    ) {
+        self.core.finish_narrative_preparation(demand);
+    }
+
+    pub(crate) fn cancel_narrative_preparations(&mut self) {
+        self.core.cancel_narrative_preparations();
+    }
+
+    pub(crate) fn prepare_narrative_delivery(
+        &self,
+        demand: &super::NarrativeTranscriptDemand,
+        response: super::NarrativePreparationResponse,
+    ) -> Option<Self> {
+        Some(Self {
+            lifetime: self.lifetime.clone(),
+            core: self.core.prepare_narrative_delivery(demand, response)?,
+            scroll_controller: self.scroll_controller.clone(),
+            last_frame_window: self.last_frame_window.clone(),
+            measured_presentation_revision: self.measured_presentation_revision,
+        })
+    }
+
+    pub(crate) fn narrative_current(&self, owner: &super::NarrativeOwner) -> bool {
+        self.core.narrative_current(owner)
+    }
+
+    pub(crate) fn narrative_layout_allowance(&self, owner: &super::NarrativeOwner) -> usize {
+        self.core.narrative_layout_allowance(owner)
+    }
+
+    pub(crate) fn literal_narrative_current(&self, owner: &super::LiteralNarrativeOwner) -> bool {
+        self.core.literal_narrative_current(owner)
+    }
+
+    pub(crate) fn literal_narrative_layout_allowance(
+        &self,
+        owner: &super::LiteralNarrativeOwner,
+    ) -> usize {
+        self.core.literal_narrative_layout_allowance(owner)
+    }
+
+    pub(crate) fn reserve_literal_narrative_layout(
+        &mut self,
+        owner: &super::LiteralNarrativeOwner,
+        bytes: usize,
+    ) -> bool {
+        self.core.reserve_literal_narrative_layout(owner, bytes)
+    }
+
+    pub(crate) fn release_previous_narrative_layout(&mut self) {
+        self.core.release_previous_narrative_layout();
+    }
+
+    pub(crate) fn hold_previous_narrative_layout(&mut self, bytes: usize) {
+        self.core.hold_previous_narrative_layout(bytes);
+    }
+
+    pub(crate) fn reserve_narrative_layout(
+        &mut self,
+        owner: &super::NarrativeOwner,
+        bytes: usize,
+    ) -> bool {
+        self.core.reserve_narrative_layout(owner, bytes)
+    }
     pub(crate) fn empty() -> Self {
         Self {
             lifetime: std::sync::Arc::new(()),
@@ -188,9 +299,11 @@ impl SyndicTranscriptHost {
         if !self.resource_demands().contains(demand) {
             return None;
         }
+        let mut core = self.core.prepare_resource_response(demand, response)?;
+        core.carry_narrative_layout_from(&self.core);
         Some(Self {
             lifetime: self.lifetime.clone(),
-            core: self.core.prepare_resource_response(demand, response)?,
+            core,
             scroll_controller: self.scroll_controller.clone(),
             last_frame_window: self.last_frame_window.clone(),
             measured_presentation_revision: self.measured_presentation_revision,
@@ -262,11 +375,13 @@ impl SyndicTranscriptHost {
                 if !self.resource_demands().contains(demand) {
                     return None;
                 }
+                let mut core = self
+                    .core
+                    .prepare_indexed_resource_response(demand, response)?;
+                core.carry_narrative_layout_from(&self.core);
                 Some(Self {
                     lifetime: self.lifetime.clone(),
-                    core: self
-                        .core
-                        .prepare_indexed_resource_response(demand, response)?,
+                    core,
                     scroll_controller: self.scroll_controller.clone(),
                     last_frame_window: self.last_frame_window.clone(),
                     measured_presentation_revision: self.measured_presentation_revision,
@@ -283,9 +398,11 @@ impl SyndicTranscriptHost {
         if self.adjacent_demand().as_ref() != Some(demand) {
             return None;
         }
+        let mut core = self.core.prepare_adjacent_extension(prepared)?;
+        core.carry_narrative_layout_from(&self.core);
         Some(Self {
             lifetime: self.lifetime.clone(),
-            core: self.core.prepare_adjacent_extension(prepared)?,
+            core,
             scroll_controller: self.scroll_controller.clone(),
             last_frame_window: None,
             measured_presentation_revision: None,
@@ -309,7 +426,7 @@ impl SyndicTranscriptHost {
         candidate.core = self.core.empty_successor();
         candidate.lifetime = std::sync::Arc::clone(&self.lifetime);
         let same_view = prepared.view_id.as_ref() == self.core.selected_view_id();
-        let outcome = if same_view {
+        let mut outcome = if same_view {
             candidate.scroll_controller = self.scroll_controller.clone();
             candidate.last_frame_window = self.last_frame_window.clone();
             candidate
@@ -318,6 +435,12 @@ impl SyndicTranscriptHost {
         } else {
             candidate.apply_prepared_activation(prepared, TranscriptActivationSource::RunningThread)
         };
+        if same_view {
+            candidate.core.inherit_narratives(&self.core);
+            let snapshot = candidate.core.presentation_snapshot();
+            outcome.presentation_revision = snapshot.presentation_revision;
+            outcome.state = snapshot.state;
+        }
         (candidate, outcome)
     }
 

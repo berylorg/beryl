@@ -1287,3 +1287,70 @@ The [window-admission lesson](../failures/indexed-table-window-admission.md) and
 Temporary observers are removed. Retained execution evidence and positively attributed native homes
 have reached their last review consumer and are reclaimed at this boundary; unrelated shared caches
 and the preceding Copy boundary's unidentified fixtures remain outside cleanup ownership.
+
+## Mounted Narrative Acceptance
+
+Independent complete-boundary review accepted mounted narrative presentation and character selection
+on 2026-10-13. Ordinary saved Markdown publishes immutable Pending source facts before tracked
+preparation over already admitted source. Typed prepared adoption preserves exact block/span identity,
+raw source and provenance; checked refusal retains its source. Live growth keeps the prior coherent
+presentation until replacement publishes, and unchanged terminal source reuses its prepared model.
+Preparation adds no storage schema, history route or producer classification.
+
+Projected paragraphs, headings, quotes, lists, thematic breaks and supported inline formatting use
+resolved typography. Pure source/display maps preserve complete selected construct syntax and exact
+spelling; partial selection invents no delimiters. Unsupported syntax, explicit fallback and later
+continuation spans retain their qualified literal treatment. Source/display size, run, depth and
+fragment limits remain bounded; measured prepared fragments share the existing 32-observation frame
+allowance and layout/resource ledger. Crossed layouts and obsolete candidate reservations release
+without retaining offscreen geometry.
+
+Natural measurement, paint, highlight and pointer hits use the same current shaped geometry. Actual
+body bounds exclude padding, markers and context chrome. Drag, reversed ranges and Shift extension
+map character endpoints with indivisible transformed units; unrealized or nested Code/Table crossings
+preserve the last coherent selection. Font, viewport, source, activation and disposal invalidation
+close obsolete selection and Copy. Prepared Code/Table owners retain their separate interactions.
+
+The first distinct `Ctrl+C` copies selected original Markdown; a quick second distinct press copies
+best-effort stripped text. Held repeats do not advance the gesture. Mapped content consumes exact
+prepared display facts; literal selections use one bounded off-GUI conversion slot with current
+source/selection/focus/geometry election. Supersession, checked-writer refusal and cancellation retain
+the previous clipboard. Synthetic context uses ordinary mapped text selection and both Copy methods
+while remaining ineligible for Quote, branch and transcript menus.
+
+Native evidence uses genuine saved producer/provider fixtures, actual GPUI windows, routed pointer
+and keyboard input, measured geometry and checked clipboard seams. It covers Unicode/CRLF/escaping,
+partial and complete formatting, multiple coherent spans, literal continuation, maximum capacity
+refusal, source growth/completion, font/width changes, long ordered markers, focus/repeat behavior,
+adjacent paging and exact pre/post extension anchors, cancelled-worker drain and retirement. A bounded
+test-only observer fences the actual admitted adjacent task before publication; it does not inject
+demand or selection. Affected indexed/inline Code/Table Copy, Save and context regressions pass.
+
+Final qualified checks used stable Cargo, local LLVM configuration, locked offline dependencies,
+one build/test job, zero normal debug information and nonincremental builds:
+
+- Combined app/core/provider: 256/256 in 543.361 seconds, including 48 native transcript viewport
+  cases; `97afdd0c-040f-44e3-8dcf-2b071694428f`. The 1,244 outside-filter cases were not executed.
+- Eighteen transcript integration binaries: 153/153 in 0.721 seconds;
+  `d64b73ea-e941-4722-8af2-c77b1c6521c3`.
+- Five state theme binaries: 13/13 in 0.337 seconds;
+  `896e9041-75f9-4730-b99f-5e12cf5d52bc`.
+- Storage narrative preparation: 13/13 in 2.009 seconds;
+  `3f11ac75-f4e4-4a93-a860-cb5a1b99c61e`.
+- Focused adjacent/Code drain corrections: 2/2 in 70.849 seconds;
+  `819a3838-1eae-48ce-92dd-d4c9d40c0cb7`.
+- Production app library check without test-fault features: exit zero in 13.04 seconds.
+
+The reviewer independently rehashed all 58 frozen changed Rust inputs with zero drift. Unaffected
+storage, theme and transcript-core evidence remains valid across the final host lifecycle correction;
+combined and production checks ran on that correction. No manifest, lockfile or owned fork changed.
+The [health-election](../failures/transcript-narrative-publication-election.md),
+[cached presentation](../failures/transcript-narrative-cached-presentation.md),
+[adjacent demand](../failures/transcript-narrative-adjacent-demand.md) and
+[poll admission](../failures/transcript-poll-admission-after-sync.md) records preserve durable lessons.
+
+This acceptance does not qualify OS clipboard/common-dialog automation, complete composer workflows,
+diagnostic-child activation or the remaining transcript commands. Temporary diagnostics are removed.
+Reviewed execution artifacts are reclaimed: the exact owned task root and all 245 unique native
+fixture ledger paths are verified absent, with no task processes or reparse points. Unrelated shared
+caches and Operator-owned skill edits remain outside that cleanup.

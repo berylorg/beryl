@@ -1,8 +1,39 @@
+use super::super::super::narrative_native::{drag, require_fixture_ledger};
 use super::*;
 use crate::syndic_transcript::*;
-use gpui::Focusable;
 
-fn prepared_context(snapshot: &ResidentTranscriptSnapshot) -> PreparedTranscriptActivation {
+async fn copy_context_both(
+    window: gpui::WindowHandle<MainWindowShellRoot>,
+    cx: &mut gpui::AsyncApp,
+    captured: &Rc<RefCell<Vec<String>>>,
+    markdown: &str,
+    stripped: &str,
+) {
+    let before = captured.borrow().len();
+    with_native(window, cx, |native, app| key(native, app, "ctrl-c")).unwrap();
+    wait_until(
+        window,
+        cx,
+        |_| captured.borrow().len() == before + 1,
+        "selected context Markdown must reach the checked writer",
+    )
+    .await;
+    assert_eq!(captured.borrow()[before], markdown);
+    with_native(window, cx, |native, app| key(native, app, "ctrl-c")).unwrap();
+    wait_until(
+        window,
+        cx,
+        |_| captured.borrow().len() == before + 2,
+        "selected context stripped worker must reach the checked writer",
+    )
+    .await;
+    assert_eq!(captured.borrow()[before + 1], stripped);
+}
+
+fn prepared_context(
+    snapshot: &ResidentTranscriptSnapshot,
+    narrative_kind_for: impl Fn(&ResidentPresentationRecordId) -> Option<TranscriptNarrativeKind>,
+) -> PreparedTranscriptActivation {
     let view = snapshot
         .records
         .iter()
@@ -17,30 +48,56 @@ fn prepared_context(snapshot: &ResidentTranscriptSnapshot) -> PreparedTranscript
         let ResidentRecordSource::Syndic(source) = &record.provenance.source else {
             continue;
         };
-        let ResidentPresentationRecordKind::TextChunk {
-            narrative_kind,
-            text,
-            plain_text,
-        } = &record.kind
-        else {
-            continue;
+        let (kind, payload, narrative_kind) = match &record.kind {
+            ResidentPresentationRecordKind::TextChunk {
+                narrative_kind,
+                text,
+                plain_text,
+            } => (
+                ProjectionRecordKind::TextChunk,
+                ProjectionPayload::Text {
+                    text: text.clone(),
+                    plain_text: plain_text.clone(),
+                },
+                narrative_kind.clone(),
+            ),
+            ResidentPresentationRecordKind::NarrativePending { source } => (
+                ProjectionRecordKind::TextChunk,
+                ProjectionPayload::NarrativePending {
+                    source: source.clone(),
+                },
+                narrative_kind_for(&record.id).expect("genuine pending source classification"),
+            ),
+            ResidentPresentationRecordKind::NarrativeReady { prepared } => (
+                ProjectionRecordKind::TextChunk,
+                ProjectionPayload::NarrativeReady {
+                    prepared: prepared.clone(),
+                },
+                narrative_kind_for(&record.id).expect("genuine prepared source classification"),
+            ),
+            ResidentPresentationRecordKind::NarrativeUnavailable { source, reason } => (
+                ProjectionRecordKind::TextChunk,
+                ProjectionPayload::NarrativeUnavailable {
+                    source: source.clone(),
+                    reason: *reason,
+                },
+                narrative_kind_for(&record.id).expect("genuine unavailable source classification"),
+            ),
+            _ => continue,
         };
         let id = record.provenance.projection_id.clone().unwrap();
         views.push(TranscriptViewRecord {
             id: TranscriptViewRecordId(record.id.0.clone()),
             position: source.position.unwrap(),
             projection_id: id.clone(),
-            narrative_kind: narrative_kind.clone(),
+            narrative_kind,
             provenance: source.clone(),
         });
         projections.push(ProjectionRecord {
             id,
             revision: record.provenance.projection_revision.unwrap(),
-            kind: ProjectionRecordKind::TextChunk,
-            payload: ProjectionPayload::Text {
-                text: text.clone(),
-                plain_text: plain_text.clone(),
-            },
+            kind,
+            payload,
             provenance: source.clone(),
         });
     }
@@ -77,7 +134,7 @@ fn prepared_context(snapshot: &ResidentTranscriptSnapshot) -> PreparedTranscript
             chunk_count: 1,
         }),
         chunks: vec![SyntheticContextChunk {
-            range: 0..22,
+            range: 0..23,
             text: "# Context\n**selected**\n".into(),
             plain_text: "Context\nselected\n".into(),
         }],
@@ -87,6 +144,7 @@ fn prepared_context(snapshot: &ResidentTranscriptSnapshot) -> PreparedTranscript
 
 #[test]
 fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_menu_target() {
+    require_fixture_ledger();
     run_mounted_with_prepared_home_retained(
         1,
         0,
@@ -117,8 +175,18 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                         root.suspend_running_thread_reads(native, app);
                     })
                     .unwrap();
+                let (copy_admission, copy_workers) =
+                    crate::main_window::WorkerAdmission::owned_for_test(1);
+                assert!(copy_admission.available());
+                panel
+                    .update(cx, |panel, _| {
+                        panel.set_code_save_admission(copy_admission.clone())
+                    })
+                    .unwrap();
                 let prepared = panel
-                    .read_with(cx, |panel, _| prepared_context(&panel.snapshot()))
+                    .read_with(cx, |panel, _| {
+                        prepared_context(&panel.snapshot(), |id| panel.narrative_kind_for_test(id))
+                    })
                     .unwrap();
                 panel
                     .update(cx, |panel, cx| {
@@ -172,6 +240,41 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                         })
                     })
                     .unwrap();
+                let context_id = panel
+                    .read_with(cx, |panel, _| {
+                        panel
+                            .snapshot()
+                            .records
+                            .iter()
+                            .find(|record| {
+                                matches!(
+                                    record.provenance.source,
+                                    ResidentRecordSource::LocalContext { .. }
+                                )
+                            })
+                            .unwrap()
+                            .id
+                            .clone()
+                    })
+                    .unwrap();
+                wait_until(
+                    window,
+                    cx,
+                    |cx| {
+                        panel
+                            .read_with(cx, |panel, _| {
+                                panel
+                                    .literal_narrative_position_for_test(&context_id, 0)
+                                    .is_some()
+                                    && panel
+                                        .literal_narrative_position_for_test(&context_id, 23)
+                                        .is_some()
+                            })
+                            .unwrap()
+                    },
+                    "context pointer endpoints must come from painted literal geometry",
+                )
+                .await;
                 with_native(window, cx, |native, app| {
                     let id = panel
                         .read(app)
@@ -189,10 +292,6 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                         .clone();
                     panel.update(app, |panel, cx| {
                         assert!(matches!(
-                            panel.apply_realized_selection(&[id.clone()], cx),
-                            ResidentSelectionOutcome::Selected(_)
-                        ));
-                        assert!(matches!(
                             panel.apply_realized_quote_target_for_record_ids(&[id.clone()]),
                             ResidentQuoteOutcome::Unavailable(_)
                         ));
@@ -200,22 +299,54 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                             panel.apply_realized_context_menu_target_for_record_id(&id),
                             ResidentContextMenuOutcome::Unavailable(_)
                         ));
-                        native.focus(&panel.focus_handle(cx));
                     });
-                    key(native, app, "ctrl-c");
-                    key(native, app, "ctrl-c");
-                    assert_eq!(
-                        captured.borrow().as_slice(),
-                        ["# Context\n**selected**\n", "Context\nselected\n"]
-                    );
-                    assert!(
-                        captured
-                            .borrow()
-                            .iter()
-                            .all(|text| !text.contains("DISCUSSING"))
-                    );
+                    let first = panel
+                        .read(app)
+                        .literal_narrative_position_for_test(&id, 0)
+                        .unwrap();
+                    let last = panel
+                        .read(app)
+                        .literal_narrative_position_for_test(&id, 23)
+                        .unwrap();
+                    drag(native, app, first, last);
                 })
                 .unwrap();
+                copy_context_both(
+                    window,
+                    cx,
+                    &captured,
+                    "# Context\n**selected**\n",
+                    "Context\nselected\n",
+                )
+                .await;
+                with_native(window, cx, |native, app| {
+                    let first = panel
+                        .read(app)
+                        .literal_narrative_position_for_test(&context_id, 12)
+                        .unwrap();
+                    let last = panel
+                        .read(app)
+                        .literal_narrative_position_for_test(&context_id, 20)
+                        .unwrap();
+                    drag(native, app, last, first);
+                })
+                .unwrap();
+                copy_context_both(window, cx, &captured, "selected", "selected").await;
+                assert!(
+                    captured
+                        .borrow()
+                        .iter()
+                        .all(|text| !text.contains("DISCUSSING"))
+                );
+                copy_workers.suspend();
+                assert!(copy_admission.acquire().is_none());
+                wait_until(
+                    window,
+                    cx,
+                    |_| copy_workers.retained() == 0,
+                    "context copy worker custody must drain before fixture retirement",
+                )
+                .await;
                 retire_code_fixture(window, &panel, cx).await;
                 panel
                     .read_with(cx, |panel, _| assert!(panel.snapshot().records.is_empty()))
@@ -227,6 +358,7 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
 
 #[test]
 fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_theme_width() {
+    require_fixture_ledger();
     run_mounted_with_prepared_home_retained(
         1,
         0,
@@ -257,9 +389,25 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                         root.suspend_running_thread_reads(native, app);
                     })
                     .unwrap();
-                let mut prepared = panel
-                    .read_with(cx, |panel, _| prepared_context(&panel.snapshot()))
+                let (copy_admission, copy_workers) =
+                    crate::main_window::WorkerAdmission::owned_for_test(1);
+                assert!(copy_admission.available());
+                panel
+                    .update(cx, |panel, _| {
+                        panel.set_code_save_admission(copy_admission.clone())
+                    })
                     .unwrap();
+                let mut prepared = panel
+                    .read_with(cx, |panel, _| {
+                        prepared_context(&panel.snapshot(), |id| panel.narrative_kind_for_test(id))
+                    })
+                    .unwrap();
+                let Some(TranscriptProviderResponseKind::ViewPage(page)) =
+                    &prepared.view_page_response
+                else {
+                    panic!("context fixture preserves its genuine source view page");
+                };
+                let total_records = page.records.len() + 32;
                 let group = prepared.discussion_context.as_mut().unwrap();
                 let text = ("  repeated   spaces ".repeat(7) + "\n").repeat(14);
                 assert!(text.len() <= CONTEXT_CHUNK_MAX_BYTES);
@@ -304,7 +452,7 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                                     frame
                                         .records
                                         .last()
-                                        .is_some_and(|record| record.index == 32)
+                                        .is_some_and(|record| record.index + 1 == total_records)
                                 })
                             })
                             .unwrap()
@@ -312,9 +460,24 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                     "long context tail",
                 )
                 .await;
-                let last_id = panel
+                let (last_id, context_id) = panel
                     .read_with(cx, |panel, _| {
-                        panel.snapshot().records.last().unwrap().id.clone()
+                        let snapshot = panel.snapshot();
+                        let context = snapshot
+                            .records
+                            .iter()
+                            .rev()
+                            .find(|record| {
+                                matches!(
+                                    record.provenance.source,
+                                    ResidentRecordSource::LocalContext { .. }
+                                )
+                            })
+                            .unwrap();
+                        (
+                            snapshot.records.last().unwrap().id.clone(),
+                            context.id.clone(),
+                        )
                     })
                     .unwrap();
                 let original = window
@@ -326,7 +489,8 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                             .measured_frame_for_test()
                             .unwrap()
                             .records
-                            .last()
+                            .iter()
+                            .find(|record| record.record_id == context_id)
                             .unwrap()
                             .height_px
                     })
@@ -354,7 +518,8 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                                 panel.measured_frame_for_test().is_some_and(|frame| {
                                     frame
                                         .records
-                                        .last()
+                                        .iter()
+                                        .find(|record| record.record_id == context_id)
                                         .is_some_and(|record| record.height_px > before * 1.5)
                                 })
                             })
@@ -416,7 +581,7 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                     .await;
                     panel
                         .read_with(cx, |panel, _| {
-                            assert_eq!(panel.snapshot().record_count(), 33);
+                            assert_eq!(panel.snapshot().record_count(), total_records);
                             assert_eq!(
                                 panel
                                     .diagnostic_snapshot()
@@ -434,6 +599,15 @@ fn native_long_context_scrolls_away_and_back_with_bounded_frame_and_remeasures_t
                         })
                         .unwrap();
                 }
+                copy_workers.suspend();
+                assert!(copy_admission.acquire().is_none());
+                wait_until(
+                    window,
+                    cx,
+                    |_| copy_workers.retained() == 0,
+                    "long context worker custody must drain before fixture retirement",
+                )
+                .await;
                 retire_code_fixture(window, &panel, cx).await;
                 panel
                     .read_with(cx, |panel, _| assert!(panel.snapshot().is_empty()))

@@ -26,9 +26,11 @@ pub(crate) fn stripped_copy_source(source: &str) -> Result<String, ()> {
 
 #[cfg(test)]
 mod indexed_read_gate;
+mod narrative;
 mod resources;
 #[cfg(test)]
 pub(crate) use indexed_read_gate::IndexedReadGate;
+pub(crate) use narrative::{PreparedTranscriptNarrative, TranscriptNarrativeRequest};
 mod selected_title;
 mod source;
 pub(crate) use resources::{
@@ -42,7 +44,8 @@ pub(crate) use resources::{
 pub(crate) use source::prepare_candidate_activation;
 
 pub(crate) const ATTACHMENT_MAX_RECORDS: usize = 64;
-pub(crate) const ATTACHMENT_MAX_BYTES: usize = 65_536;
+pub(crate) const ATTACHMENT_MAX_BYTES: usize =
+    crate::syndic_transcript::TRANSCRIPT_RESPONSE_MAX_BYTES;
 
 #[derive(Clone, Debug)]
 pub(crate) struct TranscriptAttachmentRequest {
@@ -61,6 +64,7 @@ pub(crate) enum TranscriptAttachmentPurpose {
     Refresh,
     Adjacent { end: u64, backward: bool },
     Resource,
+    Narrative,
 }
 
 pub(crate) struct PreparedTranscriptAttachment {
@@ -169,6 +173,7 @@ pub(crate) struct TranscriptProviderReader {
 struct TranscriptProviderState {
     retired: AtomicBool,
     pending: AtomicBool,
+    published: std::sync::Mutex<Option<(TranscriptAttachmentAuthority, HomeMutationObservation)>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -218,6 +223,7 @@ impl TranscriptProviderReader {
             state: Arc::new(TranscriptProviderState {
                 retired: AtomicBool::new(false),
                 pending: AtomicBool::new(false),
+                published: std::sync::Mutex::new(None),
             }),
         })
     }
@@ -297,6 +303,12 @@ impl TranscriptProviderReader {
         self.home
             .try_elect_observed_coherent(&prepared.observation, self.home_generation, || {
                 self.check_request(expected, cancelled)?;
+                *self
+                    .state
+                    .published
+                    .lock()
+                    .map_err(|_| TranscriptAttachmentError::Unavailable)? =
+                    Some((prepared.authority.clone(), prepared.observation.clone()));
                 Ok(publish(prepared.activation))
             })
             .map_err(|_| TranscriptAttachmentError::Stale)?

@@ -285,23 +285,13 @@ impl access::ActivationReadSource<'_> {
                         }
                     }
                 }
-                syndic_storage::ProjectionPayload::InlineMarkdown {
-                    source,
-                    source_range,
-                    span_ordinal,
-                    ..
+                payload @ syndic_storage::ProjectionPayload::InlineMarkdown {
+                    source_range, ..
                 } => {
-                    let plain_text =
-                        super::copy_text::stripped_span(source.as_ref(), *span_ordinal)
-                            .map_err(|_| TranscriptAttachmentError::Capacity)?;
-                    let payload_bytes = source
-                        .len()
-                        .checked_add(plain_text.len())
-                        .ok_or(TranscriptAttachmentError::Capacity)?;
+                    let payload_bytes = crate::syndic_transcript::narrative_source_bytes(payload);
                     (
-                        ProjectionPayload::Text {
-                            text: std::sync::Arc::from(source.as_ref()),
-                            plain_text: Some(std::sync::Arc::from(plain_text)),
+                        ProjectionPayload::NarrativePending {
+                            source: std::sync::Arc::new(payload.clone()),
                         },
                         Some(source_range.start()..source_range.end()),
                         payload_bytes,
@@ -398,7 +388,10 @@ impl access::ActivationReadSource<'_> {
                 | ProjectionPayload::InlineTableUnavailable { .. } => {
                     ProjectionRecordKind::InlineTable
                 }
-                ProjectionPayload::Text { .. } => ProjectionRecordKind::TextChunk,
+                ProjectionPayload::Text { .. }
+                | ProjectionPayload::NarrativePending { .. }
+                | ProjectionPayload::NarrativeReady { .. }
+                | ProjectionPayload::NarrativeUnavailable { .. } => ProjectionRecordKind::TextChunk,
                 ProjectionPayload::ResourceReference { .. } => {
                     ProjectionRecordKind::ResourceReference
                 }

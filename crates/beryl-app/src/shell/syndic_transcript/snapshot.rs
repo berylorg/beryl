@@ -93,6 +93,16 @@ pub(crate) struct ResidentPresentationRecordId(pub(crate) String);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ResidentPresentationRecordKind {
+    NarrativePending {
+        source: std::sync::Arc<syndic_storage::ProjectionPayload>,
+    },
+    NarrativeReady {
+        prepared: std::sync::Arc<syndic_storage::narrative::PreparedNarrative>,
+    },
+    NarrativeUnavailable {
+        source: std::sync::Arc<syndic_storage::ProjectionPayload>,
+        reason: syndic_storage::narrative::NarrativePreparationErrorKind,
+    },
     InlineTable {
         prepared: std::sync::Arc<syndic_storage::inline_table::PreparedInlineTable>,
     },

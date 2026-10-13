@@ -6,6 +6,8 @@
 
 use std::ops::Range;
 
+pub(crate) const TRANSCRIPT_RESPONSE_MAX_BYTES: usize = 65_536;
+
 #[path = "provider/indexed.rs"]
 mod indexed;
 pub(crate) use indexed::{
@@ -184,6 +186,16 @@ pub(crate) enum ProjectionRecordKind {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPayload {
+    NarrativePending {
+        source: std::sync::Arc<syndic_storage::ProjectionPayload>,
+    },
+    NarrativeReady {
+        prepared: std::sync::Arc<syndic_storage::narrative::PreparedNarrative>,
+    },
+    NarrativeUnavailable {
+        source: std::sync::Arc<syndic_storage::ProjectionPayload>,
+        reason: syndic_storage::narrative::NarrativePreparationErrorKind,
+    },
     InlineTable {
         prepared: std::sync::Arc<syndic_storage::inline_table::PreparedInlineTable>,
     },

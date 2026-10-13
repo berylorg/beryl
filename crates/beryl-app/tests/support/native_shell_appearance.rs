@@ -1,28 +1,35 @@
 pub fn system_font_appearance(
     state: &beryl_state::BerylState,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, None, None, None)
+    prepare_system_font_appearance(state, None, None, None, None)
 }
 
 pub fn system_font_appearance_with_code_size(
     state: &beryl_state::BerylState,
     size: u32,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, Some(size), None, None)
+    prepare_system_font_appearance(state, Some(size), None, None, None)
 }
 
 pub fn system_font_appearance_with_code_header_size(
     state: &beryl_state::BerylState,
     size: u32,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, None, Some(size), None)
+    prepare_system_font_appearance(state, None, Some(size), None, None)
 }
 
 pub fn system_font_appearance_with_context_size(
     state: &beryl_state::BerylState,
     size: u32,
 ) -> beryl_state::PreparedThemeAppearance {
-    prepare_system_font_appearance(state, None, None, Some(size))
+    prepare_system_font_appearance(state, None, None, Some(size), None)
+}
+
+pub fn system_font_appearance_with_narrative_size(
+    state: &beryl_state::BerylState,
+    size: u32,
+) -> beryl_state::PreparedThemeAppearance {
+    prepare_system_font_appearance(state, None, None, None, Some(size))
 }
 
 fn prepare_system_font_appearance(
@@ -30,6 +37,7 @@ fn prepare_system_font_appearance(
     code_size: Option<u32>,
     code_header_size: Option<u32>,
     context_size: Option<u32>,
+    narrative_size: Option<u32>,
 ) -> beryl_state::PreparedThemeAppearance {
     use beryl_state::*;
     let mut source = String::from("schema = 1\nid = \"native-test\"\nname = \"Native Test\"\n");
@@ -51,6 +59,11 @@ fn prepare_system_font_appearance(
             }
             if role.id().as_str() == "transcript-view.context-body"
                 && let Some(size) = context_size
+            {
+                source.push_str(&format!("font_size = {size}\n"));
+            }
+            if role.id().as_str() == "transcript.turn.assistant.final"
+                && let Some(size) = narrative_size
             {
                 source.push_str(&format!("font_size = {size}\n"));
             }

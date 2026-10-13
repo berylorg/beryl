@@ -59,7 +59,22 @@ fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() 
                 assert!(initial[0] > 1);
                 let mut prior = initial.clone();
                 for backward in [true, true, false, false, false, false] {
-                    cx.update(|app| {
+                    let before_scroll = cx
+                        .update(|app| {
+                            panel
+                                .read(app)
+                                .measured_frame_for_test()
+                                .unwrap()
+                                .manual_scroll_total_px
+                        })
+                        .unwrap();
+                    let expected_scroll = before_scroll
+                        + if backward {
+                            -1_000_000.25
+                        } else {
+                            1_000_000.25
+                        };
+                    let anchor = cx.update(|app| {
                         let position = panel.read(app).viewport_bounds_for_test().unwrap().center();
                         app.update_window(window.into(), |_, native, app| {
                             native.dispatch_input_for_test(
@@ -79,22 +94,26 @@ fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() 
                                 app,
                             );
                             for _ in 0..8 {
+                                native.refresh();
                                 native.draw_and_present_for_test(app);
                             }
+                            let current = panel.read(app);
+                            let frame = current.measured_frame_for_test().unwrap();
+                            assert_eq!(frame.manual_scroll_total_px, expected_scroll,
+                                "manual input must publish before capturing the pre-extension anchor");
+                            assert!(current.narrative_geometry_current_for_test(native));
+                            assert_eq!(frame.clamp.as_ref().map(|clamp| clamp.direction), Some(if backward {
+                                crate::syndic_transcript::TranscriptPageDirection::Backward
+                            } else {
+                                crate::syndic_transcript::TranscriptPageDirection::Forward
+                            }));
+                            assert_eq!(resident_positions(current), prior,
+                                "the anchor must be captured before adjacent history publication");
+                            frame.anchor.unwrap()
                         })
-                        .unwrap();
+                        .unwrap()
                     })
                     .unwrap();
-                    let anchor = cx
-                        .update(|app| {
-                            panel
-                                .read(app)
-                                .measured_frame_for_test()
-                                .unwrap()
-                                .anchor
-                                .unwrap()
-                        })
-                        .unwrap();
                     let mut extended = None;
                     for _ in 0..150 {
                         cx.update(|app| {
@@ -107,6 +126,15 @@ fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() 
                         let positions = cx
                             .update(|app| resident_positions(panel.read(app)))
                             .unwrap();
+                        let settled = window
+                            .update(cx, |_, native, app| {
+                                let panel = panel.read(app);
+                                panel.narrative_geometry_current_for_test(native)
+                                    && panel.measured_frame_for_test().is_some_and(|frame| {
+                                        frame.manual_scroll_total_px == expected_scroll
+                                    })
+                            })
+                            .unwrap();
                         let changed = if backward {
                             positions[0] < prior[0]
                         } else {
@@ -117,7 +145,7 @@ fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() 
                         } else {
                             prior.last() == Some(&160)
                         };
-                        if changed || terminal {
+                        if settled && (changed || terminal) {
                             if changed {
                                 if backward {
                                     assert!(positions.last() < prior.last());
@@ -148,36 +176,53 @@ fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() 
                     }
                 }
                 assert_eq!(prior.last(), Some(&160));
-                let before_disposal = cx
-                    .update(|app| {
-                        let position = panel.read(app).viewport_bounds_for_test().unwrap().center();
-                        app.update_window(window.into(), |_, native, app| {
-                            native.dispatch_input_for_test(
-                                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
-                                    position,
-                                    delta: gpui::ScrollDelta::Pixels(gpui::point(
-                                        gpui::px(0.0),
-                                        gpui::px(1_000_000.25),
-                                    )),
-                                    modifiers: Default::default(),
-                                    touch_phase: gpui::TouchPhase::Moved,
-                                }),
-                                app,
-                            );
-                            for _ in 0..8 {
-                                native.draw_and_present_for_test(app);
-                            }
-                        })
-                        .unwrap();
-                        panel.read(app).snapshot()
+                cx.update(|app| {
+                    let position = panel.read(app).viewport_bounds_for_test().unwrap().center();
+                    app.update_window(window.into(), |_, native, app| {
+                        native.dispatch_input_for_test(
+                            gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
+                                position,
+                                delta: gpui::ScrollDelta::Pixels(gpui::point(
+                                    gpui::px(0.0),
+                                    gpui::px(1_000_000.25),
+                                )),
+                                modifiers: Default::default(),
+                                touch_phase: gpui::TouchPhase::Moved,
+                            }),
+                            app,
+                        );
+                        for _ in 0..8 {
+                            native.refresh();
+                            native.draw_and_present_for_test(app);
+                        }
                     })
                     .unwrap();
-                assert!(
-                    window
-                        .update(cx, |root, native, app| root
-                            .test_fence_pending_adjacent_read(native, app))
+                })
+                .unwrap();
+                let mut fenced = None;
+                for _ in 0..100 {
+                    fenced = window
+                        .update(cx, |root, native, app| {
+                            root.test_fence_pending_adjacent_read(native, app)
+                                .then(|| panel.read(app).snapshot())
+                        })
+                        .unwrap();
+                    if fenced.is_some() {
+                        break;
+                    }
+                    cx.update(|app| {
+                        app.update_window(window.into(), |_, native, app| {
+                            native.draw_and_present_for_test(app);
+                        })
                         .unwrap()
-                );
+                    })
+                    .unwrap();
+                    cx.background_executor()
+                        .timer(Duration::from_millis(20))
+                        .await;
+                }
+                let before_disposal =
+                    fenced.expect("actual adjacent worker must be pending before disposal fence");
                 let mut drained = false;
                 for _ in 0..100 {
                     drained = window
@@ -328,10 +373,15 @@ fn native_mounted_transcript_publishes_measured_tail_and_routes_fractional_input
                 })
                 .unwrap();
                 ready = window
-                    .update(cx, |root, _, app| {
+                    .update(cx, |root, native, app| {
                         let entity = root.test_transcript_panel();
                         let panel = entity.read(app);
                         let frame = panel.measured_frame_for_test()?;
+                        if frame.records.is_empty() || root.coherent_selected_thread_title(app).is_none()
+                            || !panel.narrative_geometry_current_for_test(native)
+                            || frame.records.iter().any(|row| matches!(panel.snapshot().records.get(row.index).map(|record| &record.kind),
+                                Some(crate::syndic_transcript::ResidentPresentationRecordKind::NarrativePending { .. })))
+                        { return None; }
                         let bounds = panel.viewport_bounds_for_test()?;
                         assert!(panel.measurement_diagnostics().2 <= 32);
                         assert!(root.coherent_selected_thread_title(app).is_some());

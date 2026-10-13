@@ -90,6 +90,10 @@ pub(super) struct RunningThreadsContribution {
     resource_subscription: Option<gpui::Subscription>,
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
+    #[cfg(test)]
+    fixture_fence_next_adjacent: bool,
+    #[cfg(test)]
+    fixture_adjacent_fenced: bool,
     transcript_demand: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
     resource_demand: Option<crate::syndic_transcript::ResourceTranscriptDemand>,
     measured_resource: Option<transcript::PendingMeasuredResource>,
@@ -97,7 +101,8 @@ pub(super) struct RunningThreadsContribution {
     transcript_cancel: Arc<std::sync::atomic::AtomicBool>,
     pub(super) transcript_claim: Option<beryl_state::WindowClaimSelection>,
     transcript_request: u64,
-    transcript_source: Option<crate::transcript_provider::TranscriptAttachmentSourceIdentity>,
+    pub(super) transcript_source:
+        Option<crate::transcript_provider::TranscriptAttachmentSourceIdentity>,
     measured_attachment: Option<transcript::PendingMeasuredAttachment>,
     pub(super) recovered_attachment: Option<Result<transcript::PendingRecoveredAttachment, String>>,
     pages: VecDeque<ProcessWorkQueryPage>,
@@ -223,6 +228,10 @@ impl RunningThreadsContribution {
             resource_subscription: Some(resource_subscription),
             transcript_provider: None,
             transcript_task: None,
+            #[cfg(test)]
+            fixture_fence_next_adjacent: false,
+            #[cfg(test)]
+            fixture_adjacent_fenced: false,
             transcript_demand: None,
             resource_demand: None,
             measured_resource: None,
@@ -323,7 +332,7 @@ impl MainWindowShellRoot {
         self.running_threads
             .resource_demand
             .as_ref()
-            .is_some_and(|demand| demand.range.is_some())
+            .is_some_and(|demand| demand.range.is_some() || demand.indexed.is_some())
             && self.running_threads.transcript_task.is_some()
     }
 
@@ -333,11 +342,39 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.running_threads.fixture_adjacent_fenced {
+            return true;
+        }
+        if self
+            .running_threads
+            .transcript
+            .read(cx)
+            .adjacent_demand()
+            .is_some()
+        {
+            self.running_threads.fixture_fence_next_adjacent = true;
+        }
+        self.sync_running_transcript(window, cx);
         let pending = self.running_threads.transcript_demand.is_some()
-            && self.running_threads.transcript_task.is_some();
-        self.ordinary_close_interaction_gated = true;
-        self.suspend_running_thread_reads(window, cx);
-        pending
+            && self.running_threads.transcript_task.is_some()
+            && !self
+                .running_threads
+                .transcript_cancel
+                .load(Ordering::Acquire)
+            && self
+                .running_threads
+                .transcript
+                .read(cx)
+                .adjacent_demand()
+                .as_ref()
+                == self.running_threads.transcript_demand.as_ref();
+        if pending {
+            self.running_threads.fixture_fence_next_adjacent = false;
+            self.running_threads.fixture_adjacent_fenced = true;
+            self.ordinary_close_interaction_gated = true;
+            self.suspend_running_thread_reads(window, cx);
+        }
+        self.running_threads.fixture_adjacent_fenced
     }
 
     #[cfg(all(test, feature = "test-faults"))]
@@ -411,6 +448,12 @@ impl MainWindowShellRoot {
             .transcript_cancel
             .store(true, Ordering::Release);
         self.running_threads.transcript_task = None;
+        self.running_threads
+            .transcript
+            .update(cx, |panel, panel_cx| {
+                panel.cancel_narrative_preparations();
+                panel_cx.notify();
+            });
         self.running_threads.transcript_demand = None;
         self.running_threads.resource_demand = None;
         self.running_threads.resource_refresh_due = false;
@@ -596,6 +639,12 @@ impl MainWindowShellRoot {
                 .running_threads
                 .transcript
                 .read(cx)
+                .narrative_demand()
+                .is_some()
+            || self
+                .running_threads
+                .transcript
+                .read(cx)
                 .resource_demand()
                 .is_some()
             || self.running_threads.transcript_demand.is_some()
@@ -611,6 +660,9 @@ impl MainWindowShellRoot {
                     .map(|(selection, _)| selection.claim())
         {
             self.sync_running_transcript(window, cx);
+        }
+        if !self.running_threads_enabled() {
+            return;
         }
         if self.running_threads.poll.is_some() {
             return;

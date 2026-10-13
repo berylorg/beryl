@@ -1,8 +1,9 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
 use super::{
-    ThemeColor, ThemeFontFamily, ThemeFontWeight, ThemeLogicalPixels, ThemePropertyId, ThemeRoleId,
-    ThemeValue, ThemeValueKind,
+    ThemeColor, ThemeFontFamily, ThemeFontScale, ThemeFontStyle, ThemeFontWeight,
+    ThemeLogicalPixels, ThemePropertyId, ThemeRoleId, ThemeTextDecoration, ThemeValue,
+    ThemeValueKind,
 };
 
 pub const THEME_SOURCE_KEYWORDS: [&str; 3] = ["static_parent", "ambient_parent", "fallback"];
@@ -158,9 +159,38 @@ const CONTEXT_TEXT: &[ThemePropertyId] = &[
     ThemePropertyId::FontSize,
     ThemePropertyId::FontWeight,
 ];
-const ROOT: &[ThemePropertyId] = &ThemePropertyId::ALL;
+const ROOT: &[ThemePropertyId] = &[
+    ThemePropertyId::Background,
+    ThemePropertyId::Border,
+    ThemePropertyId::Color,
+    ThemePropertyId::Foreground,
+    ThemePropertyId::TextBackground,
+    ThemePropertyId::FontFamily,
+    ThemePropertyId::FontSize,
+    ThemePropertyId::FontWeight,
+];
+const NARRATIVE_BLOCK: &[ThemePropertyId] = &[
+    ThemePropertyId::Indent,
+    ThemePropertyId::BorderWidth,
+    ThemePropertyId::BorderColor,
+    ThemePropertyId::FontScale,
+    ThemePropertyId::FontWeight,
+];
 
 fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
+    if id.starts_with("transcript-view.narrative-block") {
+        return NARRATIVE_BLOCK;
+    }
+    match id {
+        "transcript-view.narrative-text" | "transcript-view.narrative-text.link-label" => {
+            return FOREGROUND;
+        }
+        "transcript-view.narrative-text.emphasis" => return &[ThemePropertyId::FontStyle],
+        "transcript-view.narrative-text.strong" => return &[ThemePropertyId::FontWeight],
+        "transcript-view.narrative-text.strike" => return &[ThemePropertyId::TextDecoration],
+        "transcript-view.narrative-text.inline-code" => return &[ThemePropertyId::FontFamily],
+        _ => {}
+    }
     if matches!(
         id,
         "transcript-view.context-heading"
@@ -331,7 +361,9 @@ fn fallback_value(id: &str, property: ThemePropertyId) -> ThemeValue {
     let palette = palette(id);
     match property {
         ThemePropertyId::Background => ThemeValue::Color(rgb(palette.background)),
-        ThemePropertyId::Border | ThemePropertyId::Color => ThemeValue::Color(rgb(palette.border)),
+        ThemePropertyId::Border | ThemePropertyId::Color | ThemePropertyId::BorderColor => {
+            ThemeValue::Color(rgb(palette.border))
+        }
         ThemePropertyId::Foreground => ThemeValue::Color(rgb(palette.foreground)),
         ThemePropertyId::TextBackground => ThemeValue::Color(rgb(palette.background)),
         ThemePropertyId::FontFamily => ThemeValue::FontFamily(
@@ -343,6 +375,46 @@ fn fallback_value(id: &str, property: ThemePropertyId) -> ThemeValue {
         ThemePropertyId::FontWeight => ThemeValue::FontWeight(
             ThemeFontWeight::new(palette.font_weight).expect("built-in font weight is valid"),
         ),
+        ThemePropertyId::Indent => ThemeValue::LogicalPixels(
+            ThemeLogicalPixels::new(match id {
+                "transcript-view.narrative-block.quote" => 12.0,
+                "transcript-view.narrative-block.list" => 20.0,
+                _ => 0.0,
+            })
+            .expect("canonical narrative indent"),
+        ),
+        ThemePropertyId::BorderWidth => ThemeValue::LogicalPixels(
+            ThemeLogicalPixels::new(match id {
+                "transcript-view.narrative-block.quote" => 2.0,
+                "transcript-view.narrative-block.thematic-break" => 1.0,
+                _ => 0.0,
+            })
+            .expect("canonical narrative border width"),
+        ),
+        ThemePropertyId::FontScale => ThemeValue::FontScale(
+            ThemeFontScale::new(match id {
+                "transcript-view.narrative-block.heading-1" => 1.75,
+                "transcript-view.narrative-block.heading-2" => 1.5,
+                "transcript-view.narrative-block.heading-3" => 1.25,
+                "transcript-view.narrative-block.heading-4" => 1.125,
+                _ => 1.0,
+            })
+            .expect("canonical narrative font scale"),
+        ),
+        ThemePropertyId::FontStyle => {
+            ThemeValue::FontStyle(if id == "transcript-view.narrative-text.emphasis" {
+                ThemeFontStyle::Italic
+            } else {
+                ThemeFontStyle::Normal
+            })
+        }
+        ThemePropertyId::TextDecoration => {
+            ThemeValue::TextDecoration(if id == "transcript-view.narrative-text.strike" {
+                ThemeTextDecoration::LineThrough
+            } else {
+                ThemeTextDecoration::None
+            })
+        }
     }
 }
 
@@ -351,6 +423,30 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if id.starts_with("transcript-view.narrative-") {
+        return Palette {
+            background: [0x11, 0x18, 0x27],
+            border: [0x47, 0x55, 0x69],
+            foreground: if id.ends_with(".link-label") {
+                [0x7d, 0xd3, 0xfc]
+            } else {
+                [0xe5, 0xe7, 0xeb]
+            },
+            font_family: if id.ends_with(".inline-code") {
+                "monospace"
+            } else {
+                "Inter"
+            },
+            font_size: 14.0,
+            font_weight: if id.ends_with("heading-6") {
+                600
+            } else if id.contains(".heading-") || id.ends_with(".strong") {
+                700
+            } else {
+                400
+            },
+        };
+    }
     if let Some(palette) = table_palette(id) {
         return palette;
     }
@@ -806,6 +902,67 @@ const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
     ("transcript-view.context-heading", Some("text")),
     ("transcript-view.context-body", Some("text")),
     ("transcript-view.context-provenance", Some("text.subtle")),
+    ("transcript-view.narrative-block", None),
+    (
+        "transcript-view.narrative-block.heading-1",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.heading-2",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.heading-3",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.heading-4",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.heading-5",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.heading-6",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.quote",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.list",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-block.thematic-break",
+        Some("transcript-view.narrative-block"),
+    ),
+    (
+        "transcript-view.narrative-text",
+        Some("transcript.turn.assistant.final"),
+    ),
+    (
+        "transcript-view.narrative-text.emphasis",
+        Some("transcript-view.narrative-text"),
+    ),
+    (
+        "transcript-view.narrative-text.strong",
+        Some("transcript-view.narrative-text"),
+    ),
+    (
+        "transcript-view.narrative-text.strike",
+        Some("transcript-view.narrative-text"),
+    ),
+    (
+        "transcript-view.narrative-text.inline-code",
+        Some("transcript-view.narrative-text"),
+    ),
+    (
+        "transcript-view.narrative-text.link-label",
+        Some("transcript-view.narrative-text"),
+    ),
     ("table-panel", Some("surface.inset")),
     ("table-panel.header", Some("surface.inset")),
     ("table-panel.cell", Some("text")),

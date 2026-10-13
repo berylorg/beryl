@@ -179,7 +179,8 @@ fn populated_candidate_activation_preserves_text_resource_narrative_and_ordinary
             );
         } else {
             assert!(
-                matches!(&projections.records[0].payload, ProjectionPayload::Text { text, .. } if text.as_ref() == "authored")
+                matches!(&projections.records[0].payload, ProjectionPayload::NarrativePending { source }
+                    if matches!(source.as_ref(), syndic_storage::ProjectionPayload::InlineMarkdown { source, .. } if source.as_ref() == "authored"))
             );
         }
         candidate.publication.publish().unwrap().close().unwrap();

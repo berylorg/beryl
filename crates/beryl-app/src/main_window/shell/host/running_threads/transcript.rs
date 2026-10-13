@@ -5,6 +5,7 @@ use crate::{
 };
 use std::sync::atomic::AtomicBool;
 
+mod narrative;
 mod resources;
 pub(super) use resources::PendingMeasuredResource;
 
@@ -178,6 +179,9 @@ impl MainWindowShellRoot {
     ) {
         self.synchronize_transcript_appearance(cx);
         if self.sync_running_transcript_resource(window, cx) {
+            return;
+        }
+        if self.sync_running_transcript_narrative(window, cx) {
             return;
         }
         if self
@@ -454,6 +458,8 @@ impl MainWindowShellRoot {
                                 |identity| identity.matches_selected_metadata(&prepared),
                             )
                         {
+                            let _ =
+                                provider.publish_if_current(prepared, &request, &cancel, |_| ());
                             return;
                         }
                         if provider
@@ -485,6 +491,27 @@ impl MainWindowShellRoot {
                 }
             });
         }));
+        #[cfg(test)]
+        if self.running_threads.fixture_fence_next_adjacent
+            && self.running_threads.transcript_demand.is_some()
+            && self.running_threads.transcript_task.is_some()
+            && !self
+                .running_threads
+                .transcript_cancel
+                .load(Ordering::Acquire)
+            && self
+                .running_threads
+                .transcript
+                .read(cx)
+                .adjacent_demand()
+                .as_ref()
+                == self.running_threads.transcript_demand.as_ref()
+        {
+            self.running_threads.fixture_fence_next_adjacent = false;
+            self.running_threads.fixture_adjacent_fenced = true;
+            self.ordinary_close_interaction_gated = true;
+            self.suspend_running_thread_reads(window, cx);
+        }
     }
 
     pub(crate) fn coherent_selected_thread_title(

@@ -9,12 +9,17 @@ use gpui::{
 
 use super::{ResidentTranscriptSelection, SyndicTranscriptPanel};
 
+#[path = "copy_keyboard/literal.rs"]
+mod literal;
+pub(super) use literal::{NarrativeCopyCapture, NarrativeCopyPart};
+
 const PAIR_INTERVAL: Duration = Duration::from_millis(600);
 const COPY_TEXT_BYTES: usize = 65_536;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum CopyTarget {
     Records(ResidentTranscriptSelection),
+    Narrative(super::narrative::NarrativeSelection),
     Code {
         id: u64,
         revision: super::super::ProviderRevision,
@@ -67,11 +72,9 @@ impl CopyGesture {
         self.first = None;
     }
     pub(super) fn invalidate_records(&mut self) {
-        if self
-            .first
-            .as_ref()
-            .is_some_and(|(target, _)| matches!(target, CopyTarget::Records(_)))
-        {
+        if self.first.as_ref().is_some_and(|(target, _)| {
+            matches!(target, CopyTarget::Records(_) | CopyTarget::Narrative(_))
+        }) {
             self.reset();
         }
     }
@@ -84,6 +87,7 @@ pub(super) struct KeyboardCopy {
     subscription: Option<Subscription>,
     activation: Option<Subscription>,
     pub(super) feedback: &'static str,
+    literal: literal::LiteralCopy,
     #[cfg(test)]
     pub(super) writer: Option<
         Box<
@@ -106,7 +110,26 @@ pub(super) fn is_copy(event: &KeyDownEvent) -> bool {
 }
 
 impl SyndicTranscriptPanel {
+    fn write_keyboard_clipboard(
+        &mut self,
+        item: &ClipboardItem,
+        cx: &mut Context<Self>,
+    ) -> Result<(), ()> {
+        let text_budget = 65_536 * 4 + 2;
+        let limits = ClipboardLimits {
+            total_bytes: text_budget,
+            text_bytes: text_budget,
+            metadata_bytes: 1,
+            image_bytes: 1,
+        };
+        #[cfg(test)]
+        if let Some(writer) = &mut self.keyboard_copy.writer {
+            return writer(item, limits, cx);
+        }
+        cx.write_to_clipboard_checked(item, limits).map_err(|_| ())
+    }
     pub(super) fn supersede_resource_copies(&mut self) {
+        self.cancel_literal_copy();
         for code in &mut self.code_panels {
             if code.actions.copy.is_some() {
                 code.actions.cancel_copy("Copy superseded");
@@ -188,6 +211,7 @@ impl SyndicTranscriptPanel {
     }
     pub(super) fn reset_keyboard_copy(&mut self) {
         self.keyboard_copy.gesture.reset();
+        self.cancel_literal_copy();
     }
 
     pub(super) fn observe_copy_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -198,7 +222,7 @@ impl SyndicTranscriptPanel {
                 move |panel, window, cx| {
                     if window.is_window_active() != active {
                         active = window.is_window_active();
-                        panel.keyboard_copy.gesture.reset();
+                        panel.reset_keyboard_copy();
                         cx.notify();
                     }
                 },
@@ -217,7 +241,7 @@ impl SyndicTranscriptPanel {
             let observed = focus.clone();
             cx.on_blur(focus, window, move |panel, window, cx| {
                 if window.focused(cx).as_ref() != Some(&observed) {
-                    panel.keyboard_copy.gesture.reset();
+                    panel.reset_keyboard_copy();
                     cx.notify();
                 }
             })
@@ -236,6 +260,46 @@ impl SyndicTranscriptPanel {
         }
         self.observe_copy_focus(window, cx);
         self.supersede_resource_copies();
+        if self.narrative_selection.is_some() && !self.character_geometry_current(window) {
+            self.close_invalid_geometry();
+            self.keyboard_copy.feedback = "Copy unavailable";
+            cx.notify();
+            return;
+        }
+        if let Some(selection) = self.narrative_selection.clone() {
+            let method = self
+                .keyboard_copy
+                .gesture
+                .press(CopyTarget::Narrative(selection), false, Instant::now())
+                .unwrap();
+            if method == CopyMethod::Stripped {
+                let Some(capture) = self.narrative_copy_capture() else {
+                    self.keyboard_copy.feedback = "Copy unavailable";
+                    cx.notify();
+                    return;
+                };
+                if capture
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, NarrativeCopyPart::Literal(_)))
+                {
+                    self.begin_literal_copy(capture, window, cx);
+                    return;
+                }
+            }
+            let text = self.narrative_copy_text(method == CopyMethod::Stripped);
+            let result = text
+                .map(ClipboardItem::new_string)
+                .ok_or(())
+                .and_then(|item| self.write_keyboard_clipboard(&item, cx));
+            self.keyboard_copy.feedback = if result.is_ok() {
+                "Copied"
+            } else {
+                "Copy unavailable"
+            };
+            cx.notify();
+            return;
+        }
         let Some(selection) = self.host.resident_selection() else {
             self.reset_keyboard_copy();
             self.keyboard_copy.feedback = "Copy unavailable: no eligible selection";

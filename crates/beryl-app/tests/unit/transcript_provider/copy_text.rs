@@ -150,7 +150,7 @@ fn escapes_unicode_and_limits_preserve_source_bounds() {
 }
 
 #[test]
-fn admitted_worker_payload_preserves_markdown_and_derives_plain_text() {
+fn admitted_worker_payload_preserves_markdown_pending_preparation() {
     use super::{AtomicBool, Fixture};
     let fixture = Fixture::new();
     fixture.seed_projection("# Authored **source**\n", 1);
@@ -169,13 +169,16 @@ fn admitted_worker_payload_preserves_markdown_and_derives_plain_text() {
             else {
                 panic!("missing source projection")
             };
-            let crate::syndic_transcript::ProjectionPayload::Text { text, plain_text } =
+            let crate::syndic_transcript::ProjectionPayload::NarrativePending { source } =
                 &records.records[0].payload
             else {
-                panic!("missing text")
+                panic!("missing pending narrative")
             };
-            assert_eq!(text.as_ref(), "# Authored **source**\n");
-            assert_eq!(plain_text.as_deref(), Some("Authored source\n"));
+            let syndic_storage::ProjectionPayload::InlineMarkdown { source, .. } = source.as_ref()
+            else {
+                panic!("missing admitted Markdown source")
+            };
+            assert_eq!(source.as_ref(), "# Authored **source**\n");
         })
         .unwrap();
     assert!(fixture.reader.retire());

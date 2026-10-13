@@ -274,10 +274,21 @@ fn variable_rows_remeasure_on_resize_and_route_real_wheel_and_keyboard(cx: &mut 
             .unwrap()
             .height_px
     });
+    let prior_layout = panel.read_with(cx, |panel, _| {
+        panel
+            .literal_geometry
+            .iter()
+            .find(|value| value.owner.source.len() > 1000)
+            .unwrap()
+            .layout
+            .as_ref()
+            .unwrap()
+            .clone()
+    });
     visual.update(|window, _| window.set_rem_size(px(24.0)));
     draw_frames(cx, window, 4);
     panel.read_with(cx, |panel, _| {
-        assert!(
+        assert_eq!(
             panel
                 .last_frame_window
                 .as_ref()
@@ -285,9 +296,21 @@ fn variable_rows_remeasure_on_resize_and_route_real_wheel_and_keyboard(cx: &mut 
                 .records
                 .last()
                 .unwrap()
-                .height_px
-                > previous
-        )
+                .height_px,
+            previous
+        );
+        let layout = panel
+            .literal_geometry
+            .iter()
+            .find(|value| value.owner.source.len() > 1000)
+            .unwrap()
+            .layout
+            .as_ref()
+            .unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&prior_layout, layout));
+    });
+    visual.update(|window, app| {
+        assert!(panel.read(app).narrative_geometry_current_for_test(window));
     });
     visual.simulate_event(gpui::ScrollWheelEvent {
         position: bounds.center(),

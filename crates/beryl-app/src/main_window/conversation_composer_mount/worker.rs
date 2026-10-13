@@ -23,6 +23,12 @@ pub(crate) struct WorkerLease {
 }
 
 impl WorkerAdmission {
+    #[cfg(test)]
+    pub(crate) fn owned_for_test(maximum: usize) -> (Self, TestWorkerOwner) {
+        let owner = TestWorkerOwner(WorkerLifetime::default());
+        (owner.0.admission(maximum), owner)
+    }
+
     pub(crate) fn suspended(&self) -> Option<bool> {
         self.suspended
             .upgrade()
@@ -45,6 +51,27 @@ impl WorkerAdmission {
         Some(WorkerLease {
             _lifetime: lifetime,
         })
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct TestWorkerOwner(WorkerLifetime);
+
+#[cfg(test)]
+impl TestWorkerOwner {
+    pub(crate) fn suspend(&self) {
+        self.0.suspend(true);
+    }
+
+    pub(crate) fn retained(&self) -> usize {
+        self.0.retained()
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestWorkerOwner {
+    fn drop(&mut self) {
+        self.suspend();
     }
 }
 

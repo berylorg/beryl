@@ -15,6 +15,11 @@ mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
 mod inline_table_actions;
+mod narrative;
+mod narrative_appearance;
+mod narrative_layout;
+mod narrative_literal;
+mod narrative_literal_geometry;
 #[path = "panel/table_appearance.rs"]
 mod table_appearance;
 #[path = "panel/table_export.rs"]
@@ -71,6 +76,7 @@ struct StagedTranscript {
     unplaced_tail: bool,
     adjacent: Option<super::AdjacentTranscriptDemand>,
     resource: Option<super::ResourceTranscriptDemand>,
+    narrative: Option<super::NarrativeTranscriptDemand>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -80,6 +86,17 @@ struct MeasurementEnvironment {
     scale: f32,
     rem: gpui::Pixels,
     text: gpui::TextStyle,
+    font_environment: Option<gpui::FontEnvironmentKey>,
+}
+
+impl MeasurementEnvironment {
+    fn current(&self, window: &Window) -> bool {
+        self.window_viewport == window.viewport_size()
+            && self.scale == window.scale_factor()
+            && self.rem == window.rem_size()
+            && self.text == window.text_style()
+            && self.font_environment == window.text_system().font_environment_key()
+    }
 }
 
 struct PendingGeometry {
@@ -117,6 +134,14 @@ pub(crate) struct SyndicTranscriptPanel {
     retired_table_panels: Vec<table_panel::MountedTablePanel>,
     table_wheel_owner: std::rc::Rc<std::cell::Cell<Option<u64>>>,
     table_appearance: table_appearance::TableAppearance,
+    narrative_appearance: narrative_appearance::NarrativeAppearance,
+    narrative_geometry: Vec<narrative::NarrativeGeometry>,
+    narrative_candidate_geometry: Vec<narrative::NarrativeGeometry>,
+    literal_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
+    literal_candidate_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
+    narrative_selection: Option<narrative::NarrativeSelection>,
+    narrative_dragging: bool,
+    narrative_viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     save_admission: crate::main_window::WorkerAdmission,
     retired_code_panels: Vec<code_panel::MountedCodePanel>,
     code_release_registered: bool,
@@ -135,6 +160,14 @@ impl SyndicTranscriptPanel {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         Self {
             keyboard_copy: Default::default(),
+            narrative_appearance: Default::default(),
+            narrative_geometry: Vec::new(),
+            narrative_candidate_geometry: Vec::new(),
+            literal_geometry: Vec::new(),
+            literal_candidate_geometry: Vec::new(),
+            narrative_selection: None,
+            narrative_dragging: false,
+            narrative_viewport_bounds: None,
             focus_handle: cx.focus_handle(),
             host: SyndicTranscriptHost::empty(),
             last_frame_window: None,
@@ -223,6 +256,7 @@ impl SyndicTranscriptPanel {
             unplaced_tail,
             adjacent: None,
             resource: None,
+            narrative: None,
         });
         self.geometry = None;
         self.close_invalid_geometry();
@@ -279,6 +313,7 @@ impl SyndicTranscriptPanel {
             unplaced_tail: false,
             adjacent: Some(demand.clone()),
             resource: None,
+            narrative: None,
         });
         self.geometry = None;
         true
@@ -468,6 +503,7 @@ impl SyndicTranscriptPanel {
             unplaced_tail: false,
             adjacent: None,
             resource: Some(demand.clone()),
+            narrative: None,
         });
         self.geometry = None;
         true
@@ -516,11 +552,21 @@ impl SyndicTranscriptPanel {
 
     pub(crate) fn measurement_current(&self, window: &Window) -> bool {
         self.measurement_ready()
+            && self
+                .geometry
+                .as_ref()
+                .is_some_and(|geometry| geometry.environment.current(window))
+    }
+
+    fn character_geometry_current(&self, window: &Window) -> bool {
+        self.staged.is_none()
+            && self.pending_delta == 0.0
             && self.geometry.as_ref().is_some_and(|geometry| {
-                geometry.environment.window_viewport == window.viewport_size()
-                    && geometry.environment.scale == window.scale_factor()
-                    && geometry.environment.rem == window.rem_size()
-                    && geometry.environment.text == window.text_style()
+                geometry.published
+                    && geometry.environment.current(window)
+                    && self
+                        .narrative_viewport_bounds
+                        .is_some_and(|bounds| bounds.size == geometry.environment.viewport)
             })
     }
 
@@ -539,6 +585,8 @@ impl SyndicTranscriptPanel {
             code_appearance::CodeAppearance::prepare(appearance.prepared().appearance());
         self.context_appearance =
             context_appearance::ContextAppearance::prepare(appearance.prepared().appearance());
+        self.narrative_appearance =
+            narrative_appearance::NarrativeAppearance::prepare(appearance.prepared().appearance());
         self.table_appearance =
             table_appearance::TableAppearance::prepare(appearance.prepared().appearance());
         self.appearance = Some(appearance);
@@ -590,6 +638,8 @@ impl SyndicTranscriptPanel {
         }
         self.staged = None;
         self.geometry = None;
+        self.narrative_candidate_geometry.clear();
+        self.literal_candidate_geometry.clear();
     }
 
     fn commit_measured_activation(&mut self) -> TranscriptActivationOutcome {
@@ -600,6 +650,9 @@ impl SyndicTranscriptPanel {
     }
 
     fn close_invalid_geometry(&mut self) {
+        self.cancel_literal_copy();
+        self.narrative_selection = None;
+        self.narrative_dragging = false;
         self.keyboard_copy.gesture.invalidate_records();
         self.keyboard_copy.feedback = "";
         self.host.clear_resident_selection();
@@ -612,11 +665,9 @@ impl SyndicTranscriptPanel {
         if !delta.is_finite() || delta == 0.0 {
             return;
         }
-        if self
-            .staged
-            .as_ref()
-            .is_some_and(|staged| staged.adjacent.is_some() || staged.resource.is_some())
-        {
+        if self.staged.as_ref().is_some_and(|staged| {
+            staged.adjacent.is_some() || staged.resource.is_some() || staged.narrative.is_some()
+        }) {
             self.discard_staged_activation();
         }
         self.host.detach_tail();
@@ -635,6 +686,39 @@ impl SyndicTranscriptPanel {
         geometry.delta = 0.0;
         geometry.published = true;
         self.host.accept_measured_frame(frame.clone());
+        self.narrative_candidate_geometry.retain(|geometry| {
+            let retained = frame
+                .records
+                .iter()
+                .any(|record| record.record_id == geometry.owner.record_id);
+            if !retained {
+                self.host.reserve_narrative_layout(&geometry.owner, 0);
+            }
+            retained
+        });
+        for old in &self.narrative_geometry {
+            if !self
+                .narrative_candidate_geometry
+                .iter()
+                .any(|new| new.owner.record_id == old.owner.record_id)
+            {
+                self.host.reserve_narrative_layout(&old.owner, 0);
+            }
+        }
+        self.narrative_geometry = std::mem::take(&mut self.narrative_candidate_geometry);
+        self.literal_candidate_geometry.retain(|geometry| {
+            let retained = frame
+                .records
+                .iter()
+                .any(|record| record.record_id == geometry.owner.record_id);
+            if !retained {
+                self.host
+                    .reserve_literal_narrative_layout(&geometry.owner, 0);
+            }
+            retained
+        });
+        self.literal_geometry = std::mem::take(&mut self.literal_candidate_geometry);
+        self.host.release_previous_narrative_layout();
         self.prune_rejected_resources();
         self.published_snapshot = Some(self.host.shared_snapshot());
         self.last_frame_window = Some(frame);
@@ -651,6 +735,10 @@ impl SyndicTranscriptPanel {
             table.actions.cancel("");
         }
         self.host.retire();
+        self.narrative_geometry.clear();
+        self.narrative_candidate_geometry.clear();
+        self.literal_geometry.clear();
+        self.literal_candidate_geometry.clear();
         self.last_frame_window = None;
         self.published_snapshot = None;
         self.staged = None;
@@ -1084,7 +1172,6 @@ impl Focusable for SyndicTranscriptPanel {
 impl Render for SyndicTranscriptPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let panel = cx.entity();
-        #[cfg(test)]
         let paint_panel = panel.clone();
         canvas(
             move |bounds, window, cx| {
@@ -1092,6 +1179,7 @@ impl Render for SyndicTranscriptPanel {
                     return None;
                 }
                 let mut content = panel.update(cx, |panel, cx| {
+                    panel.narrative_viewport_bounds = Some(bounds);
                     #[cfg(test)]
                     {
                         panel.viewport_bounds = Some(bounds);
@@ -1112,6 +1200,15 @@ impl Render for SyndicTranscriptPanel {
                         paint.glyphs.len() + paint.color_glyphs.len()
                     };
                     content.paint(window, cx);
+                    paint_panel.update(cx, |panel, cx| {
+                        if panel.narrative_geometry.iter().any(|value| !value.valid())
+                            || panel.literal_geometry.iter().any(|value| !value.valid())
+                        {
+                            panel.close_invalid_geometry();
+                            panel.geometry = None;
+                            cx.notify();
+                        }
+                    });
                     #[cfg(test)]
                     {
                         let paint = window.paint_snapshot_for_test();
@@ -1175,6 +1272,7 @@ impl SyndicTranscriptPanel {
             scale: window.scale_factor(),
             rem: window.rem_size(),
             text: window.text_style(),
+            font_environment: window.text_system().font_environment_key(),
         };
         let changed = self.geometry.as_ref().is_none_or(|geometry| {
             geometry.revision != snapshot.presentation_revision
@@ -1187,6 +1285,8 @@ impl SyndicTranscriptPanel {
             && self.last_frame_window.is_some()
             && !changed;
         if changed || (settled && self.pending_delta != 0.0) {
+            self.narrative_candidate_geometry.clear();
+            self.literal_candidate_geometry.clear();
             let mut state = target.scroll_state();
             if self
                 .staged
@@ -1214,24 +1314,63 @@ impl SyndicTranscriptPanel {
                 ready: None,
                 published: false,
             });
+            let old_bytes = self
+                .narrative_geometry
+                .iter()
+                .map(|value| value.charge())
+                .sum::<usize>()
+                + self
+                    .literal_geometry
+                    .iter()
+                    .map(|value| value.charge())
+                    .sum::<usize>();
+            self.staged
+                .as_mut()
+                .map(|staged| &mut staged.host)
+                .unwrap_or(&mut self.host)
+                .hold_previous_narrative_layout(old_bytes);
         }
         let geometry = self.geometry.as_mut().unwrap();
         if geometry.ready.is_none() && !geometry.published {
             let table_row_height = self.table_appearance.row_height(cx).unwrap_or(28.0);
-            geometry.ready = geometry.preparation.advance(32, |record| {
+            let measurement_host = self
+                .staged
+                .as_mut()
+                .map(|staged| &mut staged.host)
+                .unwrap_or(&mut self.host);
+            geometry.ready = geometry.preparation.advance_with_retained_observations(32, |record, observations, retained| {
+                narrative::prune_candidates(
+                    &mut self.narrative_candidate_geometry,
+                    &mut self.literal_candidate_geometry,
+                    measurement_host,
+                    |id| id == &record.id || retained.iter().any(|row| &row.record_id == id),
+                );
+                if matches!(record.kind, ResidentPresentationRecordKind::NarrativeReady { .. }) {
+                    return narrative::measure(
+                        &mut self.narrative_candidate_geometry,
+                        measurement_host,
+                        &snapshot,
+                        record,
+                        &self.narrative_appearance,
+                        viewport_size.width,
+                        observations,
+                        window,
+                        cx,
+                    );
+                }
+                if matches!(&record.kind, ResidentPresentationRecordKind::TextChunk { text, .. } if !text.is_empty())
+                    && matches!(record.provenance.source, super::ResidentRecordSource::Syndic(_) | super::ResidentRecordSource::LocalContext { .. }) {
+                    return narrative_literal_geometry::measure(
+                        &mut self.literal_candidate_geometry, measurement_host, &snapshot, record,
+                        &self.narrative_appearance, &self.context_appearance, viewport_size.width,
+                        observations, window, cx,
+                    );
+                }
                 let mut element = div()
                     .w(viewport_size.width)
-                    .px_4()
-                    .py(px(
-                        if matches!(
-                            record.provenance.source,
-                            super::ResidentRecordSource::LocalContext { .. }
-                        ) {
-                            0.0
-                        } else {
-                            8.0
-                        },
-                    ))
+                    .px(px(16.0))
+                    .pt(px(record_vertical_padding(&snapshot, record).0))
+                    .pb(px(record_vertical_padding(&snapshot, record).1))
                     .child(render_record_content(
                         &snapshot,
                         record,
@@ -1241,7 +1380,7 @@ impl SyndicTranscriptPanel {
                         table_row_height,
                     ))
                     .into_any_element();
-                f32::from(
+                (Some(f32::from(
                     element
                         .layout_as_root(
                             gpui::size(
@@ -1252,8 +1391,19 @@ impl SyndicTranscriptPanel {
                             cx,
                         )
                         .height,
-                )
+                )), 1)
             });
+            narrative::prune_candidates(
+                &mut self.narrative_candidate_geometry,
+                &mut self.literal_candidate_geometry,
+                measurement_host,
+                |id| {
+                    geometry.ready.as_ref().map_or_else(
+                        || geometry.preparation.retains_record(id),
+                        |frame| frame.records.iter().any(|row| &row.record_id == id),
+                    )
+                },
+            );
         }
         if geometry.ready.is_some() && self.staged.is_none() {
             self.publish_ready_geometry();
@@ -1321,11 +1471,27 @@ impl SyndicTranscriptPanel {
             .track_focus(&self.focus_handle)
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|panel, _, window, cx| {
+                cx.listener(|panel, event: &gpui::MouseDownEvent, window, cx| {
                     panel.code_wheel_owner.set(None);
                     panel.table_wheel_owner.set(None);
                     window.focus(&panel.focus_handle);
+                    panel.narrative_pointer(event.position, event.modifiers.shift, window, cx);
+                    panel.narrative_dragging =
+                        panel.narrative_hit_available(event.position, window);
                     cx.notify();
+                }),
+            )
+            .on_mouse_move(
+                cx.listener(|panel, event: &gpui::MouseMoveEvent, window, cx| {
+                    if panel.narrative_dragging && event.pressed_button == Some(MouseButton::Left) {
+                        panel.narrative_pointer(event.position, true, window, cx);
+                    }
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|panel, _, _, _| {
+                    panel.narrative_dragging = false;
                 }),
             )
             .on_scroll_wheel(
@@ -1373,6 +1539,13 @@ impl SyndicTranscriptPanel {
                 &self.code_appearance,
                 &self.context_appearance,
                 &self.table_appearance,
+                &self.narrative_geometry,
+                &self.literal_geometry,
+                &self
+                    .narrative_selection
+                    .as_ref()
+                    .and_then(|selection| self.narrative_ranges(selection))
+                    .unwrap_or_default(),
                 self.staged.is_some(),
                 cx,
             ))
@@ -1402,6 +1575,54 @@ mod tests {
     ));
 }
 
+fn record_vertical_padding(
+    snapshot: &ResidentTranscriptSnapshot,
+    record: &ResidentPresentationRecord,
+) -> (f32, f32) {
+    if matches!(
+        record.provenance.source,
+        super::ResidentRecordSource::LocalContext { .. }
+    ) {
+        return (0.0, 0.0);
+    }
+    let block = |record: &ResidentPresentationRecord| match &record.kind {
+        ResidentPresentationRecordKind::NarrativeReady { prepared } => {
+            Some((prepared.block_id(), prepared.span_ordinal()))
+        }
+        ResidentPresentationRecordKind::NarrativePending { source }
+        | ResidentPresentationRecordKind::NarrativeUnavailable { source, .. } => {
+            match source.as_ref() {
+                syndic_storage::ProjectionPayload::InlineMarkdown {
+                    block_id,
+                    span_ordinal,
+                    ..
+                } => Some((*block_id, *span_ordinal)),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let Some((id, ordinal)) = block(record) else {
+        return (8.0, 8.0);
+    };
+    let next = snapshot
+        .records
+        .iter()
+        .position(|row| row.id == record.id)
+        .and_then(|index| snapshot.records.get(index + 1));
+    let continues = next.and_then(block).is_some_and(|(next_id, next_ordinal)| {
+        next_id == id && ordinal.checked_add(1) == Some(next_ordinal)
+    });
+    (
+        if ordinal == 1 { 8.0 } else { 0.0 },
+        if continues || (ordinal > 1 && next.is_none()) {
+            0.0
+        } else {
+            8.0
+        },
+    )
+}
+
 fn render_frame_window(
     snapshot: &ResidentTranscriptSnapshot,
     frame_window: &RealizedFrameWindow,
@@ -1413,6 +1634,9 @@ fn render_frame_window(
     code_appearance: &code_appearance::CodeAppearance,
     context_appearance: &context_appearance::ContextAppearance,
     table_appearance: &table_appearance::TableAppearance,
+    narrative_geometry: &[narrative::NarrativeGeometry],
+    literal_geometry: &[narrative_literal_geometry::LiteralGeometry],
+    narrative_ranges: &[(ResidentPresentationRecordId, Range<usize>)],
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> gpui::Div {
@@ -1445,6 +1669,9 @@ fn render_frame_window(
             code_appearance,
             context_appearance,
             table_appearance,
+            narrative_geometry,
+            literal_geometry,
+            narrative_ranges,
             commands_pending,
             cx,
         ));
@@ -1465,6 +1692,9 @@ fn render_realized_record(
     code_appearance: &code_appearance::CodeAppearance,
     context_appearance: &context_appearance::ContextAppearance,
     table_appearance: &table_appearance::TableAppearance,
+    narrative_geometry: &[narrative::NarrativeGeometry],
+    literal_geometry: &[narrative_literal_geometry::LiteralGeometry],
+    narrative_ranges: &[(ResidentPresentationRecordId, Range<usize>)],
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
@@ -1482,17 +1712,9 @@ fn render_realized_record(
         .h(px(frame_record.height_px))
         .min_h(px(frame_record.height_px))
         .overflow_hidden()
-        .px_4()
-        .py(px(
-            if matches!(
-                record.provenance.source,
-                super::ResidentRecordSource::LocalContext { .. }
-            ) {
-                0.0
-            } else {
-                8.0
-            },
-        ))
+        .px(px(16.0))
+        .pt(px(record_vertical_padding(snapshot, record).0))
+        .pb(px(record_vertical_padding(snapshot, record).1))
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |panel, _, window, cx| {
@@ -1502,7 +1724,31 @@ fn render_realized_record(
             }),
         )
         .child(
-            if let Some(code) = code_panels
+            if let Some(geometry) = narrative_geometry
+                .iter()
+                .find(|geometry| geometry.owner.record_id == record.id)
+            {
+                narrative::render(
+                    geometry,
+                    narrative_ranges
+                        .iter()
+                        .find(|(id, _)| id == &record.id)
+                        .map(|(_, range)| range.clone()),
+                )
+            } else if let Some(geometry) = literal_geometry
+                .iter()
+                .find(|geometry| geometry.owner.record_id == record.id)
+            {
+                narrative_literal_geometry::render(
+                    geometry,
+                    record,
+                    context_appearance,
+                    narrative_ranges
+                        .iter()
+                        .find(|(id, _)| id == &record.id)
+                        .map(|(_, range)| range.clone()),
+                )
+            } else if let Some(code) = code_panels
                 .iter()
                 .find(|code| code.viewport.owner.record_id == record.id)
             {
@@ -1590,6 +1836,42 @@ fn render_record_content(
     table_appearance: &table_appearance::TableAppearance,
     table_row_height: f32,
 ) -> AnyElement {
+    if matches!(
+        record.provenance.source,
+        super::ResidentRecordSource::LocalContext { .. }
+    ) {
+        let body = match &record.kind {
+            ResidentPresentationRecordKind::TextChunk { text, .. } => div()
+                .text_size(px(appearance.body.size))
+                .font(appearance.body.font.clone())
+                .text_color(appearance.body.color)
+                .line_height(px(20.0 * appearance.scale()))
+                .whitespace_normal()
+                .child(SharedString::from(text.clone()))
+                .into_any_element(),
+            _ => div()
+                .text_size(px(appearance.body.size))
+                .font(appearance.body.font.clone())
+                .text_color(appearance.body.color)
+                .child("Discussion context unavailable")
+                .into_any_element(),
+        };
+        return render_context_record(record, appearance, body);
+    }
+    render_ordinary_record_content(
+        snapshot,
+        record,
+        code_header_height,
+        table_appearance,
+        table_row_height,
+    )
+}
+
+fn render_context_record(
+    record: &ResidentPresentationRecord,
+    appearance: &context_appearance::ContextAppearance,
+    body: AnyElement,
+) -> AnyElement {
     if let super::ResidentRecordSource::LocalContext { group, chunk_index } =
         &record.provenance.source
     {
@@ -1639,20 +1921,7 @@ fn render_record_content(
         ) {
             callout = callout.opacity(0.62);
         }
-        callout = callout.child(match &record.kind {
-            ResidentPresentationRecordKind::TextChunk { text, .. } => div()
-                .text_size(px(appearance.body.size))
-                .font(appearance.body.font.clone())
-                .text_color(appearance.body.color)
-                .line_height(px(20.0 * appearance.scale()))
-                .whitespace_normal()
-                .child(SharedString::from(text.clone())),
-            _ => div()
-                .text_size(px(appearance.body.size))
-                .font(appearance.body.font.clone())
-                .text_color(appearance.body.color)
-                .child("Discussion context unavailable"),
-        });
+        callout = callout.child(body);
         if last && group.descriptor.is_some() {
             callout = callout.child(
                 div()
@@ -1666,6 +1935,16 @@ fn render_record_content(
         }
         return callout.into_any_element();
     }
+    body
+}
+
+fn render_ordinary_record_content(
+    snapshot: &ResidentTranscriptSnapshot,
+    record: &ResidentPresentationRecord,
+    code_header_height: f32,
+    table_appearance: &table_appearance::TableAppearance,
+    table_row_height: f32,
+) -> AnyElement {
     match &record.kind {
         ResidentPresentationRecordKind::InlineTable { .. } => {
             table_panel::shell(table_appearance, table_row_height)
@@ -1676,6 +1955,15 @@ fn render_record_content(
             table_panel::shell(table_appearance, table_row_height)
                 .child("Table structure unavailable")
                 .into_any_element()
+        }
+        ResidentPresentationRecordKind::NarrativePending { .. } => {
+            div().child("Narrative preparing").into_any_element()
+        }
+        ResidentPresentationRecordKind::NarrativeReady { .. } => {
+            div().child("Narrative layout preparing").into_any_element()
+        }
+        ResidentPresentationRecordKind::NarrativeUnavailable { .. } => {
+            div().child("Narrative unavailable").into_any_element()
         }
         ResidentPresentationRecordKind::TextChunk { text, .. } => div()
             .w_full()

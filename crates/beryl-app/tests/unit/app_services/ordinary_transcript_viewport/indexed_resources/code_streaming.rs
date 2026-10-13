@@ -294,7 +294,14 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                                         &record.kind,
                                         crate::syndic_transcript::ResidentPresentationRecordKind::TextChunk { text, .. }
                                             if text.as_ref() == prefix
-                                    )
+                                    ) || match &record.kind {
+                                        crate::syndic_transcript::ResidentPresentationRecordKind::NarrativePending { source }
+                                        | crate::syndic_transcript::ResidentPresentationRecordKind::NarrativeUnavailable { source, .. } => {
+                                            matches!(source.as_ref(), syndic_storage::ProjectionPayload::InlineMarkdown { source, .. } if source.as_ref() == prefix)
+                                        }
+                                        crate::syndic_transcript::ResidentPresentationRecordKind::NarrativeReady { prepared } => prepared.source() == prefix,
+                                        _ => false,
+                                    }
                                 });
                                 prefix_visible && panel.diagnostic_snapshot().code_panels.is_empty()
                             }).unwrap();
@@ -588,6 +595,7 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                     .unwrap();
                 window
                     .update(cx, |root, native, app| {
+                        root.set_ordinary_close_interaction_gated(true, app);
                         root.suspend_running_thread_reads(native, app);
                     })
                     .unwrap();

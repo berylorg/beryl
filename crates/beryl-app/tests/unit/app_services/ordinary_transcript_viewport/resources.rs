@@ -3,6 +3,20 @@ use super::*;
 #[path = "indexed_resources.rs"]
 mod indexed_resources;
 
+fn indexed_code_loaded(panel: &crate::syndic_transcript::SyndicTranscriptPanel) -> bool {
+    panel.snapshot().resources.metadata.iter().any(|metadata| {
+        metadata.kind == crate::syndic_transcript::ResourceKind::Code
+            && panel
+                .indexed_resource_response(&metadata.resource_id)
+                .is_some_and(|response| {
+                    !matches!(
+                        response.value,
+                        crate::syndic_transcript::IndexedResourceValue::Pending
+                    ) && response.root.is_some()
+                })
+    }) && panel.code_painted_body_glyphs_for_test() > 0
+}
+
 #[test]
 fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
     run_mounted_with_prepared_home_retained(
@@ -135,7 +149,7 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                             root.coherent_selected_thread_title(app).is_some()
                                 && snapshot.activation_revision > prior_activation
                                 && !snapshot.resources.metadata.is_empty()
-                                && !snapshot.resources.slices.is_empty()
+                                && indexed_code_loaded(panel.read(app))
                         })
                         .unwrap();
                     if refreshed {
@@ -258,9 +272,7 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                                 if dispose_pending {
                                     root.test_fence_pending_resource_read(native, app)
                                 } else {
-                                    let snapshot = panel.read(app).snapshot();
-                                    !snapshot.resources.metadata.is_empty()
-                                        && !snapshot.resources.slices.is_empty()
+                                    indexed_code_loaded(panel.read(app))
                                 }
                             })
                             .unwrap();
@@ -286,6 +298,21 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                             assert_eq!(current.record_id, anchor.record_id);
                             assert_eq!(current.viewport_y_px, anchor.viewport_y_px);
                             panel.read(app).snapshot()
+                        })
+                        .unwrap();
+                    let before_indexed = cx
+                        .update(|app| {
+                            before_disposal
+                                .resources
+                                .metadata
+                                .iter()
+                                .filter_map(|metadata| {
+                                    panel
+                                        .read(app)
+                                        .indexed_resource_response(&metadata.resource_id)
+                                        .map(|response| (metadata.resource_id.clone(), response))
+                                })
+                                .collect::<Vec<_>>()
                         })
                         .unwrap();
                     if dispose_pending {
@@ -315,6 +342,21 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                             .unwrap();
                         cx.update(|app| {
                             assert!(Arc::ptr_eq(
+                                &before_disposal.records,
+                                &panel.read(app).snapshot().records
+                            ));
+                            assert!(Arc::ptr_eq(
+                                &before_disposal.resources.metadata,
+                                &panel.read(app).snapshot().resources.metadata
+                            ));
+                            for (resource, before) in &before_indexed {
+                                let retained = panel
+                                    .read(app)
+                                    .indexed_resource_response(resource)
+                                    .expect("inert indexed custody retained until view retirement");
+                                assert!(Arc::ptr_eq(before, &retained));
+                            }
+                            assert!(Arc::ptr_eq(
                                 &before_disposal.resources.slices,
                                 &panel.read(app).snapshot().resources.slices
                             ));
@@ -326,7 +368,16 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                                 .timer(Duration::from_millis(20))
                                 .await;
                             cx.update(|app| {
-                                assert!(panel.read(app).snapshot().resources.slices.is_empty())
+                                assert!(panel.read(app).snapshot().resources.slices.is_empty());
+                                assert!(panel.read(app).snapshot().resources.metadata.is_empty());
+                                for (resource, _) in &before_indexed {
+                                    assert!(
+                                        panel
+                                            .read(app)
+                                            .indexed_resource_response(resource)
+                                            .is_none()
+                                    );
+                                }
                             })
                             .unwrap();
                         }
