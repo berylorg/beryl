@@ -80,6 +80,24 @@ Turn and thread lineage digests are structural proof anchors;
 scoped reads validate exact depth, parent, skip, and digest progression without retaining an ancestor
 set.
 
+## Replacement Draft And Submission Boundary
+
+Replacement start is the authenticated sealed-input import and intent operation defined in
+[Draft Storage](design-draft-storage.md#sealed-input-import-and-replacement-intent). The exact
+ordinary user-input target, selected-path proof and current transcript entry remain durable draft
+intent separately from mutable copied content. Start and intent cancellation change no turn,
+parent edge or selected tail. Ordinary draft publication preserves that intent; reopen consumes the
+exact wholly published root/history and intent rather than treating replacement text as append.
+
+Idle submission reauthenticates the durable intent and its exact target/entry/path. It derives the
+new ordinary user turn's parent from the immutable target's parent, then atomically selects the new
+tail, fresh ordinary draft, lifecycle/input gate, transcript invalidation and unbound execution
+projection through existing first-acceptance admission. It requires idle input and zero live
+accepted work; replacement never becomes steering or a queued append. Original turns, descendants,
+submitted source and historical Asset ownership remain immutable. Ambiguous acceptance preserves
+original command custody; accepted delivery failure does not restore the old tail. Intent-only
+cancellation preserves content, root/history and editor-session state under the draft authority.
+
 ## Generated Discussion Handoff Input
 
 - Accepted input retains one closed admission source. Composer acceptance preserves its existing

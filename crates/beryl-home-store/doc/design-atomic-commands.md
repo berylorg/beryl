@@ -191,6 +191,17 @@ is governed by [the package design](design.md), including that design's engineer
   new, or successor removes the gate and releases its slot, charge, descriptor, worker, reader,
   snapshot, pages, and hook state. Collision closes only that scope and retains one configured-
   bounded sealed fact set after disposing descriptor and transient execution state.
+- Domain hooks may return process-local `ExactUnchanged` only when a nonempty descriptor's every
+  listed old and intended-new natural-record value is equal and the current value matches both.
+  Such records constrain both exact sides; they do not independently prove commit or noncommit.
+  Matching unchanged records alongside changed records constrain the domain's selected side;
+  mismatches or incompatible changed records are collision. HomeStore admits an ordinary exact
+  old or new result only when every domain supports that side and at least one domain selects it
+  through differentiating natural records. Empty or all-unchanged composition is collision.
+  No domain/home revision observation supplies the missing discriminator. This adds no persisted
+  record, receipt format or new public operation outcome. First-acceptance successor admission
+  retains its existing role requirements: an unchanged result does not qualify a source, witness
+  or passive successor participant.
 - First-acceptance promotion is the sole successor shape. Its descriptor admits one Syndic source
   and either source-only marker-free acceptance or one Asset transfer witness. Private static
   domain adapters bind exact owner, slot, and codec identities and use the existing fixed

@@ -244,6 +244,29 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   historical ownership is never moved merely because its turn is being replaced. One Asset-domain
   mutation participant asserts the unchanged historical head and publishes the absent draft head;
   it never composes separate validation and mutation participants for the same domain.
+  This bounded selection participant contributes the historical head's exact existing canonical
+  record, preserving its owner revision, together with the new draft head. Marker-free selection
+  contributes absent-key deletes for both heads after authenticating their absence. These unchanged
+  facts are recorded in the original command's reconciliation descriptor; validation-only
+  assertions alone cannot establish the required complete outcome closure. Neither form moves
+  historical ownership, rebuilds a set or changes a historical owner revision. The participating
+  Asset domain revision advances under ordinary command rules, including marker-free selection.
+- A sealed historical-input import resolves image associations through bounded HomeStore proof
+  composition before constructing draft markers. Syndic owns the import-step source contribution,
+  exact expectation and move-only receipt consumer; Asset owns the historical-set/owner witness.
+  The source authenticates the complete import header, selected progress receipt, exact encoded
+  source/piece window, ordered marker ordinals and source marker ids/labels. The witness authenticates
+  the unchanged submitted-item head, complete sealed set, and each bounded ordered
+  marker/label/AssetId association, including required local availability. Both derive the same
+  private exact operation/page/range/header correlation on one coherent HomeStore read snapshot.
+  The app transports descriptive association pages, opaque attempts and receipts; it cannot mint
+  the correlation, inspect private expectations or turn an ordinary Asset read into authority.
+  Only Syndic's original same-generation consumer accepts the matching receipt and supplies
+  storage-owned import markers. Stale, substituted, unavailable or mismatched evidence advances
+  no source cursor or working root. Original progress-command custody survives acknowledgement
+  loss; a later page cannot bypass it. This read-proof flow allocates no image label and creates
+  no label-readiness lane, writer admission or new persisted family. Final replacement selection
+  separately reasserts the exact historical head and publishes the draft head in its atomic command.
 - A Syndic thread owns one independently revisioned compact image-label-authority head, separate
   from the broad thread revision. The head contains the immutable inherited frontier and current
   permanent accepted frontier. Immutable origin spans bind each local accepted-frontier advance to

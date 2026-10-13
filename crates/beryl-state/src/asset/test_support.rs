@@ -1,3 +1,5 @@
+mod reconciliation;
+
 use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, PointReadLimit, ReconciliationReservation,
 };

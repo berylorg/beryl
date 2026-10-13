@@ -1428,6 +1428,67 @@ disabled gates, draft loading, targeted/later-turn dimming, Escape and replaceme
 their own workflow acceptance before an enabled `Edit message` row can claim that behavior.
 Menu admission alone does not accept replacement editing.
 
+The 2026-10-13 continuation checked that statement against root `6c474e72` and found a
+durable prerequisite. Replacement admission validates parentage and selected-path/transcript-entry
+proofs, but no storage consumer starts or cancels replacement intent. The declared sealed
+`ComposerV1` import is also absent. `draft_piece/model.rs::DraftPieceBuildRecordV1` and
+`draft_piece/codec.rs::encode_build` support only mapped edit builds;
+`DraftPieceSettlementClosureV1` commits only ordinary edit adoption, and
+`DraftEditHistoryFrontierKeyV1` has only canonical-empty, session and publication variants.
+An ordinary edit cannot stand in for import: the controlling storage design requires the imported
+root, fresh-baseline history and durable intent to publish together, with Undo and Redo unavailable.
+Historical image-reference ownership must remain immutable while the draft receives its
+copy-on-write owner head.
+
+The sole V7 schema authority already declared import builds and settlements, but their exact
+discriminators and canonical layouts were incomplete. Existing
+length-framed command-header bytes and a new closed build-frontier variant provide a route to
+explicit import discrimination without changing ordinary V6 record bytes or inferring import
+from an absent coordinate map. The
+[canonical extension](../../crates/syndic-storage/doc/design-schema-v7.md#sealed-import-canonical-extension),
+[storage boundary](../../crates/syndic-storage/doc/design-draft-storage.md#sealed-input-import-and-replacement-intent)
+and [historical image proof flow](../systems/image-assets/design.md#reference-and-label-evidence)
+now define the missing capability. Independent adversarial readiness review identified and resolved
+the bounded marker-to-Asset evidence transport, canonical frontier hash and final session-generation
+rules. Implementation readiness is accepted; ordinary frozen-byte vectors, bounded runtime
+continuation, atomic root/history/intent and Asset publication, and reconciliation remain
+implementation acceptance obligations. The durable prerequisite precedes the mounted replacement
+workflow; Edit stays disabled.
+
+Final Asset selection also requires exact unchanged historical-head and marker-free absence
+facts in the original command's reconciliation descriptor. Existing validation-only assertions
+omit them, while existing equal-old/new classification rejects them. The independently reviewed
+[exact-unchanged contract](../../crates/beryl-home-store/doc/design-atomic-commands.md#reconciliation-and-operation-health)
+resolves that shared prerequisite without a historical mutation or persisted-format change.
+Its separate runtime and semantic acceptance precedes final replacement selection; see the
+[invalidated assertion reuse](../failures/asset-head-assertion-reconciliation.md).
+
+### Exact Unchanged Reconciliation Acceptance
+
+Accepted on 2026-10-13 against the exact-unchanged HomeStore/system and State hook authorities.
+Matching descriptor-listed equal old/new natural-record facts constrain both possible sides.
+HomeStore selects ordinary exact old/new only when every domain supports that side and at least
+one differentiating domain proves it. All-unchanged, mismatched and mixed-side composition remains
+collision; empty contributions retain their stronger pre-writer refusal. Unchanged source,
+witness and passive roles cannot qualify first-acceptance successor reconciliation. No persisted
+family/version, public operation outcome or historical owner revision changes.
+
+Qualified 135 distinct cases through serial, explicit Cargo-nextest targets: 49 focused cases
+across `unchanged_reconciliation`, `asset_reconciliation_constraints`, `reconciliation_constraints`
+and `catalog`; 86 dependent cases across `targeted_reconciliation`, `successor_reconciliation`,
+`command_outcomes`, `recovery`, `commit_receipts`, `assets_v3`, `asset_owner_validation`, `settings`,
+`runtime_root`, `session` and `durable_job`. None were skipped. Actual Asset tests retain byte-equal
+image-backed heads and marker-free absent heads through original receipt reconstruction, exact
+old/new acknowledgement loss, revision advancement, mismatch collision and scoped disposal.
+
+Final production validation passed for HomeStore, State, Syndic and app libraries with stable
+Cargo, local resolved dependencies, locked/offline mode, one build job, zero normal debug and
+nonincremental compilation. Independent complete semantic/adversarial review accepted original
+receipt/custody, bounds, error provenance, unchanged constraints and successor restrictions with
+no blocking finding. All 28 registered task-owned fixtures are absent and validation processes
+have exited. This accepts the shared capability; historical replacement import/selection and the
+mounted Edit workflow retain their separate acceptance gates.
+
 ### Branch Creation Consumer
 
 `crates/syndic-storage/src/discussion_source.rs::prepare_discussion_source` authenticates a

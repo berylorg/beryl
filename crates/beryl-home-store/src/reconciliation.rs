@@ -339,15 +339,10 @@ impl HomeStore {
                 .map_err(|error| map_hook_failure(domain.name, error, &admission))?;
             sides.push(side);
         }
-        let unanimous_exact_side = sides
-            .iter()
-            .all(|side| *side == DomainReconciliation::ExactOld)
-            || sides
-                .iter()
-                .all(|side| *side == DomainReconciliation::ExactNew);
+        let ordinary_exact_side = ordinary_exact_side(&sides);
         let successor = match descriptor.successor.as_ref() {
             None => None,
-            Some(_) if unanimous_exact_side => None,
+            Some(_) if ordinary_exact_side.is_some() => None,
             Some(successor) if !descriptor_sides_admit_successor(&descriptor, &sides) => {
                 Some(successor.unrun_collision())
             }
@@ -409,12 +404,7 @@ fn finish_worker(
                 successor,
                 receipt,
             } = execution;
-            let all_old = sides
-                .iter()
-                .all(|side| *side == DomainReconciliation::ExactOld);
-            let all_new = sides
-                .iter()
-                .all(|side| *side == DomainReconciliation::ExactNew);
+            let ordinary_exact_side = ordinary_exact_side(&sides);
             let exact_successor = successor.as_ref().is_some_and(|successor| {
                 successor.resolved
                     && match &state.scopes[handle.index] {
@@ -424,7 +414,7 @@ fn finish_worker(
                         _ => false,
                     }
             });
-            if all_old || all_new || exact_successor {
+            if ordinary_exact_side.is_some() || exact_successor {
                 let charged_bytes = match &state.scopes[handle.index] {
                     ScopeState::Verifying {
                         token,
@@ -436,9 +426,9 @@ fn finish_worker(
                 state.scopes[handle.index] = ScopeState::Vacant;
                 release_charge(inner, &mut state, charged_bytes);
                 release_retained_core_if_idle(&mut state);
-                if all_old {
+                if ordinary_exact_side == Some(DomainReconciliation::ExactOld) {
                     Ok(ReconciliationResolution::ExactOld)
-                } else if all_new {
+                } else if ordinary_exact_side == Some(DomainReconciliation::ExactNew) {
                     Ok(ReconciliationResolution::ExactNew { receipt })
                 } else {
                     Ok(ReconciliationResolution::ExactSuccessor { receipt })
@@ -593,7 +583,10 @@ fn descriptor_sides_admit_successor(
         if domain.domain_slot == successor.source_slot
             || successor.asset_slot == Some(domain.domain_slot)
         {
-            *side != DomainReconciliation::ExactOld
+            matches!(
+                side,
+                DomainReconciliation::ExactNew | DomainReconciliation::Collision
+            )
         } else {
             *side == DomainReconciliation::ExactNew
         }
@@ -602,4 +595,21 @@ fn descriptor_sides_admit_successor(
 
 fn digest(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
+}
+
+fn ordinary_exact_side(sides: &[DomainReconciliation]) -> Option<DomainReconciliation> {
+    let mut selected = None;
+    for side in sides {
+        match side {
+            DomainReconciliation::ExactUnchanged => {}
+            DomainReconciliation::Collision => return None,
+            DomainReconciliation::ExactOld | DomainReconciliation::ExactNew => {
+                if selected.is_some_and(|selected| selected != *side) {
+                    return None;
+                }
+                selected = Some(*side);
+            }
+        }
+    }
+    selected
 }

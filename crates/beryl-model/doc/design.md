@@ -118,6 +118,13 @@ Provide shared pure-data identities and values used across Beryl packages withou
   storage read, path access, or byte access.
 - Asset identity exposes only its version, digest, and length as pure identity fields; it encodes no
   consumer-specific presentation, persistence, or sidecar policy.
+- `HistoricalInputMarkerAssociationV1` and `HistoricalInputMarkerPageV1` are bounded descriptive
+  transport values for historical-input image import. They carry an ordered marker/label/AssetId
+  association with exact draft/session/operation, command-header, selected progress-receipt,
+  source-window, submitted-item and sealed-set facts. Pure construction checks their bounded value
+  shape; it performs no storage read and proves no membership, source eligibility or availability.
+  They contain no expectation, receipt consumer or capability. Domain-owned authentication follows
+  the [historical import proof flow](../../../doc/systems/image-assets/design.md#reference-and-label-evidence).
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.
 
 # Engineering Rigor

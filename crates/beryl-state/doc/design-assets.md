@@ -33,6 +33,15 @@ and repair-media participants.
   one duplicate-free validation-only participant: it checks exact optional heads and revision
   fence, makes no write, advances no asset revision, and is absent from affected receipt domains.
   An all-assertion batch is `NoEffect`.
+- Historical replacement selection uses one dedicated bounded Asset mutation participant. It
+  authenticates the exact submitted-item head and complete sealed set plus an absent CurrentDraft
+  head, then contributes the byte-equal historical head with unchanged owner revision and the new
+  draft head over that set. Marker-free selection authenticates both heads absent and contributes
+  absent-key deletes for both. This exception to ordinary marker-free validation-only composition
+  binds both head facts in the original command's reconciliation descriptor and advances the Asset
+  domain revision under ordinary mutation rules. No historical owner revision, set or reference
+  changes. The participant performs no sidecar I/O or reference-set traversal; required local
+  availability is qualified by the historical import witness before final selection.
 - Borrowed same-home candidate recovery access exposes bounded owner-head and sealed-reference-set
   manifest reads through fresh Asset handles. These preserve ordinary typed codecs, home/generation
   qualification, limits and complete sealed-proof/completion-evidence validation. They grant no
@@ -50,6 +59,14 @@ and repair-media participants.
 
 ## Sidecars, proofs, and witnesses
 
+- The historical-input import witness accepts a bounded descriptive
+  `HistoricalInputMarkerPageV1` and authenticates its exact submitted-item owner head, complete
+  sealed reference set, ordered marker/label/AssetId association and required Asset availability.
+  It returns only the private Asset contribution to the
+  [historical import proof flow](../../../doc/systems/image-assets/design.md#reference-and-label-evidence).
+  A descriptor or ordinary reference read grants no authority; foreign generation, stale owner,
+  substituted entry, incomplete set or unavailable Asset refuses the proof. The witness changes
+  no record, reference head or image-label state and reads no Syndic-owned record.
 - `AssetState` constructs the private `images` content address and verifies exact sidecar length and
   digest by bounded pages, returning file-backed authority without mapping the whole asset. First
   metadata publication requires matching admitted sidecar namespace, digest, length, and media

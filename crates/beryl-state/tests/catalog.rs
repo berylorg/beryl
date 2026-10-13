@@ -394,7 +394,7 @@ fn catalog_reconciliation_dual_side_record_seals_a_collision() {
 #[test]
 fn reconciliation_classification_never_revives_a_collision() {
     let mut classification = reconciliation::ReconciliationClassification::new();
-    classification.observe_matches(true, true);
+    classification.observe_matches(false, false);
     classification.observe_matches(false, true);
     assert_eq!(classification.finish(), DomainReconciliation::Collision);
 }

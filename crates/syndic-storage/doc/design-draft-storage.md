@@ -81,7 +81,7 @@ head contains only:
 - Active or disposed lifecycle.
 - One fixed-size optional `Staging` or `Building` custody slot.
 
-Open, publication, and disposal receipts are immutable and point-readable. The published and newest
+Open, publication, disposal, and replacement-intent cancellation receipts are immutable and point-readable. The published and newest
 checkpoints may coincide but remain distinct. A root/history mismatch, generation regression,
 disposed-head advance, or clean disposal with unequal published/newest checkpoints is corruption.
 A fresh session forks only from the current draft's published authority; it never adopts unpublished
@@ -91,7 +91,7 @@ Candidate provenance validates one exact root, history frontier, and candidate g
 unchanged opening candidate derives its authority from the session's opening durable checkpoint:
 its root remains the opening root, and its live history is the exact fork of the opening durable
 history for that session. Opening inherits the durable generation, which need not be zero. Later
-adoptions require the exact committed ordinary-edit or historical-adoption evidence for their
+adoptions require the exact committed ordinary-edit, sealed-import selection, or historical-adoption evidence for their
 checkpoint. These evidence rules are shared by preparation reads and transactional validation;
 valid provenance alone does not establish publication eligibility.
 
@@ -310,7 +310,7 @@ digest preimages, cumulative-link formula, and receipt encoding are owned solely
 
 ## Candidate Builds And Settlement
 
-An authenticated finish atomically moves session custody from `Staging` to `Building`. Builds consume
+For an edit-successor, an authenticated finish atomically moves session custody from `Staging` to `Building`. These builds consume
 bounded source/proposal windows directly from durable staging authority; callers cannot resupply
 pages, fragments, prefix proofs, or restart reconstructions.
 
@@ -330,8 +330,140 @@ digest domains, and outcome-proof encodings are owned solely by
 The immutable settlement is keyed by draft/session/operation, retains the canonical proposal identity,
 exact source and terminal progress closure, and exactly one of `Committed`, `Rejected`, `Conflict`,
 `Cancelled`, or `Error`. `Committed` binds the successor candidate root and matching history.
-Noncommit outcomes prove absence of candidate adoption. An occupied natural key with differing bytes
+Noncommit outcomes prove absence of candidate adoption or direct imported-draft selection. An occupied natural key with differing bytes
 returns an immutable occupied-identity noncommit proof and never selects another identity.
+
+### Sealed Input Import And Replacement Intent
+
+Syndic exposes typed preparation, bounded advancement, final contribution, cancellation, and exact
+outcome inspection for one sealed-input import. Its caller supplies an exact current draft/editor
+selector and session generation, caller-owned operation identity, exact `ReplacementEditIntent`,
+canonical user-input item identity/revision, sealed `ContentReference`, expected input-gate revision,
+and optional sealed historical Asset-reference-set proof. These are descriptive requests until
+storage authenticates their complete source. Raw text, a transcript preview, a digest match, and a
+caller-created combined root are not import authority.
+
+Preparation proves an ordinary user-authored target on the selected thread's exact current path and
+current transcript entry. The entry must own the named canonical `UserInput` item and revision, its
+content reference must be the exact sealed `ComposerV1` source, and image markers must agree with
+the immutable submitted item's sealed Asset proof. Repair exclusion and an idle input gate with
+zero live accepted work are required. The current draft is ordinary, the active editor session is
+clean at its authenticated current checkpoint, its newest root contains no text or markers, and it
+has no operation custody. App-owned activation, compaction, resolution, handoff, and presentation
+gates remain app responsibilities; storage repeats its own exact gate and source checks at final
+admission. A caller first resolves any ordinary dirty-draft flush instead of importing over it.
+
+The import enters the existing session's `Building` custody directly, with its complete canonical
+import header and first progress receipt; it creates no mutation-staging identity or edit fragment.
+One bounded immutable source stream decodes the canonical format and builds a new sequence,
+marker-identity index, and marker-order commitment together. Text stays UTF-8 and markers retain
+their exact stable id, source order, final label and AssetId resolved through the qualified historical
+set. Import never allocates labels, moves historical ownership, or rewrites the submitted source.
+Each quantum appends bounded leaves and updates only bounded authenticated paths, with the existing
+fanout and height limits. All three structures and their source cursor advance atomically with one
+immutable progress receipt. A quantum cannot publish only the text or only one marker structure.
+
+The source cursor and closed decoding/build phases are owned by
+[Sealed Import Canonical Extension](design-schema-v7.md#sealed-import-canonical-extension).
+Source reads authenticate the sealed manifest/reference, bounded chunk and piece identity, exact
+encoded range, UTF-8 boundaries, marker ordinal and source summary through the existing immutable
+content contracts. Credit those exact seal and read guarantees; do not add a duplicate persisted
+hash engine or treat an unsealed manifest as equivalent. EOF requires the exact encoded byte, atom,
+text and marker totals and sequential marker summary. Missing records, invalid framing, unavailable
+assets, changed mutable source eligibility, or disagreeing summaries stop without selecting any
+partial root. Work and resident memory remain bounded independently of the input's total size.
+
+For each marker-bearing source window, Syndic prepares the import-step source contribution and
+retains its exact move-only expectation/receipt consumer under the
+[historical import proof flow](../../../doc/systems/image-assets/design.md#reference-and-label-evidence).
+Its source role authenticates the complete header and receipt-selected encoded/piece/marker window.
+Syndic consumes only its original matching same-generation proof receipt before constructing any
+marker or advancing that window. Bare association
+reads, copied set descriptors and caller-supplied AssetIds grant no authority. A refused proof or
+unsettled progress command leaves the original cursor and root custody intact; repeated or later
+pages cannot replace its evidence. Marker-free windows need only the existing authenticated Syndic
+content reads. This adds no label allocation, readiness staging or writer-admission lane.
+
+After source EOF, bounded tree cross-validation visits each sequence leaf and authenticates every
+marker against the identity index and order commitment; aggregate closure additionally requires
+equal marker counts and the source's exact ordered marker/asset association. The EOF transition
+first validates completed source folds, then resets the existing fold slots and independently
+recomputes both marker summaries from the checked trees. Completion compares these tree folds to
+the basis content/Asset summaries; coherence among the three trees alone is insufficient. It does
+not decode a second source stream. Only its complete closure creates the final combined root and reusable
+import-selection contribution. The current draft and selected conversation path stay unchanged
+through this preparation. Before final writer admission, cancellation returns a nonselecting terminal
+outcome and releases only the operation's custody; immutable unpublished build records remain
+subject to the existing retention and abandoned-session lifecycle.
+
+The revision-checked final replacement-start contribution selects the imported root and immutable
+fresh-baseline history together, installs the exact replacement intent, advances the draft selector,
+and updates session published/newest pairs together to that same baseline. The session remains
+clean, with no active-operation custody. The same command replaces the existing mutable Session-key
+history frontier with the exact canonical session fork of the imported baseline, advancing that
+mutable frontier revision once. It binds both before/after values in the import receipt; key and
+canonical digest distinguish this mutable fork from the immutable baseline selected by the session.
+The first ordinary edit proves their exact recorded correspondence, appends the first real history
+transition, and advances the mutable frontier revision once before adopting its Session-key
+successor. Failed adoption leaves the immutable baseline selected. There is no second history reset
+or stale pre-import frontier that can authorize a candidate.
+The baseline has no journal, undo or redo links and both
+Undo and Redo unavailable; import is not an ordinary edit or a history transition. Its receipt owns
+the complete before/after draft, session, root, history, source and build/progress closure. Opening,
+restoration and later provenance checks consume the recorded successor, never infer an import from
+root equality or absence of history. The selected path, historical turns and descendants, accepted
+label authority, and historical Asset owner remain unchanged.
+
+Import selection follows ordinary draft publication's activity projection: the history-summary
+revision advances once and last activity is the maximum of the prior activity and supplied
+publication timestamp. It preserves the summary's thread revision, tail/path and completeness.
+The final receipt binds its exact before/after summary and DraftByThread closure; cancellation
+changes no activity projection.
+
+An empty transition history still charges its exact encoded frontier head. Baseline and mutable
+Session-fork charges follow existing snapshot/session conversion, including repeated key bytes;
+their different keys do not imply equal encoded-head charges. Both must fit the existing retained
+budget before import selection. Capacity refusal preserves the predecessor without inventing a
+transition or waiving head accounting.
+
+The caller composes that Syndic contribution with one Asset-domain participant. For an image input,
+the participant asserts the unchanged exact historical `SubmittedTurnItem` head and creates the
+absent `CurrentDraft` head over the same sealed reference set. For a marker-free input it asserts
+both heads absent. Do not combine separate validation and mutation participants for that domain or
+use draft-to-turn ownership transfer to remove the historical head. The opaque complete-command
+closure includes these exact Asset facts for reconciliation; Syndic acquires no dependency on the
+Asset implementation package. Local Asset availability is required before start becomes eligible.
+
+Replacement-intent cancellation is a separate revision-checked metadata operation on the same
+active, quiescent session. It requires the exact current replacement intent, draft selector and
+session generation and no admitted mutation, publication, submission or import custody. It clears
+only that intent and advances the draft selector and session's corresponding published selector
+binding atomically with an immutable cancellation receipt. Current published root/history and
+newest candidate root/live-history remain exactly as before, including when the editor is dirty;
+it neither flushes the newest state nor adopts a root. Session generation advances once, while
+candidate and dirty generations, logical extent, policy, history availability and actual history
+records remain unchanged. The immutable opening checkpoint remains opening provenance. If it was
+also the last published checkpoint, only the mutable published selector revision follows the new
+draft selector; no opening receipt is rewritten. The caller retains caret, directed selection,
+markers, scroll state and undo/redo presentation. Cancellation has no Asset effect or selected-path
+mutation.
+
+Start and intent cancellation use existing original-handle exact outcome custody. Proven success
+publishes once, proven noncommit preserves the predecessor, and ambiguity retains the complete
+prepared intent/receipt evidence until exact classification. Collision is terminal unavailable,
+never permission to repeat the operation, invent another identity or restore noncommit. Committed
+receipt validation authenticates immutable recorded closure after later eligible edits; current
+mutable selector checks apply at admission and cannot invalidate that historical receipt. Process
+loss before start commitment restores the last published draft; process loss after commitment
+restores its exact replacement intent and imported or subsequently saved content.
+
+Verification covers ordinary byte-vector preservation, explicit import-kind rejection, bounded
+Unicode/text/image decoding, dense same-anchor markers, source and Asset unavailability, complete
+three-structure closure, fresh-baseline history, stale draft/path/entry/gate/session proofs, atomic
+cross-domain publication, cancellation of dirty and clean sessions, original-handle acknowledgement
+loss and collision, later-edit receipt replay, and reopen/restoration. Independent semantic review
+includes adversarial checks for partial selection, mixed source authority, duplicate admission,
+historical owner removal and inferred import permission.
 
 ### Build Coordinate Mapping
 

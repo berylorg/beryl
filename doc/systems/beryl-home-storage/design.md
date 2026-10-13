@@ -357,6 +357,15 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   operation that could become indeterminate. The opaque descriptor retains only the exact old
   natural-record identities, revisions, and values needed by those hooks plus the intended exact
   new state and receipt facts; it is not a raw keyspace reader or general recovery capability.
+- Exact descriptor-listed facts may be unchanged by the command. A current value matching equal
+  old/new values constrains both sides; disagreement invalidates both. A nonempty all-unchanged
+  domain reports process-local `ExactUnchanged`, which grants no commit or noncommit conclusion.
+  Ordinary exact-old/new composition requires all domains to support the chosen side and at least
+  one domain to discriminate it with changed natural-record facts. Empty/all-unchanged composition
+  remains collision. The home/domain revision is no substitute for that discriminator. This
+  preserves exact unchanged head evidence without a synthetic mutation, new durable family or
+  receipt format. Existing first-acceptance successor roles still require their declared evidence;
+  `ExactUnchanged` does not qualify any source, witness or passive successor role.
 - Targeted reconciliation returns exactly `ExactOld`, `ExactNew` with the reconstructed exact
   durable receipt, `ExactSuccessor` with that same receipt, or `Collision`. `ExactOld` proves the
   operation did not become authoritative. `ExactNew` proves the complete intended atomic state.

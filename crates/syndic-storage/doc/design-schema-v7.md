@@ -656,6 +656,228 @@ canonical byte comparison of the point-read target closure.
   exact fragment natural identity and canonical digest, completed effect count, and post-effect
   sequence/index/commitment root digest. No prior build, progress, settlement, or effect-chain domain
   is valid under V7.
+
+#### Sealed Import Canonical Extension
+
+Sealed import uses the existing V6 build, progress and settlement families, V1 history-frontier
+family and V2 editor-session family. The ordinary encodings and digest preimages remain unchanged.
+Import adds only the closed forms below; it adds no record-version prefix, family, compatibility
+reader or reinterpretation of an ordinary record. Decode selects the explicit import form before
+applying its invariants. Absent mapping, staging or history is never a kind discriminator. Verify
+byte preservation against frozen ordinary encode/decode vectors, including in-flight and terminal
+records; the structural extension alone is not acceptance evidence.
+
+In this extension, unsigned integers use existing big-endian encodings, identity payloads retain
+their existing fixed widths, booleans are exactly `0` or `1`, and `B(x)` is the existing codec's
+unsigned big-endian `u32` byte length followed by `x`. `B` is not the `LP` digest framing above.
+All nested values use the existing canonical field grammar and checked bounds.
+
+The canonical import command header consists of the unchanged common edit-command header through
+its source-session-generation `u64`, followed by `u8(1)`,
+`B("syndic/draft-sealed-composer-import/v1")`, and the import basis in the order below. The common
+header repeats the exact draft, session, predecessor candidate generation/root/history, operation,
+predecessor caret/selection and requested successor caret/selection. Its fragment count is zero and
+its fragment chain is the canonical empty draft-piece fragment chain. Requested successor positions
+are checked against the completed imported root before selection. The old ordinary header ends
+exactly after source-session generation; it does not accept this suffix or unknown trailing bytes.
+Import source-session generation is read at that same common-header boundary, never inferred from
+the last eight bytes of the extended header.
+
+The import basis is, in order:
+
+- Exact prior `DraftEditorCurrentSelectorV1`: thread id, thread revision, draft id, selector
+  revision, combined-root reference and history reference, using the existing
+  `enc_current_selector` field grammar.
+- Expected input-gate revision as `u64`.
+- Replacement target turn id, selected-path proof, transcript generation and transcript position,
+  using `enc_turn`, `enc_selected_path`, `enc_transcript_generation` and `enc_transcript_pos`.
+- Exact canonical user-input item id and item `ProjectionRevision`, in their existing 16-byte id
+  and nonzero `u64` revision encodings.
+- Exact sealed `ContentReference`, using `enc_content_ref`: content id, content revision,
+  encoding and complete `ContentSummary`. Encoding must be `ComposerV1`; the reference includes
+  the exact content digest, encoded/logical counts, atom/chunk/piece/marker counts and marker summary.
+- Historical Asset-proof option: `u8(0)` for absent or `u8(1)` followed by the existing
+  `enc_sealed_asset_reference_set_proof` grammar. Absence is valid exactly for marker-free input.
+
+The basis repeats the common header's same draft and root and the selected thread revision. Its
+durable history and the common header's newest live history must prove existing saved-checkpoint
+equality or exact unchanged-opening/session-fork correspondence; root equality alone does not
+establish this relation. Both complete histories remain in the before/after receipt closure. Target
+and entry are the exact `ReplacementEditIntent` persisted by replacement start. The canonical item
+must be that target's real `UserInput`, with the exact sealed source and optional Asset proof;
+provider-operation and synthetic context owners reject. Preparation and final admission authenticate
+these facts against current records. Local decode validates their bounded typed shape; it grants no
+source capability and performs no storage reads. The existing proposal digest covers the complete
+extended header with its existing domain and length framing. Byte equality of the complete header,
+not digest equality, is required for replay.
+
+The shared build-frontier grammar preserves tags `0` through `6` and adds `u8(7)` for import. Tag
+`7` is retained through all import phases and terminal outcomes. Its payload is, in order:
+
+- The complete import basis above.
+- Phase `u8`: `0` Streaming, `1` CrossValidating, `2` Complete.
+- Encoded source byte cursor, completed atom count, consumed logical UTF-8 byte count and consumed
+  marker count, each `u64`.
+- Decoder state `u8`: `0` BeforeHeader, `1` BetweenAtoms, `2` TextBody, `3` End.
+- Remaining encoded bytes in the active text atom as `u64`, zero outside TextBody.
+- Next one-based source content-piece ordinal and consumed text bytes within that piece, each `u64`.
+- Next zero-based sequence-leaf rank and cross-validated marker count, each `u64`.
+- Sequential-marker digest as 32 bytes and optional maximum image label, using the existing
+  `enc_opt` and `enc_image_label` grammar.
+- Ordered marker/asset digest as 32 bytes. Both fold counts are the consumed marker count during
+  Streaming and the cross-validated marker count during CrossValidating/Complete.
+
+Within the existing V6 build/progress frontier hash slot, tag `7` contributes exactly its canonical
+tag byte followed by the complete encoded payload above, with no extra `B` or `LP` framing.
+Ordinary frontier hash arms and all surrounding V6 digest fields remain byte-for-byte unchanged.
+
+The sequential and ordered fold seeds/steps are the existing canonical `SequentialMarkerSummaryV1`
+and `OrderedMarkerAssetSummaryV1` rules. BeforeHeader requires byte/atom/text/marker/rank counts and
+piece-relative text offset zero, next source piece ordinal one, canonical empty folds and absent
+maximum. Working roots are the canonical empty structure roots, independent of the predecessor's
+root identity. In the enclosing build/progress, fragment and staged-fragment counts are zero,
+fragment chains are canonical empty, fragment endpoint is absent, durable staging continuation is
+absent, marker-effect continuation is canonical empty, mapping and marker writer admission are
+absent, and base boundary is `(0, 0)`. The successor boundary is the end rank of the built sequence
+with zero inner offset; next record ordinal uses the existing checked nonzero record namespace.
+The ordinary fields and their encoded order stay unchanged. Import basis in each receipt must
+byte-equal the header basis; ordinary frontier tags cannot accompany the import suffix or an absent
+mapping, and tag `7` cannot accompany an ordinary header or staging identity.
+
+ComposerV1 source framing is exactly byte `1`, atom count `u64`, then that many atoms: text is byte
+`0`, text-byte length `u64`, and those exact UTF-8 bytes; image is byte `1`, original 16-byte
+`SyndicDraftMarkerId`, and nonzero image label `u64`, exactly 25 bytes total. AssetId is not in that
+frame; the qualified historical sealed set supplies the exact ordered marker/label/AssetId
+association. Import preserves the encoded marker id and label. Same-anchor order is the source's
+checked one-based marker order; no random or newly allocated identity or label is introduced.
+
+Streaming reads the complete nine-byte format header before BetweenAtoms. A text frame enters
+TextBody with its declared remaining byte count. Text quanta decrement that count and advance exact
+source/piece/logical cursors together, ending on a verified UTF-8 boundary. Exhausting a source piece
+advances its checked ordinal once and resets the piece-relative offset to zero; a partial text piece
+retains its exact ordinal and consumed-byte offset. Completing a text atom advances completed atom
+count and returns to BetweenAtoms. An image frame is consumed in one
+bounded framing quantum: it advances the encoded cursor by exactly 25 bytes, the source-piece
+ordinal and completed atom/marker counts by one, leaves the piece-relative text offset zero,
+and remains BetweenAtoms.
+Header and image framing may cross stored chunk boundaries through bounded exact range reads;
+there is no persisted partial framing buffer. Text quanta preserve bytes, line endings and Unicode
+without normalization. Empty text atoms advance the atom cursor without creating empty leaves.
+Source content-piece identity/ranges and source chunk identities are authenticated under the existing
+sealed-content read contract; records or bytes from another source cannot advance these cursors.
+Piece ordinal is exactly count plus one at EOF, with checked arithmetic. Completed atom count equals
+the declared/summary count, encoded cursor equals exact encoded length, remaining text bytes are
+zero, and text/marker totals and both marker summaries agree with the content and historical Asset
+proof before the decoder can enter End. Extra frames, trailing bytes, invalid UTF-8, gaps, overlapping
+ranges, duplicate marker ids, bad label/association, unknown tags or inconsistent counts reject.
+
+Each streaming transition appends bounded text/marker leaves and updates bounded authenticated
+sequence, identity-index and marker-order paths together. The existing fanout 128 and height 64
+limits and per-command work/record budgets apply. Its source and all working roots advance with the
+same immutable progress receipt and session `Building` receipt pointer. No complete input, marker
+collection or traversal stack proportional to input size is stored or retained. The canonical
+latest receipt authenticates the consumed prefix; continuation never accepts caller-resupplied
+prefix bytes, a staging identity or a digest-only substitute for canonical source records.
+
+The Streaming-to-CrossValidating transition authenticates both completed source folds against the
+exact basis content/Asset summaries, then resets the same fold slots to their canonical seeds and
+maximum label to absent. It retains completed source cursors/counts, sets rank and checked-marker
+count to zero, and starts independent tree folding; no additional fields or second source stream
+are introduced. CrossValidating starts only at this exact source End. Each quantum
+advances the sequence rank by its bounded visited leaves and checks a marker's exact identity-index
+occurrence and ordered commitment against the same sequence leaf and Asset association. Text
+leaves retain the exact text admitted by their source-qualified streaming receipt closure and its
+aggregate contribution. The checked-marker
+count and both tree fold slots advance only for matched markers, including their original labels
+and exact Asset associations. No second source decode or whole-tree resident scan is required.
+Complete requires rank equal to sequence piece count, checked-marker count equal to all three
+structures' marker counts, independently recomputed tree summaries/folds equal to the exact basis
+content/Asset summaries, and complete combined-root closure. Mutual coherence of substituted trees
+or equal counts/max label alone cannot establish agreement with the sealed source.
+Only then are successor root and build digest present. Streaming/CrossValidating require lifecycle
+Open and no successor, except their nonselecting Rejected/Cancelled/Error terminal forms; Complete
+permits Complete, Committed, Conflict or nonselecting Error/Cancelled terminal forms. Unknown phases
+and impossible phase/lifecycle/source/successor combinations reject.
+
+History-frontier keys preserve existing draft-id prefix and tags `0` CanonicalEmpty, `1` Session
+and `2` Publication. New tag `3` SealedImportBaseline carries the 16-byte session id followed by
+the 16-byte operation id. Its immutable value uses the existing frontier grammar and digest domain,
+selecting the exact imported root and checked successor candidate generation. Journal, undo, redo
+and retention-floor links are absent, cumulative and retained transition charges zero, both
+availability flags false, and policy/budget retained exactly. Snapshot and selected references must
+agree. The imported session's published/newest pairs both select this immutable baseline. A later
+ordinary edit derives its live frontier from that authenticated baseline and atomically appends
+the first real transition; it does not reinterpret import as a transition or rewrite the snapshot.
+The existing mutable Session-key frontier is updated in the import-selection command to the
+canonical session fork of this baseline, replacing its exact pre-import value. Its frontier revision
+is the checked next revision of that prior mutable frontier; the immutable baseline uses that same
+revision and successor candidate generation. The two values differ only in frontier key, resulting
+canonical digest and exact retained encoded-head charge. Each charges its own canonical family-key
+plus value bytes, including repeated keys, under the existing history-accounting rule. Deriving
+the Session fork subtracts the baseline head charge and adds the Session-head charge, exactly as
+existing snapshot/session conversion; transition charges remain zero. Both heads must fit the
+retained budget before selection, or the whole import is capacity-unavailable. Both have the
+imported root, retained policy/budget, empty history links and unavailable Undo/Redo. The session's
+selected newest reference remains the immutable
+baseline. First ordinary edit proves exact import-receipt and baseline-to-session-fork correspondence,
+then appends a real transition and advances the mutable frontier revision exactly once; only its
+committed adoption selects the Session-key successor. Failure leaves the immutable baseline selected.
+No old mutable frontier remains as alternate candidate authority, and no later history reset is
+introduced.
+
+Settlement closure tags `0` edit adoption and `1` noncommit remain unchanged. New tag `2`
+SealedImportSelection encodes, in order: prior and successor current selectors using
+`enc_current_selector`; before and after session heads using `enc_session_head`; imported combined-root
+reference using `enc_root_reference`; prior and fresh-baseline history using `enc_history_frontier`;
+before and after mutable Session-key history frontiers using `enc_history_frontier`; the complete
+import basis; `B` of the prior canonical `DraftRecord` payload; and `B` of the successor
+canonical `DraftRecord` payload, using `encode_draft_record`; then `B` of the prior and successor
+canonical `HistorySummaryRecord` payloads in that order. The existing committed outcome envelope
+retains checked successor candidate generation/root/history/caret/selection. This closure carries
+no history transition. Before head owns the exact terminal import Building receipt; after head has
+no custody, is clean and active, and has equal published/newest root-history pairs at the baseline.
+Its session generation is the checked next value of the before head, and both published/newest
+candidate generations are the checked next value of the predecessor candidate generation.
+Dirty generation remains unchanged: import directly publishes a clean baseline, rather than
+adopting an unpublished edit. Immutable opening identity and checkpoint remain unchanged.
+Successor draft differs only by checked selector revision, imported root/history, exact replacement
+intent and updated timestamp. The selected path, old turns and descendants remain unchanged.
+As in ordinary draft publication, the same command advances the history-summary revision once and
+sets last activity to the maximum of its prior value and the supplied publication timestamp.
+Summary thread identity/revision, selected tail/path digest and completeness remain unchanged.
+Its before/after summary values and matching DraftByThread successor participate in the complete
+exact replay and reconciliation closure. Intent cancellation preserves activity and contributes
+no summary write.
+The existing V6 settlement digest covers this entire new closure. All same-command exact root,
+snapshot, draft, session, build and receipt effects, plus the qualified unchanged historical/new
+draft Asset-head closure, are required for exact outcome classification. Partial or mixed state is
+Collision; absent effects never prove noncommit without the complete original source closure.
+
+Editor-session natural keys preserve draft id, session id and tags `0` Head, `1` OpenReceipt,
+`2` PublicationReceipt and `3` DisposalReceipt. New tag `4` ReplacementIntentCancellationReceipt
+appends the 16-byte operation id. Its V2 value begins `u8(4)`, then `B` of canonical request bytes,
+prior/successor current selectors, before/after session heads, prior/new canonical draft payloads
+each framed by `B`, the exact newest selected history frontier and the unchanged mutable Session-key
+history frontier, each framed by the existing `enc_history_frontier`. The request bytes are
+`B("syndic/replacement-intent-cancellation/v1")`,
+current selector, fixed16 session id, source session-generation `u64`, fixed16 operation id, target
+turn/selected-path/transcript-entry fields in the import-basis order, and exact updated timestamp.
+The enclosing receipt must repeat every request fact. Cancellation clears only replacement intent,
+advances draft selector and session generation, and updates the mutable published selector binding;
+root/history pairs, candidate/dirty generations, extent, opening provenance and actual history are
+unchanged. A dirty session remains dirty. No active custody, flush, root adoption, Asset change or
+selected-path mutation is admitted. Byte-equal committed receipt replay remains valid after later
+eligible edits; replay does not execute cancellation against the later head.
+
+All new keys/values reject zero or invalid revisions, unknown kind/phase/decoder/option tags,
+key/value disagreement, substituted source or operation, malformed nested values, over-bound
+payloads and trailing bytes. Earlier record versions remain rejected at the existing version
+boundary. Retained original HomeCommand custody classifies start/cancellation as exact new, exact
+old or Collision; a terminal unavailable classification never permits duplicate submission,
+rollback or a replacement operation identity.
+
+#### Marker Sealing And Composer Materialization
+
 - `draft-marker-seals` stores one V2 durable resumable seal record keyed by exact draft, captured
   combined-root/build identity, exact `DraftMarkerCommitmentV1`, and caller-owned seal-operation
   identity. It retains only the next marker-order-tree cursor, completed marker frontier,

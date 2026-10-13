@@ -11,6 +11,7 @@ use crate::{
 pub enum DomainReconciliation {
     ExactOld,
     ExactNew,
+    ExactUnchanged,
     Collision,
 }
 

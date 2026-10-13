@@ -80,8 +80,12 @@ This entry point governs these bounded normative supplements:
   unchanged to the home-store command coordinator.
 - Each domain projects only its own receipt-bound revision through an opaque state handle, or `None`
   when unaffected. A bounded natural-record reconciliation hook classifies only its descriptor as
-  `ExactOld`, `ExactNew` with reconstruction receipt facts, or `Collision`; mixed or unrelated
-  observations are `Collision` and do not scan, merge, clear writer poison, or consult CAS.
+  `ExactOld`, `ExactNew` with reconstruction receipt facts, `ExactUnchanged`, or `Collision`.
+  Matching descriptor-listed equal old/new facts constrain both sides without discriminating an
+  outcome; a nonempty all-equal descriptor reports only `ExactUnchanged`. Mismatches, incompatible
+  changed observations and empty descriptors are `Collision`. HomeStore requires a differentiating
+  participant before composing an ordinary old/new result; an unchanged result grants no successor
+  role. Hooks do not scan, merge, clear writer poison, or consult CAS.
 - Routine open and handle reacquisition validate owner/codec types, durable declarations, required
   families, and generation without scanning application records. Explicit schema validation,
   whole-home scrub, or corruption investigation decodes every record envelope with exact stored-key
