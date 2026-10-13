@@ -4,6 +4,7 @@ use super::{
     frame::RealizedFrameRecord,
     provider::{
         ProjectionRecordId, ProviderRevision, ResourceId, ResourceKind, SyndicSourceProvenance,
+        TranscriptNarrativeKind, TranscriptViewRecord,
     },
     selection::ResidentSelectionRecordGeometry,
     snapshot::{
@@ -124,6 +125,11 @@ pub(crate) fn resident_context_menu_record(
         ResidentPresentationRecordKind::TextChunk { text, .. } if !text.is_empty() => {
             ResidentContextMenuContentKind::TextChunk
         }
+        ResidentPresentationRecordKind::NarrativeReady { prepared }
+            if !prepared.source().is_empty() && !prepared.display().is_empty() =>
+        {
+            ResidentContextMenuContentKind::TextChunk
+        }
         ResidentPresentationRecordKind::ResourceReference {
             resource_id,
             resource_kind,
@@ -171,6 +177,20 @@ pub(crate) fn resident_context_menu_record(
         resource_range: source.resource_range.clone(),
         geometry,
     })
+}
+
+pub(crate) fn resident_context_menu_narrative_kind(
+    target: &ResidentContextMenuRecord,
+    view_records: &[TranscriptViewRecord],
+) -> Option<TranscriptNarrativeKind> {
+    view_records
+        .iter()
+        .find(|record| {
+            record.projection_id == target.projection_id
+                && record.provenance == target.source
+                && Some(record.position) == target.source.position
+        })
+        .map(|record| record.narrative_kind.clone())
 }
 
 fn source_has_stable_context_menu_provenance(

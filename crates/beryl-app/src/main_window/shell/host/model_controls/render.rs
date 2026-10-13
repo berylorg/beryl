@@ -63,6 +63,9 @@ pub(in crate::main_window::shell::host) fn render_segment(
         .whitespace_nowrap()
         .text_ellipsis()
         .text_color(foreground)
+        .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
+            window.prevent_default()
+        })
         .when(command && reason.is_some(), |segment| {
             segment.text_color(colors.disabled)
         })
@@ -79,9 +82,6 @@ pub(in crate::main_window::shell::host) fn render_segment(
                     style
                         .bg(colors.pressed)
                         .text_color(colors.pressed_foreground)
-                })
-                .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                    window.prevent_default()
                 })
                 .on_click(cx.listener(|root, _, window, cx| root.toggle_model_menu(window, cx)))
         })
@@ -173,6 +173,11 @@ impl MainWindowShellRoot {
             diagnostics.focused,
             diagnostics.selected,
         ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_model_segment_bounds(&self) -> Option<gpui::Bounds<gpui::Pixels>> {
+        self.model_controls.anchor_bounds
     }
 
     #[cfg(test)]

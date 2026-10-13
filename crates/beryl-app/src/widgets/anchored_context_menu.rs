@@ -496,6 +496,7 @@ fn render_panel<E: 'static>(
 ) -> AnyElement {
     let height = (bounds.size.height - px(8.)).max(px(0.));
     let invocation = menu.invocation;
+    let focus = menu.focus.clone();
     div()
         .id(selector)
         .debug_selector(move || selector.to_owned())
@@ -521,6 +522,10 @@ fn render_panel<E: 'static>(
         .text_color(colors.foreground)
         .text_size(px(13.))
         .track_focus(&menu.focus)
+        .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+            window.focus(&focus);
+            cx.stop_propagation();
+        })
         .on_key_down(
             cx.listener(move |owner, event: &gpui::KeyDownEvent, window, cx| {
                 if matches!(

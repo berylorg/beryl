@@ -650,6 +650,33 @@ impl SyndicTranscriptHost {
         self.core.resident_context_menu_target()
     }
 
+    pub(crate) fn context_menu_narrative_kind(
+        &self,
+        target: &ResidentTranscriptContextMenuTarget,
+    ) -> Option<super::TranscriptNarrativeKind> {
+        let snapshot = self.core.core_snapshot();
+        if target.presentation_revision != snapshot.presentation.presentation_revision {
+            return None;
+        }
+        let record = snapshot
+            .presentation
+            .records
+            .iter()
+            .find(|record| record.id == target.record.record_id)?;
+        let current = super::context_menu::resident_context_menu_record(
+            record,
+            target.record.geometry.clone(),
+        )
+        .ok()?;
+        if current != target.record {
+            return None;
+        }
+        super::context_menu::resident_context_menu_narrative_kind(
+            &current,
+            &snapshot.resident.view_records,
+        )
+    }
+
     pub(crate) fn resident_context_menu_command_target(&self) -> ResidentContextMenuCommandTarget {
         ResidentContextMenuCommandTarget::from_active_target(
             self.core.resident_context_menu_target(),

@@ -330,7 +330,8 @@ impl SyndicTranscriptPanel {
         self.host.clear_resident_selection();
         self.reset_keyboard_copy();
         if self.narrative_selection.as_ref() != Some(&selection) {
-            self.quote_state.capture = None;
+            self.close_quote_menu(window);
+            self.invalidate_transcript_menu();
         }
         self.narrative_selection = Some(selection);
         self.focus_handle.focus(window);

@@ -98,20 +98,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 772: Mount Mapped Transcript Quote Insertion (finished)
+# Phase 773: Mount Transcript Turn Menus (finished)
 
-Mounted exact mapped Quote at the saved composer caret through ordinary editing and Undo/Redo,
-preserving focus/clipboard and rejecting obsolete captures. Corrected bounded worker-stack and
-CRLF geometry prerequisites; 258 app, 118 composer, 66 mapped-source/history and 132 widget cases
-passed. Pinned production validation and independent review accepted the
-[outcome](audits/transcript-mounting-readiness.md#mounted-mapped-quote-acceptance).
-
-# Phase 773: Mount Transcript Turn Menus (pending)
-
-Mount canonical pointer/keyboard menus for current realized authored content with exact provenance,
-prepared narrative admission, explainable Edit unavailability and obsolete-anchor closure. Keep
-replacement editing unavailable until its following workflow acceptance; identity wrappers do not
-prove eligibility.
+Mounted canonical current user-turn menus, prepared narrative admission and disabled Edit beside
+mapped Quote, with exact owner provenance and obsolete-target closure. Corrected shared popup and
+passive model-readout pointer focus. Qualified 316 distinct cases, final production validation and
+independently accepted [outcome](audits/transcript-mounting-readiness.md#mounted-transcript-turn-menu-acceptance).
+All 125 registered fixture/output directories are absent. Replacement editing remains unavailable
+until its following workflow acceptance.
 
 # Phase 774: Mount Exact Historical Replacement Editing (pending)
 

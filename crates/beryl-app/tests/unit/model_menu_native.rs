@@ -1,5 +1,26 @@
 use super::*;
-use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, WM_LBUTTONDOWN, WM_LBUTTONUP};
+use windows::Win32::UI::WindowsAndMessaging::{WM_LBUTTONDOWN, WM_LBUTTONUP};
+
+fn draw_model_frame(window: WindowHandle<MainWindowShellRoot>, cx: &mut AsyncApp) {
+    cx.update(|app| {
+        app.update_window(window.into(), |_, native, app| {
+            native.draw_and_present_for_test(app);
+        })
+        .unwrap();
+    })
+    .unwrap();
+}
+
+fn with_model_native<R>(
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut AsyncApp,
+    run: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
+) -> gpui::Result<R> {
+    cx.update(|app| {
+        app.update_window(window.into(), |_, native, app| run(native, app))
+            .unwrap()
+    })
+}
 
 #[test]
 fn native_threadless_unknown_model_readout_is_passive_and_preserves_focus() {
@@ -18,35 +39,98 @@ fn passive_unknown(count: u8) {
         move |owner, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let handle = native(window, cx).await;
-                let before = window
+                let deadline = Instant::now() + Duration::from_secs(5);
+                let position = loop {
+                    draw_model_frame(window, cx);
+                    if let Some(position) = window
+                        .update(cx, |root, _, app| {
+                            if root.startup_interaction_gated() {
+                                return None;
+                            }
+                            if count != 0 {
+                                let composer = root.test_submission_composer(app)?;
+                                let composer = composer.read(app);
+                                if !composer.gpui_input().read(app).is_quiescent()
+                                    || !composer
+                                        .gpui_input()
+                                        .read(app)
+                                        .is_surface_current_and_interactive()
+                                    || !composer.test_edit_position_proof_ready(app)
+                                {
+                                    return None;
+                                }
+                            }
+                            let bounds = root.test_model_segment_bounds()?;
+                            if bounds.size.width <= gpui::px(0.)
+                                || bounds.size.height <= gpui::px(0.)
+                            {
+                                return None;
+                            }
+                            Some(bounds.center())
+                        })
+                        .unwrap()
+                    {
+                        break position;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "passive model segment must have current painted geometry"
+                    );
+                    cx.background_executor()
+                        .timer(Duration::from_millis(10))
+                        .await;
+                };
+                let prior = window
                     .update(cx, |root, native, app| {
+                        let prior = if count == 0 {
+                            root.test_new_thread_focus(true)
+                        } else {
+                            let input = root
+                                .test_submission_composer(app)
+                                .unwrap()
+                                .read(app)
+                                .gpui_input();
+                            assert!(input.read(app).is_surface_current_and_interactive());
+                            gpui::Focusable::focus_handle(input.read(app), app)
+                        };
+                        native.focus(&prior);
                         root.test_toggle_model_menu(native, app);
                         let (values, _, _, popup) = root.test_model_status();
                         assert_eq!(values.model, None);
                         assert_eq!(values.reasoning, None);
                         assert!(!popup);
-                        native.focused(app)
+                        assert_eq!(native.focused(app), Some(prior.clone()));
+                        prior
                     })
                     .unwrap();
-                let mut bounds = windows::Win32::Foundation::RECT::default();
-                unsafe {
-                    GetClientRect(handle, &mut bounds).unwrap();
-                }
-                let x = 80_u32;
-                let y = bounds.bottom.saturating_sub(14) as u32;
-                let position = LPARAM(((y << 16) | x) as isize);
-                unsafe {
-                    PostMessageW(Some(handle), WM_LBUTTONDOWN, WPARAM(1), position).unwrap();
-                    PostMessageW(Some(handle), WM_LBUTTONUP, WPARAM(0), position).unwrap();
-                }
-                cx.background_executor()
-                    .timer(Duration::from_millis(100))
-                    .await;
+                with_model_native(window, cx, |native, app| {
+                    native.draw_and_present_for_test(app);
+                    assert_eq!(native.focused(app), Some(prior.clone()));
+                    for input in [
+                        gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                            position,
+                            button: gpui::MouseButton::Left,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                        gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                            position,
+                            button: gpui::MouseButton::Left,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                    ] {
+                        native.dispatch_input_for_test(input, app);
+                        assert_eq!(native.focused(app), Some(prior.clone()));
+                        native.draw_and_present_for_test(app);
+                    }
+                    assert_eq!(native.focused(app), Some(prior.clone()));
+                })
+                .unwrap();
                 window
                     .update(cx, |root, native, app| {
                         assert!(!root.test_model_status().3);
-                        assert_eq!(native.focused(app), before);
+                        assert_eq!(native.focused(app), Some(prior));
                         assert!(root.test_model_menu_diagnostics().is_none());
                     })
                     .unwrap();
@@ -290,17 +374,57 @@ fn native_initial_model_failure_retry_keeps_feedback_disables_duplicates_and_pub
                     })
                     .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while server.requests("model/list").len() != 2 {
+                let mut admission_retries = 0;
+                loop {
+                    let requests = server.requests("model/list").len();
+                    if requests == 2 {
+                        break;
+                    }
+                    assert!(
+                        requests < 2,
+                        "retry must not dispatch duplicate model requests"
+                    );
                     assert!(
                         Instant::now() < deadline,
                         "exact retry did not reach provider"
                     );
+                    draw_model_frame(window, cx);
+                    window
+                        .update(cx, |root, native, app| {
+                            let state = root
+                                .test_model_menu_state()
+                                .expect("current retry popup remains open");
+                            if !state.2 && state.4 == Some("Models could not be loaded.") {
+                                assert!(!state.3, "completed local failure must re-enable Retry");
+                                admission_retries += 1;
+                                assert!(
+                                    admission_retries <= 8,
+                                    "local retry admission did not become available"
+                                );
+                                root.test_retry_model_menu(native, app);
+                                let state = root.test_model_menu_state().unwrap();
+                                assert!(state.2 && state.3);
+                                assert_eq!(state.4, Some("Models could not be loaded."));
+                            }
+                        })
+                        .unwrap();
                     cx.background_executor()
                         .timer(Duration::from_millis(10))
                         .await;
                 }
                 held.wait();
                 assert_eq!(server.requests("model/list").len(), 2);
+                window
+                    .update(cx, |root, native, app| {
+                        for _ in 0..4 {
+                            root.test_retry_model_menu(native, app);
+                        }
+                        let state = root.test_model_menu_state().unwrap();
+                        assert!(state.2 && state.3);
+                        assert_eq!(state.4, Some("Models could not be loaded."));
+                        assert_eq!(server.requests("model/list").len(), 2);
+                    })
+                    .unwrap();
                 held.release();
                 wait_menu(window, cx, |state| {
                     state.0 == 0 && !state.2 && state.4.is_none()
@@ -559,10 +683,11 @@ async fn install_model_runtime_inner(
     }
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
+        draw_model_frame(window, cx);
         if window
             .read_with(cx, |root, _| {
-                let (values, available, _, _) = root.test_model_status();
-                available && values.model.as_deref() == Some("actual-model")
+                let (values, available, reason, _) = root.test_model_status();
+                available && reason.is_none() && values.model.as_deref() == Some("actual-model")
             })
             .unwrap()
         {
@@ -586,6 +711,7 @@ async fn wait_menu(
 ) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
+        draw_model_frame(window, cx);
         if window
             .read_with(cx, |root, _| {
                 root.test_model_menu_state().is_some_and(&ready)
@@ -594,10 +720,16 @@ async fn wait_menu(
         {
             return;
         }
-        assert!(
-            Instant::now() < deadline,
-            "native model menu did not reach expected feedback/publication state"
-        );
+        if Instant::now() >= deadline {
+            let facts = window
+                .read_with(cx, |root, _| {
+                    (root.test_model_status(), root.test_model_menu_state())
+                })
+                .unwrap();
+            panic!(
+                "native model menu did not reach expected feedback/publication state: {facts:?}"
+            );
+        }
         cx.background_executor()
             .timer(Duration::from_millis(10))
             .await;

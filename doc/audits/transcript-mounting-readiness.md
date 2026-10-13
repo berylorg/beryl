@@ -1539,3 +1539,70 @@ are verified absent. Complete mounted transcript workflow acceptance remains pen
 qualifies mapped Quote only.
 Reviewed execution artifacts have also been reclaimed; no task-owned process or session mutation
 remains.
+
+## Mounted Transcript Turn Menu Acceptance
+
+The ordinary transcript overlay now mounts canonical pointer and keyboard turn menus for current
+realized user-input text, including prepared narrative. Current resident view provenance determines
+user ownership; transport identities alone grant no editing eligibility. A collapsed caret or an
+unselected pointer target exposes disabled `Edit message`; a mapped selection can retain Quote
+beside it. The static collection has at most two rows. Edit explains that historical message
+editing is unavailable and has no editing or selected-path mutation dispatch.
+
+Captures retain exact activation, presentation, source, layout, selection and frame facts. Source
+replacement, remeasurement, selection changes, activation, realization loss and retirement close
+obsolete targets. Keyboard record fallback validates the old target before extracting its identity.
+Synthetic context, pending/unavailable preparation, empty content and missing stable provenance
+remain ineligible. Existing mapped Quote source bytes, insertion cancellation and nested-owner
+routing remain qualified.
+
+Native verification exposed two pointer-focus prerequisites. A disabled menu row allowed its
+click to reach the transcript underneath, preventing Escape dismissal; the canonical menu now
+retains popup focus and stops inside left-click propagation. A passive model readout allowed
+GPUI's tracked ancestor default to take focus; the existing default-prevention handler now applies
+to passive segments too, with enabled-only command dispatch preserved. The
+[durable lesson](../failures/passive-pointer-focus.md) records the mechanism and native fixture
+requirements. Final native tests preserve exact focus, actual disabled pointer/keyboard refusal,
+Escape return, enabled activation, and pending Retry duplicate suppression. Disabled tooltip
+coverage credits asserted reason data and direct canonical tooltip composition, without claiming
+a new native tooltip-paint assertion.
+
+Acceptance qualifies **316 distinct cases** on the final implementation:
+
+- Combined app library run `7bc68dbf-b3a2-42e1-9739-ea6099e16f07` ran 280 cases in
+  594.343 seconds: 278 passed and two model-consumer fixtures failed. Reuse is limited to the
+  260 non-menu-consumer cases whose relevant behavior, tests, dependencies and configuration
+  remained unchanged. These include current transcript, provider, Running threads, Code/Table,
+  Quote and source/geometry lifecycle coverage. This run is not reported as wholly passing.
+- Final affected menu consumers: **20/20**, 30.533 seconds,
+  `da12abf2-1adc-4899-838c-790978736d04`. All eight native model cases, eight model/menu-row
+  cases and four canonical-menu cases passed after passive-focus and test setup corrections.
+  Fixtures use current painted geometry and eligible native focus, draw outside root entity
+  borrows, and exercise permitted manual Retry after settled failure without runtime automatic
+  retry or relaxed duplicate-request assertions.
+- Complete renderer and selection-copy targets: **36/36** (13 renderer, 23 selection-copy),
+  from `4ac9d024-c1d0-4f0d-92d2-0b7d9ae9d529`. That combined run recorded 53/56, with three
+  subsequently corrected model-native fixture failures; only the unchanged core integrations
+  are reused. Prepared admission, wrong owner/source/view/position, stale frame/geometry,
+  synthetic/fallback refusal and mapped Quote boundaries passed.
+- Focused native turn/Quote/context and canonical menu run: **10/10**, 16.317 seconds,
+  `6a58ff3a-7102-44f3-9f02-a8a81aa3ea0f`. These are included in the distinct-case total,
+  not counted again.
+- Final no-feature production `beryl-app --lib` check passed in 13.82 seconds. No Cargo model
+  change or dependency update was required.
+
+Commands used stable Cargo with `.cargo/local.toml`, locked offline dependencies, one build job,
+one test thread, LLVM linking, no normal dev/test debug information, no incremental compilation
+and process-local `RUST_MIN_STACK=67108864`. Library native runs enabled `test-faults`.
+The combined library expression covered `syndic_transcript`, transcript-provider tests, transcript
+viewport, Running threads shell, anchored menus and the model-menu consumers. Integration targets
+were `syndic_transcript_renderer_selection` and `syndic_transcript_selection_copy`.
+Inputs derive from Beryl `3442af0598ede2dc3562494a418eee809d120142`, unchanged widget fork
+`1366c97b0e56c63fee12e0bd0dddb888bb8bad14` and GPUI fork
+`14d9622001ecbfa0db4a5530b989b649690472a1`, with the accepted scoped source changes.
+
+Independent complete-boundary semantic review accepted the final implementation and raw evidence
+with no remaining blocker. Replacement editing, branch creation, diagnostic child activation and
+complete transcript workflow acceptance retain their separate gates.
+All 125 positively registered native fixture/output directories are verified absent. Reviewed
+execution artifacts are reclaimed; no task-owned process or session mutation remains.

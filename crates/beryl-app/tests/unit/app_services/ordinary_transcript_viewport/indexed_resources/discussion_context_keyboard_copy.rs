@@ -311,6 +311,18 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                     drag(native, app, first, last);
                     key(native, app, "shift-f10");
                     assert!(!panel.read(app).quote_menu_open_for_test());
+                    super::super::super::narrative_native::pointer(
+                        native,
+                        app,
+                        gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                            position: first,
+                            button: gpui::MouseButton::Right,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                    );
+                    assert!(!panel.read(app).quote_menu_open_for_test());
+                    assert!(panel.read(app).resident_context_menu_target().is_none());
                 })
                 .unwrap();
                 copy_context_both(

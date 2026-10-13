@@ -31,11 +31,81 @@ fn row(id: Option<&str>, kind: MenuRowKind, enabled: bool) -> MenuRow {
 struct Host {
     menu: Option<AnchoredContextMenu>,
     prior: FocusHandle,
+    rows: Rows,
+    underlying_clicks: usize,
+    activations: usize,
 }
 impl Render for Host {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().track_focus(&self.prior)
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let menu = self.menu.as_ref().map(|menu| {
+            render_static(
+                menu,
+                Bounds::new(point(px(40.), px(180.)), size(px(1.), px(1.))),
+                (0..self.rows.len())
+                    .map(|index| self.rows.row(index))
+                    .collect(),
+                test_colors(),
+                "mounted-menu",
+                mounted_input,
+                window,
+                cx,
+            )
+        });
+        div()
+            .relative()
+            .size_full()
+            .track_focus(&self.prior)
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|host, _, window, _| {
+                    host.underlying_clicks += 1;
+                    window.focus(&host.prior);
+                }),
+            )
+            .children(menu)
     }
+}
+
+fn test_colors() -> MenuColors {
+    let background = gpui::rgb(0xffffff);
+    let foreground = gpui::rgb(0x111827);
+    MenuColors {
+        background,
+        foreground,
+        border: foreground,
+        hover: background,
+        hover_foreground: foreground,
+        pressed: background,
+        pressed_foreground: foreground,
+        focused: background,
+        focused_foreground: foreground,
+        selected: background,
+        selected_foreground: foreground,
+        disabled: foreground,
+        header: foreground,
+        checkmark: foreground,
+        tooltip_background: background,
+        tooltip_foreground: foreground,
+    }
+}
+
+fn mounted_input(host: &mut Host, event: MenuEvent, window: &mut Window, cx: &mut Context<Host>) {
+    let Some(menu) = host.menu.as_mut() else {
+        return;
+    };
+    for intent in menu.input(event, &host.rows) {
+        match intent {
+            MenuIntent::Activate { .. } => {
+                host.activations += 1;
+                host.menu.take().unwrap().dismiss(window, &host.prior);
+            }
+            MenuIntent::Dismiss => {
+                host.menu.take().unwrap().dismiss(window, &host.prior);
+            }
+            MenuIntent::Focus(_) => {}
+        }
+    }
+    cx.notify();
 }
 
 fn host(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<Host> {
@@ -44,10 +114,74 @@ fn host(cx: &mut gpui::TestAppContext) -> gpui::WindowHandle<Host> {
             app.new(|cx| Host {
                 menu: None,
                 prior: cx.focus_handle(),
+                rows: Rows(Vec::new()),
+                underlying_clicks: 0,
+                activations: 0,
             })
         })
         .unwrap()
     })
+}
+
+#[gpui::test]
+fn mounted_disabled_row_click_preserves_menu_focus_and_escape_without_underlying_input(
+    cx: &mut gpui::TestAppContext,
+) {
+    let window = host(cx);
+    window
+        .update(cx, |host, window, cx| {
+            window.focus(&host.prior);
+            host.rows = Rows(vec![
+                row(Some("disabled"), MenuRowKind::Command, false),
+                row(Some("enabled"), MenuRowKind::Command, true),
+            ]);
+            let mut menu = AnchoredContextMenu::open(1, window, cx);
+            menu.reconcile(&host.rows);
+            realize(&mut menu, &host.rows, 0..2, window);
+            host.menu = Some(menu);
+            cx.notify();
+        })
+        .unwrap();
+    let mut visual = gpui::VisualTestContext::from_window(window.into(), cx);
+    visual.update(|window, app| window.draw(app).clear());
+    let bounds = visual.debug_bounds("mounted-menu").unwrap();
+    visual.simulate_click(
+        bounds.origin + point(px(20.), px(4. + ROW_HEIGHT * 0.5)),
+        gpui::Modifiers::none(),
+    );
+    window
+        .update(cx, |host, window, _| {
+            assert_eq!(host.underlying_clicks, 0);
+            assert_eq!(host.activations, 0);
+            assert!(host.menu.as_ref().unwrap().focus.is_focused(window));
+        })
+        .unwrap();
+    visual.simulate_keystrokes("escape");
+    window
+        .update(cx, |host, window, cx| {
+            assert!(host.menu.is_none());
+            assert!(host.prior.is_focused(window));
+            let mut menu = AnchoredContextMenu::open(1, window, cx);
+            menu.reconcile(&host.rows);
+            realize(&mut menu, &host.rows, 0..2, window);
+            host.menu = Some(menu);
+            cx.notify();
+        })
+        .unwrap();
+    visual.update(|window, app| window.draw(app).clear());
+    let bounds = visual.debug_bounds("mounted-menu").unwrap();
+    visual.simulate_click(
+        bounds.origin + point(px(20.), px(4. + ROW_HEIGHT * 1.5)),
+        gpui::Modifiers::none(),
+    );
+    window
+        .update(cx, |host, window, _| {
+            assert!(host.menu.is_none());
+            assert_eq!(host.activations, 1);
+            assert_eq!(host.underlying_clicks, 0);
+            assert!(host.prior.is_focused(window));
+        })
+        .unwrap();
 }
 
 fn key(key: &str, held: bool) -> MenuEvent {

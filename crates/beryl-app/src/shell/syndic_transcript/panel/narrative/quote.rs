@@ -1,3 +1,7 @@
+#[cfg(test)]
+mod testing;
+
+use super::super::super::TranscriptNarrativeKind;
 use super::*;
 use crate::widgets::anchored_context_menu::{
     self as widget, AnchoredContextMenu, MenuCollection, MenuColors, MenuEvent, MenuIntent,
@@ -9,8 +13,18 @@ use gpui::{Bounds, size};
 pub(in super::super) struct QuoteState {
     serial: u64,
     pub(in super::super) capture: Option<QuoteCapture>,
+    turn: Option<TurnCapture>,
     popup: Option<AnchoredContextMenu>,
     anchor: Option<Bounds<Pixels>>,
+}
+
+struct TurnCapture {
+    target: super::super::ResidentTranscriptContextMenuTarget,
+    activation: u64,
+    selection: Option<NarrativeSelection>,
+    layout: usize,
+    source: usize,
+    source_len: usize,
 }
 
 pub(in super::super) struct QuoteCapture {
@@ -27,43 +41,58 @@ impl Drop for QuoteCapture {
 }
 
 impl SyndicTranscriptPanel {
-    #[cfg(test)]
-    pub(crate) fn quote_menu_open_for_test(&self) -> bool {
-        self.quote_state.popup.is_some()
+    pub(in super::super) fn invalidate_transcript_menu(&mut self) {
+        self.quote_state.capture = None;
+        self.quote_state.turn = None;
+        self.host.clear_resident_context_menu_target();
     }
-    #[cfg(test)]
-    pub(crate) fn quote_pointer_facts_for_test(
-        &self,
-        pointer: Point<Pixels>,
-        window: &Window,
-    ) -> (bool, Option<usize>, Vec<Range<usize>>, bool, u64) {
-        let hit = self.narrative_hit(pointer);
-        let ranges = self
-            .narrative_selection
-            .as_ref()
-            .and_then(|selection| self.narrative_ranges(selection))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(id, _)| hit.as_ref().is_some_and(|hit| &hit.record == id))
-            .map(|(_, range)| range)
-            .collect();
-        let eligible = self.quote_capture().is_some_and(|capture| {
-            self.host
-                .mapped_quote_markdown(
-                    capture.selection.activation,
-                    capture.selection.revision,
-                    &capture.ranges,
-                )
-                .is_ok()
+
+    fn transcript_menu_rows(&self) -> QuoteRows {
+        QuoteRows {
+            quote: self.quote_state.capture.is_some(),
+            edit: self.quote_state.turn.is_some(),
+        }
+    }
+
+    fn turn_menu_current(&self, window: &Window) -> bool {
+        let Some(capture) = &self.quote_state.turn else {
+            return false;
+        };
+        let snapshot = self.host.shared_snapshot();
+        self.character_geometry_current(window)
+            && snapshot.activation_revision == capture.activation
+            && self.narrative_selection == capture.selection
+            && self.host.resident_context_menu_target().as_ref() == Some(&capture.target)
+            && self.host.context_menu_narrative_kind(&capture.target)
+                == Some(TranscriptNarrativeKind::UserInput)
+            && self.last_frame_window.as_ref().is_some_and(|frame| {
+                super::super::resident_context_menu_frame_loss(&snapshot, frame, &capture.target)
+                    .is_none()
+            })
+            && self
+                .mapped_geometry(&capture.target.record.record_id)
+                .is_some_and(|geometry| {
+                    geometry.layout() as *const _ as usize == capture.layout
+                        && geometry.source().as_ptr() as usize == capture.source
+                        && geometry.source().len() == capture.source_len
+                })
+    }
+
+    fn transcript_menu_current(&self, window: &Window) -> bool {
+        let quote_current = self.quote_state.capture.as_ref().is_none_or(|capture| {
+            self.quote_request_current(
+                self.quote_state.serial,
+                capture.selection.activation,
+                capture.selection.revision,
+                window,
+            )
         });
-        (
-            self.character_geometry_current(window),
-            hit.map(|hit| hit.display),
-            ranges,
-            eligible,
-            self.quote_state.serial,
-        )
+        let turn_current = self.quote_state.turn.is_none() || self.turn_menu_current(window);
+        (self.quote_state.capture.is_some() || self.quote_state.turn.is_some())
+            && quote_current
+            && turn_current
     }
+
     fn quote_capture(&self) -> Option<QuoteCapture> {
         let selection = self.narrative_selection.clone()?;
         let display_ranges = self.narrative_ranges(&selection)?;
@@ -137,44 +166,96 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let record_target = self
+            .host
+            .resident_context_menu_target()
+            .filter(|target| {
+                self.character_geometry_current(window)
+                    && self.last_frame_window.as_ref().is_some_and(|frame| {
+                        super::super::resident_context_menu_frame_loss(
+                            &self.host.shared_snapshot(),
+                            frame,
+                            target,
+                        )
+                        .is_none()
+                    })
+            })
+            .map(|target| NarrativeEndpoint {
+                record: target.record.record_id,
+                display: 0,
+            });
         self.close_quote_menu(window);
+        self.invalidate_transcript_menu();
         if pointer.is_none() && !self.focus_handle.is_focused(window) {
             return;
         }
         if !self.character_geometry_current(window) {
             return;
         }
-        if let Some(pointer) = pointer {
-            let Some(hit) = self.narrative_hit(pointer) else {
-                return;
-            };
-            let Some(selection) = &self.narrative_selection else {
-                return;
-            };
-            if !self.narrative_ranges(selection).is_some_and(|ranges| {
-                ranges
-                    .iter()
-                    .any(|(id, range)| id == &hit.record && range.contains(&hit.display))
-            }) {
-                return;
-            }
-        }
-        let Some(capture) = self.quote_capture() else {
+        let endpoint = if let Some(pointer) = pointer {
+            self.narrative_hit(pointer)
+        } else {
+            self.narrative_selection
+                .as_ref()
+                .map(|selection| selection.head.clone())
+                .or(record_target)
+        };
+        let Some(endpoint) = endpoint else {
             return;
         };
-        if let Err(error) = self.host.mapped_quote_markdown(
-            capture.selection.activation,
-            capture.selection.revision,
-            &capture.ranges,
-        ) {
-            if matches!(
-                error,
-                super::super::ResidentSelectionUnavailable::CopyCapacity
-                    | super::super::ResidentSelectionUnavailable::CopyAllocation
-            ) {
-                self.keyboard_copy.feedback = "Quote selection is too large. Select less text.";
-                cx.notify();
+        let selected = pointer.is_none()
+            || self.narrative_selection.as_ref().is_some_and(|selection| {
+                self.narrative_ranges(selection).is_some_and(|ranges| {
+                    ranges.iter().any(|(id, range)| {
+                        id == &endpoint.record && range.contains(&endpoint.display)
+                    })
+                })
+            });
+        let capture = selected
+            .then(|| self.quote_capture())
+            .flatten()
+            .filter(|capture| {
+                match self.host.mapped_quote_markdown(
+                    capture.selection.activation,
+                    capture.selection.revision,
+                    &capture.ranges,
+                ) {
+                    Ok(markdown) => !markdown.is_empty(),
+                    Err(error) => {
+                        if matches!(
+                            error,
+                            super::super::ResidentSelectionUnavailable::CopyCapacity
+                                | super::super::ResidentSelectionUnavailable::CopyAllocation
+                        ) {
+                            self.keyboard_copy.feedback =
+                                "Quote selection is too large. Select less text.";
+                            cx.notify();
+                        }
+                        false
+                    }
+                }
+            });
+        let turn = match self.apply_realized_context_menu_target_for_record_id(&endpoint.record) {
+            super::super::ResidentContextMenuOutcome::Targeted(target)
+                if self.host.context_menu_narrative_kind(&target)
+                    == Some(TranscriptNarrativeKind::UserInput) =>
+            {
+                self.mapped_geometry(&endpoint.record)
+                    .map(|geometry| TurnCapture {
+                        target,
+                        activation: self.host.shared_snapshot().activation_revision,
+                        selection: self.narrative_selection.clone(),
+                        layout: geometry.layout() as *const _ as usize,
+                        source: geometry.source().as_ptr() as usize,
+                        source_len: geometry.source().len(),
+                    })
             }
+            _ => None,
+        };
+        if turn.is_none() {
+            self.host.clear_resident_context_menu_target();
+        }
+        if capture.is_none() && turn.is_none() {
             return;
         }
         let Some(serial) = self.quote_state.serial.checked_add(1) else {
@@ -184,7 +265,7 @@ impl SyndicTranscriptPanel {
             return;
         };
         let anchor = pointer.or_else(|| {
-            let head = &capture.selection.head;
+            let head = &endpoint;
             let row = self
                 .last_frame_window
                 .as_ref()?
@@ -212,20 +293,30 @@ impl SyndicTranscriptPanel {
             return;
         };
         self.quote_state.serial = serial;
-        self.quote_state.capture = Some(capture);
+        self.quote_state.capture = capture;
+        self.quote_state.turn = turn;
         self.quote_state.anchor = Some(Bounds::new(anchor, size(px(1.), px(1.))));
         let mut popup = AnchoredContextMenu::open(serial, window, cx);
-        popup.reconcile(&QuoteRows);
-        popup.realize(&[QuoteRows.row(0)], 0..1, window);
+        let rows = self.transcript_menu_rows();
+        popup.reconcile(&rows);
+        popup.realize(
+            &(0..rows.len())
+                .map(|index| rows.row(index))
+                .collect::<Vec<_>>(),
+            0..rows.len(),
+            window,
+        );
         self.quote_state.popup = Some(popup);
         cx.notify();
     }
 
-    fn close_quote_menu(&mut self, window: &mut Window) {
+    pub(in super::super) fn close_quote_menu(&mut self, window: &mut Window) {
         if let Some(mut popup) = self.quote_state.popup.take() {
             popup.dismiss(window, &self.focus_handle);
         }
         self.quote_state.anchor = None;
+        self.quote_state.turn = None;
+        self.host.clear_resident_context_menu_target();
     }
 
     pub(crate) fn render_quote_menu(
@@ -237,23 +328,17 @@ impl SyndicTranscriptPanel {
         if self.quote_state.popup.is_none() {
             return None;
         }
-        let current = self.quote_state.capture.as_ref().is_some_and(|capture| {
-            self.quote_request_current(
-                self.quote_state.serial,
-                capture.selection.activation,
-                capture.selection.revision,
-                window,
-            )
-        });
+        let current = self.transcript_menu_current(window);
         if !current {
             self.quote_state.capture = None;
             self.close_quote_menu(window);
             return None;
         }
+        let rows = self.transcript_menu_rows();
         Some(widget::render_static(
             self.quote_state.popup.as_ref()?,
             self.quote_state.anchor?,
-            vec![QuoteRows.row(0)],
+            (0..rows.len()).map(|index| rows.row(index)).collect(),
             colors,
             "transcript-selection-menu",
             quote_input,
@@ -263,25 +348,41 @@ impl SyndicTranscriptPanel {
     }
 }
 
-struct QuoteRows;
+struct QuoteRows {
+    quote: bool,
+    edit: bool,
+}
 impl MenuCollection for QuoteRows {
     fn len(&self) -> usize {
-        1
+        usize::from(self.quote) + usize::from(self.edit)
     }
     fn index_of(&self, id: &str) -> Option<usize> {
-        (id == "transcript-quote").then_some(0)
+        if self.quote && id == "transcript-quote" {
+            Some(0)
+        } else if self.edit && id == "transcript-edit-message" {
+            Some(usize::from(self.quote))
+        } else {
+            None
+        }
     }
     fn row(&self, index: usize) -> MenuRow {
-        assert_eq!(index, 0);
+        assert!(index < self.len() && self.len() <= 2);
+        let quote = self.quote && index == 0;
+        let id = if quote {
+            "transcript-quote"
+        } else {
+            "transcript-edit-message"
+        };
         MenuRow {
             index,
-            id: Some(Arc::from("transcript-quote")),
-            label: "Quote".into(),
+            id: Some(Arc::from(id)),
+            label: if quote { "Quote" } else { "Edit message" }.into(),
             kind: MenuRowKind::Command,
             selected: false,
-            enabled: true,
-            disabled_reason: None,
-            selector: "transcript-quote".into(),
+            enabled: quote,
+            disabled_reason: (!quote)
+                .then(|| "Historical message editing is not available yet.".into()),
+            selector: id.into(),
         }
     }
 }
@@ -292,17 +393,27 @@ fn quote_input(
     window: &mut Window,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) {
+    if !panel.transcript_menu_current(window) {
+        panel.invalidate_transcript_menu();
+        panel.close_quote_menu(window);
+        cx.notify();
+        return;
+    }
+    let rows = panel.transcript_menu_rows();
     let Some(popup) = panel.quote_state.popup.as_mut() else {
         return;
     };
-    for intent in popup.input(event, &QuoteRows) {
+    for intent in popup.input(event, &rows) {
         match intent {
             MenuIntent::Dismiss => {
                 panel.close_quote_menu(window);
                 cx.notify();
             }
             MenuIntent::Focus(_) => cx.notify(),
-            MenuIntent::Activate { .. } => {
+            MenuIntent::Activate { id, .. } => {
+                if id.as_ref() != "transcript-quote" {
+                    return;
+                }
                 let Some(capture) = &panel.quote_state.capture else {
                     return;
                 };

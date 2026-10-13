@@ -152,6 +152,140 @@ fn missing_context_menu_provenance_record(
     record
 }
 
+fn narrative_payload(text: &str) -> std::sync::Arc<syndic_storage::ProjectionPayload> {
+    std::sync::Arc::new(
+        syndic_storage::ProjectionPayload::inline_markdown(
+            syndic_storage::MarkdownBlockId::from_bytes([29; 32]),
+            syndic_storage::MarkdownBlockKind::Paragraph,
+            1,
+            syndic_storage::ProjectionSourceRange::new(20, 20 + text.len() as u64).unwrap(),
+            text,
+        )
+        .unwrap(),
+    )
+}
+
+#[test]
+fn prepared_narrative_context_menu_requires_authored_nonempty_stable_source() {
+    let payload = narrative_payload("**menu** text");
+    let prepared = std::sync::Arc::new(
+        syndic_storage::narrative::prepare_narrative(payload.as_ref().clone(), usize::MAX).unwrap(),
+    );
+    let mut record = text_record(13, "prepared", 20, Some(20..33));
+    record.kind = ResidentPresentationRecordKind::NarrativeReady { prepared };
+    let geometry = ResidentSelectionRecordGeometry::new(record.id.clone(), 0., 32.);
+    let target = resident_context_menu_record(&record, geometry.clone()).unwrap();
+    assert_eq!(
+        target.content_kind,
+        ResidentContextMenuContentKind::TextChunk
+    );
+    assert_eq!(
+        target.source,
+        source_provenance("prepared", 20, Some(20..33))
+    );
+
+    record.kind = ResidentPresentationRecordKind::NarrativePending {
+        source: payload.clone(),
+    };
+    assert!(matches!(
+        resident_context_menu_record(&record, geometry.clone()),
+        Err(ResidentContextMenuUnavailable::NonContentRecord { .. })
+    ));
+    record.kind = ResidentPresentationRecordKind::NarrativeUnavailable {
+        source: payload,
+        reason: syndic_storage::narrative::NarrativePreparationErrorKind::Capacity,
+    };
+    assert!(matches!(
+        resident_context_menu_record(&record, geometry.clone()),
+        Err(ResidentContextMenuUnavailable::NonContentRecord { .. })
+    ));
+
+    record.kind = ResidentPresentationRecordKind::TextChunk {
+        narrative_kind: TranscriptNarrativeKind::UserInput,
+        text: "".into(),
+        plain_text: None,
+    };
+    assert!(matches!(
+        resident_context_menu_record(&record, geometry.clone()),
+        Err(ResidentContextMenuUnavailable::NonContentRecord { .. })
+    ));
+
+    record.kind = ResidentPresentationRecordKind::NarrativeReady {
+        prepared: std::sync::Arc::new(
+            syndic_storage::narrative::prepare_narrative(
+                narrative_payload("menu").as_ref().clone(),
+                usize::MAX,
+            )
+            .unwrap(),
+        ),
+    };
+    record.provenance.source = ResidentRecordSource::LocalUi;
+    assert!(matches!(
+        resident_context_menu_record(&record, geometry.clone()),
+        Err(ResidentContextMenuUnavailable::NonContentRecord { .. })
+    ));
+    record.provenance.source =
+        ResidentRecordSource::Syndic(source_provenance("prepared", 20, None));
+    let ResidentRecordSource::Syndic(source) = &mut record.provenance.source else {
+        unreachable!()
+    };
+    source.item_id = None;
+    assert!(matches!(
+        resident_context_menu_record(&record, geometry),
+        Err(ResidentContextMenuUnavailable::MissingStableProvenance { .. })
+    ));
+}
+
+#[test]
+fn context_menu_user_role_requires_the_exact_current_resident_view_source() {
+    let record = text_record(13, "exact-user", 20, Some(20..28));
+    let target = resident_context_menu_record(
+        &record,
+        ResidentSelectionRecordGeometry::new(record.id.clone(), 0., 32.),
+    )
+    .unwrap();
+    let view = TranscriptViewRecord {
+        id: TranscriptViewRecordId("exact-view-record".into()),
+        position: TranscriptViewPosition(20),
+        projection_id: target.projection_id.clone(),
+        narrative_kind: TranscriptNarrativeKind::UserInput,
+        provenance: target.source.clone(),
+    };
+    assert_eq!(
+        resident_context_menu_narrative_kind(&target, &[view.clone()]),
+        Some(TranscriptNarrativeKind::UserInput)
+    );
+    assert_eq!(resident_context_menu_narrative_kind(&target, &[]), None);
+    let mut assistant = view.clone();
+    assistant.narrative_kind = TranscriptNarrativeKind::AssistantFinalAnswer;
+    assert_eq!(
+        resident_context_menu_narrative_kind(&target, &[assistant]),
+        Some(TranscriptNarrativeKind::AssistantFinalAnswer)
+    );
+    let mut changed_item = view.clone();
+    changed_item.provenance.item_id = Some(SyndicItemId("successor-user-item".into()));
+    let mut changed_turn = view.clone();
+    changed_turn.provenance.turn_id = Some(SyndicTurnId("successor-user-turn".into()));
+    let mut changed_range = view.clone();
+    changed_range.provenance.source_range = Some(40..48);
+    let mut changed_view = view.clone();
+    changed_view.provenance.view_id = TranscriptViewId("other-thread".into());
+    let mut changed_position = view;
+    changed_position.position = TranscriptViewPosition(21);
+    for obsolete in [
+        changed_item,
+        changed_turn,
+        changed_range,
+        changed_view,
+        changed_position,
+    ] {
+        assert_eq!(
+            resident_context_menu_narrative_kind(&target, &[obsolete]),
+            None
+        );
+    }
+}
+
 fn snapshot_with_records(
     presentation_revision: u64,
     records: Vec<ResidentPresentationRecord>,
@@ -672,6 +806,36 @@ fn active_context_menu_target_reports_frame_loss_when_geometry_stops_being_reali
         resident_context_menu_frame_loss(&snapshot, &stable_frame, &target),
         None
     );
+
+    let mut replaced_snapshot = snapshot.clone();
+    let mut replaced_records = replaced_snapshot.records.to_vec();
+    let ResidentRecordSource::Syndic(source) = &mut replaced_records[1].provenance.source else {
+        unreachable!()
+    };
+    source.item_id = Some(SyndicItemId("replacement-item".into()));
+    replaced_snapshot.records = replaced_records.into();
+    assert_eq!(
+        resident_context_menu_frame_loss(&replaced_snapshot, &stable_frame, &target),
+        Some(ResidentContextMenuUnavailable::StaleRecord {
+            record_id: record_id("b")
+        })
+    );
+
+    let mut moved_frame = stable_frame.clone();
+    moved_frame.records[1].top_px += 1.;
+    assert_eq!(
+        resident_context_menu_frame_loss(&snapshot, &moved_frame, &target),
+        Some(ResidentContextMenuUnavailable::StaleRecord {
+            record_id: record_id("b")
+        })
+    );
+
+    let mut revised_snapshot = snapshot.clone();
+    revised_snapshot.presentation_revision += 1;
+    assert!(matches!(
+        resident_context_menu_frame_loss(&revised_snapshot, &stable_frame, &target),
+        Some(ResidentContextMenuUnavailable::StalePresentationRevision { .. })
+    ));
 
     let missing_frame = frame_window(
         snapshot.presentation_revision,

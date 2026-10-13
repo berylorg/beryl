@@ -57,7 +57,7 @@ impl SyndicTranscriptPanel {
             retained_previous_snapshot: true,
             provider_request: None,
         };
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         self.staged = Some(StagedTranscript {
             activation: None,
             host,

@@ -258,7 +258,7 @@ impl SyndicTranscriptPanel {
         let (host, outcome) = self.host.prepare_coherent_activation(prepared.clone());
         let unplaced_tail = host.scroll_state().anchor.is_none()
             && prepared.placement == TranscriptActivationPlacement::Tail;
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         self.staged = Some(StagedTranscript {
             activation: Some(prepared.clone()),
             host,
@@ -316,7 +316,7 @@ impl SyndicTranscriptPanel {
             retained_previous_snapshot: true,
             provider_request: None,
         };
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         self.staged = Some(StagedTranscript {
             activation: Some(prepared.clone()),
             host,
@@ -507,7 +507,7 @@ impl SyndicTranscriptPanel {
             retained_previous_snapshot: true,
             provider_request: None,
         };
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         self.staged = Some(StagedTranscript {
             activation: None,
             host,
@@ -641,7 +641,7 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn discard_staged_activation(&mut self) {
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         if self.staged.as_ref().is_some_and(|staged| {
             staged
                 .activation
@@ -666,7 +666,7 @@ impl SyndicTranscriptPanel {
     fn close_invalid_geometry(&mut self) {
         self.cancel_literal_copy();
         self.narrative_selection = None;
-        self.quote_state.capture = None;
+        self.invalidate_transcript_menu();
         self.narrative_dragging = false;
         self.keyboard_copy.gesture.invalidate_records();
         self.keyboard_copy.feedback = "";
