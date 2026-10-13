@@ -51,6 +51,7 @@ impl MainWindowShellRoot {
             .map(|(selection, _)| selection);
         let generation = self.running_threads.generation.load(Ordering::Acquire);
         self.running_threads.pending_activation = Some(thread);
+        self.running_threads.activation_failure = None;
         self.running_threads.ordinary_activation = true;
         self.running_threads.activation_attention.clear();
         self.running_threads.activation_cancel = beryl_home_store::CommandCancellation::new();

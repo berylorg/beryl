@@ -4,6 +4,7 @@ use crate::main_window::{MainWindowCreationOwner, NewWindow};
 mod threadless;
 pub use threadless::*;
 mod construction;
+mod diagnostic;
 mod exit_command;
 #[cfg(target_os = "windows")]
 mod final_teardown;

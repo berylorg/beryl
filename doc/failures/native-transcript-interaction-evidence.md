@@ -84,6 +84,46 @@ bridging requires both adjacent prepared lines to be blank or retain a genuine r
 full selected content still needs contiguous raw-bearing coverage. Preserve positive multiline
 LF/CRLF and Tab behavior while refusing that placeholder-only boundary.
 
+Diagnostic activation fixtures must hold a resource read that the ordinary initial viewport
+actually demands. A long Code line earlier in the history does not prove a pending read while
+activation places the viewport at the narrative tail. Range or Display responses can also already
+supply its bounded raw content without a Source request. Qualify the real requested resource kind
+and current revision in the visible target, preserving normal demand and publication; do not
+inject offscreen demand or add an activation gate to manufacture pending evidence.
+
+Tail-oriented activation uses the explicit LiveTailFollowing mode. Its active semantic target is
+the measured last record at the viewport bottom; the first-visible reading representative can
+change when preceding row heights refine. Compare the actual published tail identity/bottom,
+published viewport height, mode and manual displacement through resource settlement. Do not impose
+detached reading-anchor invariance on Tail mode. Short-content leading alignment retains its
+separate first-anchor proof. Neither case permits a new late placement command or readiness gate.
+
+Diagnostic view observation must use coherent selection custody rather than creation eligibility.
+The creation-target getter intentionally returns unavailable during pending activation. Observe
+the existing live composer/claim agreement directly rather than equating command availability with
+selection. Ordinary flush can also legitimately park the predecessor composer in Fencing while
+the activation worker owns its original typed custody. Report the live selection unavailable at
+that cut, alongside the unchanged published view and exact pending target; do not invent a claim
+from frame identity, duplicate locked custody or weaken the lifecycle gate. Likewise, generic count/query error state
+cannot stand in for an activation outcome: healthy polling clears it and query failures reuse it.
+Retain the bounded exact-target activation failure at its actual lifecycle boundary, independently
+of unrelated polling.
+
+Cancellation ends at writer admission. A token cancelled while a `BeforeCommit` fixture hold is
+already inside the active writer cannot require noncommit or predecessor preservation. Use a
+genuinely missing exact target to qualify retained activation failure, and release an admitted
+held activation to its ordinary exact outcome. EOF evidence must observe the actual stdio terminal
+and attach's Exit handoff, then positive single-operation settlement and Home release. A transient
+startup-command pending flag may already be consumed by the running owner; it is not a durable
+receipt that EOF was or was not handled.
+
+An EOF Exit handoff while thread activation gates Exit is not accepted shutdown admission.
+The ordinary command correctly consumes that unavailable invocation without queuing a later Exit:
+the exact activation can commit and settle, leaving the same window alive with Exit eligible again.
+Observe the terminal endpoint, single handoff, single original activation outcome and absent
+shutdown attempt. Qualify disposal with one fresh explicit ordinary Exit after eligibility returns;
+do not add an automatic retry or claim that the gated EOF invocation itself released the Home.
+
 Native Code recovery/range routing passed in `run-046`; the complete grouped image workflow
 passed in `run-050`, including Code/Table/marker origins, cross-marker selection, primary pointer
 and keyboard actions, preview dismissal, focus return, actual Edit/import, dimming and Escape

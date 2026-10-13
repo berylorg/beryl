@@ -186,6 +186,14 @@ impl MainWindowShellRoot {
         let expected = request.clone();
         let cancelled = cancel.clone();
         let worker_provider = provider.clone();
+        #[cfg(test)]
+        let worker_provider = {
+            let mut provider = worker_provider;
+            if let Some(gate) = &self.running_threads.fixture_resource_gate {
+                provider.set_indexed_read_gate_for_test(gate.clone());
+            }
+            provider
+        };
         let worker_reader = reader.clone();
         let output_release = self
             .running_threads

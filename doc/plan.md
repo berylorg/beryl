@@ -102,36 +102,42 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 775: Mount Captured Branch Discussion Creation (finished)
+# Phase 776: Qualify Diagnostic Child Transcript Activation (finished)
 
-Accepted exact finalized assistant selection through narrative and Code, bounded captured-byte
-custody, durable creation/reconciliation/collision, preserved source state and ordinary activation
-with same-child Retry. All 186 combined checks, including 18 native branch cases and 26 mapped
-selection cases, canonical locked production checks and independent review passed. Creation 9/9
-and storage 23/23 evidence remains qualified. See the
-[mounted acceptance](audits/transcript-mounting-readiness.md#mounted-captured-branch-discussion-creation-acceptance)
-for source identities, corrected failures and verification limits.
+Accepted bounded exact-thread diagnostic dispatch and resident observation through ordinary
+activation, coherent publication, placement, subsequent resource preparation and disposal.
+All 37 combined checks, canonical locked app/executable checks and independent review passed.
+EOF qualification preserves ordinary gated refusal and uses one fresh explicit Exit for later
+disposal. See the [acceptance](audits/transcript-mounting-readiness.md#diagnostic-child-transcript-activation-acceptance)
+for identities, limits and corrected fixture assumptions.
 
-# Phase 776: Qualify Diagnostic Child Transcript Activation (wip)
-
-Verify ordinary coherent transcript publication and subsequent bounded media preparation in the
-diagnostic child without imposing a stronger activation-readiness gate. Authority is the
-[diagnostic child contract](features/diagnostics/design.md#diagnostic-child-controls) and
-[transcript publication](features/transcript/design.md).
-
-Inspect the actual executable diagnostic binding and ordinary activation consumer before choosing
-focused child evidence. Qualify history-heavy and image-heavy selection while bounded media remains
-pending, stable initial placement, later ready or terminal resource outcomes and disposal. Reuse
-unchanged ordinary transcript evidence, run affected protocol/native checks and locked production
-checks, and independently review the complete diagnostic activation boundary.
-
-Current milestone: executable diagnostic dispatch reports transcript features unavailable and does
-not bind thread switching. Determine the bounded existing-service mounting prerequisite before
-implementation; a direct test-only activation path cannot qualify the diagnostic command. Preserve
-ordinary exact target validation, bounded command outcomes and coherent publication, and keep
-resource readiness separate from activation completion. No product decision is required.
-
-# Phase 777: Accept Complete Mounted Transcript Workflow (pending)
+# Phase 777: Accept Complete Mounted Transcript Workflow (wip)
 
 Qualify the combined ordinary transcript workflow, interactions, source/geometry invalidation and
 owned-resource disposal against the remaining Checkpoint 4 transcript gate.
+
+Use the [transcript feature](features/transcript/design.md),
+[shell boundary](systems/transcript-presentation/shell-boundary.md) and accepted mounting records
+to enumerate the remaining combined evidence. Qualify ordinary activation, exact scrolling,
+narrative/Code/Table/synthetic context, image marker/media outcomes, source-qualified Copy/Quote,
+current user menus, replacement Edit/cancel/submission and captured branch creation/Retry through
+their normal mounted paths. Verify stale source/geometry refusal and bounded worker, residency,
+prepared layout and selection/menu disposal across repeated navigation. Reuse evidence only for
+unchanged inputs, run required combined affected checks and obtain independent workflow review.
+Close the transcript facet of Checkpoint 4 without marking unrelated catalog, Settings or other
+unaccepted product flows complete. Conditional unavailable repair remains separately gated.
+
+The bounded remaining native packet is mixed-content interaction/navigation/invalidation/disposal
+and historical replacement followed by branch creation/Retry/context interaction on an untouched
+source thread. Exercise exact outer/nested scrolling, paired Copy, composer Quote, marker focus
+return, current menus, measured appearance and source invalidation across repeated navigation.
+Exercise Edit/import, cancellation with retained payload, ordinary clear/reentry and replacement
+submission before switching to the separate branch source. Join existing Table/image/narrative,
+Code, Quote/menu/branch, replacement/submission, core/provider and release regressions with the
+accepted diagnostic endpoint evidence. Individually accepted fault matrices remain reusable on
+unchanged inputs; this boundary requires the combined mounted workflows and release evidence.
+
+Current milestone: diagnostic activation is accepted. Implement the two bounded combined native
+workflow cases through existing mounted consumers, then qualify the joined affected regressions,
+canonical production build, complete independent workflow review and owned-resource release.
+No product decision is required; broader Checkpoint 4 flows remain separately unaccepted.

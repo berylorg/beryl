@@ -103,6 +103,8 @@ pub(super) struct RunningThreadsContribution {
     fixture_fence_next_adjacent: bool,
     #[cfg(test)]
     fixture_adjacent_fenced: bool,
+    #[cfg(test)]
+    pub(super) fixture_resource_gate: Option<Arc<crate::transcript_provider::IndexedReadGate>>,
     transcript_demand: Option<crate::syndic_transcript::AdjacentTranscriptDemand>,
     resource_demand: Option<crate::syndic_transcript::ResourceTranscriptDemand>,
     measured_resource: Option<transcript::PendingMeasuredResource>,
@@ -119,6 +121,9 @@ pub(super) struct RunningThreadsContribution {
     count: Option<u64>,
     attention: u64,
     failure: Option<String>,
+    pub(super) activation_failure: Option<(beryl_model::SyndicThreadId, String)>,
+    #[cfg(test)]
+    fixture_count_publications: u64,
     focus: gpui::FocusHandle,
     picker: Option<Entity<ThreadRootPicker>>,
     subscription: Option<gpui::Subscription>,
@@ -163,6 +168,10 @@ impl Drop for RunningThreadsContribution {
 }
 
 impl RunningThreadsContribution {
+    pub(super) fn diagnostic_resource_preparation_pending(&self) -> bool {
+        self.resource_demand.is_some() || self.measured_resource.is_some()
+    }
+
     fn resource_subscription(
         transcript: &Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
         cx: &mut Context<MainWindowShellRoot>,
@@ -284,6 +293,8 @@ impl RunningThreadsContribution {
             fixture_fence_next_adjacent: false,
             #[cfg(test)]
             fixture_adjacent_fenced: false,
+            #[cfg(test)]
+            fixture_resource_gate: None,
             transcript_demand: None,
             resource_demand: None,
             measured_resource: None,
@@ -299,6 +310,9 @@ impl RunningThreadsContribution {
             count: None,
             attention: 0,
             failure: None,
+            activation_failure: None,
+            #[cfg(test)]
+            fixture_count_publications: 0,
             focus: cx.focus_handle(),
             picker: None,
             subscription: None,
@@ -333,6 +347,7 @@ impl RunningThreadsContribution {
         if self.has_activation_custody() || self.workers.retained() != 0 {
             return Err("Running threads still owns unsettled read or activation work.".into());
         }
+        self.activation_failure = None;
         #[cfg(all(test, feature = "test-faults"))]
         self.fixture_selection_lease.take();
         if self.reader.is_none()
@@ -365,6 +380,39 @@ impl RunningThreadsContribution {
 }
 
 impl MainWindowShellRoot {
+    #[cfg(test)]
+    pub(crate) fn test_diagnostic_count_observation(&self) -> (u64, bool) {
+        (
+            self.running_threads.fixture_count_publications,
+            self.running_threads.failure.is_some(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_diagnostic_query_failure(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.running_picker_event(
+            PickerEvent::QueryChanged {
+                collection_key: self.running_collection_key(),
+                query_revision: self.running_threads.query_revision + 1,
+                query: "x".repeat(beryl_state::CATALOG_QUERY_MAX_BYTES + 1),
+            },
+            window,
+            cx,
+        );
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_diagnostic_resource_gate(
+        &mut self,
+        gate: Arc<crate::transcript_provider::IndexedReadGate>,
+    ) {
+        self.running_threads.fixture_resource_gate = Some(gate);
+    }
+
     #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn test_fence_pending_resource_read(
         &mut self,
@@ -894,6 +942,10 @@ impl MainWindowShellRoot {
                                 root.running_threads.count = Some(page.total_threads());
                                 root.running_threads.attention = page.attention_threads();
                                 root.running_threads.failure = None;
+                                #[cfg(test)]
+                                {
+                                    root.running_threads.fixture_count_publications += 1;
+                                }
                                 if root.running_threads.query_revision == query_revision
                                     && root.running_threads.source_revision.as_ref()
                                         != Some(page.revision())

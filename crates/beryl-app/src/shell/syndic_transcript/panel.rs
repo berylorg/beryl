@@ -14,6 +14,7 @@ mod code_viewport;
 mod context_appearance;
 #[path = "panel/copy_keyboard.rs"]
 mod copy_keyboard;
+mod diagnostic;
 mod inline_parts;
 mod inline_table_actions;
 mod narrative;
@@ -160,6 +161,8 @@ pub(crate) struct SyndicTranscriptPanel {
     host: SyndicTranscriptHost,
     last_frame_window: Option<RealizedFrameWindow>,
     published_snapshot: Option<std::sync::Arc<ResidentTranscriptSnapshot>>,
+    published_view_id: Option<super::TranscriptViewId>,
+    published_viewport_height: Option<f32>,
     staged: Option<StagedTranscript>,
     geometry: Option<PendingGeometry>,
     pending_delta: f32,
@@ -231,6 +234,8 @@ impl SyndicTranscriptPanel {
             host: SyndicTranscriptHost::empty(),
             last_frame_window: None,
             published_snapshot: None,
+            published_view_id: None,
+            published_viewport_height: None,
             staged: None,
             geometry: None,
             pending_delta: 0.0,
@@ -766,6 +771,7 @@ impl SyndicTranscriptPanel {
         self.pending_delta -= geometry.delta;
         geometry.delta = 0.0;
         geometry.published = true;
+        self.published_viewport_height = Some(f32::from(geometry.environment.viewport.height));
         self.host.accept_measured_frame(frame.clone());
         self.narrative_candidate_geometry.retain(|geometry| {
             let retained = frame
@@ -813,6 +819,7 @@ impl SyndicTranscriptPanel {
         self.host.release_previous_narrative_layout();
         self.prune_rejected_resources();
         self.published_snapshot = Some(self.host.shared_snapshot());
+        self.published_view_id = self.host.selected_view_id().cloned();
         self.last_frame_window = Some(frame);
     }
 
@@ -836,6 +843,8 @@ impl SyndicTranscriptPanel {
         self.literal_candidate_geometry.clear();
         self.last_frame_window = None;
         self.published_snapshot = None;
+        self.published_view_id = None;
+        self.published_viewport_height = None;
         self.staged = None;
         self.geometry = None;
         self.pending_delta = 0.0;

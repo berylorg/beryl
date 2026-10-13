@@ -161,8 +161,7 @@ impl MainWindowShellRoot {
         &self,
         app: &App,
     ) -> Option<beryl_model::SyndicThreadId> {
-        self.creation_target(app)
-            .map(|(selection, _)| selection.claim().thread_id())
+        self.coherent_viewed_thread(app)
     }
 
     pub(crate) fn coherent_viewed_thread(&self, app: &App) -> Option<beryl_model::SyndicThreadId> {

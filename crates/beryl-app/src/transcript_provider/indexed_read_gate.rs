@@ -4,29 +4,39 @@ use std::time::Duration;
 
 pub(crate) struct IndexedReadGate {
     revision: crate::syndic_transcript::ProviderRevision,
-    source: bool,
+    kind: IndexedReadKind,
     entered: AtomicBool,
     refused: AtomicBool,
     released: Mutex<bool>,
     wake: Condvar,
 }
 
+enum IndexedReadKind {
+    RecoveryRange,
+    Source,
+    Display,
+}
+
 impl IndexedReadGate {
     pub(crate) fn new(revision: crate::syndic_transcript::ProviderRevision) -> Arc<Self> {
-        Self::with_source(revision, false)
+        Self::with_kind(revision, IndexedReadKind::RecoveryRange)
     }
 
     pub(crate) fn source(revision: crate::syndic_transcript::ProviderRevision) -> Arc<Self> {
-        Self::with_source(revision, true)
+        Self::with_kind(revision, IndexedReadKind::Source)
     }
 
-    fn with_source(
+    pub(crate) fn display(revision: crate::syndic_transcript::ProviderRevision) -> Arc<Self> {
+        Self::with_kind(revision, IndexedReadKind::Display)
+    }
+
+    fn with_kind(
         revision: crate::syndic_transcript::ProviderRevision,
-        source: bool,
+        kind: IndexedReadKind,
     ) -> Arc<Self> {
         Arc::new(Self {
             revision,
-            source,
+            kind,
             entered: AtomicBool::new(false),
             refused: AtomicBool::new(false),
             released: Mutex::new(false),
@@ -35,12 +45,12 @@ impl IndexedReadGate {
     }
 
     pub(super) fn matches(&self, value: &IndexedResourceValue) -> bool {
-        if self.source {
-            matches!(value, IndexedResourceValue::Source(_))
-        } else {
-            matches!(value, IndexedResourceValue::Range(range)
+        match self.kind {
+            IndexedReadKind::Source => matches!(value, IndexedResourceValue::Source(_)),
+            IndexedReadKind::Display => matches!(value, IndexedResourceValue::Display(_)),
+            IndexedReadKind::RecoveryRange => matches!(value, IndexedResourceValue::Range(range)
                 if matches!(range.cursor.request, syndic_storage::indexed_resource::Request::Code { lines } if lines.start == 902 && lines.end == 918)
-                    && range.request_complete)
+                    && range.request_complete),
         }
     }
 

@@ -353,6 +353,23 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 
 - One process-wide supervisor is the sole app owner of at most one diagnostic child, its bounded
   stdio channel, request correlation, and lifecycle custody through exit or cleanup.
+- Executable child thread switching resolves one registered ordinary main shell: the sole shell
+  is unambiguous even when minimized; with multiple shells only the exact active registered shell
+  is eligible. Missing or ambiguous selection is unavailable, never a first-window substitute.
+  Validate the bounded thread identity before invoking that shell's ordinary activation command.
+  The existing command owns off-GUI preparation, cancellation, exact source admission and coherent
+  editor/transcript publication; diagnostic dispatch creates no alternative activation owner.
+- A child switch response distinguishes an already current target, admitted opening work and
+  failure. Admission is not completion. Subsequent bounded UI observation reports the selected
+  claim, pending target, activation failure and published transcript identity independently, so a
+  previous coherent transcript cannot be mistaken for the requested target's publication. Timeout
+  or channel loss never causes another activation attempt or target substitution.
+- Resident transcript observation reports content-free identity, revisions, initial frame/scroll
+  placement, pending preparation and aggregate resident/resource facts under the existing protocol
+  frame bound. Any reported row slice obeys the requested limit capped at 64. Observation reads
+  already retained state only and cannot launch demand, shape text, prepare images or retain source
+  content. Normal bounded resource preparation remains post-publication work; neither its pending
+  state nor completed-media readiness gates a child switch or changes initial scroll placement.
 - Child controls use the same exact window, thread, composer, stop, popup, scroll, and activation
   command paths as direct interaction. They never mutate behind those paths or substitute a target.
 - Diagnostic snapshots are fixed-size and content-free where required. They do not load nonresident

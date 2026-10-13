@@ -390,7 +390,7 @@ fn trim_ascii_line_end(mut frame: &[u8]) -> &[u8] {
     frame
 }
 
-fn truncate_protocol_message(value: impl Into<String>) -> String {
+pub(crate) fn truncate_protocol_message(value: impl Into<String>) -> String {
     let mut value = value.into();
     if value.len() <= MAX_DIAGNOSTIC_PROTOCOL_MESSAGE_BYTES {
         return value;

@@ -8,12 +8,25 @@ use crate::{
 use gpui::App;
 use serde_json::{Value, json};
 
+mod activation;
+mod params;
+
+#[cfg(test)]
+pub(super) struct DiagnosticExitObservation(pub(super) std::rc::Rc<std::cell::Cell<usize>>);
+
+#[cfg(test)]
+impl gpui::Global for DiagnosticExitObservation {}
+
 pub(super) fn attach(endpoint: DiagnosticTargetServer, app: &mut App) {
     app.spawn(async move |cx| {
         while let Some(request) = endpoint.next().await {
             match request {
                 DiagnosticTargetShellRequest::Execute(request) => {
                     if request.try_claim() {
+                        if request.request().command() == DiagnosticChildCommand::SwitchThread {
+                            let _ = cx.update(|app| activation::dispatch(request, app));
+                            continue;
+                        }
                         let response = cx.update(|app| respond(request.request(), app));
                         if let Ok(response) = response {
                             request.respond(response);
@@ -26,7 +39,11 @@ pub(super) fn attach(endpoint: DiagnosticTargetServer, app: &mut App) {
         let _ = cx.update(|app| {
             app.global::<BootstrapLifetime>()
                 .commands
-                .request_process_exit()
+                .request_process_exit();
+            #[cfg(test)]
+            if let Some(observation) = app.try_global::<DiagnosticExitObservation>() {
+                observation.0.set(observation.0.get() + 1);
+            }
         });
     })
     .detach();
@@ -36,6 +53,20 @@ pub(super) fn respond(
     request: &DiagnosticProtocolRequest,
     app: &App,
 ) -> DiagnosticProtocolResponse {
+    let limit = if request.command() == DiagnosticChildCommand::ReadUiState {
+        match params::observation_limit(request.params()) {
+            Ok(limit) => limit,
+            _ => {
+                return DiagnosticProtocolResponse::error(
+                    Some(request.id().to_owned()),
+                    "invalid_arguments",
+                    "The UI observation limit must be within its declared bound.",
+                );
+            }
+        }
+    } else {
+        0
+    };
     let lifetime = app.global::<BootstrapLifetime>();
     let stage = if lifetime.running.is_some() {
         "running"
@@ -87,6 +118,23 @@ pub(super) fn respond(
         .as_ref()
         .map(|facts| facts["selectedThreadId"].clone())
         .unwrap_or(Value::Null);
+    let target = lifetime
+        .running
+        .as_ref()
+        .and_then(|owner| owner.borrow().diagnostic_main_window(app).ok())
+        .and_then(|window| window.read(app).ok());
+    let selected = target
+        .as_ref()
+        .and_then(|root| root.diagnostic_selected_thread(app))
+        .map(|thread| json!(thread))
+        .unwrap_or(selected);
+    let mounted = target
+        .filter(|_| request.command() == DiagnosticChildCommand::ReadUiState)
+        .map(|root| root.diagnostic_transcript_facts(app, limit));
+    let selected = mounted
+        .as_ref()
+        .map(|facts| facts["selectedThreadId"].clone())
+        .unwrap_or(selected);
     let path = |path: &std::path::Path| {
         path.to_str()
             .filter(|path| path.len() <= 32768)
@@ -112,7 +160,13 @@ pub(super) fn respond(
                 "turnState": {"selectedThreadState":null,"cancellableActiveTurn":null,"availability":"unavailable"},
                 "backgroundWork": {"turnStreamPending":null,"backendWorkReceivers":null,"availability":"unavailable"},
                 "exitRequested": lifetime.commands.diagnostic_exit_pending(),
-                "features": {"transcript": "unavailable", "settings": "unavailable", "runtimeConfiguration": "unavailable"} }),
+                "windowId": mounted.as_ref().map(|facts| facts["windowId"].clone()),
+                "pendingThreadId": mounted.as_ref().map(|facts| facts["pendingThreadId"].clone()),
+                "activationPending": mounted.as_ref().map(|facts| facts["activationPending"].clone()),
+                "activationFailure": mounted.as_ref().map(|facts| facts["activationFailure"].clone()),
+                "resourcePreparationPending": mounted.as_ref().map(|facts| facts["resourcePreparationPending"].clone()),
+                "transcript": mounted.as_ref().map(|facts| facts["transcript"].clone()),
+                "features": {"transcript": if mounted.is_some() { "resident_observation" } else { "unavailable" }, "settings": "unavailable", "runtimeConfiguration": "unavailable"} }),
         ),
         _ => DiagnosticProtocolResponse::error(
             Some(request.id().to_owned()),

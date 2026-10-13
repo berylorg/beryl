@@ -45,6 +45,7 @@ impl MainWindowShellRoot {
             .map(|record| record.token().clone())
             .collect();
         self.running_threads.pending_activation = Some(thread);
+        self.running_threads.activation_failure = None;
         self.running_threads.activation_cancel = beryl_home_store::CommandCancellation::new();
         let cancel = self.running_threads.activation_cancel.clone();
         let source = reader.clone();
@@ -204,6 +205,14 @@ impl MainWindowShellRoot {
             }
             return;
         }
+        self.running_threads.activation_failure = result.as_ref().err().and_then(|error| {
+            self.running_threads.pending_activation.map(|thread| {
+                (
+                    thread,
+                    crate::diagnostic_child_protocol::truncate_protocol_message(error.clone()),
+                )
+            })
+        });
         self.finish_captured_branch_activation(result.clone(), false, window, cx);
         self.running_threads.pending_activation = None;
         self.running_threads.ordinary_activation = false;
@@ -238,6 +247,12 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(thread) = self.running_threads.pending_activation {
+            self.running_threads.activation_failure = Some((
+                thread,
+                crate::diagnostic_child_protocol::truncate_protocol_message(error.clone()),
+            ));
+        }
         if self
             .running_threads
             .activation_operation

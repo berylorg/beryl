@@ -4,6 +4,10 @@ use super::*;
 #[path = "bootstrap_creation_context.rs"]
 mod creation_context;
 
+#[cfg(feature = "test-faults")]
+#[path = "bootstrap_diagnostic.rs"]
+mod diagnostic_stdio;
+
 #[test]
 fn relative_home_is_refused_before_open() {
     let result = Configuration::new(

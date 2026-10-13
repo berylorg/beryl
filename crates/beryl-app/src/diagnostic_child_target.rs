@@ -304,3 +304,9 @@ fn handshake_response(request_id: &str) -> DiagnosticProtocolResponse {
 #[cfg(test)]
 #[path = "../tests/unit/diagnostic_target.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/support/diagnostic_stdio.rs"]
+mod test_stdio;
+#[cfg(test)]
+pub(crate) use test_stdio::DiagnosticStdioClient;

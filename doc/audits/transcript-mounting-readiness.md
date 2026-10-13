@@ -1868,3 +1868,54 @@ remaining findings. All registered task fixtures were within the exact owned exe
 no reparse points or external ledger targets; that root and its fixtures are verified absent after
 review. No task-owned native process remains. Local configuration is restored. Documentation
 retrieval is reconciled before acceptance handoff; shared Cargo/analyzer caches remain available.
+
+## Diagnostic Child Transcript Activation Acceptance
+
+Accepted 2026-10-13 from `4642797f50262fa61612b408531cd02d45b5d8e1` plus the scoped diagnostic
+binding and qualification changes. `SwitchThread` authenticates one bounded typed identity and
+invokes the existing ordinary activation owner. A sole registered main shell remains observable
+when minimized; multiple shells require the exact active registered shell. Missing, foreign or
+ambiguous targets have no fallback. Other unavailable diagnostic commands remain separate.
+
+Bounded resident `ReadUiState` distinguishes admitted opening, coherent target publication,
+nullable live selection, exact pending target and retained exact activation failure. Query/count
+errors cannot overwrite the activation outcome. Observation reads published identities, revisions,
+frame/range/placement facts and bounded resident/resource counters, with at most 64 row facts;
+it creates no history, media or layout demand and returns no original transcript payload.
+
+All 37 selected cases passed in `d72b2687-b355-4b55-b092-a9780416e2d3`, 70.946 seconds.
+Explicit app library, diagnostic protocol and supervisor targets cover five native diagnostic
+cases, bootstrap regressions, exact argument/window admission, protocol framing/handshake and
+supervisor failure custody/disposal. Native cases enter real Bootstrap and the real stdio
+dispatcher in isolated nextest processes; they do not establish a separate production executable
+launch through the supervisor.
+
+History-heavy and image-heavy targets publish coherently while an actual current visible Code
+Display read remains held. Later ordinary preparation becomes ready without an activation gate.
+The actual published Tail endpoint identity/bottom, viewport height, mode and manual displacement
+remain qualified through settlement; its first-visible representative may change as preceding
+heights refine. Short-content leading placement has separate anchor evidence. The image fixture
+contains 48 sealed asset-backed read-only markers and reports zero decoded bytes, qualifying
+bounded marker presentation and Code preparation rather than successful image rendition.
+
+Missing/malformed targets preserve the exact source; a genuine missing-target failure survives
+both a query failure and healthy count publication. Pending activation refuses supersession,
+reports the unavailable live claim while its predecessor is parked, and settles its original
+target exactly once. EOF transfers one ordinary Exit request while activation gates Exit, with
+no deferred shutdown. After the exact activation settles, one fresh explicit ordinary Exit
+terminates the application and permits Home reopen/close. This is later ordinary disposal, not
+automatic EOF disposal or end-to-end supervisor Stop/retry coverage.
+
+Canonical locked metadata and no-feature `beryl-app`/`beryl` checks passed with local dependency
+patches absent, 14.47 seconds. The ignored local configuration was restored with its exact hash
+verified. Manifests and lockfiles are unchanged; the accepted widget remains
+`c9420ea81486b122d2727ac05383890d805d84f6`. Checks use one-job LLVM, nonincremental and
+no-normal-debug settings, serial native execution and the default Windows worker stack.
+Complete independent semantic and evidence review has no remaining findings. Earlier invalid
+fixture assumptions are retained in the [native evidence lessons](../failures/native-transcript-interaction-evidence.md).
+
+Registered fixtures were verified within the exact owned task root, with zero reparse points or
+external ledger targets and no remaining native/build process. Execution artifacts are reclaimed
+after their final review consumer; shared build/analyzer caches remain available. Documentation
+retrieval is reconciled before handoff. Combined mounted transcript acceptance and the broader
+Checkpoint 4 product flows remain separate, as does conditional unavailable repair.
