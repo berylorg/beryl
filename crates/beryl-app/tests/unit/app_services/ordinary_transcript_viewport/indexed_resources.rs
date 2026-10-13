@@ -27,6 +27,8 @@ mod table_native_mount;
 
 #[path = "indexed_resources/narrative_native.rs"]
 mod narrative_native;
+#[path = "indexed_resources/quote_insertion.rs"]
+mod quote_insertion;
 
 #[path = "indexed_resources/narrative_source_revision.rs"]
 mod narrative_source_revision;

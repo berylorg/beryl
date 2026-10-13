@@ -1469,3 +1469,73 @@ Copy and lifecycle only; no tests were rerun for this documentation-only qualifi
 complete-boundary semantic review accepted the source claims and derived boundaries with no remaining
 blocking findings. Review corrected menu-before-edit ordering before acceptance. Diagnostic-child
 activation and complete transcript workflow remain separate pending evidence boundaries.
+
+## Mounted Mapped Quote Acceptance
+
+The ordinary transcript now exposes a canonical Quote menu for exact current mapped authored
+selection. Pointer invocation requires a hit inside that selection; keyboard invocation requires
+direct transcript focus and anchors at its mapped head. Nested selection owners and synthetic
+discussion context cannot reuse an outer Quote capture. The menu contributes one bounded row;
+turn menus, replacement editing and branch creation retain their separate acceptance boundaries.
+
+Host harvesting validates activation, presentation, realized consecutive records, exact Syndic
+provenance, checked historical range containment, UTF-8 boundaries and the 65,536-byte aggregate
+limit. It copies selected Markdown bytes from the admitted source, including complete selected
+formatting syntax, partial constructs, Unicode and authored CRLF. It neither expands to whole
+records nor harvests pending, fallback, missing or synthetic content. Quote has no branch-terminal
+restriction.
+
+The shell binds the capture to its current transcript and composer claim. The widget inserts
+at the remembered directed selection head using a collapsed source range, preserving selected
+draft content and inline-object gaps. Ordinary immutable evidence, paged staging, commit and
+Undo/Redo own the edit. Quote preserves transcript focus and the clipboard. Weak source observation
+and a shared cancellation token reject obsolete captures before edit admission; coherent candidate
+staging cancels synchronously rather than relying only on deferred observers. Current geometry,
+source, activation and selection changes close the menu and invalidate its capture. Source changes
+cannot redirect an in-flight request to a new selection or composer.
+
+Native qualification exposed and corrected two bounded prerequisites. Private history ownership
+now fits the fixed Windows worker stack without changing durable encoding or authentication;
+the [worker-stack lesson](../failures/composer-history-worker-stack.md) records the evidence.
+Range geometry recognizes exact CRLF delimiters across pages, including trailing CRLF and the
+one-byte text-segment limit; the [geometry lesson](../failures/range-editor-crlf-geometry.md) records
+why correct draft bytes and quiescence alone did not prove a usable successor surface. The widget
+source is published at `1366c97b0e56c63fee12e0bd0dddb888bb8bad14`, pinned in the root manifest and
+canonical lockfile. The earlier fixed aggregate-byte test assertion was removed; measured exact
+capacity admission, one-byte-under refusal and shared-backing tests remain intact.
+
+Verification used stable Cargo, the existing local dependency overrides, LLVM linking, one build
+job, disabled ordinary debug/incremental output, serial nextest and explicit Cargo targets.
+App tests enabled `test-faults`; the final production check used no test features:
+
+- Combined app library: 258/258 in 557.163 seconds, including 50 native viewport cases;
+  `08380955-0e90-40fc-af32-19844cbcb59d`. The filter covered transcript core/panel, transcript
+  provider, ordinary transcript viewport and Running threads. Genuine native Quote covered
+  formatted and reverse partial Unicode selection, saved-position insertion, exact CRLF,
+  pointer/keyboard actions, Undo/Redo, unchanged focus/clipboard and pre-admission geometry
+  cancellation. Context refusal, font remeasurement and same-record source growth also passed.
+- Focused composer integration: 118/118 in 218.880 seconds;
+  `8f9805c3-7fae-4fc0-a61b-3db215347ce1`. Targets were `conversation_composer_gpui`,
+  `main_window_composer_mount`, `composer_lifecycle`, `syndic_composer_mutations` and
+  `syndic_composer_history`, including ordinary edits, cancellation, late settlement, recovery,
+  marker admission and history behavior.
+- Mapped-source and storage history: 66/66 in 118.979 seconds;
+  `1ce9564c-ad09-451d-8d98-c7769f32fee0`. Targets were `syndic_transcript_selection_copy`,
+  `historical_root_adoption`, `draft_edit_history`, `draft_edit_history_retention` and
+  `draft_marker_historical_adoption`. All seven mapped Quote cases and actual prepared history
+  commands on a one-MiB worker passed. Relevant source and configuration remained unchanged
+  through the later app/widget corrections.
+- Complete widget `range_widget` target: 132/132 in 4.699 seconds;
+  `2d0d257f-3e77-451f-882b-a9b64f78d864`, including exact insertion/evidence replay,
+  object gaps, capacity/read-only refusal and all three CRLF geometry regressions.
+- Locked canonical metadata and final no-feature production `beryl-app --lib` check passed
+  after the pin update; the language server restarted successfully.
+
+Independent complete-boundary semantic and adversarial review accepted the implementation and raw
+verification evidence with no remaining blocker. The review covered source and claim substitution,
+pre-admission cancellation, custody, bounded traversal/allocation, storage authentication and
+ordinary atomic edit settlement. All 96 positively registered native fixture and output directories
+are verified absent. Complete mounted transcript workflow acceptance remains pending; this outcome
+qualifies mapped Quote only.
+Reviewed execution artifacts have also been reclaimed; no task-owned process or session mutation
+remains.

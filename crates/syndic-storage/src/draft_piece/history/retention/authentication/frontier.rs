@@ -25,9 +25,7 @@ fn read_mutation_floor(
     floor: &mut Option<Box<DraftEditHistoryTransitionV1>>,
 ) -> Result<(), SyndicMutationError> {
     *floor = match frontier.oldest_eligible() {
-        Some(reference) => Some(Box::new(authenticated_transition_reference(
-            reader, reference,
-        )?)),
+        Some(reference) => Some(authenticated_transition_reference(reader, reference)?),
         None => None,
     };
     Ok(())
@@ -46,7 +44,7 @@ fn read_mutation_members(
     .into_iter()
     .flatten()
     {
-        let value = Box::new(authenticated_transition_reference(reader, reference)?);
+        let value = authenticated_transition_reference(reader, reference)?;
         if members.floor.as_deref().is_some_and(|floor| {
             value.cumulative_encoded_bytes() < floor.cumulative_encoded_bytes()
         }) {

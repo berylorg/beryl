@@ -98,20 +98,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 771: Establish Remaining Transcript Command Mounting Readiness (finished)
+# Phase 772: Mount Mapped Transcript Quote Insertion (finished)
 
-Qualified mapped source ranges, current geometry, Quote/menu target gaps and exact historical
-branch/replacement consumers against source and authority. Independent review accepted the
-[readiness record](audits/transcript-mounting-readiness.md#remaining-transcript-command-readiness)
-and corrected menu-before-edit sequencing. Command mounting and complete workflows remain pending.
-
-# Phase 772: Mount Mapped Transcript Quote Insertion (pending)
-
-Connect exact current mapped selection to saved-position composer insertion through ordinary
-segmented edit and undo semantics. Accept genuine native selection/action, unchanged clipboard and
-focus, exact selected Markdown, bounded rejection and obsolete-source/geometry cancellation.
-Supporting mapped command capture belongs to this consumer boundary; Quote does not inherit branch's
-proven-terminal restriction.
+Mounted exact mapped Quote at the saved composer caret through ordinary editing and Undo/Redo,
+preserving focus/clipboard and rejecting obsolete captures. Corrected bounded worker-stack and
+CRLF geometry prerequisites; 258 app, 118 composer, 66 mapped-source/history and 132 widget cases
+passed. Pinned production validation and independent review accepted the
+[outcome](audits/transcript-mounting-readiness.md#mounted-mapped-quote-acceptance).
 
 # Phase 773: Mount Transcript Turn Menus (pending)
 

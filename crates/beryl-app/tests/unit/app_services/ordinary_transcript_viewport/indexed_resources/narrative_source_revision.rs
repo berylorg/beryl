@@ -61,12 +61,22 @@ fn native_narrative_font_change_invalidates_selection_and_preserves_source_mappi
                         crate::theme_runtime::AppearancePublication::Durable,
                     ));
                 for (appearance, large) in [(enlarged, true), (original, false)] {
+                    with_native(window, cx, |native, app| {
+                        key(native, app, "shift-f10");
+                        assert!(panel.read(app).quote_menu_open_for_test());
+                    })
+                    .unwrap();
                     let before_copy = captured.borrow().len();
                     cx.update(|app| {
                         MainWindowShellRoot::test_apply_appearance(window, appearance, app)
                     })
                     .unwrap();
                     with_native(window, cx, |native, app| key(native, app, "ctrl-c")).unwrap();
+                    assert!(
+                        !panel
+                            .read_with(cx, |panel, _| panel.quote_menu_open_for_test())
+                            .unwrap()
+                    );
                     assert_eq!(
                         captured.borrow().len(),
                         before_copy,
@@ -215,6 +225,8 @@ fn native_narrative_saved_source_growth_resolves_syntax_and_terminal_reuses_mode
                     let last = point_at(panel.read(app), &id, initial.len());
                     drag(native, app, first, last);
                     copy_both(native, app, &captured, initial, initial);
+                    key(native, app, "shift-f10");
+                    assert!(panel.read(app).quote_menu_open_for_test());
                     id
                 })
                 .unwrap();
@@ -243,6 +255,11 @@ fn native_narrative_saved_source_growth_resolves_syntax_and_terminal_reuses_mode
                     "source growth keeps prior coherent presentation until the provider replacement runs");
             }).unwrap();
                 ready(window, &panel, cx, &[&grown]).await;
+                assert!(
+                    !panel
+                        .read_with(cx, |panel, _| panel.quote_menu_open_for_test())
+                        .unwrap()
+                );
                 let (grown_id, identity) = with_native(window, cx, |native, app| {
                     let (id, source, display) = record(panel.read(app), &grown);
                     assert_eq!(id, original_id);

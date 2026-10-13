@@ -34,7 +34,7 @@ pub struct PreparedDraftHistoricalRootAdoptionV1 {
     request_bytes: Vec<u8>,
     source_session: super::super::super::DraftEditorCandidateSessionV1,
     source_history: super::super::DraftEditHistoryFrontierV1,
-    selected_transition: super::super::DraftEditHistoryTransitionV1,
+    selected_transition: Box<super::super::DraftEditHistoryTransitionV1>,
     target_root: super::super::super::DraftPieceRootRecordV1,
 }
 
@@ -247,7 +247,7 @@ impl SyndicStorage {
             request_bytes: canonical_historical_root_adoption_request_bytes(request),
             source_session,
             source_history,
-            selected_transition,
+            selected_transition: Box::new(selected_transition),
             target_root,
         })
     }
@@ -414,10 +414,10 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
             self.prepared.request,
             self.prepared.request_bytes,
             Box::new(self.prepared.source_history),
-            Box::new(self.prepared.selected_transition),
+            self.prepared.selected_transition,
             Box::new(self.prepared.target_root),
             outcome,
-            successor_transition.clone().map(Box::new),
+            successor_transition.clone(),
             successor_history.clone().map(Box::new),
             successor_candidate.clone().map(Box::new),
         );
@@ -507,7 +507,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
             self.prepared.request,
             self.prepared.request_bytes,
             Box::new(self.prepared.source_history),
-            Box::new(self.prepared.selected_transition),
+            self.prepared.selected_transition,
             Box::new(self.prepared.target_root),
             outcome,
             None,
@@ -537,7 +537,7 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
 
 struct PreparedAdoptMutation {
     settlement: DraftHistoricalRootAdoptionV1,
-    successor_transition: Option<super::super::DraftEditHistoryTransitionV1>,
+    successor_transition: Option<Box<super::super::DraftEditHistoryTransitionV1>>,
     successor_history: Option<super::super::DraftEditHistoryFrontierV1>,
     successor_candidate: Option<super::super::super::DraftEditorCandidateSessionV1>,
 }
@@ -559,7 +559,7 @@ fn prepared_closure_is_exact(
         && authenticate_draft_edit_history_frontier_v1(reader, &prepared.source_history).is_ok()
         && point::<DraftEditHistoryTransitionsFamily>(reader, &prepared.selected_transition.key())?
             .as_ref()
-            == Some(&prepared.selected_transition)
+            == Some(prepared.selected_transition.as_ref())
         && point::<DraftPieceRootsFamily>(reader, &prepared.target_root.reference().key())?
             .as_ref()
             == Some(&prepared.target_root)

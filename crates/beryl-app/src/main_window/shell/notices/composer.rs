@@ -26,6 +26,7 @@ struct ComposerNoticeFeedback {
 enum ComposerFeedbackSource {
     Mutation(MainWindowComposerMutationFeedback),
     Clipboard(MainWindowComposerClipboardFeedback),
+    Quote(crate::main_window::conversation_composer_owner::ComposerQuoteFeedback),
 }
 
 impl ComposerFeedbackSource {
@@ -43,6 +44,24 @@ impl ComposerFeedbackSource {
 
     fn text(self) -> (&'static str, &'static str) {
         match self {
+            Self::Quote(feedback) => match feedback.kind {
+                crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::TooLarge => (
+                    "Quote selection is too large",
+                    "Select less transcript text. Your draft is unchanged.",
+                ),
+                crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::Unavailable => (
+                    "Quote insertion is unavailable",
+                    "Try again after the composer is ready. Your draft is unchanged.",
+                ),
+                crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::CapacityUnavailable => (
+                    "Quote capacity is temporarily unavailable",
+                    "Try again after capacity is released. Your draft is unchanged.",
+                ),
+                crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::Storage => (
+                    "Quote storage failed",
+                    "The quote could not be stored. Your draft is unchanged.",
+                ),
+            },
             Self::Mutation(feedback) => feedback_text(feedback.kind),
             Self::Clipboard(feedback) if feedback.paste => match feedback.kind {
                 MainWindowComposerClipboardFeedbackKind::TooLarge => (
@@ -125,8 +144,13 @@ impl MainWindowShellRoot {
                 mutation
             } else {
                 composer
-                    .clipboard_feedback()
-                    .map(ComposerFeedbackSource::Clipboard)
+                    .quote_feedback()
+                    .map(ComposerFeedbackSource::Quote)
+                    .or_else(|| {
+                        composer
+                            .clipboard_feedback()
+                            .map(ComposerFeedbackSource::Clipboard)
+                    })
                     .or(mutation)
             }
         });

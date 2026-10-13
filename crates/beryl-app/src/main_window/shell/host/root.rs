@@ -141,6 +141,7 @@ impl MainWindowShellRoot {
             home_warning_startup: None,
         };
         root.subscribe_notices(window, cx);
+        root.subscribe_quote(window, cx);
         #[cfg(target_os = "windows")]
         cx.observe_window_activation(window, |_, _, cx| {
             crate::parent_completion_sound::refresh_focus(cx)
@@ -304,6 +305,14 @@ impl Render for MainWindowShellRoot {
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
         };
+        let quote_colors = super::model_controls::menu_colors(self);
+        let quote_menu = self
+            .running_threads
+            .transcript
+            .clone()
+            .update(cx, |panel, cx| {
+                panel.render_quote_menu(quote_colors, window, cx)
+            });
         let appearance = &controller.appearance;
         let composer = controller
             .composer_mount()
@@ -397,6 +406,7 @@ impl Render for MainWindowShellRoot {
             .child(status)
             .children(stop_menu)
             .children(model_menu)
+            .children(quote_menu)
             .children(running_picker)
             .children(setup_picker)
             .children(switcher_picker)

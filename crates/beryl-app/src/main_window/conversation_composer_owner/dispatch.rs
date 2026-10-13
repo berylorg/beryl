@@ -282,6 +282,7 @@ impl MainWindowConversationComposerTaskError {
 
 impl MainWindowConversationComposer {
     pub(super) fn pump_one(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.cancel_obsolete_quote(window, cx);
         if self.detached.is_some() {
             self.pump_detached(window, cx);
             return;
@@ -340,6 +341,10 @@ impl MainWindowConversationComposer {
                 return;
             }
         };
+        if self.settle_unstarted_quote_cancellation(&request) {
+            self.schedule_pump(window, cx);
+            return;
+        }
         if let Err(error) = self.observe_operation(&request, cx) {
             self.last_error = Some(error);
             return;
@@ -390,7 +395,9 @@ impl MainWindowConversationComposer {
                 )
             } else {
                 let marker_metadata = self.marker_metadata_for_request(&request);
-                let cancellation = CommandCancellation::new();
+                let cancellation = PendingComposerMutationRequest::retain(&request)
+                    .and_then(|request| self.quote_cancellation(request.key()))
+                    .unwrap_or_else(CommandCancellation::new);
                 #[cfg(feature = "test-faults")]
                 if matches!(request, RangeTextInputRequest::MutationCommit(_))
                     && service.take_test_mutation_commit_cancellation()
@@ -593,6 +600,37 @@ impl MainWindowConversationComposer {
                 selection.anchor,
                 selection.head,
             ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_edit_position_proof_diagnostics(&self, cx: &gpui::App) -> String {
+        let input = self.input.read(cx);
+        let surface = input.surface();
+        let positions = surface.map(|surface| {
+            let selection = surface.selection();
+            gpui_text_input::MutationPositions::new(
+                surface.caret(),
+                selection.anchor,
+                selection.head,
+            )
+        });
+        format!(
+            "live={},route={:?},pending_dispatch={},active_flight={:?},scheduled={},surface_current={},surface_binding={:?},selected_binding={:?},surface_positions={:?},admitted_positions={:?},adopted_positions={:?},quiescent={},semantic_quiescent={},realization={:?}",
+            self.is_live(),
+            self.route,
+            self.pending_dispatch.is_some(),
+            self.active_flight,
+            self.scheduled,
+            input.is_surface_current_and_interactive(),
+            surface.map(|surface| surface.binding()),
+            self.selection.binding().range_binding(),
+            positions,
+            self.admitted_positions,
+            input.adopted_mutation_positions(),
+            input.is_quiescent(),
+            input.is_semantically_quiescent(),
+            input.realization_diagnostics(),
+        )
     }
 
     fn pump_edit_proof(&mut self, window: &mut Window, cx: &mut Context<Self>) {

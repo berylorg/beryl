@@ -1,6 +1,8 @@
 mod copy;
 mod delivery;
 mod measurement;
+mod quote;
+pub(super) use quote::QuoteState;
 #[cfg(test)]
 mod testing;
 
@@ -327,6 +329,9 @@ impl SyndicTranscriptPanel {
         }
         self.host.clear_resident_selection();
         self.reset_keyboard_copy();
+        if self.narrative_selection.as_ref() != Some(&selection) {
+            self.quote_state.capture = None;
+        }
         self.narrative_selection = Some(selection);
         self.focus_handle.focus(window);
         cx.notify();

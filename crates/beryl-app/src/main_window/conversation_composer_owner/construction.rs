@@ -271,6 +271,8 @@ impl MainWindowConversationComposer {
             submission_outcome_rendered: Default::default(),
             submission_proof: None,
             submission_observation_epoch: std::sync::Arc::new(()),
+            quote_insertion: None,
+            quote_feedback: None,
             _input_subscription: None,
             _input_event_subscription: None,
         };

@@ -228,7 +228,7 @@ impl MainWindowShellRoot {
         let input = resident.read(cx).gpui_input();
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
         let panel = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
-        self.running_threads.replace_transcript(panel, cx);
+        self.running_threads.replace_transcript(panel, window, cx);
         self.stage_recovered_transcript(
             selection,
             transcript,

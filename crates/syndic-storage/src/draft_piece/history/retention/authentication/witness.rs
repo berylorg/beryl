@@ -16,9 +16,9 @@ use super::{exact_transition_reference, transition_reference_is_exact};
 pub(crate) fn build_ancestor_witness(
     reader: &DomainReader<'_, SyndicDomain>,
     prior: Option<DraftEditHistoryTransitionReferenceV1>,
-) -> Result<(u64, DraftEditHistoryAncestorWitnessV1), SyndicMutationError> {
+) -> Result<(u64, Box<DraftEditHistoryAncestorWitnessV1>), SyndicMutationError> {
     let Some(prior) = prior else {
-        return Ok((1, DraftEditHistoryAncestorWitnessV1::EMPTY));
+        return Ok((1, Box::new(DraftEditHistoryAncestorWitnessV1::EMPTY)));
     };
     let depth = prior
         .journal_depth()
@@ -43,7 +43,10 @@ pub(crate) fn build_ancestor_witness(
     }
     Ok((
         depth,
-        DraftEditHistoryAncestorWitnessV1::from_parts(ancestor_bitmap_for_depth(depth), slots),
+        Box::new(DraftEditHistoryAncestorWitnessV1::from_parts(
+            ancestor_bitmap_for_depth(depth),
+            slots,
+        )),
     ))
 }
 
@@ -55,7 +58,7 @@ pub(crate) fn transition_is_ancestor_of(
     let Some(mut difference) = head.journal_depth().checked_sub(candidate.journal_depth()) else {
         return Ok(false);
     };
-    let mut current = head.clone();
+    let mut current = Box::new(head.clone());
     for level in 0..DRAFT_EDIT_HISTORY_ANCESTOR_LEVELS {
         if difference & 1 != 0 {
             let Some(reference) = current.ancestor_witness().ancestor(level) else {

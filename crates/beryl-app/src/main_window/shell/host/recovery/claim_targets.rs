@@ -108,7 +108,7 @@ impl MainWindowShellRoot {
         let input = resident.read(cx).gpui_input();
         self.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
         let panel = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
-        self.running_threads.replace_transcript(panel, cx);
+        self.running_threads.replace_transcript(panel, window, cx);
         self.stage_recovered_transcript(
             selection,
             transcript,
@@ -232,7 +232,7 @@ impl MainWindowShellRoot {
         draft.composer = Some(attachment.original);
         self.composer_observer = None;
         self.running_threads
-            .replace_transcript(attachment.transcript, cx);
+            .replace_transcript(attachment.transcript, window, cx);
         self.running_threads.transcript_claim = attachment.transcript_claim;
         cx.notify();
         Ok(true)

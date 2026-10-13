@@ -41,6 +41,13 @@ use gpui::{
 
 gpui::actions!(syndic_transcript, [OpenTranscriptContextMenu]);
 pub(crate) struct ResourceViewportDemandChanged;
+pub(crate) struct QuoteInsertionRequested {
+    pub(crate) markdown: String,
+    pub(crate) request: u64,
+    pub(crate) activation: u64,
+    pub(crate) presentation: u64,
+    pub(crate) cancellation: beryl_home_store::CommandCancellation,
+}
 use super::{
     DemandFact, DemandFactKind, LocalPresentationReason, ManualTranscriptScrollCommand,
     PreparedTranscriptActivation, RealizedFrameRecord, RealizedFrameRequest, RealizedFrameWindow,
@@ -140,6 +147,7 @@ pub(crate) struct SyndicTranscriptPanel {
     literal_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
     literal_candidate_geometry: Vec<narrative_literal_geometry::LiteralGeometry>,
     narrative_selection: Option<narrative::NarrativeSelection>,
+    quote_state: narrative::QuoteState,
     narrative_dragging: bool,
     narrative_viewport_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     save_admission: crate::main_window::WorkerAdmission,
@@ -155,6 +163,7 @@ pub(crate) struct SyndicTranscriptPanel {
 }
 
 impl gpui::EventEmitter<ResourceViewportDemandChanged> for SyndicTranscriptPanel {}
+impl gpui::EventEmitter<QuoteInsertionRequested> for SyndicTranscriptPanel {}
 
 impl SyndicTranscriptPanel {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
@@ -167,6 +176,7 @@ impl SyndicTranscriptPanel {
             literal_candidate_geometry: Vec::new(),
             narrative_selection: None,
             narrative_dragging: false,
+            quote_state: narrative::QuoteState::default(),
             narrative_viewport_bounds: None,
             focus_handle: cx.focus_handle(),
             host: SyndicTranscriptHost::empty(),
@@ -248,6 +258,7 @@ impl SyndicTranscriptPanel {
         let (host, outcome) = self.host.prepare_coherent_activation(prepared.clone());
         let unplaced_tail = host.scroll_state().anchor.is_none()
             && prepared.placement == TranscriptActivationPlacement::Tail;
+        self.quote_state.capture = None;
         self.staged = Some(StagedTranscript {
             activation: Some(prepared.clone()),
             host,
@@ -305,6 +316,7 @@ impl SyndicTranscriptPanel {
             retained_previous_snapshot: true,
             provider_request: None,
         };
+        self.quote_state.capture = None;
         self.staged = Some(StagedTranscript {
             activation: Some(prepared.clone()),
             host,
@@ -495,6 +507,7 @@ impl SyndicTranscriptPanel {
             retained_previous_snapshot: true,
             provider_request: None,
         };
+        self.quote_state.capture = None;
         self.staged = Some(StagedTranscript {
             activation: None,
             host,
@@ -628,6 +641,7 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn discard_staged_activation(&mut self) {
+        self.quote_state.capture = None;
         if self.staged.as_ref().is_some_and(|staged| {
             staged
                 .activation
@@ -652,6 +666,7 @@ impl SyndicTranscriptPanel {
     fn close_invalid_geometry(&mut self) {
         self.cancel_literal_copy();
         self.narrative_selection = None;
+        self.quote_state.capture = None;
         self.narrative_dragging = false;
         self.keyboard_copy.gesture.invalidate_records();
         self.keyboard_copy.feedback = "";
@@ -725,6 +740,7 @@ impl SyndicTranscriptPanel {
     }
 
     pub(crate) fn retire(&mut self) {
+        self.close_invalid_geometry();
         self.reset_keyboard_copy();
         self.keyboard_copy = Default::default();
         for code in &mut self.code_panels {
@@ -1488,6 +1504,18 @@ impl SyndicTranscriptPanel {
                     }
                 }),
             )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|panel, event: &gpui::MouseDownEvent, window, cx| {
+                    panel.open_quote_menu(Some(event.position), window, cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .on_action(
+                cx.listener(|panel, _: &OpenTranscriptContextMenu, window, cx| {
+                    panel.open_quote_menu(None, window, cx);
+                }),
+            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|panel, _, _, _| {
@@ -1505,6 +1533,11 @@ impl SyndicTranscriptPanel {
                 cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
                     if copy_keyboard::is_copy(event) {
                         panel.copy_records_key(event, window, cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    if event.keystroke.key == "f10" && event.keystroke.modifiers.shift {
+                        panel.open_quote_menu(None, window, cx);
                         cx.stop_propagation();
                         return;
                     }
@@ -1698,7 +1731,6 @@ fn render_realized_record(
     commands_pending: bool,
     cx: &mut Context<SyndicTranscriptPanel>,
 ) -> AnyElement {
-    let context_record_id = record.id.clone();
     div()
         .debug_selector(|| format!("syndic-transcript-record:{}", record.id.0))
         .id(SharedString::from(format!(
@@ -1717,9 +1749,8 @@ fn render_realized_record(
         .pb(px(record_vertical_padding(snapshot, record).1))
         .on_mouse_down(
             MouseButton::Right,
-            cx.listener(move |panel, _, window, cx| {
-                let _ = panel.apply_realized_context_menu_target(&context_record_id, cx);
-                window.dispatch_action(OpenTranscriptContextMenu.boxed_clone(), cx);
+            cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
+                panel.open_quote_menu(Some(event.position), window, cx);
                 cx.stop_propagation();
             }),
         )

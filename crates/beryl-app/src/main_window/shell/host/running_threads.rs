@@ -83,11 +83,13 @@ pub(super) struct RunningThreadsContribution {
     cancellation: ProjectionCancellationToken,
     poll: Option<gpui::Task<()>>,
     workers: crate::main_window::conversation_composer_mount::worker::WorkerLifetime,
-    reads_suspended: bool,
-    views_retired: bool,
+    pub(super) reads_suspended: bool,
+    pub(super) views_retired: bool,
     read_drain_task: Option<gpui::Task<()>>,
     pub(super) transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     resource_subscription: Option<gpui::Subscription>,
+    pub(super) quote_subscription: Option<gpui::Subscription>,
+    quote_presentation_subscription: Option<gpui::Subscription>,
     pub(super) transcript_provider: Option<crate::transcript_provider::TranscriptProviderReader>,
     transcript_task: Option<gpui::Task<()>>,
     #[cfg(test)]
@@ -168,14 +170,29 @@ impl RunningThreadsContribution {
         )
     }
 
+    fn quote_presentation_subscription(
+        transcript: &Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
+        cx: &mut Context<MainWindowShellRoot>,
+    ) -> gpui::Subscription {
+        cx.observe(transcript, |root, _, cx| {
+            if !root.running_threads.views_retired {
+                cx.notify();
+            }
+        })
+    }
+
     pub(in crate::main_window::shell::host) fn replace_transcript(
         &mut self,
         transcript: Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
+        window: &mut Window,
         cx: &mut Context<MainWindowShellRoot>,
     ) {
         let admission = self.workers.admission(RUNNING_READ_RESOURCE_CAPACITY - 2);
         transcript.update(cx, |panel, _| panel.set_code_save_admission(admission));
         self.resource_subscription = Some(Self::resource_subscription(&transcript, cx));
+        self.quote_presentation_subscription =
+            Some(Self::quote_presentation_subscription(&transcript, cx));
+        self.quote_subscription = Some(super::quote::subscribe_quote(&transcript, window, cx));
         self.transcript = transcript;
     }
 
@@ -191,6 +208,8 @@ impl RunningThreadsContribution {
         let transcript = cx.new(crate::syndic_transcript::SyndicTranscriptPanel::new);
         transcript.update(cx, |panel, _| panel.set_code_save_admission(admission));
         let resource_subscription = Self::resource_subscription(&transcript, cx);
+        let quote_presentation_subscription =
+            Self::quote_presentation_subscription(&transcript, cx);
         Self {
             reader: None,
             #[cfg(all(test, feature = "test-faults"))]
@@ -226,6 +245,8 @@ impl RunningThreadsContribution {
             read_drain_task: None,
             transcript,
             resource_subscription: Some(resource_subscription),
+            quote_subscription: None,
+            quote_presentation_subscription: Some(quote_presentation_subscription),
             transcript_provider: None,
             transcript_task: None,
             #[cfg(test)]
@@ -533,6 +554,8 @@ impl MainWindowShellRoot {
         self.running_threads.read_drain_task = None;
         self.running_threads.views_retired = true;
         self.running_threads.resource_subscription = None;
+        self.running_threads.quote_subscription = None;
+        self.running_threads.quote_presentation_subscription = None;
         if let Some(picker) = self.running_threads.picker.take() {
             picker.update(cx, |picker, picker_cx| picker.dismiss(window, picker_cx));
         }

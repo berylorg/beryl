@@ -49,6 +49,8 @@ const PIN_PLACEHOLDER_BYTES: usize = 64;
 
 #[path = "core/inline_table.rs"]
 mod inline_table;
+#[path = "core/mapped_quote.rs"]
+mod mapped_quote;
 #[path = "core/narrative.rs"]
 mod narrative;
 #[path = "core/resource_delivery.rs"]

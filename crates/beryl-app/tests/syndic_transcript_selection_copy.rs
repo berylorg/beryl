@@ -6,6 +6,9 @@ mod syndic_transcript_core;
 use syndic_transcript_core::fixture_provider::InMemorySyndicTranscriptProvider;
 use syndic_transcript_core::*;
 
+#[path = "syndic_transcript_selection_copy/mapped_quote.rs"]
+mod mapped_quote;
+
 const REVISION: ProviderRevision = ProviderRevision(73);
 
 fn view_id() -> TranscriptViewId {

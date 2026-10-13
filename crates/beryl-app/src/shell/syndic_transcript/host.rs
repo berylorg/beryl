@@ -613,6 +613,16 @@ impl SyndicTranscriptHost {
         self.core.clear_resident_quote_target()
     }
 
+    pub(crate) fn mapped_quote_markdown(
+        &self,
+        activation: u64,
+        revision: u64,
+        ranges: &[(super::ResidentPresentationRecordId, std::ops::Range<usize>)],
+    ) -> Result<String, ResidentSelectionUnavailable> {
+        self.core
+            .mapped_quote_markdown(activation, revision, ranges)
+    }
+
     pub(crate) fn resident_quote_payload(
         &self,
     ) -> Result<ResidentTranscriptQuotePayload, ResidentSelectionUnavailable> {

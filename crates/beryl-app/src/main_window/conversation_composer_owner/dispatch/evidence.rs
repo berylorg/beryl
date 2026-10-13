@@ -16,6 +16,19 @@ pub(in crate::main_window::conversation_composer_owner) struct ActiveComposerMut
 }
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window::conversation_composer_owner) fn mark_quote_evidence_cancelled(
+        &mut self,
+        key: gpui_text_input::MutationKey,
+    ) {
+        if let Some(evidence) = self
+            .mutation_evidence
+            .as_mut()
+            .filter(|evidence| evidence.pass.key() == key)
+        {
+            evidence.cancelled = true;
+        }
+    }
+
     pub(in crate::main_window::conversation_composer_owner) fn mutation_admission_unavailable(
         &self,
     ) -> bool {
@@ -46,6 +59,8 @@ impl MainWindowConversationComposer {
                         format!("composer immutable edit evidence is unavailable: {error}")
                     })?;
                 self.last_mutation_admission_failure = None;
+                self.quote_feedback = None;
+                self.quote_evidence_began(begin.proposal().key());
                 self.mutation_feedback = None;
                 cx.notify();
                 self.mutation_evidence = Some(ActiveComposerMutationEvidence {
@@ -236,6 +251,11 @@ impl MainWindowConversationComposer {
             .paste
             .as_ref()
             .map(|paste| paste.cancellation.clone())
+            .or_else(|| {
+                self.quote_insertion
+                    .as_ref()
+                    .map(|quote| quote.cancellation.clone())
+            })
             .unwrap_or_else(CommandCancellation::new);
         let task = cx.background_executor().spawn(async move {
             let mut slot = service.slot.lock().map_err(|_| {
@@ -354,6 +374,10 @@ impl MainWindowConversationComposer {
                 let acknowledgement = evidence.acknowledgement.take().ok_or_else(|| {
                     "composer evidence acknowledgement has no pending page".to_owned()
                 })?;
+                if evidence.cancelled {
+                    evidence.awaiting_host = false;
+                    return Ok(());
+                }
                 let accepted = self.input.update(cx, |input, _| {
                     input.acknowledge_mutation_evidence_page(acknowledgement)
                 });
@@ -377,6 +401,14 @@ impl MainWindowConversationComposer {
                 }
             }
             ComposerHostMutationEvidenceOutcome::Began(key) => {
+                if self
+                    .mutation_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.cancelled && evidence.pass.key() == key)
+                {
+                    self.mutation_evidence = None;
+                    return Ok(());
+                }
                 if let Some(paste) = self.paste.as_mut().filter(|paste| paste.key == Some(key)) {
                     paste.admitted = true;
                 }
@@ -422,6 +454,9 @@ impl MainWindowConversationComposer {
                     .update(cx, |input, cx| input.reject_mutation_preflight(key, cx));
                 if !cancelled && let Err(error) = result {
                     return Err(format!("composer evidence refusal was rejected: {error}"));
+                }
+                if !cancelled {
+                    self.record_quote_refusal(key, &failure);
                 }
                 self.clear_propagated_cut(key);
                 self.clear_captured_paste(key, cx);
@@ -501,6 +536,7 @@ impl MainWindowConversationComposer {
         &mut self,
         key: gpui_text_input::MutationKey,
     ) {
+        self.clear_quote_insertion(key);
         if self
             .mutation_evidence
             .as_ref()

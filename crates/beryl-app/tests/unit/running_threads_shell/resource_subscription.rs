@@ -22,9 +22,10 @@ fn transcript_replacement_routes_resource_wakeups_only_from_the_current_live_pan
     for _ in 0..2 {
         let current = mounted
             .window
-            .update(cx, |root, _, cx| {
+            .update(cx, |root, window, cx| {
                 let panel = cx.new(SyndicTranscriptPanel::new);
-                root.running_threads.replace_transcript(panel.clone(), cx);
+                root.running_threads
+                    .replace_transcript(panel.clone(), window, cx);
                 panel
             })
             .unwrap();

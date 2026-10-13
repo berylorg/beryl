@@ -21,6 +21,7 @@ pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
 mod model_controls;
+mod quote;
 mod selected;
 mod shutdown;
 mod shutdown_draft;

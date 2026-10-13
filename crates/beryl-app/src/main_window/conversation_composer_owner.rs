@@ -43,7 +43,9 @@ pub(crate) use fresh_candidate::{
 };
 mod lifecycle;
 mod prepublication;
+mod quote;
 pub(crate) use prepublication::MainWindowRetiredPrepublicationCleanup;
+pub(in crate::main_window) use quote::{ComposerQuoteFeedback, ComposerQuoteFeedbackKind};
 mod realization;
 mod recovery;
 mod render;
@@ -233,6 +235,8 @@ pub struct MainWindowConversationComposer {
         Box<[ComposerHostImageMarkerMetadata]>,
     )>,
     mutation_evidence: Option<dispatch::ActiveComposerMutationEvidence>,
+    quote_insertion: Option<quote::ComposerQuoteInsertion>,
+    quote_feedback: Option<quote::ComposerQuoteFeedback>,
     last_mutation_admission_failure:
         Option<std::sync::Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>>,
     mutation_feedback: Option<MainWindowComposerMutationFeedback>,

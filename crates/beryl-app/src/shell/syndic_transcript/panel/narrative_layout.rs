@@ -346,7 +346,6 @@ impl NarrativeLayout {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn position(&self, index: usize) -> Option<Point<Pixels>> {
         self.admissions
             .iter()

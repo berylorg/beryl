@@ -573,6 +573,9 @@
 - [x] Qualified remaining mapped Quote, menu, replacement-edit and branch command consumers;
   independent [readiness review](../../audits/transcript-mounting-readiness.md#remaining-transcript-command-readiness)
   accepted separate mounting boundaries without accepting the commands or complete workflows.
+- [x] Mounted exact mapped Quote through saved-position ordinary composer editing and Undo/Redo,
+  preserving focus/clipboard and rejecting obsolete source/geometry; independently reviewed
+  [acceptance](../../audits/transcript-mounting-readiness.md#mounted-mapped-quote-acceptance).
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.

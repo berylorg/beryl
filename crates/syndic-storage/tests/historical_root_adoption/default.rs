@@ -17,10 +17,19 @@ fn committed_adoption(
     syndic_storage::PreparedDraftHistoricalRootAdoptionV1,
 ) {
     let prepared = prepare_historical_selection(storage, store, session, operation, direction);
-    let outcome = execute(
-        store,
-        storage.adopt_draft_historical_root(revision(storage, store), prepared.clone()),
-    );
+    let contribution =
+        storage.adopt_draft_historical_root(revision(storage, store), prepared.clone());
+    let mut command = beryl_home_store::HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    let outcome = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("historical-undo-redo".into())
+            .stack_size(1024 * 1024)
+            .spawn_scoped(scope, move || store.execute(command))
+            .unwrap()
+            .join()
+            .unwrap()
+    });
     assert!(matches!(
         &outcome,
         beryl_home_store::CommandOutcome::Committed {
@@ -62,6 +71,11 @@ fn committed_edit(
         panic!("edit did not commit")
     };
     adoption.clone()
+}
+
+#[test]
+fn historical_undo_redo_fits_a_one_mib_worker_stack() {
+    undo_redo_and_branch_adopt_existing_roots_without_current_publication();
 }
 
 #[test]

@@ -309,6 +309,8 @@ fn native_discussion_context_copy_is_exact_then_stripped_and_has_no_quote_or_men
                         .literal_narrative_position_for_test(&id, 23)
                         .unwrap();
                     drag(native, app, first, last);
+                    key(native, app, "shift-f10");
+                    assert!(!panel.read(app).quote_menu_open_for_test());
                 })
                 .unwrap();
                 copy_context_both(

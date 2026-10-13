@@ -100,7 +100,7 @@ pub(crate) fn append_ordinary_draft_edit_history_with_retention_v1(
         operation_id,
         1,
         journal_depth,
-        ancestor_witness.clone(),
+        &ancestor_witness,
     );
     let transition_charge = stored_transition_charge(&provisional)?;
     let cumulative = source
@@ -119,7 +119,7 @@ pub(crate) fn append_ordinary_draft_edit_history_with_retention_v1(
         operation_id,
         cumulative,
         journal_depth,
-        ancestor_witness,
+        &ancestor_witness,
     );
     if stored_transition_charge(&transition)? != transition_charge {
         return Err(DraftEditHistoryRetentionErrorV1::Invalid);
@@ -220,7 +220,7 @@ pub(crate) fn append_ordinary_draft_edit_history_with_retention_v1(
         provisional_next.byte_budget,
         provisional_next.retention_policy_revision,
     ));
-    Ok((transition, next))
+    Ok((*transition, next))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -235,7 +235,10 @@ pub(crate) fn append_historical_draft_edit_history_with_retention_v1(
     selection: DraftCompositePositionV1,
     operation_id: DraftPieceOperationIdV1,
 ) -> Result<
-    (DraftEditHistoryTransitionV1, DraftEditHistoryFrontierV1),
+    (
+        Box<DraftEditHistoryTransitionV1>,
+        DraftEditHistoryFrontierV1,
+    ),
     DraftEditHistoryRetentionErrorV1,
 > {
     authenticate_draft_edit_history_frontier_v1(reader, source)
@@ -297,7 +300,7 @@ pub(crate) fn append_historical_draft_edit_history_with_retention_v1(
         operation_id,
         1,
         journal_depth,
-        ancestor_witness.clone(),
+        &ancestor_witness,
     );
     let transition_charge = stored_transition_charge(&provisional)?;
     let cumulative = source
@@ -316,7 +319,7 @@ pub(crate) fn append_historical_draft_edit_history_with_retention_v1(
         operation_id,
         cumulative,
         journal_depth,
-        ancestor_witness,
+        &ancestor_witness,
     );
     if stored_transition_charge(&transition)? != transition_charge {
         return Err(DraftEditHistoryRetentionErrorV1::Invalid);
@@ -439,29 +442,31 @@ fn transition(
     operation_id: DraftPieceOperationIdV1,
     cumulative: u64,
     journal_depth: u64,
-    ancestor_witness: DraftEditHistoryAncestorWitnessV1,
-) -> DraftEditHistoryTransitionV1 {
-    authenticated_transition(DraftEditHistoryTransitionV1::from_parts(
-        DraftEditHistoryTransitionKeyV1::new(
-            source.reference().key().draft_id(),
-            session_id,
+    ancestor_witness: &DraftEditHistoryAncestorWitnessV1,
+) -> Box<DraftEditHistoryTransitionV1> {
+    Box::new(authenticated_transition(
+        DraftEditHistoryTransitionV1::from_parts(
+            DraftEditHistoryTransitionKeyV1::new(
+                source.reference().key().draft_id(),
+                session_id,
+                cumulative,
+            ),
+            source.reference().root(),
+            successor_root,
+            before_caret,
+            before_selection,
+            after_caret,
+            after_selection,
+            kind,
+            journal_depth,
+            source.journal_head(),
+            source.undo_head(),
+            source.redo_head(),
+            operation_id,
             cumulative,
+            ancestor_witness.clone(),
+            DraftPieceDigestV1::from_bytes([0; 32]),
         ),
-        source.reference().root(),
-        successor_root,
-        before_caret,
-        before_selection,
-        after_caret,
-        after_selection,
-        kind,
-        journal_depth,
-        source.journal_head(),
-        source.undo_head(),
-        source.redo_head(),
-        operation_id,
-        cumulative,
-        ancestor_witness,
-        DraftPieceDigestV1::from_bytes([0; 32]),
     ))
 }
 
@@ -470,11 +475,11 @@ fn oldest_retained_at_threshold(
     source: &DraftEditHistoryFrontierV1,
     head: &DraftEditHistoryTransitionV1,
     threshold: u64,
-) -> Result<DraftEditHistoryTransitionV1, SyndicMutationError> {
+) -> Result<Box<DraftEditHistoryTransitionV1>, SyndicMutationError> {
     let floor_depth = source
         .oldest_eligible()
         .map_or(1, |value| value.journal_depth());
-    let mut selected = head.clone();
+    let mut selected = Box::new(head.clone());
     for level in (0..DRAFT_EDIT_HISTORY_ANCESTOR_LEVELS).rev() {
         let Some(reference) = selected.ancestor_witness().ancestor(level) else {
             continue;

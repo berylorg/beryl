@@ -56,7 +56,7 @@ pub(crate) fn authenticate_draft_edit_history_frontier_v1(
 pub(super) fn authenticated_transition_reference(
     reader: &DomainReader<'_, SyndicDomain>,
     reference: DraftEditHistoryTransitionReferenceV1,
-) -> Result<DraftEditHistoryTransitionV1, SyndicMutationError> {
+) -> Result<Box<DraftEditHistoryTransitionV1>, SyndicMutationError> {
     let value = exact_transition_reference(reader, reference)?;
     authenticate_transition_predecessor(reader, &value)?;
     authenticate_root_pin(reader, value.predecessor_root())?;
@@ -67,12 +67,12 @@ pub(super) fn authenticated_transition_reference(
 pub(super) fn exact_transition_reference(
     reader: &DomainReader<'_, SyndicDomain>,
     reference: DraftEditHistoryTransitionReferenceV1,
-) -> Result<DraftEditHistoryTransitionV1, SyndicMutationError> {
+) -> Result<Box<DraftEditHistoryTransitionV1>, SyndicMutationError> {
     let value = required::<DraftEditHistoryTransitionsFamily>(reader, &reference.key())?;
     if value.reference() != reference || !value.is_locally_valid() {
         return Err(SyndicMutationError::IdentityCollision);
     }
-    Ok(value)
+    Ok(Box::new(value))
 }
 
 pub(super) fn authenticate_transition_predecessor(
