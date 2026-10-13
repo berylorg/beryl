@@ -15,16 +15,24 @@ use crate::{
     empty_selected_path_digest, root_thread_lineage_digest,
 };
 
+pub(crate) fn authenticate_replacement_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread: &ThreadRecord,
+    intent: crate::ReplacementEditIntent,
+) -> Result<(crate::TurnRecord, crate::CanonicalItemRecord), crate::SyndicMutationError> {
+    admission::authenticate_replacement_target(reader, thread, intent)
+}
+
 mod accepted;
 mod activity;
 mod activity_enrollment;
 pub(crate) mod activity_qualification;
-pub use activity_qualification::{ActivityRetirementFingerprint, ActivitySourceQualification};
 pub use activity_enrollment::{
     ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
     ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,
     PreparedActivityEnrollment,
 };
+pub use activity_qualification::{ActivityRetirementFingerprint, ActivitySourceQualification};
 mod admission;
 mod admission_helpers;
 mod binding;
@@ -34,15 +42,20 @@ mod discussion_creation;
 mod discussion_handoff;
 pub(crate) mod discussion_mutation;
 pub use discussion_handoff::{
-    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
-    PreparedDiscussionParent,
-    DiscussionParentExecution, DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
-    PreparedDiscussionParentExecution,
-    GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
-    GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
+    AdmitDiscussionHandoff, DiscussionHandoffIntent, DiscussionHandoffMutation,
+    DiscussionHandoffStatus, DiscussionParentFrontierProof, PreparedDiscussionHandoff,
 };
-pub use discussion_handoff::{DiscussionChildSettlement, DiscussionChildSettlementDisposition, PreparedDiscussionChildSettlement};
-pub use discussion_handoff::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
+pub use discussion_handoff::{
+    DiscussionChildSettlement, DiscussionChildSettlementDisposition,
+    PreparedDiscussionChildSettlement,
+};
+pub use discussion_handoff::{
+    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentExecution,
+    DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
+    DiscussionParentRequest, GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery,
+    GeneratedDiscussionInputIntent, GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus,
+    PreparedDiscussionParent, PreparedDiscussionParentExecution, PreparedGeneratedDiscussionInput,
+};
 mod initial_thread;
 pub use discussion_creation::{
     CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation,
@@ -108,9 +121,7 @@ pub use stop::{
     AbandonStopOperation, AdmitStopOperation, ClaimStopDispatch, JoinStopCause,
     SafelyReopenStopOperation,
 };
-pub use thread_properties::{
-    AcceptGeneratedThreadTitle, PublishThreadUsage,
-};
+pub use thread_properties::{AcceptGeneratedThreadTitle, PublishThreadUsage};
 pub use transcript::{AdvanceTranscriptBuild, StartTranscriptBuild};
 
 /// Exact immutable inputs for one ordinary thread and its first durable draft.

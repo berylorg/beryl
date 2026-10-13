@@ -67,6 +67,12 @@ and repair-media participants.
   A descriptor or ordinary reference read grants no authority; foreign generation, stale owner,
   substituted entry, incomplete set or unavailable Asset refuses the proof. The witness changes
   no record, reference head or image-label state and reads no Syndic-owned record.
+  It may retain existing opaque `VerifiedSidecar` authority qualified by HomeStore to the exact
+  current private store instance and healthy generation, plus the exact private images address,
+  AssetId digest and byte length. Generation-number or path equality alone is insufficient. This permits
+  repeated-marker windows to reuse verified bytes without rehashing the image for each occurrence;
+  it still checks the current committed metadata and sealed-set association. Foreign, retired or
+  substituted sidecar authority rejects. The caller need not retain an input-wide asset cache.
 - `AssetState` constructs the private `images` content address and verifies exact sidecar length and
   digest by bounded pages, returning file-backed authority without mapping the whole asset. First
   metadata publication requires matching admitted sidecar namespace, digest, length, and media

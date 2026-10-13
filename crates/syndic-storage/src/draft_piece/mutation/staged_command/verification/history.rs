@@ -8,6 +8,9 @@ pub(super) fn terminal(
     current_history: &DraftEditHistoryFrontierV1,
 ) -> Result<(), StagedDraftPieceOutcomeErrorV1> {
     match settlement.closure() {
+        DraftPieceSettlementClosureV1::SealedImport(_) => {
+            Err(invariant("sealed import is outside staged edit history"))
+        }
         DraftPieceSettlementClosureV1::Committed(adoption) => {
             if selected.session != *adoption.adopted_session()
                 || current_history != adoption.adopted_history()

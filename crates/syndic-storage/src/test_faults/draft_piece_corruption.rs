@@ -1679,6 +1679,11 @@ pub fn inject_draft_piece_settlement_closure_corruption(
         .expect("fixture settlement reads")
         .expect("fixture settlement exists");
     let closure = match settlement.closure() {
+        DraftPieceSettlementClosureV1::SealedImport(selection) => {
+            let mut corrupt = selection.clone();
+            corrupt.imported_root = settlement.predecessor_root();
+            DraftPieceSettlementClosureV1::SealedImport(corrupt)
+        }
         DraftPieceSettlementClosureV1::Committed(adoption) => {
             DraftPieceSettlementClosureV1::Committed(DraftPieceCommittedAdoptionV1::new(
                 adoption.predecessor_session().clone(),

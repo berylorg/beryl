@@ -709,6 +709,12 @@ fn terminal_first_session_closure_is_exact(
 }
 
 pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -> bool {
+    if settlement
+        .terminal_source()
+        .is_some_and(|s| matches!(s.frontier(), DraftPieceBuildFrontierV1::SealedImport(_)))
+    {
+        return import_settlement_is_exact(settlement);
+    }
     let header = DraftPieceEditHeaderV1::new(
         settlement.key().draft_id(),
         settlement.key().session_id(),
@@ -1082,6 +1088,9 @@ pub(crate) fn canonical_proposal_digest(bytes: &[u8]) -> DraftPieceDigestV1 {
 }
 
 pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
+    if matches!(build.frontier(), DraftPieceBuildFrontierV1::SealedImport(_)) {
+        return import_build_is_exact(build);
+    }
     if !mapping_progress::source_extent_is_exact(build)
         || !mapping_progress::endpoint_is_exact(
             build.mapping(),
@@ -1222,6 +1231,7 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         return false;
     }
     match build.frontier() {
+        DraftPieceBuildFrontierV1::SealedImport(_) => return false,
         DraftPieceBuildFrontierV1::Receiving {
             next_ordinal,
             chain,
@@ -1432,6 +1442,13 @@ pub(crate) fn canonical_fragment_endpoint(
 }
 
 pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceiptV1) -> bool {
+    if matches!(
+        receipt.frontier(),
+        DraftPieceBuildFrontierV1::SealedImport(_)
+    ) {
+        return import_progress_is_exact(receipt)
+            && receipt.reference().digest() == progress_receipt_digest_from_value(receipt);
+    }
     if !mapping_progress::endpoint_is_exact(
         receipt.mapping(),
         receipt.marker_effect_continuation().active(),
@@ -1660,6 +1677,15 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
     current: &DraftPieceBuildProgressReceiptV1,
     scanned_fragment: Option<&DraftPieceBuildFragmentV1>,
 ) -> bool {
+    if matches!(
+        previous.frontier(),
+        DraftPieceBuildFrontierV1::SealedImport(_)
+    ) || matches!(
+        current.frontier(),
+        DraftPieceBuildFrontierV1::SealedImport(_)
+    ) {
+        return scanned_fragment.is_none() && import_transition_is_exact(previous, current);
+    }
     mapping_progress::transition_is_exact(previous, current, scanned_fragment)
 }
 fn hash_optional_record_id(digest: &mut Sha256, value: Option<DraftPieceRecordIdV1>) {
@@ -1679,6 +1705,12 @@ fn hash_build_boundary(digest: &mut Sha256, value: DraftPieceBuildBoundaryV1) {
 
 fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
     match value {
+        DraftPieceBuildFrontierV1::SealedImport(frontier) => {
+            let mut encoder = crate::codec::parts::Encoder::new();
+            encoder.u8(7);
+            enc_import_frontier(&mut encoder, frontier);
+            digest.update(encoder.finish());
+        }
         DraftPieceBuildFrontierV1::Receiving {
             next_ordinal,
             chain,

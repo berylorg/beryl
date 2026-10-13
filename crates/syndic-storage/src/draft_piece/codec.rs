@@ -502,6 +502,10 @@ fn dec_build_boundary(d: &mut Decoder<'_>) -> Result<DraftPieceBuildBoundaryV1, 
 
 fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
     match frontier {
+        DraftPieceBuildFrontierV1::SealedImport(value) => {
+            e.u8(7);
+            enc_import_frontier(e, value);
+        }
         DraftPieceBuildFrontierV1::Receiving {
             next_ordinal,
             chain,
@@ -565,6 +569,9 @@ fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
 
 fn dec_build_frontier(d: &mut Decoder<'_>) -> Result<DraftPieceBuildFrontierV1, CodecError> {
     match d.u8()? {
+        7 => Ok(DraftPieceBuildFrontierV1::SealedImport(
+            dec_import_frontier(d)?,
+        )),
         0 => Ok(DraftPieceBuildFrontierV1::Receiving {
             next_ordinal: d.u64()?,
             chain: dec_digest(d)?,
@@ -980,6 +987,13 @@ fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1)
             e.u8(3);
             e.fixed16(operation_id.as_bytes());
         }
+        DraftEditorCandidateSessionRecordKeyV1::ReplacementIntentCancellationReceipt {
+            operation_id,
+            ..
+        } => {
+            e.u8(4);
+            e.fixed16(operation_id.as_bytes());
+        }
     }
 }
 
@@ -1007,6 +1021,13 @@ fn dec_session_key(
             session_id,
             DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
         )),
+        4 => Ok(
+            DraftEditorCandidateSessionRecordKeyV1::replacement_intent_cancellation_receipt(
+                draft_id,
+                session_id,
+                DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+            ),
+        ),
         tag => Err(CodecError::InvalidTag {
             kind: "draft editor session key",
             tag,
@@ -1193,7 +1214,10 @@ fn encode_session_record(
             enc_session_head(&mut e, head);
         }
         DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt) => {
-            if let Some(receipt) = receipt.publication() {
+            if let Some(receipt) = receipt.replacement_cancellation() {
+                e.u8(4);
+                enc_cancellation_receipt(&mut e, receipt)?;
+            } else if let Some(receipt) = receipt.publication() {
                 e.u8(2);
                 e.bytes(receipt.request_bytes());
                 enc_current_selector(&mut e, receipt.prior_selector());
@@ -1224,6 +1248,11 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
         1 => decode_session_open_receipt(&mut d)?,
         2 => decode_session_publication_receipt(&mut d)?,
         3 => decode_session_disposal_receipt(&mut d)?,
+        4 => DraftEditorCandidateSessionRecordV1::OpenReceipt(
+            DraftEditorCandidateSessionOpenReceiptV1::from_replacement_cancellation(
+                dec_cancellation_receipt(&mut d)?,
+            ),
+        ),
         tag => {
             return Err(CodecError::InvalidTag {
                 kind: "draft editor session record",
@@ -1392,7 +1421,7 @@ pub fn test_candidate_disposal_receipt_codec_accepts(
         .is_ok()
 }
 
-fn enc_current_selector(e: &mut Encoder, value: DraftEditorCurrentSelectorV1) {
+pub(super) fn enc_current_selector(e: &mut Encoder, value: DraftEditorCurrentSelectorV1) {
     e.fixed16(value.thread_id().as_bytes());
     e.u64(value.thread_revision().get());
     e.fixed16(value.draft_id().as_bytes());
@@ -1401,7 +1430,9 @@ fn enc_current_selector(e: &mut Encoder, value: DraftEditorCurrentSelectorV1) {
     enc_history_reference(e, value.history());
 }
 
-fn dec_current_selector(d: &mut Decoder<'_>) -> Result<DraftEditorCurrentSelectorV1, CodecError> {
+pub(super) fn dec_current_selector(
+    d: &mut Decoder<'_>,
+) -> Result<DraftEditorCurrentSelectorV1, CodecError> {
     Ok(DraftEditorCurrentSelectorV1::new(
         SyndicThreadId::from_bytes(d.fixed16()?),
         ThreadRevision::new(d.u64()?).map_err(|e| invalid("selector thread revision", e))?,
@@ -1724,7 +1755,9 @@ fn decode_node(bytes: &[u8]) -> Result<DraftPieceNodeRecordV1, CodecError> {
 }
 
 fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> {
-    if value.mapping().is_none() {
+    if value.mapping().is_none()
+        && !matches!(value.frontier(), DraftPieceBuildFrontierV1::SealedImport(_))
+    {
         return Err(CodecError::InvalidLength("edit mapping required"));
     }
     let mut e = Encoder::new();
@@ -1797,7 +1830,10 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
-    let mapping = dec_mapping(&mut d)?;
+    let mapping = dec_mapping(
+        &mut d,
+        matches!(frontier, DraftPieceBuildFrontierV1::SealedImport(_)),
+    )?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
     let successor = match d.u8()? {
@@ -1980,7 +2016,10 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
-    let mapping = dec_mapping(&mut d)?;
+    let mapping = dec_mapping(
+        &mut d,
+        matches!(frontier, DraftPieceBuildFrontierV1::SealedImport(_)),
+    )?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
@@ -2291,6 +2330,10 @@ fn encode_settlement_payload(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, 
         }
     }
     match value.closure() {
+        DraftPieceSettlementClosureV1::SealedImport(selection) => {
+            e.u8(2);
+            enc_import_selection(&mut e, selection)?;
+        }
         DraftPieceSettlementClosureV1::Committed(adoption) => {
             e.u8(0);
             enc_session_head(&mut e, adoption.predecessor_session());

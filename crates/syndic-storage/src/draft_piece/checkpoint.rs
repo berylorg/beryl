@@ -7,11 +7,33 @@ use crate::{SyndicMutationError, SyndicReadError};
 use super::*;
 
 mod historical;
+mod imported;
 mod reader;
 mod saved;
 mod transition;
 
 use reader::{CheckpointReader, StoreCheckpointReader};
+
+pub(super) fn imported_publication_is_exact_in_transaction(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicMutationError> {
+    imported::published_is_exact(reader, head)
+}
+pub(super) fn imported_publication_is_exact_with_access(
+    storage: &SyndicStorage,
+    store: crate::read::access::ReadAccess<'_>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicReadError> {
+    imported::published_is_exact(&StoreCheckpointReader { storage, store }, head)
+}
+pub(super) fn imported_baseline_fork_is_exact_in_transaction(
+    reader: &DomainReader<'_, SyndicDomain>,
+    baseline: &DraftEditHistoryFrontierV1,
+    fork: &DraftEditHistoryFrontierV1,
+) -> Result<bool, SyndicMutationError> {
+    imported::baseline_fork_is_exact(reader, baseline, fork)
+}
 
 pub(super) fn candidate_is_exact_with_access(
     storage: &SyndicStorage,
@@ -60,7 +82,7 @@ pub(crate) fn has_saved_identity(head: &DraftEditorCandidateSessionV1) -> bool {
         && head.published_root() == head.newest_root()
         && (head.published_history() == head.newest_history()
             || has_opening_identity(head)
-                && head.published_selector_revision() == head.durable_base_selector_revision()
+                && head.published_selector_revision() >= head.durable_base_selector_revision()
                 && head.published_root() == head.durable_base_root()
                 && head.published_history() == head.durable_base_history())
 }
@@ -167,6 +189,14 @@ fn candidate_transition_is_exact<R: CheckpointReader>(
 ) -> Result<bool, R::Error> {
     if has_opening_identity(head) {
         return opening_is_exact(reader, head, frontier);
+    }
+    if head
+        .newest_history()
+        .key()
+        .sealed_import_operation_id()
+        .is_some()
+    {
+        return imported::candidate_is_exact(reader, head, frontier);
     }
     transition::transition_is_exact(reader, head, frontier)
 }

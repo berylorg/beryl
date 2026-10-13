@@ -216,6 +216,7 @@ pub(super) fn endpoint_is_exact(
     };
     match stage {
         Stage::Idle => match frontier {
+            Frontier::SealedImport(_) => false,
             Frontier::Receiving { .. } | Frontier::CrossValidating | Frontier::Complete | Frontier::Planning { .. } => active.is_none() && fragment_end.is_none(),
             Frontier::Removing { next_rank, end_rank, removed_markers, .. } => fragment_end.is_some() && marker_idle && next_rank == end_rank && removed_markers == 0,
             Frontier::Applying { .. } => fragment_end.is_some() && marker_idle,

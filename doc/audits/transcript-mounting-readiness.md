@@ -1667,3 +1667,80 @@ with no remaining blocker. Replacement editing, branch creation, diagnostic chil
 complete transcript workflow acceptance retain their separate gates.
 All 125 positively registered native fixture/output directories are verified absent. Reviewed
 execution artifacts are reclaimed; no task-owned process or session mutation remains.
+
+## Historical Replacement Draft Acceptance
+
+The durable prerequisite imports exact sealed historical `ComposerV1` input through bounded
+streaming and independent tree validation. It preserves UTF-8, CRLF, empty atoms and original
+marker identities, labels, order and Asset associations. The completed source folds authenticate
+before EOF resets them; independently recomputed tree folds must match the sealed source. Coherent
+substitutions in all three trees cannot qualify merely by preserving marker counts and maximum
+labels.
+
+Final replacement start selects the imported root, immutable baseline, mutable Session history
+fork and exact replacement intent atomically with the Asset copy-on-write owner head. Historical
+ownership remains unchanged. Both history heads charge their actual canonical key and value;
+first-edit exhaustion preserves the baseline. Ordinary edits append real transitions, and dirty
+cancellation preserves content, directed positions and Undo. Metadata cancellation advances only
+its declared selector/session binding and can be authenticated after fresh reopen.
+
+Prepared execution and consumed image proof authority retain the originating store instance and
+generation. Original outcome lookup instead authenticates durable home identity and immutable
+receipt provenance. Each exact prepared command retains its own original outcome, shared only
+with its clones, before any fallible read or foreign-target rejection. Unavailable classification
+can resume after explicit recovery. A complete mixed-domain scope closes as collision; a Syndic
+receipt cannot bypass that scope or reopen terminal collision. These guarantees add no persisted
+family, record-version migration, global registry or automatic command replay.
+
+Acceptance qualifies 169 distinct cases on the final implementation:
+
+- HomeStore instance/generation qualification: six cases. Asset historical-input witness: 20
+  cases, including foreign/reopened authority, malformed source and unavailable bytes. These
+  passed in `5d63c61d-40d7-42a7-b3b4-5af82c9ed16e`; that combined run had unrelated import
+  failures subsequently corrected. Only its 26 unchanged scope/witness cases are reused.
+- Replacement storage: 33 distinct cases across the original checkpoint and targeted corrections.
+  Coverage includes dense images, marker-only and empty inputs, exact source expectations, proof
+  consumer substitution, clean/dirty cancellation, real first edit and Undo, reopen, baseline
+  capacity, stale admission and original acknowledgement-loss custody. The final four-case run
+  `830da001-687f-4eae-8eab-61b835b1b624` passed in 11.475 seconds, qualifying late serialized
+  admission, both Asset-head disagreement paths, terminal original-scope collision and both
+  corrupt source folds before EOF reset. A constructor-level stale-source rejection assertion
+  exceeded the documented boundary and was removed; the complete two-domain writer rejection
+  and unchanged-state assertions remain.
+  Explicit header/frontier/cursor malformed encodings passed in
+  `07ef978a-c7e2-4b64-979e-fe6f1be7286c`. The corrected baseline/settlement/cancellation codec
+  case passed in `ec810b1c-1f9a-4af7-9c0b-30cba2c60cff`, 1.320 seconds. Actual decoders enforce
+  closed tags, exact canonical roundtrips and truncated/trailing refusal, including cancellation
+  receipt keys and values. The codec fixture's original uniform version expectation was corrected
+  to the unchanged Build/Progress/Settlement/History/Session tuple `[6, 6, 6, 1, 2]`.
+- Ordinary piece-tree regressions: 24 cases from
+  `fefe8a85-b463-4ab4-8f16-e1d7c614e3b8`. That combined run passed 42 of 45 cases; its three
+  unsupported fault-fixture assumptions were corrected and all four fault/custody cases passed
+  in `c3f70eb5-ca63-4f27-9945-8c40b4d9992d`, 11.668 seconds. Only unchanged ordinary inputs are
+  reused from the combined run.
+- Affected history, retention, adoption, marker-proof, editor-checkpoint and retained-publication
+  regressions: 85 of 85, `c86aed9d-7cb0-472d-8e75-8ce15065b45d`, 239.075 seconds.
+- Ordinary canonical-byte fixture: one case,
+  `946b0d25-c3ff-4ec5-8801-fd010dd17c2a`, 1.001 seconds. Thirteen populated key/payload/version
+  vectors and two absent settlement slots freeze Build, Progress, Settlement, History and Session
+  at begin, complete and terminal stages. The independent basis is source equivalence against
+  `a610b71a9a9b34e8453525fde42da11fd3711bc5`, plus already accepted literal terminal vectors;
+  current measurement alone is not treated as a baseline. Deterministic inputs use thread/draft
+  37/38, session 39, open 40, edit 41, budget 65536 and eight UTF-8 bytes `α\r\n🙂`.
+
+Final no-feature production checks passed for HomeStore, State, model, Syndic and app in 22.31 seconds.
+Commands used stable Cargo with `.cargo/local.toml`, locked offline dependencies, one build job and
+one test thread, no normal dev/test debug information, no incremental compilation and
+process-local `RUST_MIN_STACK=67108864`. Fault targets enabled the declared test-fault features.
+Inputs derive from the accepted Beryl revision above and scoped historical-import changes; the
+widget and GPUI fork revisions remain unchanged.
+
+The [instance qualification](../failures/verified-sidecar-instance-qualification.md),
+[caller expectations](../failures/replacement-import-expectation-capture.md),
+[outcome custody](../failures/replacement-outcome-custody.md) and
+[independent tree-fold](../failures/sealed-import-tree-summary-validation.md) findings preserve
+the corrected approaches. Complete independent semantic/adversarial review accepted the final
+implementation and raw evidence with no remaining blocker. All 183 positively registered
+prerequisite/import fixture directories are verified absent; reviewed execution artifacts are
+reclaimed. No task-owned process or session mutation remains. Mounted Edit remains disabled;
+this acceptance does not accept its separate GUI workflow.

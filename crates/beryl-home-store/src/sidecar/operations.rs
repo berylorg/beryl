@@ -51,15 +51,15 @@ impl HomeStore {
                 return Err(SidecarError::GenerationPoisoned);
             }
         };
-        let database = match generation.as_ref() {
-            Some(generation) => generation.database.clone(),
+        let (database, store) = match generation.as_ref() {
+            Some(generation) => (generation.database.clone(), generation.instance_id),
             None => {
                 admission.fail(FailureSeverity::Structural);
                 return Err(SidecarError::GenerationPoisoned);
             }
         };
         drop(generation);
-        let result = self.verify_sidecar_inner(address, admission.generation());
+        let result = self.verify_sidecar_inner(address, store, admission.generation());
         match result {
             Ok(sidecar) => {
                 admission.confirm_database(&database, |source| {
@@ -74,9 +74,35 @@ impl HomeStore {
         }
     }
 
+    pub fn verified_sidecar_matches_current_scope(
+        &self,
+        sidecar: &VerifiedSidecar,
+    ) -> Result<bool, SidecarError> {
+        let admission = self.health.admit_generation(self.admitted_generation)?;
+        let generation = match self.generation.read() {
+            Ok(generation) => generation,
+            Err(_) => {
+                admission.fail(FailureSeverity::Structural);
+                return Err(SidecarError::GenerationPoisoned);
+            }
+        };
+        let current = match generation.as_ref() {
+            Some(generation) => generation,
+            None => {
+                admission.fail(FailureSeverity::Structural);
+                return Err(SidecarError::GenerationPoisoned);
+            }
+        };
+        let matches =
+            sidecar.store == current.instance_id && sidecar.generation == admission.generation();
+        admission.confirm()?;
+        Ok(matches)
+    }
+
     fn verify_sidecar_inner(
         &self,
         address: &SidecarAddress,
+        store: StoreInstanceId,
         generation: HomeGeneration,
     ) -> Result<VerifiedSidecar, SidecarError> {
         let directories = retain_sidecar_directories(
@@ -99,6 +125,7 @@ impl HomeStore {
         Ok(VerifiedSidecar {
             address: address.clone(),
             path,
+            store,
             generation,
         })
     }

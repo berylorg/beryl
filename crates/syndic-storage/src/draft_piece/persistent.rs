@@ -11,8 +11,10 @@ mod mapping_program;
 mod marker_identity_lookup;
 mod marker_program;
 mod marker_tree_edit;
+mod sealed_import;
 mod sequence_edit;
 mod sequence_units;
+pub(crate) use sealed_import::{append_import_leaf, cross_validate_import_leaf};
 
 #[cfg(feature = "test-faults")]
 #[path = "../test_faults/draft_marker_continuation_bounds/primitives.rs"]

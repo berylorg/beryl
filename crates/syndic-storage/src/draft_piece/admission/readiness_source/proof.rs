@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainReader, PointReadLimit, ProofCorrelationBytes,
-    ProofDomain, ProofProtocolIdentity, ReadError,
+    ReadError,
 };
 use beryl_model::SyndicDraftId;
 
@@ -32,113 +32,84 @@ use super::model::{
     PageProtocol, SourceInput, page_correlation,
 };
 
-pub enum NoWitness {}
-
-impl ProofDomain for SyndicDomain {
-    type SourceInput = SourceInput;
-    type WitnessInput = NoWitness;
-    type Error = DraftMarkerReadinessSourceErrorV1;
-
-    fn source_protocol(_: &Self::SourceInput) -> ProofProtocolIdentity {
-        ProofProtocolIdentity::of::<PageProtocol>()
+pub(crate) fn prove_readiness(
+    input: &SourceInput,
+    reader: &DomainReader<'_, SyndicDomain>,
+) -> Result<ProofCorrelationBytes, DraftMarkerReadinessSourceErrorV1> {
+    let page = &input.page;
+    validate_input_shape(page)?;
+    if !request_authority_is_exact(reader, &page.authority)
+        .map_err(DraftMarkerReadinessSourceErrorV1::Read)?
+    {
+        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
     }
-
-    fn expected_source_correlation(input: &Self::SourceInput) -> ProofCorrelationBytes {
-        ProofCorrelationBytes::new(input.page.expected)
-    }
-
-    fn witness_protocol(input: &Self::WitnessInput) -> ProofProtocolIdentity {
-        match *input {}
-    }
-
-    fn prove_source(
-        input: &Self::SourceInput,
-        reader: &DomainReader<'_, Self>,
-    ) -> Result<ProofCorrelationBytes, Self::Error> {
-        let page = &input.page;
-        validate_input_shape(page)?;
-        if !request_authority_is_exact(reader, &page.authority)
-            .map_err(DraftMarkerReadinessSourceErrorV1::Read)?
+    let _page = page.page;
+    let destination = session_snapshot(reader, page.owner.draft_id(), page.owner.session_id())?;
+    for entry in page.entries.iter() {
+        if page.authority.disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
+            && entry.group.allocates()
         {
             return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
         }
-        let _page = page.page;
-        let destination = session_snapshot(reader, page.owner.draft_id(), page.owner.session_id())?;
-        for entry in page.entries.iter() {
-            if page.authority.disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
-                && entry.group.allocates()
-            {
-                return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        match entry.selector {
+            DraftMarkerReadinessSourceSelectorV1::FreshAsset(asset) => {
+                if entry.group
+                    != crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(asset)
+                    || entry.asset_id != asset
+                    || entry.accepted_origin.is_some()
+                {
+                    return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+                }
             }
-            match entry.selector {
-                DraftMarkerReadinessSourceSelectorV1::FreshAsset(asset) => {
-                    if entry.group
-                        != crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(
-                            asset,
+            DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
+                if entry.group
+                    != if source.thread_id == destination.thread_id() {
+                        crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+                            source.label,
                         )
-                        || entry.asset_id != asset
-                        || entry.accepted_origin.is_some()
-                    {
-                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+                    } else {
+                        crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                            source.thread_id,
+                            source.label,
+                        )
                     }
+                    || entry.asset_id != source.asset_id
+                {
+                    return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
                 }
-                DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
-                    if entry.group
-                        != if source.thread_id == destination.thread_id() {
-                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
-                                source.label,
-                            )
-                        } else {
-                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
-                                source.thread_id,
-                                source.label,
-                            )
-                        }
-                        || entry.asset_id != source.asset_id
-                    {
-                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
-                    }
-                    let origin = entry
-                        .accepted_origin
-                        .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
-                    validate_accepted_snapshot(reader, source, origin)?;
+                let origin = entry
+                    .accepted_origin
+                    .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+                validate_accepted_snapshot(reader, source, origin)?;
+            }
+            _ => {
+                if entry.accepted_origin.is_some() {
+                    return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
                 }
-                _ => {
-                    if entry.accepted_origin.is_some() {
-                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+                let (thread, occurrence) = resolve_snapshot(reader, entry.selector)?;
+                if entry.group
+                    != if thread == destination.thread_id() {
+                        crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+                            occurrence.label(),
+                        )
+                    } else {
+                        crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                            thread,
+                            occurrence.label(),
+                        )
                     }
-                    let (thread, occurrence) = resolve_snapshot(reader, entry.selector)?;
-                    if entry.group
-                        != if thread == destination.thread_id() {
-                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
-                                occurrence.label(),
-                            )
-                        } else {
-                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
-                                thread,
-                                occurrence.label(),
-                            )
-                        }
-                        || occurrence.asset_id() != entry.asset_id
-                    {
-                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
-                    }
+                    || occurrence.asset_id() != entry.asset_id
+                {
+                    return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
                 }
             }
         }
-        Ok(ProofCorrelationBytes::new(page_correlation(
-            page.ordinal,
-            page.eof,
-            &page.entries,
-        )))
     }
-
-    fn prove_witness(
-        input: &Self::WitnessInput,
-        _: &DomainReader<'_, Self>,
-    ) -> Result<ProofCorrelationBytes, Self::Error> {
-        match *input {}
-    }
+    Ok(ProofCorrelationBytes::new(page_correlation(
+        page.ordinal,
+        page.eof,
+        &page.entries,
+    )))
 }
 
 pub(crate) fn request_authority_is_exact(

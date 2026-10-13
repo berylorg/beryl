@@ -130,6 +130,15 @@ pub(super) fn transition_digest(transition: &DraftEditHistoryTransitionV1) -> Dr
 pub(super) fn enc_frontier_key(e: &mut Encoder, key: DraftEditHistoryFrontierKeyV1) {
     e.fixed16(key.draft_id().as_bytes());
     match key {
+        DraftEditHistoryFrontierKeyV1::SealedImportBaseline {
+            session_id,
+            operation_id,
+            ..
+        } => {
+            e.u8(3);
+            e.fixed16(session_id.as_bytes());
+            e.fixed16(operation_id.as_bytes());
+        }
         DraftEditHistoryFrontierKeyV1::CanonicalEmpty { .. } => e.u8(0),
         DraftEditHistoryFrontierKeyV1::Session { session_id, .. } => {
             e.u8(1);
@@ -150,6 +159,11 @@ pub(super) fn enc_frontier_key(e: &mut Encoder, key: DraftEditHistoryFrontierKey
 fn dec_frontier_key(d: &mut Decoder<'_>) -> Result<DraftEditHistoryFrontierKeyV1, CodecError> {
     let draft_id = SyndicDraftId::from_bytes(d.fixed16()?);
     match d.u8()? {
+        3 => Ok(DraftEditHistoryFrontierKeyV1::sealed_import_baseline(
+            draft_id,
+            DraftEditorCandidateSessionIdV1::from_bytes(d.fixed16()?),
+            DraftPieceOperationIdV1::from_bytes(d.fixed16()?),
+        )),
         0 => Ok(DraftEditHistoryFrontierKeyV1::canonical_empty(draft_id)),
         1 => Ok(DraftEditHistoryFrontierKeyV1::session(
             draft_id,

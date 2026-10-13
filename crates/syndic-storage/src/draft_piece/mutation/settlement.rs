@@ -196,7 +196,24 @@ fn contribute_committed(
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
 ) -> Result<Box<PreparedSettlementContribution>, SyndicMutationError> {
     let observed_history = authenticated_history_frontier(reader, current.newest_history())?;
-    let append_history = if matches!(
+    let append_history = if observed_history
+        .reference()
+        .key()
+        .sealed_import_operation_id()
+        .is_some()
+    {
+        let fork = observed_history
+            .fork_session(current.session_id())
+            .ok_or(SyndicMutationError::IdentityCollision)?;
+        if !super::super::checkpoint::imported_baseline_fork_is_exact_in_transaction(
+            reader,
+            &observed_history,
+            &fork,
+        )? {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        fork
+    } else if matches!(
         observed_history.reference().key(),
         DraftEditHistoryFrontierKeyV1::Publication { .. }
     ) {

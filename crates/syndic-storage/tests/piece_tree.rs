@@ -875,6 +875,9 @@ fn remember_settled_transaction(
                 );
             }
             syndic_storage::DraftPieceSettlementClosureV1::Noncommit(_) => {}
+            syndic_storage::DraftPieceSettlementClosureV1::SealedImport(_) => {
+                panic!("ordinary transaction unexpectedly imported sealed content")
+            }
         },
         other => panic!("settled transaction has unexpected status: {other:?}"),
     }

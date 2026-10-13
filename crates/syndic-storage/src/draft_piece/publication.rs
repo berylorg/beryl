@@ -606,11 +606,17 @@ fn candidate_session_publication_history_is_exact(
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicMutationError> {
     let published_key = head.published_history().key();
+    if published_key.sealed_import_operation_id().is_some() {
+        return checkpoint::imported_publication_is_exact_in_transaction(reader, head);
+    }
     let Some(operation_id) = published_key.publication_operation_id() else {
         return Ok(
-            head.published_selector_revision() == head.durable_base_selector_revision()
+            head.published_selector_revision() >= head.durable_base_selector_revision()
                 && head.published_root() == head.durable_base_root()
-                && head.published_history() == head.durable_base_history(),
+                && head.published_history() == head.durable_base_history()
+                && (head.published_selector_revision() == head.durable_base_selector_revision()
+                    || current_selector(reader, head.thread_id())?.selector_revision()
+                        == head.published_selector_revision()),
         );
     };
     let Some(publication_session_id) = published_key.session_id() else {
@@ -630,16 +636,16 @@ fn candidate_session_publication_history_is_exact(
         return Ok(false);
     };
     let same_session = publication_session_id == head.session_id();
-    if receipt.successor_selector().selector_revision() != head.published_selector_revision()
+    if receipt.successor_selector().selector_revision() > head.published_selector_revision()
         || receipt.published_pair()
             != DraftRootHistoryPairV1::new(head.published_root(), head.published_history())
         || same_session
             && (receipt.after_head().published_candidate_generation()
                 != head.published_candidate_generation()
                 || receipt.after_head().published_selector_revision()
-                    != head.published_selector_revision())
+                    > head.published_selector_revision())
         || !same_session
-            && (head.durable_base_selector_revision() != head.published_selector_revision()
+            && (head.durable_base_selector_revision() > head.published_selector_revision()
                 || head.durable_base_root() != head.published_root()
                 || head.durable_base_history() != head.published_history()
                 || head.published_candidate_generation()
@@ -693,9 +699,12 @@ fn candidate_session_publication_history_is_exact_with_access(
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
     let published_key = head.published_history().key();
+    if published_key.sealed_import_operation_id().is_some() {
+        return checkpoint::imported_publication_is_exact_with_access(storage, store, head);
+    }
     let Some(operation_id) = published_key.publication_operation_id() else {
         return Ok(
-            head.published_selector_revision() == head.durable_base_selector_revision()
+            head.published_selector_revision() >= head.durable_base_selector_revision()
                 && head.published_root() == head.durable_base_root()
                 && head.published_history() == head.durable_base_history(),
         );
@@ -725,16 +734,16 @@ fn candidate_session_publication_history_is_exact_with_access(
     }
     let same_session = publication_session_id == head.session_id();
     Ok(
-        receipt.successor_selector().selector_revision() == head.published_selector_revision()
+        receipt.successor_selector().selector_revision() <= head.published_selector_revision()
             && receipt.published_pair()
                 == DraftRootHistoryPairV1::new(head.published_root(), head.published_history())
             && (same_session
                 && receipt.after_head().published_candidate_generation()
                     == head.published_candidate_generation()
                 && receipt.after_head().published_selector_revision()
-                    == head.published_selector_revision()
+                    <= head.published_selector_revision()
                 || !same_session
-                    && head.durable_base_selector_revision() == head.published_selector_revision()
+                    && head.durable_base_selector_revision() <= head.published_selector_revision()
                     && head.durable_base_root() == head.published_root()
                     && head.durable_base_history() == head.published_history()
                     && head.published_candidate_generation()

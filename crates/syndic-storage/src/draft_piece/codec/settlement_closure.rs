@@ -19,6 +19,9 @@ pub(super) fn decode_settlement_closure(
             Ok(assemble_committed(parts))
         }
         1 => decode_noncommit(d),
+        2 => Ok(Box::new(DraftPieceSettlementClosureV1::SealedImport(
+            dec_import_selection(d)?,
+        ))),
         tag => Err(CodecError::InvalidTag {
             kind: "draft-piece settlement closure",
             tag,

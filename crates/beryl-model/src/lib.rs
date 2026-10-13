@@ -48,6 +48,7 @@
 
 mod asset;
 mod availability;
+mod historical_input;
 mod ids;
 mod placement;
 mod provenance;
@@ -65,6 +66,7 @@ pub use asset::{
     sequential_marker_digest_seed,
 };
 pub use availability::{Availability, UnavailableReason};
+pub use historical_input::{HistoricalInputMarkerAssociationV1, HistoricalInputMarkerPageV1};
 pub use ids::{
     BerylHomeId, CommandId, IdempotencyKey, IdentityParseError, JobId, ProviderObservationId,
     ResolutionIntentId, RootId, RuntimeId, SyndicAcceptedInputId, SyndicContentId, SyndicDraftId,

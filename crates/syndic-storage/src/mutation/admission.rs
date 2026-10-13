@@ -15,6 +15,14 @@ use crate::{
 
 mod accepted;
 mod idle;
+
+pub(super) fn authenticate_replacement_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread: &crate::ThreadRecord,
+    intent: crate::ReplacementEditIntent,
+) -> Result<(crate::TurnRecord, crate::CanonicalItemRecord), SyndicMutationError> {
+    shared::validate_replacement_intent(reader, thread, intent)
+}
 mod shared;
 mod successor;
 

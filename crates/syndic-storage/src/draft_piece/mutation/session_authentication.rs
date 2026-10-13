@@ -142,6 +142,19 @@ pub(super) fn authenticate_candidate_history(
     reader: &DomainReader<'_, SyndicDomain>,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<(), SyndicMutationError> {
+    if head
+        .newest_history()
+        .key()
+        .sealed_import_operation_id()
+        .is_some()
+    {
+        let newest =
+            required::<DraftEditHistoryFrontiersFamily>(reader, &head.newest_history().key())?;
+        if !super::super::checkpoint::candidate_is_exact_in_transaction(reader, head, &newest)? {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        return Ok(());
+    }
     if head.newest_candidate_generation() == head.published_candidate_generation()
         && head.newest_candidate_generation() != 0
     {

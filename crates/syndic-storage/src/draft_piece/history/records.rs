@@ -185,6 +185,61 @@ impl DraftEditHistoryFrontierV1 {
         )))
     }
 
+    pub(crate) fn sealed_import_baseline(
+        &self,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+        root: DraftPieceRootReferenceV1,
+    ) -> Option<(Self, Self)> {
+        if !self.is_locally_valid() || root.key().draft_id() != self.reference.key().draft_id() {
+            return None;
+        }
+        let generation = self.reference.candidate_generation().checked_add(1)?;
+        let revision = self.reference.frontier_revision().checked_add(1)?;
+        let key = DraftEditHistoryFrontierKeyV1::sealed_import_baseline(
+            root.key().draft_id(),
+            session_id,
+            operation_id,
+        );
+        let provisional = Self::from_parts(
+            DraftEditHistoryFrontierReferenceV1::new(
+                key,
+                generation,
+                root,
+                revision,
+                self.byte_budget,
+                self.retention_policy_revision,
+                DraftEditHistoryAvailabilityV1::NONE,
+                DraftPieceDigestV1::from_bytes([0; 32]),
+            ),
+            None,
+            None,
+            None,
+            None,
+            0,
+            0,
+            self.byte_budget,
+            self.retention_policy_revision,
+        );
+        let charge = stored_frontier_charge(&provisional).ok()?;
+        if charge > self.byte_budget {
+            return None;
+        }
+        let baseline = authenticated_frontier(Self::from_parts(
+            provisional.reference,
+            None,
+            None,
+            None,
+            None,
+            0,
+            charge,
+            self.byte_budget,
+            self.retention_policy_revision,
+        ));
+        let fork = baseline.fork_session(session_id)?;
+        Some((baseline, fork))
+    }
+
     pub(crate) fn is_locally_valid(&self) -> bool {
         let reference = self.reference;
         let key = reference.key();
@@ -230,6 +285,14 @@ impl DraftEditHistoryFrontierV1 {
             }
             DraftEditHistoryFrontierKeyV1::Session { .. }
             | DraftEditHistoryFrontierKeyV1::Publication { .. } => true,
+            DraftEditHistoryFrontierKeyV1::SealedImportBaseline { .. } => {
+                reference.candidate_generation() != 0
+                    && reference.frontier_revision() != 0
+                    && links.into_iter().all(|link| link.is_none())
+                    && self.cumulative_encoded_bytes == 0
+                    && stored_frontier_charge(self) == Ok(self.retained_encoded_bytes)
+                    && reference.availability() == DraftEditHistoryAvailabilityV1::NONE
+            }
         }
     }
 }

@@ -5,6 +5,10 @@ use super::{
         DraftPieceBuildMappingV1, DraftPieceDurableBuildContinuationV1,
         DraftPieceMarkerEffectContinuationV1,
     },
+    import::{
+        DraftReplacementCancellationReceiptV1, DraftSealedImportFrontierV1,
+        DraftSealedImportSelectionV1,
+    },
     marker_seal::DraftMarkerSealProofV1,
     staging_model::DraftMutationStagingProgressReceiptReferenceV1,
 };
@@ -67,9 +71,25 @@ pub enum DraftEditorCandidateSessionRecordKeyV1 {
         session_id: DraftEditorCandidateSessionIdV1,
         operation_id: DraftPieceOperationIdV1,
     },
+    ReplacementIntentCancellationReceipt {
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
 }
 
 impl DraftEditorCandidateSessionRecordKeyV1 {
+    pub const fn replacement_intent_cancellation_receipt(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Self {
+        Self::ReplacementIntentCancellationReceipt {
+            draft_id,
+            session_id,
+            operation_id,
+        }
+    }
     pub const fn head(
         draft_id: SyndicDraftId,
         session_id: DraftEditorCandidateSessionIdV1,
@@ -121,7 +141,8 @@ impl DraftEditorCandidateSessionRecordKeyV1 {
             Self::Head { draft_id, .. }
             | Self::OpenReceipt { draft_id, .. }
             | Self::PublicationReceipt { draft_id, .. }
-            | Self::DisposalReceipt { draft_id, .. } => draft_id,
+            | Self::DisposalReceipt { draft_id, .. }
+            | Self::ReplacementIntentCancellationReceipt { draft_id, .. } => draft_id,
         }
     }
 
@@ -130,7 +151,8 @@ impl DraftEditorCandidateSessionRecordKeyV1 {
             Self::Head { session_id, .. }
             | Self::OpenReceipt { session_id, .. }
             | Self::PublicationReceipt { session_id, .. }
-            | Self::DisposalReceipt { session_id, .. } => session_id,
+            | Self::DisposalReceipt { session_id, .. }
+            | Self::ReplacementIntentCancellationReceipt { session_id, .. } => session_id,
         }
     }
 }
@@ -971,7 +993,7 @@ impl DraftEditorCandidateSessionV1 {
         let published_is_coherent = if self.published_root == self.durable_base_root
             && self.published_history == self.durable_base_history
         {
-            self.published_selector_revision == self.durable_base_selector_revision
+            self.published_selector_revision >= self.durable_base_selector_revision
         } else {
             self.published_selector_revision > self.durable_base_selector_revision
         };
@@ -1035,6 +1057,7 @@ enum DraftEditorCandidateSessionReceiptPayloadV1 {
     },
     Publication(Box<DraftEditorCandidatePublicationReceiptV1>),
     Disposal(Box<DraftEditorCandidateSessionDisposeReceiptV1>),
+    ReplacementCancellation(Box<DraftReplacementCancellationReceiptV1>),
 }
 
 impl DraftEditorCandidateSessionOpenReceiptV1 {
@@ -1057,6 +1080,9 @@ impl DraftEditorCandidateSessionOpenReceiptV1 {
             DraftEditorCandidateSessionReceiptPayloadV1::Disposal(receipt) => {
                 receipt.request_bytes()
             }
+            DraftEditorCandidateSessionReceiptPayloadV1::ReplacementCancellation(receipt) => {
+                receipt.request_bytes()
+            }
         }
     }
     pub fn head(&self) -> &DraftEditorCandidateSessionV1 {
@@ -1066,6 +1092,9 @@ impl DraftEditorCandidateSessionOpenReceiptV1 {
                 receipt.before_head()
             }
             DraftEditorCandidateSessionReceiptPayloadV1::Disposal(receipt) => receipt.before_head(),
+            DraftEditorCandidateSessionReceiptPayloadV1::ReplacementCancellation(receipt) => {
+                receipt.before_head()
+            }
         }
     }
     pub(crate) fn from_publication(receipt: DraftEditorCandidatePublicationReceiptV1) -> Self {
@@ -1076,6 +1105,23 @@ impl DraftEditorCandidateSessionOpenReceiptV1 {
     pub(crate) fn from_disposal(receipt: DraftEditorCandidateSessionDisposeReceiptV1) -> Self {
         Self {
             payload: DraftEditorCandidateSessionReceiptPayloadV1::Disposal(Box::new(receipt)),
+        }
+    }
+    pub(crate) fn from_replacement_cancellation(
+        receipt: DraftReplacementCancellationReceiptV1,
+    ) -> Self {
+        Self {
+            payload: DraftEditorCandidateSessionReceiptPayloadV1::ReplacementCancellation(
+                Box::new(receipt),
+            ),
+        }
+    }
+    pub(crate) fn replacement_cancellation(
+        &self,
+    ) -> Option<&DraftReplacementCancellationReceiptV1> {
+        match &self.payload {
+            DraftEditorCandidateSessionReceiptPayloadV1::ReplacementCancellation(r) => Some(r),
+            _ => None,
         }
     }
     pub(crate) fn publication(&self) -> Option<&DraftEditorCandidatePublicationReceiptV1> {
@@ -2591,6 +2637,7 @@ impl DraftPieceBuildBoundaryV1 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftPieceBuildFrontierV1 {
+    SealedImport(DraftSealedImportFrontierV1),
     Receiving {
         next_ordinal: u64,
         chain: DraftPieceDigestV1,
@@ -3248,6 +3295,7 @@ impl DraftPieceNoncommitClosureV1 {
 pub enum DraftPieceSettlementClosureV1 {
     Committed(DraftPieceCommittedAdoptionV1),
     Noncommit(DraftPieceNoncommitClosureV1),
+    SealedImport(DraftSealedImportSelectionV1),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

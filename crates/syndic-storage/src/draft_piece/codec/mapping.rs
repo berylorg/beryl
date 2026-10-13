@@ -405,6 +405,7 @@ pub(super) fn enc_mapping(e: &mut Encoder, mapping: Option<DraftPieceBuildMappin
 }
 pub(super) fn dec_mapping(
     d: &mut Decoder<'_>,
+    sealed_import: bool,
 ) -> Result<Option<DraftPieceBuildMappingV1>, CodecError> {
     let mapping = dec_opt(d, "build mapping", |d| {
         Ok(DraftPieceBuildMappingV1 {
@@ -414,7 +415,7 @@ pub(super) fn dec_mapping(
             mapping_stage: dec_stage(d)?,
         })
     })?;
-    if mapping.is_none() {
+    if mapping.is_none() && !sealed_import {
         return Err(CodecError::InvalidLength("edit mapping required"));
     }
     Ok(mapping)
@@ -428,7 +429,7 @@ pub(crate) fn canonical_build_mapping_bytes(mapping: Option<DraftPieceBuildMappi
 #[cfg(feature = "test-faults")]
 pub(crate) fn mapping_roundtrip_for_test(bytes: &[u8]) -> Option<Vec<u8>> {
     let mut decoder = Decoder::new(bytes);
-    let mapping = dec_mapping(&mut decoder).ok()?;
+    let mapping = dec_mapping(&mut decoder, false).ok()?;
     decoder.finish().ok()?;
     Some(canonical_build_mapping_bytes(mapping))
 }

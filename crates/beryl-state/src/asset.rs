@@ -19,6 +19,8 @@ mod digest;
 mod draft_marker_label_readiness;
 mod error;
 mod footprint;
+mod historical_input;
+mod historical_input_selection;
 mod model;
 mod mutation;
 mod read;
@@ -41,6 +43,7 @@ pub use footprint::{
     accepted_input_to_submitted_item_owner_transfer_max_footprint,
     draft_to_submitted_item_owner_transfer_max_footprint,
 };
+pub use historical_input::{AssetHistoricalInputError, HistoricalInputMarkerProofProtocolV1};
 #[cfg(feature = "test-faults")]
 pub use model::AssetReferenceSetManifestCorruption;
 pub use model::{

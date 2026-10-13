@@ -1,6 +1,8 @@
 mod attempt;
 mod model;
 mod proof;
+pub(crate) use model::SourceInput;
+pub(crate) use proof::prove_readiness;
 
 pub use attempt::{DraftMarkerLabelReadinessPageAttemptV1, DraftMarkerLabelReadinessProvenPageV1};
 pub use model::{

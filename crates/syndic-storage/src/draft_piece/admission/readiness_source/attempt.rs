@@ -393,7 +393,10 @@ impl SyndicStorage {
         let input = SourceInput {
             page: Arc::clone(&page),
         };
-        let source = self.handle.proof_source::<PageProtocol>(revision, input);
+        let source = self.handle.proof_source::<PageProtocol>(
+            revision,
+            crate::draft_piece::proof_dispatch::SourceInput::LabelReadiness(input),
+        );
         let mut command = HomeProofCommand::new(
             store
                 .health()

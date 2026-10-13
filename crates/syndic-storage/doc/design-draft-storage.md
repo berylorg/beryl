@@ -383,6 +383,26 @@ reads, copied set descriptors and caller-supplied AssetIds grant no authority. A
 unsettled progress command leaves the original cursor and root custody intact; repeated or later
 pages cannot replace its evidence. Marker-free windows need only the existing authenticated Syndic
 content reads. This adds no label allocation, readiness staging or writer-admission lane.
+Prepared import, advance, start, cancellation and termination capabilities retain their originating
+typed domain handle and exact opaque store-generation identity through command contribution.
+Derivation, proof consumption and execution cannot rewrap them with a foreign or freshly opened
+handle merely because numeric generations or durable records match. Read-only original-outcome
+lookup instead authenticates the captured durable home identity and exact original receipt
+namespace, permitting legitimate same-home recovery and later eligible edits. Indeterminate
+lookup still requires the original reconciliation registry/handle custody. Such lookup grants no
+new execution or proof authority and cannot revive a retired prepared capability.
+Each exact prepared start, cancellation or termination command retains bounded local original
+outcome evidence shared only with clones of that exact command. Original indeterminate custody is
+installed and its handle retained before classification or reads; access failure cannot lose the
+only resume path. Resume uses only that original registry scope, never enumeration, a new command
+or a replacement handle. Known committed/noncommitted evidence also survives failed exact reads.
+An unresolved complete cross-domain scope must be classified before an existing Syndic receipt
+can establish logical success. Terminal collision stays closed, and unavailable classification
+retains evidence for explicit same-scope recovery or retry. No process-local state is persisted.
+An outcome lookup with no retained original observation returns unavailable; a Syndic receipt
+alone cannot determine whether an unobserved two-domain operation has unresolved custody.
+Passing an original outcome to a foreign-home lookup retains that evidence before rejecting
+the lookup target, permitting a later exact same-home resume without repeating the operation.
 
 After source EOF, bounded tree cross-validation visits each sequence leaf and authenticates every
 marker against the identity index and order commitment; aggregate closure additionally requires

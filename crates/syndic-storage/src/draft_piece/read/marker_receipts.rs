@@ -237,7 +237,17 @@ impl Evidence {
         receipt: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
-        if !progress_receipt_is_exact(receipt) || !self.mapping(storage, store, receipt, limit)? {
+        if !progress_receipt_is_exact(receipt) {
+            return Ok(false);
+        }
+        if matches!(
+            receipt.frontier(),
+            DraftPieceBuildFrontierV1::SealedImport(_)
+        ) {
+            if !import_progress_is_exact(receipt) {
+                return Ok(false);
+            }
+        } else if !self.mapping(storage, store, receipt, limit)? {
             return Ok(false);
         }
         if let Some(endpoint) = receipt.fragment_endpoint() {

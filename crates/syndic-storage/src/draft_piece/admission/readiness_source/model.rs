@@ -572,7 +572,7 @@ pub(crate) fn page_closure_bytes(
 }
 
 pub struct SourceInput {
-    pub(super) page: Arc<SealedDraftMarkerReadinessSourcePageV1>,
+    pub(crate) page: Arc<SealedDraftMarkerReadinessSourcePageV1>,
 }
 
 pub(super) fn selector_tag(selector: DraftMarkerReadinessSourceSelectorV1) -> u8 {

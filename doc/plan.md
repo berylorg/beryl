@@ -98,52 +98,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 779: Reconcile Exact Unchanged Descriptor Facts (finished)
+# Phase 778: Establish Durable Historical Replacement Drafts (finished)
 
-Accepted exact-unchanged descriptor constraints and differentiated old/new composition, preserving
-successor eligibility, original receipts and bounded custody. Qualified 135 distinct cases,
-dependent production libraries and independent semantic/adversarial review; all 28 registered
-fixtures are absent. See the [outcome](audits/transcript-mounting-readiness.md#exact-unchanged-reconciliation-acceptance).
-
-# Phase 778: Establish Durable Historical Replacement Drafts (wip)
-
-The mounted Edit workflow requires the sealed historical-input import and explicit durable
-replacement-start/cancel operations declared by
-[selected-path storage](systems/syndic-conversation-history/design.md#turn-parentage-and-replacement).
-Current storage supports replacement submission but lacks those operations and the declared import
-build, fresh-baseline history and import-selection settlement variants. Complete their canonical
-encoding in the [sole schema authority](../crates/syndic-storage/doc/design-schema-v7.md) before
-implementation; preserve existing ordinary-edit encodings and introduce no history fallback.
-
-Establish one bounded authenticated sealed-input stream, combined root and fresh-baseline history,
-then atomically select that root/history with the exact replacement intent. Retain the submitted
-item's immutable image-reference ownership while installing the draft's copy-on-write owner head.
-Cancellation clears only the intent and preserves the published root/history and active editor
-checkpoint. Verify exact user origin and selected-path/entry proofs, idle/no accepted work, empty
-draft, stale/conflicting source and candidate state, replay, cancellation, acknowledgement loss,
-indeterminate reconciliation and no partial root/history/intent or image publication. Complete
-focused storage/Asset evidence, dependent production validation and independent semantic review.
-The menu remains disabled until the separate mounted workflow below is accepted.
-
-Current milestone: the canonical import/settlement/history extensions and bounded historical
-marker-to-Asset proof flow are defined in their owning authorities and independently reviewed for
-implementation readiness. Implement the authenticated source/import continuation and explicit
-start/cancel commands, then qualify ordinary byte preservation and failure/reconciliation behavior.
-Bounded decoding, source/Asset proof dispatch, import-selection closure and metadata-only
-cancellation plus imported-baseline and cancellation-safe source provenance are implemented but
-unqualified. The latest dependent production check passes the model, HomeStore, Asset-state,
-Syndic and app libraries. Nonselecting termination, original-outcome APIs and the final Asset
-participant are implemented but unqualified. The preceding exact-unchanged gate is accepted;
-qualify the actual replacement participant and first-edit/Undo/reopen lifecycle through focused
-integration tests. The independently reviewed
-[tree-fold correction](failures/sealed-import-tree-summary-validation.md) requires separate
-source-EOF and completed-tree summary validation. Complete reusable verified sidecar qualification,
-runtime evidence and full independent review before acceptance.
-Preserve existing exact frontier-head charges
-when deriving the imported baseline and Session fork; the
-[accounting correction](failures/draft-history-head-accounting.md) passed targeted independent
-review. The prerequisite is not accepted until runtime evidence and complete implementation review
-pass.
+Accepted bounded sealed-input import, atomic replacement selection with Asset copy-on-write,
+immutable history baseline, cancellation preservation and original-outcome reconciliation.
+Qualified 169 distinct cases, ordinary byte preservation, dependent production libraries and
+complete independent semantic/adversarial review. All 183 registered prerequisite/import fixtures
+are absent. See the [outcome](audits/transcript-mounting-readiness.md#historical-replacement-draft-acceptance).
+Mounted Edit remains disabled until its separate workflow below is accepted.
 
 # Phase 774: Mount Exact Historical Replacement Editing (pending)
 

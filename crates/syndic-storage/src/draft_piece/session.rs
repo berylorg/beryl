@@ -193,7 +193,7 @@ pub(super) fn adopted_head_matches_current(
         && adopted.durable_base_root() == current.durable_base_root()
         && adopted.durable_base_history() == current.durable_base_history()
         && (adopted.published_candidate_generation() == current.published_candidate_generation()
-            && adopted.published_selector_revision() == current.published_selector_revision()
+            && adopted.published_selector_revision() <= current.published_selector_revision()
             && adopted.published_root() == current.published_root()
             && adopted.published_history() == current.published_history()
             || adopted.published_candidate_generation() < current.published_candidate_generation()
@@ -241,6 +241,14 @@ fn candidate_checkpoint_is_exact_with_access(
         return Ok(false);
     };
     if checkpoint::has_opening_identity(head) {
+        return checkpoint::candidate_is_exact_with_access(storage, store, head, &frontier);
+    }
+    if head
+        .newest_history()
+        .key()
+        .sealed_import_operation_id()
+        .is_some()
+    {
         return checkpoint::candidate_is_exact_with_access(storage, store, head, &frontier);
     }
     if head.newest_candidate_generation() == head.published_candidate_generation()
@@ -311,6 +319,38 @@ pub(super) fn idle_candidate_closure_is_exact_with_access(
             )?
             && candidate_checkpoint_is_exact_with_access(storage, store, head)?,
     )
+}
+
+pub(super) fn idle_candidate_closure_is_exact_in_transaction(
+    reader: &DomainReader<'_, SyndicDomain>,
+    head: &DraftEditorCandidateSessionV1,
+) -> Result<bool, SyndicMutationError> {
+    if head.lifecycle() != DraftEditorCandidateSessionLifecycleV1::Active
+        || head.active_operation().is_some()
+    {
+        return Ok(false);
+    }
+    let opening = crate::mutation::point::<DraftEditorCandidateSessionsFamily>(
+        reader,
+        &DraftEditorCandidateSessionRecordKeyV1::open_receipt(
+            head.draft_id(),
+            head.session_id(),
+            head.open_operation_id(),
+        ),
+    )?;
+    let Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(opening)) = opening else {
+        return Ok(false);
+    };
+    let frontier = crate::mutation::point::<DraftEditHistoryFrontiersFamily>(
+        reader,
+        &head.newest_history().key(),
+    )?;
+    let Some(frontier) = frontier else {
+        return Ok(false);
+    };
+    Ok(receipt_matches_head(&opening, head)
+        && publication::candidate_session_publication_is_exact(reader, head)?
+        && checkpoint::candidate_is_exact_in_transaction(reader, head, &frontier)?)
 }
 
 pub(super) fn opening_receipt_is_exact_with_access(

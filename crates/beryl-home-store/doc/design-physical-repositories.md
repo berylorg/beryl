@@ -89,6 +89,14 @@ interpretation and product behavior remain with the
   an obsolete token cannot authorize metadata publication. Registered domains may use bounded
   `SidecarVerifier` reads to prove typed references name final files with the declared length and
   digest.
+- `VerifiedSidecar` retains the exact private store instance and healthy generation that verified
+  its address and bytes. A HomeStore-owned bounded qualification checks both identities against
+  the currently healthy store; it performs no file read, byte hashing, record mutation or new
+  verification. Matching generation numbers, home paths or content addresses alone are
+  insufficient: independent homes and a fresh open of the same home may reuse a generation number.
+  Foreign or retired authority cannot qualify, including after close/reopen or recovery. The
+  qualification exposes no private instance identity, and health/lifecycle failures retain typed
+  provenance. Consumers additionally compare the exact namespace, digest and byte length they need.
 - Failed admission may leave an inert temporary or unreferenced final file. The package never
   deletes either and exposes no cleanup operation before a separately authorized home-wide garbage-
   collection design.

@@ -4,7 +4,7 @@ pub(crate) mod index;
 mod ledger;
 mod model;
 mod publication;
-mod readiness_source;
+pub(crate) mod readiness_source;
 mod refusal;
 mod submission;
 mod terminal;

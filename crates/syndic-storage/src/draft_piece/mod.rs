@@ -5,12 +5,14 @@ mod checkpoint;
 mod codec;
 mod detached;
 mod history;
+mod import;
 mod marker_commitment;
 mod marker_seal;
 mod materializer;
 mod model;
 mod mutation;
 mod persistent;
+mod proof_dispatch;
 mod publication;
 mod read;
 mod session;
@@ -28,6 +30,7 @@ pub use detached::{
     DetachedDraftReadErrorV1, DetachedDraftReadLimitsV1, DetachedDraftReadSourceV1,
 };
 pub use history::*;
+pub use import::*;
 pub use marker_commitment::canonical_empty_draft_marker_commitment_v1;
 pub use marker_seal::*;
 pub use materializer::*;
@@ -49,8 +52,8 @@ pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };
 pub use staging::{
-    DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1,
     DraftMutationStagingErrorV1, DraftPieceDurableBuildWindowLimitsV1,
+    DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1,
     PreparedDraftMutationStagingBatchV1, PreparedDraftMutationStagingCommandV1,
     PreparedDraftMutationTransferV1, PreparedDraftPieceStagingWindowV1,
 };
@@ -91,6 +94,15 @@ pub(crate) use history::{
     DraftHistoricalRootAdoptionsCodec, canonical_history_reference_bytes, dec_history_frontier,
     dec_history_reference, dec_history_transition, enc_history_frontier, enc_history_reference,
     enc_history_transition, historical_candidate_session_is_exact,
+};
+#[cfg(feature = "test-faults")]
+pub(crate) use import::check_sealed_import_eof_corruption_for_test;
+pub(crate) use import::{
+    canonical_import_header_bytes, dec_cancellation_receipt, dec_import_basis, dec_import_frontier,
+    dec_import_selection, enc_cancellation_receipt, enc_import_basis, enc_import_frontier,
+    enc_import_selection, import_build_is_exact, import_header_generation,
+    import_progress_is_exact, import_settlement_is_exact, import_transition_is_exact,
+    imported_session,
 };
 pub(crate) use marker_commitment::*;
 pub(crate) use marker_seal::DraftMarkerSealsCodec;

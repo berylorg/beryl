@@ -49,6 +49,11 @@ pub enum DraftEditHistoryFrontierKeyV1 {
         session_id: DraftEditorCandidateSessionIdV1,
         operation_id: DraftPieceOperationIdV1,
     },
+    SealedImportBaseline {
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    },
 }
 
 impl DraftEditHistoryFrontierKeyV1 {
@@ -82,23 +87,45 @@ impl DraftEditHistoryFrontierKeyV1 {
         match self {
             Self::CanonicalEmpty { draft_id }
             | Self::Session { draft_id, .. }
-            | Self::Publication { draft_id, .. } => draft_id,
+            | Self::Publication { draft_id, .. }
+            | Self::SealedImportBaseline { draft_id, .. } => draft_id,
         }
     }
 
     pub const fn session_id(self) -> Option<DraftEditorCandidateSessionIdV1> {
         match self {
             Self::CanonicalEmpty { .. } => None,
-            Self::Session { session_id, .. } | Self::Publication { session_id, .. } => {
-                Some(session_id)
-            }
+            Self::Session { session_id, .. }
+            | Self::Publication { session_id, .. }
+            | Self::SealedImportBaseline { session_id, .. } => Some(session_id),
         }
     }
 
     pub const fn publication_operation_id(self) -> Option<DraftPieceOperationIdV1> {
         match self {
             Self::Publication { operation_id, .. } => Some(operation_id),
-            Self::CanonicalEmpty { .. } | Self::Session { .. } => None,
+            Self::CanonicalEmpty { .. }
+            | Self::Session { .. }
+            | Self::SealedImportBaseline { .. } => None,
+        }
+    }
+
+    pub const fn sealed_import_baseline(
+        draft_id: SyndicDraftId,
+        session_id: DraftEditorCandidateSessionIdV1,
+        operation_id: DraftPieceOperationIdV1,
+    ) -> Self {
+        Self::SealedImportBaseline {
+            draft_id,
+            session_id,
+            operation_id,
+        }
+    }
+
+    pub const fn sealed_import_operation_id(self) -> Option<DraftPieceOperationIdV1> {
+        match self {
+            Self::SealedImportBaseline { operation_id, .. } => Some(operation_id),
+            _ => None,
         }
     }
 }

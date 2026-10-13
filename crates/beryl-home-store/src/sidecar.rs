@@ -169,6 +169,7 @@ impl AdmittedSidecar {
 pub struct VerifiedSidecar {
     address: SidecarAddress,
     path: PathBuf,
+    store: StoreInstanceId,
     generation: HomeGeneration,
 }
 

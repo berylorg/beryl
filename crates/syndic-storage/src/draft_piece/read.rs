@@ -896,6 +896,11 @@ impl SyndicStorage {
                 ));
             }
             let target_session = match settlement.closure() {
+                DraftPieceSettlementClosureV1::SealedImport(_) => {
+                    return Err(SyndicReadError::Invariant(
+                        "sealed import cannot be verified as an ordinary edit",
+                    ));
+                }
                 DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session(),
                 DraftPieceSettlementClosureV1::Noncommit(noncommit) => noncommit.observed_session(),
             };
@@ -905,6 +910,11 @@ impl SyndicStorage {
                 ));
             }
             match settlement.closure() {
+                DraftPieceSettlementClosureV1::SealedImport(_) => {
+                    return Err(SyndicReadError::Invariant(
+                        "sealed import cannot be verified as an ordinary edit",
+                    ));
+                }
                 DraftPieceSettlementClosureV1::Committed(adoption) => {
                     let published = self.point::<DraftPieceRootsFamily>(
                         store,

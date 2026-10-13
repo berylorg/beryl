@@ -590,15 +590,24 @@ fn authenticate_progress_receipt_effects_from_acquisition(
         )?;
         marker_advance::validate_pending_roots_with(reader, receipt.key().draft_id(), active)?;
     }
-    mapping_custody::validate_roots_with(
-        reader,
-        DraftPieceSettlementKeyV1::new(
-            receipt.key().draft_id(),
-            receipt.key().session_id(),
-            receipt.key().operation_id(),
-        ),
-        receipt.mapping(),
-    )?;
+    if matches!(
+        receipt.frontier(),
+        DraftPieceBuildFrontierV1::SealedImport(_)
+    ) {
+        if !import_progress_is_exact(receipt) {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+    } else {
+        mapping_custody::validate_roots_with(
+            reader,
+            DraftPieceSettlementKeyV1::new(
+                receipt.key().draft_id(),
+                receipt.key().session_id(),
+                receipt.key().operation_id(),
+            ),
+            receipt.mapping(),
+        )?;
+    }
     Ok(fragment)
 }
 
@@ -1338,7 +1347,12 @@ fn active_session_generation_matches_build(
     session: &DraftEditorCandidateSessionV1,
     build: &DraftPieceBuildRecordV1,
 ) -> bool {
-    canonical_edit_command_source_generation(build.canonical_header()).and_then(|generation| {
+    let generation = if matches!(build.frontier(), DraftPieceBuildFrontierV1::SealedImport(_)) {
+        import_header_generation(build)
+    } else {
+        canonical_edit_command_source_generation(build.canonical_header())
+    };
+    generation.and_then(|generation| {
         generation.checked_add(build.progress_receipt().key().transition_ordinal())
     }) == Some(session.session_generation())
 }
@@ -1438,16 +1452,25 @@ fn authenticate_progress_receipt_effects(
         )
         .map_err(|_| SyndicMutationError::IdentityCollision)?;
     }
-    mapping_custody::validate_roots_with(
-        &mut &*reader,
-        DraftPieceSettlementKeyV1::new(
-            receipt.key().draft_id(),
-            receipt.key().session_id(),
-            receipt.key().operation_id(),
-        ),
-        receipt.mapping(),
-    )
-    .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    if matches!(
+        receipt.frontier(),
+        DraftPieceBuildFrontierV1::SealedImport(_)
+    ) {
+        if !import_progress_is_exact(receipt) {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    } else {
+        mapping_custody::validate_roots_with(
+            &mut &*reader,
+            DraftPieceSettlementKeyV1::new(
+                receipt.key().draft_id(),
+                receipt.key().session_id(),
+                receipt.key().operation_id(),
+            ),
+            receipt.mapping(),
+        )
+        .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    }
     Ok(())
 }
 
@@ -1624,6 +1647,7 @@ fn settlement_matches(
         prepared.header().session_id(),
     )?;
     let target_session = match settlement.closure() {
+        DraftPieceSettlementClosureV1::SealedImport(_) => return Ok(false),
         DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session(),
         DraftPieceSettlementClosureV1::Noncommit(noncommit) => noncommit.observed_session(),
     };
@@ -1662,6 +1686,7 @@ fn settlement_matches(
         }
     }
     match settlement.closure() {
+        DraftPieceSettlementClosureV1::SealedImport(_) => Ok(false),
         DraftPieceSettlementClosureV1::Committed(adoption) => {
             authenticate_draft_edit_history_frontier_v1(reader, adoption.adopted_history())?;
             Ok(

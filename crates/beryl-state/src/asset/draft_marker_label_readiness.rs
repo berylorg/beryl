@@ -41,9 +41,15 @@ pub struct AssetDraftMarkerLabelReadinessError {
 enum ErrorKind {
     Read(ReadError),
     Rejected,
+    HistoricalInput(super::historical_input::AssetHistoricalInputError),
 }
 
 impl AssetDraftMarkerLabelReadinessError {
+    fn historical_input(error: super::historical_input::AssetHistoricalInputError) -> Self {
+        Self {
+            kind: ErrorKind::HistoricalInput(error),
+        }
+    }
     fn rejected() -> Self {
         Self {
             kind: ErrorKind::Rejected,
@@ -54,6 +60,7 @@ impl AssetDraftMarkerLabelReadinessError {
 impl fmt::Debug for AssetDraftMarkerLabelReadinessError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            ErrorKind::HistoricalInput(error) => fmt::Debug::fmt(error, formatter),
             ErrorKind::Read(error) => formatter
                 .debug_tuple("AssetDraftMarkerLabelReadinessError::Read")
                 .field(error)
@@ -68,6 +75,7 @@ impl fmt::Debug for AssetDraftMarkerLabelReadinessError {
 impl fmt::Display for AssetDraftMarkerLabelReadinessError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            ErrorKind::HistoricalInput(error) => fmt::Display::fmt(error, formatter),
             ErrorKind::Read(error) => {
                 write!(formatter, "asset readiness witness access failed: {error}")
             }
@@ -83,6 +91,10 @@ impl Error for AssetDraftMarkerLabelReadinessError {}
 impl DomainCallbackError for AssetDraftMarkerLabelReadinessError {
     fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
         match self.kind {
+            ErrorKind::HistoricalInput(
+                super::historical_input::AssetHistoricalInputError::Read(error),
+            ) => Ok(DomainCallbackSource::Read(error)),
+            ErrorKind::HistoricalInput(error) => Err(Self::historical_input(error)),
             ErrorKind::Read(error) => Ok(DomainCallbackSource::Read(error)),
             ErrorKind::Rejected => Err(Self::rejected()),
         }
@@ -100,6 +112,7 @@ impl From<ReadError> for AssetDraftMarkerLabelReadinessError {
 pub(crate) enum WitnessInput {
     Accepted(AcceptedWitnessInput),
     FreshAssets(FreshAssetWitnessInput),
+    HistoricalInput(super::historical_input::HistoricalInputWitness),
 }
 
 pub(crate) struct AcceptedWitnessInput {
@@ -196,7 +209,12 @@ impl ProofDomain for AssetDomain {
         match *input {}
     }
 
-    fn witness_protocol(_input: &Self::WitnessInput) -> ProofProtocolIdentity {
+    fn witness_protocol(input: &Self::WitnessInput) -> ProofProtocolIdentity {
+        if matches!(input, WitnessInput::HistoricalInput(_)) {
+            return ProofProtocolIdentity::of::<
+                super::historical_input::HistoricalInputMarkerProofProtocolV1,
+            >();
+        }
         ProofProtocolIdentity::of::<DraftMarkerLabelReadinessPageProtocol>()
     }
 
@@ -212,6 +230,10 @@ impl ProofDomain for AssetDomain {
         reader: &DomainReader<'_, Self>,
     ) -> Result<ProofCorrelationBytes, Self::Error> {
         match input {
+            WitnessInput::HistoricalInput(input) => {
+                super::historical_input::prove_historical_input(input, reader)
+                    .map_err(AssetDraftMarkerLabelReadinessError::historical_input)
+            }
             WitnessInput::Accepted(input) => {
                 let mut validated = BTreeSet::new();
                 for (proof, label, asset_id) in input.associations.iter().copied() {
