@@ -445,6 +445,8 @@ fn assert_unpublished_head(
 
 #[path = "transcript_construction/multi_batch.rs"]
 mod multi_batch;
+#[path = "transcript_construction/neutral_state_advances.rs"]
+mod neutral_state_advances;
 #[path = "transcript_construction/operational_snapshot.rs"]
 mod operational_snapshot;
 #[path = "transcript_construction/pending_tail.rs"]

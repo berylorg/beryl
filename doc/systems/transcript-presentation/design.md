@@ -184,6 +184,9 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
   observation race, or the explicit unavailable-item-projection disposition. CAS terminal
   convergence likewise recognizes relevant peer build progress instead of failing its execution.
   Neither owner treats an unrelated Home revision change as proof of transcript progress.
+  This cooperation consumes the
+  [Syndic active transcript lifecycle](../syndic-conversation-history/design.md) for captured
+  turn-state advances; presentation owns no substitute lifecycle or additional history scan.
 - Each capability serializes its work and retains one bounded original-outcome batch. Every
   command's receipt, later failure and local-finalization custody remains with that batch until
   disposition; no replay substitutes for it. Indeterminate custody is installed once, its exact

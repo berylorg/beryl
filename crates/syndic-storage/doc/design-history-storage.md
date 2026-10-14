@@ -482,6 +482,13 @@ the exact current item revision and projection set; retained older entries authe
 recorded source revision through the saved projection set and captured source frame. Resource
 snapshots may precede their append-only narrative source without changing their saved bytes.
 
+Selected turn-state mutations consume the
+[active transcript lifecycle contract](../../../doc/systems/syndic-conversation-history/design.md).
+Execution activation and neutral live events atomically supersede affected Collecting/Publishing
+builds with their replacement stale head. Current-head neutral refresh, exact command guards and
+bounded generation-owned records remain preserved; state publication cannot strand an active
+captured path snapshot.
+
 A resource record stores bounded metadata and an exact immutable content or byte-range source.
 Projection-resource mappings name resources; they do not copy payloads. Textual range reads are
 explicit, bounded, and cursorable. Provider credentials and unnormalized transport envelopes are

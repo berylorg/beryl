@@ -102,13 +102,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 779: Construct Selected Canonical Transcripts (finished)
+# Phase 780: Supersede Active Transcript Builds On Neutral Turn-State Advances (finished)
 
-Accepted bounded process-issued canonical transcript construction before ordinary refresh, with a
-read-only provider, original outcome custody and exact CAS peer cooperation. Owner 16/16, actual
-created-child Current transcript/context painting, mixed native disposal and canonical locked
-production checks pass; independent completion review approves. See
-[acceptance](audits/selected-transcript-construction.md). Paired Copy remains in the workflow gate.
+Accepted atomic Syndic state/build/head supersession for captured neutral turn-state advances,
+preserving Current refresh, exact guards and bounded owner observation. Eleven deterministic,
+164 current storage and 28 mounted/owner cases qualify; canonical production checks and independent
+semantic/adversarial completion review pass. See
+[acceptance](audits/active-transcript-state-supersession.md).
 
 # Phase 777: Accept Complete Mounted Transcript Workflow (wip)
 
@@ -136,29 +136,24 @@ Code, Quote/menu/branch, replacement/submission, core/provider and release regre
 accepted diagnostic endpoint evidence. Individually accepted fault matrices remain reusable on
 unchanged inputs; this boundary requires the combined mounted workflows and release evidence.
 
-Current milestone: construction is accepted; native run 006 proves the actual created child has a
-Current two-entry head, Complete build and complete summary, and paints its exact literal context.
-The combined mixed-content workflow passes; the replacement/branch workflow reaches paired Copy
-and fails there. Qualify its current selection/focus, ordinary worker admission and completion
-freshness without substituting fixture projections, fake admission, suspended normal reads, CAS
-launch or weakened source guards. Run 008 adds bounded content-free Copy ordinal/selection/admission
-diagnostics. Explicit storage-only fixture mode now survives periodic worker attachment; fresh
-navigation attempts follow only exact no-effect source-change refusals before admission.
-See the [construction-gap evidence](failures/native-transcript-interaction-evidence.md#created-discussion-transcript-construction-gap).
+Current milestone: selected construction and active-build supersession prerequisites are accepted.
+The actual created child has a Current two-entry head, Complete build/summary and exact readable
+synthetic context. Both complete native workflows, ordinary streaming, owner and publication cases
+pass together in active-transcript-state run 005 (28/28). Library, 164 current storage cases and
+canonical production checks qualify the lifecycle correction. The earlier 189 public
+core/provider/resident-release/source-boundary cases pass; rerun affected checks on final inputs.
 
-Preserved correction: private publication Settling retains the original prepared command/outcome,
-excludes cancellation after admission, and resumes without another execution/reconciliation.
-Independent source review approves; library check passes, 4 convergence/cancellation/autosave/disposal
-cases pass (018), 47 lower publication/lifecycle cases pass (019), and 20 failed-resident cases pass
-(021). Complete mixed-content navigation/invalidation/disposal passes in native run 020; historical
-submission reaches SuccessorReady before the later child-transcript gap. Phase acceptance, commit
-and further production changes are pending the prerequisite. The accepted isolated clearing case
-remains unchanged.
+Private publication Settling preserves the original prepared command/outcome across convergence
+yield without execution/reconciliation replay. Explicit storage-only fixture mode survives periodic
+worker attachment; fresh invocations follow only exact no-effect source/preflight refusals, with
+returned custody retained. Real context drag requires completed ordinary attachment and actual
+current geometry. Saved-source fixture head/build coherence and source-boundary assertions are
+corrected without weakening production guards; all corrections have independent source review.
 
-Retain saved source/test changes and artifacts under `.aipm/tasks/mounted-transcript/` and
-`.aipm/tasks/mixed-source-replacement/` through prerequisite review/integration. Exact fixture homes
-still have diagnosis consumers; shared build artifacts remain available. The canonical checkout is
-reclaimed; no task-owned Cargo/native/debugger process remains. Required combined panel/Code/Table/
-image/Quote/menu/branch/replacement/provider/release checks, canonical production validation and
-independent whole-workflow review remain outstanding. Broader Checkpoint 4 flows and conditional
-unavailable repair remain separate.
+Remove temporary failure diagnostics, run the required combined panel/provider/native/publication
+checks and affected public/close-release checks, then obtain independent whole-workflow completion
+review. Preserve separate broader Checkpoint 4 and conditional unavailable repair gates. Lasting
+findings are in [native interaction evidence](failures/native-transcript-interaction-evidence.md).
+Retain exact task fixture homes/logs until final review consumes them; the exact
+`beryl-active-transcript-canonical` checkout and its local target remain needed through final
+qualification. Shared build artifacts and unrelated Operator skill edits remain preserved.

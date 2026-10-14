@@ -1785,6 +1785,17 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   Path collection walks immutable parents tail-to-root into generation-owned depth records;
   publication then walks those records root-to-tail and assigns contiguous stable positions. Only
   the completed generation becomes the selected current head.
+- A selected turn-state advance that changes the state captured by an active Collecting or
+  Publishing generation atomically supersedes that build and publishes a new stale selected head.
+  This includes execution binding activation and presentation-neutral live lifecycle events.
+  State, superseded build and replacement head publish in the same guarded Syndic contribution;
+  no observer may see changed state with a still-active old snapshot. Existing generation-owned
+  path and entry records remain unreachable derived history, without an unbounded rewrite.
+  A Current generation retains its existing exact path-state refresh for presentation-neutral
+  advances. A stale generation with no active build needs no additional invalidation, and a turn
+  outside the affected selected path does not invalidate that view. Draft-only changes preserve
+  unchanged selected history. Construction resumes with ordinary exact Start/Advance admission;
+  refusal is progress only when the observed relevant head/build/path authority actually changes.
 - A generation is bound semantically to its exact committed tail and selected-path digest. Its
   captured broad thread revision is a monotonic lower bound, so draft rotation or accepted-input
   admission may advance that revision without rebuilding or superseding unchanged selected

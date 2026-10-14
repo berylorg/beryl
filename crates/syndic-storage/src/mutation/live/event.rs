@@ -4,8 +4,8 @@ use super::*;
 use crate::mutation::{point, required};
 use crate::{
     BindingHeadRecord, BindingRecord, BindingState, CasThreadBindingIndexRecord,
-    CasThreadIndexRecord, HistorySummaryRecord, StopOperationRecord, TranscriptViewHeadRecord,
-    TurnLifecycle, TurnStateRecord,
+    CasThreadIndexRecord, HistorySummaryRecord, StopOperationRecord, TurnLifecycle,
+    TurnStateRecord,
 };
 
 pub(in crate::mutation) mod activity;
@@ -24,9 +24,7 @@ pub(super) struct EventRecords {
     state: TurnStateRecord,
     gate: Option<LiveGateEffect>,
     summary: Option<HistorySummaryRecord>,
-    transcript_head: Option<TranscriptViewHeadRecord>,
-    transcript_build: Option<crate::TranscriptBuildRecord>,
-    transcript_path: Option<crate::TranscriptPathTurnRecord>,
+    transcript: crate::mutation::transcript::SelectedTranscriptStateEffect,
     activity: activity::ActivityEffect,
     effect: Option<ItemEffect>,
     terminal_binding: Option<(
@@ -200,15 +198,12 @@ impl LiveSourceEventMutation {
             current.dispatch_provenance(),
         )?
         .preserve_resolved_repair(&current)?;
-        let (transcript_head, transcript_build) = if transcript_dirty {
-            crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?
+        let transcript = if transcript_dirty {
+            crate::mutation::transcript::SelectedTranscriptStateEffect::invalidate(reader, &thread)?
         } else {
-            (None, None)
-        };
-        let transcript_path = if transcript_dirty {
-            None
-        } else {
-            crate::mutation::transcript::refresh_current_path_state(reader, &thread, &turn, &state)?
+            crate::mutation::transcript::refresh_selected_path_state(
+                reader, &thread, &turn, &state,
+            )?
         };
         let summary = if summary.complete() || summary.last_activity_at() != request.observed_at {
             Some(HistorySummaryRecord::new(
@@ -258,9 +253,7 @@ impl LiveSourceEventMutation {
             state,
             gate: next_gate,
             summary,
-            transcript_head,
-            transcript_build,
-            transcript_path,
+            transcript,
             activity,
             effect,
             terminal_binding,
@@ -288,28 +281,7 @@ impl EventRecords {
         if let Some(summary) = &self.summary {
             mutations.put::<HistorySummariesCodec>(&summary.thread_id(), summary)?;
         }
-        if let Some(head) = &self.transcript_head {
-            mutations.put::<TranscriptHeadsCodec>(&head.thread_id(), head)?;
-        }
-        if let Some(build) = &self.transcript_build {
-            mutations.put::<TranscriptBuildsCodec>(
-                &ThreadTranscriptBuildKey {
-                    thread: build.thread_id(),
-                    generation: build.generation(),
-                },
-                build,
-            )?;
-        }
-        if let Some(path) = &self.transcript_path {
-            mutations.put::<TranscriptPathTurnsCodec>(
-                &ThreadTranscriptPathKey {
-                    thread: path.thread_id(),
-                    generation: path.generation(),
-                    depth: path.depth(),
-                },
-                path,
-            )?;
-        }
+        self.transcript.contribute(mutations)?;
         self.activity.contribute(mutations)?;
         if let Some(effect) = self.effect {
             effect.contribute(mutations)?;

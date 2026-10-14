@@ -89,6 +89,24 @@ pub(super) fn terminal_home(
         SourceEventPayload::TurnEnded(status),
         timestamp(8),
     );
+    let state = recovery
+        .storage
+        .turn_state(&recovery.store, recovery.turn, point_limit())
+        .unwrap()
+        .unwrap();
+    exact_cas::project_item_if_needed(
+        &recovery.store,
+        recovery.storage.clone(),
+        SyndicItemId::from_bytes(*ordered_id(value + 30_000).as_bytes()),
+    );
+    assert_eq!(
+        recovery
+            .storage
+            .turn_state(&recovery.store, recovery.turn, point_limit())
+            .unwrap()
+            .unwrap(),
+        state
+    );
     assert_eq!(
         recovery
             .storage

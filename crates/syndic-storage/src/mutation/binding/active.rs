@@ -41,6 +41,8 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
         reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
+        reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
+        reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
         reserve_input_gate(reservation)?;
         reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
@@ -59,7 +61,7 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
 
 pub struct ActivateBindingRecords {
     state: crate::TurnStateRecord,
-    transcript_path: Option<crate::TranscriptPathTurnRecord>,
+    transcript: crate::mutation::transcript::SelectedTranscriptStateEffect,
     binding: BindingRecord,
     head: BindingHeadRecord,
     snapshot: ExecutionSnapshotRecord,
@@ -243,12 +245,12 @@ impl ActivateBindingMutation {
             base.next_revision,
         )?;
         let thread = required::<ThreadsFamily>(reader, &request.thread_id)?;
-        let transcript_path = crate::mutation::transcript::refresh_current_path_state(
+        let transcript = crate::mutation::transcript::refresh_selected_path_state(
             reader, &thread, &turn, &state,
         )?;
         Ok(ActivateBindingRecords {
             state,
-            transcript_path,
+            transcript,
             binding,
             head,
             snapshot,
@@ -267,16 +269,7 @@ impl ActivateBindingRecords {
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
         mutations.put::<TurnStatesCodec>(&self.state.turn_id(), &self.state)?;
-        if let Some(path) = &self.transcript_path {
-            mutations.put::<TranscriptPathTurnsCodec>(
-                &ThreadTranscriptPathKey {
-                    thread: path.thread_id(),
-                    generation: path.generation(),
-                    depth: path.depth(),
-                },
-                path,
-            )?;
-        }
+        self.transcript.contribute(mutations)?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.binding.thread_id(),
