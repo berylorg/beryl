@@ -69,6 +69,14 @@ pub use resolution_admission::{DiscussionResolutionOutcome, ScopedDiscussionReso
 mod compaction_work;
 mod construction;
 mod resource_construction;
+mod selected_transcript_construction;
+pub(in crate::cas_projection) use selected_transcript_construction::selected_transcript_refusal_is_conflict;
+pub(crate) use selected_transcript_construction::{
+    SelectedTranscriptConstructionAuthority, SelectedTranscriptConstructionError,
+    SelectedTranscriptConstructionProgress,
+};
+#[cfg(test)]
+pub(crate) use selected_transcript_construction::RetainedSelectedTranscriptOutcome;
 pub(crate) use resource_construction::{
     ResourceConstructionAuthority, ResourceConstructionError, ResourceConstructionStep,
 };

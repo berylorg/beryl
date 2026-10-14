@@ -74,6 +74,13 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   Neither attachment nor refresh loads CAS history, dispatches work or registers a second capture
   consumer. This narrow source provider does not move storage access into the GUI transcript adapter.
 
+- The published running-thread reader also carries the process-issued selected-transcript
+  construction capability governed by the
+  [presentation system](../../../doc/systems/transcript-presentation/design.md#selected-transcript-construction).
+  Ordinary refresh invokes its bounded canonical steps off GPUI before the read-only provider
+  prepares an attachment. The reader retains original command disposition across cancelled or
+  stale delivery; existing worker retirement joins admitted settlement.
+
 - Activity and status adapters expose stable revision-bound pages and statically bounded facts.
   They materialize no complete activity history, backend bucket map, raw command, CAS history, or
   provider aggregate.

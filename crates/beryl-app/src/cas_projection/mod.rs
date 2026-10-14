@@ -49,6 +49,12 @@ pub use service::{ManualCompactionAvailability, ManualCompactionEligibility};
 pub(crate) use service::{
     ResourceConstructionAuthority, ResourceConstructionError, ResourceConstructionStep,
 };
+pub(crate) use service::{
+    SelectedTranscriptConstructionAuthority, SelectedTranscriptConstructionError,
+    SelectedTranscriptConstructionProgress,
+};
+#[cfg(test)]
+pub(crate) use service::RetainedSelectedTranscriptOutcome;
 
 pub use context_compaction::{
     ContextCompactionFeedback, ContextCompactionFeedbackSnapshot, ContextCompactionFeedbackState,
@@ -62,6 +68,11 @@ mod live_source;
 mod model;
 mod native_lineage_recovery;
 mod ordinary;
+#[cfg(test)]
+pub(crate) use ordinary::{
+    converge_selected_transcript_after_observation_for_test,
+    step_selected_transcript_after_observation_for_test,
+};
 mod outage_buffer;
 mod persistent_failure;
 mod process_sessions;

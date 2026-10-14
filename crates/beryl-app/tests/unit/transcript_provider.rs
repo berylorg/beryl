@@ -116,6 +116,8 @@ mod image_markers;
 mod selected_title;
 #[path = "transcript_provider/selected_title_history.rs"]
 mod selected_title_history;
+#[path = "transcript_provider/selected_construction.rs"]
+mod selected_construction;
 use crate::cas_projection::{
     MinimumTurnCaptureReserve, ProcessScheduledExecutionProvider, ProjectionConnectionService,
     ProjectionServiceConfig,

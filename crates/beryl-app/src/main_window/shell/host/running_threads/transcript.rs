@@ -343,6 +343,17 @@ impl MainWindowShellRoot {
             .track(release_running_read_output as fn());
         let work = self.running_threads.workers.track(move || {
             let result = (|| {
+                source
+                    .step_selected_transcript(expected.thread_id, &cancelled)
+                    .map_err(|error| match error {
+                        crate::cas_projection::SelectedTranscriptConstructionError::Cancelled => {
+                            crate::transcript_provider::TranscriptAttachmentError::Cancelled
+                        }
+                        crate::cas_projection::SelectedTranscriptConstructionError::Busy => {
+                            crate::transcript_provider::TranscriptAttachmentError::Busy
+                        }
+                        _ => crate::transcript_provider::TranscriptAttachmentError::Unavailable,
+                    })?;
                 let provider = match provider {
                     Some(provider) => provider,
                     None => source.transcript_provider()?,

@@ -8,6 +8,11 @@ mod live;
 mod projection;
 mod snapshot;
 mod transcript;
+#[cfg(test)]
+pub(crate) use transcript::{
+    converge_selected_transcript_after_observation_for_test,
+    step_selected_transcript_after_observation_for_test,
+};
 pub(crate) use gate::TerminalHistoryCompletion;
 pub(super) use live::LiveHistoryProgress;
 

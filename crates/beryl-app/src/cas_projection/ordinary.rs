@@ -1,6 +1,11 @@
 //! Exclusive execution of one pending ordinary Syndic turn.
 
 mod converge;
+#[cfg(test)]
+pub(crate) use converge::{
+    converge_selected_transcript_after_observation_for_test,
+    step_selected_transcript_after_observation_for_test,
+};
 mod error;
 mod execute;
 mod model;

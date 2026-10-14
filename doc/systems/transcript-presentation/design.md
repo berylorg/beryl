@@ -158,6 +158,52 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - Activation publishes selected transcript content and initial viewport state atomically when a coherent seed is available.
 - A previous coherent transcript may remain visible until a new coherent seed is ready.
 
+## Selected Transcript Construction
+
+- The process service graph issues a selected-transcript construction capability alongside its
+  published running-thread reader. This capability owns canonical transcript Start/Advance work;
+  the transcript provider remains read-only. Renderers, residency snapshots and discussion
+  creation do not construct durable transcript records.
+- After ordinary selected-claim publication, the existing tracked background attachment/refresh
+  worker invokes construction before reading its selected transcript. Initial activation may
+  publish the exact unavailable seed; subsequent refresh builds and reads the canonical result.
+  Construction admits only the exact selected thread and current service generation. It neither
+  acquires a view claim nor launches CAS, reparses items, creates item projections or repairs history.
+- One job admits at most eight canonical commands. Each observation reads only the selected
+  thread, transcript head and generation-owned build, with at most six point reads of 65,536 bytes
+  each and a coherence comparison. Canonical collection advances one path turn per command and
+  publication uses Syndic's existing 64-entry batch. Work exceeding the job budget resumes through
+  later ordinary refresh, without making the complete history resident.
+- A current coherent head requires no construction. A stale head must describe the selected
+  thread's committed tail and path digest, with no published entry frontier. Start is admitted
+  only when its selected generation has no build; an existing matching Collecting/Publishing build
+  is advanced with exact generation and build/head revisions. Draft-only changes may preserve the
+  same canonical build. Missing or inconsistent authority is a failure, never a guessed new path.
+- CAS and selected construction cooperate through the same canonical build and existing serialized
+  writer guards. A refused command is retryable only on proven relevant peer progress, a coherent
+  observation race, or the explicit unavailable-item-projection disposition. CAS terminal
+  convergence likewise recognizes relevant peer build progress instead of failing its execution.
+  Neither owner treats an unrelated Home revision change as proof of transcript progress.
+- Each capability serializes its work and retains one bounded original-outcome batch. Every
+  command's receipt, later failure and local-finalization custody remains with that batch until
+  disposition; no replay substitutes for it. Indeterminate custody is installed once, its exact
+  handle is reconciled once, and that job stops with the original failure, handle and classification
+  retained. ExactOld/New/Successor permit later fresh observation; collision or unresolved
+  reconciliation closes automatic construction for that capability. No replacement command may
+  precede classification. Terminal errors preserve canonical history and permit explicit service
+  recovery; they do not start an effect retry loop.
+- View changes fence admission before each command and discard stale presentation delivery.
+  Cancellation may win before construction's final admission check; a command already admitted
+  settles its original outcome even when the view changes. The existing worker and command permits
+  cover that settlement. Suspension, window disposal and service retirement fence new work and
+  join tracked workers; retained outcome state and capacity are then released. Installed unresolved
+  reconciliation remains under the Home SDK's recovery custody. A late completion cannot publish
+  into a retired host or revive demand.
+- Acceptance includes a normally created unbound inherited discussion becoming readable with its
+  synthetic context, bounded multi-job construction, resumed builds, exact CAS/peer races, missing
+  projections, refusal and indeterminate outcomes, and cancellation/switch/disposal without stale
+  publication. Canonical source history and provider source guards remain unchanged.
+
 ## Resource Bounds
 
 - Large code, table, generated-image, attachment, and comparable resources are represented by Syndic resource metadata and range-readable resource data.
