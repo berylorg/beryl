@@ -440,7 +440,7 @@
 - [x] Accepted atomic existing-window thread claim or creation and exact process/editor custody; [qualification](../../audits/same-window-thread-acquisition-qualification.md).
 - [x] Accepted ordinary New Thread root confirmation with original outcome custody, same-native-window failed-home recovery and exact Page cleanup; [qualification](../../audits/new-thread-confirmation-mount-qualification.md).
 - [x] Accepted primary New Thread through the selected thread's exact immutable runtime/root, independent split-button focus and preserved picker state; [qualification](../../audits/new-thread-primary-qualification.md).
-- [ ] Complete remaining restoration and progressive bootstrap through the accepted bounded main-window boundary.
+- [ ] Complete remaining restoration and progressive bootstrap through the accepted bounded main-window boundary; [readiness](../../audits/restoration-bootstrap-readiness.md).
 - [x] Accepted exact interrupted-close State recovery with preserved identity, renewed claims and
   independently verified persistence; [evidence](../../failures/ordinary-close-recovery.md#typed-persistence-acceptance).
   Ordinary command and complete recovery mounting remain separate.

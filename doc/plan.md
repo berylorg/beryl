@@ -102,37 +102,50 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 777: Accept Complete Mounted Transcript Workflow (finished)
+# Phase 781: Qualify Remaining Restoration And Progressive Bootstrap Readiness (finished)
 
-Accepted the complete transcript facet: combined panel/provider/native/publication 297/297,
-public core/provider/release/boundary 189/189 and actual native close 5/5 pass on final inputs.
-Canonical production checks and independent whole-workflow review approve source/geometry guards,
-original outcome custody, real replacement/branch/context interaction and bounded disposal.
-See [workflow acceptance](audits/mounted-transcript-workflow.md). Broader product gates remain open.
+Mapped exact whole-set/native/editor admission, separate progressive producers and accepted
+coordination, empty-session, capacity, placement and failure-custody evidence. Independent semantic
+review passes with no blocking readiness findings. The remaining gap is genuine held-loading
+composition; no missing capability or material authority contradiction was demonstrated.
+See [readiness](audits/restoration-bootstrap-readiness.md). The tracker item remains open.
 
-# Phase 781: Qualify Remaining Restoration And Progressive Bootstrap Readiness (pending)
+# Phase 782: Accept Native Restoration With Independent Progressive Readiness (pending)
 
-Qualify the next bounded [rework slice](rework/beryl-home/REWORK.md): remaining restoration and
-progressive bootstrap through the accepted main-window boundary. Use
-[Main windows](features/main-windows/design.md#startup-surface),
-[home startup](systems/beryl-home-storage/design.md) and
-[App lifecycle](../crates/beryl-app/doc/design.md) bootstrap/restore-set authorities
-to map remaining guarantees to exact production entry points and reusable accepted evidence.
+Accept the remaining restoration/progressive-bootstrap [rework slice](rework/beryl-home/REWORK.md)
+through production `bootstrap::run`, startup owner, complete native restore-set publication and
+ordinary shell ownership. Derive work from [reviewed readiness](audits/restoration-bootstrap-readiness.md),
+[main-window startup](features/main-windows/design.md#startup-surface),
+[progressive shell readiness](features/conversation-threads/design.md#progressive-shell-readiness)
+and [App restore-set ownership](../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership).
+This is one behavioral acceptance boundary, primarily missing composed runtime evidence.
 
-This is an evidence/readiness boundary, not authorization for a new production implementation.
-Distinguish whole-set validation/preparation/native publication and rollback/blocked-cleanup
-guarantees from catalog/transcript/runtime hydration after first shell publication. Assess exact
-selected editor, empty replacement/threadless startup, capacity/corruption refusal, placement,
-retained original failure custody and retirement. Identify missing tests separately from missing
-capabilities or contradictory authority; resolve material design gaps in their owners before any
-implementation phase. Do not hide missing contributions behind adapters or mark unrelated
-catalog, Settings, branch, Asset or conditional repair flows accepted.
+- Hold genuine selected-draft loading for saved members and prove no native publication before
+  every exact first editor is ready. Release actual work, observe readiness notifications and
+  prove correct first draft content and input without unseen-text races. Preserve bounded seeds.
+- Independently delay catalog certification, selected initial-history delivery and runtime
+  availability. Prove complete ordinary shell visibility with stable native/window/thread identity,
+  appropriate selector/transcript/submission unavailability and writable healthy local draft.
+  Exercise normal input and durable preservation without sending user data. Release each producer
+  and verify only its dependent readiness gate clears; runtime failure remains a backend notice
+  while local history and drafting stay usable. Do not require a model turn for submission gating.
+- Cancel or fail while actual loading work is outstanding. Verify whole attempted-set gating,
+  native/editor/worker disposal or explicit original retained custody, preserved sealed records
+  and no conflicting Retry/Exit authority. Keep fresh fallback abandonment distinct from restored
+  record preservation. Compose empty runtime-backed replacement and zero-runtime threadless startup.
+- Check changed inputs before reusing earlier capacity/corruption, placement, command-fault,
+  native publication and retirement evidence. Refresh affected restore-set/startup-owner,
+  first-editor, catalog/readiness, submission/runtime and ordinary close/Exit consumers as one
+  bounded combined acceptance packet; add missing native integration cases rather than repeat
+  unrelated product suites. Apply required focused and canonical checks on the final inputs.
 
-Produce one bounded readiness record that identifies qualified unchanged behavior, remaining
-guarantee/evidence gaps and the next technically ready behavioral acceptance boundary. Require
-independent semantic readiness review before this slice feeds implementation or closes the tracker
-item. No implementation experiments or extra compatibility surface are part of this qualification.
+Use existing native fixtures and production producer boundaries. Test-only synchronization may
+hold actual work; a fake ready flag, injected finished editor/history, stopped production worker or
+replacement capability cannot substitute for the claimed evidence. Supporting corrections stay
+within this behavior and its exact identity/outcome/resource contracts; reconcile material design
+gaps before implementation. Require independent semantic whole-boundary review before marking
+restoration/progressive bootstrap accepted. Broader catalog, Settings, Asset and repair gates stay separate.
 
-Current checkpoint: accepted transcript prerequisites and complete workflow remove that mounting
-gap. Restoration/progressive bootstrap is the next open bounded tracker item; qualification has
-not started. Shared build artifacts and unrelated Operator skill edits remain preserved.
+Current checkpoint: readiness is accepted; runtime qualification has not started. No production
+changes or new native test results belong to the readiness phase. Shared build artifacts and
+unrelated Operator skill edits remain preserved.
