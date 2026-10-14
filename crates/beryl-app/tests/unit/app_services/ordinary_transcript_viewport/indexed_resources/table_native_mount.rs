@@ -6,8 +6,9 @@ use super::*;
 use crate::syndic_transcript::SyndicTranscriptPanel;
 use gpui::{AsyncApp, Entity, PlatformInput, point, px};
 #[path = "table_native_support.rs"]
-mod support;
+pub(super) mod support;
 use self::support::*;
+pub(super) use self::support::large_table;
 #[path = "table_native_actions.rs"]
 mod actions;
 #[path = "table_native_inline.rs"]

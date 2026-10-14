@@ -213,8 +213,9 @@ impl SyndicComposerHost {
             ComposerHostMutationCoordinator {
                 binding,
                 begin: request,
-                storage_begin,
+                storage_begin: head.begin(),
                 evidence: None,
+                resolved_intended: None,
                 cleanup: None,
                 build_flight: None,
                 build_completion: None,
@@ -232,6 +233,7 @@ impl SyndicComposerHost {
                 proposal_envelope_applied: false,
                 last_proposal_range: None,
                 remaining_proposal_range: request.proposal().replacement(),
+                tail_deletion_pending: false,
                 in_flight_page: None,
                 finish_input: None,
                 intended: None,
@@ -278,7 +280,9 @@ impl SyndicComposerHost {
             validate_marker_metadata_intake(request.page(), &marker_metadata)?;
             let lane = request.page().key().lane();
             let frontier = pending.lane(lane);
-            let (next_frontier, acceptance) = match frontier.prevalidate(request.page())? {
+            let (next_frontier, acceptance) = match frontier
+                .prevalidate(request.page(), pending.begin.proposal().replacement())?
+            {
                 WidgetPageDisposition::Replay => return Ok(MutationPageAcceptance::Replay),
                 WidgetPageDisposition::Accepted {
                     frontier,
@@ -352,6 +356,32 @@ impl SyndicComposerHost {
                         canonical_position(pending.begin.proposal().replacement().end())?,
                     )),
                     pending.remaining_proposal_range,
+                    false,
+                );
+                self.stage_internal_translated_page(store, &mut pending, finish, translated)?;
+            }
+            if pending.tail_deletion_pending {
+                let start = canonical_position(pending.remaining_proposal_range.start())?;
+                let end = canonical_position(pending.remaining_proposal_range.end())?;
+                let replacement =
+                    syndic_storage::DraftPieceReplacementV1::new(start, end, Vec::new());
+                let count = pending
+                    .fragment_count
+                    .checked_add(1)
+                    .ok_or(ComposerHostError::MutationMalformed)?;
+                let chain = syndic_storage::draft_piece_fragment_chain_link_v1(
+                    pending.fragment_chain,
+                    count,
+                    &replacement,
+                );
+                let translated = TranslatedWidgetPage::proposal(
+                    vec![DraftMutationStagingPageItemV1::Proposal(replacement)],
+                    count,
+                    chain,
+                    true,
+                    Some((start, end)),
+                    pending.remaining_proposal_range,
+                    false,
                 );
                 self.stage_internal_translated_page(store, &mut pending, finish, translated)?;
             }
@@ -359,7 +389,17 @@ impl SyndicComposerHost {
                 finish.intended_extent().byte_len(),
                 finish.intended_extent().line_count(),
             );
-            let intended = finish.intended();
+            let intended = match pending.resolved_intended {
+                Some(intended) => intended,
+                None => position::resolve_intended(
+                    self,
+                    store,
+                    pending.binding,
+                    pending.begin,
+                    pending.proposal,
+                    finish,
+                )?,
+            };
             let storage_finish = DraftMutationFinishInputV1::new(
                 pending.head.source(),
                 pending.head.proposal(),

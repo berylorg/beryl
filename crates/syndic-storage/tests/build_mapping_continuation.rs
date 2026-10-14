@@ -6,6 +6,9 @@ include!("durable_builder/support.rs");
 #[path = "build_mapping_continuation/support.rs"]
 mod mapping_support;
 
+#[path = "build_mapping_continuation/deferred_prefix.rs"]
+mod deferred_prefix;
+
 use mapping_support::*;
 
 #[test]

@@ -51,6 +51,11 @@ fn authenticate_receipt(
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     validate_previous_proof(&acquisition, &previous, &receipt)?;
+    super::super::deferred_prefix::validate_transition(
+        &mut acquisition.clone(),
+        &previous,
+        &receipt,
+    )?;
     Ok(receipt)
 }
 
@@ -136,8 +141,16 @@ fn prepare_transition(
     let mapping = quantum
         .mapping
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-    let writer_consumption = selected_fragment
+    let effect_fragment = build
+        .marker_effect_continuation()
+        .active()
+        .map(|active| {
+            required::<DraftPieceBuildFragmentsFamily>(&acquisition, active.fragment_key())
+        })
+        .transpose()?;
+    let writer_consumption = effect_fragment
         .as_ref()
+        .or(selected_fragment.as_ref())
         .map(|fragment| {
             super::marker_advance::prepare_consumption(
                 &acquisition,
@@ -176,14 +189,23 @@ fn prepare_transition(
         writer_admission,
     )
     .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let transition_fragment =
+        super::super::mapping_custody::transition_fragment_key(&receipt, &next_receipt)
+            .map(|key| required::<DraftPieceBuildFragmentsFamily>(&acquisition, key))
+            .transpose()?;
     if !marker_effect_progress_transition_is_exact(
         &receipt,
         &next_receipt,
-        selected_fragment.as_ref(),
+        transition_fragment.as_ref(),
     ) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     validate_previous_proof(&acquisition, &receipt, &next_receipt)?;
+    super::super::deferred_prefix::validate_transition(
+        &mut acquisition.clone(),
+        &receipt,
+        &next_receipt,
+    )?;
     let next_session = session
         .advance_active_operation(&custody_for(&build), custody_for(&next))
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;

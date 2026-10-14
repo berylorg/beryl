@@ -636,6 +636,47 @@ impl MainWindowConversationComposer {
         )
     }
 
+    #[cfg(test)]
+    pub fn test_last_mutation_outcome(
+        &self,
+    ) -> Option<&(gpui_text_input::MutationKey, ComposerHostMutationOutcome, bool)> {
+        self.test_last_mutation_outcome.as_ref()
+    }
+
+    #[cfg(test)]
+    pub fn test_historical_edit_disabled_reason(&self, cx: &gpui::App) -> Option<&'static str> {
+        self.historical_edit_disabled_reason(cx)
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub fn test_mutation_storage_diagnostics(&self) -> String {
+        self.service.as_ref().map_or_else(
+            || "no bound composer service".to_owned(),
+            |service| service.test_with_selected_host(|host| {
+                let Some(diagnostics) = host.mutation_build_diagnostics() else {
+                    return "no mutation build diagnostics".to_owned();
+                };
+                let outcome = match diagnostics.result {
+                    Some(syndic_storage::DraftPieceReconciledCommandV1::Terminal(
+                        syndic_storage::DraftPieceTransactionOutcomeV1::Rejected(
+                            syndic_storage::DraftPieceSettlementProofV1::Settlement(settlement),
+                        ),
+                    )) => Some(settlement.outcome()),
+                    _ => None,
+                };
+                format!(
+                    "state={:?}, classification={:?}, rejection={outcome:?}, original={:?}, later={:?}, cleanup={:?}, local={:?}",
+                    diagnostics.state,
+                    diagnostics.classification,
+                    diagnostics.original_failure,
+                    diagnostics.later_failure,
+                    diagnostics.cleanup_failure,
+                    diagnostics.local_failure,
+                )
+            }),
+        )
+    }
+
     fn pump_edit_proof(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.is_live() || !matches!(self.route, MainWindowConversationComposerRoute::Selected) {
             return;
@@ -840,6 +881,16 @@ impl MainWindowConversationComposer {
                 return Err(error.to_string());
             }
         };
+        #[cfg(test)]
+        if let MainWindowComposerDispatchOutcome::Mutation { key, outcome } = &result.outcome {
+            self.test_last_mutation_outcome = Some((
+                *key,
+                outcome.clone(),
+                self.pending_dispatch.as_ref().is_some_and(|pending| {
+                    pending.request.key() == *key && pending.cancelled_staging()
+                }),
+            ));
+        }
         if result.initiating_selection != self.selection
             || !route_is_current(&self.service, route, self.route, result.settled_selection)
         {

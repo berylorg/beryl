@@ -22,7 +22,7 @@ pub(super) fn required<F: crate::codec::Family>(
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)
 }
 
-fn fragment(
+pub(in crate::draft_piece) fn fragment(
     acquisition: &BuildAcquisition<'_>,
     build: &DraftPieceBuildRecordV1,
     ordinal: u64,

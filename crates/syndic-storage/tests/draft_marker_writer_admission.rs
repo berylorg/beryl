@@ -701,42 +701,36 @@ fn admitted_staging_command_and_page_batch_replay_as_empty_contributions() {
             )]),
         )
         .unwrap();
-    let page_outcome = execute(
-        &store,
-        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), page.clone()),
-    );
-    assert!(matches!(
-        &page_outcome,
-        CommandOutcome::Committed {
-            later_failure: None,
-            local_finalization: None,
-            ..
-        }
-    ));
+    let mut page_outcome = storage
+        .submit_draft_mutation_staging_page_batch(
+            &store,
+            storage.revision(&store).unwrap(),
+            page.clone(),
+        )
+        .unwrap();
+    assert!(page_outcome.committed_receipt().is_some());
+    assert!(page_outcome.later_failure().is_none());
     assert_eq!(
-        storage
-            .reconcile_draft_mutation_staging_page_batch_outcome(&store, &page, page_outcome)
-            .unwrap(),
+        page_outcome.resolve(&store).unwrap(),
         syndic_storage::DraftMutationStagingReconcileV1::TargetSelected
     );
     let page_snapshot = snapshot(&storage, &store, admission);
     let page_head = page_snapshot.head().unwrap().digest();
     let page_receipt = page_snapshot.receipt().map(|receipt| receipt.digest());
     let page_capacity = page_snapshot.capacity().unwrap().digest();
-    let page_replay = execute(
-        &store,
-        storage.draft_mutation_staging_page_batch(storage.revision(&store).unwrap(), page.clone()),
-    );
+    let mut page_replay = storage
+        .submit_draft_mutation_staging_page_batch(
+            &store,
+            storage.revision(&store).unwrap(),
+            page.clone(),
+        )
+        .unwrap();
     assert!(matches!(
-        &page_replay,
-        CommandOutcome::NotCommitted {
-            evidence: CommandError::EmptyContribution { .. }
-        }
+        page_replay.original_failure(),
+        Some(CommandError::EmptyContribution { .. })
     ));
     assert_eq!(
-        storage
-            .reconcile_draft_mutation_staging_page_batch_outcome(&store, &page, page_replay)
-            .unwrap(),
+        page_replay.resolve(&store).unwrap(),
         syndic_storage::DraftMutationStagingReconcileV1::TargetSelected
     );
     assert_eq!(

@@ -9,7 +9,6 @@ use super::*;
 pub(in crate::main_window::conversation_composer_owner) struct ActiveComposerMutationEvidence {
     pass: MutationPass,
     awaiting_host: bool,
-    local_page_submitted: bool,
     acknowledgement: Option<MutationEvidenceAcknowledgement>,
     cancelled: bool,
     terminally_unavailable: bool,
@@ -66,7 +65,6 @@ impl MainWindowConversationComposer {
                 self.mutation_evidence = Some(ActiveComposerMutationEvidence {
                     pass,
                     awaiting_host: true,
-                    local_page_submitted: false,
                     acknowledgement: None,
                     cancelled: false,
                     terminally_unavailable: false,
@@ -156,17 +154,17 @@ impl MainWindowConversationComposer {
                     "composer cut immutable producer returned no evidence".to_owned()
                 })?
             } else {
-                let submitted = evidence.local_page_submitted;
-                self.input
-                    .update(cx, |input, _| {
-                        let (page, finish) = input.local_mutation_evidence(pass)?;
-                        Ok::<_, RangeTextInputError>(if !submitted && page.is_some() {
-                            super::super::clipboard::CutMutationInput::Page(page.unwrap().clone())
-                        } else {
-                            super::super::clipboard::CutMutationInput::Finish(finish)
+                let local_input = self.input
+                    .update(cx, |input, cx| {
+                        Ok::<_, RangeTextInputError>(match input.local_mutation_evidence(pass, cx)? {
+                            gpui_text_input::LocalMutationEvidence::Pending => None,
+                            gpui_text_input::LocalMutationEvidence::Page(page) => Some(super::super::clipboard::CutMutationInput::Page(page.clone())),
+                            gpui_text_input::LocalMutationEvidence::Finish(finish) => Some(super::super::clipboard::CutMutationInput::Finish(finish)),
                         })
                     })
-                    .map_err(|error| format!("composer local evidence was rejected: {error}"))?
+                    .map_err(|error| format!("composer local evidence was rejected: {error}"))?;
+                let Some(input) = local_input else { return Ok(true); };
+                input
             };
             let request = match input {
                 super::super::clipboard::CutMutationInput::Page(page) => {
@@ -189,7 +187,6 @@ impl MainWindowConversationComposer {
                         .mutation_evidence
                         .as_mut()
                         .ok_or_else(|| "composer evidence owner disappeared".to_owned())?;
-                    evidence.local_page_submitted = true;
                     evidence.acknowledgement = Some(acknowledgement);
                     ComposerHostMutationEvidenceRequest::Page {
                         pass,

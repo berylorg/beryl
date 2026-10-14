@@ -40,7 +40,7 @@ fn previous(
     marker_program::previous_fragment(context, build, fragment)
 }
 
-pub(super) fn advance(
+pub(in crate::draft_piece::persistent) fn advance(
     mut context: BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
     fragment: Option<&DraftPieceBuildFragmentV1>,
@@ -297,7 +297,7 @@ pub(super) fn advance(
             mapped_start,
             mapped_end,
         } => {
-            let (sequence, _, _) = load_working_roots(&mut context, build.working_roots())?;
+            let (sequence, _, _) = load_working_roots(&mut context, effective_roots(build))?;
             let fact = sequence_units::at_unit(&mut context, sequence, mapped_start)?;
             Stage::TextResolveEnd {
                 source_start,
@@ -314,7 +314,7 @@ pub(super) fn advance(
             start_boundary,
             start_marker_ordinal,
         } => {
-            let (sequence, _, _) = load_working_roots(&mut context, build.working_roots())?;
+            let (sequence, _, _) = load_working_roots(&mut context, effective_roots(build))?;
             let fact = sequence_units::at_unit(&mut context, sequence, mapped_end)?;
             if fact.marker_ordinal != start_marker_ordinal
                 || checked_boundary(start_boundary)? > fact.boundary
@@ -343,7 +343,7 @@ pub(super) fn advance(
             else {
                 return invalid();
             };
-            let (sequence, _, _) = load_working_roots(&mut context, build.working_roots())?;
+            let (sequence, _, _) = load_working_roots(&mut context, effective_roots(build))?;
             let splice = deletion_proof(
                 &mut context,
                 sequence,
@@ -363,7 +363,7 @@ pub(super) fn advance(
             else {
                 return invalid();
             };
-            let (sequence, _, _) = load_working_roots(&mut context, build.working_roots())?;
+            let (sequence, _, _) = load_working_roots(&mut context, effective_roots(build))?;
             let fact = sequence_units::at_boundary(
                 &mut context,
                 sequence,

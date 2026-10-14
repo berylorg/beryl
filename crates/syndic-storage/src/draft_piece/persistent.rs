@@ -8,6 +8,7 @@ use crate::read::access::ReadAccess;
 use crate::{SyndicStorage, draft_piece::*};
 
 mod mapping_program;
+mod deferred_prefix;
 mod marker_identity_lookup;
 mod marker_program;
 mod marker_tree_edit;

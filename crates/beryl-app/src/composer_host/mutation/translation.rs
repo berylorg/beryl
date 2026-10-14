@@ -23,6 +23,7 @@ pub(super) struct TranslatedWidgetPage {
     pub(super) proposal_envelope_applied: bool,
     pub(super) last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
     pub(super) remaining_proposal_range: SourceRange,
+    pub(super) tail_deletion_pending: bool,
 }
 
 pub(super) fn validate_marker_metadata_intake(
@@ -83,6 +84,7 @@ impl TranslatedWidgetPage {
         proposal_envelope_applied: bool,
         last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
         remaining_proposal_range: SourceRange,
+        tail_deletion_pending: bool,
     ) -> Self {
         Self {
             lane: DraftMutationStagingLaneV1::Proposal,
@@ -92,6 +94,7 @@ impl TranslatedWidgetPage {
             proposal_envelope_applied,
             last_proposal_range,
             remaining_proposal_range,
+            tail_deletion_pending,
         }
     }
 }
@@ -162,6 +165,7 @@ fn translate_source_page(
         proposal_envelope_applied: pending.proposal_envelope_applied,
         last_proposal_range: pending.last_proposal_range,
         remaining_proposal_range: pending.remaining_proposal_range,
+        tail_deletion_pending: pending.tail_deletion_pending,
     })
 }
 
@@ -180,6 +184,9 @@ fn translate_proposal_page(
     let mut replacements = Vec::new();
     let mut envelope_applied = pending.proposal_envelope_applied;
     let mut last_range = pending.last_proposal_range;
+    let mut tail_deletion_pending = pending.tail_deletion_pending;
+    let mapped_insertion = pending.evidence.is_some_and(|finish| matches!(finish.intended(),
+        gpui_text_input::MutationPositionsIntent::ReplacementEnd { inserted_utf8_bytes, .. } if inserted_utf8_bytes > 0));
     for item in page.items() {
         match item {
             MutationPageItem::Utf8 {
@@ -187,9 +194,18 @@ fn translate_proposal_page(
                 text,
             } => {
                 let (item_start, item_end, continuing) = if !envelope_applied {
+                    let item_end = if mapped_insertion
+                        && !text.is_empty()
+                        && start.utf8_offset() != end.utf8_offset()
+                    {
+                        tail_deletion_pending = true;
+                        start
+                    } else {
+                        end
+                    };
                     (
                         start,
-                        end,
+                        item_end,
                         start == end && !text.is_empty() && last_range == Some((start, end)),
                     )
                 } else {
@@ -216,12 +232,34 @@ fn translate_proposal_page(
                 }
             }
             MutationPageItem::Object(change) => {
+                if tail_deletion_pending {
+                    return Err(ComposerHostError::MutationMalformed);
+                }
                 let consumed = match *change {
                     ObjectChange::Insert { .. } => None,
                     ObjectChange::Remove { target }
                     | ObjectChange::Replace { target, .. }
                     | ObjectChange::Move { target, .. } => Some(target.range()),
                 };
+                if let ObjectChange::Remove { target } = *change
+                    && !envelope_applied
+                    && remaining
+                        .start()
+                        .compare_in_revision(target.range().start())
+                        == Some(std::cmp::Ordering::Less)
+                {
+                    if !matches!(
+                        target.range().end().compare_in_revision(remaining.end()),
+                        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+                    ) {
+                        return Err(ComposerHostError::MutationMalformed);
+                    }
+                    let target_start = canonical_position(target.range().start())?;
+                    replacements.push(replacement(start, target_start, Vec::new(), false, None));
+                    start = target_start;
+                    remaining = SourceRange::new(target.range().start(), remaining.end())
+                        .map_err(|_| ComposerHostError::MutationMalformed)?;
+                }
                 let (pieces, effect, natural_point, use_natural_point) = match *change {
                     ObjectChange::Insert { object } => {
                         let marker = new_marker(storage, store, pending, &mut metadata, object)?;
@@ -360,6 +398,7 @@ fn translate_proposal_page(
         envelope_applied,
         last_range,
         remaining,
+        tail_deletion_pending,
     ))
 }
 

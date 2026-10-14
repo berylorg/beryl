@@ -20,7 +20,7 @@ mod code_multiline;
 #[path = "branch_discussion/eligibility.rs"]
 mod eligibility;
 #[path = "branch_discussion/fixture.rs"]
-mod fixture;
+pub(super) mod fixture;
 #[path = "branch_discussion/late_retry.rs"]
 mod late_retry;
 #[path = "branch_discussion/lifecycle.rs"]
@@ -30,8 +30,8 @@ mod outcomes;
 #[path = "branch_discussion/scope.rs"]
 mod scope;
 
-const SOURCE: &str = "branch prefix **café 🌸 words** suffix\r\n";
-const SELECTED: &str = "**café 🌸 words**";
+pub(super) const SOURCE: &str = "branch prefix **café 🌸 words** suffix\r\n";
+pub(super) const SELECTED: &str = "**café 🌸 words**";
 
 async fn code_delivery_ready(
     window: WindowHandle<MainWindowShellRoot>,
@@ -65,7 +65,7 @@ fn open(
     .unwrap();
 }
 
-async fn invoke(
+pub(super) async fn invoke(
     window: WindowHandle<MainWindowShellRoot>,
     panel: &gpui::Entity<crate::syndic_transcript::SyndicTranscriptPanel>,
     cx: &mut AsyncApp,

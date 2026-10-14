@@ -67,7 +67,7 @@ fn insertion(
     }
 }
 
-fn update(
+pub(super) fn update(
     active: DraftPieceActiveMarkerEffectV1,
     roots: DraftPieceBuildRootsV1,
     phase: DraftPieceActiveMarkerPhaseV1,
@@ -110,7 +110,11 @@ pub(super) fn activate(
     fragment: &DraftPieceBuildFragmentV1,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
     validate_fragment(fragment.replacement()).map_err(DraftPiecePrepareErrorV1::Rejected)?;
-    if !matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { fragment_ordinal } if fragment_ordinal == fragment.key().ordinal())
+    if !(matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { fragment_ordinal } if fragment_ordinal == fragment.key().ordinal())
+        || crate::draft_piece::deferred_prefix::is_deferred(
+            build.frontier(),
+            build.marker_effect_continuation(),
+        ))
         || fragment.key()
             != DraftPieceBuildFragmentKeyV1::new(
                 build.draft_id(),
@@ -221,31 +225,13 @@ pub(super) fn previous_fragment(
     proof::previous(context, build, fragment)
 }
 
+#[inline(never)]
 pub(super) fn advance(
     mut context: BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
     fragment: &DraftPieceBuildFragmentV1,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
-    let active = build
-        .marker_effect_continuation()
-        .active()
-        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-    if active.fragment_key() != fragment.key()
-        || active.fragment_digest() != canonical_fragment_endpoint(fragment).digest()
-        || Some(active.effect()) != fragment.replacement().marker_effect()
-        || active.source_roots() != build.working_roots()
-        || !active.is_program_locally_exact()
-        || !build
-            .marker_effect_continuation()
-            .is_locally_exact(DraftPieceSettlementKeyV1::new(
-                build.draft_id(),
-                build.session_id(),
-                build.operation_id(),
-            ))
-    {
-        return invalid();
-    }
-    validate_fragment(fragment.replacement()).map_err(DraftPiecePrepareErrorV1::Rejected)?;
+    let active = *validate_active(build, fragment)?;
     if let Some(next) = mapping::advance(&mut context, active)? {
         return Ok(finish(
             context,
@@ -255,14 +241,208 @@ pub(super) fn advance(
             build.base_frontier(),
         ));
     }
+    match build.frontier() {
+        DraftPieceBuildFrontierV1::Planning { .. } => {
+            advance_planning(context, build, fragment, active)
+        }
+        DraftPieceBuildFrontierV1::Removing { .. } => {
+            advance_removing(context, build, fragment, active)
+        }
+        DraftPieceBuildFrontierV1::Applying { .. } => {
+            advance_applying(context, build, fragment, active)
+        }
+        DraftPieceBuildFrontierV1::Inserting { .. } => {
+            advance_inserting(context, build, fragment, active)
+        }
+        _ => invalid(),
+    }
+}
+
+#[inline(never)]
+fn validate_active<'a>(
+    build: &'a DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
+) -> Result<&'a DraftPieceActiveMarkerEffectV1, DraftPiecePrepareErrorV1> {
+    let active = build
+        .marker_effect_continuation_ref()
+        .active_ref()
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    if active.fragment_key() != fragment.key()
+        || active.fragment_digest() != canonical_fragment_endpoint(fragment).digest()
+        || Some(active.effect()) != fragment.replacement().marker_effect()
+        || active.source_roots() != build.working_roots()
+        || !active.is_program_exact_for_deferred(
+            crate::draft_piece::deferred_prefix::prefix_ordinal(build.frontier()).is_some_and(
+                |ordinal| {
+                    ordinal
+                        < build
+                            .marker_effect_continuation_ref()
+                            .scan_ref()
+                            .next_fragment_ordinal()
+                },
+            ),
+        )
+        || !build
+            .marker_effect_continuation_ref()
+            .is_exact_for_frontier(
+                DraftPieceSettlementKeyV1::new(
+                    build.draft_id(),
+                    build.session_id(),
+                    build.operation_id(),
+                ),
+                build.frontier(),
+            )
+    {
+        return invalid();
+    }
+    validate_fragment(fragment.replacement()).map_err(DraftPiecePrepareErrorV1::Rejected)?;
+
+    Ok(active)
+}
+
+#[inline(never)]
+fn advance_planning(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
+    active: DraftPieceActiveMarkerEffectV1,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
     let mut frontier = build.frontier();
     let base_frontier = build.base_frontier();
-    let active = match frontier {
-        DraftPieceBuildFrontierV1::Planning { fragment_ordinal } => {
-            if active.phase() != DraftPieceActiveMarkerPhaseV1::Removing {
-                return invalid();
+    let DraftPieceBuildFrontierV1::Planning { fragment_ordinal } = frontier else {
+        return invalid();
+    };
+    let active = {
+        if active.phase() != DraftPieceActiveMarkerPhaseV1::Removing {
+            return invalid();
+        }
+        match active.pending() {
+            Pending::Proof { .. } => {
+                let next = proof::advance(&mut context, build, fragment, active)?;
+                if next.pending() == Pending::None {
+                    mapping::advance(&mut context, next)?
+                        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
+                } else {
+                    next
+                }
             }
-            match active.pending() {
+            Pending::RemoveSequence
+            | Pending::RemoveIdentity { .. }
+            | Pending::RemoveOrder { .. } => surgery::advance(&mut context, active)?,
+            Pending::None => {
+                let source = active
+                    .planning()
+                    .and_then(|p| p.source_boundary)
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                let boundary = checked_boundary(source)?;
+                let mapping_program::Stage::MarkerPlanningReady { boundary: mapped } =
+                    mapping_program::mapping(&context)?.mapping_stage
+                else {
+                    return invalid();
+                };
+                mapping_program::set_stage(&mut context, mapping_program::Stage::Idle)?;
+                frontier = DraftPieceBuildFrontierV1::Removing {
+                    fragment_ordinal,
+                    next_rank: boundary.rank,
+                    end_rank: boundary.rank,
+                    removed_markers: 0,
+                    base_end: source,
+                    successor_start: mapped,
+                    successor_end: mapped,
+                };
+                update(
+                    active,
+                    active.working_roots(),
+                    active.phase(),
+                    None,
+                    None,
+                    None,
+                    Pending::None,
+                )
+            }
+            _ => return invalid(),
+        }
+    };
+    Ok(finish(context, build, active, frontier, base_frontier))
+}
+
+#[inline(never)]
+fn advance_removing(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    _fragment: &DraftPieceBuildFragmentV1,
+    active: DraftPieceActiveMarkerEffectV1,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    let mut frontier = build.frontier();
+    let base_frontier = build.base_frontier();
+    let DraftPieceBuildFrontierV1::Removing {
+        fragment_ordinal,
+        next_rank,
+        end_rank,
+        removed_markers,
+        base_end,
+        successor_start,
+        successor_end,
+    } = frontier
+    else {
+        return invalid();
+    };
+    let active = {
+        if next_rank != end_rank
+            || removed_markers != 0
+            || successor_start != successor_end
+            || active.phase() != DraftPieceActiveMarkerPhaseV1::Removing
+            || active.pending() != Pending::None
+            || active.planning().is_some()
+            || active.removal_site().is_some()
+            || active.insertion_site().is_some()
+        {
+            return invalid();
+        }
+        frontier = DraftPieceBuildFrontierV1::Applying {
+            fragment_ordinal,
+            base_end,
+            successor_start,
+            successor_end,
+        };
+        update(
+            active,
+            active.working_roots(),
+            DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap,
+            None,
+            None,
+            None,
+            Pending::None,
+        )
+    };
+    Ok(finish(context, build, active, frontier, base_frontier))
+}
+
+#[inline(never)]
+fn advance_applying(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
+    active: DraftPieceActiveMarkerEffectV1,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    let mut frontier = build.frontier();
+    let base_frontier = build.base_frontier();
+    let DraftPieceBuildFrontierV1::Applying {
+        fragment_ordinal,
+        base_end,
+        successor_start,
+        successor_end,
+    } = frontier
+    else {
+        return invalid();
+    };
+    let active = {
+        if crate::draft_piece::deferred_prefix::is_deferred(
+            build.frontier(),
+            build.marker_effect_continuation(),
+        ) && active.phase() == DraftPieceActiveMarkerPhaseV1::Removing
+        {
+            let next = match active.pending() {
                 Pending::Proof { .. } => {
                     let next = proof::advance(&mut context, build, fragment, active)?;
                     if next.pending() == Pending::None {
@@ -275,84 +455,69 @@ pub(super) fn advance(
                 Pending::RemoveSequence
                 | Pending::RemoveIdentity { .. }
                 | Pending::RemoveOrder { .. } => surgery::advance(&mut context, active)?,
-                Pending::None => {
-                    let source = active
-                        .planning()
-                        .and_then(|p| p.source_boundary)
-                        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-                    let boundary = checked_boundary(source)?;
-                    let mapping_program::Stage::MarkerPlanningReady { boundary: mapped } =
-                        mapping_program::mapping(&context)?.mapping_stage
-                    else {
-                        return invalid();
-                    };
-                    mapping_program::set_stage(&mut context, mapping_program::Stage::Idle)?;
-                    frontier = DraftPieceBuildFrontierV1::Removing {
-                        fragment_ordinal,
-                        next_rank: boundary.rank,
-                        end_rank: boundary.rank,
-                        removed_markers: 0,
-                        base_end: source,
-                        successor_start: mapped,
-                        successor_end: mapped,
-                    };
-                    update(
-                        active,
-                        active.working_roots(),
-                        active.phase(),
-                        None,
-                        None,
-                        None,
-                        Pending::None,
-                    )
-                }
                 _ => return invalid(),
-            }
-        }
-        DraftPieceBuildFrontierV1::Removing {
-            fragment_ordinal,
-            next_rank,
-            end_rank,
-            removed_markers,
-            base_end,
-            successor_start,
-            successor_end,
-        } => {
-            if next_rank != end_rank
-                || removed_markers != 0
-                || successor_start != successor_end
-                || active.phase() != DraftPieceActiveMarkerPhaseV1::Removing
-                || active.pending() != Pending::None
-                || active.planning().is_some()
-                || active.removal_site().is_some()
-                || active.insertion_site().is_some()
-            {
-                return invalid();
-            }
-            frontier = DraftPieceBuildFrontierV1::Applying {
-                fragment_ordinal,
-                base_end,
-                successor_start,
-                successor_end,
             };
+            return Ok(finish(context, build, next, frontier, base_frontier));
+        }
+        if successor_start != successor_end
+            || active.phase() != DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
+            || active.pending() != Pending::None
+            || active.planning().is_some()
+            || active.removal_site().is_some()
+            || active.insertion_site().is_some()
+        {
+            return invalid();
+        }
+        frontier = DraftPieceBuildFrontierV1::Inserting {
+            fragment_ordinal,
+            next_piece: 0,
+            next_byte: 0,
+            base_end,
+            successor_end,
+        };
+        if matches!(active.effect(), DraftPieceMarkerEffectV1::Remove { .. }) {
+            mapping_program::set_stage(&mut context, mapping_program::Stage::RefreshMap)?;
             update(
                 active,
                 active.working_roots(),
-                DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap,
+                DraftPieceActiveMarkerPhaseV1::Publishing,
                 None,
                 None,
                 None,
                 Pending::None,
             )
+        } else {
+            with_pending(active, proof(Purpose::InsertIdentityAbsent))
         }
-        DraftPieceBuildFrontierV1::Applying {
-            fragment_ordinal,
-            base_end,
-            successor_start,
-            successor_end,
-        } => {
-            if successor_start != successor_end
-                || active.phase() != DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
+    };
+    Ok(finish(context, build, active, frontier, base_frontier))
+}
+
+#[inline(never)]
+fn advance_inserting(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
+    active: DraftPieceActiveMarkerEffectV1,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    let mut frontier = build.frontier();
+    let base_frontier = build.base_frontier();
+    let DraftPieceBuildFrontierV1::Inserting {
+        fragment_ordinal,
+        next_piece,
+        next_byte,
+        base_end,
+        successor_end,
+    } = frontier
+    else {
+        return invalid();
+    };
+    let active = {
+        if next_byte != 0 {
+            return invalid();
+        }
+        if active.phase() == DraftPieceActiveMarkerPhaseV1::Publishing {
+            if next_piece != fragment.replacement().inserted().len() as u64
                 || active.pending() != Pending::None
                 || active.planning().is_some()
                 || active.removal_site().is_some()
@@ -360,73 +525,30 @@ pub(super) fn advance(
             {
                 return invalid();
             }
-            frontier = DraftPieceBuildFrontierV1::Inserting {
-                fragment_ordinal,
-                next_piece: 0,
-                next_byte: 0,
-                base_end,
-                successor_end,
-            };
-            if matches!(active.effect(), DraftPieceMarkerEffectV1::Remove { .. }) {
-                mapping_program::set_stage(&mut context, mapping_program::Stage::RefreshMap)?;
-                update(
-                    active,
-                    active.working_roots(),
-                    DraftPieceActiveMarkerPhaseV1::Publishing,
-                    None,
-                    None,
-                    None,
-                    Pending::None,
-                )
-            } else {
-                with_pending(active, proof(Purpose::InsertIdentityAbsent))
-            }
+            return publish(context, build, fragment, active, base_end, successor_end);
         }
-        DraftPieceBuildFrontierV1::Inserting {
-            fragment_ordinal,
-            next_piece,
-            next_byte,
-            base_end,
-            successor_end,
-        } => {
-            if next_byte != 0 {
-                return invalid();
-            }
-            if active.phase() == DraftPieceActiveMarkerPhaseV1::Publishing {
-                if next_piece != fragment.replacement().inserted().len() as u64
-                    || active.pending() != Pending::None
-                    || active.planning().is_some()
-                    || active.removal_site().is_some()
-                    || active.insertion_site().is_some()
-                {
-                    return invalid();
-                }
-                return publish(context, build, fragment, active, base_end, successor_end);
-            }
-            if next_piece != 0 {
-                return invalid();
-            }
-            match active.pending() {
-                Pending::Proof { .. } => proof::advance(&mut context, build, fragment, active)?,
-                Pending::InsertSequence
-                | Pending::InsertIdentity { .. }
-                | Pending::InsertOrder { .. } => {
-                    let next = surgery::advance(&mut context, active)?;
-                    if next.phase() == DraftPieceActiveMarkerPhaseV1::Publishing {
-                        frontier = DraftPieceBuildFrontierV1::Inserting {
-                            fragment_ordinal,
-                            next_piece: 1,
-                            next_byte: 0,
-                            base_end,
-                            successor_end,
-                        };
-                    }
-                    next
-                }
-                _ => return invalid(),
-            }
+        if next_piece != 0 {
+            return invalid();
         }
-        _ => return invalid(),
+        match active.pending() {
+            Pending::Proof { .. } => proof::advance(&mut context, build, fragment, active)?,
+            Pending::InsertSequence
+            | Pending::InsertIdentity { .. }
+            | Pending::InsertOrder { .. } => {
+                let next = surgery::advance(&mut context, active)?;
+                if next.phase() == DraftPieceActiveMarkerPhaseV1::Publishing {
+                    frontier = DraftPieceBuildFrontierV1::Inserting {
+                        fragment_ordinal,
+                        next_piece: 1,
+                        next_byte: 0,
+                        base_end,
+                        successor_end,
+                    };
+                }
+                next
+            }
+            _ => return invalid(),
+        }
     };
     Ok(finish(context, build, active, frontier, base_frontier))
 }

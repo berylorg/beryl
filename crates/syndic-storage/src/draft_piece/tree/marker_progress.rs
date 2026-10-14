@@ -34,8 +34,26 @@ pub(super) fn endpoint_is_exact(
     let Some(active) = active else {
         return true;
     };
-    if !active.is_program_locally_exact() || active.source_roots() != roots {
+    let deferred = super::super::deferred_prefix::active_is_deferred(frontier, active);
+    if !active.is_program_exact_for_deferred(deferred) || active.source_roots() != roots {
         return false;
+    }
+    if deferred {
+        return matches!(active.effect(), DraftPieceMarkerEffectV1::Remove { .. })
+            && match frontier {
+                DraftPieceBuildFrontierV1::Applying { .. } => {
+                    matches!(
+                        active.phase(),
+                        Phase::Removing | Phase::DerivingInsertionGap
+                    ) && active.planning().is_some()
+                }
+                DraftPieceBuildFrontierV1::Inserting {
+                    next_piece: 0,
+                    next_byte: 0,
+                    ..
+                } => active.phase() == Phase::Publishing && active.planning().is_none(),
+                _ => false,
+            };
     }
     let ordinal = active.fragment_key().ordinal();
     match frontier {
@@ -191,7 +209,11 @@ pub(super) fn transition_is_exact(
         return false;
     }
     let Some(left) = left else {
-        return matches!(previous.frontier(), DraftPieceBuildFrontierV1::Planning { fragment_ordinal } if fragment_ordinal == right.fragment_key().ordinal())
+        return (matches!(previous.frontier(), DraftPieceBuildFrontierV1::Planning { fragment_ordinal } if fragment_ordinal == right.fragment_key().ordinal())
+            || super::super::deferred_prefix::is_deferred(
+                previous.frontier(),
+                previous.marker_effect_continuation(),
+            ))
             && previous.frontier() == current.frontier()
             && previous.base_frontier() == current.base_frontier()
             && previous.next_record_ordinal() == current.next_record_ordinal()
@@ -233,6 +255,12 @@ pub(super) fn transition_is_exact(
                 && previous.next_record_ordinal() == current.next_record_ordinal()
         }
         DraftPieceBuildFrontierV1::Applying { .. } => {
+            if super::super::deferred_prefix::active_is_deferred(previous.frontier(), left)
+                && left.phase() == Phase::Removing
+                && right.phase() == Phase::Removing
+            {
+                return planning::transition(previous, current, left, right, fragment);
+            }
             matches!(
                 current.frontier(),
                 DraftPieceBuildFrontierV1::Inserting { .. }

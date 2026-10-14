@@ -13,6 +13,8 @@ mod cleanup;
 mod preparation;
 mod submission;
 mod verification;
+#[cfg(feature = "test-faults")]
+pub(crate) use verification::verify_build_endpoint_for_test;
 
 pub const STAGED_DRAFT_PIECE_OUTCOME_MAX_READS: usize = 128;
 pub const STAGED_DRAFT_PIECE_OUTCOME_MAX_ENCODED_VALUE_BYTES: usize = 8_388_608;

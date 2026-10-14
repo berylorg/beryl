@@ -135,10 +135,17 @@ impl SyndicComposerHost {
                     ))
                 }
                 ComposerHostReadTarget::Candidate => {
+                    let candidate = if pending.key().purpose()
+                        == ComposerHostRequestPurpose::MutationPredecessor
+                    {
+                        self.mutation_predecessor_candidate(pending.key().binding())?
+                    } else {
+                        active.storage_candidate
+                    };
                     Ok(ComposerHostResponseValue::CandidateMarkers(
                         self.storage.candidate_draft_piece_marker_demand(
                             store,
-                            active.storage_candidate,
+                            candidate,
                             demand.clone(),
                         )?,
                     ))

@@ -9,10 +9,11 @@ use gpui_text_input::{
     SourceRevision,
 };
 use syndic_storage::{
-    DraftCompositePositionV1, DraftEditorCandidateActivationBindingV1,
-    DraftEditorCandidateSessionV1, DraftMutationBeginV1, DraftMutationFinishInputV1,
-    DraftMutationOperationIdV1, DraftMutationStagingHeadV1, DraftMutationStagingIdentityV1,
-    DraftMutationStagingLaneV1, DraftPieceBuildProgressReceiptReferenceV1, DraftPieceDigestV1,
+    DraftCompositePositionV1, DraftEditorActiveOperationV1,
+    DraftEditorCandidateActivationBindingV1, DraftEditorCandidateSessionV1, DraftMutationBeginV1,
+    DraftMutationFinishInputV1, DraftMutationOperationIdV1, DraftMutationStagingHeadV1,
+    DraftMutationStagingIdentityV1, DraftMutationStagingLaneV1,
+    DraftPieceBuildProgressReceiptReferenceV1, DraftPieceDigestV1,
     PreparedDraftMutationStagingBatchV1,
 };
 
@@ -142,6 +143,7 @@ struct WidgetLaneFrontier {
     cumulative_identity: MutationIdentity,
     totals: MutationTotals,
     last_page: Option<WidgetPageReceipt>,
+    utf8_removals_only: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -168,10 +170,15 @@ impl WidgetLaneFrontier {
                 presentation_bytes: 0,
             },
             last_page: None,
+            utf8_removals_only: true,
         }
     }
 
-    fn prevalidate(self, page: &MutationPage) -> Result<WidgetPageDisposition, ComposerHostError> {
+    fn prevalidate(
+        self,
+        page: &MutationPage,
+        replacement: SourceRange,
+    ) -> Result<WidgetPageDisposition, ComposerHostError> {
         let key = page.key();
         if key.ordinal() < self.next_ordinal {
             let Some(last) = self.last_page else {
@@ -214,6 +221,8 @@ impl WidgetLaneFrontier {
                 next_ordinal,
                 cumulative_identity: page.cumulative_identity(),
                 totals,
+                utf8_removals_only: self.utf8_removals_only
+                    && position::page_is_replacement(page, replacement, self.totals.inserted_bytes),
                 last_page: Some(WidgetPageReceipt {
                     key,
                     page_identity: page.page_identity(),
@@ -261,7 +270,7 @@ enum ComposerHostMutationPhase {
 }
 
 struct ComposerHostInFlightPage {
-    prepared: PreparedDraftMutationStagingBatchV1,
+    custody: Option<ComposerHostStagingPageCustody>,
     kind: ComposerHostInFlightPageKind,
     #[cfg(feature = "test-faults")]
     custody_serial: u64,
@@ -270,6 +279,22 @@ struct ComposerHostInFlightPage {
     proposal_envelope_applied: bool,
     last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
     remaining_proposal_range: SourceRange,
+    tail_deletion_pending: bool,
+}
+
+enum ComposerHostStagingPageCustody {
+    Prepared(Box<PreparedDraftMutationStagingBatchV1>),
+    Submitted(Box<syndic_storage::DraftMutationStagingPageOutcomeFlightV1>),
+}
+
+impl ComposerHostInFlightPage {
+    fn prepared(&self) -> Result<&PreparedDraftMutationStagingBatchV1, ComposerHostError> {
+        match self.custody.as_ref() {
+            Some(ComposerHostStagingPageCustody::Prepared(prepared)) => Ok(prepared),
+            Some(ComposerHostStagingPageCustody::Submitted(flight)) => Ok(flight.prepared()),
+            None => Err(ComposerHostError::MutationMalformed),
+        }
+    }
 }
 
 enum ComposerHostInFlightPageKind {
@@ -289,6 +314,7 @@ pub(super) struct ComposerHostMutationCoordinator {
     begin: MutationBeginRequest,
     storage_begin: DraftMutationBeginV1,
     evidence: Option<MutationFinishInput>,
+    resolved_intended: Option<MutationPositions>,
     cleanup: Option<cleanup::ComposerHostMutationCleanup>,
     build_flight: Option<syndic_storage::StagedDraftPieceOutcomeFlightV1>,
     build_completion: Option<syndic_storage::StagedDraftPieceCommandCompletionV1>,
@@ -306,6 +332,7 @@ pub(super) struct ComposerHostMutationCoordinator {
     proposal_envelope_applied: bool,
     last_proposal_range: Option<(DraftCompositePositionV1, DraftCompositePositionV1)>,
     remaining_proposal_range: SourceRange,
+    tail_deletion_pending: bool,
     in_flight_page: Option<ComposerHostInFlightPage>,
     finish_input: Option<MutationFinishInput>,
     intended: Option<MutationPositions>,
@@ -350,6 +377,78 @@ impl ComposerHostMutationCoordinator {
     }
 }
 
+impl SyndicComposerHost {
+    pub(crate) fn mutation_predecessor_candidate(
+        &self,
+        binding: ComposerHostBinding,
+    ) -> Result<DraftEditorCandidateActivationBindingV1, ComposerHostError> {
+        let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
+        if active.binding != binding || active.storage_candidate != binding.candidate() {
+            return Err(ComposerHostError::OldBinding);
+        }
+        if active.unavailable || active.session_disposed {
+            return Err(ComposerHostError::PublicationUnavailable);
+        }
+        let pending = match self.pending_mutation.as_ref() {
+            None | Some(ComposerHostPendingMutation::Admission(_)) => {
+                return Ok(active.storage_candidate);
+            }
+            Some(ComposerHostPendingMutation::Active(pending)) => pending,
+            _ => return Err(ComposerHostError::MutationNotPending),
+        };
+        if pending.binding != binding
+            || !matches!(pending.phase, ComposerHostMutationPhase::Receiving)
+            || pending.head.lifecycle()
+                != syndic_storage::DraftMutationStagingLifecycleV1::Receiving
+            || pending.in_flight_page.is_some()
+            || pending.build_flight.is_some()
+            || pending.build_completion.is_some()
+            || pending.build_noncommit.is_some()
+            || pending.cleanup.is_some()
+            || pending.detached
+            || pending.unavailable_intent.is_some()
+        {
+            return Err(ComposerHostError::MutationPending);
+        }
+        let begin = pending.head.begin();
+        let expected_operation = DraftEditorActiveOperationV1::staging(
+            begin.identity().operation_id().as_piece_operation(),
+            pending.head.begin_digest(),
+            begin.predecessor_candidate_generation(),
+            begin.predecessor_root(),
+            begin.predecessor_history(),
+            pending.head.receipt(),
+        );
+        let candidate = DraftEditorCandidateActivationBindingV1::from_head(&pending.session);
+        let captured = binding.candidate();
+        if pending.head.identity() != pending.identity
+            || begin != pending.storage_begin
+            || begin.identity() != pending.identity
+            || pending.identity.operation_id()
+                != execution::operation_id(pending.begin.proposal().key().operation().get())
+            || pending.begin.proposal().key().binding() != binding.range_binding().binding()
+            || pending.begin.proposal().key().base_revision() != binding.range_binding().revision()
+            || pending.head.receipt().identity() != pending.identity
+            || pending.session.active_operation() != Some(&expected_operation)
+            || pending.session.lifecycle()
+                != syndic_storage::DraftEditorCandidateSessionLifecycleV1::Active
+            || candidate.draft_id() != captured.draft_id()
+            || candidate.session_id() != captured.session_id()
+            || candidate.candidate_generation() != captured.candidate_generation()
+            || candidate.root() != captured.root()
+            || candidate.history() != captured.history()
+            || candidate.logical_extent() != captured.logical_extent()
+            || begin.predecessor_candidate_generation() != captured.candidate_generation()
+            || begin.predecessor_root() != captured.root()
+            || begin.predecessor_history() != captured.history()
+            || begin.predecessor_extent() != captured.logical_extent()
+        {
+            return Err(ComposerHostError::MutationMalformed);
+        }
+        Ok(candidate)
+    }
+}
+
 #[cfg(feature = "test-faults")]
 impl SyndicComposerHost {
     pub fn test_mutation_in_flight_custody(&self) -> Option<(u64, bool)> {
@@ -372,6 +471,36 @@ impl SyndicComposerHost {
             ComposerHostInFlightPageKind::Internal { finish } => Some(*finish),
             ComposerHostInFlightPageKind::Widget { .. } => None,
         }
+    }
+
+    pub fn test_mutation_in_flight_reconciliation_handle(&self) -> Option<bool> {
+        let Some(ComposerHostPendingMutation::Active(pending)) = &self.pending_mutation else {
+            return None;
+        };
+        match pending.in_flight_page.as_ref()?.custody.as_ref()? {
+            ComposerHostStagingPageCustody::Prepared(_) => Some(false),
+            ComposerHostStagingPageCustody::Submitted(flight) => {
+                Some(flight.reconciliation_handle_present())
+            }
+        }
+    }
+
+    pub fn test_fail_next_mutation_staging_page_exact_read(&mut self) {
+        self.mutation_page_exact_read_fault = true;
+    }
+
+    pub fn test_fail_mutation_staging_page_exact_read(&mut self) -> bool {
+        let Some(ComposerHostPendingMutation::Active(pending)) = &mut self.pending_mutation else {
+            return false;
+        };
+        let Some(page) = pending.in_flight_page.as_mut() else {
+            return false;
+        };
+        let Some(ComposerHostStagingPageCustody::Submitted(flight)) = page.custody.as_mut() else {
+            return false;
+        };
+        flight.fail_next_exact_read_for_test();
+        true
     }
 }
 
@@ -416,6 +545,7 @@ mod cleanup;
 mod drive;
 mod execution;
 pub(super) mod outcome;
+mod position;
 mod settlement;
 mod translation;
 

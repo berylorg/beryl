@@ -167,6 +167,13 @@ fn object_page_for_target(
     }
     let demand = marker_demand(key)?;
     let host_key = host_key(binding, host_request_id, object_purpose(key.purpose())?)?;
+    let candidate = if target == ComposerHostReadTarget::Candidate
+        && key.purpose() == ObjectPurpose::MutationPredecessor
+    {
+        host.mutation_predecessor_candidate(binding)?
+    } else {
+        binding.candidate()
+    };
     let pending = host.begin_request(
         host_key,
         ComposerHostRequestKind::Markers { target, demand },
@@ -178,7 +185,7 @@ fn object_page_for_target(
             ComposerHostReadTarget::Candidate,
             ComposerHostResponseValue::CandidateMarkers(result),
         ) => {
-            if result.binding() != binding.candidate() {
+            if result.binding() != candidate {
                 return Err(MainWindowComposerDispatchError::StaleSelection);
             }
             result.value()
@@ -473,6 +480,7 @@ fn object_purpose(
         ObjectPurpose::Selection
         | ObjectPurpose::MutationSuccessor
         | ObjectPurpose::PlatformRange => ComposerHostRequestPurpose::Selection,
+        ObjectPurpose::MutationPredecessor => ComposerHostRequestPurpose::MutationPredecessor,
         ObjectPurpose::Clipboard => ComposerHostRequestPurpose::Clipboard,
         ObjectPurpose::Restoration => ComposerHostRequestPurpose::Restoration,
         ObjectPurpose::GeometryIndex | ObjectPurpose::GeometryTarget => {

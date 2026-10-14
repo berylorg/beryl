@@ -2871,6 +2871,11 @@ impl DraftPieceBuildRecordV1 {
     pub const fn marker_effect_continuation(&self) -> DraftPieceMarkerEffectContinuationV1 {
         self.marker_effect_continuation
     }
+    pub(crate) const fn marker_effect_continuation_ref(
+        &self,
+    ) -> &DraftPieceMarkerEffectContinuationV1 {
+        &self.marker_effect_continuation
+    }
     pub(crate) fn with_marker_effect_continuation(
         mut self,
         marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,

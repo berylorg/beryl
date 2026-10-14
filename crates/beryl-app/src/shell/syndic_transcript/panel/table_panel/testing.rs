@@ -1,5 +1,17 @@
 use super::*;
 impl SyndicTranscriptPanel {
+    pub(crate) fn table_kind_geometry_for_test(
+        &self,
+        indexed: bool,
+    ) -> Option<(u64, bool, gpui::Bounds<gpui::Pixels>, gpui::Bounds<gpui::Pixels>, f32, f32, gpui::Bounds<gpui::Pixels>)> {
+        let table = self.table_panels.iter().find(|table| table.viewport.owner.indexed().is_some() == indexed)?;
+        let current = table.viewport.owner.inline().is_some_and(|owner| self.host.inline_table_current(owner))
+            || !table.viewport.source_pages().is_empty()
+                && table.actions.binding == table.viewport.binding
+                && table.actions.root == table.viewport.root.as_ref().map(|root| root.digest);
+        let scroll = table.viewport.scroll.borrow();
+        Some((table.id, current, scroll.bounds, scroll.header_bounds, scroll.row_height, scroll.column_width, table.command_bounds.get()?.0))
+    }
     pub(crate) fn inline_table_source_for_test(&self) -> Option<&str> {
         Some(
             self.table_panels

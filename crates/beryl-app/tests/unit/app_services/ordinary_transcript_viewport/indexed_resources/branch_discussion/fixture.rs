@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn assistant() -> SyndicItemId {
     SyndicItemId::from_bytes([244; 16])
 }
-pub(super) fn limit() -> SyndicPointReadLimit {
+pub(in super::super) fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
@@ -84,7 +84,7 @@ pub(super) fn append_live(
     );
 }
 
-fn append(
+pub(in super::super) fn append(
     home: &beryl_home_store::HomeStore,
     syndic: &SyndicStorage,
     thread: SyndicThreadId,

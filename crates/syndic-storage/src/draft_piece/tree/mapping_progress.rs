@@ -6,6 +6,7 @@ use DraftPieceMappingSpliceKindV1 as Kind;
 use DraftPieceMappingStageV1 as Stage;
 use DraftPieceMarkerPendingV1 as Pending;
 
+mod deferred_prefix;
 mod publication;
 mod query;
 mod splice;
@@ -191,18 +192,25 @@ pub(super) fn endpoint_is_exact(
         || mapping
             .fragment_source_end_unit
             .is_some_and(|end| end < mapping.completed_source_unit || end > measure.source)
-        || active.is_some_and(|a| a.source_roots() != roots || !a.is_program_locally_exact())
+        || active.is_some_and(|a| {
+            a.source_roots() != roots
+                || !a.is_program_exact_for_deferred(
+                    super::super::deferred_prefix::active_is_deferred(frontier, a),
+                )
+        })
     {
         return false;
     }
     let stage = mapping.mapping_stage;
     let fragment_end = mapping.fragment_source_end_unit;
     let planning = matches!(frontier, Frontier::Planning { .. });
+    let deferred =
+        active.is_some_and(|a| super::super::deferred_prefix::active_is_deferred(frontier, a));
     let applying = matches!(frontier, Frontier::Applying { .. });
     let inserting = matches!(frontier, Frontier::Inserting { .. });
     let text_planning = planning && active.is_none();
-    let marker_planning =
-        planning && active.is_some_and(|a| a.phase() == Phase::Removing && a.planning().is_some());
+    let marker_planning = (planning || deferred && applying)
+        && active.is_some_and(|a| a.phase() == Phase::Removing && a.planning().is_some());
     let marker_idle = active.is_none_or(|a| a.pending() == Pending::None);
     let fact = |fact: DraftPieceMappingSourceFactV1| {
         fact.unit <= measure.source && fact.unit >= mapping.completed_source_unit
@@ -238,7 +246,7 @@ pub(super) fn endpoint_is_exact(
                 use DraftPieceMarkerProofPurposeV1 as Purpose;
                 let removes = !matches!(a.effect(), DraftPieceMarkerEffectV1::Insert(_));
                 let source_done = matches!(purpose, Purpose::SourceIdentity | Purpose::PreviousStart | Purpose::PreviousEnd);
-                fragment_end.is_none() == (purpose == Purpose::SourceBounds)
+                (deferred || fragment_end.is_none() == (purpose == Purpose::SourceBounds))
                     && removal_source_unit.is_some() == (removes && source_done)
                     && removal_source_unit.is_none_or(|unit| unit < measure.source)
                     && a.working_roots() == a.source_roots() && a.removal_site().is_none()
@@ -251,7 +259,7 @@ pub(super) fn endpoint_is_exact(
             marker_planning && fragment_end.is_some() && marker_idle && active.is_some_and(|a| a.removal_site().is_none())
                 && match stage { Stage::MarkerResolveBoundary { mapped_unit } => mapped_unit <= measure.target, Stage::MarkerPlanningReady { boundary } => boundary_valid(boundary, effective), _ => true }
         }
-        Stage::TextDeleteProof => applying && active.is_none() && fragment_end.is_some() && matches!(frontier, Frontier::Applying { successor_start, successor_end, .. } if successor_start != successor_end && ordered(successor_start, successor_end)),
+        Stage::TextDeleteProof => applying && (active.is_none() || deferred && active.is_some_and(|a| a.phase() == Phase::DerivingInsertionGap)) && fragment_end.is_some() && matches!(frontier, Frontier::Applying { successor_start, successor_end, .. } if successor_start != successor_end && ordered(successor_start, successor_end)),
         Stage::TextInsertProof => inserting && active.is_none() && fragment_end.is_some(),
         Stage::DeleteMap { splice, target, remaining_end } => {
             fragment_end.is_some() && marker_idle && splice_valid(splice, active, frontier, effective)
@@ -267,7 +275,7 @@ pub(super) fn endpoint_is_exact(
         Stage::Ready(ready) => fragment_end.is_some() && delta_valid(ready.kind, ready.removed, ready.inserted)
             && completed_target(mapping.current_map, ready.target, ready.a, ready.removed, ready.inserted)
             && match ready.kind {
-                Kind::TextDelete => active.is_none() && applying,
+                Kind::TextDelete => (active.is_none() || deferred && active.is_some_and(|a| a.phase() == Phase::DerivingInsertionGap)) && applying,
                 Kind::TextInsert => active.is_none() && inserting,
                 Kind::MarkerDelete => marker_planning && active.is_some_and(|a| a.removal_site().is_some() && matches!(a.pending(), Pending::RemoveSequence | Pending::RemoveIdentity { .. } | Pending::RemoveOrder { .. })),
                 Kind::MarkerInsert => inserting && active.is_some_and(|a| a.phase() == Phase::Inserting && a.insertion_site().is_some() && matches!(a.pending(), Pending::InsertSequence | Pending::InsertIdentity { .. } | Pending::InsertOrder { .. })),
@@ -296,7 +304,11 @@ fn splice_valid(
     }
     match splice.kind {
         Kind::TextDelete => {
-            active.is_none()
+            (active.is_none()
+                || active.is_some_and(|a| {
+                    super::super::deferred_prefix::active_is_deferred(frontier, a)
+                        && a.phase() == Phase::DerivingInsertionGap
+                }))
                 && splice.leaf.is_some()
                 && splice.local_end <= DRAFT_PIECE_TEXT_LEAF_MAX_BYTES as u64
                 && splice
@@ -320,7 +332,11 @@ fn splice_valid(
                 )
         }
         Kind::MarkerDelete => {
-            matches!(frontier, Frontier::Planning { .. })
+            (matches!(frontier, Frontier::Planning { .. })
+                || active.is_some_and(|a| {
+                    super::super::deferred_prefix::active_is_deferred(frontier, a)
+                        && a.phase() == Phase::Removing
+                }))
                 && splice.leaf.is_none()
                 && splice.local_start == 0
                 && splice.local_end == 0
@@ -400,6 +416,9 @@ pub(super) fn transition_is_exact(
             && previous.durable_continuation() == current.durable_continuation()
             && previous.successor() == current.successor()
             && previous.build_digest() == current.build_digest();
+    }
+    if let Some(result) = deferred_prefix::control_transition(previous, current, fragment) {
+        return result;
     }
     if !matches!(left.mapping_stage, Stage::PublishReady { .. }) {
         let before = previous.marker_effect_continuation();

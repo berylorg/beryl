@@ -19,7 +19,11 @@ mod assets {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/historical_replacement_host/assets.rs"));
 }
 
-pub(super) fn seed(path: &std::path::Path) {
+pub(in super::super) fn seed(path: &std::path::Path) {
+    seed_content(path, "before ", " after\n\n```rust\nlet sample = 1;\n```\n\n| A | B |\n| --- | --- |\n| one | two |\n");
+}
+
+pub(in super::super) fn seed_content(path: &std::path::Path, prefix: &str, suffix: &str) {
     use crate::support::exact_cas;
     let StartupHomeOpen::Ready { candidate, state, syndic } = support::open(path) else { panic!("marker transcript fixture Home"); };
     let home = candidate.publish().unwrap();
@@ -32,10 +36,10 @@ pub(super) fn seed(path: &std::path::Path) {
     let proof = assets::seal_marker_set(&home, &asset_state, &markers, asset);
     host_support::committed(host_support::execute(&home, asset_state.update_owner_heads(asset_state.revision(&home).unwrap(),
         UpdateAssetOwnerHeads::new(Box::new([AssetOwnerHeadUpdate::replace(AssetOwner::SubmittedTurnItem(item), None, Some(proof))])).unwrap())));
-    let payload = ComposerPayload::new(vec![ComposerAtom::Text("before ".into()),
+    let payload = ComposerPayload::new(vec![ComposerAtom::Text(prefix.into()),
         ComposerAtom::ImageMarker(ComposerImageMarker::new(markers[0].0, markers[0].1)),
         ComposerAtom::ImageMarker(ComposerImageMarker::new(markers[1].0, markers[1].1)),
-        ComposerAtom::Text(" after\n\n```rust\nlet sample = 1;\n```\n\n| A | B |\n| --- | --- |\n| one | two |\n".into()),
+        ComposerAtom::Text(suffix.into()),
     ]).unwrap();
     let at = |offset: u64| SyndicTimestamp::from_unix_millis(1000_u64 + offset);
     let turn = exact_cas::submit_prepared_current_draft(&home, syndic.clone(), thread,

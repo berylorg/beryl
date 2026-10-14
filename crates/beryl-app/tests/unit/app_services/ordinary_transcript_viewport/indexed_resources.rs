@@ -36,6 +36,9 @@ mod quote_insertion;
 #[path = "indexed_resources/turn_menus.rs"]
 mod turn_menus;
 
+#[path = "indexed_resources/mixed_replacement_clearing.rs"]
+mod mixed_replacement_clearing;
+
 #[path = "indexed_resources/narrative_source_revision.rs"]
 mod narrative_source_revision;
 

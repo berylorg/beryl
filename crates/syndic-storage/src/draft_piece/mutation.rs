@@ -18,11 +18,13 @@ pub(in super::super) mod advance_budget;
 mod build_custody;
 pub(super) mod mapping_custody;
 pub(super) mod marker_advance;
-mod sequence_advance;
+pub(in crate::draft_piece) mod sequence_advance;
+mod deferred_prefix;
 mod session_authentication;
 mod settlement;
 pub use advance_budget::DraftPieceBuildWorkV1;
 pub(super) mod staged_command;
+mod terminal;
 
 #[derive(Clone)]
 pub struct PreparedDraftPieceEditV1 {
@@ -151,7 +153,7 @@ enum TerminalKind {
 
 #[derive(Clone)]
 struct TerminalMutation {
-    prepared: PreparedDraftPieceEditV1,
+    prepared: Box<PreparedDraftPieceEditV1>,
     kind: TerminalKind,
 }
 
@@ -396,7 +398,7 @@ impl SyndicStorage {
         self.handle.contribution(
             expected_domain_revision,
             TerminalMutation {
-                prepared,
+                prepared: Box::new(prepared),
                 kind: TerminalKind::Cancelled,
             },
         )
@@ -411,7 +413,7 @@ impl SyndicStorage {
         self.handle.contribution(
             expected_domain_revision,
             TerminalMutation {
-                prepared,
+                prepared: Box::new(prepared),
                 kind: TerminalKind::Rejected(reason),
             },
         )
@@ -426,7 +428,7 @@ impl SyndicStorage {
         self.handle.contribution(
             expected_domain_revision,
             TerminalMutation {
-                prepared,
+                prepared: Box::new(prepared),
                 kind: TerminalKind::Error(reason),
             },
         )
@@ -525,6 +527,7 @@ fn authenticate_progress_receipt_from_acquisition(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         authenticate_progress_receipt_effects_from_acquisition(reader, &stored)?;
+        deferred_prefix::validate_transition(reader, &stored, receipt)?;
         let fragment_key = mapping_custody::transition_fragment_key(&stored, receipt);
         let fragment = fragment_key
             .map(|key| reader.point::<DraftPieceBuildFragmentsFamily>(key))
@@ -1399,6 +1402,8 @@ pub(super) fn authenticate_progress_receipt(
             return Err(SyndicMutationError::IdentityCollision);
         }
         authenticate_progress_receipt_effects(reader, &stored)?;
+        deferred_prefix::validate_transition(&mut &*reader, &stored, receipt)
+            .map_err(|_| SyndicMutationError::IdentityCollision)?;
         let fragment_key = mapping_custody::transition_fragment_key(&stored, receipt);
         let scanned_fragment = fragment_key
             .map(|key| required::<DraftPieceBuildFragmentsFamily>(reader, &key))
@@ -2087,244 +2092,10 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
     }
 }
 
-impl DomainMutation<SyndicDomain> for TerminalMutation {
-    type Error = SyndicMutationError;
-    type Prepared = Option<PreparedTerminalMutation>;
-
-    fn prepare(
-        self,
-        reader: &DomainReader<'_, SyndicDomain>,
-    ) -> Result<Self::Prepared, Self::Error> {
-        if let Some(settlement) =
-            point::<DraftPieceSettlementsFamily>(reader, &settlement_key(&self.prepared))?
-        {
-            return if settlement_is_terminal_target(&settlement, self.kind)
-                && settlement_matches(reader, &settlement, &self.prepared)?
-            {
-                Ok(None)
-            } else {
-                Err(SyndicMutationError::IdentityCollision)
-            };
-        }
-        let existing_build = point_build(reader, &settlement_key(&self.prepared))?;
-        if existing_build.is_none() {
-            if self.prepared.prebuild_rejection().is_some_and(
-                |reason| !matches!(self.kind, TerminalKind::Rejected(actual) if actual == reason),
-            ) {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            let session = session_head(
-                reader,
-                self.prepared.header.draft_id(),
-                self.prepared.header.session_id(),
-            )?;
-            let target_root = DraftPieceRootKeyV1::editor_candidate(
-                self.prepared.header.draft_id(),
-                self.prepared.header.session_id(),
-                self.prepared.header.operation_id(),
-            );
-            if session != *self.prepared.source_session()
-                || point::<DraftPieceRootsFamily>(reader, &target_root)?.is_some()
-                || point::<DraftPieceBuildProgressFamily>(
-                    reader,
-                    &DraftPieceBuildProgressReceiptKeyV1::new(
-                        self.prepared.header.draft_id(),
-                        self.prepared.header.session_id(),
-                        self.prepared.header.operation_id(),
-                        1,
-                    ),
-                )?
-                .is_some()
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            let header = self.prepared.header;
-            let (outcome, lifecycle) = match self.kind {
-                TerminalKind::Cancelled => (
-                    DraftPieceSettlementOutcomeV1::Cancelled,
-                    DraftPieceBuildLifecycleV1::Cancelled,
-                ),
-                TerminalKind::Rejected(reason) => (
-                    DraftPieceSettlementOutcomeV1::Rejected(reason),
-                    DraftPieceBuildLifecycleV1::Rejected,
-                ),
-                TerminalKind::Error(reason) => (
-                    DraftPieceSettlementOutcomeV1::Error(reason),
-                    DraftPieceBuildLifecycleV1::Error,
-                ),
-            };
-            let (build, receipt) = terminal_first_build(&self.prepared, lifecycle)?;
-            let claimed = self
-                .prepared
-                .source_session()
-                .with_active_operation(custody_for(&build))
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            let cleared = claimed
-                .clear_active_operation(&custody_for(&build))
-                .ok_or(SyndicMutationError::IdentityCollision)?;
-            let settlement = DraftPieceSettlementV1::new_boxed(
-                settlement_key(&self.prepared),
-                self.prepared.proposal_digest(),
-                header.predecessor_candidate_generation(),
-                header.predecessor_root(),
-                header.predecessor_history(),
-                header.fragment_count(),
-                header.fragment_chain(),
-                header.predecessor_caret(),
-                header.predecessor_selection(),
-                header.caret(),
-                header.selection(),
-                None,
-                self.prepared.canonical_header().to_vec(),
-                None,
-                receipt.reference(),
-                outcome,
-                Box::new(DraftPieceSettlementClosureV1::Noncommit(
-                    DraftPieceNoncommitClosureV1::new(
-                        cleared.clone(),
-                        authenticated_history_frontier(reader, cleared.newest_history())?,
-                        None,
-                    ),
-                )),
-            );
-            return Ok(Some(PreparedTerminalMutation {
-                build,
-                receipt,
-                session: cleared,
-                settlement,
-                writer: None,
-            }));
-        }
-        if self.prepared.prebuild_rejection().is_some() {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let build = existing_build.ok_or(SyndicMutationError::IdentityCollision)?;
-        if !build_matches(&build, &self.prepared)
-            || !matches!(
-                build.lifecycle(),
-                DraftPieceBuildLifecycleV1::Open | DraftPieceBuildLifecycleV1::Complete
-            )
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let current = session_head(reader, build.draft_id(), build.session_id())?;
-        if current.active_operation() != Some(&custody_for(&build)) {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let expected_session = expected_active_session(&self.prepared, &build)?;
-        authenticate_source_transition(
-            reader,
-            &build,
-            &expected_session,
-            next_progress_key(&build)?,
-        )?;
-        let source_receipt =
-            required::<DraftPieceBuildProgressFamily>(reader, &build.progress_receipt().key())?;
-        if let Some(successor) = build.successor()
-            && point::<DraftPieceRootsFamily>(reader, &successor.key())?.is_some()
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        let (outcome, lifecycle) = match self.kind {
-            TerminalKind::Cancelled => (
-                DraftPieceSettlementOutcomeV1::Cancelled,
-                DraftPieceBuildLifecycleV1::Cancelled,
-            ),
-            TerminalKind::Rejected(reason) => (
-                DraftPieceSettlementOutcomeV1::Rejected(reason),
-                DraftPieceBuildLifecycleV1::Rejected,
-            ),
-            TerminalKind::Error(reason) => (
-                DraftPieceSettlementOutcomeV1::Error(reason),
-                DraftPieceBuildLifecycleV1::Error,
-            ),
-        };
-        let cleared = current
-            .clear_active_operation(&custody_for(&build))
-            .ok_or(SyndicMutationError::IdentityCollision)?;
-        let (terminal, receipt) =
-            terminal_build(&build, lifecycle, source_receipt.fragment_endpoint())?;
-        let writer = build
-            .writer_admission()
-            .map(|admission| {
-                prepare_draft_marker_writer_terminal_v1(
-                    reader,
-                    admission,
-                    receipt.reference().digest(),
-                )
-            })
-            .transpose()?;
-        let settlement = DraftPieceSettlementV1::new_boxed(
-            settlement_key(&self.prepared),
-            build.proposal_digest(),
-            build.predecessor_candidate_generation(),
-            build.predecessor_root(),
-            build.predecessor_history(),
-            build.fragment_count(),
-            build.fragment_chain(),
-            build.predecessor_caret(),
-            build.predecessor_selection(),
-            build.caret(),
-            build.selection(),
-            build.build_digest(),
-            build.canonical_header().to_vec(),
-            Some(build.clone()),
-            receipt.reference(),
-            outcome,
-            Box::new(DraftPieceSettlementClosureV1::Noncommit(
-                DraftPieceNoncommitClosureV1::new(
-                    cleared.clone(),
-                    authenticated_history_frontier(reader, cleared.newest_history())?,
-                    build.successor(),
-                ),
-            )),
-        );
-        Ok(Some(PreparedTerminalMutation {
-            build: terminal,
-            receipt,
-            session: cleared,
-            settlement,
-            writer,
-        }))
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
-        reservation.reserve_records::<DraftPieceBuildProgressCodec>(1)?;
-        reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
-        reservation.reserve_records::<DraftPieceSettlementsCodec>(1)?;
-        reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
-        reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
-        reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        prepared: Self::Prepared,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        if let Some(prepared) = prepared {
-            put_session_head(mutations, &prepared.session)?;
-            mutations.put::<DraftPieceSettlementsCodec>(
-                &prepared.settlement.key(),
-                &prepared.settlement,
-            )?;
-            put_build_transition(mutations, &prepared.build, &prepared.receipt)?;
-            if let Some(writer) = prepared.writer {
-                contribute_draft_marker_writer_terminal_v1(writer, mutations)?;
-            }
-        }
-        Ok(())
-    }
-}
-
 struct PreparedTerminalMutation {
-    build: DraftPieceBuildRecordV1,
-    receipt: DraftPieceBuildProgressReceiptV1,
-    session: DraftEditorCandidateSessionV1,
-    settlement: DraftPieceSettlementV1,
-    writer: Option<PreparedDraftMarkerWriterTerminalV1>,
+    build: Box<DraftPieceBuildRecordV1>,
+    receipt: Box<DraftPieceBuildProgressReceiptV1>,
+    session: Box<DraftEditorCandidateSessionV1>,
+    settlement: Box<DraftPieceSettlementV1>,
+    writer: Option<Box<PreparedDraftMarkerWriterTerminalV1>>,
 }

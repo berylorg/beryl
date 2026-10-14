@@ -252,6 +252,8 @@ impl MainWindowConversationComposer {
             #[cfg(test)]
             test_dispatch_flight: None,
             #[cfg(test)]
+            test_last_mutation_outcome: None,
+            #[cfg(test)]
             test_object_delivery: None,
             pending_dispatch: None,
             phase: MainWindowConversationComposerPhase::Live,
@@ -509,6 +511,7 @@ impl MainWindowConversationComposer {
             ObjectPurpose::Caret => ComposerHostRequestPurpose::Caret,
             ObjectPurpose::Selection
             | ObjectPurpose::MutationSuccessor
+            | ObjectPurpose::MutationPredecessor
             | ObjectPurpose::PlatformRange => ComposerHostRequestPurpose::Selection,
             ObjectPurpose::Clipboard => ComposerHostRequestPurpose::Clipboard,
             ObjectPurpose::Restoration => ComposerHostRequestPurpose::Restoration,

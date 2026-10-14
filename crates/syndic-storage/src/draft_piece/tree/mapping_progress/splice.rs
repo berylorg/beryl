@@ -214,7 +214,35 @@ pub(super) fn transition(
         {
             right.current_map == ready.target
                 && super::super::sequence_progress::transition_is_exact(previous, current)
-                && previous.marker_effect_continuation() == current.marker_effect_continuation()
+                && (previous.marker_effect_continuation() == current.marker_effect_continuation()
+                    || super::super::super::deferred_prefix::is_deferred(
+                        previous.frontier(),
+                        previous.marker_effect_continuation(),
+                    ) && match (
+                        previous.marker_effect_continuation().active(),
+                        current.marker_effect_continuation().active(),
+                    ) {
+                        (Some(before), Some(after)) => {
+                            after
+                                == DraftPieceActiveMarkerEffectV1::new(
+                                    before.fragment_key(),
+                                    before.fragment_digest(),
+                                    before.effect(),
+                                    before.source_roots(),
+                                    after.working_roots(),
+                                    before.source_frontier(),
+                                    before.successor_frontier(),
+                                    before.phase(),
+                                )
+                                .with_program(
+                                    before.removal_site(),
+                                    before.planning(),
+                                    before.insertion_site(),
+                                    before.pending(),
+                                )
+                        }
+                        _ => false,
+                    })
                 && u128::from(
                     actual_roots(previous)
                         .sequence_summary()

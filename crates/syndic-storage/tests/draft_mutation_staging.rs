@@ -56,6 +56,10 @@ use syndic_storage::{
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(feature = "test-faults")]
+#[path = "draft_mutation_staging/page_outcome.rs"]
+mod page_outcome;
+
 fn prepare_durable_page_window(
     storage: &SyndicStorage,
     store: &HomeStore,

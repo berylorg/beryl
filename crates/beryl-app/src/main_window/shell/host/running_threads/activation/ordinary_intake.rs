@@ -12,6 +12,21 @@ impl MainWindowShellRoot {
         self.running_threads.has_activation_custody()
     }
 
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_ordinary_thread_activation_diagnostics(&self) -> String {
+        format!(
+            "pending={:?}, task={}, prepared={}, ordinary={}, workers={}, activation_failure={:?}, failure={:?}, operation={:?}",
+            self.running_threads.pending_activation,
+            self.running_threads.activation_task.is_some(),
+            self.running_threads.prepared_activation.is_some(),
+            self.running_threads.ordinary_activation,
+            self.running_threads.workers.retained(),
+            self.running_threads.activation_failure,
+            self.running_threads.failure,
+            self.running_threads.activation_operation.as_ref().map(|operation| operation.diagnostics()),
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn test_thread_navigation_history(&self) -> Vec<beryl_model::SyndicThreadId> {
         self.running_threads.navigation_history.test_entries()

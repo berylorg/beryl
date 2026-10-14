@@ -45,7 +45,13 @@ fn after_source(
         .and_then(|p| p.source_boundary)
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
     Ok(
-        if active.fragment_key().ordinal() > 1 && boundary == build.base_frontier() {
+        if active.fragment_key().ordinal() > 1
+            && (boundary == build.base_frontier()
+                || crate::draft_piece::deferred_prefix::is_deferred(
+                    build.frontier(),
+                    build.marker_effect_continuation(),
+                ))
+        {
             proof(Purpose::PreviousStart)
         } else {
             Pending::None
@@ -177,6 +183,21 @@ pub(super) fn advance(
                         DraftPieceRejectedReasonV1::Overlap,
                     ));
                 }
+                if let DraftPieceBuildFrontierV1::Applying {
+                    fragment_ordinal,
+                    base_end,
+                    ..
+                } = build.frontier()
+                {
+                    if crate::draft_piece::deferred_prefix::is_deferred(
+                        build.frontier(),
+                        build.marker_effect_continuation(),
+                    ) && fragment_ordinal.checked_add(1) == Some(active.fragment_key().ordinal())
+                        && boundary != base_end
+                    {
+                        return invalid();
+                    }
+                }
                 planning.source_boundary = Some(boundary);
                 context
                     .mapping
@@ -202,6 +223,23 @@ pub(super) fn advance(
                 proof(Purpose::PreviousEnd)
             }
             Purpose::PreviousEnd => {
+                if crate::draft_piece::deferred_prefix::is_deferred(
+                    build.frontier(),
+                    build.marker_effect_continuation(),
+                ) {
+                    let current = planning
+                        .source_boundary
+                        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+                    if checked_boundary(boundary)? > checked_boundary(current)?
+                        || (previous.as_ref().is_some_and(|fragment| {
+                            fragment.replacement().marker_effect().is_some()
+                        }) && checked_boundary(boundary)? >= checked_boundary(current)?)
+                    {
+                        return Err(DraftPiecePrepareErrorV1::Rejected(
+                            DraftPieceRejectedReasonV1::OutOfOrder,
+                        ));
+                    }
+                }
                 if planning.previous_start == Some(boundary)
                     && previous.as_ref().is_none_or(|previous| {
                         previous.replacement().marker_effect().is_none()

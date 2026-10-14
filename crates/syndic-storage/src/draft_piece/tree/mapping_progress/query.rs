@@ -290,7 +290,11 @@ pub(super) fn transition(
                     }) => {
                         a == b
                             && (same_end
-                                || left.fragment_source_end_unit.is_none()
+                                || (left.fragment_source_end_unit.is_none()
+                                    || super::super::super::deferred_prefix::is_deferred(
+                                        previous.frontier(),
+                                        previous.marker_effect_continuation(),
+                                    ))
                                     && right.fragment_source_end_unit.is_some())
                     }
                     Some(Pending::Proof {

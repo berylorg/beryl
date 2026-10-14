@@ -99,6 +99,8 @@ pub enum ComposerHostMutationAdmissionFailure {
     Cancelled,
     #[error("composer mutation evidence was rejected")]
     Rejected,
+    #[error("surviving image markers cannot represent the replacement caret")]
+    PositionUnrepresentable,
     #[error("composer mutation predecessor changed")]
     Conflict,
     #[error("composer marker admission custody is unavailable")]
@@ -142,6 +144,7 @@ pub(in crate::composer_host) struct ComposerHostMutationAdmission {
     proposal: WidgetLaneFrontier,
     page: Option<EvidencePage>,
     finish: Option<MutationFinishInput>,
+    resolved_intended: Option<MutationPositions>,
     eof: Option<ReadinessPage>,
     eof_accepted: bool,
     next_ordinal: NonZeroU64,
@@ -316,7 +319,9 @@ impl SyndicComposerHost {
                     if page.key().key() != key {
                         return Err(ComposerHostError::RequestMismatch);
                     }
-                    let frontier = match frontier.prevalidate(&page)? {
+                    let frontier = match frontier
+                        .prevalidate(&page, admission.begin.proposal().replacement())?
+                    {
                         WidgetPageDisposition::Replay => {
                             return Ok(ComposerHostMutationEvidenceOutcome::PageAccepted(pass));
                         }
@@ -341,6 +346,23 @@ impl SyndicComposerHost {
                         return Err(ComposerHostError::MutationMalformed);
                     }
                     if admission.finish.is_none() {
+                        match position::resolve_intended(
+                            self,
+                            store,
+                            admission.binding,
+                            admission.begin,
+                            admission.proposal,
+                            finish,
+                        ) {
+                            Ok(intended) => admission.resolved_intended = Some(intended),
+                            Err(ComposerHostError::MutationPositionUnrepresentable) => {
+                                admission.fail(
+                                    ComposerHostMutationAdmissionFailure::PositionUnrepresentable,
+                                );
+                                return self.drive_mutation_admission(store, &mut admission);
+                            }
+                            Err(error) => return Err(error),
+                        }
                         admission.finish = Some(finish);
                         admission.eof = Some(ReadinessPage {
                             command: admission.command()?,

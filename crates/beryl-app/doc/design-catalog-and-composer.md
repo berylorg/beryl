@@ -312,10 +312,36 @@ governed by [design.md](design.md). It does not independently declare engineerin
   transports insertion-bearing evidence through Syndic readiness, and retains only bounded pages,
   fixed lane closures, source handles, and opaque custody. Exact evidence EOF precedes proof
   consumption by storage `MutationBegin`. After admission the same producer restarts for staging;
-  both complete lane closures and intended successor positions must match before finish/commit.
+  both complete lane closures and exact successor positions or fixed replacement-end intent must
+  match before finish/commit.
   Late evidence responses never enter staging. Cancellation before durable begin releases evidence
   and readiness through their typed owners; ambiguous admission retains ordinary reconciliation
   custody. Neither an insertion-only special case nor a complete edit buffer supplies this boundary.
+- Mutation-predecessor object reads retain a distinct purpose through host dispatch and validation.
+  Before admission they use the ordinary exact candidate descriptor. During acknowledged Receiving
+  staging, the host derives the SDK descriptor only from that operation's retained typed session
+  and head. Their exact begin, operation identity and active Staging receipt must match.
+  The retained storage begin is the canonical authenticated begin selected at adoption, including
+  writer admission supplied by transferred readiness; the original widget begin remains separate.
+  Draft, session, predecessor candidate generation, root, history and extent must still match the captured
+  immutable predecessor. Only the private descriptor's acknowledged session generation advances;
+  widget binding and proof scope remain fixed. Unresolved page/build custody, cleanup, detachment,
+  unavailable state or another operation grants no refreshed descriptor. Ordinary candidate reads
+  keep their existing validation. No current-head guessing, generation arithmetic, stale-session
+  fallback or SDK guard relaxation supplies predecessor replay authority.
+- A local UTF-8/Remove-only replacement-end intent remains bound to the captured composite source
+  range, complete removal/insertion totals and immutable evidence closure. The host authenticates
+  its at most two surviving boundary objects and their locations through the selected predecessor's
+  typed Syndic readers, then derives planned exact collapse positions with checked byte arithmetic
+  and preserved surviving raw order keys. It adds no global-order assumption, full-draft scan,
+  marker map, alternate mutation owner or durable encoding. Ordinary canonical finish persists
+  exact positions; storage's built-root position resolution proves the planned gap before commit,
+  and widget successor proofs gate presentation adoption.
+- If those preserved keys cannot represent their exact coalesced successor gap, the host returns
+  typed noncommit and bounded localized composer feedback, preserving draft, markers, caret,
+  selection and history. It stores no guessed finish position and publishes no subset. This is the
+  existing source-order constraint, not a marker-count limit or unsupported ordinary mixed deletion.
+  Rekeying surviving Beryl markers is a separate source-order capability; this adapter grants none.
 - Marker-changing edits use one opaque Syndic label-readiness operation bound to exact home,
   thread, draft, session, candidate, predecessor, and destination authority. The app transports
   bounded pages and opaque commands or receipts; it never chooses labels, builds a registry,

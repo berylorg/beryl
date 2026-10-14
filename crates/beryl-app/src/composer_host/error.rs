@@ -60,6 +60,8 @@ pub enum ComposerHostError {
     MutationNotPending,
     #[error("the range-widget mutation cannot be represented exactly")]
     MutationMalformed,
+    #[error("surviving image markers cannot represent the replacement caret")]
+    MutationPositionUnrepresentable,
     #[error("the range-widget mutation identity collides with different authored intent")]
     MutationIdentityCollision,
     #[error("the composer mutation path is unavailable")]
@@ -134,10 +136,23 @@ pub enum ComposerHostError {
     Reconciliation(#[from] DraftPieceCommandReconciliationErrorV1),
     #[error("draft mutation staging failed: {0}")]
     MutationStaging(#[from] DraftMutationStagingErrorV1),
+    #[error("draft staging page outcome resolution failed: {0}")]
+    MutationStagingPageOutcome(syndic_storage::DraftMutationStagingPageOutcomeErrorV1),
     #[error("staged composer build preparation failed: {0}")]
     MutationBuildPreparation(#[from] syndic_storage::StagedDraftPiecePreparationErrorV1),
     #[error("historical-root selection preparation failed: {0}")]
     HistoryPrepare(#[from] DraftHistoricalRootAdoptionPrepareErrorV1),
     #[error("historical-root selection reconciliation failed: {0}")]
     HistoryReconciliation(#[from] DraftHistoricalRootAdoptionReconciliationErrorV1),
+}
+
+impl From<syndic_storage::DraftMutationStagingPageOutcomeErrorV1> for ComposerHostError {
+    fn from(error: syndic_storage::DraftMutationStagingPageOutcomeErrorV1) -> Self {
+        match error {
+            syndic_storage::DraftMutationStagingPageOutcomeErrorV1::Staging(error) => {
+                Self::MutationStaging(error)
+            }
+            error => Self::MutationStagingPageOutcome(error),
+        }
+    }
 }

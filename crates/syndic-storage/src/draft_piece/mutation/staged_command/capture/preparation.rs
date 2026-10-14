@@ -139,16 +139,26 @@ pub(super) fn terminal(
     election: StagedDraftPieceTerminalElectionV1,
 ) -> CapturedPreparation {
     let prepared = TerminalMutation {
-        prepared: *value,
+        prepared: value,
         kind: terminal_kind(election)?,
     }
     .prepare(reader)?;
-    let target = match &prepared {
+    let target = terminal_target(reader, source, prepared.as_deref())?;
+    Ok((PreparedCommandMutation::Terminal(prepared), target))
+}
+
+#[inline(never)]
+fn terminal_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: &CapturedState,
+    prepared: Option<&PreparedTerminalMutation>,
+) -> Result<Box<CapturedState>, SyndicMutationError> {
+    let target = match prepared {
         Some(value) => CapturedState {
             staging: source.staging.clone(),
-            build: Some(value.build.clone()),
-            session: value.session.clone(),
-            settlement: Some(value.settlement.clone()),
+            build: Some(value.build.as_ref().clone()),
+            session: value.session.as_ref().clone(),
+            settlement: Some(value.settlement.as_ref().clone()),
             terminal_admission: value
                 .writer
                 .as_ref()
@@ -156,8 +166,5 @@ pub(super) fn terminal(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((
-        PreparedCommandMutation::Terminal(Box::new(prepared)),
-        Box::new(target),
-    ))
+    Ok(Box::new(target))
 }

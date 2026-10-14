@@ -6,7 +6,7 @@ pub(super) fn build_endpoint(
     reader: &mut OutcomeReader<'_>,
     build: &DraftPieceBuildRecordV1,
 ) -> Result<(), StagedDraftPieceOutcomeErrorV1> {
-    let mut fragments = Vec::with_capacity(4);
+    let mut fragments = Vec::with_capacity(7);
     if !build_record_is_exact(build) {
         return Err(StagedDraftPieceOutcomeErrorV1::Invariant(
             "build canonical shape",
@@ -67,6 +67,24 @@ pub(super) fn build_endpoint(
             return Err(StagedDraftPieceOutcomeErrorV1::Invariant(
                 "marker effect transition",
             ));
+        }
+        let mut deferred = DeferredAcquisition {
+            reader,
+            fragments: &mut fragments,
+            failure: None,
+        };
+        if super::super::super::deferred_prefix::validate_transition(
+            &mut deferred,
+            &prior,
+            &receipt,
+        )
+        .is_err()
+        {
+            return Err(deferred
+                .failure
+                .unwrap_or(StagedDraftPieceOutcomeErrorV1::Invariant(
+                    "deferred prefix transition",
+                )));
         }
         let previous_fragment =
             super::super::super::marker_advance::previous_proof_fragment_key(&prior, &receipt)
@@ -175,7 +193,7 @@ fn fragment_reference(
     if let Some(fragment) = fragments.iter().find(|fragment| fragment.key() == key) {
         return Ok(fragment.clone());
     }
-    if fragments.len() == 4 {
+    if fragments.len() == 7 {
         return Err(StagedDraftPieceOutcomeErrorV1::Invariant(
             "build fragment reference bound",
         ));
@@ -188,6 +206,29 @@ fn fragment_reference(
     }
     fragments.push(fragment.clone());
     Ok(fragment)
+}
+
+struct DeferredAcquisition<'a, 'store> {
+    reader: &'a mut OutcomeReader<'store>,
+    fragments: &'a mut Vec<DraftPieceBuildFragmentV1>,
+    failure: Option<StagedDraftPieceOutcomeErrorV1>,
+}
+
+impl super::super::super::deferred_prefix::DeferredFragmentAcquisition
+    for DeferredAcquisition<'_, '_>
+{
+    fn deferred_fragment(
+        &mut self,
+        key: DraftPieceBuildFragmentKeyV1,
+    ) -> Result<DraftPieceBuildFragmentV1, DraftPiecePrepareErrorV1> {
+        match fragment_reference(self.reader, self.fragments, key, "deferred prefix fragment") {
+            Ok(fragment) => Ok(fragment),
+            Err(error) => {
+                self.failure = Some(error);
+                Err(DraftPiecePrepareErrorV1::InvalidRoot)
+            }
+        }
+    }
 }
 
 fn pending_roots(

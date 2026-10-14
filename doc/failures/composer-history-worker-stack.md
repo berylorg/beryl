@@ -75,3 +75,60 @@ Native Code activation and fresh range routing subsequently passed in
 encoding cases and all 118 final selected panel/native cases passed. Complete independent review
 accepted the [mounted workflow](../audits/transcript-mounting-readiness.md#mounted-historical-replacement-editing-acceptance),
 including production Edit enablement; no worker-stack or constructor-lock blocker remains.
+
+## Combined Replacement Clearing Regression
+
+Combined mounted qualification subsequently reached a different ordinary mutation path: Select All
+and Backspace after importing and cancelling historical input with image markers. Native run
+`224c18b1-44d0-45c2-8d85-8e1f970e1f63` reproduced a default-worker `0xc00000fd` after the fixture
+waited for exact admitted selection positions. Earlier input races were separately corrected;
+they do not explain this settled-input failure.
+
+CDB captured the Windows Dispatcher/WinRT threadpool worker in a finite chain through staged
+terminal-mutation preparation, reconciliation reservation and the ordinary composer staging and
+dispatch path. `TerminalMutation::prepare` reached `__chkstk`; its capture preparation
+caller alone retained approximately 232 KiB. This requires a focused private witness/frame
+correction and affected staged mutation/recovery qualification within the existing worker stack.
+The no-normal-debug binary can label farther frames with a nearest or folded public symbol;
+those labels do not independently prove a defect in the named recovery helper.
+The earlier passing import, first-edit and Undo/Redo cases do not cover this combined clear path.
+Do not alter durable encoding, authentication or command semantics, or treat a larger fixture
+stack as acceptance of the production worker.
+
+## Deferred Marker Validation During Mixed Clearing
+
+After the sealed staging flight and acknowledged-session predecessor reads, native run
+`8f6809a2-9ecc-4af0-82b9-768e13957ac6` reaches deferred marker processing and overflows
+the ordinary WinRT worker (`0xc00000fd`). Debugger runs 046 and 047 reproduce the finite
+mapping → deferred-prefix → marker-program → active-effect validation chain. The validator
+requests 48,936 bytes before `__chkstk` fails; retained marker, deferred-prefix and mapping
+frames occupy approximately 178,368, 90,032 and 71,040 bytes respectively.
+
+Private validation repeatedly copies fixed active-effect aggregates through by-value getters;
+monolithic dispatch also retains temporary slots for unrelated branches. Correct private
+validation borrowing and separate dispatch from branch construction, preserving every exact
+comparison, transition order, durable field and work limit. Renew affected storage checks and
+native execution on the unchanged worker stack before accepting this correction. Debugger
+termination is diagnostic evidence, not a passing test.
+
+The six-file private correction borrows active/continuation validation inputs and extracts
+marker frontier, mapping and deferred-prefix dispatch branches with explicit non-inlined
+boundaries. Independent comparison against the qualified storage snapshot finds no semantic
+blocker: public getters and durable records are unchanged, and comparisons, transition order,
+lookahead acquisition and the single acquisition ledger remain equivalent. The focused storage
+check passes in run 048; all 14 mapping/deferred cases pass in run 049
+(`62a9ed5f-682e-4d62-84df-3572cd479a8e`, 209.217 seconds). Native run 050
+(`688f991c-1664-4035-aa80-848a3e335cf8`) completes ordinary clearing to zero bytes, quiescent
+widget, ready exact position proof and no active flight, then reenters historical Edit. It fails
+the later submission assertion, causing a non-unwinding panic (`0xc0000409`), not another
+`0xc00000fd` worker overflow. This proves progress through the formerly failing chain; it is
+not a passing full workflow. A focused clearing/reentry/disposal native case and broader affected
+storage/host renewal remain required for this correction's acceptance.
+
+Keeping the terminal input/result boxed and separating target capture reduced that capture frame
+from approximately 232 KiB to 2 KiB. Native run `bd9e20af-643f-4446-9448-e5765aeacdb6` nevertheless
+still overflowed. The next debugger trace reached a roughly 10 KiB SHA compression allocation
+under accumulated existing-build receipt/authentication preparation frames. The hash call was the
+limit crossing, not evidence for changing SHA or the worker stack. Keep intermediate receipts,
+terminal build tuples and writer witnesses heap-owned through preparation, and isolate their raw
+construction frames. Reaching farther into the finite call chain is progress, not passing evidence.

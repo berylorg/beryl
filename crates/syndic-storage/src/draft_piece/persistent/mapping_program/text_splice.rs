@@ -74,7 +74,7 @@ pub(super) fn apply_ready(
     fragment: &DraftPieceBuildFragmentV1,
     ready: DraftPieceMappingReadySpliceV1,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
-    let (sequence, index, order) = load_working_roots(&mut context, build.working_roots())?;
+    let (sequence, index, order) = load_working_roots(&mut context, effective_roots(build))?;
     let (sequence, frontier) = match (ready.kind, build.frontier()) {
         (
             Kind::TextDelete,
@@ -161,9 +161,31 @@ pub(super) fn apply_ready(
     if sequence_units::extent(sequence) != mapping(&context)?.current_map.measure().target {
         return invalid();
     }
+    let published_roots = if let Some(active) = build.marker_effect_continuation().active() {
+        if !crate::draft_piece::deferred_prefix::is_deferred(
+            build.frontier(),
+            build.marker_effect_continuation(),
+        ) || active.phase() != DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
+        {
+            return invalid();
+        }
+        let active = marker_program::update(
+            active,
+            roots,
+            active.phase(),
+            None,
+            active.planning(),
+            None,
+            DraftPieceMarkerPendingV1::None,
+        );
+        context.marker_continuation = Some(marker_program::replace_active(build, active));
+        build.working_roots()
+    } else {
+        roots
+    };
     Ok(finish_quantum(
         context,
-        roots,
+        published_roots,
         build.base_frontier(),
         build.successor_frontier(),
         frontier,

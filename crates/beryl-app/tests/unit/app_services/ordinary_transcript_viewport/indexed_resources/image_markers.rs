@@ -7,7 +7,7 @@ use std::{cell::RefCell, num::NonZeroU64, rc::Rc};
 use crate::syndic_transcript::{ImageMarkerInspectionRequested, ResidentContextMenuContentKind, ResidentPresentationRecordKind};
 
 #[path = "image_markers/fixture.rs"]
-mod fixture;
+pub(super) mod fixture;
 
 #[test]
 fn native_grouped_markers_keep_inline_bounds_exact_origins_and_primary_keyboard_commands() {

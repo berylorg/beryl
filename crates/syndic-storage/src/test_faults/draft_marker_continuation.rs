@@ -11,6 +11,14 @@ pub use endpoint::*;
 mod records;
 use records::write_endpoint;
 
+pub fn verify_draft_marker_build_endpoint_for_test(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    build: &DraftPieceBuildRecordV1,
+) -> Result<StagedDraftPieceVerificationWorkV1, StagedDraftPieceOutcomeErrorV1> {
+    verify_build_endpoint_for_test(storage, store, build)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftMarkerProgramSnapshotForTest {
     pub phase: u8,

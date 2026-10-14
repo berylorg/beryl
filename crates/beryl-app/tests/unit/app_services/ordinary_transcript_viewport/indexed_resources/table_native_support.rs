@@ -45,7 +45,7 @@ pub(super) fn run_table_fixture(
     }
 }
 
-pub(super) fn large_table() -> String {
+pub(in super::super) fn large_table() -> String {
     let mut text = format!(
         "|{}|\r\n|{}|\r\n",
         (0..12)

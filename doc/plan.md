@@ -102,15 +102,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 776: Qualify Diagnostic Child Transcript Activation (finished)
+# Phase 778: Repair Mixed Source Selection Replacement (finished)
 
-Accepted bounded exact-thread diagnostic dispatch and resident observation through ordinary
-activation, coherent publication, placement, subsequent resource preparation and disposal.
-All 37 combined checks, canonical locked app/executable checks and independent review passed.
-EOF qualification preserves ordinary gated refusal and uses one fresh explicit Exit for later
-disposal. See the [acceptance](audits/transcript-mounting-readiness.md#diagnostic-child-transcript-activation-acceptance)
-for identities, limits and corrected fixture assumptions.
-
+Accepted ordinary mixed text/object replacement, deferred-prefix storage, retained staging outcome
+custody, acknowledged predecessor reads and default-worker clearing/reentry/disposal. Widget local
+and canonical 366/366, storage 14/14 plus 241/241, host 44/44, isolated native and canonical locked
+production checks pass; independent completion review approves. Published widget `88ae9ff` is pinned
+without unrelated lock churn. See [acceptance](audits/mixed-selection-replacement.md).
 # Phase 777: Accept Complete Mounted Transcript Workflow (wip)
 
 Qualify the combined ordinary transcript workflow, interactions, source/geometry invalidation and
@@ -137,7 +135,20 @@ Code, Quote/menu/branch, replacement/submission, core/provider and release regre
 accepted diagnostic endpoint evidence. Individually accepted fault matrices remain reusable on
 unchanged inputs; this boundary requires the combined mounted workflows and release evidence.
 
-Current milestone: diagnostic activation is accepted. Implement the two bounded combined native
-workflow cases through existing mounted consumers, then qualify the joined affected regressions,
-canonical production build, complete independent workflow review and owned-resource release.
-No product decision is required; broader Checkpoint 4 flows remain separately unaccepted.
+Current milestone: both full native workflow drafts remain saved and unaccepted. Their registration
+is restored only after the accepted replacement boundary commit. Mixed-content run 035 passed once,
+but repeated navigation run 039 fails ordinary publication source advance. Replacement run 050 now
+clears and reenters historical Edit, then fails the later submission-status assertion; its generic
+Failed/Unavailable/NotCommitted branch still needs exact attribution. The isolated clearing case
+is separately accepted and must remain unchanged.
+
+Next: preserve the actual publication/selection-save error and submission outcome, attribute each
+against existing source/receipt ownership, and correct proved implementation defects within their
+owning workflow. Qualify both complete mounted cases, join affected existing panel/Code/Table/image/
+Quote/menu/branch/replacement/provider/release checks, then run canonical production checks and
+independent whole-workflow review. No broader Checkpoint 4 flow is accepted by these drafts.
+Artifacts under `.aipm/tasks/mixed-source-replacement/` and `.aipm/tasks/mounted-transcript/` remain
+needed by these diagnosis consumers; retain exact native homes and raw logs. Canonical checkout
+has been reclaimed and shared build artifacts retained. No active task-owned Cargo/native processes
+remain at the replacement phase boundary. See the [replacement failure record](failures/mixed-source-selection-replacement.md)
+and [worker-stack findings](failures/composer-history-worker-stack.md) for lasting diagnosis.

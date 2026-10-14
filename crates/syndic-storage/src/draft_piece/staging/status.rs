@@ -331,39 +331,7 @@ impl SyndicStorage {
         self.reconcile_draft_mutation_staging_page_batch_exact(store, prepared)
     }
 
-    pub fn reconcile_draft_mutation_staging_page_batch_outcome(
-        &self,
-        store: &beryl_home_store::HomeStore,
-        prepared: &PreparedDraftMutationStagingBatchV1,
-        outcome: CommandOutcome,
-    ) -> Result<DraftMutationStagingReconcileV1, DraftMutationStagingErrorV1> {
-        let expectation = staging_command_outcome_expectation(store, outcome, |local, receipt| {
-            if receipt.generation() != self.home_generation {
-                return Err(DraftMutationStagingErrorV1::LocalFinalization(
-                    CommittedLocalFinalizationError::StaleOrForeign,
-                ));
-            }
-            store
-                .with_committed_local_finalization(local, receipt, &self.handle, |attachment| {
-                    let Some(admission) = prepared.target_head.begin().writer_admission() else {
-                        return Ok(());
-                    };
-                    if admission.binding().home_generation().get() != self.home_generation.get() {
-                        return Err(());
-                    }
-                    attachment.finalize_writer_committed_unknown(admission.binding().owner())
-                })
-                .map_err(DraftMutationStagingErrorV1::LocalFinalization)?
-                .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)
-        })?;
-        let reconciled = self.reconcile_draft_mutation_staging_page_batch_exact(store, prepared)?;
-        if !staging_outcome_matches(expectation, &reconciled) {
-            return Err(DraftMutationStagingErrorV1::Invariant);
-        }
-        Ok(reconciled)
-    }
-
-    fn reconcile_draft_mutation_staging_page_batch_exact(
+    pub(super) fn reconcile_draft_mutation_staging_page_batch_exact(
         &self,
         store: &beryl_home_store::HomeStore,
         prepared: &PreparedDraftMutationStagingBatchV1,
@@ -438,20 +406,12 @@ impl SyndicStorage {
         ) {
             return Err(DraftMutationStagingErrorV1::Invariant);
         }
-        if let Some(admission) = prepared.target_head.begin().writer_admission() {
-            store
-                .with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
-                    attachment.resolve_writer_progress(admission.binding().owner())
-                })
-                .map_err(|_| DraftMutationStagingErrorV1::LocalCustody)?
-                .map_err(|()| DraftMutationStagingErrorV1::LocalCustody)?;
-        }
         Ok(DraftMutationStagingReconcileV1::TargetSelected)
     }
 }
 
 #[derive(Clone, Copy)]
-enum StagingOutcomeExpectation {
+pub(super) enum StagingOutcomeExpectation {
     Source,
     Target,
     ExactTargetReplay,
@@ -496,7 +456,7 @@ fn staging_command_outcome_expectation(
     }
 }
 
-fn staging_outcome_matches(
+pub(super) fn staging_outcome_matches(
     expectation: StagingOutcomeExpectation,
     reconciled: &DraftMutationStagingReconcileV1,
 ) -> bool {

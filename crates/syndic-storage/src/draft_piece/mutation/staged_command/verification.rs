@@ -9,6 +9,17 @@ use super::*;
 mod history;
 mod references;
 
+#[cfg(feature = "test-faults")]
+pub(crate) fn verify_build_endpoint_for_test(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    build: &DraftPieceBuildRecordV1,
+) -> Result<StagedDraftPieceVerificationWorkV1, StagedDraftPieceOutcomeErrorV1> {
+    let mut reader = OutcomeReader::new(storage, store);
+    references::build_endpoint(&mut reader, build)?;
+    Ok(reader.work())
+}
+
 pub(super) struct OutcomeReader<'a> {
     storage: &'a SyndicStorage,
     store: &'a HomeStore,

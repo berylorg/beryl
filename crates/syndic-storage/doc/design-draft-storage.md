@@ -290,6 +290,46 @@ The standalone deletion and complete assignment bounds do not establish the comp
 complete quantum bound. Marker-effect continuation must compose the sealed deletion result with
 its other work under one builder ledger before that integration can be accepted.
 
+### Staging Page Outcome Custody
+
+One prepared staging page batch has one move-only outcome flight after execution. The flight binds
+the exact original Home store instance, Syndic handle/generation and prepared batch; callers cannot
+substitute a page, receipt, cached source classification or discovered reconciliation handle.
+Syndic owns submission: it consumes the prepared batch, constructs and executes its exact page
+command, and captures only that execution's actual outcome into the flight. No public constructor
+accepts an arbitrary prepared batch and unrelated outcome. Preparation or submission admission
+errors return the unexecuted prepared batch; after execution, every failure preserves the flight.
+Test-only execution cut points may inject faults without changing the production ownership boundary.
+It retains the actual definitive failure or committed receipt, and installs an indeterminate
+outcome's original reconciliation custody once while retaining that exact handle and failure.
+It owns no second page payload allocation and retains at most one command outcome per batch.
+
+Resolving borrows the flight mutably and preserves it on every error. A committed local-finalization
+capability is consumed at most once; subsequent exact reads retain the original receipt and the
+recorded finalization result rather than repeating local finalization. Failed reconciliation retries
+only the original installed handle. ExactOld proves source expectation; ExactNew proves target
+expectation; successor/collision or mismatched stored page/session closure fails closed. Resolved
+expectation remains coupled to the original flight through later exact-read or authority errors.
+The first local-finalization failure is reported and retained. A later resolution may independently
+authenticate the original exact page/session closure and resolve that original writer's progress;
+success permits target classification while preserving the earlier failure as a diagnostic. It
+does not reclassify the failed capability invocation as successful or consume that capability again.
+
+The caller releases the flight and prepared payload only after typed source/target/terminal
+classification. Source classification permits retry or cancellation of that exact prepared page;
+target classification applies its acknowledgement once without executing the page again.
+Page outcome resolution exposes this retained-flight boundary; a destructive outcome-consuming
+page resolver is not a supported alternative. Ordinary outcome-free non-writer inspection remains
+read-only and cannot authorize writer progress.
+Unresolved custody excludes competing page execution and cancellation election. Foreign-store or
+generation rejection preserves the flight. The production and test paths use the same outcome
+resolution boundary.
+The caller's existing exclusive in-flight owner enforces that exclusion; shared immutable prepared
+metadata does not grant authority to bypass it or to attach a different outcome to the flight.
+Existing durable records, digest preimages, command budgets and public terminal
+outcomes remain unchanged. Qualify original evidence and handle retention across read, reconciliation
+and finalization failure, repeated resolution, cancellation and exact target adoption.
+
 ### Staging Session
 
 `DraftMutationOperationIdV1` is one opaque caller-owned identity reused for one transaction's begin,
@@ -553,6 +593,10 @@ acquisition, emission, probe and enlarged control record uses the same complete 
 
 ### Bounded Sequence Range Continuation
 
+The ordinary fragment transitions below apply outside the explicitly closed
+[deferred-prefix continuation](#deferred-prefix-and-selected-marker-run), which specializes
+frontier publication and active-marker attribution while preserving these exact text splices.
+
 Ordinary replacement removal continues right to left, changing at most one text leaf per sequence
 mutation. Planning authenticates both original endpoints, maps each source unit cut and resolves
 each working cut in separate bounded proof commands. Equal working marker ordinals prove that the
@@ -629,7 +673,70 @@ revision. A stale prepared command remains a known noncommit; retry requires fre
 Selected source and progress roots remain protected by existing operation custody. Cancellation
 retains that exact custody through its terminal command and subsequent bounded cleanup.
 
+### Deferred Prefix And Selected Marker Run
+
+A marker-free non-continuation fragment with empty inserted pieces and a nonempty remaining
+text-deletion interval may defer its final prefix deletion while
+the immediately following pure Remove fragments consume selected markers at that prefix's
+original UTF-8 end anchor. This is one ordinary edit-successor build, with unchanged fragment
+bytes, identities, ordering and terminal settlement. Each persisted working root remains coherent;
+the candidate, live history and public editor positions advance only at ordinary committed adoption.
+
+The existing outer Applying/Inserting cursor retains the prefix fragment ordinal and remaining
+text interval. Deferred mode is identified by that ordinal being less than the build-private
+marker scan's next-fragment ordinal. Completed source/successor and logical construction frontiers
+stay frozen until group completion. The private scan may authenticate the prefix endpoint and
+advance through completed removals; it retains only existing fixed next/count/chain state. There
+is at most one active removal and one authenticated next-fragment lookahead, regardless of run size.
+
+Each admitted lookahead must be the exact next immutable fragment, a non-continuation pure Remove
+with no inserted text, at the same original UTF-8 anchor. The first agrees exactly with the prefix
+end gap; later fragments retain ordinary predecessor-gap, occurrence, identity, prior-fragment
+ordering and monotone original composite-boundary proofs. Removed original units must still be
+Copy before their exact one-unit mapping and sequence/identity/order surgery. Removal cannot borrow
+authority from the pending text deletion or skip unrelated fragments.
+PreviousStart/PreviousEnd proofs are mandatory against the immediately preceding authenticated
+scanned fragment even when its boundary differs from the frozen completed source frontier.
+
+Entry discards only pending text-map scratch while preserving its current map and coherent roots;
+immutable emitted nodes retain ordinary closure custody. Completed intermediate removals install
+coherent working roots/current map and append their exact private effect count/chain/endpoint once,
+then release active proof state before the next bounded removal. The separating text is retained.
+EOF, a non-Remove or a different anchor ends the run without consuming that lookahead. The final
+active removal retains the exact latest original boundary and mapped source-end unit. Fresh prefix
+proof and map surgery then delete the remaining text against those active coherent roots; a map
+target prepared before marker removal is never reused.
+
+Unknown lookahead acquisition and run-end decisions are separate bounded control commands, never
+additional reads inside sequence surgery. The final removal's Removing-to-DerivingInsertionGap
+transition under the frozen prefix records authenticated run termination and retains its exact
+planning source boundary. Subsequent prefix surgery credits that closed immutable derivation and
+reads no unknown lookahead. Reopen validates the decision's exact lookahead only for that selected
+or immediate predecessor control transition; later receipts retain ordinary bounded local proof
+closure, without walking history. Pure-Remove and empty-prefix records have fixed canonical
+no-payload bounds; their exact deduplicated constituent inventory shares the existing complete work
+ledger. No command gains another allowance or raises the structure, point or byte ceilings.
+
+Decode, endpoint and local receipt validation discriminate this mode through its exact enclosing
+cursor/scan/active-fragment relationship. A deferred active root may reflect only receipt-proved
+prefix text deletions in addition to its exact marker delta. Identity/order associations, untouched
+marker summaries and original proofs remain exact; ordinary marker-root validation is unchanged.
+
+After the prefix interval empties, its outer cursor enters exhausted Inserting with the final
+original boundary. Separate refresh proofs resolve the exact successor and enter PublishReady.
+Group publication completes the last removal once, installs joined completed frontiers and working
+roots, clears active/mapping scratch and resumes at the exact next fragment. Final surviving-gap
+ordering remains binding; an unrepresentable final gap is typed noncommit. Missing, stale, malformed
+or conflicting lookahead, replay, acknowledgement loss, cancellation and reopen use the same
+bounded command/receipt custody and prove exact continuation or nonadoption. No cumulative run
+buffer, marker limit, synthetic text, rekey or partial candidate publication is permitted.
+
 ### Bounded Marker Effect Continuation
+
+The ordinary outer-cursor and publication rules below apply outside the explicitly closed
+[deferred-prefix continuation](#deferred-prefix-and-selected-marker-run). Its marker proofs and
+one-unit surgery retain these requirements; only the stated private-scan and joined-publication
+transitions differ.
 
 A marker effect is one self-contained, non-continuation fragment with equal canonical source
 positions and no text. Insert, Move and SameIdReplacement contain exactly one matching marker;

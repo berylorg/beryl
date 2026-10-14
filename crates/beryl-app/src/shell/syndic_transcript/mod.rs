@@ -33,6 +33,8 @@ pub(crate) use command::{
     ResidentMediaSaveCommandTarget, ResidentMediaSaveDestination,
     ResidentMediaSaveDestinationUnavailable, TranscriptCommandResult,
 };
+#[cfg(test)]
+pub(crate) use context_menu::ResidentHistoricalInputSource;
 pub(crate) use context_menu::{
     ResidentContextMenuCommand, ResidentContextMenuContentKind, ResidentContextMenuOutcome,
     ResidentContextMenuRecord, ResidentContextMenuUnavailable, ResidentTranscriptContextMenuTarget,

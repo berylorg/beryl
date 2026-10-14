@@ -1,5 +1,109 @@
 use super::*;
 
+#[path = "replacement_mapping.rs"]
+mod replacement_mapping;
+
+#[test]
+fn interior_same_anchor_removals_and_text_replacement_share_one_atomic_envelope() {
+    for inserted_text in ["", "Q"] {
+        let (_home, store, storage, thread) = fixture("interior-composite-replacement", 181);
+        let (mut host, base) = activated(storage.clone(), &store, thread, 182, 183);
+        let text = commit_text(&mut host, &store, base, 184, 0, 0, "ABCD", 4, 1);
+        let first = InlineObjectId::new(0xA801);
+        let second = InlineObjectId::new(0xA802);
+        let first_neighbor = InlineObjectNeighbor::new(first, InlineObjectOrder::new(1));
+        let second_neighbor = InlineObjectNeighbor::new(second, InlineObjectOrder::new(2));
+        let before =
+            SourcePosition::new(ByteOffset::new(2), InlineObjectGap::before(first_neighbor));
+        let between = SourcePosition::new(
+            ByteOffset::new(2),
+            InlineObjectGap::between(first_neighbor, second_neighbor).unwrap(),
+        );
+        let after =
+            SourcePosition::new(ByteOffset::new(2), InlineObjectGap::after(second_neighbor));
+        let marked = commit_items(
+            &mut host,
+            &store,
+            text,
+            185,
+            range(source_position(2), source_position(2)),
+            vec![
+                MutationPageItem::Object(ObjectChange::Insert {
+                    object: SuccessorObject::new(
+                        first,
+                        ByteOffset::new(2),
+                        InlineObjectOrder::new(1),
+                        17,
+                        5,
+                    ),
+                }),
+                MutationPageItem::Object(ObjectChange::Insert {
+                    object: SuccessorObject::new(
+                        second,
+                        ByteOffset::new(2),
+                        InlineObjectOrder::new(2),
+                        17,
+                        5,
+                    ),
+                }),
+            ],
+            MutationPositions::collapsed(after),
+            vec![
+                labeled_marker_metadata(
+                    first,
+                    ImageLabelOrdinal::new(1).unwrap(),
+                    asset_id_for_object(first),
+                ),
+                labeled_marker_metadata(
+                    second,
+                    ImageLabelOrdinal::new(2).unwrap(),
+                    asset_id_for_object(second),
+                ),
+            ],
+            4,
+            1,
+        );
+        let replacement = commit_items(
+            &mut host,
+            &store,
+            marked,
+            186,
+            range(source_position(0), source_position(4)),
+            vec![
+                MutationPageItem::Object(ObjectChange::Remove {
+                    target: ObjectTarget::new(
+                        range(before, between),
+                        first,
+                        InlineObjectOrder::new(1),
+                    )
+                    .unwrap(),
+                }),
+                MutationPageItem::Object(ObjectChange::Remove {
+                    target: ObjectTarget::new(
+                        range(between, after),
+                        second,
+                        InlineObjectOrder::new(2),
+                    )
+                    .unwrap(),
+                }),
+                MutationPageItem::Utf8 {
+                    inserted_offset: 0,
+                    text: inserted_text.into(),
+                },
+            ],
+            MutationPositions::collapsed(source_position(inserted_text.len() as u64)),
+            Vec::new(),
+            inserted_text.len() as u64,
+            u64::from(!inserted_text.is_empty()),
+        );
+        assert_eq!(
+            candidate_text(storage.clone(), &store, replacement),
+            inserted_text.as_bytes()
+        );
+        assert_eq!(replacement.root().summary().marker_count(), 0);
+    }
+}
+
 #[test]
 fn leading_marker_removal_and_remaining_text_delete_share_one_atomic_mutation() {
     let (_home, store, storage, thread) = fixture("leading-marker-delete", 61);

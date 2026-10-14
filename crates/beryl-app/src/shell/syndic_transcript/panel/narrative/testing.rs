@@ -1,6 +1,21 @@
 use super::*;
 
 impl SyndicTranscriptPanel {
+    #[cfg(test)]
+    pub(crate) fn owned_presentation_counts_for_test(&self) -> (usize, usize, usize, usize) {
+        (
+            self.narrative_geometry.len()
+                + self.narrative_candidate_geometry.len()
+                + self.inline_parts_geometry.len()
+                + self.inline_parts_candidate_geometry.len()
+                + self.literal_geometry.len()
+                + self.literal_candidate_geometry.len(),
+            self.code_panels.len() + self.retired_code_panels.len(),
+            self.table_panels.len() + self.retired_table_panels.len(),
+            self.measurement_diagnostics().1,
+        )
+    }
+
     pub(crate) fn narrative_hit_for_test(&self, position: Point<Pixels>) -> Option<(ResidentPresentationRecordId, usize)> {
         self.narrative_hit(position).map(|endpoint| (endpoint.record, endpoint.display))
     }

@@ -14,7 +14,7 @@ pub(super) enum PreparedCommandMutation {
     Window(Box<<StageDurableWindowMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Advance(Box<<AdvanceMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Settle(<SettleMutation as DomainMutation<SyndicDomain>>::Prepared),
-    Terminal(Box<<TerminalMutation as DomainMutation<SyndicDomain>>::Prepared>),
+    Terminal(<TerminalMutation as DomainMutation<SyndicDomain>>::Prepared),
     Replay(Box<DraftPieceSettlementV1>),
 }
 
@@ -117,7 +117,7 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
                 .reserve_reconciliation(reservation)
             }
             CommandKind::Terminal(value, election) => TerminalMutation {
-                prepared: value.as_ref().clone(),
+                prepared: value.clone(),
                 kind: terminal_kind(*election)?,
             }
             .reserve_reconciliation(reservation),
@@ -140,7 +140,7 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
             }
             PreparedCommandMutation::Settle(value) => SettleMutation::contribute(value, mutations),
             PreparedCommandMutation::Terminal(value) => {
-                TerminalMutation::contribute(*value, mutations)
+                TerminalMutation::contribute(value, mutations)
             }
             PreparedCommandMutation::Replay(settlement) => mutations
                 .put::<DraftPieceSettlementsCodec>(&settlement.key(), &settlement)

@@ -1148,13 +1148,14 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         || build.progress_receipt().key().session_id() != build.session_id()
         || build.progress_receipt().key().operation_id() != build.operation_id()
         || build.progress_receipt().key().transition_ordinal() == 0
-        || !build
-            .marker_effect_continuation()
-            .is_locally_exact(DraftPieceSettlementKeyV1::new(
+        || !build.marker_effect_continuation().is_exact_for_frontier(
+            DraftPieceSettlementKeyV1::new(
                 build.draft_id(),
                 build.session_id(),
                 build.operation_id(),
-            ))
+            ),
+            build.frontier(),
+        )
         || build.durable_continuation().is_some_and(|continuation| {
             let identity = continuation.finished().identity();
             !continuation.is_locally_exact()
@@ -1263,7 +1264,8 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         | DraftPieceBuildFrontierV1::Inserting {
             fragment_ordinal, ..
         } => {
-            if fragment_ordinal != scan.next_fragment_ordinal()
+            if (fragment_ordinal != scan.next_fragment_ordinal()
+                && !super::deferred_prefix::is_deferred(build.frontier(), marker))
                 || build.staged_fragment_count() != build.fragment_count()
                 || build.staged_fragment_chain() != build.fragment_chain()
                 || fragment_ordinal == 0
@@ -1485,13 +1487,10 @@ pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceipt
                 || identity.session_id() != key.session_id()
                 || identity.operation_id().as_piece_operation() != key.operation_id()
         })
-        || !receipt
-            .marker_effect_continuation()
-            .is_locally_exact(DraftPieceSettlementKeyV1::new(
-                key.draft_id(),
-                key.session_id(),
-                key.operation_id(),
-            ))
+        || !receipt.marker_effect_continuation().is_exact_for_frontier(
+            DraftPieceSettlementKeyV1::new(key.draft_id(), key.session_id(), key.operation_id()),
+            receipt.frontier(),
+        )
         || receipt.successor().is_some() != receipt.build_digest().is_some()
         || (receipt.marker_effect_continuation().active().is_some()
             && (receipt.previous().is_none()

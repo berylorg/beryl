@@ -258,6 +258,12 @@ pub struct MainWindowConversationComposer {
     #[cfg(test)]
     test_dispatch_flight: Option<Arc<dispatch::DispatchFlightObservation>>,
     #[cfg(test)]
+    test_last_mutation_outcome: Option<(
+        gpui_text_input::MutationKey,
+        crate::composer_host::ComposerHostMutationOutcome,
+        bool,
+    )>,
+    #[cfg(test)]
     test_object_delivery: Option<Box<dispatch::DispatchObjectDeliveryObservation>>,
     pending_dispatch: Option<dispatch::MainWindowConversationComposerPendingDispatch>,
     phase: MainWindowConversationComposerPhase,

@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
     CommandError, CommandOutcome, CommittedLocalFinalizationError, DomainMutation, DomainReader,
@@ -80,7 +80,7 @@ pub struct PreparedDraftMutationStagingBatchV1 {
     target_head: DraftMutationStagingHeadV1,
     source_session: DraftEditorCandidateSessionV1,
     target_session: DraftEditorCandidateSessionV1,
-    targets: Box<[PreparedDraftMutationStagingBatchTargetV1]>,
+    targets: Arc<[PreparedDraftMutationStagingBatchTargetV1]>,
     item_count: usize,
     encoded_page_bytes: usize,
     #[cfg(feature = "test-faults")]
@@ -296,11 +296,17 @@ mod private_source;
 pub use private_source::{DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1};
 mod marker_resolution;
 mod mutations;
+mod outcome;
 mod prepare_batch;
 mod prepare_begin_page;
 mod prepare_finish;
 mod prepare_terminal;
 mod status;
+
+pub use outcome::{
+    DraftMutationStagingPageOutcomeErrorV1, DraftMutationStagingPageOutcomeFlightV1,
+    DraftMutationStagingPageSubmissionErrorV1,
+};
 mod transfer_builder;
 
 pub(super) use acquisition::StagingWindowAcquisitionReader;

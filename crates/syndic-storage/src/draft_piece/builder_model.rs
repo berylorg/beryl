@@ -1,8 +1,8 @@
 use super::{
     DraftCompositePositionV1, DraftMarkerIdentityOccurrenceV1, DraftMutationStagingIdentityV1,
     DraftMutationStagingLaneFrontierV1, DraftMutationStagingLaneV1,
-    DraftMutationStagingProgressReceiptReferenceV1, DraftPieceBuildRootsV1, DraftPieceDigestV1,
-    DraftPieceMarkerV1, DraftPieceSettlementKeyV1,
+    DraftMutationStagingProgressReceiptReferenceV1, DraftPieceBuildFrontierV1,
+    DraftPieceBuildRootsV1, DraftPieceDigestV1, DraftPieceMarkerV1, DraftPieceSettlementKeyV1,
 };
 use sha2::{Digest, Sha256};
 
@@ -297,21 +297,40 @@ impl DraftPieceMarkerEffectContinuationV1 {
         self.scan
     }
 
+    pub(crate) const fn scan_ref(&self) -> &DraftPieceMarkerEffectScanFrontierV1 {
+        &self.scan
+    }
+
     pub const fn active(self) -> Option<DraftPieceActiveMarkerEffectV1> {
         self.active
     }
 
+    pub(crate) const fn active_ref(&self) -> Option<&DraftPieceActiveMarkerEffectV1> {
+        self.active.as_ref()
+    }
+
     pub fn is_locally_exact(self, identity: DraftPieceSettlementKeyV1) -> bool {
+        self.is_exact_for_frontier(identity, DraftPieceBuildFrontierV1::Complete)
+    }
+
+    pub(crate) fn is_exact_for_frontier(
+        &self,
+        identity: DraftPieceSettlementKeyV1,
+        frontier: DraftPieceBuildFrontierV1,
+    ) -> bool {
         marker_scan_is_exact(self.scan, identity)
-            && self.active.is_none_or(|active| {
-                effect_is_exact(active.effect())
-                    && active.is_program_locally_exact()
-                    && active.fragment_key().draft_id() == identity.draft_id()
-                    && active.fragment_key().session_id() == identity.session_id()
-                    && active.fragment_key().operation_id() == identity.operation_id()
-                    && active.fragment_key().ordinal() == self.scan.next_fragment_ordinal()
-                    && active.source_frontier() == self.source_logical_frontier
-                    && active.successor_frontier() == self.successor_logical_frontier
+            && self.active.as_ref().is_none_or(|active| {
+                effect_is_exact(active.effect)
+                    && active.is_program_exact_for_deferred(
+                        super::deferred_prefix::prefix_ordinal(frontier)
+                            .is_some_and(|ordinal| ordinal < self.scan.next_fragment_ordinal()),
+                    )
+                    && active.fragment_key.draft_id() == identity.draft_id()
+                    && active.fragment_key.session_id() == identity.session_id()
+                    && active.fragment_key.operation_id() == identity.operation_id()
+                    && active.fragment_key.ordinal() == self.scan.next_fragment_ordinal()
+                    && active.source_frontier == self.source_logical_frontier
+                    && active.successor_frontier == self.successor_logical_frontier
             })
     }
 }

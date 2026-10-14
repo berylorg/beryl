@@ -129,25 +129,43 @@ impl DraftPieceIdentityDescriptorV1 {
 }
 
 impl DraftPieceActiveMarkerEffectV1 {
-    pub(crate) fn is_program_locally_exact(self) -> bool {
+    pub(crate) fn is_program_locally_exact(&self) -> bool {
+        self.is_program_exact_for_deferred(false)
+    }
+
+    pub(crate) fn is_program_exact_for_deferred(&self, deferred: bool) -> bool {
         use crate::draft_piece::draft_piece_build_roots_are_locally_exact_v1;
         use DraftPieceMarkerPendingV1 as Pending;
         use DraftPieceMarkerProofPurposeV1 as Purpose;
-        if !draft_piece_build_roots_are_locally_exact_v1(self.source_roots())
-            || !draft_piece_build_roots_are_locally_exact_v1(self.working_roots())
+        if !draft_piece_build_roots_are_locally_exact_v1(self.source_roots)
+            || !draft_piece_build_roots_are_locally_exact_v1(self.working_roots)
         {
             return false;
         }
-        let removes = !matches!(self.effect(), DraftPieceMarkerEffectV1::Insert(_));
-        let inserts = !matches!(self.effect(), DraftPieceMarkerEffectV1::Remove { .. });
-        if !self.roots_have_program_deltas(removes, inserts) {
+        let removes = !matches!(self.effect, DraftPieceMarkerEffectV1::Insert(_));
+        let inserts = !matches!(self.effect, DraftPieceMarkerEffectV1::Remove { .. });
+        let deferred_text = deferred
+            && matches!(self.effect, DraftPieceMarkerEffectV1::Remove { .. })
+            && matches!(
+                self.phase,
+                DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
+                    | DraftPieceActiveMarkerPhaseV1::Publishing
+            )
+            && self.pending == Pending::None
+            && self.removal_site.is_none()
+            && self.insertion_site.is_none();
+        if if deferred_text {
+            !self.roots_have_deferred_text_deltas()
+        } else {
+            !self.roots_have_program_deltas(removes, inserts)
+        } {
             return false;
         }
         if let Pending::Proof {
             purpose,
             component,
             primary_marker_rank,
-        } = self.pending()
+        } = self.pending
         {
             if match component {
                 DraftPieceMarkerProofComponentV1::Primary => primary_marker_rank.is_some(),
@@ -165,7 +183,7 @@ impl DraftPieceActiveMarkerEffectV1 {
                 return false;
             }
         }
-        match self.pending() {
+        match self.pending {
             Pending::RemoveIdentity { sequence_target }
             | Pending::InsertIdentity {
                 sequence_target, ..
@@ -193,13 +211,15 @@ impl DraftPieceActiveMarkerEffectV1 {
             }
             _ => {}
         }
-        if let Some(planning) = self.planning() {
-            if self.phase() != DraftPieceActiveMarkerPhaseV1::Removing
-                || self.insertion_site().is_some()
+        if let Some(planning) = self.planning {
+            if (self.phase != DraftPieceActiveMarkerPhaseV1::Removing
+                && !(deferred_text
+                    && self.phase == DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap))
+                || self.insertion_site.is_some()
             {
                 return false;
             }
-            let (source_absent, previous_present, removal_present) = match self.pending() {
+            let (source_absent, previous_present, removal_present) = match self.pending {
                 Pending::Proof { purpose, .. } => match purpose {
                     Purpose::SourceBounds => (true, false, false),
                     Purpose::SourceInsertIdentityAbsent if !removes => (false, false, false),
@@ -208,12 +228,10 @@ impl DraftPieceActiveMarkerEffectV1 {
                     {
                         (false, false, false)
                     }
-                    Purpose::PreviousStart if self.fragment_key().ordinal() > 1 => {
+                    Purpose::PreviousStart if self.fragment_key.ordinal() > 1 => {
                         (false, false, false)
                     }
-                    Purpose::PreviousEnd if self.fragment_key().ordinal() > 1 => {
-                        (false, true, false)
-                    }
+                    Purpose::PreviousEnd if self.fragment_key.ordinal() > 1 => (false, true, false),
                     _ => return false,
                 },
                 Pending::RemoveSequence
@@ -223,25 +241,25 @@ impl DraftPieceActiveMarkerEffectV1 {
                 {
                     (false, false, true)
                 }
-                Pending::None => (false, false, self.removal_site().is_some()),
+                Pending::None => (false, false, self.removal_site.is_some()),
                 _ => return false,
             };
             return planning.source_boundary.is_none() == source_absent
                 && planning.previous_start.is_some() == previous_present
-                && self.removal_site().is_some() == removal_present
-                && (matches!(self.pending(), Pending::None)
-                    || self.working_roots() == self.source_roots());
+                && self.removal_site.is_some() == removal_present
+                && (matches!(self.pending, Pending::None)
+                    || self.working_roots == self.source_roots);
         }
-        if self.removal_site().is_some() {
+        if self.removal_site.is_some() {
             return false;
         }
-        match self.phase() {
+        match self.phase {
             DraftPieceActiveMarkerPhaseV1::Removing | DraftPieceActiveMarkerPhaseV1::Publishing => {
-                self.insertion_site().is_none() && self.pending() == Pending::None
+                self.insertion_site.is_none() && self.pending == Pending::None
             }
             DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap => {
-                self.insertion_site().is_none()
-                    && match self.pending() {
+                self.insertion_site.is_none()
+                    && match self.pending {
                         Pending::None => true,
                         Pending::Proof {
                             purpose:
@@ -257,9 +275,9 @@ impl DraftPieceActiveMarkerEffectV1 {
             }
             DraftPieceActiveMarkerPhaseV1::Inserting => {
                 inserts
-                    && self.insertion_site().is_some()
+                    && self.insertion_site.is_some()
                     && matches!(
-                        self.pending(),
+                        self.pending,
                         Pending::None
                             | Pending::InsertSequence
                             | Pending::InsertIdentity { .. }
@@ -269,13 +287,26 @@ impl DraftPieceActiveMarkerEffectV1 {
         }
     }
 
-    fn roots_have_program_deltas(self, removes: bool, inserts: bool) -> bool {
+    fn roots_have_deferred_text_deltas(&self) -> bool {
+        let source = self.source_roots.sequence_summary();
+        let working = self.working_roots.sequence_summary();
+        source.marker_count().checked_sub(1) == Some(working.marker_count())
+            && self.working_roots.marker_index_summary().record_count() == working.marker_count()
+            && self.working_roots.marker_commitment().marker_count() == working.marker_count()
+            && source.logical_utf8_bytes() >= working.logical_utf8_bytes()
+            && source
+                .piece_count()
+                .checked_sub(1)
+                .is_some_and(|pieces| pieces >= working.piece_count())
+    }
+
+    fn roots_have_program_deltas(&self, removes: bool, inserts: bool) -> bool {
         use DraftPieceMarkerPendingV1 as Pending;
-        let source = self.source_roots().sequence_summary();
-        let working = self.working_roots().sequence_summary();
+        let source = self.source_roots.sequence_summary();
+        let working = self.working_roots.sequence_summary();
         let removed =
-            removes && (self.planning().is_none() || self.working_roots() != self.source_roots());
-        let inserted = inserts && self.phase() == DraftPieceActiveMarkerPhaseV1::Publishing;
+            removes && (self.planning.is_none() || self.working_roots != self.source_roots);
+        let inserted = inserts && self.phase == DraftPieceActiveMarkerPhaseV1::Publishing;
         let Some(markers) = source
             .marker_count()
             .checked_sub(u64::from(removed))
@@ -294,16 +325,16 @@ impl DraftPieceActiveMarkerEffectV1 {
             } else {
                 pieces != working.piece_count()
             }
-            || (!removed && !inserted && self.source_roots() != self.working_roots())
+            || (!removed && !inserted && self.source_roots != self.working_roots)
         {
             return false;
         }
-        if self.removal_site().is_some_and(|site| {
+        if self.removal_site.is_some_and(|site| {
             site.piece_rank >= source.piece_count() || site.marker_ordinal >= source.marker_count()
         }) {
             return false;
         }
-        let (sequence, identity, insertion) = match self.pending() {
+        let (sequence, identity, insertion) = match self.pending {
             Pending::RemoveIdentity { sequence_target } => (Some(sequence_target), None, false),
             Pending::RemoveOrder {
                 sequence_target,
@@ -328,7 +359,7 @@ impl DraftPieceActiveMarkerEffectV1 {
             let pieces = if insertion {
                 working.piece_count().checked_add(
                     1 + u64::from(
-                        self.insertion_site()
+                        self.insertion_site
                             .is_some_and(|site| site.boundary.inner() != 0),
                     ),
                 )

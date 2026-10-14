@@ -48,6 +48,7 @@ pub enum ComposerHostRequestPurpose {
     Viewport,
     Caret,
     Selection,
+    MutationPredecessor,
     Segmentation,
     Clipboard,
     Restoration,

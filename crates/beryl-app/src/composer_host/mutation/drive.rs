@@ -236,7 +236,7 @@ impl SyndicComposerHost {
         )?;
         let widget_lane = request.page().key().lane();
         Ok(ComposerHostInFlightPage {
-            prepared,
+            custody: Some(ComposerHostStagingPageCustody::Prepared(Box::new(prepared))),
             kind: ComposerHostInFlightPageKind::Widget {
                 request,
                 lane: widget_lane,
@@ -250,6 +250,7 @@ impl SyndicComposerHost {
             proposal_envelope_applied: translated.proposal_envelope_applied,
             last_proposal_range: translated.last_proposal_range,
             remaining_proposal_range: translated.remaining_proposal_range,
+            tail_deletion_pending: translated.tail_deletion_pending,
         })
     }
 
@@ -289,7 +290,7 @@ impl SyndicComposerHost {
             inputs.into_boxed_slice(),
         )?;
         pending.in_flight_page = Some(ComposerHostInFlightPage {
-            prepared,
+            custody: Some(ComposerHostStagingPageCustody::Prepared(Box::new(prepared))),
             kind: ComposerHostInFlightPageKind::Internal { finish },
             #[cfg(feature = "test-faults")]
             custody_serial: self.next_mutation_custody_serial(),
@@ -298,6 +299,7 @@ impl SyndicComposerHost {
             proposal_envelope_applied: translated.proposal_envelope_applied,
             last_proposal_range: translated.last_proposal_range,
             remaining_proposal_range: translated.remaining_proposal_range,
+            tail_deletion_pending: translated.tail_deletion_pending,
         });
         match self.drive_in_flight_page(store, pending)? {
             Some(_) => Err(ComposerHostError::MutationMalformed),
@@ -313,9 +315,9 @@ impl SyndicComposerHost {
         let result = {
             let page = pending
                 .in_flight_page
-                .as_ref()
+                .as_mut()
                 .ok_or(ComposerHostError::MutationMalformed)?;
-            self.run_staging_page_batch(store, &page.prepared)
+            self.run_staging_page_batch(store, page)
         }?;
         match result {
             StagingCommandResult::Target => {
@@ -335,12 +337,16 @@ impl SyndicComposerHost {
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
     ) -> Result<(), ComposerHostError> {
-        let Some(page) = pending.in_flight_page.as_ref() else {
+        let Some(page) = pending.in_flight_page.as_mut() else {
             return Ok(());
         };
-        let reconciliation = self
-            .storage
-            .reconcile_draft_mutation_staging_page_batch(store, &page.prepared)?;
+        let reconciliation = match page.custody.as_mut() {
+            Some(ComposerHostStagingPageCustody::Prepared(_)) => {
+                DraftMutationStagingReconcileV1::SourceSelected
+            }
+            Some(ComposerHostStagingPageCustody::Submitted(flight)) => flight.resolve(store)?,
+            None => return Err(ComposerHostError::MutationMalformed),
+        };
         match reconciliation {
             DraftMutationStagingReconcileV1::SourceSelected => {
                 let _ = pending.in_flight_page.take();
@@ -372,30 +378,74 @@ impl SyndicComposerHost {
     fn run_staging_page_batch(
         &mut self,
         store: &HomeStore,
-        prepared: &PreparedDraftMutationStagingBatchV1,
+        page: &mut ComposerHostInFlightPage,
     ) -> Result<StagingCommandResult, ComposerHostError> {
-        for _ in 0..self.mutation_transition_limit() {
-            let mut command = HomeCommand::new(store.home_revision()?);
-            command.add(self.storage.draft_mutation_staging_page_batch(
-                self.storage.revision(store)?,
-                prepared.clone(),
-            ))?;
-            #[cfg(not(feature = "test-faults"))]
-            let _ = self.execute_mutation_command(store, command);
-            #[cfg(feature = "test-faults")]
-            let outcome = self.execute_mutation_command(store, command);
-            #[cfg(not(feature = "test-faults"))]
-            let reconciliation = self
-                .storage
-                .reconcile_draft_mutation_staging_page_batch(store, prepared)?;
-            #[cfg(feature = "test-faults")]
-            let reconciliation = if prepared.target_head().begin().writer_admission().is_some() {
-                self.storage
-                    .reconcile_draft_mutation_staging_page_batch_outcome(store, prepared, outcome)?
-            } else {
-                self.storage
-                    .reconcile_draft_mutation_staging_page_batch(store, prepared)?
+        if let Some(ComposerHostStagingPageCustody::Submitted(flight)) = page.custody.as_mut() {
+            match flight.resolve(store)? {
+                DraftMutationStagingReconcileV1::SourceSelected => {}
+                DraftMutationStagingReconcileV1::TargetSelected => {
+                    return Ok(StagingCommandResult::Target);
+                }
+                DraftMutationStagingReconcileV1::Terminal(_) => {
+                    return Ok(StagingCommandResult::Terminal);
+                }
+            }
+            source_page_to_prepared(page)?;
+        }
+        for transition in 0..self.mutation_transition_limit() {
+            if transition != 0 {
+                source_page_to_prepared(page)?;
+            }
+            let expected_revision = self.storage.revision(store)?;
+            let prepared = match page.custody.take() {
+                Some(ComposerHostStagingPageCustody::Prepared(prepared)) => prepared,
+                custody => {
+                    page.custody = custody;
+                    return Err(ComposerHostError::MutationMalformed);
+                }
             };
+            #[cfg(feature = "test-faults")]
+            let submitted = {
+                let fault = self.mutation_before_execute_fault.take();
+                let storage = self.storage.clone();
+                self.storage
+                    .submit_draft_mutation_staging_page_batch_with_before_execute_faults(
+                        store,
+                        expected_revision,
+                        *prepared,
+                        || {
+                            if let Some(fault) = fault {
+                                fault(store, storage);
+                            }
+                        },
+                    )
+            };
+            #[cfg(not(feature = "test-faults"))]
+            let submitted = self.storage.submit_draft_mutation_staging_page_batch(
+                store,
+                expected_revision,
+                *prepared,
+            );
+            #[allow(unused_mut)]
+            let mut flight = match submitted {
+                Ok(flight) => flight,
+                Err(failure) => {
+                    let (prepared, error) = failure.into_parts();
+                    page.custody =
+                        Some(ComposerHostStagingPageCustody::Prepared(Box::new(prepared)));
+                    return Err(error.into());
+                }
+            };
+            #[cfg(feature = "test-faults")]
+            if std::mem::take(&mut self.mutation_page_exact_read_fault) {
+                flight.fail_next_exact_read_for_test();
+            }
+            page.custody = Some(ComposerHostStagingPageCustody::Submitted(Box::new(flight)));
+            let Some(ComposerHostStagingPageCustody::Submitted(flight)) = page.custody.as_mut()
+            else {
+                return Err(ComposerHostError::MutationMalformed);
+            };
+            let reconciliation = flight.resolve(store)?;
             match reconciliation {
                 DraftMutationStagingReconcileV1::SourceSelected => continue,
                 DraftMutationStagingReconcileV1::TargetSelected => {
@@ -464,9 +514,9 @@ fn apply_in_flight_page_target(
     pending: &mut ComposerHostMutationCoordinator,
     page: ComposerHostInFlightPage,
 ) -> Result<Option<MutationPageAcceptance>, ComposerHostError> {
-    pending.head = page.prepared.target_head().clone();
+    pending.head = page.prepared()?.target_head().clone();
     pending.session = page
-        .prepared
+        .prepared()?
         .target_session()
         .cloned()
         .ok_or(ComposerHostError::MutationMalformed)?;
@@ -487,5 +537,26 @@ fn apply_in_flight_page_target(
     pending.proposal_envelope_applied = page.proposal_envelope_applied;
     pending.last_proposal_range = page.last_proposal_range;
     pending.remaining_proposal_range = page.remaining_proposal_range;
+    pending.tail_deletion_pending = page.tail_deletion_pending;
     Ok(acceptance)
+}
+
+fn source_page_to_prepared(page: &mut ComposerHostInFlightPage) -> Result<(), ComposerHostError> {
+    let flight = match page.custody.take() {
+        Some(ComposerHostStagingPageCustody::Submitted(flight)) => flight,
+        custody => {
+            page.custody = custody;
+            return Err(ComposerHostError::MutationMalformed);
+        }
+    };
+    match (*flight).into_prepared() {
+        Ok(prepared) => {
+            page.custody = Some(ComposerHostStagingPageCustody::Prepared(Box::new(prepared)))
+        }
+        Err(flight) => {
+            page.custody = Some(ComposerHostStagingPageCustody::Submitted(Box::new(flight)));
+            return Err(ComposerHostError::MutationMalformed);
+        }
+    }
+    Ok(())
 }

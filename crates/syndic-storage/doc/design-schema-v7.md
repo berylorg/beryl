@@ -1417,7 +1417,7 @@ TextResolveEnd enters outer Removing with `next_rank=end_rank=source_end.rank`,
 has exactly one control-only successor, Applying, preserving roots/map/boundaries. Unequal Removing
 ranks are invalid; no original-piece loop or original-marker rejection remains.
 
-For nonempty Applying, TextDeleteProof proves the exact text leaf and UTF-8 slice selected by
+Outside the deferred-prefix exception below, nonempty Applying uses TextDeleteProof to prove the exact text leaf and UTF-8 slice selected by
 [the five sequence-removal rules](design-draft-storage.md#bounded-sequence-range-continuation).
 That one sequence path supplies prefix units and the leaf identity/digest. It enters DeleteMap,
 then MapComplete and Ready as specified below. Ready's already-required sequence traversal verifies
@@ -1529,6 +1529,47 @@ together. Marker publication additionally installs W into build roots, advances 
 count/chain and scan frontier once, consumes matching admission when required and clears active.
 Text publication advances fragment/scan progress without changing effect count/chain. Both clear
 fragment_source_end_unit and mapping stage to Idle before next Planning or CrossValidating.
+
+The byte-layout-preserving deferred-prefix exception is owned by
+[deferred prefix and selected marker run](design-draft-storage.md#deferred-prefix-and-selected-marker-run).
+For an exact marker-free non-continuation prefix with empty inserted pieces and a nonempty
+remaining deletion interval, outer Applying/Inserting ordinal `N` less
+than marker scan next ordinal identifies this closed mode. Existing cursor, scan, active effect,
+planning, current/pending map and receipt fields retain their encodings; no new tag, field or
+version is added. The prefix ordinal/interval and completed source/successor frontiers remain
+fixed while bounded exact same-original-anchor Remove continuations advance private scan progress.
+Active fragment identity belongs to the authenticated scan ordinal, while outer text attribution
+remains `N`; selected and immediate predecessor receipts must prove both identities and their
+exact relationship. Ordinary equal-ordinal grammar remains unchanged outside this mode.
+
+Entry authenticates the exact prefix and next Remove, retires only pending text-map scratch and
+advances the private scan over the prefix. Marker source, removal and working-identity proofs and
+MarkerDelete map/sequence/identity/order surgery may run under the retained outer Applying cursor.
+Each intermediate removal installs coherent working roots/map and exact scan/effect progress
+without changing completed source/successor frontiers. The one authenticated lookahead either
+authorizes the next same-anchor Remove or terminates the group without consuming another fragment.
+The final active removal retains latest original boundary/unit while fresh TextDelete proofs and
+splices run against its coherent roots. Text Ready may change only that prefix interval and
+sequence/current map, preserving the active marker roots and exact effect identity.
+
+Lookahead and end-of-run checks use separate control commands. Under frozen deferred Applying,
+the final active Removing-to-DerivingInsertionGap transition preserves planning source boundary
+and certifies exact run termination; it performs no sequence surgery. Subsequent text proof/map/
+surgery commands require that certificate and acquire no unknown lookahead. Reopen authenticates
+its lookahead only for the selected/immediate predecessor decision transition, then credits the
+closed retained derivation. Empty-prefix and pure-Remove constituent encodings retain fixed
+no-payload bounds and exact key deduplication in the existing complete command work certificate.
+Unknown staged/end fragments retain ordinary allowances. The existing 256 structure-record,
+512 point-read and 4,194,304-byte ceilings remain binding.
+
+Exhausted prefix Applying enters Inserting with the final original boundary and active Publishing
+state. Separate RefreshMap/RefreshSequence/PublishReady precede the sole joined publication, which
+appends the last effect once, installs exact completed frontiers and working roots, clears active
+and map scratch and resumes at the scan's exact next ordinal. Closed endpoint and transition
+validation must recognize only these deferred-mode transitions; reopen authenticates prefix,
+current removal, bounded lookahead and selected/immediate predecessor receipt relationships.
+Cancellation and terminal noncommit preserve the exact current/pending closure; no deferred state
+may enter candidate adoption, completed build or normal effect publication.
 
 The logical construction frontier is the UTF-8 position of the current source prefix and completed
 inserted text. Before marker insertion, the checked forward original UTF-8 gap from the captured
@@ -1905,6 +1946,19 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
   cumulative identity are durable or exact target reconciliation proves that closure. Later build
   and reconciliation read those staged records in bounded pages rather than asking the caller to
   retain or resupply them.
+- Deferred-prefix commands deduplicate canonical fragment keys before reserving their constituent
+  inventory: at most four unrestricted records (prefix predecessor, staged endpoint and predecessor,
+  and unknown next lookahead), plus the empty-insertion prefix at at most 300 key/value bytes and
+  pure-Remove active and predecessor records at at most 503 bytes each. Aliased roles acquire once;
+  actual repeated acquisitions remain charged. The three small roles add at most 1,306 bytes to
+  the existing four-record allowance. Shape, continuation, inserted-piece absence and canonical
+  width are proved before tree primitives; a substituted large or wrong-type small-role record
+  fails before surgery. Acquisition still reserves the ordinary family maximum then refunds
+  unused allowance after bounded decode; no overlapping second reservation is invented. The
+  resulting worst sequence-removal peak is 4,171,588 bytes, within 4,194,304. Unknown lookahead
+  is acquired in separate control commands, with its selected/immediate predecessor receipt proof;
+  subsequent surgery credits that established closed decision. The unchanged structure/point/byte
+  ceilings apply to the complete command and its rejection paths.
 - Mutable and live continuation state remains `O(1)` in marker count: one fixed scan frontier,
   completed count and chain, one optional fixed-size active effect, and fixed structure cursors.
   Immutable staged fragment records and unreachable working/final tree records may scale through

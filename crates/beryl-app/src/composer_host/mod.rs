@@ -127,6 +127,8 @@ pub struct SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
     #[cfg(feature = "test-faults")]
+    mutation_page_exact_read_fault: bool,
+    #[cfg(feature = "test-faults")]
     mutation_admission_retained_limits: Option<syndic_storage::DraftMarkerAdmissionLimitsV1>,
     #[cfg(feature = "test-faults")]
     next_mutation_custody_serial: u64,
@@ -206,6 +208,8 @@ impl SyndicComposerHost {
             submission_transition_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
+            #[cfg(feature = "test-faults")]
+            mutation_page_exact_read_fault: false,
             #[cfg(feature = "test-faults")]
             mutation_admission_retained_limits: None,
             #[cfg(feature = "test-faults")]

@@ -3,9 +3,10 @@ use super::*;
 fn after_source(
     active: DraftPieceActiveMarkerEffectV1,
     base_frontier: DraftPieceBuildBoundaryV1,
+    deferred: bool,
 ) -> Pending {
     if active.fragment_key().ordinal() > 1
-        && active.planning().and_then(|p| p.source_boundary) == Some(base_frontier)
+        && (deferred || active.planning().and_then(|p| p.source_boundary) == Some(base_frontier))
     {
         primary(Purpose::PreviousStart)
     } else {
@@ -123,6 +124,22 @@ pub(super) fn transition(
                         return false;
                     }
                     plan.source_boundary = Some(boundary);
+                    if let DraftPieceBuildFrontierV1::Applying {
+                        fragment_ordinal,
+                        base_end,
+                        ..
+                    } = previous.frontier()
+                    {
+                        if super::super::super::deferred_prefix::active_is_deferred(
+                            previous.frontier(),
+                            left,
+                        ) && fragment_ordinal.checked_add(1)
+                            == Some(left.fragment_key().ordinal())
+                            && boundary != base_end
+                        {
+                            return false;
+                        }
+                    }
                     if has_removal(left.effect()) {
                         primary(Purpose::RemovalGap)
                     } else {
@@ -131,9 +148,14 @@ pub(super) fn transition(
                 }
                 Purpose::RemovalGap => primary(Purpose::SourceOccurrence),
                 Purpose::SourceOccurrence => primary(Purpose::SourceIdentity),
-                Purpose::SourceIdentity | Purpose::SourceInsertIdentityAbsent => {
-                    after_source(left, previous.base_frontier())
-                }
+                Purpose::SourceIdentity | Purpose::SourceInsertIdentityAbsent => after_source(
+                    left,
+                    previous.base_frontier(),
+                    super::super::super::deferred_prefix::active_is_deferred(
+                        previous.frontier(),
+                        left,
+                    ),
+                ),
                 Purpose::PreviousStart => {
                     plan.previous_start = next_plan.previous_start;
                     if plan.previous_start.is_none() {

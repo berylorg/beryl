@@ -3,6 +3,7 @@ pub(crate) mod build_mapping;
 mod builder_model;
 mod checkpoint;
 mod codec;
+mod deferred_prefix;
 mod detached;
 mod history;
 mod import;
@@ -52,10 +53,12 @@ pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };
 pub use staging::{
-    DraftMutationStagingErrorV1, DraftPieceDurableBuildWindowLimitsV1,
-    DraftPrivateClipboardSourceFenceV1, DraftPrivateClipboardSourceV1,
-    PreparedDraftMutationStagingBatchV1, PreparedDraftMutationStagingCommandV1,
-    PreparedDraftMutationTransferV1, PreparedDraftPieceStagingWindowV1,
+    DraftMutationStagingErrorV1, DraftMutationStagingPageOutcomeErrorV1,
+    DraftMutationStagingPageOutcomeFlightV1, DraftMutationStagingPageSubmissionErrorV1,
+    DraftPieceDurableBuildWindowLimitsV1, DraftPrivateClipboardSourceFenceV1,
+    DraftPrivateClipboardSourceV1, PreparedDraftMutationStagingBatchV1,
+    PreparedDraftMutationStagingCommandV1, PreparedDraftMutationTransferV1,
+    PreparedDraftPieceStagingWindowV1,
 };
 pub use staging_model::*;
 #[cfg(feature = "test-faults")]

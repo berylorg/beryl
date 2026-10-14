@@ -1,7 +1,7 @@
 use super::super::build_mapping::MappingContext;
 use super::*;
 
-mod text;
+pub(super) mod text;
 mod text_splice;
 
 pub(super) use crate::draft_piece::DraftPieceMappingSpliceKindV1 as Kind;
@@ -27,6 +27,13 @@ pub(super) fn set_stage(
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
         .mapping_stage = stage;
     Ok(())
+}
+
+pub(super) fn effective_roots(build: &DraftPieceBuildRecordV1) -> DraftPieceBuildRootsV1 {
+    build
+        .marker_effect_continuation()
+        .active()
+        .map_or(build.working_roots(), |active| active.working_roots())
 }
 
 fn map_operation<T>(
@@ -139,12 +146,24 @@ pub(super) fn finish(
     )
 }
 
+#[inline(never)]
 pub(super) fn advance(
     mut context: BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
     fragment: Option<&DraftPieceBuildFragmentV1>,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
-    let state = mapping(&context)?;
+    match advance_map_step(&mut context, build)? {
+        Some(next) => finish_map_step(context, build, next),
+        None => advance_fragment(context, build, fragment),
+    }
+}
+
+#[inline(never)]
+fn advance_map_step(
+    context: &mut BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+) -> Result<Option<Stage>, DraftPiecePrepareErrorV1> {
+    let state = mapping(context)?;
     let next = match state.mapping_stage {
         Stage::DeleteMap {
             splice,
@@ -163,7 +182,7 @@ pub(super) fn advance(
             {
                 return invalid();
             }
-            let (target, remaining_end) = map_operation(&mut context, |map| {
+            let (target, remaining_end) = map_operation(context, |map| {
                 map.delete_leaf(target, splice.a, remaining_end)
             })?;
             Some(if remaining_end == splice.a {
@@ -177,7 +196,7 @@ pub(super) fn advance(
             })
         }
         Stage::InsertMap { splice } => {
-            let target = map_operation(&mut context, |map| {
+            let target = map_operation(context, |map| {
                 map.insert(state.current_map, splice.a, splice.inserted)
             })?;
             Some(Stage::MapComplete { splice, target })
@@ -207,7 +226,7 @@ pub(super) fn advance(
                 .fragment_source_end_unit
                 .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
             Some(Stage::RefreshSequence {
-                mapped_unit: source_cut(&mut context, unit, false)?,
+                mapped_unit: source_cut(context, unit, false)?,
             })
         }
         Stage::RefreshSequence { mapped_unit } => {
@@ -215,8 +234,8 @@ pub(super) fn advance(
                 .marker_effect_continuation()
                 .active()
                 .map_or(build.working_roots(), |active| active.working_roots());
-            let (sequence, _, _) = load_working_roots(&mut context, roots)?;
-            let fact = sequence_units::at_unit(&mut context, sequence, mapped_unit)?;
+            let (sequence, _, _) = load_working_roots(context, roots)?;
+            let fact = sequence_units::at_unit(context, sequence, mapped_unit)?;
             Some(Stage::PublishReady {
                 successor_boundary: durable_boundary(fact.boundary),
                 logical_offset: fact.logical_offset,
@@ -224,23 +243,60 @@ pub(super) fn advance(
         }
         _ => None,
     };
-    if let Some(next) = next {
-        set_stage(&mut context, next)?;
-        let mut quantum = finish(context, build, build.frontier());
-        if let (Stage::Ready(ready), Some(active)) =
-            (next, build.marker_effect_continuation().active())
-        {
-            let pending = match ready.kind {
-                Kind::MarkerDelete => DraftPieceMarkerPendingV1::RemoveSequence,
-                Kind::MarkerInsert => DraftPieceMarkerPendingV1::InsertSequence,
-                _ => return invalid(),
-            };
-            quantum.marker_effect_continuation = Some(marker_program::replace_active(
-                build,
-                marker_program::with_pending(active, pending),
-            ));
+    Ok(next)
+}
+
+#[inline(never)]
+fn finish_map_step(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    next: Stage,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    set_stage(&mut context, next)?;
+    let mut quantum = finish(context, build, build.frontier());
+    if let (Stage::Ready(ready), Some(active)) = (next, build.marker_effect_continuation().active())
+    {
+        let pending = match ready.kind {
+            Kind::MarkerDelete => DraftPieceMarkerPendingV1::RemoveSequence,
+            Kind::MarkerInsert => DraftPieceMarkerPendingV1::InsertSequence,
+            Kind::TextDelete
+                if crate::draft_piece::deferred_prefix::is_deferred(
+                    build.frontier(),
+                    build.marker_effect_continuation(),
+                ) && active.phase() == DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap =>
+            {
+                return Ok(quantum);
+            }
+            _ => return invalid(),
+        };
+        quantum.marker_effect_continuation = Some(marker_program::replace_active(
+            build,
+            marker_program::with_pending(active, pending),
+        ));
+    }
+    return Ok(quantum);
+}
+
+#[inline(never)]
+fn advance_fragment(
+    mut context: BuildContext<'_>,
+    build: &DraftPieceBuildRecordV1,
+    fragment: Option<&DraftPieceBuildFragmentV1>,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    if crate::draft_piece::deferred_prefix::is_deferred(
+        build.frontier(),
+        build.marker_effect_continuation(),
+    ) {
+        return deferred_prefix::advance(
+            context,
+            build,
+            fragment.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+        );
+    }
+    if let Some(fragment) = fragment {
+        if deferred_prefix::enter(&mut context, build, fragment)? {
+            return Ok(finish(context, build, build.frontier()));
         }
-        return Ok(quantum);
     }
     if build.marker_effect_continuation().active().is_some() {
         return marker_program::advance(

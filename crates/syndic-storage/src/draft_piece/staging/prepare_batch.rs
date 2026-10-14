@@ -94,7 +94,7 @@ impl SyndicStorage {
             target_head: derived_head,
             source_session,
             target_session: derived_session,
-            targets: targets.into_boxed_slice(),
+            targets: targets.into(),
             item_count,
             encoded_page_bytes,
             #[cfg(feature = "test-faults")]

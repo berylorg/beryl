@@ -639,7 +639,17 @@ fn terminal_elections_preserve_the_candidate_without_a_second_edit_submission() 
         let prepared = storage
             .prepare_staged_draft_piece_terminal(&store, identity, endpoint, election)
             .unwrap();
-        let completion = complete(prepared.submit(&store), &store);
+        let flight = std::thread::scope(|scope| {
+            let store = &store;
+            std::thread::Builder::new()
+                .name("staged-terminal-submission".into())
+                .stack_size(1024 * 1024)
+                .spawn_scoped(scope, move || prepared.submit(store))
+                .expect("the constrained terminal worker must start")
+                .join()
+                .expect("the constrained terminal worker must complete without a panic")
+        });
+        let completion = complete(flight, &store);
         assert_known_commit_verification(completion.verification);
         assert!(matches!(
             completion.result,
