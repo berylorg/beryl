@@ -187,6 +187,9 @@ fn indeterminate_selection_save_reconciles_before_sealed_checkpoint_abort() {
     assert_eq!(service.selected_identity(), Some(saved.selected));
 }
 
+#[path = "publication_convergence.rs"]
+mod publication_convergence;
+
 #[test]
 fn refused_selection_save_retires_only_target_and_preserves_dirty_candidate() {
     let fixture = support::Fixture::new("selection-save-refused", 221);

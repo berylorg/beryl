@@ -102,58 +102,37 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 780: Supersede Active Transcript Builds On Neutral Turn-State Advances (finished)
+# Phase 777: Accept Complete Mounted Transcript Workflow (finished)
 
-Accepted atomic Syndic state/build/head supersession for captured neutral turn-state advances,
-preserving Current refresh, exact guards and bounded owner observation. Eleven deterministic,
-164 current storage and 28 mounted/owner cases qualify; canonical production checks and independent
-semantic/adversarial completion review pass. See
-[acceptance](audits/active-transcript-state-supersession.md).
+Accepted the complete transcript facet: combined panel/provider/native/publication 297/297,
+public core/provider/release/boundary 189/189 and actual native close 5/5 pass on final inputs.
+Canonical production checks and independent whole-workflow review approve source/geometry guards,
+original outcome custody, real replacement/branch/context interaction and bounded disposal.
+See [workflow acceptance](audits/mounted-transcript-workflow.md). Broader product gates remain open.
 
-# Phase 777: Accept Complete Mounted Transcript Workflow (wip)
+# Phase 781: Qualify Remaining Restoration And Progressive Bootstrap Readiness (pending)
 
-Qualify the combined ordinary transcript workflow, interactions, source/geometry invalidation and
-owned-resource disposal against the remaining Checkpoint 4 transcript gate.
+Qualify the next bounded [rework slice](rework/beryl-home/REWORK.md): remaining restoration and
+progressive bootstrap through the accepted main-window boundary. Use
+[Main windows](features/main-windows/design.md#startup-surface),
+[home startup](systems/beryl-home-storage/design.md) and
+[App lifecycle](../crates/beryl-app/doc/design.md) bootstrap/restore-set authorities
+to map remaining guarantees to exact production entry points and reusable accepted evidence.
 
-Use the [transcript feature](features/transcript/design.md),
-[shell boundary](systems/transcript-presentation/shell-boundary.md) and accepted mounting records
-to enumerate the remaining combined evidence. Qualify ordinary activation, exact scrolling,
-narrative/Code/Table/synthetic context, image marker/media outcomes, source-qualified Copy/Quote,
-current user menus, replacement Edit/cancel/submission and captured branch creation/Retry through
-their normal mounted paths. Verify stale source/geometry refusal and bounded worker, residency,
-prepared layout and selection/menu disposal across repeated navigation. Reuse evidence only for
-unchanged inputs, run required combined affected checks and obtain independent workflow review.
-Close the transcript facet of Checkpoint 4 without marking unrelated catalog, Settings or other
-unaccepted product flows complete. Conditional unavailable repair remains separately gated.
+This is an evidence/readiness boundary, not authorization for a new production implementation.
+Distinguish whole-set validation/preparation/native publication and rollback/blocked-cleanup
+guarantees from catalog/transcript/runtime hydration after first shell publication. Assess exact
+selected editor, empty replacement/threadless startup, capacity/corruption refusal, placement,
+retained original failure custody and retirement. Identify missing tests separately from missing
+capabilities or contradictory authority; resolve material design gaps in their owners before any
+implementation phase. Do not hide missing contributions behind adapters or mark unrelated
+catalog, Settings, branch, Asset or conditional repair flows accepted.
 
-The bounded remaining native packet is mixed-content interaction/navigation/invalidation/disposal
-and historical replacement followed by branch creation/Retry/context interaction on an untouched
-source thread. Exercise exact outer/nested scrolling, paired Copy, composer Quote, marker focus
-return, current menus, measured appearance and source invalidation across repeated navigation.
-Exercise Edit/import, cancellation with retained payload, ordinary clear/reentry and replacement
-submission before switching to the separate branch source. Join existing Table/image/narrative,
-Code, Quote/menu/branch, replacement/submission, core/provider and release regressions with the
-accepted diagnostic endpoint evidence. Individually accepted fault matrices remain reusable on
-unchanged inputs; this boundary requires the combined mounted workflows and release evidence.
+Produce one bounded readiness record that identifies qualified unchanged behavior, remaining
+guarantee/evidence gaps and the next technically ready behavioral acceptance boundary. Require
+independent semantic readiness review before this slice feeds implementation or closes the tracker
+item. No implementation experiments or extra compatibility surface are part of this qualification.
 
-Current milestone: selected construction and active-build supersession prerequisites are accepted.
-The actual created child has a Current two-entry head, Complete build/summary and exact readable
-synthetic context. Both complete native workflows, ordinary streaming, owner and publication cases
-pass together in active-transcript-state run 005 (28/28). Library, 164 current storage cases and
-canonical production checks qualify the lifecycle correction. The earlier 189 public
-core/provider/resident-release/source-boundary cases pass; rerun affected checks on final inputs.
-
-Private publication Settling preserves the original prepared command/outcome across convergence
-yield without execution/reconciliation replay. Explicit storage-only fixture mode survives periodic
-worker attachment; fresh invocations follow only exact no-effect source/preflight refusals, with
-returned custody retained. Real context drag requires completed ordinary attachment and actual
-current geometry. Saved-source fixture head/build coherence and source-boundary assertions are
-corrected without weakening production guards; all corrections have independent source review.
-
-Remove temporary failure diagnostics, run the required combined panel/provider/native/publication
-checks and affected public/close-release checks, then obtain independent whole-workflow completion
-review. Preserve separate broader Checkpoint 4 and conditional unavailable repair gates. Lasting
-findings are in [native interaction evidence](failures/native-transcript-interaction-evidence.md).
-Retain exact task fixture homes/logs until final review consumes them; the exact
-`beryl-active-transcript-canonical` checkout and its local target remain needed through final
-qualification. Shared build artifacts and unrelated Operator skill edits remain preserved.
+Current checkpoint: accepted transcript prerequisites and complete workflow remove that mounting
+gap. Restoration/progressive bootstrap is the next open bounded tracker item; qualification has
+not started. Shared build artifacts and unrelated Operator skill edits remain preserved.

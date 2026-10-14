@@ -1919,3 +1919,13 @@ external ledger targets and no remaining native/build process. Execution artifac
 after their final review consumer; shared build/analyzer caches remain available. Documentation
 retrieval is reconciled before handoff. Combined mounted transcript acceptance and the broader
 Checkpoint 4 product flows remain separate, as does conditional unavailable repair.
+
+## Complete Mounted Transcript Workflow Acceptance
+
+The complete transcript facet is accepted on 2026-10-14 after mixed native interactions and
+replacement/branch/context workflows, current source/geometry refusal, resource disposal and
+actual native close routing qualify together. Final combined 297, public 189 and native close
+5 cases pass; canonical production checks and independent whole-workflow review approve.
+See the bounded [workflow acceptance](mounted-transcript-workflow.md) for final input identities,
+preserved publication custody and accepted construction/supersession prerequisites. Broader
+Checkpoint 4 product flows and conditional unavailable repair remain separate.

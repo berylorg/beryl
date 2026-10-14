@@ -16,6 +16,12 @@ impl SyndicComposerHost {
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
     ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+        if matches!(
+            self.pending_publication(ticket)?.stage,
+            PublicationStage::Settling(_)
+        ) {
+            return self.resume_publication_settlement(store, ticket);
+        }
         let (binding, prepared, command) = {
             let pending = self.pending_publication(ticket)?;
             validate_store(pending.intent.binding, store)?;
@@ -72,6 +78,8 @@ impl SyndicComposerHost {
                     .outcome
                     .noncommitted_classification()
                     .unwrap();
+                self.pending_publication_mut(ticket)?.stage =
+                    PublicationStage::Settling(prepared.clone());
                 self.settle_publication(store, ticket, binding, prepared, classification)
             }
             RetainedComposerCommandOutcome::Committed { .. } => {
@@ -83,6 +91,8 @@ impl SyndicComposerHost {
                     .outcome
                     .committed_classification()
                     .unwrap();
+                self.pending_publication_mut(ticket)?.stage =
+                    PublicationStage::Settling(prepared.clone());
                 self.settle_publication(store, ticket, binding, prepared, classification)
             }
         }
@@ -93,6 +103,12 @@ impl SyndicComposerHost {
         store: &HomeStore,
         ticket: ComposerHostPublicationTicket,
     ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+        if matches!(
+            self.pending_publication(ticket)?.stage,
+            PublicationStage::Settling(_)
+        ) {
+            return self.resume_publication_settlement(store, ticket);
+        }
         let (binding, prepared, handle) = {
             let pending = self.pending_publication(ticket)?;
             validate_store(pending.intent.binding, store)?;
@@ -134,6 +150,33 @@ impl SyndicComposerHost {
                 )?;
                 return Ok(ComposerHostPublicationCompletion::ReconciliationCollision);
             }
+        };
+        self.pending_publication_mut(ticket)?.stage = PublicationStage::Settling(prepared.clone());
+        self.settle_publication(store, ticket, binding, prepared, outcome)
+    }
+
+    pub(in crate::composer_host) fn resume_publication_settlement(
+        &mut self,
+        store: &HomeStore,
+        ticket: ComposerHostPublicationTicket,
+    ) -> Result<ComposerHostPublicationCompletion, ComposerHostError> {
+        let (binding, prepared, outcome) = {
+            let pending = self.pending_publication(ticket)?;
+            validate_store(pending.intent.binding, store)?;
+            let PublicationStage::Settling(prepared) = &pending.stage else {
+                return Err(ComposerHostError::PublicationPending);
+            };
+            let retained = self
+                .publication
+                .retained
+                .as_ref()
+                .ok_or(ComposerHostError::PublicationUnavailable)?;
+            let outcome = retained
+                .outcome
+                .committed_classification()
+                .or_else(|| retained.outcome.noncommitted_classification())
+                .ok_or(ComposerHostError::PublicationUnavailable)?;
+            (retained.binding, prepared.clone(), outcome)
         };
         self.settle_publication(store, ticket, binding, prepared, outcome)
     }

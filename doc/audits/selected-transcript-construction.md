@@ -27,6 +27,7 @@ convergence recognizes exact relevant peer progress without hiding other command
 
 Native qualification uses the preserved mounted-workflow worktree, including its separately
 qualified publication Settling correction and explicit storage-only fixture mode. Neither is part
-of this construction source patch. The complete workflow, paired Copy and its final combined
-regressions remain under the active plan. Temporary inputs, logs and exact fixture homes remain
-under `.aipm/tasks/selected-transcript-construction/` while those consumers are active.
+of this construction source patch. The complete workflow and paired Copy are subsequently accepted
+in the [mounted workflow record](mounted-transcript-workflow.md). Temporary inputs, logs and exact
+fixture homes are reclaimed after their final review consumer; durable identities and outcomes
+remain in these acceptance records.

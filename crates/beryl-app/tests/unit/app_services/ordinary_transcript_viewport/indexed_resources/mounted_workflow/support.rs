@@ -70,17 +70,48 @@ pub(super) async fn activate(
     target: SyndicThreadId,
     cx: &mut AsyncApp,
 ) {
-    window
-        .update(cx, |root, native, cx| {
-            root.request_ordinary_thread_activation(target, native, cx, |result, _, _| {
-                assert!(
-                    result.is_ok(),
-                    "ordinary activation admission failed: {result:?}"
-                );
+    let mut admitted = false;
+    for attempt in 0..4 {
+        let accepted = Rc::new(RefCell::new(None));
+        let output = accepted.clone();
+        window
+            .update(cx, |root, native, cx| {
+                root.request_ordinary_thread_activation(target, native, cx, move |result, _, _| {
+                    *output.borrow_mut() = Some(result);
+                })
+                .unwrap()
             })
-            .unwrap()
-        })
-        .unwrap();
+            .unwrap();
+        wait_until(
+            window,
+            cx,
+            |_| accepted.borrow().is_some(),
+            "ordinary activation must return its admission disposition",
+        )
+        .await;
+        match accepted.borrow_mut().take().unwrap() {
+            Ok(_) => {
+                admitted = true;
+                break;
+            }
+            Err(error) if error == "Running threads source changed" => {
+                assert!(
+                    !window
+                        .read_with(cx, |root, _| root.test_running_thread_activation_pending())
+                        .unwrap()
+                );
+                eprintln!("mounted activation source refused before admission: attempt={attempt}");
+            }
+            Err(error) => panic!("ordinary activation admission failed: {error}"),
+        }
+        cx.background_executor()
+            .timer(Duration::from_millis(250))
+            .await;
+    }
+    assert!(
+        admitted,
+        "ordinary activation source did not settle within four fresh attempts"
+    );
     let mut observations = 0_u32;
     wait_until(
         window,
@@ -338,106 +369,9 @@ pub(super) fn bounded(
     );
 }
 
-pub(super) async fn context_copy(
-    window: WindowHandle<MainWindowShellRoot>,
-    panel: &Entity<SyndicTranscriptPanel>,
-    cx: &mut AsyncApp,
-) {
-    let length = super::super::branch_discussion::SELECTED.len();
-    wait_until(
-        window,
-        cx,
-        |cx| {
-            panel
-                .read_with(cx, |panel, _| {
-                    panel
-                        .literal_narrative_text_for_test()
-                        .iter()
-                        .any(|(id, text)| {
-                            text == super::super::branch_discussion::SELECTED
-                                && panel
-                                    .literal_narrative_position_for_test(id, length)
-                                    .is_some()
-                        })
-                })
-                .unwrap()
-        },
-        "created discussion context must paint exact literal source",
-    )
-    .await;
-    let (copied, _) = writer(panel, cx);
-    with_native(window, cx, |native, app| {
-        let snapshot = panel.read(app).snapshot();
-        let id = snapshot
-            .records
-            .iter()
-            .find(|record| {
-                matches!(
-                    record.provenance.source,
-                    ResidentRecordSource::LocalContext { .. }
-                )
-            })
-            .unwrap()
-            .id
-            .clone();
-        assert_eq!(
-            panel
-                .read(app)
-                .diagnostic_snapshot()
-                .resident_data
-                .synthetic_context_group_count,
-            1
-        );
-        panel.update(app, |panel, _| {
-            assert!(matches!(
-                panel.apply_realized_quote_target_for_record_ids(&[id.clone()]),
-                crate::syndic_transcript::ResidentQuoteOutcome::Unavailable(_)
-            ));
-            assert!(matches!(
-                panel.apply_realized_context_menu_target_for_record_id(&id),
-                crate::syndic_transcript::ResidentContextMenuOutcome::Unavailable(_)
-            ));
-        });
-        let first = panel
-            .read(app)
-            .literal_narrative_position_for_test(&id, 0)
-            .unwrap();
-        let last = panel
-            .read(app)
-            .literal_narrative_position_for_test(&id, length)
-            .unwrap();
-        drag(native, app, first, last);
-        key(native, app, "shift-f10");
-        assert!(!panel.read(app).quote_menu_open_for_test());
-        pointer(
-            native,
-            app,
-            PlatformInput::MouseDown(gpui::MouseDownEvent {
-                position: first,
-                button: gpui::MouseButton::Right,
-                click_count: 1,
-                ..Default::default()
-            }),
-        );
-        assert!(panel.read(app).resident_context_menu_target().is_none());
-        assert!(!panel.read(app).quote_menu_open_for_test());
-    })
-    .unwrap();
-    for (index, expected) in [super::super::branch_discussion::SELECTED, "café 🌸 words"]
-        .into_iter()
-        .enumerate()
-    {
-        with_native(window, cx, |native, app| key(native, app, "ctrl-c")).unwrap();
-        wait_until(
-            window,
-            cx,
-            |_| copied.borrow().len() == index + 1,
-            "context paired Copy must settle through the ordinary worker",
-        )
-        .await;
-        assert_eq!(copied.borrow()[index], expected);
-    }
-}
+#[path = "support/context.rs"]
+mod context;
+pub(super) use context::context_copy;
 
 pub(super) async fn dispose(
     window: WindowHandle<MainWindowShellRoot>,

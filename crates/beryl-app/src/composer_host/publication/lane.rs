@@ -182,7 +182,9 @@ impl SyndicComposerHost {
                 PublicationStage::Releasing {
                     service, flight, ..
                 } => (service.clone(), *flight, true),
-                PublicationStage::Reconciling { .. } | PublicationStage::Terminal { .. } => {
+                PublicationStage::Settling(_)
+                | PublicationStage::Reconciling { .. }
+                | PublicationStage::Terminal { .. } => {
                     return Err(ComposerHostError::PublicationPending);
                 }
             }
@@ -284,6 +286,7 @@ impl SyndicComposerHost {
                     return Ok(ComposerHostPublicationReleaseCompletion::Released);
                 }
                 PublicationStage::Releasing { .. }
+                | PublicationStage::Settling(_)
                 | PublicationStage::Reconciling { .. }
                 | PublicationStage::Terminal { .. } => {
                     return Err(ComposerHostError::PublicationPending);
@@ -419,6 +422,7 @@ impl SyndicComposerHost {
             let pending = self.pending_publication_mut(ticket)?;
             let prepared = match &pending.stage {
                 PublicationStage::Ready(prepared)
+                | PublicationStage::Settling(prepared)
                 | PublicationStage::Reconciling { prepared, .. } => Some(prepared.clone()),
                 PublicationStage::Terminal { prepared, .. } => prepared.clone(),
                 PublicationStage::Sealed(_)

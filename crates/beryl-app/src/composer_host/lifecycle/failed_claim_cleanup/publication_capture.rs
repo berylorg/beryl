@@ -64,6 +64,7 @@ impl SyndicComposerHost {
         }
         let prepared = match &pending.stage {
             PublicationStage::Ready(prepared)
+            | PublicationStage::Settling(prepared)
             | PublicationStage::Reconciling { prepared, .. }
             | PublicationStage::Terminal {
                 prepared: Some(prepared),

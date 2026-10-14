@@ -58,7 +58,9 @@ impl SyndicComposerHost {
                 pending.is_cancelled()
                     && !matches!(
                         &pending.stage,
-                        PublicationStage::Reconciling { .. } | PublicationStage::Terminal { .. }
+                        PublicationStage::Settling(_)
+                            | PublicationStage::Reconciling { .. }
+                            | PublicationStage::Terminal { .. }
                     )
             }
             _ => false,
@@ -84,6 +86,7 @@ impl SyndicComposerHost {
                 match &pending.stage {
                     PublicationStage::Ready(_) => 1,
                     PublicationStage::Reconciling { .. } => 2,
+                    PublicationStage::Settling(_) => 3,
                     PublicationStage::Terminal { reason, .. } => {
                         return Ok(PublicationStep::Complete(match reason {
                             ComposerHostPublicationUnavailable::DurableBaseConflict => {
@@ -132,12 +135,20 @@ impl SyndicComposerHost {
                     }
                 }
             }),
-            1 => Ok(PublicationStep::Complete(
-                self.execute_publication_lane(store, ticket)?,
-            )),
-            _ => Ok(PublicationStep::Complete(
-                self.reconcile_publication_lane(store, ticket)?,
-            )),
+            _ => {
+                let completion = if action == 1 {
+                    self.execute_publication_lane(store, ticket)
+                } else if action == 2 {
+                    self.reconcile_publication_lane(store, ticket)
+                } else {
+                    self.resume_publication_settlement(store, ticket)
+                };
+                match completion {
+                    Ok(completion) => Ok(PublicationStep::Complete(completion)),
+                    Err(ComposerHostError::PublicationPending) => Ok(PublicationStep::Progress),
+                    Err(error) => Err(error),
+                }
+            }
         }
     }
 

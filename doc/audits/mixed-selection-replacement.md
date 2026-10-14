@@ -49,7 +49,8 @@ the acquisition ledger remain unchanged. Native clearing uses the ordinary WinRT
 
 ## Evidence And Review
 
-Retained run artifacts are under `.aipm/tasks/mixed-source-replacement/`:
+Qualified run identities and outcomes follow. Raw task artifacts and fixture homes were reclaimed
+after final complete mounted-workflow review; their durable qualification remains in this record.
 
 - Widget runs 013 and 014 each pass 366/366; run 014 uses canonical unpatched dependencies and
   also passes its locked all-target test-support check. Independent widget/resource review approves

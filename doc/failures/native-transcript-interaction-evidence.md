@@ -333,8 +333,9 @@ native workflow and combined regressions.
 Decision evidence: `mutation/binding/active.rs`, `mutation/live/event.rs`,
 `mutation/transcript/refresh.rs`, `mutation/transcript/publication.rs` and
 `validation/projections/transcript/snapshot.rs` under `crates/syndic-storage/src/`;
-`.aipm/tasks/mounted-transcript/run-031-live-disposition/attempt-1/tests.log` retains the original
-capability receipt/refusal diagnostic. The accepted construction boundary remains recorded in its
+run 031's original capability receipt/refusal diagnostic is summarized above and qualified in the
+[lifecycle acceptance](../audits/active-transcript-state-supersession.md). Its raw task artifacts
+are reclaimed after final review. The accepted construction boundary remains recorded in its
 audit; the complete concurrent mounted workflow remains unaccepted.
 
 The Operator approved the atomic supersession prerequisite on 2026-10-14. The shared Syndic state
@@ -347,3 +348,18 @@ saved projection. Preparing that exact item's derived projection, with complete 
 and unchanged FinalizingHistory assertions, corrects the fixture without freezing/finalizing,
 releasing a gate or weakening terminal evidence. Independent correction review approves. Required
 real streaming, corrected recovery and canonical checks remain pending before acceptance.
+
+Active-build supersession is accepted in `7428c1e4`; see
+[lifecycle acceptance](../audits/active-transcript-state-supersession.md). The complete mounted
+transcript workflow subsequently passes final combined 297, public 189 and actual native close
+5 cases, with independent completion approval. Its
+[workflow acceptance](../audits/mounted-transcript-workflow.md) closes the transcript facet and
+preserves the original custody/source/geometry contracts. Temporary custody diagnostics are
+removed. Earlier task fixture homes and raw execution material have no remaining review consumer;
+their durable findings, input identities and outcomes remain in these failure and acceptance
+records before exact task cleanup. Broader product flows and conditional repair remain separate.
+
+Exact owned mounted-transcript, mixed-source-replacement, selected-transcript-construction and
+active-transcript-state task directories, plus the active-transcript canonical checkout/local
+target, are reclaimed after absolute ancestor/root/nested reparse and process checks. Shared build
+artifacts and unrelated Operator skill edits remain intact; no owned build/native process remains.

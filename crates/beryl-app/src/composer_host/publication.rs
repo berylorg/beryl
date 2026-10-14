@@ -256,6 +256,7 @@ pub(super) enum PublicationStage {
     },
     Sealed(DraftEditorCandidatePublicationEvidenceV1),
     Ready(PreparedPublication),
+    Settling(PreparedPublication),
     Reconciling {
         prepared: PreparedPublication,
         handle: ReconciliationHandle,

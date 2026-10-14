@@ -538,9 +538,7 @@ fn active_selection_reports_frame_loss_when_geometry_stops_being_realized() {
     );
     let selection = ResidentTranscriptSelection::new(
         snapshot.presentation_revision,
-        vec![
-            resident_selected_record(&snapshot.records[1]).expect("record b should be selectable"),
-        ],
+        vec![resident_selected_record(&snapshot.records[1]).expect("record b should be selectable")],
     );
 
     assert_eq!(
@@ -821,9 +819,18 @@ fn renderer_context_menu_command_rejects_stale_unstable_and_noncontent_frame_fac
     frame.records[0].record_id = record_id("b");
     assert_eq!(
         resident_context_menu_command_for_realized_record_id(&snapshot, &frame, &record_id("b")),
-        Err(ResidentContextMenuUnavailable::StaleRecord {
+        Err(ResidentContextMenuUnavailable::RecordNotRealized {
             record_id: record_id("b")
         })
+    );
+    assert!(realized_resident_context_menu_record_ids(&snapshot, &frame).is_empty());
+    frame.records[0].index = 1;
+    assert_eq!(
+        resident_context_menu_command_for_realized_record_id(&snapshot, &frame, &record_id("b")),
+        Ok(ResidentContextMenuCommand::new(
+            snapshot.presentation_revision,
+            ResidentSelectionRecordGeometry::new(record_id("b"), 0.0, 12.0),
+        ))
     );
 
     let invalid_snapshot = snapshot_with_records(

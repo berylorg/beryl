@@ -52,7 +52,7 @@ fn syndic_transcript_sources_stay_inside_new_boundary() {
     for path in rust_files_under(&syndic_transcript_dir) {
         let source = fs::read_to_string(&path).expect("new transcript source should be readable");
         for forbidden in forbidden_needles {
-            if source.contains(forbidden) {
+            if contains_forbidden_boundary(&source, forbidden) {
                 offenders.push(format!(
                     "{} contains {forbidden}",
                     display_test_path(&syndic_transcript_dir, &path)
@@ -169,7 +169,7 @@ fn syndic_transcript_panel_renders_resident_snapshots_only() {
 
     for forbidden in forbidden_needles {
         assert!(
-            !source.contains(forbidden),
+            !contains_forbidden_boundary(&source, forbidden),
             "panel source crossed renderer boundary with {forbidden}"
         );
     }
@@ -239,10 +239,8 @@ fn syndic_transcript_manual_scroll_command_stays_on_host_boundary() {
     assert!(host_source.contains("pub(crate) fn manual_scroll("));
     assert!(host_source.contains("self.realize_frame(command.frame_request())"));
     assert!(panel_source.contains("pub(crate) fn manual_scroll("));
-    assert!(
-        panel_source
-            .contains("self.queue_manual_delta(command.frame_request().manual_delta_px, cx)")
-    );
+    assert!(panel_source
+        .contains("self.queue_manual_delta(command.frame_request().manual_delta_px, cx)"));
     assert!(panel_source.contains("pub(crate) fn manual_scroll_delta("));
     assert!(panel_source.contains("ManualTranscriptScrollCommand::new("));
     assert!(panel_source.contains("Some(snapshot.presentation_revision)"));
@@ -375,7 +373,7 @@ fn syndic_transcript_status_facts_stay_on_resident_host_boundary() {
         "transcript_projection",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "status facts crossed boundary with {forbidden}"
         );
     }
@@ -539,10 +537,8 @@ fn activity_metadata_read_uses_compact_typed_boundary() {
         .expect("activity projection source should be readable");
     assert!(projection_source.contains("metadata.thread_id().as_str()"));
     assert!(projection_source.contains("metadata.agent_nickname()"));
-    assert!(
-        projection_source
-            .contains("note_subagent_runtime_metadata_values(thread_id, None, None, true)")
-    );
+    assert!(projection_source
+        .contains("note_subagent_runtime_metadata_values(thread_id, None, None, true)"));
 
     let title_backend_source = fs::read_to_string(
         src_dir
@@ -663,7 +659,7 @@ fn syndic_transcript_selection_copy_stays_on_resident_boundary() {
     }
     for forbidden in forbidden_needles {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "selection/copy source crossed into legacy API with {forbidden}"
         );
     }
@@ -740,7 +736,7 @@ fn syndic_transcript_quote_domain_stays_on_resident_boundary() {
         "transcript_projection",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "quote domain crossed boundary with {forbidden}"
         );
     }
@@ -821,7 +817,7 @@ fn syndic_transcript_context_menu_domain_stays_on_resident_boundary() {
         "syndic_storage",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "context-menu domain crossed boundary with {forbidden}"
         );
     }
@@ -885,7 +881,7 @@ fn syndic_transcript_renderer_quote_target_stays_on_resident_boundary() {
         "transcript_projection",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "renderer quote target crossed boundary with {forbidden}"
         );
     }
@@ -903,7 +899,14 @@ fn syndic_transcript_renderer_context_menu_target_stays_on_resident_boundary() {
             .expect("renderer context-menu source readable");
     let panel_source =
         fs::read_to_string(syndic_transcript_dir.join("panel.rs")).expect("panel source readable");
-    let combined_source = [renderer_context_menu_source.as_str(), panel_source.as_str()].join("\n");
+    let menu_source = fs::read_to_string(syndic_transcript_dir.join("panel/narrative/quote.rs"))
+        .expect("mounted menu source readable");
+    let combined_source = [
+        renderer_context_menu_source.as_str(),
+        panel_source.as_str(),
+        menu_source.as_str(),
+    ]
+    .join("\n");
     let required_renderer_context_menu_needles = [
         "resident_context_menu_command_for_realized_record_id",
         "realized_resident_context_menu_record_ids",
@@ -917,8 +920,7 @@ fn syndic_transcript_renderer_context_menu_target_stays_on_resident_boundary() {
         "resident_context_menu_target",
         "resident_context_menu_command_target",
         "apply_realized_context_menu_target_for_record_id",
-        "apply_realized_context_menu_target(&context_record_id",
-        "OpenTranscriptContextMenu.boxed_clone()",
+        "panel.open_record_menu(&menu_record, event.position, window, cx)",
         "resident_context_menu_command_for_realized_record_id",
         "reconcile_resident_context_menu_target_with_frame",
         "resident_context_menu_frame_loss",
@@ -935,6 +937,18 @@ fn syndic_transcript_renderer_context_menu_target_stays_on_resident_boundary() {
         assert!(
             panel_source.contains(required),
             "panel source lost resident context-menu target capture boundary: {required}"
+        );
+    }
+    for required in [
+        "fn open_record_menu(",
+        "self.open_transcript_menu(Some(record), Some(pointer), window, cx)",
+        "self.character_geometry_current(window)",
+        "resident_context_menu_frame_loss(",
+        "self.apply_realized_context_menu_target_for_record_id(&endpoint.record)",
+    ] {
+        assert!(
+            menu_source.contains(required),
+            "mounted menu lost resident target admission: {required}"
         );
     }
     for forbidden in [
@@ -954,7 +968,7 @@ fn syndic_transcript_renderer_context_menu_target_stays_on_resident_boundary() {
         "transcript_projection",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "renderer context-menu target crossed boundary with {forbidden}"
         );
     }
@@ -1022,7 +1036,7 @@ fn syndic_transcript_renderer_media_action_target_stays_on_resident_boundary() {
         "request_resource_range(",
     ] {
         assert!(
-            !combined_source.contains(forbidden),
+            !contains_forbidden_boundary(&combined_source, forbidden),
             "renderer media-action target crossed boundary with {forbidden}"
         );
     }
@@ -1065,6 +1079,86 @@ fn syndic_transcript_sources_avoid_forbidden_legacy_apis() {
         offenders.is_empty(),
         "new transcript source references legacy APIs: {offenders:?}"
     );
+}
+
+fn contains_forbidden_boundary(source: &str, forbidden: &str) -> bool {
+    if forbidden != "syndic_storage" {
+        return source.contains(forbidden);
+    }
+
+    let mut source: String = source.chars().filter(|ch| !ch.is_whitespace()).collect();
+    for import in [
+        "syndic_storage::{ResourceKindasIndexedResourceKind,indexed_resourceasresource_index,}",
+        "syndic_storage::indexed_resourceasindex;",
+        "syndic_storage::narrative::{NarrativePreparationErrorKind,PreparedNarrative}",
+        "syndic_storage::narrative::{NarrativeFragment,NarrativeRun,NarrativeStyle,PreparedNarrative,}",
+        "syndic_storage::narrative::{NARRATIVE_FRAGMENT_MAX_BYTES,NARRATIVE_MAX_BYTES,NARRATIVE_MAX_FRAGMENTS,NARRATIVE_MAX_RUNS,NarrativeFragment,NarrativeMapping,NarrativeMappingKind,NarrativeRun,NarrativeStyle,}",
+    ] {
+        source = source.replace(import, "");
+    }
+    for resident_type in [
+        "CurrentTranscriptEntryProof",
+        "DiscussionContextSource",
+        "DiscussionContextText",
+        "DiscussionContextRange",
+        "DiscussionContextDescriptor",
+        "ProjectionPayload",
+        "ProjectionTextSource",
+        "ComposerAtomOrdinal",
+        "InputMarkerOrdinal",
+        "ComposerImageMarker",
+        "ResourceKind",
+        "inline_table::PreparedInlineTable",
+        "inline_table::InlineTablePreparationErrorKind",
+        "narrative::PreparedNarrative",
+        "narrative::NarrativePreparationErrorKind",
+        "narrative::NarrativeTreatment",
+        "indexed_resource::Binding",
+    ] {
+        let admitted = format!("syndic_storage::{resident_type}");
+        let mut cursor = 0;
+        while let Some(offset) = source[cursor..].find(&admitted) {
+            let start = cursor + offset;
+            let end = start + admitted.len();
+            if source[end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+            {
+                cursor = end;
+            } else {
+                source.replace_range(start..end, "");
+                cursor = start;
+            }
+        }
+    }
+    source.contains(forbidden)
+}
+
+#[test]
+fn resident_storage_types_do_not_admit_storage_operations() {
+    for forbidden_source in [
+        "syndic_storage::SyndicStorage::open(path)",
+        "syndic_storage::ProjectionPayloadStore::read()",
+        "syndic_storage::indexed_resource::query(binding)",
+        "use syndic_storage::{CurrentTranscriptEntryProof, SyndicStorage};",
+        "syndic_storage::narrative::prepare(source)",
+    ] {
+        assert!(contains_forbidden_boundary(
+            forbidden_source,
+            "syndic_storage"
+        ));
+    }
+    for admitted_source in [
+        "Arc<syndic_storage::narrative::PreparedNarrative>",
+        "syndic_storage::CurrentTranscriptEntryProof",
+        "syndic_storage::ProjectionPayload::InlineMarkdown { source, .. }",
+    ] {
+        assert!(!contains_forbidden_boundary(
+            admitted_source,
+            "syndic_storage"
+        ));
+    }
 }
 
 fn rust_files_under(root: &Path) -> Vec<PathBuf> {

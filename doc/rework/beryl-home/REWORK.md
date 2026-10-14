@@ -563,7 +563,7 @@
   [readiness record](../../audits/repair-unavailable-presentation-readiness.md).
 - [x] Mounted exact repair and submission unavailability while preserving drafting, queued work and reconciliation; [qualification](../../failures/composer-submission-admission.md).
 - [x] Shared bounded immutable resident presentation and resource batches without snapshot collection copies, preserving prior generations and final-reference disposal.
-- [ ] Complete transcript mounting with realized-frame rendering, anchors, selection, nested widgets and resource demand through immutable bounded pages or generations; [mounting readiness](../../audits/transcript-mounting-readiness.md).
+- [x] Accepted complete mounted transcript rendering, interactions, replacement/branch navigation and owned-resource release through immutable bounded pages and generations; [workflow acceptance](../../audits/mounted-transcript-workflow.md).
 - [x] Mounted external indexed Tables with bounded two-axis windows, whole-cell selection,
   selected-source Copy and original-root Save; [acceptance](../../audits/transcript-mounting-readiness.md#mounted-indexed-table-acceptance).
 - [x] Mounted small inline Tables through bounded pure preparation and typed projection residency,

@@ -49,6 +49,9 @@ impl SyndicComposerHost {
                 PublicationStage::Reconciling { .. } => {
                     ServiceDisposalAction::ReconcilePublication(pending.ticket)
                 }
+                PublicationStage::Settling(_) => {
+                    ServiceDisposalAction::SettlePublication(pending.ticket)
+                }
                 PublicationStage::Terminal { .. } => ServiceDisposalAction::Complete,
             },
             Some(ComposerHostPublicationLane::Disposal(pending))
@@ -74,10 +77,21 @@ impl SyndicComposerHost {
                 self.drive_publication_lane(store, ticket)?,
                 ComposerHostPublicationDrive::ReleasePending
             ),
-            ServiceDisposalAction::ReconcilePublication(ticket) => matches!(
-                self.reconcile_publication_lane(store, ticket)?,
-                ComposerHostPublicationCompletion::ReconciliationPending
-            ),
+            ServiceDisposalAction::ReconcilePublication(ticket)
+            | ServiceDisposalAction::SettlePublication(ticket) => {
+                let completion = if matches!(action, ServiceDisposalAction::ReconcilePublication(_))
+                {
+                    self.reconcile_publication_lane(store, ticket)
+                } else {
+                    self.resume_publication_settlement(store, ticket)
+                };
+                match completion {
+                    Ok(ComposerHostPublicationCompletion::ReconciliationPending)
+                    | Err(ComposerHostError::PublicationPending) => true,
+                    Ok(_) => false,
+                    Err(error) => return Err(error),
+                }
+            }
             ServiceDisposalAction::ReconcileDisposal(ticket) => matches!(
                 self.reconcile_clean_disposal(store, ticket)?,
                 ComposerHostDisposalCompletion::ReconciliationPending
@@ -97,6 +111,7 @@ enum ServiceDisposalAction {
     Release(ComposerHostPublicationTicket),
     DriveRelease(ComposerHostPublicationTicket),
     ReconcilePublication(ComposerHostPublicationTicket),
+    SettlePublication(ComposerHostPublicationTicket),
     ReconcileDisposal(ComposerHostDisposalTicket),
     Complete,
 }

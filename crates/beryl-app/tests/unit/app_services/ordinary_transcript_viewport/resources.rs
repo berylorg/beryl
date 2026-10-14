@@ -87,11 +87,38 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                         .unwrap()
                         .unwrap();
                     let current = storage.thread(home, thread, point).unwrap().unwrap();
+                    let build = storage
+                        .transcript_build(home, thread, head.generation(), point)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(
+                        build.phase(),
+                        syndic_storage::TranscriptBuildPhase::Complete
+                    );
+                    assert_eq!(build.revision(), head.revision());
+                    assert_eq!(build.entry_count(), head.entry_count());
                     let revision = beryl_model::ProjectionRevision::new(
                         head.revision().get().max(summary.revision().get()) + 1,
                     )
                     .unwrap();
                     let mut batch = syndic_storage::test_faults::FixtureBatch::new();
+                    batch
+                        .put(syndic_storage::test_faults::FixtureRecord::TranscriptBuild(
+                            syndic_storage::TranscriptBuildRecord::new(
+                                build.thread_id(),
+                                build.generation(),
+                                revision,
+                                build.source_thread_revision(),
+                                build.committed_tail(),
+                                build.selected_path_digest(),
+                                build.path_turn_count(),
+                                build.entry_count(),
+                                build.entry_digest(),
+                                build.history_complete(),
+                                build.phase(),
+                            ),
+                        ))
+                        .unwrap();
                     batch
                         .put(
                             syndic_storage::test_faults::FixtureRecord::TranscriptViewHead(
@@ -115,7 +142,7 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                                 current.revision(),
                                 current.committed_tail(),
                                 current.selected_path_digest(),
-                                true,
+                                build.history_complete(),
                                 syndic_storage::SyndicTimestamp::from_unix_millis(2000),
                             ),
                         ))
@@ -133,6 +160,26 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                         }
                     ));
                     assert!(revision.get() > summary.revision().get());
+                    let refreshed = storage
+                        .transcript_build(home, thread, head.generation(), point)
+                        .unwrap()
+                        .unwrap();
+                    let refreshed_head = storage
+                        .transcript_view_head(home, thread, point)
+                        .unwrap()
+                        .unwrap();
+                    let refreshed_summary = storage
+                        .history_summary(home, thread, point)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(refreshed.revision(), refreshed_head.revision());
+                    assert_eq!(refreshed.entry_count(), refreshed_head.entry_count());
+                    assert_eq!(refreshed.committed_tail(), refreshed_head.committed_tail());
+                    assert_eq!(
+                        refreshed.selected_path_digest(),
+                        refreshed_head.selected_path_digest()
+                    );
+                    assert_eq!(refreshed.history_complete(), refreshed_summary.complete());
                 }
                 let mut refreshed = false;
                 for _ in 0..200 {

@@ -86,20 +86,45 @@ impl Capture {
                 .unwrap();
             let mut lifecycle = Tools;
             let mut branch = Tools;
-            let outcome = coordinator.execute_ordinary_turn(
-                &home,
-                &storage,
-                &assets,
-                None,
-                projection,
-                &cancellation,
-                &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), server::TIMEOUT),
-                OrdinaryDynamicToolHandlers::new(&mut lifecycle, &mut branch),
-            );
+            let mut projection = projection;
+            let mut preflight_failures = Vec::with_capacity(7);
+            let mut attempt = 0;
+            let outcome = loop {
+                attempt += 1;
+                let outcome = coordinator.execute_ordinary_turn(
+                    &home,
+                    &storage,
+                    &assets,
+                    None,
+                    projection,
+                    &cancellation,
+                    &OrdinaryTurnExecutionRequest::new(
+                        TurnStartOptions::default(),
+                        server::TIMEOUT,
+                    ),
+                    OrdinaryDynamicToolHandlers::new(&mut lifecycle, &mut branch),
+                );
+                match outcome {
+                    Err(crate::cas_projection::OrdinaryTurnExecutionFailure::PreActivation {
+                        projection: retained,
+                        source,
+                    }) if attempt < 8
+                        && matches!(&source,
+                        crate::cas_projection::OrdinaryTurnExecutionError::ConcurrentChange {
+                            thread_id,
+                        } if *thread_id == thread) =>
+                    {
+                        preflight_failures.push(source);
+                        projection = *retained;
+                        std::thread::yield_now();
+                    }
+                    outcome => break outcome,
+                }
+            };
             session.invalidate_connection();
             assert!(
                 outcome.is_ok(),
-                "native capture terminal failed: {outcome:?}"
+                "native capture terminal failed after {attempt} invocation(s), retained preflight failures={preflight_failures:?}: {outcome:?}"
             );
         });
         server.wait_for_projection();

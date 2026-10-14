@@ -98,11 +98,9 @@ impl MainWindowConversationComposerMount {
     #[cfg(test)]
     pub(crate) fn test_use_storage_only_submission(&mut self) {
         assert!(!self.submission.is_active());
-        self.submission
-            .request_source
-            .as_mut()
-            .unwrap()
-            .execution_wake =
+        let source = self.submission.request_source.as_mut().unwrap();
+        source.storage_only_override = true;
+        source.execution_wake =
             crate::cas_projection::SubmissionExecutionWake::storage_only_for_test();
     }
 

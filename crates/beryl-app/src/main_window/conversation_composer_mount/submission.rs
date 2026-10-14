@@ -49,6 +49,8 @@ pub enum MainWindowConversationComposerSubmissionStatus {
 pub struct MainWindowComposerSubmissionRequestSource {
     execution_wake: crate::cas_projection::SubmissionExecutionWake,
     turn_start_admission_requirement: TurnStartAdmissionRequirement,
+    #[cfg(test)]
+    storage_only_override: bool,
 }
 
 impl MainWindowComposerSubmissionRequestSource {
@@ -59,6 +61,8 @@ impl MainWindowComposerSubmissionRequestSource {
         Self {
             execution_wake,
             turn_start_admission_requirement,
+            #[cfg(test)]
+            storage_only_override: false,
         }
     }
 
@@ -225,6 +229,10 @@ impl MainWindowConversationComposerMount {
         worker: crate::app_services::PublishedExactStopWorker,
     ) {
         if let Some(source) = self.submission.request_source.as_mut() {
+            #[cfg(test)]
+            if source.storage_only_override {
+                return;
+            }
             source.execution_wake = source.execution_wake.clone().with_window_worker(worker);
         }
     }
