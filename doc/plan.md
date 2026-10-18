@@ -19,12 +19,38 @@ Accepted additive persistence with unchanged Session V1, exact guarded updates a
 cleanup/recovery bundles. State 313, selected App 275 and Home 43 cases qualified, production checks
 passed and independent persistence review accepted; [evidence and limits](audits/activity-panel-persistence.md).
 
-# Phase 787: Prepare Bounded Window Activity Pages (pending)
+# Phase 787: Prepare Bounded Window Activity Pages (wip)
 
 Expose weak selected-window Activity access with exact period/query/publication authority,
 bounded off-GUI display projection and cancellable one-page cursor-walk quanta. Preserve exact
 initial/page Retry, query replacement, fixed residency/cursor checkpoints, capacity and retirement.
 Verify current/stale/busy/failure/selection/period paths without a whole-collection model.
+
+The intended consumer is the selected-window Activity slot in the next mounting phase. Prepare
+typed window/claim authority from a weak published graph, validate exact query heads off GPUI and
+publish only through nonblocking current-Home/runtime fences. Walk at most one existing page per
+quantum, retaining at most eight cursor checkpoints, four prepared resident pages and one pending
+demand. Raw page capacity is released after bounded display preparation. Preserve original initial
+requests and failed page continuations for explicit Retry; drop all checkpoints on query replacement.
+
+Prepare protocol display values and exact optional agent metadata from bounded canonical/source
+reads, including PowerShell token normalization, permitted file-change paths and compact handoff
+counts. No whole-history projection, backend request, inferred label or payload retention enters
+the window model. Verify display provenance/limits, distant and backward demand cancellation,
+failure/Retry, busy publication, changed selection/head/period, capacity and graph retirement.
+Require independent semantic/lifetime review and focused owning checks before mounting begins.
+
+Current milestone: persistence is accepted and pushed in 666cff4f. Existing request/collection/page
+and Home publication APIs are mapped, but source inspection invalidated bounded display readiness.
+File-change entries retain paths/diffs rather than exact addition/deletion totals or sole-path proof;
+producing those required facts can require traversing the entire source payload. A streaming parser
+does not make that work a bounded page quantum. No Phase 787 source changes were made.
+
+Blocked under the Operator's stop-on-invalid-plan instruction. Resolve the owning Syndic
+display-fact preparation/publication design before authorizing a prerequisite and resuming this
+phase; compact admitted facts are the proposed clean direction, not an approved schema or adapter.
+See [the source evidence and unresolved design boundary](failures/activity-display-source-readiness.md).
+No Activity widget or mounted-runtime acceptance is claimed.
 
 # Phase 788: Mount The Selected-Thread Activity Panel (pending)
 

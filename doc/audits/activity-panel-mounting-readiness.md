@@ -1,5 +1,16 @@
 # Activity Panel Mounting Readiness
 
+## Current Readiness Limit
+
+The persistence boundary was implemented and independently accepted in 666cff4f;
+[evidence](activity-panel-persistence.md). Subsequent source inspection invalidated this audit's
+assumption that all required display facts can be extracted through bounded existing source reads.
+Exact addition/deletion totals require diff traversal because no compact admitted summary exists.
+Reader preparation is blocked pending an owning design correction;
+[decisive evidence and proposed prerequisite](../failures/activity-display-source-readiness.md).
+The earlier readiness review below is historical evidence, not current authorization to conceal
+a full source scan inside page preparation.
+
 ## Scope
 
 The next unfinished Beryl-home mounting slice is selected-thread Activity. Catalog/search,
