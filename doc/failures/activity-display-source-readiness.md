@@ -6,12 +6,13 @@ Window-local height persistence remains separately accepted in 666cff4f.
 
 # Invalidated Assumption
 
-The readiness review assumed that a bounded App projection helper could obtain every required
-display fact from existing canonical/source ranges. Exact file-change totals and proof of the
-sole unique path are not retained as compact admitted facts. Reading a bounded activity entry page
-therefore does not establish a bounded source-read cost for preparing its display rows.
+The reported implementation blocker incorrectly equated bounded source preparation with a fixed
+total read budget for an entire item. Exact addition/deletion totals may require visiting every
+diff byte, but the controlling App adapter contract does not require that traversal to finish in
+one quantum. A resumable extractor can bound each read and its retained state while total work
+scales with item size. The Operator identified this distinction.
 
-# Decisive Evidence
+# Source Evidence And Its Limit
 
 - `crates/syndic-storage/src/provider_item/value/execution.rs` defines `ProviderFileChangeV1`
   as status plus a vector of changes. Each change contains only path, diff and change kind;
@@ -26,34 +27,25 @@ therefore does not establish a bounded source-read cost for preparing its displa
   bytes while validating/digesting them. Wrapping that parser in a display helper bounds memory,
   but does not turn a full diff traversal into a fixed bounded source-range read.
 
-For example, one valid file-change item can contain a 10 MB diff. Changing a line near its end
-changes the exact `+A -D` display totals. Neither the activity entry nor a source digest supplies
-those totals. The extractor must visit the relevant diff bytes; choosing the single-path format
-also requires establishing that every change has the same exact permitted path. Hiding this work
-inside one page-preparation quantum violates the accepted preparation model. Returning guessed counts or silently changing
-the required row format would violate the feature contract.
+These facts establish the need for a suitable extractor. They do not establish that incremental
+extraction is impossible or that a new durable fact schema is necessary. A large diff can be
+processed over many bounded steps without retaining it or presenting partial counters as final.
 
-# Proposed Correction
+# Correction
 
-Define Syndic-owned compact, source-qualified Activity display facts prepared while provider
-events are already admitted or staged. Publish them with the exact item/source event, and make
-patch deltas, reused text, completion, failure, cancellation and reconciliation preserve that
-authority. Retain bounded display prefixes and exact scalar facts rather than source payloads.
-The App can then read those facts within its page budget.
+Prepare display values off GPUI through resumable, bounded source reads. Retain only bounded
+parser continuation, counters, prefixes and source authority. Yield and check cancellation/current
+demand between steps, including traversal of large diffs and reused text ranges. Partial counters
+remain preparation state; publish exact row values only after completion and revalidation of the
+original item/source event, query, runtime period and window selection.
 
-This is a proposal, not an approved storage or staging design. The owning system/package authority
-must select fact ownership, schema/publication, exact single-path qualification, bounded preparation
-and recovery behavior before the plan authorizes implementation. A separate incremental extraction
-design would likewise need explicit work, cancellation and retained-state bounds; it is not supplied
-by the existing reader APIs.
-
-The design must settle reused-text preparation, line-count grammar/overflow, permitted path proof,
-and publication under failed or cancelled admission. This note does not select whether `N file(s)`
-counts change records or distinct paths.
+Verify line-prefix and UTF-8 boundaries across chunks, long lines, exact counting, path privacy,
+reused ranges, cancellation, stale results and bounded retention. This note does not choose whether
+`N file(s)` counts change records or distinct paths, nor authorize an unbounded path set.
 
 # Current Disposition
 
-Implementation stopped under the Operator's instruction to report technically invalid plan steps.
-No Phase 787 source, schema, migration, parser or fallback was implemented. Phase 788 remains
-pending. Preserve the existing bounded query service and the accepted persistence behavior while
-the display prerequisite is resolved in owning authority.
+The blocker and proposed requirement for admission-time durable summaries are withdrawn.
+Phase 787 remains active with the resumable extractor as implementation work under the existing
+bounded preparation contract. No extractor or schema implementation is claimed by this correction.
+Phase 786 acceptance and the existing paginated query service remain valid.

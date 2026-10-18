@@ -40,17 +40,20 @@ the window model. Verify display provenance/limits, distant and backward demand 
 failure/Retry, busy publication, changed selection/head/period, capacity and graph retirement.
 Require independent semantic/lifetime review and focused owning checks before mounting begins.
 
-Current milestone: persistence is accepted and pushed in 666cff4f. Existing request/collection/page
-and Home publication APIs are mapped, but source inspection invalidated bounded display readiness.
-File-change entries retain paths/diffs rather than exact addition/deletion totals or sole-path proof;
-producing those required facts can require traversing the entire source payload. A streaming parser
-does not make that work a bounded page quantum. No Phase 787 source changes were made.
+Use resumable source projection: a quantum performs a bounded source read or one bounded activity
+page read, then checks cancellation/current demand and yields. Source traversal may span many
+quanta. Retain bounded counters, parser continuation and display prefixes rather than complete
+diffs, lines, path sets or provider items. Keep preparation outside widget state. Publish exact
+counts only after completion and source/window/period revalidation; incomplete counters are never
+finished row values. Verify chunk-split line prefixes/UTF-8, long lines, reused source ranges,
+cancellation and stale completion as well as ordinary display cases.
 
-Blocked under the Operator's stop-on-invalid-plan instruction. Resolve the owning Syndic
-display-fact preparation/publication design before authorizing a prerequisite and resuming this
-phase; compact admitted facts are the proposed clean direction, not an approved schema or adapter.
-See [the source evidence and unresolved design boundary](failures/activity-display-source-readiness.md).
-No Activity widget or mounted-runtime acceptance is claimed.
+Current milestone: persistence is accepted and pushed in 666cff4f. Existing request/collection/page
+and Home publication APIs are mapped. The reported display blocker conflated bounded per-step
+work with fixed total item work; it is withdrawn. Implement a resumable typed source extractor and
+the window cursor adapter under the existing bounded preparation contract. No new durable summary
+schema is required by this finding. See [the corrected lesson](failures/activity-display-source-readiness.md).
+No Phase 787 source changes or Activity widget/runtime acceptance are claimed yet.
 
 # Phase 788: Mount The Selected-Thread Activity Panel (pending)
 
