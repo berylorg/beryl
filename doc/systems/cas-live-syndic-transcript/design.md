@@ -454,6 +454,15 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Exact Terminal-Turn Historical Repair
 
+- If the supported source cannot prove complete semantic content and original identities, resolve
+  the affected turn through explicit incomplete convergence without a historical request. A future
+  repair adapter, snapshot staging, media admission or dispatch implementation is not a prerequisite
+  for that resolution. Retain captured content, original provenance and request disposition through
+  bounded finalization and coherent publication before releasing the same-thread gate.
+- The historical request and repaired-snapshot rules below apply only to a separately admitted
+  source that proves the complete repair contract. Human-requested recovery is new work under the
+  ordinary submission and execution authority. Incomplete resolution does not reconstruct missing
+  canonical evidence, relabel the turn as repaired or automatically replay uncertain prior operations.
 - A repair candidate is one exact Syndic turn whose CAS thread and turn identities, exact terminal
   outcome and known or conservatively suspected capture gap are authenticated by already durable
   Syndic source evidence. Volatile or purportedly sealed outage facts cannot establish repair

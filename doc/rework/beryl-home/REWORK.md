@@ -108,11 +108,10 @@
   compatibility recovery path, or unbounded outage buffer may conceal the missing boundary.
 - The private release-pinned exact terminal-turn repair adapter is the only allowed live CAS-history
   dependency; no ordinary transcript, catalog, or replay path may consume it.
-- A proven-unavailable pinned repair source may converge incomplete through the accepted recovery
-  components; missing implementation alone does not authorize that outcome. Any future eligible
-  repair remains successor-gated and undispatched until atomic cross-domain repair-media admission
-  is accepted, because the request may provide the first complete media proof; no claim consumption
-  or media-less fallback conceals that implementation gap.
+- Explicit-incomplete recovery closes the proven-unavailable source boundary; repair adapters and
+  their snapshot/media staging, claim and dispatch are excluded from the current cutover scope.
+  Future eligible historical repair requires separately authorized source eligibility and complete
+  admission before any dispatch; no media-less fallback conceals an implementation gap.
 - No whole-value compatibility path may conceal missing range-backed editor, storage, or
   presentation boundaries; declared individual-operation limits do not authorize such a path.
 - During the active cutover, Syndic V7 registers only implemented families; deferred materializer
@@ -590,7 +589,7 @@
   the [bounded binding and workflow](../../audits/transcript-mounting-readiness.md#diagnostic-child-transcript-activation-acceptance).
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.
 
-## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
+## Checkpoint 5: Resolve Incomplete Turns And Fresh Same-Home Recovery
 
 - [x] Explicitly driven selected-window and sole-threadless recovery composes resident/service retirement, fresh same-home preparation, attachment, publication, activation and coherent completion under exact-request admission.
 - [x] The running owner retains service configuration, selected inputs, appearance and partial progress across abandoned waits, with initial, retired and prepared continuations that avoid replaying completed stages.
@@ -600,12 +599,10 @@
 - [x] Automatic interrupted-Exit recovery runs from reported failure through coherent completion with fresh production inputs, bounded task lifetime, exact cancellation/disposal and independently accepted native evidence. Ordinary close/Exit mounting and executable composition remain separate.
 - [x] Established exact pinned evidence requiring unavailable repair for the current supported thread population, with the [source limitation](../../failures/cas-terminal-repair-full-view-is-not-completeness.md) retained.
 - [x] Accepted ordinary and candidate startup recovery through explicit incomplete history, with retained repair provenance, bounded finalization, reconciliation custody and gate release. Product mounting and fresh-service replacement remain separate.
-- [ ] Add the private bounded exact terminal-turn backend adapter only after new exact source evidence proves eligibility, with no cursor traversal or history fallback.
-- [ ] Add snapshot-specific paged Syndic repair records and atomic repaired snapshot selection only when repair eligibility is proven, without making those conditional components prerequisites of unavailable-repair recovery.
+- [x] Retired the unprovable-source repair adapter and dependent snapshot, media, claim and dispatch work in favor of accepted explicit-incomplete recovery; [policy](../../systems/cas-live-syndic-transcript/design.md#exact-terminal-turn-historical-repair).
 - [x] Enforce repair-required successor gates before mounting dispatch while unrelated threads
   remain independent.
 - [x] Accepted bounded explicit-incomplete finalization and coherent publication before releasing repair-required gates while preserving durable request disposition; storage and startup regression evidence passed independent semantic review.
-- [ ] Implement the durable target-scoped request claim and repaired finalization path only after repair eligibility is proven, without runtime dispatch mounting.
 - [x] Accepted the private prioritized outage retention component with exact target qualification,
   encoded byte limits and sticky gap tracking; focused tests and independent review passed.
 - [x] Accepted bounded unpublished outage assembly with exact late routing, explicit loss attribution and independently reviewed retention priorities.
@@ -732,9 +729,6 @@
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,
   CPU surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss
   recovery.
-- [ ] Implement and verify authenticated repair-media staging, sealed paged Asset sets, and bounded owner-qualified resource lookup only after repair eligibility is proven.
-- [ ] Integrate and verify compact atomic Asset/Syndic repair selection and complete-only recovery after repair eligibility is proven, with final-command work independent of staged media count.
-- [ ] Mount the durable claim and exact repair-dispatch path only after repair eligibility is proven, retaining explicit incomplete outcomes and no inline-base64 fallback.
 - [ ] Mount generated-title maintenance and successful branch-archive presentation through their
   established Syndic authority and bounded Beryl projections.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-

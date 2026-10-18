@@ -59,6 +59,11 @@ Let users understand which backend-dependent actions are unavailable, which runt
 - Successful recovery changes the turn to visibly repaired and identifies the repair provenance.
   Recovery that cannot establish complete canonical content changes the turn to visibly incomplete
   rather than presenting provisional content as complete.
+- When completeness cannot be established from the supported recovery source, resolve the turn as
+  incomplete without waiting for a future repair implementation. Preserve captured content and the
+  user's draft. The user may submit a new instruction asking the AI to inspect the actual state,
+  account for uncertain prior effects, and recover or continue; that instruction does not change
+  the original turn's incomplete status or automatically replay its operations.
 - While a turn is repair-pending, its thread remains readable and its draft remains preserved, but
   successor submission, fork, rollback or replacement edit, and context compaction are unavailable
   with an explanation. Those actions become eligible again only after the turn is repaired or
