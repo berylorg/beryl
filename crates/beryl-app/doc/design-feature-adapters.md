@@ -92,6 +92,32 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   original authority without waiting on runtime locks held by storage work. A busy publication
   fence invokes no consumer update and permits later revalidation of the same retained result;
   it never certifies current eligibility or replaces an ended period's authority.
+- The window Activity adapter carries weak graph/window publication ownership and the exact
+  selected-thread identity in addition to the service-issued runtime-period and query authority.
+  Auto visibility derives from accepted-parent/compaction facts independently of query success or
+  row count. Initial failure cannot become an empty hidden panel. No GUI callback performs storage
+  work or decorates labels through a synchronous backend request.
+- Arbitrary viewport demands use a cancellable off-GUI cursor walk: each quantum reads at most one
+  existing bounded page, checks the current demand and yields before another read. Retain at most
+  eight opaque cursor checkpoints, a fixed resident page window and one pending demand; neither
+  cursors nor row models grow with logical row count. Backward or distant jumps may restart from
+  the initial cursor or a retained checkpoint. Missing pages remain visibly unmaterialized; no
+  constant-time seek is promised and no ranked durable index is required by this adapter.
+- Page projection reads only bounded exact canonical/source ranges and admitted normalized
+  metadata off GPUI. It supplies stable identity, status and bounded agent/activity display values;
+  source payload, full provider aggregates and complete collections never enter widget state.
+  Existing compact handoff facts supply byte counts. Optional metadata completion updates exact
+  realized row identities and cannot resume a thread or enter another runtime period.
+- An initial query failure retains its original prepared request for explicit Retry. Page failure
+  retains the exact collection and continuation; failure on the first page after successful open
+  retries that page on the opened collection, not the completed one-shot initial request.
+  Query revision staleness instead invalidates the
+  cursor walk and prepares a replacement collection; it cannot be retried forever against the old
+  head. Busy publication retains the same prepared result and invokes no consumer update.
+- Height persistence uses State's window-presentation participant bundle off GPUI, preserving
+  original command disposition through failure/reconciliation and rejecting late window results.
+  The host provides a coherent fresh page window before restoring interaction after period change;
+  old rows, resize capture, focus and tooltip anchors become inert together.
 - Notice adapters accept bounded typed records and exact eligibility and route them to the
   [notifications feature](../../../doc/features/notifications/design.md); they do not choose
   treatment, persistence, dismissal, or sound eligibility.

@@ -108,14 +108,14 @@ and does not replace original HomeCommand outcome reconciliation.
   of the exact Running header, one referenced window and its matching active paired claim, or
   the sole valid threadless window. Bracket these reads with equal home revisions. Retain only
   the durable home id, canonical home path and original process home-generation identity,
-  fixed-capacity header, one window and optional claim;
+  fixed-capacity header, one window, optional claim and original optional presentation record;
   no store, domain handle, lease or receipt is retained. Missing, changed, malformed or restoring sources
   refuse capture. Before admitting removal, check availability of both session successors and the
-  one window and optional claim successor needed by restoration. Home and domain revision
+  one window, optional claim and present presentation successor needed by restoration. Home and domain revision
   exhaustion retains the ordinary command refusal and unavailable-recovery semantics; capture
   reserves no future writer revision.
 - Evidence supplies the exact ordinary removal contribution under the caller's current domain
-  revision. The writer validates the complete original header, exact window and claim before
+  revision. The writer validates the complete original header, exact window, claim and presentation presence/value before
   removal, so evidence cannot describe a different successful removal. Existing ordinary command
   noncommit, commit-with-later-failure and reconciliation custody remain the caller's responsibility.
 - A separate recovery contribution accepts that evidence through fresh same-configured-home
@@ -137,10 +137,10 @@ and does not replace original HomeCommand outcome reconciliation.
   recovered state using this evidence, including the paired claim copies; it never classifies
   absence without header and identity proof. Exact surviving header references and writes confined
   to the affected member preserve otherwise valid records; this adds no recovery-time domain scan.
-  Recovery reserves only its changed
-  header, window and optional paired claim records for ordinary HomeCommand reconciliation.
-  Duplicate recovery cannot apply twice. No durable journal, tombstone, startup restoration or
-  new on-disk schema is introduced.
+  Recovery reserves only its changed header, window, optional paired claim and optional
+  window-presentation records for ordinary HomeCommand reconciliation. Duplicate recovery cannot
+  apply twice. No durable journal, tombstone, startup restoration or Session V1 encoding change
+  is introduced.
 - Ordinary healthy access exposes the same bounded classification for the original generation.
   Removal and restoration have separate command outcomes and reconciliation custody. An unrelated
   home writer revision may require fresh preparation, but cannot relax exact session/window/claim
@@ -155,6 +155,35 @@ and does not replace original HomeCommand outcome reconciliation.
   coverage, including transition to failed-home candidate recovery without a duplicate write.
   Independently review this persistence transition. App-owned cancellation, original outcome
   classification, service replacement and interaction release remain separate obligations.
+
+## Window-local presentation
+
+- A separately registered window-presentation domain stores optional Activity panel height by
+  `WindowId`; it neither extends Session V1 records nor changes their declared family inventory.
+  Routine and exhaustive State registration, required-domain declarations and ordinary/candidate
+  reacquisition include this domain. Existing homes gain the empty domain without record import.
+- Height is a positive finite logical-pixel scalar with a fixed-size canonical encoding that
+  preserves its admitted `f32` value exactly. State depends on no GUI type. Absence means the
+  owning widget's default, not an eagerly allocated record for every window. Current layout bounds
+  clamp the preference at use without overwriting it solely because the viewport became smaller.
+- A height update validates the exact Running session header, member reference and window revision
+  at writer admission, together with the original presentation record or proven absence. It
+  changes only that window's presentation preference and advances its own record revision; it
+  preserves native placement, selected thread, claims and session membership. Stale, foreign,
+  removed or inconsistent sources refuse without a partial update.
+- State exposes opaque prepared update/removal bundles that add typed mutation and validation
+  participants to one HomeCommand. Callers receive no raw record access. Window removal and
+  prepublication abandonment cannot use an exposed session-only path that leaves presentation
+  state behind; absent presentation records are also guarded against concurrent creation.
+- Captured removal evidence includes original presentation presence, height and revision.
+  Cancelled-close recovery and exact original/removed/recovered classification include that same
+  fact through ordinary and candidate access. Restoration commits the original preference with
+  the original window/claim recovery in one command; a present preference resumes at its original
+  presentation revision plus one. An absent original preference stays absent.
+  Command noncommit, acknowledgement loss and reconciliation retain their ordinary disposition.
+- Restore-set publication, orderly Exit and thread switching preserve preferences for retained
+  window identities. Successful removal releases them; new window identities do not inherit
+  another window's preference. Validation remains bounded to at most256 live window preferences.
 
 ## Reverse thread claims
 
@@ -187,6 +216,6 @@ and does not replace original HomeCommand outcome reconciliation.
 - Its mutation contribution removes the exact restore-set reference, window record, and both
   reverse claims atomically and advances the session revision. A missing, changed, rebound,
   partially present, or disagreeing member rejects without deleting any session or claim record.
-- Its natural-state read uses bounded point reads and classifies the session-owned closure only as
+- Its natural-state read uses bounded point reads and classifies the session/window-presentation closure only as
   exact acquired, exact abandoned, or collision. It does not inspect Syndic records, durable jobs,
   catalog rows, visibility, or application custody and cannot authorize a retry by itself.

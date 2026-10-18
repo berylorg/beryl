@@ -131,6 +131,13 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Session, window, and both claim-index families share one typed domain so exhaustive domain
   validation can prove their forward and reverse invariants without a cross-domain raw-storage
   escape hatch.
+- A separate Beryl window-presentation domain owns optional, bounded presentation preferences
+  keyed by durable window identity. Its registration is additive and preserves the existing
+  Session V1 declaration and window encoding. An absent preference uses its owning widget default.
+  Presentation writes validate the exact live session/window through a typed participant; window
+  removal and abandonment delete the corresponding preferences in the same HomeCommand, and
+  cancelled-close recovery restores their exact original presence and value. Records remain
+  bounded by the active restore-set window limit and do not form an orphan preference cache.
 - Beryl job keyspaces own durable resolution-handoff and other explicitly designed host-orchestration jobs.
 - Beryl catalog keyspaces own compact rebuildable catalog rows and deterministic recency indexes
   derived from Syndic thread summaries plus Beryl runtime/root availability and claim facts.
