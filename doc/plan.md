@@ -13,23 +13,11 @@ Continue bounded technical prerequisites autonomously; preserve unrelated Operat
 Use normal Cargo/Git and required evidence, without the canceled snapshot/archive/guard workflow.
 Commit and push accepted phases. No software installation is authorized.
 
-# Phase 785: Establish Complete Activity Mounting Inputs (finished)
+# Phase 786: Persist Window-Local Activity Panel Height (finished)
 
-Independent source/authority review accepted additive window-presentation persistence preserving
-Session V1, atomic lifecycle bundles, bounded cursor walking and off-GUI row preparation. Owning
-contracts and29 local links are reconciled; [readiness and evidence limits](audits/activity-panel-mounting-readiness.md).
-No production or runtime mounting acceptance is claimed.
-
-# Phase 786: Persist Window-Local Activity Panel Height (pending)
-
-Implement the additive State window-presentation domain and finite-positive logical-pixel value,
-leaving Session V1 encoding/declaration unchanged. Include it in full registration/reacquisition.
-Expose exact typed read/update and atomic removal/abandonment bundles, with original optional
-presentation evidence and renewed revisions on cancelled-close restoration. Route production
-consumers through the complete bundles; no session-only cleanup path may leave preference records.
-Verify old-home additive registration/reopen, scalar/codec limits, stale/foreign source refusal,
-independent windows, removal/recovery and ambiguous outcomes. Run owning State and affected
-App/Home checks, preserve claims/placement and require independent persistence review.
+Accepted additive persistence with unchanged Session V1, exact guarded updates and complete atomic
+cleanup/recovery bundles. State 313, selected App 275 and Home 43 cases qualified, production checks
+passed and independent persistence review accepted; [evidence and limits](audits/activity-panel-persistence.md).
 
 # Phase 787: Prepare Bounded Window Activity Pages (pending)
 

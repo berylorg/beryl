@@ -425,6 +425,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     match execute(
         &store,
         session.remove_window(
+            &store,
             session.revision(&store).unwrap(),
             RemoveSessionWindow::new(
                 replaced.header().revision(),
@@ -444,6 +445,7 @@ fn claim_replacement_window_updates_and_final_removal_preserve_exact_revisions_a
     match execute(
         &store,
         session.remove_window(
+            &store,
             session.revision(&store).unwrap(),
             RemoveSessionWindow::new(
                 one.header().revision(),

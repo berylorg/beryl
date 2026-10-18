@@ -126,6 +126,9 @@ pub(crate) struct AbandonSessionWindowPrepared {
 }
 
 impl RemoveSessionWindow {
+    pub(crate) fn window_id(&self) -> WindowId {
+        self.window_id
+    }
     #[must_use]
     pub const fn new(
         expected_session_revision: SessionRevision,
@@ -143,6 +146,9 @@ impl RemoveSessionWindow {
 }
 
 impl AbandonSessionWindow {
+    pub(crate) fn window_id(&self) -> WindowId {
+        self.window_id
+    }
     #[must_use]
     pub const fn new(
         expected_session_revision: SessionRevision,

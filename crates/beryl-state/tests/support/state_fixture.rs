@@ -40,12 +40,9 @@ pub fn open_with_faults(
     (store, state)
 }
 
-pub fn command(
-    store: &HomeStore,
-    contribution: beryl_home_store::MutationContribution,
-) -> HomeCommand {
+pub fn command(store: &HomeStore, contribution: impl super::TestContribution) -> HomeCommand {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
+    contribution.add_to(&mut command);
     command
 }
 

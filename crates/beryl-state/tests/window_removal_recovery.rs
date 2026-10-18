@@ -3,8 +3,7 @@ mod support;
 use beryl_home_store::test_faults::{FaultController, FaultPoint};
 use beryl_home_store::{
     CommandOutcome, HomeCandidateRecoveryAccess, HomeCommand, HomeOpenCandidate, HomeOpenOptions,
-    HomeRecoveryCandidate, HomeSchemaVersion, HomeStore, MutationContribution,
-    ReconciliationResolution,
+    HomeRecoveryCandidate, HomeSchemaVersion, HomeStore, ReconciliationResolution,
 };
 use beryl_model::{SyndicThreadId, WindowId};
 use beryl_state::{
@@ -24,10 +23,10 @@ fn recover(home: HomeStore) -> HomeRecoveryCandidate {
 
 fn execute(
     access: &HomeCandidateRecoveryAccess<'_>,
-    contribution: MutationContribution,
+    contribution: beryl_state::PreparedWindowMutation,
 ) -> CommandOutcome {
     let mut command = HomeCommand::new(access.home_revision().unwrap());
-    command.add(contribution).unwrap();
+    contribution.add_to(&mut command).unwrap();
     access.execute(command)
 }
 
@@ -44,11 +43,24 @@ fn remove(
     )
 }
 
+fn seed_height(home: &HomeStore, session: &SessionState, window: WindowId) {
+    committed(support::execute(
+        home,
+        session
+            .prepare_activity_panel_height(
+                home,
+                window,
+                beryl_state::ActivityPanelHeight::new(173.375).unwrap(),
+            )
+            .unwrap(),
+    ));
+}
+
 fn recovery_contribution(
     access: &HomeCandidateRecoveryAccess<'_>,
     session: &SessionState,
     evidence: &SessionWindowRemovalEvidence,
-) -> MutationContribution {
+) -> beryl_state::PreparedWindowMutation {
     session
         .recover_removed_window_candidate(
             access,

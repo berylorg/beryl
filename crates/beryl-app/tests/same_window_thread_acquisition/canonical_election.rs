@@ -74,17 +74,24 @@ fn same_window_uses_live_absence_after_claim_removal_despite_cached_claimed_row(
         .session()
         .capture_window_removal(&fixture.store, other)
         .unwrap();
-    execute(
+    #[path = "../support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         &fixture.store,
-        fixture.state.session().remove_window(
-            fixture.state.session().revision(&fixture.store).unwrap(),
-            RemoveSessionWindow::new(
-                removal.header().revision(),
-                other,
-                removal.window().revision(),
-                removal.window().selected_thread(),
-            ),
-        ),
+        fixture
+            .state
+            .session()
+            .remove_window(
+                &fixture.store,
+                fixture.state.session().revision(&fixture.store).unwrap(),
+                RemoveSessionWindow::new(
+                    removal.header().revision(),
+                    other,
+                    removal.window().revision(),
+                    removal.window().selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
     assert!(
         fixture

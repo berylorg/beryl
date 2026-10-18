@@ -25,6 +25,7 @@ pub(crate) struct SessionAbandonmentSource {
     pub(crate) window: Option<SessionWindowRecord>,
     pub(crate) claim_by_window: Option<ThreadClaimRecord>,
     pub(crate) claim_by_thread: Option<ThreadClaimRecord>,
+    pub(crate) presentation: Option<super::WindowPresentationRecord>,
 }
 
 pub(crate) fn read(
@@ -85,6 +86,7 @@ pub(crate) fn read_abandonment(
 ) -> Result<SessionAbandonmentSource, SessionReadError> {
     let header = read_header(state, store)?;
     let source = SessionAbandonmentSource {
+        presentation: state.window_presentation(store, window_id)?,
         window: store.read_point::<SessionDomain, SessionWindowCodec>(
             &state.handle,
             &window_id,

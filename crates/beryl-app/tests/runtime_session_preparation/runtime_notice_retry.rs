@@ -184,6 +184,10 @@ fn mounted_retry_preserves_live_editor_edits_focus_and_history_and_ignores_old_f
         let current = editor.read(app).selection_identity();
         current.binding().candidate().candidate_generation()
             > before.binding().candidate().candidate_generation()
+            && matches!(
+                current.binding().candidate().history().key(),
+                syndic_storage::DraftEditHistoryFrontierKeyV1::Publication { .. }
+            )
             && input
                 .read(app)
                 .surface()

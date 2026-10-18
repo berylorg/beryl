@@ -514,7 +514,9 @@ fn classify_abandonment_session(
         source.claim_by_window,
         source.claim_by_thread,
     ) {
-        ([], None, None, None) => AbandonmentSessionClassification::ExactAbandoned,
+        ([], None, None, None) if source.presentation.is_none() => {
+            AbandonmentSessionClassification::ExactAbandoned
+        }
         ([reference], Some(window), Some(by_window), Some(by_thread))
             if reference.record_revision() == expected.window_revision
                 && window.window_id() == expected.window_id

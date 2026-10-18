@@ -147,8 +147,8 @@ fn recovery_rechecks_writer_revisions_and_duplicate_execution() {
     let access = candidate.recovery_access().unwrap();
     let stale_domain = recovery_contribution(&access, &fresh, &evidence);
     let mut stale_home = HomeCommand::new(access.home_revision().unwrap());
-    stale_home
-        .add(recovery_contribution(&access, &fresh, &evidence))
+    recovery_contribution(&access, &fresh, &evidence)
+        .add_to(&mut stale_home)
         .unwrap();
     committed(execute(
         &access,

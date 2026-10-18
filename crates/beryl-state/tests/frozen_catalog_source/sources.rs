@@ -153,6 +153,7 @@ fn frozen_claim_absence_active_restoring_and_removal_preserve_exact_paired_recor
     committed(support::execute(
         &store,
         session.remove_window(
+            &store,
             session.revision(&store).unwrap(),
             RemoveSessionWindow::new(
                 bootstrap.header().revision(),

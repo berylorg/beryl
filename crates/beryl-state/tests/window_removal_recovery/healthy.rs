@@ -4,7 +4,7 @@ fn contribution(
     home: &HomeStore,
     session: &SessionState,
     evidence: &SessionWindowRemovalEvidence,
-) -> MutationContribution {
+) -> beryl_state::PreparedWindowMutation {
     session
         .recover_removed_window(home, session.revision(home).unwrap(), evidence)
         .unwrap()
@@ -190,8 +190,8 @@ fn healthy_restoration_rechecks_home_domain_and_exact_records_after_preparation(
         .unwrap();
     committed(remove(&home, &session, &evidence));
     let mut stale_home = HomeCommand::new(home.home_revision().unwrap());
-    stale_home
-        .add(contribution(&home, &session, &evidence))
+    contribution(&home, &session, &evidence)
+        .add_to(&mut stale_home)
         .unwrap();
     let unaffected_domain = contribution(&home, &session, &evidence);
     committed(support::execute(

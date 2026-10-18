@@ -217,17 +217,22 @@ impl Fixture {
             .iter()
             .find(|record| record.window_id() == window)
             .unwrap();
-        execute(
+        #[path = "../support/session_window_commands.rs"]
+        mod session_window_commands;
+        session_window_commands::commit(
             &self.store,
-            session.remove_window(
-                session.revision(&self.store).unwrap(),
-                beryl_state::RemoveSessionWindow::new(
-                    bootstrap.header().revision(),
-                    window,
-                    record.revision(),
-                    record.selected_thread(),
-                ),
-            ),
+            session
+                .remove_window(
+                    &self.store,
+                    session.revision(&self.store).unwrap(),
+                    beryl_state::RemoveSessionWindow::new(
+                        bootstrap.header().revision(),
+                        window,
+                        record.revision(),
+                        record.selected_thread(),
+                    ),
+                )
+                .unwrap(),
         );
     }
 

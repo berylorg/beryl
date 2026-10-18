@@ -398,6 +398,104 @@ fn validation_message(error: &BerylStateRegistrationError) -> String {
 }
 
 #[test]
+fn existing_session_v1_home_adds_empty_presentation_domain_without_rewriting_records() {
+    let directory = tempdir().unwrap();
+    let target = RememberedTarget::new(RuntimeId::from_bytes([3; 16]), RootId::from_bytes([4; 16]));
+    let window = [8; 16];
+    let thread = [9; 16];
+    let header = header_bytes(5, Some(target), &[(window, 2)]);
+    let record = window_bytes(window, target, thread, 4, 2, 2);
+    let claim = claim_bytes(window, thread, 4, 2);
+    write_raw(
+        directory.path(),
+        RawMutation {
+            header: Some(header.clone()),
+            windows: vec![(window, record.clone())],
+            by_window: vec![(window, claim.clone())],
+            by_thread: vec![(thread, claim.clone())],
+        },
+    );
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let state = BerylState::register_with_schema_validation(&mut candidate).unwrap();
+    let home = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    let current = state.session().minimal_bootstrap(&home).unwrap().unwrap();
+    assert_eq!(current.windows().len(), 1);
+    assert_eq!(
+        current.windows()[0].window_id(),
+        beryl_model::WindowId::from_bytes(window)
+    );
+    assert!(
+        state
+            .session()
+            .window_presentation(&home, beryl_model::WindowId::from_bytes(window))
+            .unwrap()
+            .is_none()
+    );
+    home.close().unwrap();
+
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let raw = candidate.register_domain::<RawSessionDomain>().unwrap();
+    let home = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<RawSessionDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    assert_eq!(
+        home.read_point::<RawSessionDomain, RawHeaderCodec>(
+            &raw,
+            &0,
+            PointReadLimit::new(SESSION_HEADER_V1_BYTES + 4).unwrap()
+        )
+        .unwrap(),
+        Some(header)
+    );
+    assert_eq!(
+        home.read_point::<RawSessionDomain, RawWindowCodec>(
+            &raw,
+            &window,
+            PointReadLimit::new(SESSION_WINDOW_V1_BYTES + 4).unwrap()
+        )
+        .unwrap(),
+        Some(record)
+    );
+    assert_eq!(
+        home.read_point::<RawSessionDomain, RawClaimByWindowCodec>(
+            &raw,
+            &window,
+            PointReadLimit::new(53).unwrap()
+        )
+        .unwrap(),
+        Some(claim.clone())
+    );
+    assert_eq!(
+        home.read_point::<RawSessionDomain, RawClaimByThreadCodec>(
+            &raw,
+            &thread,
+            PointReadLimit::new(53).unwrap()
+        )
+        .unwrap(),
+        Some(claim)
+    );
+    home.close().unwrap();
+}
+
+#[test]
 fn canonical_optional_padding_and_exact_fixed_record_sizes_are_enforced() {
     let directory = tempdir().unwrap();
     let mut header = header_bytes(1, None, &[]);

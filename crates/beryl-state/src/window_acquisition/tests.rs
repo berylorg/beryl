@@ -297,11 +297,16 @@ fn created_abandonment_with_retained_expected_recency_copy_is_a_collision() {
     let retained_row = facts.catalog_current.row().clone();
     let retained_cursor = retained_row.recency_cursor();
     let mut abandonment = HomeCommand::new(fixture.store.home_revision().unwrap());
-    abandonment
-        .add(fixture.state.session().abandon_window(
+    fixture
+        .state
+        .session()
+        .abandon_window(
+            &fixture.store,
             facts.session_domain_revision(),
             facts.abandon_session_window(),
-        ))
+        )
+        .unwrap()
+        .add_to(&mut abandonment)
         .unwrap();
     abandonment
         .add(fixture.state.catalog().delete_claimed_row(
@@ -422,9 +427,10 @@ fn initialize_empty_session(store: &HomeStore, state: &BerylState) {
     );
     let bootstrap = session.minimal_bootstrap(store).unwrap().unwrap();
     let window = &bootstrap.windows()[0];
-    execute_contribution(
-        store,
-        session.remove_window(
+    let mut removal = HomeCommand::new(store.home_revision().unwrap());
+    session
+        .remove_window(
+            store,
             session.revision(store).unwrap(),
             RemoveSessionWindow::new(
                 bootstrap.header().revision(),
@@ -432,8 +438,11 @@ fn initialize_empty_session(store: &HomeStore, state: &BerylState) {
                 window.revision(),
                 window.selected_thread(),
             ),
-        ),
-    );
+        )
+        .unwrap()
+        .add_to(&mut removal)
+        .unwrap();
+    assert_committed(store.execute(removal));
 }
 
 fn execute_contribution(store: &HomeStore, contribution: MutationContribution) {

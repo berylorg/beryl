@@ -247,8 +247,8 @@ fn run(loss: Loss) {
                                 let target = record.remembered_target().unwrap();
                                 let placement = record.placement().clone();
                                 let mut command = HomeCommand::new(home.home_revision().unwrap());
-                                command
-                                    .add(session.remove_window(
+                                session.remove_window(
+                                        home,
                                         session.revision(home).unwrap(),
                                         beryl_state::RemoveSessionWindow::new(
                                             bootstrap.header().revision(),
@@ -256,7 +256,7 @@ fn run(loss: Loss) {
                                             record.revision(),
                                             record.selected_thread(),
                                         ),
-                                    ))
+                                    ).unwrap().add_to(&mut command)
                                     .unwrap();
                                 assert!(matches!(
                                     home.execute(command),

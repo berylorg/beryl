@@ -392,17 +392,22 @@ fn deleted_and_recreated_live_claim_restarts_scalar_under_joined_source_rebuild(
         .unwrap();
     assert_eq!(before.sources().claim().unwrap().get(), 3);
     let current = session.minimal_bootstrap(&fixture.store).unwrap().unwrap();
-    execute_contribution(
+    #[path = "../support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         &fixture.store,
-        session.remove_window(
-            session.revision(&fixture.store).unwrap(),
-            RemoveSessionWindow::new(
-                current.header().revision(),
-                window,
-                current.windows()[0].revision(),
-                current.windows()[0].selected_thread(),
-            ),
-        ),
+        session
+            .remove_window(
+                &fixture.store,
+                session.revision(&fixture.store).unwrap(),
+                RemoveSessionWindow::new(
+                    current.header().revision(),
+                    window,
+                    current.windows()[0].revision(),
+                    current.windows()[0].selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
     let current = session.minimal_bootstrap(&fixture.store).unwrap().unwrap();
     execute_contribution(

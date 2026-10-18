@@ -1241,17 +1241,22 @@ fn initialize_empty_session(store: &HomeStore, state: &BerylState) {
         .expect("session read")
         .expect("initialized session");
     let window = &bootstrap.windows()[0];
-    execute_contribution(
+    #[path = "support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         store,
-        session.remove_window(
-            session.revision(store).expect("session revision"),
-            RemoveSessionWindow::new(
-                bootstrap.header().revision(),
-                initial_window,
-                window.revision(),
-                window.selected_thread(),
-            ),
-        ),
+        session
+            .remove_window(
+                store,
+                session.revision(store).expect("session revision"),
+                RemoveSessionWindow::new(
+                    bootstrap.header().revision(),
+                    initial_window,
+                    window.revision(),
+                    window.selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
 }
 

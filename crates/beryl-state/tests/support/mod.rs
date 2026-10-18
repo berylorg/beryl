@@ -87,9 +87,33 @@ pub fn wsl_runtime(
     CreateRuntimeWithHomeRoot::new(runtime, root).unwrap()
 }
 
-pub fn execute(store: &HomeStore, contribution: MutationContribution) -> CommandOutcome {
+pub trait TestContribution {
+    fn add_to(self, command: &mut HomeCommand);
+}
+
+impl TestContribution for MutationContribution {
+    fn add_to(self, command: &mut HomeCommand) {
+        command.add(self).unwrap();
+    }
+}
+
+impl TestContribution for beryl_state::PreparedWindowMutation {
+    fn add_to(self, command: &mut HomeCommand) {
+        self.add_to(command).unwrap();
+    }
+}
+
+impl TestContribution
+    for Result<beryl_state::PreparedWindowMutation, beryl_state::SessionMutationError>
+{
+    fn add_to(self, command: &mut HomeCommand) {
+        self.unwrap().add_to(command).unwrap();
+    }
+}
+
+pub fn execute(store: &HomeStore, contribution: impl TestContribution) -> CommandOutcome {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
+    contribution.add_to(&mut command);
     store.execute(command)
 }
 

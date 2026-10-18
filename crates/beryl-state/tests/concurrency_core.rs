@@ -384,6 +384,7 @@ fn session_claim_conflicts_and_close_vs_exit_publish_one_coherent_generation() {
     let close = command(
         &store,
         session.remove_window(
+            &store,
             expected_domain,
             RemoveSessionWindow::new(
                 before_close.header().revision(),

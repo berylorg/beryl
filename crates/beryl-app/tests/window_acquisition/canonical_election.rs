@@ -102,17 +102,24 @@ fn released_live_claim_does_not_let_cached_claimed_catalog_suppress_reuse() {
         .session()
         .capture_window_removal(&fixture.store, acquisition.window_id())
         .unwrap();
-    execute_contribution(
+    #[path = "../support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         &fixture.store,
-        fixture.state.session().remove_window(
-            fixture.state.session().revision(&fixture.store).unwrap(),
-            RemoveSessionWindow::new(
-                window.header().revision(),
-                acquisition.window_id(),
-                window.window().revision(),
-                window.window().selected_thread(),
-            ),
-        ),
+        fixture
+            .state
+            .session()
+            .remove_window(
+                &fixture.store,
+                fixture.state.session().revision(&fixture.store).unwrap(),
+                RemoveSessionWindow::new(
+                    window.header().revision(),
+                    acquisition.window_id(),
+                    window.window().revision(),
+                    window.window().selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
     assert!(
         fixture

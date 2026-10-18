@@ -1,15 +1,16 @@
 use std::path::PathBuf;
 
 use beryl_home_store::{
-    DomainHandle, HomeCandidateRecoveryAccess, HomeGenerationIdentity, HomeStore,
-    MutationContribution, PointReadLimit, ReadError, RecordCodec,
+    DomainHandle, HomeCandidateRecoveryAccess, HomeGenerationIdentity, HomeStore, PointReadLimit,
+    ReadError, RecordCodec,
 };
 use beryl_model::{BerylHomeId, DomainRevision, WindowId};
 
 use super::{
-    CLAIM_V1_BYTES, MAX_RESTORABLE_WINDOWS, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionState,
-    SessionWindowRecord, SessionWindowReference, ThreadClaimRecord, ThreadClaimState,
+    CLAIM_V1_BYTES, MAX_RESTORABLE_WINDOWS, PreparedWindowMutation, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError,
+    SessionState, SessionWindowRecord, SessionWindowReference, ThreadClaimRecord, ThreadClaimState,
+    WindowPresentationRecord,
     codec::{
         ClaimByThreadCodec, ClaimByWindowCodec, HEADER_KEY, SessionHeaderCodec, SessionWindowCodec,
     },
@@ -25,6 +26,7 @@ pub struct SessionWindowRemovalEvidence {
     header: SessionHeader,
     window: SessionWindowRecord,
     claim: Option<ThreadClaimRecord>,
+    presentation: Option<WindowPresentationRecord>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +50,10 @@ impl SessionWindowRemovalEvidence {
         self.claim
     }
 
+    pub fn presentation(&self) -> Option<&WindowPresentationRecord> {
+        self.presentation.as_ref()
+    }
+
     fn removed_header(&self) -> Result<SessionHeader, SessionMutationError> {
         let mut header = self.header.clone();
         header.revision = header.revision.checked_next()?;
@@ -58,6 +64,10 @@ impl SessionWindowRemovalEvidence {
     }
 
     fn recovered(&self) -> Result<RecoveredWindow, SessionMutationError> {
+        self.presentation
+            .as_ref()
+            .map(WindowPresentationRecord::recovered)
+            .transpose()?;
         let mut header = self.header.clone();
         header.revision = header.revision.checked_next()?.checked_next()?;
         let mut window = self.window.clone();
@@ -125,6 +135,13 @@ impl SessionState {
             .map(|id| access.point::<ClaimByThreadCodec>(&self.handle, &id, CLAIM_V1_BYTES))
             .transpose()?
             .flatten();
+        let presentation = self.window_presentation(store, window_id)?;
+        if presentation
+            .as_ref()
+            .is_some_and(|value| value.window_id() != window_id)
+        {
+            return Err(invalid("removal presentation identity changed"));
+        }
         if store.home_revision()? != revision {
             return Err(invalid("session changed during removal capture"));
         }
@@ -177,6 +194,7 @@ impl SessionState {
             header,
             window,
             claim: by_window,
+            presentation,
         };
         evidence.recovered()?;
         Ok(evidence)
@@ -187,12 +205,19 @@ impl SessionState {
         store: &HomeStore,
         expected_revision: DomainRevision,
         evidence: &SessionWindowRemovalEvidence,
-    ) -> Result<MutationContribution, SessionMutationError> {
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
         store.domain_revision(&self.handle)?;
         qualify_original(store, evidence)?;
-        Ok(self.handle.contribution(
+        let session = self.handle.contribution(
             expected_revision,
             mutation::RemoveCapturedWindow(evidence.clone()),
+        );
+        Ok(self.presentation_bundle(
+            session,
+            store.domain_revision(&self.presentation)?,
+            evidence.window.window_id,
+            evidence.presentation.clone(),
+            None,
         ))
     }
 
@@ -204,10 +229,11 @@ impl SessionState {
         let revision = store.home_revision()?;
         qualify_original(store, evidence)?;
         let source = read_source(&self.handle, ReadAccess::Store(store), evidence)?;
+        let presentation = self.window_presentation(store, evidence.window.window_id)?;
         if store.home_revision()? != revision {
             return Err(invalid("session changed during removal classification"));
         }
-        classify(&source, evidence)
+        classify_complete(&source, evidence, presentation.as_ref())
     }
 
     pub fn recover_removed_window(
@@ -215,11 +241,12 @@ impl SessionState {
         store: &HomeStore,
         expected_revision: DomainRevision,
         evidence: &SessionWindowRemovalEvidence,
-    ) -> Result<MutationContribution, SessionMutationError> {
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
         self.window_recovery_contribution(
             self.classify_window_removal(store, evidence)?,
             expected_revision,
             evidence,
+            store.domain_revision(&self.presentation)?,
         )
     }
 
@@ -231,10 +258,11 @@ impl SessionState {
         let revision = access.home_revision()?;
         qualify(access.home_id(), access.canonical_path(), evidence)?;
         let source = read_source(&self.handle, ReadAccess::Candidate(access), evidence)?;
+        let presentation = self.window_presentation_candidate(access, evidence.window.window_id)?;
         if access.home_revision()? != revision {
             return Err(invalid("session changed during removal classification"));
         }
-        classify(&source, evidence)
+        classify_complete(&source, evidence, presentation.as_ref())
     }
 
     pub fn recover_removed_window_candidate(
@@ -242,11 +270,12 @@ impl SessionState {
         access: &HomeCandidateRecoveryAccess<'_>,
         expected_revision: DomainRevision,
         evidence: &SessionWindowRemovalEvidence,
-    ) -> Result<MutationContribution, SessionMutationError> {
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
         self.window_recovery_contribution(
             self.classify_window_removal_candidate(access, evidence)?,
             expected_revision,
             evidence,
+            access.domain_revision(&self.presentation)?,
         )
     }
 
@@ -255,7 +284,8 @@ impl SessionState {
         source: SessionWindowRemovalState,
         expected_revision: DomainRevision,
         evidence: &SessionWindowRemovalEvidence,
-    ) -> Result<MutationContribution, SessionMutationError> {
+        presentation_domain: DomainRevision,
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
         if source != SessionWindowRemovalState::Removed {
             return Err(invalid("window recovery requires the exact removed source"));
         }
@@ -263,9 +293,21 @@ impl SessionState {
             return Err(SessionMutationError::WindowLimit);
         }
         evidence.recovered()?;
-        Ok(self.handle.contribution(
+        let session = self.handle.contribution(
             expected_revision,
             mutation::RecoverRemovedWindow(evidence.clone()),
+        );
+        let restored = evidence
+            .presentation
+            .as_ref()
+            .map(WindowPresentationRecord::recovered)
+            .transpose()?;
+        Ok(self.presentation_bundle(
+            session,
+            presentation_domain,
+            evidence.window.window_id,
+            None,
+            restored,
         ))
     }
 }
@@ -324,6 +366,29 @@ fn classify(
         return Ok(SessionWindowRemovalState::Recovered);
     }
     Ok(SessionWindowRemovalState::Collision)
+}
+
+fn classify_complete(
+    source: &RemovalSource,
+    evidence: &SessionWindowRemovalEvidence,
+    presentation: Option<&WindowPresentationRecord>,
+) -> Result<SessionWindowRemovalState, SessionMutationError> {
+    let state = classify(source, evidence)?;
+    let expected = match state {
+        SessionWindowRemovalState::Original => evidence.presentation.clone(),
+        SessionWindowRemovalState::Removed => None,
+        SessionWindowRemovalState::Recovered => evidence
+            .presentation
+            .as_ref()
+            .map(WindowPresentationRecord::recovered)
+            .transpose()?,
+        SessionWindowRemovalState::Collision => return Ok(state),
+    };
+    Ok(if presentation == expected.as_ref() {
+        state
+    } else {
+        SessionWindowRemovalState::Collision
+    })
 }
 
 fn read_source(

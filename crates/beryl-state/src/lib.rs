@@ -188,6 +188,10 @@ pub use session::{
     WindowClaimCatalogSource, WindowClaimReplacementPreparation, WindowClaimReplacementState,
     WindowClaimSelection,
 };
+pub use session::{
+    ActivityPanelHeight, ActivityPanelHeightError, PreparedWindowMutation,
+    PreparedWindowPresentationUpdate, WindowPresentationRecord,
+};
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,
     SettingSchemaVersion, SettingUpdate, SettingValue, SettingValueError, SettingsMutationError,

@@ -64,6 +64,7 @@ fn remove_only_window(home: &HomeStore, session: &SessionState) -> SessionRevisi
     committed(support::execute(
         home,
         session.remove_window(
+            home,
             session.revision(home).unwrap(),
             RemoveSessionWindow::new(
                 current.header().revision(),

@@ -21,16 +21,14 @@ fn removed_and_restored_window_reconstructs_resident_with_exact_renewed_claim() 
         .unwrap();
     let original_window = evidence.window().clone();
     let mut removal = HomeCommand::new(fixture.store.home_revision().unwrap());
-    removal
-        .add(
-            session
-                .remove_captured_window(
-                    &fixture.store,
-                    session.revision(&fixture.store).unwrap(),
-                    &evidence,
-                )
-                .unwrap(),
+    session
+        .remove_captured_window(
+            &fixture.store,
+            session.revision(&fixture.store).unwrap(),
+            &evidence,
         )
+        .unwrap()
+        .add_to(&mut removal)
         .unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
         fixture.store.service_reference(),
@@ -63,17 +61,15 @@ fn removed_and_restored_window_reconstructs_resident_with_exact_renewed_claim() 
         SessionWindowRemovalState::Removed
     );
     let mut restoration = HomeCommand::new(access.home_revision().unwrap());
-    restoration
-        .add(
-            state
-                .session()
-                .recover_removed_window_candidate(
-                    &access,
-                    state.session().revision_candidate(&access).unwrap(),
-                    &evidence,
-                )
-                .unwrap(),
+    state
+        .session()
+        .recover_removed_window_candidate(
+            &access,
+            state.session().revision_candidate(&access).unwrap(),
+            &evidence,
         )
+        .unwrap()
+        .add_to(&mut restoration)
         .unwrap();
     let restoration_outcome = access.execute(restoration);
     assert!(matches!(

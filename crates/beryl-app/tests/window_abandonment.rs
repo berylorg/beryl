@@ -217,6 +217,8 @@ fn both_origins_apply_the_exact_atomic_abandonment_rule() {
     let created = Fixture::new(10);
     let acquisition = created.acquire(20);
     let thread_id = acquisition.thread_id();
+    let created_window = acquisition.window_id();
+    set_activity_height(&created, created_window, 180.5);
     assert_eq!(
         acquisition.disposition(),
         RuntimeBackedWindowAcquisitionDisposition::Created
@@ -229,6 +231,14 @@ fn both_origins_apply_the_exact_atomic_abandonment_rule() {
             .abandon(abandonment, CommandCancellation::new()),
         RuntimeBackedWindowAbandonmentOutcome::Committed { .. }
     ));
+    assert!(
+        created
+            .state
+            .session()
+            .window_presentation(&created.store, created_window)
+            .unwrap()
+            .is_none()
+    );
     assert!(
         created
             .state
@@ -268,6 +278,8 @@ fn both_origins_apply_the_exact_atomic_abandonment_rule() {
     let reused = Fixture::new(40);
     let thread_id = reused.publish_pristine_thread(50, 10);
     let acquisition = reused.acquire(60);
+    let reused_window = acquisition.window_id();
+    set_activity_height(&reused, reused_window, 202.25);
     assert_eq!(acquisition.thread_id(), thread_id);
     assert_eq!(
         acquisition.disposition(),
@@ -290,6 +302,14 @@ fn both_origins_apply_the_exact_atomic_abandonment_rule() {
         )
         .expect("catalog read")
         .expect("reused catalog row remains");
+    assert!(
+        reused
+            .state
+            .session()
+            .window_presentation(&reused.store, reused_window)
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(row.facts().claim(), CatalogClaimSummary::Unclaimed);
     assert!(matches!(
         reused
@@ -665,17 +685,22 @@ fn initialize_empty_session(store: &HomeStore, state: &BerylState) {
         .expect("session read")
         .expect("initialized session");
     let window = &bootstrap.windows()[0];
-    execute_contribution(
+    #[path = "support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         store,
-        session.remove_window(
-            session.revision(store).expect("session revision"),
-            RemoveSessionWindow::new(
-                bootstrap.header().revision(),
-                initial_window,
-                window.revision(),
-                window.selected_thread(),
-            ),
-        ),
+        session
+            .remove_window(
+                store,
+                session.revision(store).expect("session revision"),
+                RemoveSessionWindow::new(
+                    bootstrap.header().revision(),
+                    initial_window,
+                    window.revision(),
+                    window.selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
 }
 
@@ -714,4 +739,19 @@ fn execute_command(store: &HomeStore, command: HomeCommand) {
         } => {}
         outcome => panic!("setup command must commit cleanly: {outcome:?}"),
     }
+}
+
+fn set_activity_height(fixture: &Fixture, window: WindowId, height: f32) {
+    let prepared = fixture
+        .state
+        .session()
+        .prepare_activity_panel_height(
+            &fixture.store,
+            window,
+            beryl_state::ActivityPanelHeight::new(height).unwrap(),
+        )
+        .unwrap();
+    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
+    prepared.add_to(&mut command).unwrap();
+    execute_command(&fixture.store, command);
 }

@@ -31,6 +31,11 @@ fn removal_and_recovery_preserve_noncommit_postcommit_and_indeterminate_custody(
             let (home, state) = open_with_faults(directory.path(), &faults);
             let session = state.session();
             seed(&home, &session, 3);
+            seed_height(
+                &home,
+                &session,
+                snapshot(&home, &session).windows()[0].window_id(),
+            );
             let before = snapshot(&home, &session);
             let evidence = session
                 .capture_window_removal(&home, before.windows()[0].window_id())
@@ -46,8 +51,8 @@ fn removal_and_recovery_preserve_noncommit_postcommit_and_indeterminate_custody(
                     (
                         FaultPoint::AfterPersist,
                         CommandOutcome::Committed {
-                            later_failure: Some(_),
-                            local_finalization: Some(_),
+                            later_failure: Some(beryl_home_store::CommandError::Persistence { .. }),
+                            local_finalization: None,
                             ..
                         },
                     ) => {}
@@ -100,8 +105,8 @@ fn removal_and_recovery_preserve_noncommit_postcommit_and_indeterminate_custody(
                         true,
                         FaultPoint::AfterPersist,
                         CommandOutcome::Committed {
-                            later_failure: Some(_),
-                            local_finalization: Some(_),
+                            later_failure: Some(beryl_home_store::CommandError::Persistence { .. }),
+                            local_finalization: None,
                             ..
                         },
                     ) => {}

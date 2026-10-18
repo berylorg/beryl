@@ -94,17 +94,22 @@ pub fn open_home(
     );
     let bootstrap = session.minimal_bootstrap(&store).unwrap().unwrap();
     let window = &bootstrap.windows()[0];
-    execute(
+    #[path = "../support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         &store,
-        session.remove_window(
-            session.revision(&store).unwrap(),
-            RemoveSessionWindow::new(
-                bootstrap.header().revision(),
-                initial,
-                window.revision(),
-                window.selected_thread(),
-            ),
-        ),
+        session
+            .remove_window(
+                &store,
+                session.revision(&store).unwrap(),
+                RemoveSessionWindow::new(
+                    bootstrap.header().revision(),
+                    initial,
+                    window.revision(),
+                    window.selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
     (directory, Arc::new(store), state, storage, faults)
 }

@@ -601,9 +601,9 @@ fn run_native_context(
                             let bootstrap = state.minimal_bootstrap(&home).unwrap().unwrap();
                             let record = &bootstrap.windows()[0];
                             let mut command = HomeCommand::new(home.home_revision().unwrap());
-                            command.add(state.remove_window(state.revision(&home).unwrap(), beryl_state::RemoveSessionWindow::new(
+                            state.remove_window(&home, state.revision(&home).unwrap(), beryl_state::RemoveSessionWindow::new(
                                 bootstrap.header().revision(), record.window_id(), record.revision(), record.selected_thread(),
-                            ))).unwrap();
+                            )).unwrap().add_to(&mut command).unwrap();
                             assert!(matches!(home.execute(command), CommandOutcome::Committed { later_failure: None, .. }));
                         } else {
                             fixture.advance_clock(u64::try_from(std::time::SystemTime::now()

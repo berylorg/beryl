@@ -84,11 +84,15 @@ impl Fixture {
 
     fn abandon(&self, facts: &WindowAcquisitionCommittedFacts) -> CommandOutcome {
         let mut command = HomeCommand::new(self.store.home_revision().unwrap());
-        command
-            .add(self.state.session().abandon_window(
+        self.state
+            .session()
+            .abandon_window(
+                &self.store,
                 facts.session_domain_revision(),
                 facts.abandon_session_window(),
-            ))
+            )
+            .unwrap()
+            .add_to(&mut command)
             .unwrap();
         match facts
             .origin()
@@ -312,11 +316,16 @@ fn session_only_partial_abandonment_is_a_collision() {
     let fixture = Fixture::new();
     let facts = fixture.publish_acquired();
     let mut partial = HomeCommand::new(fixture.store.home_revision().unwrap());
-    partial
-        .add(fixture.state.session().abandon_window(
+    fixture
+        .state
+        .session()
+        .abandon_window(
+            &fixture.store,
             facts.session_domain_revision(),
             facts.abandon_session_window(),
-        ))
+        )
+        .unwrap()
+        .add_to(&mut partial)
         .unwrap();
     assert_committed(fixture.store.execute(partial));
 
@@ -327,6 +336,42 @@ fn session_only_partial_abandonment_is_a_collision() {
             .unwrap(),
         WindowAbandonmentNaturalState::Collision
     );
+}
+
+#[test]
+fn abandonment_releases_the_window_local_activity_preference_atomically() {
+    let fixture = Fixture::new();
+    let facts = fixture.publish_acquired();
+    let session = fixture.state.session();
+    let update = session
+        .prepare_activity_panel_height(
+            &fixture.store,
+            facts.window_id(),
+            beryl_state::ActivityPanelHeight::new(213.25).unwrap(),
+        )
+        .unwrap();
+    assert_committed(support::execute(&fixture.store, update));
+    assert!(matches!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &facts)
+            .unwrap(),
+        WindowAbandonmentNaturalState::ExactAcquired(_)
+    ));
+    assert_committed(fixture.abandon(&facts));
+    assert!(
+        session
+            .window_presentation(&fixture.store, facts.window_id())
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &facts)
+            .unwrap(),
+        WindowAbandonmentNaturalState::ExactAbandoned
+    ));
 }
 
 #[test]
@@ -589,6 +634,7 @@ fn initialize_empty_session(store: &HomeStore, state: &BerylState) {
     assert_committed(support::execute(
         store,
         session.remove_window(
+            store,
             session.revision(store).unwrap(),
             RemoveSessionWindow::new(
                 bootstrap.header().revision(),

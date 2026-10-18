@@ -520,8 +520,9 @@ fn run_mounted_with_notices(
                             .find(|record| record.window_id() == WindowId::from_bytes([190; 16]))
                             .unwrap();
                         let mut command = HomeCommand::new(home.home_revision().unwrap());
-                        command
-                            .add(session.remove_window(
+                        session
+                            .remove_window(
+                                &home,
                                 session.revision(&home).unwrap(),
                                 beryl_state::RemoveSessionWindow::new(
                                     bootstrap.header().revision(),
@@ -529,7 +530,9 @@ fn run_mounted_with_notices(
                                     record.revision(),
                                     record.selected_thread(),
                                 ),
-                            ))
+                            )
+                            .unwrap()
+                            .add_to(&mut command)
                             .unwrap();
                         assert!(matches!(
                             home.execute(command),

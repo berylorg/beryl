@@ -495,6 +495,10 @@
   [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
+- [x] Accepted additive window-local Activity height persistence with unchanged Session V1,
+  exact guarded updates, atomic removal/abandonment and cancelled-close restoration. Canonical
+  State/App/Home coverage, production checks and independent persistence review passed;
+  [evidence](../../audits/activity-panel-persistence.md). Reader preparation and widget mounting remain open.
 - [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current
   invalidation is accepted with all 546 Home/State cases and independent review;
   [qualification](../../audits/atomic-current-catalog-invalidation-qualification.md). Producer completeness/rebuild readiness,

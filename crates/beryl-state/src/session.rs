@@ -16,6 +16,7 @@ mod claim_replacement;
 mod codec;
 mod error;
 mod mutation;
+mod presentation;
 mod removal;
 mod validate;
 
@@ -26,12 +27,19 @@ pub(crate) use acquisition::{SessionAbandonmentSource, SessionAcquisitionSource}
 pub use catalog_source::{
     ThreadClaimCatalogSource, ThreadClaimCatalogSourceError, WindowClaimCatalogSource,
 };
-pub use claim_replacement::{PreparedWindowClaimReplacement, WindowClaimReplacementPreparation, WindowClaimReplacementState};
+pub use claim_replacement::{
+    PreparedWindowClaimReplacement, WindowClaimReplacementPreparation, WindowClaimReplacementState,
+};
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
     ExitWindowPlacement, InitializeThreadlessWindow, MarkOrderlyExit, PublishExitSession,
     RemoveSessionWindow, ReplaceWindowClaim, ResumeSessionAfterExit, UpdateWindowPlacement,
+};
+pub(crate) use presentation::WindowPresentationDomain;
+pub use presentation::{
+    ActivityPanelHeight, ActivityPanelHeightError, PreparedWindowMutation,
+    PreparedWindowPresentationUpdate, WindowPresentationRecord,
 };
 pub use removal::{SessionWindowRemovalEvidence, SessionWindowRemovalState};
 
@@ -352,39 +360,49 @@ impl MinimalSessionBootstrap {
 #[derive(Clone)]
 pub struct SessionState {
     handle: DomainHandle<SessionDomain>,
+    presentation: DomainHandle<WindowPresentationDomain>,
 }
 
 impl SessionState {
     pub(crate) fn register(
         candidate: &mut beryl_home_store::HomeOpenCandidate,
     ) -> Result<Self, DomainRegistrationError> {
-        candidate
-            .register_domain::<SessionDomain>()
-            .map(|handle| Self { handle })
+        let handle = candidate.register_domain::<SessionDomain>()?;
+        let presentation = candidate.register_domain::<WindowPresentationDomain>()?;
+        Ok(Self {
+            handle,
+            presentation,
+        })
     }
 
     pub(crate) fn register_with_schema_validation(
         candidate: &mut beryl_home_store::HomeOpenCandidate,
     ) -> Result<Self, DomainRegistrationError> {
-        candidate
-            .register_domain_with_schema_validation::<SessionDomain>()
-            .map(|handle| Self { handle })
+        let handle = candidate.register_domain_with_schema_validation::<SessionDomain>()?;
+        let presentation =
+            candidate.register_domain_with_schema_validation::<WindowPresentationDomain>()?;
+        Ok(Self {
+            handle,
+            presentation,
+        })
     }
 
     pub(crate) fn reacquire(
         store: &HomeStore,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
-        store
-            .domain_handle::<SessionDomain>()
-            .map(|handle| Self { handle })
+        Ok(Self {
+            handle: store.domain_handle::<SessionDomain>()?,
+            presentation: store.domain_handle::<WindowPresentationDomain>()?,
+        })
     }
 
     pub(crate) fn reacquire_candidate(
         candidate: &beryl_home_store::HomeRecoveryCandidate,
     ) -> Result<Self, beryl_home_store::DomainHandleError> {
-        candidate
-            .domain_handle::<SessionDomain>()
-            .map(|handle| Self { handle })
+        Ok(Self {
+            handle: candidate.domain_handle::<SessionDomain>()?,
+            presentation: candidate.domain_handle::<WindowPresentationDomain>()?,
+        })
     }
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
@@ -497,19 +515,51 @@ impl SessionState {
     #[must_use]
     pub fn remove_window(
         &self,
+        store: &HomeStore,
         expected_revision: beryl_model::DomainRevision,
         command: RemoveSessionWindow,
-    ) -> MutationContribution {
-        self.handle.contribution(expected_revision, command)
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
+        let revision = store.home_revision()?;
+        let presentation_domain = store.domain_revision(&self.presentation)?;
+        let window = command.window_id();
+        let expected = self.window_presentation(store, window)?;
+        if store.home_revision()? != revision {
+            return Err(SessionMutationError::InvalidCurrentState(
+                "window removal presentation changed during preparation",
+            ));
+        }
+        Ok(self.presentation_bundle(
+            self.handle.contribution(expected_revision, command),
+            presentation_domain,
+            window,
+            expected,
+            None,
+        ))
     }
 
     #[must_use]
     pub fn abandon_window(
         &self,
+        store: &HomeStore,
         expected_revision: beryl_model::DomainRevision,
         command: AbandonSessionWindow,
-    ) -> MutationContribution {
-        self.handle.contribution(expected_revision, command)
+    ) -> Result<PreparedWindowMutation, SessionMutationError> {
+        let revision = store.home_revision()?;
+        let presentation_domain = store.domain_revision(&self.presentation)?;
+        let window = command.window_id();
+        let expected = self.window_presentation(store, window)?;
+        if store.home_revision()? != revision {
+            return Err(SessionMutationError::InvalidCurrentState(
+                "window abandonment presentation changed during preparation",
+            ));
+        }
+        Ok(self.presentation_bundle(
+            self.handle.contribution(expected_revision, command),
+            presentation_domain,
+            window,
+            expected,
+            None,
+        ))
     }
 
     #[must_use]

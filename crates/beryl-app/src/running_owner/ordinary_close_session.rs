@@ -95,7 +95,9 @@ impl OrdinaryCloseSession {
                         .recover_removed_window(home, domain, &self.evidence)
                         .map_err(|e| e.to_string())?;
                     let mut command = HomeCommand::new(revision);
-                    command.add(contribution).map_err(|e| e.to_string())?;
+                    contribution
+                        .add_to(&mut command)
+                        .map_err(|e| e.to_string())?;
                     self.previous_restoration = self.restoration.take();
                     self.restoration = Some(retain_outcome(home.execute(command)));
                     Self::reconcile_healthy(self.restoration.as_mut().unwrap(), home)?;
@@ -180,7 +182,9 @@ impl OrdinaryCloseSession {
             return Err("ordinary close source changed during preparation".into());
         }
         let mut command = HomeCommand::new(revision);
-        command.add(contribution).map_err(|e| e.to_string())?;
+        contribution
+            .add_to(&mut command)
+            .map_err(|e| e.to_string())?;
         before_admission(home);
         Ok(Self {
             home_id: home.home_id(),
@@ -332,7 +336,9 @@ impl OrdinaryCloseSession {
             return Err("ordinary close restoration source changed".into());
         }
         let mut command = HomeCommand::new(revision);
-        command.add(contribution).map_err(|e| e.to_string())?;
+        contribution
+            .add_to(&mut command)
+            .map_err(|e| e.to_string())?;
         self.previous_restoration = self.restoration.take();
         self.restoration = Some(retain_outcome(access.execute(command)));
         Self::reconcile(self.restoration.as_mut().unwrap(), candidate)?;

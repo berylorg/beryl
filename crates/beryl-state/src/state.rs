@@ -63,6 +63,7 @@ impl BerylState {
     pub fn required_domains() -> Result<HomeDomainRequirements, HomeDomainRequirementsError> {
         HomeDomainRequirements::new()
             .with_domain::<SessionDomain>()?
+            .with_domain::<crate::session::WindowPresentationDomain>()?
             .with_domain::<RuntimeRootDomain>()?
             .with_domain::<SettingsDomain>()?
             .with_domain::<DurableJobDomain>()?

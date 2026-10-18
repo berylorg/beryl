@@ -183,17 +183,22 @@ pub fn prepare_shell_with_runtime(
     );
     let bootstrap = session.minimal_bootstrap(&home).unwrap().unwrap();
     let initial_record = &bootstrap.windows()[0];
-    commit(
+    #[path = "../support/session_window_commands.rs"]
+    mod session_window_commands;
+    session_window_commands::commit(
         &home,
-        session.remove_window(
-            session.revision(&home).unwrap(),
-            beryl_state::RemoveSessionWindow::new(
-                bootstrap.header().revision(),
-                initial,
-                initial_record.revision(),
-                initial_record.selected_thread(),
-            ),
-        ),
+        session
+            .remove_window(
+                &home,
+                session.revision(&home).unwrap(),
+                beryl_state::RemoveSessionWindow::new(
+                    bootstrap.header().revision(),
+                    initial,
+                    initial_record.revision(),
+                    initial_record.selected_thread(),
+                ),
+            )
+            .unwrap(),
     );
     let request = RuntimeBackedWindowAcquisitionRequest::new(
         WindowId::from_bytes([190; 16]),

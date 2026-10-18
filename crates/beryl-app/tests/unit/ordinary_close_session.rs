@@ -32,6 +32,31 @@ fn execute(home: &HomeStore, contribution: MutationContribution) {
     ));
 }
 
+fn set_height(
+    home: &HomeStore,
+    session: &SessionState,
+    window: WindowId,
+    value: f32,
+) -> beryl_state::WindowPresentationRecord {
+    let prepared = session
+        .prepare_activity_panel_height(
+            home,
+            window,
+            beryl_state::ActivityPanelHeight::new(value).unwrap(),
+        )
+        .unwrap();
+    let mut command = HomeCommand::new(home.home_revision().unwrap());
+    prepared.add_to(&mut command).unwrap();
+    assert!(matches!(
+        home.execute(command),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    session.window_presentation(home, window).unwrap().unwrap()
+}
+
 fn open(count: usize, faults: FaultController) -> (tempfile::TempDir, HomeStore, SessionState) {
     let directory = tempfile::tempdir().unwrap();
     let mut candidate = HomeOpenCandidate::open_with_faults(
@@ -157,11 +182,34 @@ fn assert_restored(
 fn healthy_native_failure_restores_exact_claim_once_without_replacing_generation() {
     let (_directory, home, session) = open(3, FaultController::new());
     let before = session.minimal_bootstrap(&home).unwrap().unwrap();
+    let window = before.windows()[0].window_id();
+    let height = set_height(&home, &session, window, 144.5);
+    let other_window = before.windows()[1].window_id();
+    let other_height = set_height(&home, &session, other_window, 280.25);
     let generation = home.generation_identity().unwrap();
     let mut close =
         OrdinaryCloseSession::execute(&home, &session, before.windows()[0].window_id()).unwrap();
     let original = format!("{:?}", close.original);
+    assert!(
+        session
+            .window_presentation(&home, window)
+            .unwrap()
+            .is_none()
+    );
     let restored = close.restore_healthy(&home, &session).unwrap();
+    let restored_height = session.window_presentation(&home, window).unwrap().unwrap();
+    assert_eq!(
+        restored_height.activity_panel_height(),
+        height.activity_panel_height()
+    );
+    assert_eq!(
+        restored_height.revision().get(),
+        height.revision().get() + 1
+    );
+    assert_eq!(
+        session.window_presentation(&home, other_window).unwrap(),
+        Some(other_height)
+    );
     assert_eq!(home.generation_identity().unwrap(), generation);
     assert_eq!(format!("{:?}", close.original), original);
     assert_restored(
@@ -172,6 +220,10 @@ fn healthy_native_failure_restores_exact_claim_once_without_replacing_generation
     let revision = home.home_revision().unwrap();
     assert_eq!(close.restore_healthy(&home, &session).unwrap(), restored);
     assert_eq!(home.home_revision().unwrap(), revision);
+    assert_eq!(
+        session.window_presentation(&home, window).unwrap(),
+        Some(restored_height)
+    );
     drop(session);
     home.close().unwrap();
 }
@@ -228,6 +280,8 @@ fn healthy_native_restoration_failure_transfers_both_outcomes_to_candidate_witho
         let faults = FaultController::new();
         let (_directory, home, session) = open(3, faults.clone());
         let before = session.minimal_bootstrap(&home).unwrap().unwrap();
+        let window = before.windows()[0].window_id();
+        let height = set_height(&home, &session, window, 177.75);
         let mut close =
             OrdinaryCloseSession::execute(&home, &session, before.windows()[0].window_id())
                 .unwrap();
@@ -255,6 +309,18 @@ fn healthy_native_restoration_failure_transfers_both_outcomes_to_candidate_witho
         close.converge_candidate(&mut candidate, &fresh).unwrap();
         let restored = snapshot(&mut candidate, &fresh);
         assert_restored(&before, &restored, close.restored_evidence().unwrap());
+        let restored_height = fresh
+            .window_presentation_candidate(&candidate.recovery_access().unwrap(), window)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            restored_height.activity_panel_height(),
+            height.activity_panel_height()
+        );
+        assert_eq!(
+            restored_height.revision().get(),
+            height.revision().get() + 1
+        );
         let before_repeat = revision(&mut candidate);
         close.converge_candidate(&mut candidate, &fresh).unwrap();
         assert_eq!(revision(&mut candidate), before_repeat);
@@ -300,6 +366,8 @@ fn committed_and_exact_new_removals_restore_once_with_renewed_claims() {
             let faults = FaultController::new();
             let (_directory, home, old) = open(count, faults.clone());
             let before = old.minimal_bootstrap(&home).unwrap().unwrap();
+            let window = before.windows()[0].window_id();
+            let height = set_height(&home, &old, window, 199.5);
             faults.fail_next(fault);
             let mut close =
                 OrdinaryCloseSession::execute(&home, &old, before.windows()[0].window_id())
@@ -322,7 +390,7 @@ fn committed_and_exact_new_removals_restore_once_with_renewed_claims() {
                     close.original,
                     ResumeSessionOutcome::Committed {
                         later_failure: Some(_),
-                        local_finalization: Some(_),
+                        local_finalization: None,
                         ..
                     }
                 ));
@@ -331,6 +399,18 @@ fn committed_and_exact_new_removals_restore_once_with_renewed_claims() {
                 &before,
                 &snapshot(&mut candidate, &fresh),
                 close.restored_evidence().unwrap(),
+            );
+            let restored_height = fresh
+                .window_presentation_candidate(&candidate.recovery_access().unwrap(), window)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                restored_height.activity_panel_height(),
+                height.activity_panel_height()
+            );
+            assert_eq!(
+                restored_height.revision().get(),
+                height.revision().get() + 1
             );
             let claim = fresh
                 .window_claim_catalog_source_candidate(

@@ -96,17 +96,23 @@ pub(super) fn selected(count: u8, large: bool, replacement: bool) -> Fixture {
         let snapshot = state.session().minimal_bootstrap(&store).unwrap().unwrap();
         assert_eq!(snapshot.windows().len(), 1);
         let member = &snapshot.windows()[0];
-        draft::committed(draft::execute(
+        #[path = "../../support/session_window_commands.rs"]
+        mod session_window_commands;
+        draft::committed(session_window_commands::execute(
             &store,
-            state.session().remove_window(
-                state.session().revision(&store).unwrap(),
-                beryl_state::RemoveSessionWindow::new(
-                    snapshot.header().revision(),
-                    member.window_id(),
-                    member.revision(),
-                    member.selected_thread(),
-                ),
-            ),
+            state
+                .session()
+                .remove_window(
+                    &store,
+                    state.session().revision(&store).unwrap(),
+                    beryl_state::RemoveSessionWindow::new(
+                        snapshot.header().revision(),
+                        member.window_id(),
+                        member.revision(),
+                        member.selected_thread(),
+                    ),
+                )
+                .unwrap(),
         ));
         members.clear();
     }

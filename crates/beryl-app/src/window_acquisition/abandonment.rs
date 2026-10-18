@@ -720,10 +720,17 @@ impl RuntimeBackedWindowAcquisitionService {
             }
         };
         let mut command = HomeCommand::new(home_revision).with_cancellation(cancellation.clone());
-        if let Err(error) = command.add(self.state.session().abandon_window(
+        let session_removal = match self.state.session().abandon_window(
+            &self.store,
             abandonment.seed.state.session_domain_revision(),
             abandonment.seed.state.abandon_session_window(),
-        )) {
+        ) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                return abandonment_not_committed(abandonment, abandonment_preparation(error));
+            }
+        };
+        if let Err(error) = session_removal.add_to(&mut command) {
             return abandonment_not_committed(
                 abandonment,
                 RuntimeBackedWindowAbandonmentNotCommitted::CommandBuild(error),
