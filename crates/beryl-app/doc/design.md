@@ -125,6 +125,12 @@ internal contract.
   retain the original publication observation; publication rechecks the exact request, query,
   owner and cancellation through the existing resource election boundary. Ready results transport
   Syndic root/source facts and canonical payload charges without duplicating their binding.
+  Temporary observation/coherence lock contention returns typed Busy. The host retains the same
+  measured pending candidate, original observation and charged reservation for one nonblocking
+  election on a later ordinary render, repeating every existing custody and measurement guard.
+  It issues no new query, refreshes no observation and invokes no publication callback while Busy.
+  Success drops that pending owner after its single callback; actual staleness, cancellation,
+  retirement or changed identity follows the original rejection and release path.
   Missing companions return an explicit Pending tag (one encoded byte); failures never become
   empty Ready results.
   Exact Source reads admit Code and Table backing only, authenticate their respective structural

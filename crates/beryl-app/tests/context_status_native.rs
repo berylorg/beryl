@@ -8,6 +8,10 @@ mod authority;
 mod composer_support;
 #[path = "support/desktop_placement_native.rs"]
 mod native;
+#[path = "support/native_window_geometry.rs"]
+mod native_geometry;
+#[path = "context_status_native/runtime.rs"]
+mod runtime;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "context_status_native/submission.rs"]
@@ -35,11 +39,10 @@ mod submission_fixture {
     ));
 }
 use beryl_app::cas_projection::*;
+use beryl_app::main_window;
 use beryl_app::main_window::*;
 use beryl_app::window_acquisition::*;
-use beryl_backend::{
-    DynamicToolCallResponse, ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions,
-};
+use beryl_backend::{DynamicToolCallResponse, ThreadStartOptions, TurnStartOptions};
 use beryl_home_store::{CommandCancellation, CommandOutcome, HomeCommand};
 use beryl_model::*;
 use gpui::{AppContext, Application, AsyncApp};
@@ -259,13 +262,16 @@ fn run_native_context(
 ) {
     let faults = beryl_home_store::test_faults::FaultController::new();
     let fixture_faults = faults.clone();
-    let server = server::NormalTerminalServer::spawn_controlled_connection_loss();
-    let endpoint = server.endpoint();
-    let (fixture, prepared, acquisition) = support::worker(move || {
+    let (fixture, prepared, acquisition, mut runtime) = support::worker(move || {
         let mut fixture = syndic::Fixture::with_faults(197, fixture_faults);
         eprintln!("native context fixture: {}", fixture.home_path().display());
         let theme = appearance::system_font_appearance(&fixture.state);
-        let (prepared, acquisition) = support::prepare_shell_with_theme(&mut fixture, theme);
+        let runtime::Prepared {
+            shell: prepared,
+            acquisition,
+            composer: _,
+            runtime,
+        } = runtime::prepare(&mut fixture, theme, true);
         let home = fixture.home();
         let settings = fixture.state.settings();
         let mut command = HomeCommand::new(home.home_revision().unwrap());
@@ -290,7 +296,7 @@ fn run_native_context(
             }
         ));
         drop(home);
-        (fixture, prepared, acquisition)
+        (fixture, prepared, acquisition, runtime)
     })
     .join()
     .unwrap();
@@ -338,11 +344,16 @@ fn run_native_context(
                         window.minimize_window();
                     })
                     .unwrap();
+                let (fixture, mut runtime) = join(support::worker(move || {
+                    runtime.activate(&fixture);
+                    (fixture, runtime)
+                }), cx).await;
+                let server = runtime.take_server();
                 wait_context(window, None, cx).await;
                 if active_submission {
                     submission::submit_native_text(window, server::SUBMITTED_TEXT, cx).await;
                 }
-                let (fixture, mut session, projection, coordinator, authority_probe) = join(
+                let (fixture, mut runtime, mut session, projection, coordinator, authority_probe) = join(
                     support::worker(move || {
                         let mut fixture = fixture;
                         if active_submission {
@@ -350,26 +361,13 @@ fn run_native_context(
                         } else {
                             fixture.submit_text(server::SUBMITTED_TEXT);
                         }
-                        let connector = ManagedBackendClientConnector::for_lifecycle_test(
-                            endpoint,
-                            server::AUTHORIZATION,
-                        );
-                        let mut session = fixture
-                            .store
-                            .admit_runtime_lifecycle_test_candidate(
-                                &connector,
-                                syndic::execution_binding(),
-                                CasProcessGeneration::new(48_197).unwrap(),
-                                std::path::Path::new(EXECUTION_ROOT),
-                                server::TIMEOUT,
-                            )
-                            .unwrap();
+                        let mut session = runtime.admit_session(&fixture);
                         let coordinator =
                             CasProjectionCoordinator::for_healthy_home(&*fixture.home()).unwrap();
                         let request = CasProjectionRequest::new(
                             fixture.thread,
                             fixture.selected_path(fixture.thread),
-                            syndic::execution_binding(),
+                            runtime.execution(),
                             ThreadStartOptions::persistent(),
                             Some(2_000_000),
                             SyndicTimestamp::from_unix_millis(48_100),
@@ -390,7 +388,7 @@ fn run_native_context(
                         } else {
                             None
                         };
-                        (fixture, session, projection, coordinator, authority_probe)
+                        (fixture, runtime, session, projection, coordinator, authority_probe)
                     }),
                     cx,
                 )
@@ -469,6 +467,7 @@ fn run_native_context(
                     server.close_connection();
                     drop(outcome);
                     drop(session);
+                    runtime.release();
                     server.join();
                     window.update(cx, |_, window, _| window.remove_window()).unwrap();
                     drop(shell);
@@ -512,7 +511,7 @@ fn run_native_context(
                         editor.set_submission_availability(Err(SubmissionUnavailable::RepairRequired), app);
                     });
                 }).unwrap();
-                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::RepairRequired, cx);
+                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::RepairRequired, cx).await;
                 submission::wait_availability(window, Ok(()), cx).await;
                 wait_context(window, Some(75), cx).await;
                 server.send_observation(wire(-1));
@@ -549,7 +548,7 @@ fn run_native_context(
                     );
                     native::pump(cx).await;
                 }
-                submission::reject_retained_proof(window, active_submission_stamp, active_submission_proof, SubmissionUnavailable::BindingUnavailable, cx);
+                submission::reject_retained_proof(window, active_submission_stamp, active_submission_proof, SubmissionUnavailable::BindingUnavailable, cx).await;
                 submission::wait_availability(window, Ok(()), cx).await;
                 let deadline = Instant::now() + Duration::from_secs(10);
                 while !window.read_with(cx, |root, _| root.test_compaction_command_enabled()).unwrap() {
@@ -561,11 +560,12 @@ fn run_native_context(
                     let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
                     let proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
                     server.close_connection();
-                    server.join();
                     session.invalidate_connection();
-                    submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::BindingUnavailable, cx);
+                    submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::BindingUnavailable, cx).await;
                     drop(outcome);
                     drop(session);
+                    runtime.release();
+                    server.join();
                     window.update(cx, |_, window, _| window.remove_window()).unwrap();
                     drop(shell);
                     join(support::worker(move || {
@@ -732,7 +732,7 @@ fn run_native_context(
                 let stamp = window.read_with(cx, |root, app| root.test_submission_observation_stamp(app)).unwrap();
                 let proof = window.read_with(cx, |root, app| root.test_submission_observation(app)).unwrap().unwrap();
                 drop(publication);
-                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::AuthorityUnavailable, cx);
+                submission::reject_retained_proof(window, stamp, proof, SubmissionUnavailable::AuthorityUnavailable, cx).await;
                 let harness = fixture.store.context_compaction_lifecycle_test_harness().unwrap();
                 let pause = harness.pause_after_manual_settlement().unwrap();
                 server.send_observation(format!(r#"{{"method":"thread/status/changed","params":{{"threadId":"{}","status":{{"type":"idle"}}}}}}"#, server::CAS_THREAD_ID));
@@ -774,6 +774,7 @@ fn run_native_context(
                 server.close_connection();
                 drop(outcome);
                 drop(session);
+                runtime.release();
                 server.join();
                 window
                     .update(cx, |_, window, _| window.remove_window())

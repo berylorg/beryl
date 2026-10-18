@@ -99,7 +99,7 @@ fn table_source_pages_preserve_authored_syntax_and_contiguous_split_scalars() {
         assert!(prepared.response().encoded_bytes <= 16384);
         fixture
             .reader
-            .publish_indexed_resource_if_current(prepared, &request, &cancel, |response| {
+            .publish_indexed_resource_if_current(&prepared, &request, &cancel, |response| {
                 let IndexedResourceValue::Source(page) = &response.value else {
                     panic!("exact table source page")
                 };
@@ -117,6 +117,7 @@ fn table_source_pages_preserve_authored_syntax_and_contiguous_split_scalars() {
                 reconstructed.extend_from_slice(&page.bytes);
             })
             .unwrap();
+        drop(prepared);
         assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
         offset = end;
     }
@@ -216,8 +217,9 @@ fn table_source_without_companion_remains_pending_and_releases_custody() {
     assert_eq!(prepared.response().encoded_bytes, 1);
     fixture
         .reader
-        .publish_indexed_resource_if_current(prepared, &request, &cancel, |_| ())
+        .publish_indexed_resource_if_current(&prepared, &request, &cancel, |_| ())
         .unwrap();
+    drop(prepared);
     assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
     assert!(fixture.reader.retire());
 }
@@ -275,13 +277,14 @@ fn table_source_publication_rejects_replaced_demand_history_backing_and_lifetime
         let called = AtomicBool::new(false);
         assert_eq!(
             fixture.reader.publish_indexed_resource_if_current(
-                prepared,
+                &prepared,
                 &expected,
                 &cancel,
                 |_| called.store(true, Ordering::Release)
             ),
             Err(error)
         );
+        drop(prepared);
         assert!(!called.load(Ordering::Acquire));
         assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
         assert!(fixture.reader.retire());

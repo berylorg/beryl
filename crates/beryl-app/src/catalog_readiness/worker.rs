@@ -64,6 +64,12 @@ fn maintain(
             if cancellation.is_cancelled() {
                 return Ok(());
             }
+            #[cfg(test)]
+            crate::bootstrap::test_support::checkpoint(
+                crate::bootstrap::test_support::Producer::CatalogCertification,
+                *home.home_id().as_bytes(),
+                || cancellation.is_cancelled(),
+            );
             let mut capture = CapturedRead {
                 home,
                 read: Some(

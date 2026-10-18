@@ -16,9 +16,9 @@ use beryl_model::{
     WindowPlacement,
 };
 use beryl_state::{
-    AvailabilitySnapshot, BerylState, CreateRuntimeWithHomeRoot, InitializeThreadlessWindow,
-    RememberedTarget, ReplaceWindowClaim, RootRegistration, RuntimeRegistration, UnixMillis,
-    WindowClaimSelection,
+    AvailabilitySnapshot, BerylState, CreateClaimedWindow, CreateRuntimeWithHomeRoot,
+    InitializeThreadlessWindow, RememberedTarget, ReplaceWindowClaim, RootRegistration,
+    RuntimeRegistration, UnixMillis, WindowClaimSelection,
 };
 use syndic_storage::{
     CreateThread, DraftEditHistoryPolicyV1, DraftEditorCandidateSessionIdV1,
@@ -137,6 +137,36 @@ impl Fixture {
         let target = self.replace_claim(self.window_id, first_selected, self.target_thread);
         let selected = self.replace_claim(self.window_id, target, self.selected_thread);
         (selected, target)
+    }
+
+    pub fn claim_window(&self, window: WindowId, thread: SyndicThreadId) -> WindowClaimSelection {
+        let session = self.state.session();
+        let Some(current) = session.minimal_bootstrap(&self.store).unwrap() else {
+            return self.claim(window, thread);
+        };
+        execute(
+            &self.store,
+            session.create_claimed_window(
+                session.revision(&self.store).unwrap(),
+                CreateClaimedWindow::new(
+                    current.header().revision(),
+                    window,
+                    RememberedTarget::new(self.runtime_id, self.root_id),
+                    thread,
+                    placement(),
+                ),
+            ),
+        );
+        session
+            .minimal_bootstrap(&self.store)
+            .unwrap()
+            .unwrap()
+            .windows()
+            .iter()
+            .find(|record| record.window_id() == window)
+            .unwrap()
+            .selected_thread()
+            .unwrap()
     }
 
     pub fn recover_same_home(self) -> (tempfile::TempDir, HomeStore, SyndicStorage) {

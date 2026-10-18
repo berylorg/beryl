@@ -98,7 +98,14 @@ fn native_mounted_healthy_removal_conflict_preserves_exact_window_and_requires_f
                 assert_eq!(copy_all(invoking, &resident, cx).await, draft_text(1));
                 let deadline = Instant::now() + Duration::from_secs(10);
                 while cx
-                    .update(|app| invoking.read(app).unwrap().notice_projection().is_none())
+                    .update(|app| {
+                        invoking
+                            .read(app)
+                            .unwrap()
+                            .test_retained_ordinary_close_failure_notice()
+                            .unwrap()
+                            .is_none()
+                    })
                     .unwrap()
                 {
                     assert!(
@@ -110,8 +117,41 @@ fn native_mounted_healthy_removal_conflict_preserves_exact_window_and_requires_f
                         .await;
                 }
                 cx.update(|app| {
-                    let notice = invoking.read(app).unwrap().notice_projection().unwrap();
-                    assert_eq!(notice.content.commands().count(), 0);
+                    use crate::main_window::{NoticeDismissal, NoticeKind, NoticeVariant};
+                    let root = invoking.read(app).unwrap();
+                    let (token, metadata) = root
+                        .test_retained_ordinary_close_failure_notice()
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(
+                        metadata,
+                        (
+                            NoticeKind::Error,
+                            NoticeVariant::Error,
+                            NoticeDismissal::Dismissible,
+                            0
+                        )
+                    );
+                    let projected = root.notice_projection().unwrap();
+                    match projected.kind {
+                        NoticeKind::Error => assert_eq!(projected.token.record(), &token),
+                        NoticeKind::RuntimeUnavailable => {
+                            assert_eq!(projected.content.variant, NoticeVariant::Error);
+                            assert_eq!(projected.content.dismissal, NoticeDismissal::Persistent);
+                            assert_eq!(projected.content.commands().count(), 1);
+                            assert_eq!(
+                                projected
+                                    .content
+                                    .commands()
+                                    .next()
+                                    .unwrap()
+                                    .label()
+                                    .as_str(),
+                                "Retry"
+                            );
+                        }
+                        other => panic!("unexpected close-failure notice preemption: {other:?}"),
+                    }
                 })
                 .unwrap();
                 cx.background_executor()

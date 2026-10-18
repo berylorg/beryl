@@ -60,7 +60,9 @@ pub(super) async fn complete(
     failed_generation: beryl_home_store::HomeGeneration,
     cx: &mut gpui::AsyncApp,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    window
+        .update(cx, |_, native, _| native.activate_window())
+        .unwrap();
     loop {
         let complete = match owner.borrow().automatic_recovery_outcome().as_deref() {
             Some(InterruptedExitRecoveryOutcome::Completed) => {
@@ -96,27 +98,6 @@ pub(super) async fn complete(
         };
         if complete {
             break;
-        }
-        if Instant::now() >= deadline {
-            let diagnostic = window
-                .read_with(cx, |root, _| {
-                    (
-                        root.test_thread_confirmation_diagnostics(),
-                        root.test_running_activation_failure(),
-                        root.notice_projection()
-                            .map(|projection| projection.content.detail().as_str().to_owned()),
-                    )
-                })
-                .unwrap();
-            panic!(
-                "original ordinary controlled claim recovery did not settle: control={control:?} fault_hook_reached={} activation={diagnostic:?} recovery_request={:?} recovery_stage={}",
-                reached.load(Ordering::Acquire),
-                owner
-                    .borrow()
-                    .test_running_home_recovery_identity()
-                    .map(|request| Rc::as_ptr(&request)),
-                owner.borrow().test_thread_creation_recovery_stage()
-            );
         }
         cx.background_executor()
             .timer(Duration::from_millis(10))

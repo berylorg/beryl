@@ -319,6 +319,9 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.initial_history_loading {
+            return;
+        }
         #[cfg(test)]
         {
             self.quote_state.last_open_diagnostic = Some(format!(
@@ -588,7 +591,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        if self.quote_state.popup.is_none() {
+        if self.initial_history_loading || self.quote_state.popup.is_none() {
             return None;
         }
         let current = self.transcript_menu_current(window);

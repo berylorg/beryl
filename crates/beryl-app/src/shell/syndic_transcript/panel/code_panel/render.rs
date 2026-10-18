@@ -141,7 +141,7 @@ pub(in super::super) fn render(
         )
         .on_mouse_move(
             cx.listener(move |panel, event: &gpui::MouseMoveEvent, window, app| {
-                if panel.captured_discussion_interaction_gated() {
+                if panel.interaction_gated() {
                     return;
                 }
                 visibility.record_viewport_activity(owner, window, app);
@@ -173,7 +173,7 @@ pub(in super::super) fn render(
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |panel, event: &gpui::MouseDownEvent, window, cx| {
-                if panel.captured_discussion_interaction_gated() {
+                if panel.interaction_gated() {
                     cx.stop_propagation();
                     return;
                 }
@@ -248,7 +248,7 @@ pub(in super::super) fn render(
                 cx.stop_propagation();
                 return;
             }
-            if panel.captured_discussion_interaction_gated() {
+            if panel.interaction_gated() {
                 cx.stop_propagation();
                 return;
             }
@@ -274,7 +274,7 @@ pub(in super::super) fn render(
     let visibility = panel.visibility.clone();
     viewport = viewport.on_scroll_wheel(cx.listener(
         move |panel, event: &gpui::ScrollWheelEvent, window, cx| {
-            if panel.captured_discussion_interaction_gated() {
+            if panel.interaction_gated() {
                 cx.stop_propagation();
                 return;
             }

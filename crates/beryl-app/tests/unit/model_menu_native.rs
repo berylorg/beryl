@@ -1,6 +1,108 @@
 use super::*;
 use windows::Win32::UI::WindowsAndMessaging::{WM_LBUTTONDOWN, WM_LBUTTONUP};
 
+type ModelRuntimeFixture = (
+    crate::model_selection::test_support::ProtocolServer,
+    crate::cas_projection::AdmittedProjectionSession,
+    beryl_model::ExecutionBinding,
+    Instant,
+);
+
+fn configure_model_runtime(
+    services: &crate::app_services::ProcessServiceOwner,
+    readiness_deadline: Instant,
+) -> ModelRuntimeFixture {
+    use crate::model_selection::test_support::{AUTHORIZATION, ProtocolServer, TIMEOUT};
+    let graph = services.graph().unwrap();
+    let selected = graph
+        .state()
+        .session()
+        .minimal_bootstrap(graph.home())
+        .unwrap()
+        .unwrap();
+    let thread = selected.windows()[0].selected_thread().unwrap().thread_id();
+    let execution = graph
+        .syndic()
+        .thread_execution(
+            graph.home(),
+            thread,
+            syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .execution()
+        .clone();
+    let server = ProtocolServer::new();
+    let connector = beryl_backend::ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        AUTHORIZATION,
+    );
+    let generation = beryl_model::CasProcessGeneration::new(73_001).unwrap();
+    let spec = loop {
+        assert!(
+            Instant::now() < readiness_deadline,
+            "model runtime fixture did not admit a launch specification before its original readiness deadline"
+        );
+        match graph.sessions().test_launch_spec_for(thread, &execution) {
+            Ok(spec) => break spec,
+            Err(crate::cas_projection::RuntimeInterestError::AdmissionUnavailable) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("model runtime fixture launch specification failed: {error:?}"),
+        }
+    };
+    assert!(
+        Instant::now() < readiness_deadline,
+        "model runtime fixture launch specification arrived after its original readiness deadline"
+    );
+    let admitted = graph
+        .cas()
+        .admit_configured_runtime_lifecycle_test_candidate(
+            &connector,
+            spec,
+            execution.clone(),
+            generation,
+            std::path::Path::new(execution.root_path().as_str()),
+            TIMEOUT,
+        )
+        .unwrap();
+    assert!(!graph.cas().gui_runtime_submission_observer_for_test()(
+        &execution
+    ));
+    graph
+        .cas()
+        .attach_model_connector_for_test(&execution, generation, connector);
+    (server, admitted, execution, readiness_deadline)
+}
+
+fn run_model_case(
+    prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
+    final_selection: Option<Box<dyn FnOnce() -> Vec<(WindowId, beryl_model::SyndicThreadId)>>>,
+    scenario: impl for<'a> FnOnce(
+        Rc<RefCell<RunningProcessOwner>>,
+        ModelRuntimeFixture,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: usize,
+) -> MinimalSessionBootstrap {
+    let configured = Arc::new(std::sync::Mutex::new(None));
+    let output = configured.clone();
+    run_mounted_with_runtime_configuration(
+        1,
+        0,
+        prepare,
+        final_selection,
+        Box::new(move |services, readiness_deadline| {
+            *output.lock().unwrap() = Some(configure_model_runtime(services, readiness_deadline));
+        }),
+        move |owner, _, cx| scenario(owner, configured.lock().unwrap().take().unwrap(), cx),
+        expect_shutdown,
+        restored_count,
+    )
+}
+
 fn draw_model_frame(window: WindowHandle<MainWindowShellRoot>, cx: &mut AsyncApp) {
     cx.update(|app| {
         app.update_window(window.into(), |_, native, app| {
@@ -144,58 +246,22 @@ fn passive_unknown(count: u8) {
 
 #[test]
 fn native_progressive_model_menu_pointer_keyboard_reasoning_and_focus_use_real_admitted_pages() {
-    use crate::model_selection::test_support::{
-        AUTHORIZATION, ModelResponse, ProtocolServer, TIMEOUT,
-    };
+    use crate::model_selection::test_support::{ModelResponse, TIMEOUT};
     use windows::Win32::UI::{
         Input::KeyboardAndMouse::{VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_RETURN, VK_SPACE},
         WindowsAndMessaging::{WM_KEYDOWN, WM_KEYUP},
     };
-    run_mounted(
-        1,
-        0,
-        move |owner, cx| {
+    run_model_case(
+        None,
+        None,
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
                 let editor = composer(window, cx).await;
                 let selection = editor
                     .read_with(cx, |editor, _| editor.selection_identity())
                     .unwrap();
-                let server = ProtocolServer::new();
-                let connector = beryl_backend::ManagedBackendClientConnector::for_lifecycle_test(
-                    server.endpoint(),
-                    AUTHORIZATION,
-                );
-                let admitted = {
-                    let retained = owner.borrow();
-                    let graph = retained.test_services().graph().unwrap();
-                    let execution = graph
-                        .syndic()
-                        .thread_execution(
-                            graph.home(),
-                            selection.claim().thread_id(),
-                            syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
-                        )
-                        .unwrap()
-                        .unwrap()
-                        .execution()
-                        .clone();
-                    let generation = beryl_model::CasProcessGeneration::new(73_001).unwrap();
-                    let admitted = graph
-                        .cas()
-                        .admit_runtime_lifecycle_test_candidate(
-                            &connector,
-                            execution.clone(),
-                            generation,
-                            std::path::Path::new(execution.root_path().as_str()),
-                            TIMEOUT,
-                        )
-                        .unwrap();
-                    graph
-                        .cas()
-                        .attach_model_connector_for_test(&execution, generation, connector);
-                    admitted
-                };
+                let (server, admitted, _, _) = runtime;
                 let deadline = Instant::now() + Duration::from_secs(10);
                 loop {
                     if window
@@ -344,13 +410,13 @@ async fn wait_model(
 fn native_initial_model_failure_retry_keeps_feedback_disables_duplicates_and_publishes_exact_empty()
 {
     use crate::model_selection::test_support::ModelResponse;
-    run_mounted(
-        1,
-        0,
-        move |owner, cx| {
+    run_model_case(
+        None,
+        None,
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let (server, admitted, _) = install_model_runtime(&owner, window, cx).await;
+                let (server, admitted, _, _) = install_model_runtime(runtime, window, cx).await;
                 server.enqueue(ModelResponse::Failure);
                 window
                     .update(cx, |root, native, app| {
@@ -455,13 +521,13 @@ fn native_initial_model_failure_retry_keeps_feedback_disables_duplicates_and_pub
 #[test]
 fn native_later_model_failure_preserves_rows_and_choice_while_exact_retry_is_pending() {
     use crate::model_selection::{ModelReasoningEffort, test_support::ModelResponse};
-    run_mounted(
-        1,
-        0,
-        move |owner, cx| {
+    run_model_case(
+        None,
+        None,
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let (server, admitted, _) = install_model_runtime(&owner, window, cx).await;
+                let (server, admitted, _, _) = install_model_runtime(runtime, window, cx).await;
                 server.enqueue(ModelResponse::page_range(0, 64, Some("failed-second")));
                 server.enqueue(ModelResponse::Failure);
                 window
@@ -529,13 +595,14 @@ fn native_later_model_failure_preserves_rows_and_choice_while_exact_retry_is_pen
 #[test]
 fn native_runtime_readiness_retirement_retires_old_popup_and_preserves_exact_cached_values() {
     use crate::model_selection::test_support::ModelResponse;
-    run_mounted(
-        1,
-        0,
-        move |owner, cx| {
+    run_model_case(
+        None,
+        None,
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let (server, admitted, execution) = install_model_runtime(&owner, window, cx).await;
+                let (server, admitted, execution, _) =
+                    install_model_runtime(runtime, window, cx).await;
                 server.enqueue(ModelResponse::page_range(0, 8, None));
                 window
                     .update(cx, |root, native, app| {
@@ -587,15 +654,11 @@ fn native_runtime_readiness_retirement_retires_old_popup_and_preserves_exact_cac
 }
 
 async fn install_model_runtime(
-    owner: &Rc<RefCell<RunningProcessOwner>>,
+    runtime: ModelRuntimeFixture,
     window: WindowHandle<MainWindowShellRoot>,
     cx: &mut gpui::AsyncApp,
-) -> (
-    crate::model_selection::test_support::ProtocolServer,
-    crate::cas_projection::AdmittedProjectionSession,
-    beryl_model::ExecutionBinding,
-) {
-    install_model_runtime_inner(owner, window, cx, true).await
+) -> ModelRuntimeFixture {
+    install_model_runtime_inner(runtime, window, cx, true).await
 }
 
 fn retire_model_runtime(owner: &Rc<RefCell<RunningProcessOwner>>) {
@@ -629,57 +692,14 @@ async fn exit_model_fixture(window: WindowHandle<MainWindowShellRoot>, cx: &mut 
 }
 
 async fn install_model_runtime_inner(
-    owner: &Rc<RefCell<RunningProcessOwner>>,
+    runtime: ModelRuntimeFixture,
     window: WindowHandle<MainWindowShellRoot>,
     cx: &mut gpui::AsyncApp,
     wait_for_draft_default: bool,
-) -> (
-    crate::model_selection::test_support::ProtocolServer,
-    crate::cas_projection::AdmittedProjectionSession,
-    beryl_model::ExecutionBinding,
-) {
-    use crate::model_selection::test_support::{AUTHORIZATION, ProtocolServer, TIMEOUT};
-    let editor = composer(window, cx).await;
-    let selection = editor
-        .read_with(cx, |editor, _| editor.selection_identity())
-        .unwrap();
-    let server = ProtocolServer::new();
-    let connector = beryl_backend::ManagedBackendClientConnector::for_lifecycle_test(
-        server.endpoint(),
-        AUTHORIZATION,
-    );
-    let (admitted, execution) = {
-        let retained = owner.borrow();
-        let graph = retained.test_services().graph().unwrap();
-        let execution = graph
-            .syndic()
-            .thread_execution(
-                graph.home(),
-                selection.claim().thread_id(),
-                syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .execution()
-            .clone();
-        let generation = beryl_model::CasProcessGeneration::new(73_001).unwrap();
-        let admitted = graph
-            .cas()
-            .admit_runtime_lifecycle_test_candidate(
-                &connector,
-                execution.clone(),
-                generation,
-                std::path::Path::new(execution.root_path().as_str()),
-                TIMEOUT,
-            )
-            .unwrap();
-        graph
-            .cas()
-            .attach_model_connector_for_test(&execution, generation, connector);
-        (admitted, execution)
-    };
+) -> ModelRuntimeFixture {
+    let (server, admitted, execution, readiness_deadline) = runtime;
     if !wait_for_draft_default {
-        return (server, admitted, execution);
+        return (server, admitted, execution, readiness_deadline);
     }
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -701,7 +721,7 @@ async fn install_model_runtime_inner(
             .timer(Duration::from_millis(10))
             .await;
     }
-    (server, admitted, execution)
+    (server, admitted, execution, readiness_deadline)
 }
 
 async fn wait_menu(
@@ -739,13 +759,14 @@ async fn wait_menu(
 #[test]
 fn native_idle_elected_model_change_replays_evicted_selection_and_preserves_logical_focus() {
     use crate::model_selection::{ModelReasoningEffort, test_support::ModelResponse};
-    run_mounted(
-        1,
-        0,
-        move |owner, cx| {
+    run_model_case(
+        None,
+        None,
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let (server, admitted, _) = install_model_runtime(&owner, window, cx).await;
+                let readiness_deadline = runtime.3;
+                let (server, admitted, _, _) = install_model_runtime(runtime, window, cx).await;
                 server.enqueue(ModelResponse::page_range(0, 64, Some("second")));
                 server.enqueue(ModelResponse::page_range(64, 64, Some("third")));
                 server.enqueue(ModelResponse::page_range(128, 64, None));
@@ -776,7 +797,25 @@ fn native_idle_elected_model_change_replays_evicted_selection_and_preserves_logi
                 server.enqueue(ModelResponse::page_range(64, 64, Some("third")));
                 cx.background_executor()
                     .spawn(async move {
-                        let old_status = publication.observe(selection).unwrap();
+                        let old_status = loop {
+                            assert!(
+                                Instant::now() < readiness_deadline,
+                                "model status observation did not become ready before its original readiness deadline"
+                            );
+                            match publication.observe(selection) {
+                                Ok(scope) => {
+                                    assert!(
+                                        Instant::now() < readiness_deadline,
+                                        "model status observation arrived after its original readiness deadline"
+                                    );
+                                    break scope;
+                                }
+                                Err(crate::model_selection::ModelReadError::Source(
+                                    crate::cas_projection::ModelSourceError::Publication,
+                                )) => std::thread::sleep(Duration::from_millis(10)),
+                                Err(error) => panic!("model status observation failed: {error:?}"),
+                            }
+                        };
                         let scope = publication.prepare(selection).unwrap();
                         let page = scope.query.read_page(None).unwrap();
                         publication
@@ -940,16 +979,20 @@ fn native_completed_thread_status_uses_authentic_loaded_session_metadata_without
     use syndic_storage::{BindingState, SyndicPointReadLimit, SyndicTimestamp};
     let final_selection = Rc::new(RefCell::new(None));
     let observed_selection = final_selection.clone();
-    run_mounted_with_prepared_home(
-        1,
-        0,
-        prepare_completed_status_home,
-        final_selection,
-        move |owner, _, cx| {
+    run_model_case(
+        Some(Box::new(prepare_completed_status_home)),
+        Some(Box::new(move || {
+            vec![
+                final_selection
+                    .borrow()
+                    .expect("completed status fixture selection"),
+            ]
+        })),
+        move |owner, runtime, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
-                let (server, mut admitted, execution) =
-                    install_model_runtime_inner(&owner, window, cx, false).await;
+                let (server, mut admitted, execution, _) =
+                    install_model_runtime_inner(runtime, window, cx, false).await;
                 let editor = composer(window, cx).await;
                 let selection = editor
                     .read_with(cx, |editor, _| editor.selection_identity())

@@ -47,6 +47,7 @@ impl ExactStopWorker {
                 commands: self.command_authorizer.clone(),
                 runtime: self.runtime_failure.clone(),
                 publication: None,
+                gui_readiness: false,
                 binding,
             })
     }
@@ -104,7 +105,11 @@ impl ExactStopRead {
                     exact
                         .filter(|(connection, stamp)| connection.manual_projection_current(stamp))
                         .map(|(connection, stamp)| {
-                            SubmissionBindingProof::Loaded(Arc::downgrade(connection), stamp)
+                            SubmissionBindingProof::Loaded(
+                                Arc::downgrade(connection),
+                                stamp,
+                                execution.execution().clone(),
+                            )
                         })
                         .ok_or(Denial::BindingUnavailable)
                 } else if record.committed_tail().is_none()
@@ -139,6 +144,7 @@ pub struct SubmissionProof {
     runtime: super::super::RuntimeFailureReader,
     binding: SubmissionBindingProof,
     publication: Option<Weak<()>>,
+    gui_readiness: bool,
 }
 
 #[derive(Clone)]
@@ -147,10 +153,17 @@ enum SubmissionBindingProof {
     Loaded(
         Weak<ProjectionConnection>,
         crate::cas_projection::connection::registry::ManualProjectionStamp,
+        ExecutionBinding,
     ),
 }
 
 impl SubmissionProof {
+    pub(crate) fn requiring_gui_readiness(mut self) -> Result<Self, SubmissionUnavailable> {
+        self.gui_readiness = true;
+        self.availability()?;
+        Ok(self)
+    }
+
     pub(crate) fn with_publication(mut self, publication: Weak<()>) -> Self {
         self.publication = Some(publication);
         self
@@ -166,16 +179,24 @@ impl SubmissionProof {
             return Err(SubmissionUnavailable::AuthorityUnavailable);
         }
         match &self.binding {
-            SubmissionBindingProof::Initial(binding) => self
-                .runtime
-                .initial_submission_preparation_open(binding)
+            SubmissionBindingProof::Initial(binding) => (if self.gui_readiness {
+                self.runtime.gui_submission_ready(binding)
+            } else {
+                self.runtime.initial_submission_preparation_open(binding)
+            })
+            .then_some(())
+            .ok_or(SubmissionUnavailable::RuntimeUnavailable),
+            SubmissionBindingProof::Loaded(connection, stamp, execution) => {
+                (if self.gui_readiness && !self.runtime.gui_submission_ready(execution) {
+                    return Err(SubmissionUnavailable::RuntimeUnavailable);
+                } else {
+                    connection
+                        .upgrade()
+                        .is_some_and(|connection| connection.manual_projection_current(stamp))
+                })
                 .then_some(())
-                .ok_or(SubmissionUnavailable::RuntimeUnavailable),
-            SubmissionBindingProof::Loaded(connection, stamp) => connection
-                .upgrade()
-                .is_some_and(|connection| connection.manual_projection_current(stamp))
-                .then_some(())
-                .ok_or(SubmissionUnavailable::BindingUnavailable),
+                .ok_or(SubmissionUnavailable::BindingUnavailable)
+            }
         }
     }
 

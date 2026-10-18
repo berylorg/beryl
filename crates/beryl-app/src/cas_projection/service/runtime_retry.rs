@@ -70,6 +70,100 @@ impl ProjectionConnectionService {
 }
 
 impl SelectedRuntimeRetryWorker {
+    pub(crate) fn acquire_selected_view_interest(
+        &self,
+        session: &beryl_state::SessionState,
+        window: beryl_model::WindowId,
+        claim: beryl_state::WindowClaimSelection,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<
+        (
+            crate::cas_projection::RuntimeInterest,
+            beryl_home_store::HomeMutationObservation,
+        ),
+        crate::cas_projection::RuntimeInterestError,
+    > {
+        use crate::cas_projection::RuntimeInterestError;
+        let _command = self
+            .commands
+            .authorize()
+            .map_err(|_| RuntimeInterestError::Closed)?;
+        let home = self.home.upgrade().ok_or(RuntimeInterestError::Closed)?;
+        let sessions = self
+            .sessions
+            .upgrade()
+            .ok_or(RuntimeInterestError::Closed)?;
+        let observation = self
+            .mutation_observer
+            .observe()
+            .map_err(|_| RuntimeInterestError::AdmissionUnavailable)?;
+        let execution = self
+            .storage
+            .thread_execution(
+                &home,
+                claim.thread_id(),
+                SyndicPointReadLimit::new(1_000_000).expect("bounded point read"),
+            )
+            .map_err(|_| RuntimeInterestError::AdmissionUnavailable)?
+            .ok_or(RuntimeInterestError::Closed)?;
+        if cancellation.is_cancelled()
+            || !self.selected_current(&home, session, window, claim, execution.execution())
+        {
+            return Err(RuntimeInterestError::Closed);
+        }
+        let interest = sessions.acquire_view_interest(claim.thread_id(), execution.execution())?;
+        if cancellation.is_cancelled()
+            || !self.selected_current(&home, session, window, claim, interest.binding())
+        {
+            return Err(RuntimeInterestError::Closed);
+        }
+        observation
+            .try_elect(|| ())
+            .map_err(|_| RuntimeInterestError::AdmissionUnavailable)?;
+        Ok((interest, observation))
+    }
+
+    pub(crate) fn selected_view_binding_observation(
+        &self,
+        session: &beryl_state::SessionState,
+        window: beryl_model::WindowId,
+        claim: beryl_state::WindowClaimSelection,
+        binding: &ExecutionBinding,
+    ) -> Result<
+        (bool, beryl_home_store::HomeMutationObservation),
+        crate::cas_projection::RuntimeInterestError,
+    > {
+        use crate::cas_projection::RuntimeInterestError;
+        let observation = self
+            .mutation_observer
+            .observe()
+            .map_err(|_| RuntimeInterestError::AdmissionUnavailable)?;
+        let current = self
+            .home
+            .upgrade()
+            .is_some_and(|home| self.selected_current(&home, session, window, claim, binding));
+        observation
+            .try_elect(|| ())
+            .map_err(|_| RuntimeInterestError::AdmissionUnavailable)?;
+        Ok((current, observation))
+    }
+
+    pub(crate) fn elect_selected_view_observation<T>(
+        &self,
+        observation: &beryl_home_store::HomeMutationObservation,
+        publish: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let home = self.home.upgrade()?;
+        if home.home_id() != self.home_id || !self.commands.try_is_open() {
+            return None;
+        }
+        home.try_elect_observed_coherent(observation, self.home_generation, || {
+            self.commands.try_is_open().then(publish)
+        })
+        .ok()
+        .flatten()
+    }
+
     fn selected_current(
         &self,
         home: &HomeServiceReference,

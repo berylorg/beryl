@@ -50,8 +50,9 @@ fn deliver_anchor(
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     *core = candidate;
     assert_eq!(
         core.core_snapshot().resident.visible_range,

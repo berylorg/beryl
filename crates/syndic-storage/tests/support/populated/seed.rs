@@ -123,17 +123,37 @@ fn deferred_context_record(record: &FixtureRecord) -> bool {
     }
 }
 
-fn deferred_context_records() -> Vec<FixtureRecord> {
-    context::records()
+fn deferred_context_records(root_history: DraftRootHistoryPairV1) -> Vec<FixtureRecord> {
+    context::records_with_root_history(root_history)
         .into_iter()
         .filter(deferred_context_record)
         .collect()
+}
+
+fn current_root_history(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    draft: beryl_model::SyndicDraftId,
+) -> DraftRootHistoryPairV1 {
+    let current = storage
+        .current_draft(store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+        .unwrap()
+        .expect("canonical populated draft exists");
+    assert_eq!(current.draft().thread_id(), thread);
+    assert_eq!(current.draft().id(), draft);
+    current.draft().root_history()
 }
 
 pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: SyndicStorage) {
     seed_canonical_empty_thread(store, storage.clone(), id(30), draft_id(31));
     seed_canonical_empty_thread(store, storage.clone(), id(40), draft_id(41));
     seed_canonical_empty_thread(store, storage.clone(), id(36), draft_id(37));
+    let root_histories = PopulatedRootHistories {
+        source: current_root_history(store, &storage, id(30), draft_id(31)),
+        active: current_root_history(store, &storage, id(40), draft_id(41)),
+        context: current_root_history(store, &storage, id(36), draft_id(37)),
+    };
     let mut initial_builds = FixtureBatch::new();
     for thread in [id(30), id(40)] {
         initial_builds
@@ -144,8 +164,16 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
             .unwrap();
     }
     commit(store, storage.clone(), initial_builds);
-    commit(store, storage.clone(), batch(pre_command_static_records()));
-    commit(store, storage.clone(), batch(pre_event_records()));
+    commit(
+        store,
+        storage.clone(),
+        batch(pre_command_static_records(root_histories)),
+    );
+    commit(
+        store,
+        storage.clone(),
+        batch(pre_event_records(root_histories)),
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("pre-event populated fixture must be domain-valid");
@@ -288,7 +316,11 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
         &mut receipts,
     );
     provider::converge_transcript(store, &storage, source_thread, &mut receipts);
-    commit(store, storage.clone(), batch(deferred_context_records()));
+    commit(
+        store,
+        storage.clone(),
+        batch(deferred_context_records(root_histories.context)),
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .expect("deferred discussion-context fixture must be domain-valid");
@@ -299,11 +331,11 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
     );
 }
 
-fn pre_command_static_records() -> Vec<FixtureRecord> {
+fn pre_command_static_records(root_histories: PopulatedRootHistories) -> Vec<FixtureRecord> {
     let source = source_turn();
     let active = active_turn();
     let root = SyndicTurnId::from_bytes([29; 16]);
-    populated_records()
+    populated_records_with_root_histories(root_histories)
         .into_iter()
         .filter(|record| {
             if deferred_context_record(record) {
@@ -354,13 +386,13 @@ fn source_provider_fixture() -> ProviderItemFixture {
     )
 }
 
-fn pre_event_records() -> Vec<FixtureRecord> {
+fn pre_event_records(root_histories: PopulatedRootHistories) -> Vec<FixtureRecord> {
     let source_thread = id(30);
     let active_thread = id(40);
     let root = SyndicTurnId::from_bytes([29; 16]);
     let source = source_turn();
     let active = active_turn();
-    let mut records = populated_records()
+    let mut records = populated_records_with_root_histories(root_histories)
         .into_iter()
         .filter(|record| match record {
             FixtureRecord::Thread(record) => {
@@ -383,7 +415,11 @@ fn pre_event_records() -> Vec<FixtureRecord> {
             _ => false,
         })
         .collect::<Vec<_>>();
-    records.extend(active::records().into_iter().filter(active_route_fact));
+    records.extend(
+        active::records_with_root_history(root_histories.active)
+            .into_iter()
+            .filter(active_route_fact),
+    );
     records.extend([
         FixtureRecord::TurnState(fixture_turn_state(
             source,

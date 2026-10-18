@@ -8,6 +8,8 @@ use std::sync::{Arc, atomic::Ordering};
 
 #[path = "gpui_fixture.rs"]
 mod fixture;
+#[path = "gpui/minimum.rs"]
+mod minimum;
 use fixture::{
     AdapterControls, ComposerFixture, TestRoot, color, draw, join_worker, on_worker, open_root,
 };

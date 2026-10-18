@@ -121,16 +121,38 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
         }
         let prepared = page(fixture);
         let inventory = fixture.store.process_work_inventory(&sessions, &attention);
-        let inventory_page = || {
-            let revision = inventory.revision().unwrap();
-            inventory
-                .page(
-                    &revision,
-                    None,
-                    ProcessWorkPageLimits::new(256, 65_536).unwrap(),
-                    &ProjectionCancellationToken::new(),
-                )
-                .unwrap()
+        let inventory_page = |stage| {
+            let deadline = std::time::Instant::now() + TIMEOUT;
+            let limits = ProcessWorkPageLimits::new(256, 65_536).unwrap();
+            let cancellation = ProjectionCancellationToken::new();
+            loop {
+                let observation = inventory
+                    .revision()
+                    .and_then(|revision| inventory.page(&revision, None, limits, &cancellation));
+                match observation {
+                    Ok(page) => break page,
+                    Err(error) => {
+                        let changed = matches!(
+                            &error,
+                            ProcessWorkError::StaleRevision
+                                | ProcessWorkError::Connections(ConnectionWorkError::StaleRevision)
+                                | ProcessWorkError::Durable(
+                                    syndic_storage::SyndicReadError::ConcurrentChange { .. }
+                                        | syndic_storage::SyndicReadError::StaleNonIdleGateSourceScan
+                                )
+                        );
+                        assert!(
+                            changed && std::time::Instant::now() < deadline,
+                            "process inventory failed at {stage}: {error:?}; changed={changed} remaining={:?}; home={:?}; broker={:?}; connection={:?}",
+                            deadline.saturating_duration_since(std::time::Instant::now()),
+                            fixture.home().health(),
+                            test_faults::provider_broker_snapshot(&session),
+                            session.live_event_snapshot(),
+                        );
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
         };
         let fact = permission(&prepared);
         assert_eq!(fact.stage, PermissionInterruptionWorkStage::Prepared);
@@ -167,7 +189,7 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
             Err(StopWorkError::StaleRevision)
         );
         let driver = page(fixture);
-        let running = inventory_page();
+        let running = inventory_page("driver cleanup retained");
         assert_eq!(running.total_threads(), 1);
         assert!(running.records()[0].facts.stopping);
         assert!(!running.records()[0].facts.request_handling);
@@ -194,7 +216,7 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
             OrdinaryTurnExecutionOutcome::Incomplete { .. }
         ));
         let lost = page(fixture);
-        let running = inventory_page();
+        let running = inventory_page("target loss joined");
         assert_eq!(running.total_threads(), 1);
         assert!(running.records()[0].facts.stopping);
         assert_eq!(permission(&lost).serial, serial);

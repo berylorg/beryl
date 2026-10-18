@@ -122,9 +122,10 @@ pub(super) fn seed_terminal_turn_with_open_assistant(
         user_item,
         timestamp(8),
     );
+    project_item(store, storage, assistant_item);
     let head = publish_transcript(store, storage, thread);
     assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
-    assert_eq!(head.entry_count(), 1);
+    assert_eq!(head.entry_count(), 2);
     fixture
 }
 

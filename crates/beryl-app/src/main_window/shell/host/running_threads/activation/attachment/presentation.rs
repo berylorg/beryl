@@ -209,6 +209,27 @@ impl MainWindowShellRoot {
                     window,
                     cx,
                 );
+                let panel_minimum = operation
+                    .mount
+                    .read(cx)
+                    .panel_minimum_size(cx)
+                    .ok_or("Selected composer minimum is unavailable")?;
+                let generation = self
+                    .controller
+                    .as_ref()
+                    .ok_or("Selected shell is unavailable")?
+                    .appearance
+                    .generation
+                    .clone();
+                let metrics = self.candidate_metrics(
+                    &generation,
+                    panel_minimum,
+                    candidate.lineage_head().total_parent_count() != 0,
+                    cx,
+                )?;
+                if !self.ensure_minimum(metrics.clone(), window, cx)? {
+                    return Ok(());
+                }
                 operation.panel.update(cx, |panel, panel_cx| {
                     panel.stage_activation(candidate.activation(), Some(allocation));
                     panel_cx.notify();
@@ -247,6 +268,7 @@ impl MainWindowShellRoot {
                 });
                 match result {
                     Ok(Ok(Ok(()))) => {
+                        self.commit_metrics(metrics, window, cx);
                         self.running_threads.transcript_provider = Some(provider.clone());
                         self.running_threads.transcript_claim = Some(committed);
                         self.running_threads.transcript_source = Some(identity);

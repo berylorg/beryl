@@ -115,12 +115,13 @@ fn selected_worker_builds_missing_companion_in_bounded_steps_and_refreshes_pendi
             fixture
                 .reader
                 .publish_resource_delivery_if_current(
-                    delivery.prepared,
+                    &delivery.prepared,
                     &request,
                     &AtomicBool::new(false),
-                    |_| (),
+                    || (),
                 )
                 .unwrap();
+            drop(delivery.prepared);
             assert_eq!(
                 core.core_snapshot().resident.visible_range,
                 prior.resident.visible_range
@@ -237,12 +238,13 @@ fn selected_worker_reconciles_original_indeterminate_command_before_fresh_read()
     fixture
         .reader
         .publish_resource_delivery_if_current(
-            delivery.prepared,
+            &delivery.prepared,
             &request,
             &AtomicBool::new(false),
-            |_| (),
+            || (),
         )
         .unwrap();
+    drop(delivery.prepared);
     assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
     assert_eq!(fixture.service.worker_pool_diagnostics().active(), 0);
 }

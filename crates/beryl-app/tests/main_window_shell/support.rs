@@ -9,6 +9,27 @@ use beryl_state::{
     RemoveSessionWindow, RootRegistration, RuntimeRegistration, UnixMillis,
 };
 
+pub fn editor_snapshot(
+    shell: &beryl_app::main_window::MainWindowShell,
+    cx: &gpui::TestAppContext,
+) -> beryl_app::main_window::MainWindowConversationComposerSurfaceSnapshot {
+    shell
+        .window()
+        .read_with(cx, |root, app| {
+            root.controller()
+                .unwrap()
+                .composer_mount()
+                .unwrap()
+                .read(app)
+                .contribution()
+                .unwrap()
+                .read(app)
+                .surface_snapshot(app)
+                .unwrap()
+        })
+        .unwrap()
+}
+
 pub fn open_home(
     seed: u8,
 ) -> (

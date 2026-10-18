@@ -101,6 +101,18 @@ impl MainWindowShellRoot {
             if !services.prepare_first_conversation(flight)? {
                 return Ok(());
             }
+            let panel = flight.with_first_conversation(|first| first.panel_minimum_size())?;
+            let generation = self
+                .controller
+                .as_ref()
+                .ok_or("First conversation shell is unavailable.")?
+                .appearance
+                .generation
+                .clone();
+            let metrics = self.candidate_metrics(&generation, panel, false, cx)?;
+            if !self.ensure_minimum(metrics.clone(), window, cx)? {
+                return Ok(());
+            }
             let (prepared, configure, marker, submission) =
                 flight.with_first_conversation(|first| {
                     let controller = self
@@ -129,7 +141,10 @@ impl MainWindowShellRoot {
                 window,
                 cx,
             ) {
-                Ok(mount) => self.runtime_setup.mount = Some(mount),
+                Ok(mount) => {
+                    self.runtime_setup.mount = Some(mount);
+                    self.commit_metrics(metrics, window, cx);
+                }
                 Err((error, partial)) => {
                     if partial.is_none() {
                         flight.with_first_conversation(|first| {

@@ -1073,6 +1073,73 @@ by the executable composition root.
   and threadless cleanup, with real native integration and independent semantic review. No fake
   native lease or global abandoned-flight queue substitutes for this ownership.
 
+## Main-Window Minimum Publication
+
+- The checked minimum contract is required on every supported platform. An unavailable native
+  capability rejects publication through the existing preparation/construction failure boundary,
+  even when initial dimensions appear adequate. Unknown native state cannot certify readiness.
+  Windows and test support currently implement the required backend contract; other backends
+  must implement equivalent guarantees before becoming supported. No platform bypass or weaker
+  construction-only acknowledgement substitutes for this contract.
+- Each original shell retains committed rendering metrics and an independent input-panel minimum,
+  with at most one compact candidate identity and one checked native minimum-update flight.
+  Existing preparation owners retain candidate editor/transcript custody; the minimum flight
+  duplicates no editor, source pages or draft. Shared resolved metrics derive the visible-child
+  minimum and the allocation consumed by rendering and transcript attachment under
+  [GUI integration](../../../doc/gui/integration.md).
+- Preparation requests the componentwise maximum of the committed and candidate minimums, so
+  native tracking continues to protect both presentations until commit. A smaller candidate
+  cannot weaken the prior presentation's constraint while it remains authoritative, including
+  when another appearance participant later refuses. After coherent commit, an ordinary bounded
+  update may relax the constraint to the exact new committed minimum. Until that update succeeds
+  the stricter constraint remains safe; refusal or unverified relaxation cannot lower protection
+  below the committed minimum, undo the presentation or report a second appearance commit.
+  This uses the same one-flight owner without a relaxation queue or timer retry.
+- Construction enforces the initial minimum before consuming the prepared selected composer.
+  Adequate prepared saved bounds remain unchanged. Failure follows the existing unpublished
+  custody-return boundary rather than exposing an undersized shell or creating another window.
+  Threadless construction follows the same visible-child sizing rule.
+- First-conversation attachment obtains minimum acknowledgement before taking its prepared mount
+  inputs or publishing the mount. Selected activation obtains acknowledgement before candidate
+  transcript measurement, editor promotion and lineage publication. Existing preparation custody
+  and the prior coherent contribution remain authoritative while readiness is pending.
+- Candidate commit requires `Applied` for the original window and still-current candidate, plus
+  adequate current client dimensions. Refusal, closure, stale identity or unverified completion
+  preserves the prior coherent editor, contribution and metrics through the existing failure
+  boundary. A preparatory native enlargement may remain without authorizing candidate publication.
+  An existing retained shell candidate may defer for minimized state and reevaluate on ordinary
+  restoration; no timer retry or replacement window is introduced. Appearance refusal follows
+  the system's whole-attempt failure policy and cannot schedule a per-window appearance retry.
+  Native state is not changed to make a candidate fit.
+- Appearance preparation participates in the existing
+  [whole-window-set transaction](../../../doc/systems/theme-runtime/design.md#appearance-generation-publication).
+  Its current mailbox attempt retains the bounded prepared-adapter set while native readiness
+  settles outside App/entity borrows. Final adapter validation rechecks candidate metrics,
+  original window identity and actual dimensions. Only the existing single synchronous commit
+  applies composer appearance, notice generation and the controller's complete appearance
+  snapshot. Per-window delayed appearance commits are forbidden.
+- A newly registered window establishes the coordinator's exact current generation and its
+  applicable minimum before first themed presentation. Construction readiness may satisfy this
+  only when its enforced metrics still match that generation; a stale construction snapshot
+  cannot certify registration. The original hidden shell retains at most one pending registration
+  candidate/flight while readiness settles. Immediately before registration commit, revalidate
+  coordinator activity, window-set epoch, current generation, adapter identity and actual
+  dimensions; only then commit appearance, register the adapter and mark registration complete.
+  Pending readiness is not a terminal construction error. First publication requires completed
+  registration and current minimum proof as well as the existing generation checks. A stale
+  registration preparation may be replaced from the coordinator's current observation after its
+  original native work settles; it neither repeats a theme command nor adds a candidate queue.
+  Cancellation and owner loss release only original bounded preparation custody and never
+  certify a successor candidate.
+- Native verification covers actual minimum bounds, usable editor and pinned control containment,
+  status adjacency, optional lineage and changed editor metrics. Appearance refusal must leave
+  all participants on the prior generation, including resize after preparatory growth or a
+  smaller candidate and another adapter's refusal. Verify post-commit relaxation and retained
+  stricter protection on failed relaxation. Include minimized deferral followed by ordinary
+  restoration, maximized refusal, original identity/focus, receiver disposal, closure, native
+  failure and failed verification. Independent semantic review covers the integrated native and
+  appearance publication boundary.
+
 ## Window Placement Preparation
 
 - Worker placement preparation binds one exact window identity and its immutable saved placement
@@ -1184,10 +1251,28 @@ by the executable composition root.
   cancellation. It both fences the operation and wakes its bounded readiness observer; a previously
   retained preparation token is not the native operation's cancellation API. Dropping the native
   handle or an external completion observer does not cancel the owned operation. Readiness observes
-  the exact roots, selected composers, appearance and native closure without a polling queue.
+  the exact roots, selected composers and their original input entities, appearance and native
+  closure without a polling queue.
   Final storage validation uses private read-only facts captured before preparations move into
   shells, with the original attempt retained. It provides a bounded consistency check followed by
   short GUI admission, not a storage lock across native publication.
+- First-presentable readiness is a current observation, not a permanent receipt across final
+  validation. Keep one bounded observation lease for the original hidden set throughout readiness,
+  off-GUI validation and final admission. Exact input-local completion must wake that flight without
+  relying on unrelated composer or worker traffic. Read the existing wake version before the
+  readiness predicate and preserve notifications received during validation or before waiter
+  registration. Callbacks retain wake state rather than the flight or its original attempt.
+- If the final GUI check reports not-ready before any native publication call, retain the same
+  hidden members, editor identities, interaction gates and original attempt. Continue the existing
+  notification-driven readiness wait, then perform fresh off-GUI validation before admission.
+  Do not reuse an earlier successful storage check after that wait. Check complete readiness and
+  begin native publication in one GUI update, with no intervening await or deferred admission.
+  Not-ready is not evidence that every cause is harmless geometry; all identity, source, appearance,
+  lifetime and cancellation errors remain failures. Once a native publication call has begun,
+  preserve the existing refusal, cancellation and whole-set disposal handling without continuation.
+  Retain at most one validation worker and one bounded observation lease; release subscriptions on
+  completion or disposal. This adds no timer, readiness polling queue, forced paint, replacement
+  attempt, early runtime warm-up or promise of success under continuing invalidation.
 - Each enrolled shell closes command, notice, editor and ordinary-close admission before exposure.
   Editor gating composes with lifecycle promotion and resume; background first-presentable loading
   remains allowed. Existing enabled/read-only controls must actually accept the disabled state.

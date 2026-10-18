@@ -35,6 +35,17 @@ impl PublishedRunningThreadsReader {
         if !self.current() {
             return Err(TranscriptAttachmentError::Stale);
         }
+        #[cfg(test)]
+        if request.demand.indexed.is_none()
+            && request.demand.metadata.is_none()
+            && request.demand.range.is_none()
+        {
+            crate::bootstrap::test_support::checkpoint(
+                crate::bootstrap::test_support::Producer::ResourceMetadata,
+                *request.attachment.thread_id.as_bytes(),
+                || cancelled.load(std::sync::atomic::Ordering::Acquire),
+            );
+        }
         let prepared = provider.prepare_resource_delivery(request.clone(), cancelled)?;
         let pending = matches!(prepared.response(), ResourceDeliveryResponse::Indexed(response)
             if matches!(response.value, IndexedResourceValue::Pending));

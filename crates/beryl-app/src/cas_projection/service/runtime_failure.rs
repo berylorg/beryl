@@ -41,6 +41,12 @@ impl ProjectionConnectionService {
 }
 
 impl RuntimeFailureReader {
+    pub(super) fn gui_submission_ready(&self, binding: &ExecutionBinding) -> bool {
+        self.owner
+            .upgrade()
+            .is_some_and(|owner| owner.gui_submission_ready(binding))
+    }
+
     pub(super) fn initial_submission_preparation_open(&self, binding: &ExecutionBinding) -> bool {
         self.owner
             .upgrade()

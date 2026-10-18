@@ -10,8 +10,8 @@ pub struct MainWindowConversationComposerPreparedSelection {
 }
 
 impl MainWindowConversationComposerPreparedSelection {
-    pub(in crate::main_window) fn shell_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
-        self.config.shell_minimum_size()
+    pub(in crate::main_window) fn panel_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
+        self.config.panel_minimum_size()
     }
 
     pub fn new(

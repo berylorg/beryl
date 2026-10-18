@@ -7,27 +7,12 @@ use gpui::{
 
 pub(in crate::main_window::shell::host) fn render_command(
     root: &MainWindowShellRoot,
-    window: &Window,
+    _: &Window,
     cx: &mut Context<MainWindowShellRoot>,
 ) -> AnyElement {
     let generation = root.controller().expect("mounted controller").appearance();
     let font = theme_font(generation, "button.secondary.label", 13., 500.);
-    let mut label_style = window.text_style();
-    label_style.font_weight = gpui::FontWeight(font.weight);
-    if let Some(family) = &font.family {
-        label_style.font_family = family.clone();
-    }
-    let caption = "Running threads · 18446744073709551615";
-    let width = window
-        .text_system()
-        .shape_line(
-            caption.into(),
-            px(font.size),
-            &[label_style.to_run(caption.len())],
-            None,
-        )
-        .width
-        + px(26.);
+    let width = root.controller().unwrap().metrics.running_width;
     let enabled = root.running_threads_enabled();
     let attention = root.running_threads.attention > 0;
     let role = if !enabled {

@@ -4,10 +4,16 @@ use std::sync::Mutex;
 
 #[derive(Clone, Copy)]
 enum Loss {
+    EarlyWriter,
     Publication,
     Claim,
     ClaimReplacement,
     UncertainPublication,
+}
+
+#[test]
+fn native_early_writer_refusal_preserves_original_text_selection_and_history() {
+    run(Loss::EarlyWriter);
 }
 
 #[test]
@@ -33,16 +39,20 @@ fn native_indeterminate_acceptance_settles_after_actual_weak_publication_loss() 
 fn run(loss: Loss) {
     let faults = beryl_home_store::test_faults::FaultController::new();
     let fixture_faults = faults.clone();
-    let (fixture, prepared, acquisition, service) = support::worker(move || {
+    let (fixture, prepared, acquisition, service, mut runtime) = support::worker(move || {
         let mut fixture = syndic::Fixture::with_faults(199, fixture_faults);
         eprintln!(
             "native submission writer fixture: {}",
             fixture.home_path().display()
         );
         let theme = appearance::system_font_appearance(&fixture.state);
-        let (prepared, acquisition, service) =
-            support::prepare_shell_with_composer(&mut fixture, theme);
-        (fixture, prepared, acquisition, service)
+        let runtime::Prepared {
+            shell: prepared,
+            acquisition,
+            composer: service,
+            runtime,
+        } = runtime::prepare(&mut fixture, theme, false);
+        (fixture, prepared, acquisition, service, runtime)
     })
     .join()
     .unwrap();
@@ -85,6 +95,10 @@ fn run(loss: Loss) {
                 window
                     .update(cx, |_, window, _| window.minimize_window())
                     .unwrap();
+                let (fixture, runtime) = join(support::worker(move || {
+                    runtime.activate(&fixture);
+                    (fixture, runtime)
+                }), cx).await;
                 submission::wait_availability(window, Ok(()), cx).await;
                 let editor = window
                     .read_with(cx, |root, app| root.test_submission_composer(app).unwrap())
@@ -122,7 +136,40 @@ fn run(loss: Loss) {
                     native::pump(cx).await;
                 }
                 submission::wait_availability(window, Ok(()), cx).await;
+                if matches!(loss, Loss::EarlyWriter) {
+                    window.update(cx, |root, window, app| {
+                        root.test_submission_mount().unwrap().update(app, |mount, app| {
+                            mount.publish_autosave_interval(
+                                1,
+                                beryl_app::composer_host::ComposerHostAutosaveInterval::new(5).unwrap(),
+                                window,
+                                app,
+                            )
+                        }).unwrap();
+                    }).unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    loop {
+                        let saved = !service.test_with_selected_host(|host| host.is_dirty());
+                        let synchronized = editor.read_with(cx, |editor, _| editor.selection_identity()).unwrap()
+                            == service.selected_identity().unwrap();
+                        let interactive = input.read_with(cx, |input, _| input.is_surface_current_and_interactive()).unwrap();
+                        if saved && synchronized && interactive {
+                            break;
+                        }
+                        assert!(Instant::now() < deadline, "early refusal baseline did not autosave and settle");
+                        native::pump(cx).await;
+                    }
+                    submission::wait_availability(window, Ok(()), cx).await;
+                }
                 let retained = service.selected_identity().unwrap();
+                let retained_selection = input
+                    .read_with(cx, |input, _| {
+                        let surface = input.surface().unwrap();
+                        (surface.selection(), surface.caret(), input.history_frontier())
+                    })
+                    .unwrap();
+                let early_refusal = Arc::new(AtomicBool::new(false));
+                let early_snapshot = Arc::new(Mutex::new(None));
                 let reached_writer = Arc::new(AtomicBool::new(false));
                 let reached = reached_writer.clone();
                 let writer_revision = Arc::new(Mutex::new(None));
@@ -137,6 +184,36 @@ fn run(loss: Loss) {
                 let thread = fixture.thread;
                 let session = fixture.state.session();
                 service.test_with_selected_host(|host| {
+                    if matches!(loss, Loss::EarlyWriter) {
+                        let revision_witness = writer_revision.clone();
+                        let snapshot = early_snapshot.clone();
+                        host.test_arm_submission_materializer_before_execute_fault(move |home, storage| {
+                            let current = storage.current_draft(home, thread, syndic_storage::SyndicPointReadLimit::new(1_000_000).unwrap()).unwrap().unwrap();
+                            *snapshot.lock().unwrap() = Some(current);
+                            let mut command = HomeCommand::new(home.home_revision().unwrap());
+                            command.add(storage.create_thread(
+                                storage.revision(home).unwrap(),
+                                syndic_storage::CreateThread::ordinary(
+                                    SyndicThreadId::from_bytes([231; 16]),
+                                    SyndicDraftId::from_bytes([232; 16]),
+                                    syndic::execution_binding(),
+                                    SyndicTimestamp::from_unix_millis(2),
+                                    syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+                                ),
+                            )).unwrap();
+                            assert!(matches!(home.execute(command), CommandOutcome::Committed { later_failure: None, .. }));
+                            *revision_witness.lock().unwrap() = Some(home.home_revision().unwrap());
+                        });
+                        let refused = early_refusal.clone();
+                        let snapshot = early_snapshot.clone();
+                        let original_storage = storage.clone();
+                        host.test_arm_submission_materializer_after_execute_fault(move |home, outcome| {
+                            assert!(matches!(outcome, CommandOutcome::NotCommitted { evidence: beryl_home_store::CommandError::Conflict { .. } }), "original early writer outcome: {outcome:?}");
+                            let current = original_storage.current_draft(home, thread, syndic_storage::SyndicPointReadLimit::new(1_000_000).unwrap()).unwrap().unwrap();
+                            assert_eq!(Some(current), *snapshot.lock().unwrap());
+                            refused.store(true, Ordering::Release);
+                        });
+                    }
                     if matches!(loss, Loss::UncertainPublication) {
                         host.test_arm_submission_after_indeterminate_fault(move |home| {
                             assert_eq!(home.pending_reconciliations().len(), 1);
@@ -153,6 +230,7 @@ fn run(loss: Loss) {
                             reached.store(true, Ordering::Release);
                         }
                         match loss {
+                            Loss::EarlyWriter => panic!("early writer refusal reached final acceptance"),
                             Loss::UncertainPublication => {
                                 faults.fail_next(beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist);
                             }
@@ -258,7 +336,12 @@ fn run(loss: Loss) {
                                 .submission_status()
                         })
                         .unwrap();
-                    if status == desired && reached_writer.load(Ordering::Acquire) {
+                    let reached = if matches!(loss, Loss::EarlyWriter) {
+                        early_refusal.load(Ordering::Acquire)
+                    } else {
+                        reached_writer.load(Ordering::Acquire)
+                    };
+                    if status == desired && reached {
                         break;
                     }
                     assert!(
@@ -267,7 +350,25 @@ fn run(loss: Loss) {
                     );
                     native::pump(cx).await;
                 }
-                assert!(reached_writer.load(Ordering::Acquire));
+                assert_eq!(reached_writer.load(Ordering::Acquire), !matches!(loss, Loss::EarlyWriter));
+                if matches!(loss, Loss::EarlyWriter) {
+                    assert!(early_refusal.load(Ordering::Acquire));
+                    assert_eq!(service.selected_identity().unwrap(), retained);
+                    assert_eq!(input.read_with(cx, |input, _| {
+                        let surface = input.surface().unwrap();
+                        (surface.selection(), surface.caret(), input.history_frontier())
+                    }).unwrap(), retained_selection);
+                    let page = fixture.storage.candidate_draft_piece_text_demand(
+                        &fixture.home(), retained.binding().candidate(),
+                        syndic_storage::DraftPieceTextDemandV1::Forward(0), 65_536,
+                    ).unwrap();
+                    assert_eq!(page.value().bytes(), b"retain writer draft");
+                    assert!(fixture.home().pending_reconciliations().is_empty());
+                    let diagnostics = service.test_submission_diagnostics().unwrap().selected_submission().unwrap();
+                    assert_eq!(diagnostics.retained_roots(), 0);
+                    assert_eq!(diagnostics.retained_materializations(), 0);
+                    assert!(!diagnostics.command_attempted());
+                }
                 if matches!(loss, Loss::UncertainPublication) {
                     assert!(publication.lock().unwrap().is_none());
                     let current = service.selected_identity().unwrap();
@@ -319,6 +420,25 @@ fn run(loss: Loss) {
                         .expect("native final writer refusal painted");
                     assert_eq!(reason, SubmissionUnavailable::AuthorityUnavailable);
                     assert!(bounds.size.width > gpui::px(0.) && bounds.size.height > gpui::px(0.));
+                    while !input
+                        .read_with(cx, |input, _| input.is_surface_current_and_interactive())
+                        .unwrap()
+                    {
+                        assert!(
+                            Instant::now() < deadline,
+                            "original writer input did not settle after refusal: owner={:?}, realization={:?}",
+                            editor.read_with(cx, |editor, _| (
+                                editor.test_has_active_flight(),
+                                editor.last_error().is_some(),
+                            )),
+                            input.read_with(cx, |input, _| input.realization_diagnostics()),
+                        );
+                        native::pump(cx).await;
+                        cx.update_window(window.into(), |_, window, app| {
+                            window.draw_and_present_for_test(app)
+                        })
+                        .unwrap();
+                    }
                     assert!(
                         input
                             .read_with(cx, |input, _| input.is_surface_current_and_interactive())
@@ -360,6 +480,24 @@ fn run(loss: Loss) {
                         .unwrap();
                 }
                 }
+                if matches!(loss, Loss::EarlyWriter) {
+                    window.update(cx, |_, window, app| {
+                        input.update(app, |input, app| {
+                            input.replace_and_mark_text_in_range(None, "!", None, window, app);
+                        });
+                    }).unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    while service.selected_identity().unwrap().binding().logical_extent().logical_utf8_bytes() != 20 {
+                        assert!(Instant::now() < deadline, "original input not writable after early refusal");
+                        native::pump(cx).await;
+                    }
+                    let current = service.selected_identity().unwrap();
+                    let page = fixture.storage.candidate_draft_piece_text_demand(
+                        &fixture.home(), current.binding().candidate(),
+                        syndic_storage::DraftPieceTextDemandV1::Forward(0), 65_536,
+                    ).unwrap();
+                    assert_eq!(page.value().bytes(), b"retain writer draft!");
+                }
                 window
                     .update(cx, |_, window, _| window.remove_window())
                     .unwrap();
@@ -367,6 +505,7 @@ fn run(loss: Loss) {
                 drop(service);
                 join(
                     support::worker(move || {
+                        runtime.close();
                         drop(acquisition);
                         let (directory, service) = fixture.into_service();
                         assert!(matches!(

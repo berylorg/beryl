@@ -200,7 +200,8 @@ async fn wait_range(
         draw(window, cx);
         if panel.read_with(cx, |panel, _| {
             let Some((resource, _, actual_top, _)) = panel.code_viewport_for_test() else { return false; };
-            actual_top == top && panel.indexed_resource_response(&resource).is_some_and(|response| {
+            actual_top == top && panel.painted_glyphs_for_test() > 50
+                && panel.indexed_resource_response(&resource).is_some_and(|response| {
                 matches!(&response.value, IndexedResourceValue::Range(range)
                     if range.request_complete && !range.items.is_empty() && range.items.len() <= 16
                     && matches!(range.cursor.request, index::Request::Code { lines } if lines.start == top.saturating_sub(2)))

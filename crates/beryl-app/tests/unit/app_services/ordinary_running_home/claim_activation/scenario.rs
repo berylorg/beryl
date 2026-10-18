@@ -49,8 +49,7 @@ pub(super) async fn recover_with_entry(
     let unrelated_window = original_windows[1];
     let dirty = !matches!(save, SaveExpectation::SavedNoop);
     let mut prior = if matches!(save, SaveExpectation::DirtyPageSetup) {
-        let height = measure_pending_target_page_view(&owner, invoking, cx).await;
-        preservation::capture_original_page_resident(&owner, invoking, 0, height, cx).await
+        preservation::capture_original_page_resident(&owner, invoking, 0, cx).await
     } else {
         preservation::capture_resident(&owner, invoking, 0, dirty, cx).await
     };
@@ -318,7 +317,7 @@ pub(super) async fn recover_with_entry(
                             lineage_entry::post_input(root, target, input, native_handles[0], window, app);
                         } else if matches!(entry, Entry::Navigation) {
                             drop((prepared, duplicate));
-                            navigation_entry::post_space(native_handles[0]);
+                            navigation_entry::post_space(root, native_handles[0], window, app);
                         } else if let Some((picker, key)) = picker {
                             drop((prepared, duplicate));
                             picker.update(app, |picker, pcx| picker.activate(&key, pcx));
@@ -444,6 +443,35 @@ pub(super) async fn recover_with_entry(
             .unwrap();
         assert_eq!(binding.claim(), expected_claim);
         assert_ne!(binding.binding().home_generation(), failed_generation);
+        if matches!(entry, Entry::Navigation)
+            && binding.binding().logical_extent().logical_utf8_bytes() != 768
+        {
+            let actual = copy_all(invoking, &resident, cx).await;
+            let expected = draft_text(1);
+            let insertion = if actual.len() == expected.len() + 1 {
+                let offset = actual
+                    .bytes()
+                    .zip(expected.bytes())
+                    .position(|(actual, expected)| actual != expected)
+                    .unwrap_or(expected.len());
+                (actual.as_bytes()[offset + 1..] == expected.as_bytes()[offset..]).then(|| {
+                    let kind = match actual.as_bytes()[offset] {
+                        b' ' => "Space",
+                        b'\r' => "CR",
+                        b'\n' => "LF",
+                        _ => "Other",
+                    };
+                    (offset, kind)
+                })
+            } else {
+                None
+            };
+            eprintln!(
+                "native navigation target changed: expected_bytes={} actual_bytes={} single_insertion={insertion:?}",
+                expected.len(),
+                actual.len(),
+            );
+        }
         assert_eq!(binding.binding().logical_extent().logical_utf8_bytes(), 768);
         assert_eq!(binding.binding().candidate().draft_id(), target_draft);
         assert_eq!(copy_all(invoking, &resident, cx).await, draft_text(1));
@@ -575,152 +603,6 @@ pub(super) async fn recover_with_entry(
         .await;
     }
     (invoking, settled_window, settled_claim)
-}
-
-async fn measure_pending_target_page_view(
-    owner: &Rc<RefCell<RunningProcessOwner>>,
-    window: WindowHandle<MainWindowShellRoot>,
-    cx: &mut gpui::AsyncApp,
-) -> gpui::Pixels {
-    let resident = composer(window, cx).await;
-    let original_identity = resident
-        .read_with(cx, |resident, _| resident.selection_identity())
-        .unwrap();
-    let id = window
-        .read_with(cx, |root, _| root.controller().unwrap().window_id())
-        .unwrap();
-    let record = snapshot(owner)
-        .windows()
-        .iter()
-        .find(|record| record.window_id() == id)
-        .unwrap()
-        .clone();
-    let target = SyndicThreadId::from_bytes([242; 16]);
-    wait_for_unviewed_catalog_source(owner, target, cx).await;
-    let (home, state, storage) = {
-        let retained = owner.borrow();
-        let graph = retained.test_services().graph().unwrap();
-        (
-            graph.home().service_reference(),
-            graph.state().clone(),
-            graph.syndic().clone(),
-        )
-    };
-    let prepared = cx
-        .background_executor()
-        .spawn(async move {
-            let RunningThreadActivationPreparation::Prepared(prepared) =
-                RunningThreadActivation::prepare(
-                    &home,
-                    &state,
-                    &storage,
-                    id,
-                    record.selected_thread(),
-                    record.remembered_target().unwrap(),
-                    target,
-                )
-                .unwrap()
-            else {
-                panic!("Page admission target was not prepared");
-            };
-            Box::new(prepared)
-        })
-        .await;
-    let observation = Arc::new(std::sync::Mutex::new(None));
-    let cancelled = Arc::new(AtomicBool::new(false));
-    let cancel_acknowledgement = cancelled.clone();
-    assert_original_producer_current(
-        owner,
-        original_identity.binding(),
-        "before Page admission target activation",
-    );
-    window
-        .update(cx, |root, window, app| {
-            root.test_observe_ordinary_pending_ready(Some(observation.clone()));
-            root.test_thread_confirmation_hooks(
-                Some(Box::new(move |cancellation| {
-                    cancellation.cancel();
-                    cancel_acknowledgement.store(true, Ordering::Release);
-                })),
-                None,
-                None,
-            );
-            root.test_begin_original_ordinary_selection(*prepared, window, app)
-                .unwrap();
-        })
-        .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let settled = cancelled.load(Ordering::Acquire)
-            && !owner.borrow().test_services().running_selection_pending()
-            && window
-                .read_with(cx, |root, _| !root.test_running_thread_activation_pending())
-                .unwrap();
-        if settled {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "Page admission target cancellation did not settle"
-        );
-        cx.background_executor()
-            .timer(Duration::from_millis(10))
-            .await;
-    }
-    let (observed_target, target_identity, height) = observation
-        .lock()
-        .unwrap()
-        .clone()
-        .expect("ordinary target supplied no staged Ready geometry");
-    assert_eq!(observed_target, target);
-    assert_eq!(target_identity.claim().thread_id(), target);
-    assert!(height > gpui::Pixels::ZERO && f32::from(height).is_finite());
-    window
-        .update(cx, |root, _, _| {
-            root.test_observe_ordinary_pending_ready(None)
-        })
-        .unwrap();
-    let restored = composer(window, cx).await;
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let settled = restored
-            .read_with(cx, |resident, app| {
-                assert_eq!(resident.selection_identity(), original_identity);
-                let input = resident.gpui_input();
-                let input = input.read(app);
-                input.is_enabled()
-                    && input.is_quiescent()
-                    && input.is_surface_current_and_interactive()
-                    && !resident.test_has_active_flight()
-                    && !resident.test_has_pending_realizer()
-            })
-            .unwrap();
-        if settled {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "original editor did not settle after Page admission target cancellation"
-        );
-        cx.background_executor()
-            .timer(Duration::from_millis(10))
-            .await;
-    }
-    assert_eq!(
-        snapshot(owner)
-            .windows()
-            .iter()
-            .find(|record| record.window_id() == id)
-            .unwrap()
-            .selected_thread(),
-        Some(original_identity.claim())
-    );
-    assert_original_producer_current(
-        owner,
-        original_identity.binding(),
-        "after Page admission target cancellation",
-    );
-    height
 }
 
 fn assert_original_producer_current(

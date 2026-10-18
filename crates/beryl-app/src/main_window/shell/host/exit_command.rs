@@ -170,7 +170,7 @@ impl MainWindowShellRoot {
 
 pub(super) fn render(
     root: &MainWindowShellRoot,
-    window: &Window,
+    _: &Window,
     cx: &mut Context<MainWindowShellRoot>,
 ) -> AnyElement {
     let generation = root
@@ -179,25 +179,7 @@ pub(super) fn render(
         .appearance();
     let color = |role, property, fallback| theme_color(generation, role, property, fallback);
     let font = theme_font(generation, "button.secondary.label", 13., 500.);
-    let mut label_style = window.text_style();
-    label_style.font_weight = gpui::FontWeight(font.weight);
-    if let Some(family) = &font.family {
-        label_style.font_family = family.clone();
-    }
-    let label_width = ["Exit", "Exiting…", "Quit Anyway"]
-        .into_iter()
-        .map(|label| {
-            window
-                .text_system()
-                .shape_line(
-                    label.into(),
-                    px(font.size),
-                    &[label_style.to_run(label.len())],
-                    None,
-                )
-                .width
-        })
-        .fold(px(0.), |width, next| width.max(next));
+    let width = root.controller().unwrap().metrics.exit_width;
     let source = cx.weak_entity();
     #[cfg(target_os = "windows")]
     let blocked = root.blocked_shutdown.is_some();
@@ -268,7 +250,7 @@ pub(super) fn render(
                 }))
         })
         .h(px(32.))
-        .w(label_width + px(26.))
+        .w(width)
         .px(px(12.))
         .py(px(6.))
         .flex()

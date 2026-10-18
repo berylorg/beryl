@@ -368,6 +368,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 - The first visible surface is the ordinary main conversation shell; Beryl does not show a separate startup loading screen.
 - Thread-catalog loading, selected-thread history loading, and CAS warm-up proceed independently.
+- After complete native publication, selected threads prepare their runtimes without sending
+  draft content or starting a model turn. Shared runtimes warm once for their current selected
+  views; threadless shells and unselected catalog entries cause no warm-up.
 - The thread selector is dim and inert only until catalog readiness.
 - The transcript viewport is dim and inert only until the selected thread's initial history chunk is ready.
 - Composer text entry remains available while the catalog, transcript, root, or CAS is loading when the current draft itself is available and writable.

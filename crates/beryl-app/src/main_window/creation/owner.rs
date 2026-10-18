@@ -373,6 +373,7 @@ impl MainWindowCreationOwner {
                             self.drive(window_id, cx);
                         }
                         Ok(shell) => {
+                            shell.attach_creation(cx.entity(), cx);
                             #[cfg(feature = "test-faults")]
                             {
                                 entry.test_publication_held =
@@ -420,7 +421,6 @@ impl MainWindowCreationOwner {
             return;
         }
         if !cancelled {
-            shell.attach_creation(cx.entity(), cx);
             if let Some(owner) = &self.running_owner {
                 let publication = match owner.upgrade() {
                     Some(owner) => {

@@ -2146,6 +2146,16 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
   binds the thread, gate revision, source generation/revision, and scanned-after ordinal; it can
   therefore advance across non-candidate source ranges without repeating an empty page or
   accepting route drift.
+- Accepted route candidate scans reserve at most 262 stored bytes per complete order/leaf row.
+  The V3 composer order is a 24-byte key, 4-byte record version and 49-byte payload (thread16,
+  ordinal8, input16, source tag1, generation8): 77 bytes. The largest valid V4 leaf is a 16-byte
+  key, 4-byte version and 165-byte payload: identities/revisions56, Routed tag1, lifecycle1,
+  transition presence/proof34 and promotion presence/proof73, totaling185. A promotion witness
+  requires Routed and Promoted; it cannot combine with the larger NextTurn state encoding.
+  Both accepted-next and accepted-ready scans reserve this codec ceiling, including rows that
+  do not produce a candidate. Insufficient remainder after progress returns a continuation;
+  a caller bound too small for its first actual row still returns a typed read-limit failure.
+  This reservation does not increase the public page or caller bounds.
 - Projection format V1 applies the exact paragraph, code, table, preview, and page thresholds in
   `doc/systems/syndic-conversation-history/concepts.md`. Malformed or undecidable syntax is emitted
   as source-preserving spans of at most 8,192 UTF-8 bytes.

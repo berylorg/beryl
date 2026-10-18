@@ -19,34 +19,52 @@ pub(super) async fn wait_for_notice(
                     let Some(projection) = root.notice_projection() else {
                         return false;
                     };
-                    let (kind, variant, dismissal) = if recovered {
-                        (
-                            NoticeKind::Recovery,
-                            NoticeVariant::Info,
-                            NoticeDismissal::Dismissible,
-                        )
+                    let current = if recovered {
+                        let Some((current, kind, variant, dismissal, commands)) =
+                            root.test_recovered_home_notice()
+                        else {
+                            return false;
+                        };
+                        assert_eq!(kind, NoticeKind::Recovery);
+                        assert_eq!(variant, NoticeVariant::Info);
+                        assert_eq!(dismissal, NoticeDismissal::Dismissible);
+                        assert_eq!(commands, 0);
+                        match projection.kind {
+                            NoticeKind::Recovery => {
+                                assert_eq!(projection.token.record().condition(), &current);
+                                assert_eq!(projection.content.variant, NoticeVariant::Info);
+                                assert_eq!(
+                                    projection.content.dismissal,
+                                    NoticeDismissal::Dismissible
+                                );
+                                assert_eq!(projection.content.commands().count(), 0);
+                            }
+                            NoticeKind::RuntimeUnavailable => {
+                                assert_eq!(projection.content.variant, NoticeVariant::Error);
+                                assert_eq!(
+                                    projection.content.dismissal,
+                                    NoticeDismissal::Persistent
+                                );
+                                assert!(root.test_runtime_failure_snapshot().is_some());
+                            }
+                            _ => return false,
+                        }
+                        current
                     } else {
-                        (
-                            NoticeKind::HomeFailure,
-                            NoticeVariant::Error,
-                            NoticeDismissal::Persistent,
-                        )
-                    };
-                    if projection.kind != kind {
-                        return false;
-                    }
-                    if !recovered {
+                        if projection.kind != NoticeKind::HomeFailure {
+                            return false;
+                        }
                         let detail = projection.content.detail().as_str();
                         if !detail.contains("recovering this home")
                             && !detail.contains("retrying recovery")
                         {
                             return false;
                         }
-                    }
-                    assert_eq!(projection.content.variant, variant);
-                    assert_eq!(projection.content.dismissal, dismissal);
-                    assert_eq!(projection.content.commands().count(), 0);
-                    let current = projection.token.record().condition().clone();
+                        assert_eq!(projection.content.variant, NoticeVariant::Error);
+                        assert_eq!(projection.content.dismissal, NoticeDismissal::Persistent);
+                        assert_eq!(projection.content.commands().count(), 0);
+                        projection.token.record().condition().clone()
+                    };
                     if let Some(prior) = &condition {
                         assert_eq!(prior, &current);
                     }

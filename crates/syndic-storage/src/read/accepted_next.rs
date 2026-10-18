@@ -24,8 +24,8 @@ pub const ACCEPTED_NEXT_PAGE_MAX_RECORDS: usize = 256;
 pub const ACCEPTED_NEXT_PAGE_MAX_BYTES: usize = 65_536;
 
 const NEXT_POINT_MAX_BYTES: usize = 65_536;
-// Accepted-order plus the largest V3 route leaf carrying both transition and promotion proofs.
-const NEXT_CANDIDATE_MAX_ROW_BYTES: usize = 261;
+// V3 accepted-order plus the largest valid V4 leaf with transition and promotion proofs.
+const NEXT_CANDIDATE_MAX_ROW_BYTES: usize = 262;
 
 /// Opaque revision-bound source of effective next-turn work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

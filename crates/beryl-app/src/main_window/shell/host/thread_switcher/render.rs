@@ -12,11 +12,7 @@ pub(in crate::main_window::shell::host) fn render_command(
 ) -> AnyElement {
     let appearance = root.controller().expect("mounted controller").appearance();
     let color = |role, property, fallback| theme_color(appearance, role, property, fallback);
-    let ready = root
-        .thread_switcher
-        .reader
-        .as_ref()
-        .is_some_and(|reader| reader.is_ready());
+    let ready = root.thread_switcher.catalog_ready();
     let reason = root.switcher_disabled_reason(cx);
     let enabled = ready && reason.is_none();
     let open = root.thread_switcher.picker.is_some();
@@ -46,11 +42,11 @@ pub(in crate::main_window::shell::host) fn render_command(
         .id("main-window-thread-selector")
         .debug_selector(|| "main-window-thread-selector".into())
         .flex_1()
-        .min_w_0()
+        .min_w(root.controller().unwrap().metrics.selector_width)
         .h(px(32.))
         .flex()
         .items_center()
-        .gap(px(10.))
+        .gap(px(super::super::sizing::SELECTOR_GAP))
         .px(px(12.))
         .rounded(px(6.))
         .border_1()
@@ -104,7 +100,7 @@ pub(in crate::main_window::shell::host) fn render_command(
                 .flex_none()
                 .flex()
                 .items_center()
-                .gap(px(4.))
+                .gap(px(super::super::sizing::AFFORDANCE_GAP))
                 .text_size(px(10.))
                 .font_weight(gpui::FontWeight(700.))
                 .text_color(color(

@@ -1,5 +1,7 @@
 # Scope
 
+Operator directed workflow simplification on2026-10-17. Follow the existing project skills; do not introduce additional processes without Operator approval.
+
 Operator selected continued use of unmodified CAS on 2026-09-23, authorized necessary buffering
 for its payload-before-route ordering, and requested resumption and completion of the Beryl-home
 rework. The whole-rework implementation hold is released by that explicit direction, subject to
@@ -102,50 +104,54 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 781: Qualify Remaining Restoration And Progressive Bootstrap Readiness (finished)
+# Phase 783: Enforce Native Main-Window Minimums From Visible Children (finished)
 
-Mapped exact whole-set/native/editor admission, separate progressive producers and accepted
-coordination, empty-session, capacity, placement and failure-custody evidence. Independent semantic
-review passes with no blocking readiness findings. The remaining gap is genuine held-loading
-composition; no missing capability or material authority contradiction was demonstrated.
-See [readiness](audits/restoration-bootstrap-readiness.md). The tracker item remains open.
+Windows native minimums now derive from actual visible-child metrics, preserving the original
+window/editor, coherent appearance publication and bounded native-operation custody. Unsupported
+GUI platforms reject publication until their backends implement the same guarantees. Independent
+whole-boundary review accepts 126 distinct App cases plus the qualified dependency evidence;
+see [acceptance and evidence limits](audits/native-main-window-minimum.md). Integrated restoration
+qualification below is complete; commit/push includes both accepted boundaries.
 
-# Phase 782: Accept Native Restoration With Independent Progressive Readiness (pending)
+# Phase 782: Accept Native Restoration With Independent Progressive Readiness (finished)
 
-Accept the remaining restoration/progressive-bootstrap [rework slice](rework/beryl-home/REWORK.md)
-through production `bootstrap::run`, startup owner, complete native restore-set publication and
-ordinary shell ownership. Derive work from [reviewed readiness](audits/restoration-bootstrap-readiness.md),
-[main-window startup](features/main-windows/design.md#startup-surface),
-[progressive shell readiness](features/conversation-threads/design.md#progressive-shell-readiness)
-and [App restore-set ownership](../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership).
-This is one behavioral acceptance boundary, primarily missing composed runtime evidence.
+Accepted production `bootstrap::run`, startup ownership, whole native restore-set publication and
+ordinary shell ownership under the [reviewed readiness](audits/restoration-bootstrap-readiness.md),
+[progressive shell contract](features/conversation-threads/design.md#progressive-shell-readiness)
+and [App ownership](../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership).
 
-- Hold genuine selected-draft loading for saved members and prove no native publication before
-  every exact first editor is ready. Release actual work, observe readiness notifications and
-  prove correct first draft content and input without unseen-text races. Preserve bounded seeds.
-- Independently delay catalog certification, selected initial-history delivery and runtime
-  availability. Prove complete ordinary shell visibility with stable native/window/thread identity,
-  appropriate selector/transcript/submission unavailability and writable healthy local draft.
-  Exercise normal input and durable preservation without sending user data. Release each producer
-  and verify only its dependent readiness gate clears; runtime failure remains a backend notice
-  while local history and drafting stay usable. Do not require a model turn for submission gating.
-- Cancel or fail while actual loading work is outstanding. Verify whole attempted-set gating,
-  native/editor/worker disposal or explicit original retained custody, preserved sealed records
-  and no conflicting Retry/Exit authority. Keep fresh fallback abandonment distinct from restored
-  record preservation. Compose empty runtime-backed replacement and zero-runtime threadless startup.
-- Check changed inputs before reusing earlier capacity/corruption, placement, command-fault,
-  native publication and retirement evidence. Refresh affected restore-set/startup-owner,
-  first-editor, catalog/readiness, submission/runtime and ordinary close/Exit consumers as one
-  bounded combined acceptance packet; add missing native integration cases rather than repeat
-  unrelated product suites. Apply required focused and canonical checks on the final inputs.
+The whole restore set waits for every original editor. Catalog, history and runtime readiness
+remain independent of healthy local editing, durable save and ordinary shell visibility.
+Selected views acquire runtime interest after publication; Submit requires genuine backend
+readiness. Loading failure/cancellation, Retry/Exit, threadless startup and disposal preserve
+original native windows, editor/claim identity and exact persistent outcome custody.
 
-Use existing native fixtures and production producer boundaries. Test-only synchronization may
-hold actual work; a fake ready flag, injected finished editor/history, stopped production worker or
-replacement capability cannot substitute for the claimed evidence. Supporting corrections stay
-within this behavior and its exact identity/outcome/resource contracts; reconcile material design
-gaps before implementation. Require independent semantic whole-boundary review before marking
-restoration/progressive bootstrap accepted. Broader catalog, Settings, Asset and repair gates stay separate.
+Acceptance includes owning storage groups1–14, Home revision/current-command checks, affected
+terminal/creation/settlement/runtime integrations, the211-case production library refresh and
+156-case state/protocol/readiness supplement. The936 required App identities are fully covered
+by source-relevant normal results, with original modes D282/S244/N410. Original clocks, native
+focus/geometry assertions, payloads,257 mutations,4096 rounds, budgets and production stacks remain.
+The three smaller scales use their original unoptimized600-second profile; the full workflow and
+seven large notices use their original optimized1800-second profiles. Production checks for
+`beryl-app` and `beryl` pass without test faults. Independent source, fixture and execution review
+accepts the boundary and integrated Phase783.
 
-Current checkpoint: readiness is accepted; runtime qualification has not started. No production
-changes or new native test results belong to the readiness phase. Shared build artifacts and
-unrelated Operator skill edits remain preserved.
+Published dependency pins: GPUI/util `3210d6ad35f90a3d13d705b836e84ae206b3d656`,
+scrollbar `c78e315aedebb99b8e14888b520f1c26fd336cae`,
+input `57d51db735890d5cc53ddc6f73feb2f5563f8e92`,
+settings `feb598064dcc6b5ea85ba7fad02173f3dd8f2109`.
+Canonical qualification uses `../beryl-restoration-progressive-canonical` without local overlays.
+
+The [runtime readiness audit](audits/restoration-bootstrap-runtime-gap.md) records exact execution,
+review and evidence limits. [Failure notes](failures/progressive-startup-qualification.md) preserve
+discarded trials and fixture lessons. Historical483 capacity and earlier Code timeout attribution
+remain unknown; diagnostic passes and discarded trials grant no blanket acceptance or causal claim.
+Current normal owning results cover the required behavior. Temporary instrumentation is removed.
+
+The [rework tracker](rework/beryl-home/REWORK.md) marks this boundary accepted; broader rework
+checkpoints remain separate. Phase465 remains conditionally blocked on its documented unavailable
+exact-repair prerequisite and does not reopen accepted restoration. Preserve unrelated Operator
+skill and memory changes.
+
+Operator canceled source snapshots, archives and custom guard/receipt workflows. Use existing
+project skills and Git history, and retain only evidence still needed by current consumers.

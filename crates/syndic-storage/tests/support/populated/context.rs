@@ -6,6 +6,12 @@ use super::{source_item, source_projection, source_turn};
 use crate::support::{canonical_empty_root_history_pair_for, draft_id, id, timestamp};
 
 pub(super) fn records() -> Vec<FixtureRecord> {
+    records_with_root_history(canonical_empty_root_history_pair_for(draft_id(37)))
+}
+
+pub(super) fn records_with_root_history(
+    root_history: DraftRootHistoryPairV1,
+) -> Vec<FixtureRecord> {
     let source_thread = id(30);
     let child_thread = id(36);
     let child_draft = draft_id(37);
@@ -81,7 +87,7 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             child_thread,
             draft_revision,
             DraftSubmissionIntent::DiscussionContext(owner),
-            canonical_empty_root_history_pair_for(child_draft),
+            root_history,
             timestamp(5),
             timestamp(5),
         )),

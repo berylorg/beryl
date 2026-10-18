@@ -475,13 +475,15 @@ impl RunningProcessOwner {
                 entry.bound = true;
             }
             if !entry.bound {
-                cx.update(|app| {
-                    owner
-                        .recovery_owner()?
-                        .borrow_mut()
-                        .bind_interrupted_exit_appearance(request, entry.window, appearance, app)
-                })
-                .map_err(|error| error.to_string())??;
+                Self::bind_prepared_interrupted_exit_appearance(
+                    owner,
+                    request,
+                    entry.window,
+                    appearance,
+                    cancellation.clone(),
+                    cx,
+                )
+                .await?;
                 entry.bound = true;
             }
         }

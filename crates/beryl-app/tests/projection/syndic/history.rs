@@ -2,6 +2,22 @@ use super::*;
 
 impl Fixture {
     pub fn activate_without_terminal(&mut self, submitted: SubmittedTurn) -> CasTurnSource {
+        let source = self.activate_without_user_correlation(submitted);
+        let user_observed_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
+        exact::correlate_user_item(
+            command_home.home(),
+            &self.storage,
+            self.thread,
+            submitted.turn,
+            submitted.user_item,
+            &source,
+            user_observed_at,
+        );
+        source
+    }
+
+    pub fn activate_without_user_correlation(&mut self, submitted: SubmittedTurn) -> CasTurnSource {
         let started_at = self.tick();
         let source = {
             let command_home = self.store.live_home_command().unwrap();
@@ -19,17 +35,6 @@ impl Fixture {
             &source,
             SourceEventPayload::TurnActivated,
         );
-        let user_observed_at = self.tick();
-        let command_home = self.store.live_home_command().unwrap();
-        exact::correlate_user_item(
-            command_home.home(),
-            &self.storage,
-            self.thread,
-            submitted.turn,
-            submitted.user_item,
-            &source,
-            user_observed_at,
-        );
         source
     }
 
@@ -44,6 +49,27 @@ impl Fixture {
             submitted.turn,
             source,
             SourceEventPayload::TurnEnded(status),
+        );
+    }
+
+    pub fn admit_provider_frame(
+        &mut self,
+        submitted: SubmittedTurn,
+        source: &CasTurnSource,
+        item: SyndicItemId,
+        frame: ProviderItemFrameV1,
+    ) {
+        let observed_at = self.tick();
+        let command_home = self.store.live_home_command().unwrap();
+        exact::admit_item_frame(
+            command_home.home(),
+            &self.storage,
+            self.thread,
+            submitted.turn,
+            item,
+            source,
+            frame,
+            observed_at,
         );
     }
 

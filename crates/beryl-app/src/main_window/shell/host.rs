@@ -28,6 +28,7 @@ mod quote;
 mod selected;
 mod shutdown;
 mod shutdown_draft;
+pub(super) mod sizing;
 mod status_controls;
 mod thread_navigation;
 mod thread_switcher;
@@ -269,6 +270,16 @@ impl GpuiMainWindowShellHost<'_> {
                 return Err(SelectedShellBeforeFailure { error, prepared });
             }
         }
+        let metrics = match sizing::ShellMetrics::resolve(
+            &prepared.appearance.generation,
+            prepared.composer.panel_minimum_size(),
+            false,
+            false,
+            self.app,
+        ) {
+            Ok(metrics) => metrics,
+            Err(error) => return Err(SelectedShellBeforeFailure { error, prepared }),
+        };
         let SelectedShellPrepared {
             content,
             composer,
@@ -277,7 +288,7 @@ impl GpuiMainWindowShellHost<'_> {
             submission_request_source,
             appearance,
         } = prepared;
-        let minimum_size = composer.shell_minimum_size();
+        let minimum_size = metrics.minimum();
         options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
@@ -285,6 +296,7 @@ impl GpuiMainWindowShellHost<'_> {
                 content,
                 appearance,
                 minimum_size,
+                metrics,
                 composer_mount: None,
             },
             (
@@ -312,6 +324,11 @@ impl GpuiMainWindowShellHost<'_> {
                     .take()
                     .expect("main-window shell host invokes its root constructor once");
                 let (composer, configurator, marker_seals, submission_request_source) = composer;
+                let admission_error = admission_error.or_else(|| {
+                    (!sizing::contains(window.viewport_size(), controller.minimum_size)).then(
+                        || "Native construction did not enforce the selected shell minimum.".into(),
+                    )
+                });
                 let mount = || {
                     MainWindowConversationComposerMount::from_prepared_entity_retained(
                         composer,
@@ -399,6 +416,7 @@ pub struct MainWindowShellController {
     content: ShellContent,
     pub(super) appearance: MainWindowShellAppearance,
     minimum_size: gpui::Size<gpui::Pixels>,
+    pub(in crate::main_window) metrics: sizing::ShellMetrics,
     pub(super) composer_mount: Option<Entity<MainWindowConversationComposerMount>>,
 }
 
@@ -496,7 +514,7 @@ pub struct MainWindowShell {
     root: Entity<MainWindowShellRoot>,
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
     adapter_id: crate::theme_runtime::WindowAdapterId,
-    appearance_registered: bool,
+    appearance_registered: Rc<std::cell::Cell<bool>>,
     published: bool,
     #[cfg(target_os = "windows")]
     startup_disposal: Option<startup_disposal::ShellStartupDisposalAdmission>,
@@ -555,6 +573,9 @@ impl MainWindowShell {
     }
 
     pub fn ready_to_publish(&self, app: &mut App) -> bool {
+        if !self.appearance_registered.get() {
+            return false;
+        }
         #[cfg(target_os = "windows")]
         if !self.desktop_publication_allowed() || !self.desktop_native_publication_allowed(app) {
             return false;
@@ -566,6 +587,9 @@ impl MainWindowShell {
                 root.construction_error.is_none()
                     && root.controller.as_ref().is_some_and(|controller| {
                         root.startup_interaction_ready(app)
+                            && root.minimum_current(&controller.metrics)
+                            && controller.metrics.new_window
+                                == (root.creation.is_some() || controller.is_threadless())
                             && appearance.active
                             && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
                             && match &controller.content {
@@ -688,6 +712,10 @@ pub struct MainWindowShellRoot {
     pub(super) creation: Option<gpui::WeakEntity<MainWindowCreationOwner>>,
     creation_observer: Option<gpui::Subscription>,
     appearance_release: Option<gpui::Subscription>,
+    minimum_flight: Option<sizing::MinimumFlight>,
+    minimum_protection: gpui::Size<gpui::Pixels>,
+    minimum_viewport: gpui::Size<gpui::Pixels>,
+    pub(super) appearance_registration: Rc<std::cell::Cell<bool>>,
     command_focus: gpui::FocusHandle,
     exit_focus: gpui::FocusHandle,
     pub(super) shell_focus: gpui::FocusHandle,

@@ -323,7 +323,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.captured_discussion_interaction_gated() {
+        if self.interaction_gated() {
             return;
         }
         if !self.character_geometry_current(window) {

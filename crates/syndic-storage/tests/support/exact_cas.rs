@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeCommand, HomeStore};
+use beryl_home_store::{CommandOutcome, CursorReadLimits, HomeStore};
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, CasItemId, CasLoadedSessionGeneration,
     CasLoadedThreadGeneration, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
@@ -41,14 +41,8 @@ fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn execute(
-    store: &HomeStore,
-    contribution: beryl_home_store::MutationContribution,
-    operation: &str,
-) {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    match store.execute(command) {
+fn require_committed(outcome: CommandOutcome, operation: &str) {
+    match outcome {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -542,11 +536,9 @@ pub fn establish_turn_with_profile(
         .unwrap()
         .unwrap();
     let cas_turn = CasTurnId::new(format!("test-turn-{turn}")).unwrap();
-    execute(
-        store,
-        storage.clone().publish_active_cas_turn(
-            storage.clone().revision(store).unwrap(),
-            PublishActiveCasTurn::new(
+    require_committed(
+        store.execute_current(
+            storage.current_publish_active_cas_turn(PublishActiveCasTurn::new(
                 thread,
                 binding.binding().revision(),
                 gate.revision(),
@@ -554,7 +546,7 @@ pub fn establish_turn_with_profile(
                 cas_thread.clone(),
                 cas_turn.clone(),
                 started_at,
-            ),
+            )),
         ),
         "active-CAS-turn publication",
     );
@@ -650,10 +642,8 @@ pub fn activate_turn_with_profile(
                 )
             }
         };
-    execute(
-        store,
-        storage.clone().publish_valid_binding(
-            storage.clone().revision(store).unwrap(),
+    require_committed(
+        store.execute_current(storage.clone().current_publish_valid_binding(
             PublishValidBinding::new(
                 thread,
                 current.binding().revision(),
@@ -665,7 +655,7 @@ pub fn activate_turn_with_profile(
                 profile,
                 lineage,
             ),
-        ),
+        )),
         "valid-binding publication",
     );
     let binding = storage
@@ -677,25 +667,25 @@ pub fn activate_turn_with_profile(
         .unwrap()
         .unwrap();
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*turn.as_bytes());
-    execute(
-        store,
-        storage.clone().activate_binding(
-            storage.clone().revision(store).unwrap(),
-            ActivateBinding::new(
-                thread,
-                binding.binding().revision(),
-                gate.revision(),
-                storage
-                    .turn_state(store, turn, point_limit())
-                    .unwrap()
-                    .unwrap()
-                    .revision(),
-                selected,
-                snapshot,
-                turn,
-                loaded_generation(),
-                started_at,
-            ),
+    require_committed(
+        store.execute_current(
+            storage
+                .clone()
+                .current_activate_binding(ActivateBinding::new(
+                    thread,
+                    binding.binding().revision(),
+                    gate.revision(),
+                    storage
+                        .turn_state(store, turn, point_limit())
+                        .unwrap()
+                        .unwrap()
+                        .revision(),
+                    selected,
+                    snapshot,
+                    turn,
+                    loaded_generation(),
+                    started_at,
+                )),
         ),
         "binding activation",
     );
@@ -731,13 +721,8 @@ pub fn admit_event(
     )
     .unwrap();
     let activity = super::enroll_fixture_activity(store, &storage, thread, turn);
-    execute(
-        store,
-        storage.clone().admit_live_source_event(
-            storage.clone().revision(store).unwrap(),
-            event,
-            activity,
-        ),
+    require_committed(
+        store.execute_current(storage.current_admit_live_source_event(event, activity)),
         "live-source event admission",
     );
 }
@@ -815,25 +800,19 @@ pub fn stage_item_frame(
         ),
     };
     let prepared = prepare_provider_frame(plan).unwrap();
-    execute(
-        store,
-        storage
-            .clone()
-            .begin_provider_frame_build(storage.clone().revision(store).unwrap(), &prepared),
+    require_committed(
+        store.execute_current(
+            storage
+                .clone()
+                .current_begin_provider_frame_build(&prepared),
+        ),
         "provider-frame build begin",
     );
     let mut build = match stage_provider_frame(
         &prepared,
         prepared.initial_build().clone(),
         &mut |stage: &syndic_storage::ProviderFrameStageBatch| {
-            let mut command = HomeCommand::new(store.home_revision().unwrap());
-            command
-                .add(storage.clone().stage_provider_frame_batch(
-                    storage.clone().revision(store).unwrap(),
-                    stage.clone(),
-                ))
-                .unwrap();
-            store.execute(command)
+            store.execute_current(storage.current_stage_provider_frame_batch(stage.clone()))
         },
     )
     .unwrap()
@@ -865,11 +844,8 @@ pub fn stage_item_frame(
             assert_eq!(build.target(), &sealed);
             return sealed;
         }
-        execute(
-            store,
-            storage
-                .clone()
-                .compare_provider_completion(storage.clone().revision(store).unwrap(), build),
+        require_committed(
+            store.execute_current(storage.clone().current_compare_provider_completion(build)),
             "provider-frame completion comparison",
         );
         build = storage
@@ -1008,10 +984,8 @@ pub fn converge_and_release_terminal_history(
         .transcript_view_head(store, thread_id, point_limit())
         .unwrap()
         .unwrap();
-    execute(
-        store,
-        storage.clone().complete_terminal_history(
-            storage.clone().revision(store).unwrap(),
+    require_committed(
+        store.execute_current(storage.clone().current_complete_terminal_history(
             CompleteTerminalHistory::new(
                 thread_id,
                 turn_id,
@@ -1020,7 +994,7 @@ pub fn converge_and_release_terminal_history(
                 head.generation(),
                 head.revision(),
             ),
-        ),
+        )),
         "terminal-history release",
     );
 }
@@ -1060,6 +1034,7 @@ pub fn converge_items(
             .unwrap()
             .unwrap();
         if item.provider_lifecycle() != ProviderItemLifecycle::Completed {
+            project_item_if_needed(store, storage.clone(), item.id());
             return;
         }
         if let Some(content) = item.provider_content() {
@@ -1068,10 +1043,8 @@ pub fn converge_items(
                 .unwrap()
                 .unwrap();
             if manifest.lifecycle() == ContentLifecycle::Live {
-                execute(
-                    store,
-                    storage.clone().freeze_next_turn_item(
-                        storage.clone().revision(store).unwrap(),
+                require_committed(
+                    store.execute_current(storage.clone().current_freeze_next_turn_item(
                         FreezeNextTurnItem::new(
                             thread_id,
                             turn_id,
@@ -1080,7 +1053,7 @@ pub fn converge_items(
                             item.id(),
                             state.updated_at(),
                         ),
-                    ),
+                    )),
                     "terminal item freeze",
                 );
             }
@@ -1093,10 +1066,8 @@ pub fn converge_items(
             .turn_state(store, turn_id, point_limit())
             .unwrap()
             .unwrap();
-        execute(
-            store,
-            storage.clone().finalize_next_turn_item(
-                storage.clone().revision(store).unwrap(),
+        require_committed(
+            store.execute_current(storage.clone().current_finalize_next_turn_item(
                 FinalizeNextTurnItem::new(
                     thread_id,
                     turn_id,
@@ -1105,7 +1076,7 @@ pub fn converge_items(
                     item.id(),
                     state.updated_at(),
                 ),
-            ),
+            )),
             "terminal item finalization",
         );
     }
@@ -1155,12 +1126,10 @@ pub fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id
         .map_or(ItemProjectionGeneration::FIRST, |head| {
             head.generation().checked_next().unwrap()
         });
-    execute(
-        store,
-        storage.clone().start_item_projection_build(
-            storage.clone().revision(store).unwrap(),
+    require_committed(
+        store.execute_current(storage.clone().current_start_item_projection_build(
             StartItemProjectionBuild::new(item_id, item.revision(), generation),
-        ),
+        )),
         "item-projection build start",
     );
     for _ in 0..CONVERGENCE_LIMIT {
@@ -1176,12 +1145,10 @@ pub fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id
             .item_projection_build(store, item_id, generation, point_limit())
             .unwrap()
             .unwrap();
-        execute(
-            store,
-            storage.clone().advance_item_projection_build(
-                storage.clone().revision(store).unwrap(),
+        require_committed(
+            store.execute_current(storage.clone().current_advance_item_projection_build(
                 AdvanceItemProjectionBuild::new(item_id, generation, build.revision()),
-            ),
+            )),
             "item-projection build advance",
         );
     }
@@ -1201,12 +1168,10 @@ pub fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id:
         return;
     }
     let generation = head.generation();
-    execute(
-        store,
-        storage.clone().start_transcript_build(
-            storage.clone().revision(store).unwrap(),
+    require_committed(
+        store.execute_current(storage.clone().current_start_transcript_build(
             StartTranscriptBuild::new(thread_id, thread.revision(), head.revision()),
-        ),
+        )),
         "transcript build start",
     );
     for _ in 0..CONVERGENCE_LIMIT {
@@ -1217,12 +1182,10 @@ pub fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id:
         if build.phase() == TranscriptBuildPhase::Complete {
             return;
         }
-        execute(
-            store,
-            storage.clone().advance_transcript_build(
-                storage.clone().revision(store).unwrap(),
+        require_committed(
+            store.execute_current(storage.clone().current_advance_transcript_build(
                 AdvanceTranscriptBuild::new(thread_id, generation, build.revision()),
-            ),
+            )),
             "transcript build advance",
         );
     }

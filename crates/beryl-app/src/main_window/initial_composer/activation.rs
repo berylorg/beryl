@@ -46,6 +46,16 @@ impl MainWindowInitialComposer {
             .map_err(|failure| *failure)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_prepare_owned(
+        self: Box<Self>,
+        configurator: &mut impl FnMut(
+            MainWindowComposerSelectionIdentity,
+        ) -> Result<MainWindowConversationComposerConfig, String>,
+    ) -> Result<Box<MainWindowInitialComposerPrepared>, Box<MainWindowInitialComposerFailure>> {
+        self.prepare_owned(configurator)
+    }
+
     #[inline(never)]
     pub(in crate::main_window) fn prepare_owned(
         mut self: Box<Self>,

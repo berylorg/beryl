@@ -1,6 +1,6 @@
 use super::*;
 use windows::Win32::UI::{
-    Input::KeyboardAndMouse::{VK_RETURN, VK_SPACE},
+    Input::KeyboardAndMouse::{GetFocus, VK_RETURN, VK_SPACE},
     WindowsAndMessaging::{WM_KEYDOWN, WM_KEYUP},
 };
 
@@ -29,7 +29,18 @@ pub(super) async fn ready(
     }
 }
 
-pub(super) fn post_space(handle: windows::Win32::Foundation::HWND) {
+pub(super) fn post_space(
+    root: &MainWindowShellRoot,
+    handle: windows::Win32::Foundation::HWND,
+    window: &gpui::Window,
+    app: &gpui::App,
+) {
+    assert!(
+        root.test_thread_navigation_focus(true).is_focused(window),
+        "original Forward input lacks navigation focus: native_focus={:?}",
+        unsafe { GetFocus() },
+    );
+    assert_eq!(root.test_thread_navigation_reason(true, app), None);
     post_key(handle, VK_SPACE.0);
 }
 
@@ -47,14 +58,22 @@ fn post_key(handle: windows::Win32::Foundation::HWND, key: u16) {
 }
 
 pub(super) async fn prepare(window: WindowHandle<MainWindowShellRoot>, cx: &mut gpui::AsyncApp) {
-    let prior = window
-        .read_with(cx, |root, app| {
-            root.coherent_selected_thread_title(app)
-                .unwrap()
-                .0
-                .thread_id()
-        })
-        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let prior = loop {
+        if let Some((claim, _)) = window
+            .read_with(cx, |root, app| root.coherent_selected_thread_title(app))
+            .unwrap()
+        {
+            break claim.thread_id();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "original selected claim and title did not become coherent"
+        );
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    };
     let target = SyndicThreadId::from_bytes([242; 16]);
     assert_ne!(prior, target);
     let (picker, key) = switcher_entry::open(window, target, cx).await;
@@ -64,12 +83,33 @@ pub(super) async fn prepare(window: WindowHandle<MainWindowShellRoot>, cx: &mut 
         })
         .unwrap();
     ready(window, false, cx).await;
+    let target_resident = composer(window, cx).await;
+    let target_selection = target_resident
+        .read_with(cx, |resident, _| resident.selection_identity())
+        .unwrap();
+    assert_eq!(target_selection.claim().thread_id(), target);
+    assert_eq!(
+        target_selection
+            .binding()
+            .logical_extent()
+            .logical_utf8_bytes(),
+        768,
+    );
+    assert_eq!(copy_all(window, &target_resident, cx).await, draft_text(1));
+    let handle = native(window, cx).await;
     window
-        .update(cx, |root, window, _| {
-            root.test_thread_navigation_focus(false).focus(window)
+        .update(cx, |root, window, app| {
+            let focus = root.test_thread_navigation_focus(false);
+            focus.focus(window);
+            assert!(
+                focus.is_focused(window),
+                "original Back input lacks navigation focus: native_focus={:?}",
+                unsafe { GetFocus() },
+            );
+            assert_eq!(root.test_thread_navigation_reason(false, app), None);
+            post_key(handle, VK_RETURN.0);
         })
         .unwrap();
-    post_key(native(window, cx).await, VK_RETURN.0);
     ready(window, true, cx).await;
     window
         .read_with(cx, |root, app| {
@@ -127,6 +167,17 @@ fn run_navigation(cut: Cut) {
                     })
                     .unwrap();
                 *qualified.borrow_mut() = Some((id, claim.thread_id()));
+                native_code::wait(
+                    window,
+                    cx,
+                    |cx| {
+                        window
+                            .read_with(cx, |root, _| root.test_exit_command_enabled())
+                            .unwrap()
+                    },
+                    "original recovered navigation Exit command did not become eligible",
+                )
+                .await;
                 activate_exit(window, cx);
             })
         },

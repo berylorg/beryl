@@ -110,11 +110,19 @@ pub(super) async fn verify(
         );
     })
     .unwrap();
-    std::future::poll_fn(|task| {
-        assert!(drive.as_mut().poll(task).is_pending());
-        Poll::Ready(())
-    })
-    .await;
+    loop {
+        std::future::poll_fn(|task| {
+            assert!(drive.as_mut().poll(task).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        if owner.borrow().test_services_on_worker() {
+            break;
+        }
+        cx.background_executor()
+            .timer(Duration::from_millis(10))
+            .await;
+    }
     assert!(owner.borrow().test_services_on_worker());
     assert_reserved(owner, request, retired, generation, appearance, cx).await;
     while owner.borrow().test_services_on_worker() {

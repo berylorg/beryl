@@ -11,6 +11,7 @@ pub(super) struct ResidentSnapshot {
     history: syndic_storage::DraftEditHistoryFrontierV1,
     text: String,
     pages: Vec<(u64, u64, String, bool)>,
+    original_page_layout: Option<(gpui::Pixels, gpui::Pixels, gpui::Pixels)>,
     dirty: bool,
     focus: Option<gpui::FocusHandle>,
     lineage_focus: Option<(SyndicThreadId, SyndicThreadId)>,
@@ -25,6 +26,15 @@ impl ResidentSnapshot {
             assert!(input.is_quiescent());
             assert!(input.is_surface_current_and_interactive());
             assert_eq!(input.surface().unwrap().selection(), self.selection);
+            let layout = input.resident_layout_snapshot();
+            assert_eq!(
+                Some((
+                    layout.viewport_extent,
+                    layout.layout.wrap_width,
+                    layout.layout.line_height,
+                )),
+                self.original_page_layout,
+            );
             assert_eq!(
                 capture_resident_pages(
                     input,
@@ -57,17 +67,16 @@ pub(super) async fn capture_resident(
     dirty: bool,
     cx: &mut AsyncApp,
 ) -> ResidentSnapshot {
-    capture_resident_with_text_shape(owner, window, index, dirty, None, cx).await
+    capture_resident_with_text_shape(owner, window, index, dirty, false, cx).await
 }
 
 pub(super) async fn capture_original_page_resident(
     owner: &Rc<RefCell<RunningProcessOwner>>,
     window: WindowHandle<MainWindowShellRoot>,
     index: usize,
-    page_view_height: gpui::Pixels,
     cx: &mut AsyncApp,
 ) -> ResidentSnapshot {
-    capture_resident_with_text_shape(owner, window, index, true, Some(page_view_height), cx).await
+    capture_resident_with_text_shape(owner, window, index, true, true, cx).await
 }
 
 async fn capture_resident_with_text_shape(
@@ -75,7 +84,7 @@ async fn capture_resident_with_text_shape(
     window: WindowHandle<MainWindowShellRoot>,
     index: usize,
     dirty: bool,
-    original_page_view_height: Option<gpui::Pixels>,
+    original_complete_page: bool,
     cx: &mut AsyncApp,
 ) -> ResidentSnapshot {
     let resident = composer(window, cx).await;
@@ -111,45 +120,71 @@ async fn capture_resident_with_text_shape(
                 .await;
         }
     }
-    if let Some(page_view_height) = original_page_view_height {
+    if original_complete_page {
         let layout = input
             .read_with(cx, |input, _| input.resident_layout_snapshot())
             .unwrap();
-        let lines =
-            (f32::from(page_view_height) / f32::from(layout.layout.line_height)).ceil() as usize;
-        let line = format!("p{index}");
-        assert!(lines > 0);
-        assert!(lines <= layout.layout.limits.segment_bytes / (line.len() + 1));
-        text = std::iter::repeat(line.as_str())
-            .take(lines)
-            .collect::<Vec<_>>()
-            .join("\n");
+        text = format!("p{index}\np{index}");
+        assert!(text.len() <= layout.layout.limits.segment_bytes);
     }
     if dirty {
-        let initial_bytes = resident
+        let (initial_identity, initial_bytes) = resident
             .read_with(cx, |resident, _| {
-                resident
-                    .selection_identity()
-                    .binding()
-                    .logical_extent()
-                    .logical_utf8_bytes()
-            })
-            .unwrap();
-        window
-            .update(cx, |_, window, app| {
-                input.update(app, |input, _| input.focus(window));
-            })
-            .unwrap();
-        cx.background_executor()
-            .timer(Duration::from_millis(10))
-            .await;
-        window
-            .update(cx, |_, window, app| {
-                window.dispatch_action(Box::new(gpui_text_input::SelectAll), app);
+                let identity = resident.selection_identity();
+                (
+                    identity,
+                    identity.binding().logical_extent().logical_utf8_bytes(),
+                )
             })
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
+        let frame_observed = Rc::new(std::cell::Cell::new(false));
+        window
+            .update(cx, |_, window, app| {
+                input.update(app, |input, _| input.focus(window));
+                let frame_observed = frame_observed.clone();
+                window.on_next_frame(move |window, _| {
+                    window.on_next_frame(move |_, _| frame_observed.set(true));
+                });
+            })
+            .unwrap();
+        let same_owner = |root: &MainWindowShellRoot, app: &gpui::App| {
+            let mounted = root
+                .controller()
+                .and_then(|controller| controller.composer_mount())
+                .and_then(|mount| mount.read(app).contribution());
+            if mounted.as_ref().map(|composer| composer.entity_id()) != Some(resident.entity_id()) {
+                return false;
+            }
+            let resident = resident.read(app);
+            resident.gpui_input().entity_id() == input.entity_id()
+                && resident.selection_identity() == initial_identity
+        };
+        let mut select_all_dispatched = false;
         loop {
+            if frame_observed.get() && !select_all_dispatched {
+                select_all_dispatched = window
+                    .update(cx, |root, window, app| {
+                        if !same_owner(root, app) {
+                            return false;
+                        }
+                        let resident = resident.read(app);
+                        let input = input.read(app);
+                        if !input.is_enabled()
+                            || !input.is_quiescent()
+                            || !input.is_surface_current_and_interactive()
+                            || !resident.test_edit_position_proof_ready(app)
+                            || resident.test_has_active_flight()
+                            || resident.test_has_pending_realizer()
+                            || !gpui::Focusable::focus_handle(input, app).is_focused(window)
+                        {
+                            return false;
+                        }
+                        window.dispatch_action(Box::new(gpui_text_input::SelectAll), app);
+                        true
+                    })
+                    .unwrap();
+            }
             let selected = cx
                 .update(|app| {
                     let resident = resident.read(app);
@@ -170,6 +205,11 @@ async fn capture_resident_with_text_shape(
                             })
                 })
                 .unwrap();
+            let selected = select_all_dispatched
+                && selected
+                && window
+                    .read_with(cx, |root, app| same_owner(root, app))
+                    .unwrap();
             if selected {
                 break;
             }
@@ -247,7 +287,7 @@ async fn capture_resident_with_text_shape(
         }
         assert_eq!(copy_all(window, &resident, cx).await, text);
     }
-    if let Some(page_view_height) = original_page_view_height {
+    if original_complete_page {
         window
             .update(cx, |_, _, app| {
                 input.update(app, |input, cx| {
@@ -266,8 +306,6 @@ async fn capture_resident_with_text_shape(
                         && input.is_surface_current_and_interactive()
                         && !resident.test_has_active_flight()
                         && !resident.test_has_pending_realizer()
-                        && input.resident_layout_snapshot().viewport_extent == page_view_height
-                        && input.surface().unwrap().content_height() >= page_view_height
                         && input.surface().unwrap().pages().iter().any(|page| {
                             page.range().start().get() == 0
                                 && page.range().end().get() == text.len() as u64
@@ -309,9 +347,23 @@ async fn capture_resident_with_text_shape(
             capture_resident_pages(input, identity.binding().range_binding(), &text, dirty)
         })
         .unwrap();
-    if original_page_view_height.is_some() {
+    let original_page_layout = if original_complete_page {
         assert_eq!(pages, vec![(0, text.len() as u64, text.clone(), true)]);
-    }
+        Some(
+            input
+                .read_with(cx, |input, _| {
+                    let layout = input.resident_layout_snapshot();
+                    (
+                        layout.viewport_extent,
+                        layout.layout.wrap_width,
+                        layout.layout.line_height,
+                    )
+                })
+                .unwrap(),
+        )
+    } else {
+        None
+    };
     if dirty {
         assert_candidate_saved(
             owner,
@@ -337,6 +389,7 @@ async fn capture_resident_with_text_shape(
         history,
         text,
         pages,
+        original_page_layout,
         dirty,
         focus,
         lineage_focus: None,
@@ -380,6 +433,17 @@ async fn verify_preserved_resident(
             assert!(input.is_quiescent());
             assert!(input.is_surface_current_and_interactive());
             assert_eq!(input.surface().unwrap().selection(), before.selection);
+            if let Some(original_layout) = before.original_page_layout {
+                let layout = input.resident_layout_snapshot();
+                assert_eq!(
+                    (
+                        layout.viewport_extent,
+                        layout.layout.wrap_width,
+                        layout.layout.line_height,
+                    ),
+                    original_layout,
+                );
+            }
             resident.selection_identity()
         })
         .unwrap();
@@ -480,8 +544,8 @@ fn capture_resident_pages(
 ) -> Vec<(u64, u64, String, bool)> {
     let surface = input.surface().unwrap();
     assert!(
-        !surface.pages().is_empty(),
-        "original resident has no Page custody"
+        !surface.pages().is_empty() || binding.extent().byte_len() == 0,
+        "nonempty original resident has no Page custody"
     );
     surface
         .pages()

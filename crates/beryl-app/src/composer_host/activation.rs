@@ -11,6 +11,12 @@ use super::*;
 pub(super) mod access;
 use access::InitialActivationAccess;
 
+enum ActivationAdmission {
+    CallerFenced,
+    #[cfg(feature = "test-faults")]
+    Current,
+}
+
 impl SyndicComposerHost {
     pub(crate) fn validate_initial_request(
         request: &ComposerHostActivationRequest,
@@ -28,7 +34,29 @@ impl SyndicComposerHost {
         request: ComposerHostActivationRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
-        self.activate_with_open_custody(store, request, cancellation, false)
+        self.activate_with_open_custody(
+            store,
+            request,
+            cancellation,
+            false,
+            ActivationAdmission::CallerFenced,
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_activate_with_current_admission(
+        &mut self,
+        store: &HomeStore,
+        request: ComposerHostActivationRequest,
+        cancellation: &CommandCancellation,
+    ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
+        self.activate_with_open_custody(
+            store,
+            request,
+            cancellation,
+            false,
+            ActivationAdmission::Current,
+        )
     }
 
     pub(crate) fn activate_unpublished(
@@ -37,7 +65,13 @@ impl SyndicComposerHost {
         request: ComposerHostActivationRequest,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
-        self.activate_with_open_custody(store, request, cancellation, true)
+        self.activate_with_open_custody(
+            store,
+            request,
+            cancellation,
+            true,
+            ActivationAdmission::CallerFenced,
+        )
     }
 
     fn activate_with_open_custody(
@@ -46,6 +80,7 @@ impl SyndicComposerHost {
         request: ComposerHostActivationRequest,
         cancellation: &CommandCancellation,
         retain_open_on_terminal: bool,
+        admission: ActivationAdmission,
     ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
         if self.lifecycle.is_service_disposed() {
             return Err(ComposerHostError::PublicationUnavailable);
@@ -95,13 +130,36 @@ impl SyndicComposerHost {
         if cancellation.is_cancelled() {
             return Ok(ComposerHostActivationOutcome::Cancelled);
         }
-        let mut command =
-            HomeCommand::new(store.home_revision()?).with_cancellation(cancellation.clone());
-        command.add(self.storage.open_draft_editor_candidate_session(
-            self.storage.revision(store)?,
-            prepared.clone(),
-        ))?;
-        let command_outcome = store.execute(command);
+        let command_outcome = match admission {
+            ActivationAdmission::CallerFenced => {
+                let mut command = HomeCommand::new(store.home_revision()?)
+                    .with_cancellation(cancellation.clone());
+                command.add(self.storage.open_draft_editor_candidate_session(
+                    self.storage.revision(store)?,
+                    prepared.clone(),
+                ))?;
+                #[cfg(feature = "test-faults")]
+                if let Some(fault) = self.activation_before_execute_fault.take() {
+                    fault(store, self.storage.clone());
+                }
+                store.execute(command)
+            }
+            #[cfg(feature = "test-faults")]
+            ActivationAdmission::Current => {
+                let command = self
+                    .storage
+                    .current_open_draft_editor_candidate_session(prepared.clone())
+                    .with_cancellation(cancellation.clone());
+                if let Some(fault) = self.activation_before_execute_fault.take() {
+                    fault(store, self.storage.clone());
+                }
+                store.execute_current(command)
+            }
+        };
+        #[cfg(feature = "test-faults")]
+        if let Some(fault) = self.activation_after_execute_fault.take() {
+            fault(store, &command_outcome);
+        }
         if matches!(
             &command_outcome,
             CommandOutcome::NotCommitted {
@@ -262,6 +320,12 @@ impl SyndicComposerHost {
             }
         }
         let mut initial_responses = Vec::with_capacity(request.first_demands().len());
+        #[cfg(test)]
+        crate::bootstrap::test_support::checkpoint(
+            crate::bootstrap::test_support::Producer::DraftActivation,
+            *request.thread_id().as_bytes(),
+            || cancellation.is_cancelled(),
+        );
         for demand in request.first_demands() {
             if cancellation.is_cancelled() {
                 if !retain_open_on_terminal {

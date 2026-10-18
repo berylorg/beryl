@@ -1,6 +1,10 @@
 use super::*;
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn panel_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
+        self.recovery_config.panel_minimum_size()
+    }
+
     pub(in crate::main_window) fn recovery_binding_current(
         &self,
         close: crate::main_window::MainWindowConversationComposerCloseTicket,
@@ -14,8 +18,8 @@ impl MainWindowConversationComposer {
             && close.matches_editor(self.selection)
     }
 
-    pub(in crate::main_window) fn appearance_applicable(&self) -> bool {
-        matches!(
+    pub(in crate::main_window) fn appearance_applicable(&self, app: &gpui::App) -> bool {
+        let applicable = matches!(
             self.phase,
             MainWindowConversationComposerPhase::Live
                 | MainWindowConversationComposerPhase::Detached
@@ -23,9 +27,30 @@ impl MainWindowConversationComposer {
         ) || (matches!(
             self.phase,
             MainWindowConversationComposerPhase::RecoveryFenced
-        ) && self.recovery_snapshot.is_none()
-            && self.service.is_some()
-            && self.window_close.is_some())
+        ) && self
+            .window_close
+            .is_some_and(|close| self.recovery_binding_current(close)));
+        applicable
+            && self
+                .unpublished_recovery_protection
+                .is_none_or(|(close, protection)| {
+                    self.recovery_binding_current(close)
+                        && protection.seed().binding == self.selection.binding().range_binding()
+                        && self
+                            .input
+                            .read(app)
+                            .resident_protection_is_current(protection)
+                })
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(in crate::main_window) fn test_unpublished_recovery_protection(
+        &self,
+    ) -> Option<(
+        crate::main_window::MainWindowConversationComposerCloseTicket,
+        gpui_text_input::RangeResidentProtection,
+    )> {
+        self.unpublished_recovery_protection
     }
 
     pub(in crate::main_window) fn apply_appearance(
@@ -59,6 +84,16 @@ impl MainWindowConversationComposer {
 
     pub fn gpui_input(&self) -> Entity<RangeTextInput> {
         self.input.clone()
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(crate) fn test_startup_home_reference(
+        &self,
+    ) -> Arc<beryl_home_store::HomeServiceReference> {
+        self.service
+            .as_ref()
+            .expect("selected startup service")
+            .test_retain_home_reference()
     }
 
     pub const fn selection_identity(&self) -> MainWindowComposerSelectionIdentity {
@@ -157,12 +192,25 @@ impl MainWindowConversationComposer {
 
     #[cfg(feature = "test-faults")]
     pub fn test_has_pending_render_child(&self, cx: &App) -> bool {
-        self.pending_realizer.as_ref().is_some_and(|realizer| {
-            realizer.lifetime.upgrade().is_some()
-                && realizer.composer.upgrade().is_some_and(|composer| {
-                    composer.read(cx).matches_pending_target(realizer.receipt)
-                })
-        })
+        self.pending_realizer
+            .as_ref()
+            .is_some_and(|realizer| self.pending_realizer(realizer.receipt, cx).is_some())
+    }
+
+    pub(in crate::main_window) fn pending_realizer(
+        &self,
+        receipt: MainWindowComposerActivationReceipt,
+        cx: &App,
+    ) -> Option<Entity<Self>> {
+        let pending = self.pending_realizer.as_ref()?;
+        if pending.receipt != receipt {
+            return None;
+        }
+        pending.lifetime.upgrade()?;
+        pending
+            .composer
+            .upgrade()
+            .filter(|composer| composer.read(cx).matches_pending_target(receipt))
     }
 
     pub(in crate::main_window) const fn residency_bound(&self) -> MainWindowComposerResidencyBound {
@@ -286,7 +334,7 @@ impl MainWindowConversationComposer {
         self.input.update(cx, |input, input_cx| {
             input.set_enabled(!self.startup_interaction_gated, input_cx);
         });
-        self.install_interactive_subscription(window, cx);
+        self.install_input_event_subscription(window, cx);
         self.schedule_pump(window, cx);
         Ok(())
     }

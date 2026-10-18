@@ -73,11 +73,12 @@ fn native_code_panel_mounts_bounded_lines_and_routes_selected_wheel_to_inner_vie
                             let IndexedResourceValue::Range(range) = &response.value else {
                                 return None;
                             };
-                            (!range.items.is_empty()).then_some((
-                                facts,
-                                range.items.len(),
-                                response.root.as_ref().unwrap().code_lines,
-                            ))
+                            (!range.items.is_empty() && panel.painted_glyphs_for_test() > 50)
+                                .then_some((
+                                    facts,
+                                    range.items.len(),
+                                    response.root.as_ref().unwrap().code_lines,
+                                ))
                         })
                         .unwrap();
                     if mounted.is_some() {

@@ -24,6 +24,8 @@ fn native_lineage_parent_open_elsewhere_is_represented_and_never_reveals_other_w
                     .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(20);
                 loop {
+                    native_code::draw(other, cx);
+                    native_code::draw(invoking, cx);
                     if invoking
                         .update(cx, |root, window, app| {
                             let (other_claim, _) = other
@@ -161,6 +163,17 @@ fn native_lineage_parent_open_elsewhere_is_represented_and_never_reveals_other_w
                     .unwrap();
                 *qualified.borrow_mut() =
                     Some(vec![(id, lineage_fixture::child()), (other_id, parent)]);
+                native_code::wait(
+                    invoking,
+                    cx,
+                    |cx| {
+                        invoking
+                            .read_with(cx, |root, _| root.test_exit_command_enabled())
+                            .unwrap()
+                    },
+                    "original represented-parent Exit command did not become eligible",
+                )
+                .await;
                 activate_exit(invoking, cx);
             })
         },

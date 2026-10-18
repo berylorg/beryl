@@ -248,6 +248,7 @@ fn resident_run(scenario: ResidentScenario) {
                                 ).unwrap());
                             }).unwrap();
                         let layout = cx.update(|app| composer.read(app).gpui_input().read(app).resident_layout_snapshot()).unwrap();
+                        let configurator_layout = layout.clone();
                         let admit = |app: &mut gpui::App| {
                                 let key = RunningProcessOwner::prepare_interrupted_exit_resident(
                                     &owner,
@@ -264,7 +265,7 @@ fn resident_run(scenario: ResidentScenario) {
                                             let (environment, mut capacity) =
                                                 resident_fixture::environment_with_layout(
                                                     seed, selection, window,
-                                                    (scenario == ResidentScenario::DrivenAppearanceRefusal).then_some(&layout),
+                                                    matches!(scenario, ResidentScenario::DrivenAttachment | ResidentScenario::DrivenAppearanceRefusal).then_some(&layout),
                                                 )?;
                                             if scenario == ResidentScenario::Capacity {
                                                 capacity.bytes = 0;
@@ -453,7 +454,7 @@ fn resident_run(scenario: ResidentScenario) {
                             }).unwrap();
                             let attached = attachment_driver::attempt(
                                 &owner, &request, &key, window, &appearance, &previous_appearance, &composer, &mount, &drafts,
-                                close, &mut adapters, current.borrow().unwrap(), scenario, cx,
+                                close, &mut adapters, current.borrow().unwrap(), configurator_layout, scenario, cx,
                             ).await;
                             owner.borrow_mut().test_process_mut().windows.test_swap_recovery_shell(&mut shell);
                             attached

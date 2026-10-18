@@ -23,6 +23,14 @@ pub(super) struct NativeFixture {
 }
 
 pub(super) fn fixture(kind: Kind, seed: u8) -> NativeFixture {
+    fixture_with_editor_metrics(kind, seed, None)
+}
+
+pub(super) fn fixture_with_editor_metrics(
+    kind: Kind,
+    seed: u8,
+    line_height: Option<f32>,
+) -> NativeFixture {
     let fixture = match kind {
         Kind::Threadless => zero_runtime(None),
         Kind::Restored | Kind::Replacement => Fixture::new(seed),
@@ -36,7 +44,20 @@ pub(super) fn fixture(kind: Kind, seed: u8) -> NativeFixture {
         drop(acquired);
         fixture.remove_session_window(window);
     }
-    let (services, _) = creation_support::services(&fixture);
+    let (mut services, _) = creation_support::services(&fixture);
+    if let Some(line_height) = line_height {
+        Arc::get_mut(&mut services).unwrap().configurator_source = Arc::new(move || {
+            Box::new(move |selection: MainWindowComposerSelectionIdentity| {
+                let mut widget = composer_support::widget_config(
+                    selection.binding().range_binding(),
+                    selection.binding().presentation_generation(),
+                );
+                widget.layout.line_height = gpui::px(line_height);
+                MainWindowConversationComposerConfig::new(selection, widget)
+                    .map_err(|error| error.to_string())
+            })
+        });
+    }
     let appearance = AppearanceCoordinator::new(
         AppearanceCoordinatorConfig::new(NonZeroUsize::new(256).unwrap()),
         flight::system_font_appearance(&fixture.state),

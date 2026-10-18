@@ -5,6 +5,9 @@ mod code_copy_selection;
 use crate::syndic_transcript::SyndicTranscriptPanel;
 use gpui::{AsyncApp, Entity, PlatformInput, point, px};
 
+#[path = "../../../../support/native_window_geometry.rs"]
+pub(super) mod native_geometry;
+
 const LONG_LINE_BYTES: u64 = 100_000;
 const BODY_START: u64 = "```text\n".len() as u64;
 
@@ -192,6 +195,7 @@ fn native_code_layout_traverses_saved_hundred_kilobyte_line_with_bounded_canonic
                                 assert_ne!(code.layout_state, "refused");
                                 code.layout_state == "ready"
                                     && code.complete_inline_extent.is_some()
+                                    && panel.painted_glyphs_for_test() > 50
                             })
                             .unwrap()
                     },
@@ -274,7 +278,7 @@ pub(super) async fn wait_until(
     ready: impl FnMut(&mut AsyncApp) -> bool,
     message: &str,
 ) {
-    wait_until_with_visibility(window, cx, ready, message, true).await;
+    wait_until_with_visibility(window, cx, ready, message, false).await;
 }
 
 pub(super) async fn wait_until_unminimized(
@@ -294,6 +298,9 @@ pub(super) async fn wait_until_with_visibility(
     minimize: bool,
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
+    if !minimize {
+        native_geometry::restore(window, cx);
+    }
     loop {
         with_native(window, cx, |native, app| {
             native.draw_and_present_for_test(app);

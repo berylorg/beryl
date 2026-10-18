@@ -155,6 +155,7 @@ struct ResourceQueuePosition {
 }
 
 pub(crate) struct SyndicTranscriptPanel {
+    initial_history_loading: bool,
     dimmed_records: std::collections::HashSet<ResidentPresentationRecordId>,
     keyboard_copy: copy_keyboard::KeyboardCopy,
     focus_handle: FocusHandle,
@@ -212,8 +213,54 @@ impl gpui::EventEmitter<HistoricalReplacementRequested> for SyndicTranscriptPane
 impl gpui::EventEmitter<ImageMarkerInspectionRequested> for SyndicTranscriptPanel {}
 
 impl SyndicTranscriptPanel {
+    pub(crate) fn set_initial_history_loading(
+        &mut self,
+        loading: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.initial_history_loading == loading {
+            return;
+        }
+        self.initial_history_loading = loading;
+        if loading {
+            self.narrative_dragging = false;
+            self.close_quote_menu(window);
+            self.invalidate_transcript_menu();
+            self.reset_keyboard_copy();
+            self.supersede_resource_copies();
+        }
+        cx.notify();
+    }
+
+    pub(super) fn interaction_gated(&self) -> bool {
+        self.initial_history_loading || self.captured_discussion_interaction_gated()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn initial_history_loading_for_test(&self) -> bool {
+        self.initial_history_loading
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_loading_menu_for_test(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_quote_menu(None, window, cx);
+        let event = gpui::KeyDownEvent {
+            keystroke: gpui::Keystroke::parse("ctrl-c").unwrap(),
+            is_held: false,
+        };
+        self.copy_records_key(&event, window, cx);
+        assert!(!self.quote_menu_open_for_test());
+        assert!(self.keyboard_copy.gesture.first_for_test().is_none());
+    }
+
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            initial_history_loading: false,
             dimmed_records: Default::default(),
             keyboard_copy: Default::default(),
             narrative_appearance: Default::default(),
@@ -1593,7 +1640,7 @@ impl SyndicTranscriptPanel {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|panel, event: &gpui::MouseDownEvent, window, cx| {
-                    if panel.captured_discussion_interaction_gated() {
+                    if panel.interaction_gated() {
                         cx.stop_propagation();
                         return;
                     }
@@ -1608,7 +1655,10 @@ impl SyndicTranscriptPanel {
             )
             .on_mouse_move(
                 cx.listener(|panel, event: &gpui::MouseMoveEvent, window, cx| {
-                    if panel.narrative_dragging && event.pressed_button == Some(MouseButton::Left) {
+                    if !panel.interaction_gated()
+                        && panel.narrative_dragging
+                        && event.pressed_button == Some(MouseButton::Left)
+                    {
                         panel.narrative_pointer(event.position, true, window, cx);
                     }
                 }),
@@ -1633,7 +1683,7 @@ impl SyndicTranscriptPanel {
             )
             .on_scroll_wheel(
                 cx.listener(|panel, event: &gpui::ScrollWheelEvent, window, cx| {
-                    if panel.captured_discussion_interaction_gated() {
+                    if panel.interaction_gated() {
                         cx.stop_propagation();
                         return;
                     }
@@ -1644,6 +1694,10 @@ impl SyndicTranscriptPanel {
             )
             .on_key_down(
                 cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
+                    if panel.initial_history_loading {
+                        cx.stop_propagation();
+                        return;
+                    }
                     if copy_keyboard::is_copy(event) {
                         panel.copy_records_key(event, window, cx);
                         cx.stop_propagation();
@@ -1698,7 +1752,7 @@ impl SyndicTranscriptPanel {
                     .as_ref()
                     .and_then(|selection| self.narrative_ranges(selection))
                     .unwrap_or_default(),
-                self.staged.is_some() || self.captured_discussion_interaction_gated(),
+                self.staged.is_some() || self.interaction_gated(),
                 cx,
             ))
             .children(self.captured_discussion_interaction_gated().then(|| {

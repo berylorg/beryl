@@ -30,6 +30,8 @@ mod lineage_entry;
 mod lineage_fixture;
 #[path = "claim_activation/marker_origin.rs"]
 mod marker_origin;
+#[path = "claim_activation/minimum.rs"]
+mod minimum;
 #[path = "../../../support/native_transcript_code.rs"]
 mod native_code;
 #[path = "claim_activation/navigation_entry.rs"]
@@ -122,11 +124,41 @@ fn run_control(cut: Cut, control: control::Control) {
         final_selection,
         move |owner, faults, cx| {
             Box::pin(async move {
-                let (window, window_id, claim) =
-                    scenario::recover(owner, faults, cut, control, SaveExpectation::Dirty, cx)
-                        .await;
+                let (window, window_id, claim) = scenario::recover(
+                    owner.clone(),
+                    faults,
+                    cut,
+                    control,
+                    SaveExpectation::Dirty,
+                    cx,
+                )
+                .await;
                 *qualified_selection.borrow_mut() = Some((window_id, claim.thread_id()));
-                activate_exit(window, cx);
+                native_code::wait(
+                    window,
+                    cx,
+                    |cx| {
+                        window
+                            .update(cx, |root, _, _| {
+                                assert_eq!(
+                                    root.controller().map(|controller| controller.window_id()),
+                                    Some(window_id),
+                                );
+                                if !root.test_exit_command_enabled() {
+                                    return false;
+                                }
+                                root.test_activate_exit_command();
+                                assert!(
+                                    owner.borrow().exit_requested(),
+                                    "original eligible Exit did not synchronously admit its request"
+                                );
+                                true
+                            })
+                            .unwrap()
+                    },
+                    "original recovered Exit command did not become eligible",
+                )
+                .await;
             })
         },
         true,

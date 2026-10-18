@@ -98,6 +98,10 @@ pub(super) struct ThreadSwitcherContribution {
     fixture_reader: Option<PublishedCatalogQueryReader>,
 }
 impl ThreadSwitcherContribution {
+    pub(super) fn catalog_ready(&self) -> bool {
+        self.reader.as_ref().is_some_and(|reader| reader.is_ready())
+    }
+
     pub(super) fn new(cx: &mut Context<MainWindowShellRoot>) -> Self {
         Self {
             picker: None,

@@ -50,6 +50,7 @@ pub(in crate::main_window) fn render(
         .track_focus(focus)
         .tab_stop(enabled)
         .h(px(32.))
+        .w(root.controller().unwrap().metrics.new_window_width)
         .px(px(12.))
         .py(px(6.))
         .flex()

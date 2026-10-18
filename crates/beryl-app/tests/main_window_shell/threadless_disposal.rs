@@ -16,27 +16,21 @@ use flight::{Case, native};
 
 #[test]
 fn native_threadless_startup_disposal_joins_destruction_before_reservation_release() {
-    let fixtures = support::worker(|| {
-        (0..3)
-            .map(|case| {
-                let mut fixture = Fixture::with_placement(210 + case, placement());
-                fixture.coordinator = Some(AppearanceCoordinator::new(
-                    AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-                    flight::system_font_appearance(&fixture.state),
-                ));
-                let prepared = fixture.prepare().unwrap();
-                let geometry = beryl_app::main_window::prepare_windows_window_placement(
-                    prepared.window_id(),
-                    prepared.placement().clone(),
-                )
-                .unwrap();
-                let before = fixture.store.home_revision().unwrap();
-                (case, fixture, prepared, geometry, before)
-            })
-            .collect::<Vec<_>>()
-    })
-    .join()
-    .unwrap();
+    let prepare = |case: u8| {
+        let mut fixture = Fixture::with_placement(210 + case, placement());
+        fixture.coordinator = Some(AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        ));
+        let prepared = fixture.prepare().unwrap();
+        let geometry = beryl_app::main_window::prepare_windows_window_placement(
+            prepared.window_id(),
+            prepared.placement().clone(),
+        )
+        .unwrap();
+        let before = fixture.store.home_revision().unwrap();
+        (case, fixture, prepared, geometry, before)
+    };
     let completed = Arc::new(AtomicBool::new(false));
     let result = completed.clone();
     let watched = Rc::new(RefCell::new(
@@ -60,7 +54,13 @@ fn native_threadless_startup_disposal_joins_destruction_before_reservation_relea
             Application::new().run(move |app| {
                 let (control, _) = native::open(app, "threadless-disposal-control");
                 app.spawn(async move |cx| {
-                    for (case, mut fixture, prepared, geometry, before) in fixtures {
+                    for case in 0..3 {
+                        let preparation = support::worker(move || prepare(case));
+                        while !preparation.is_finished() {
+                            native::pump(cx).await;
+                        }
+                        let (case, mut fixture, prepared, geometry, before) =
+                            preparation.join().unwrap();
                         let mut shell = cx
                             .update(|app| {
                                 let owner = GpuiAppearanceWindowSet::new(
@@ -212,6 +212,7 @@ fn native_threadless_startup_disposal_joins_destruction_before_reservation_relea
                                 assert_eq!(saved.windows().len(), 1);
                                 assert_eq!(saved.windows()[0].window_id(), fixture.window);
                                 assert!(saved.windows()[0].selected_thread().is_none());
+                                fixture.close();
                             })
                             .await;
                     }

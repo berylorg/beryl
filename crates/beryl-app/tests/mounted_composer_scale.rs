@@ -70,12 +70,12 @@ impl Render for MountRoot {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>,
+        _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
         div()
             .w(px(MOUNT_INLINE_EXTENT))
             .h(px(MOUNT_BLOCK_EXTENT))
-            .children(self.mount.read(cx).contribution())
+            .child(self.mount.clone())
     }
 }
 

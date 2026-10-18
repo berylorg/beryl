@@ -2,7 +2,34 @@ use std::thread;
 
 use super::*;
 
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../tests/unit/runtime_preparation_permission.rs"]
+mod preparation_permission_tests;
+
 impl RuntimeInterestOwner {
+    pub(in crate::cas_projection) fn gui_submission_ready(
+        &self,
+        binding: &ExecutionBinding,
+    ) -> bool {
+        let Ok(state) = self.shared.state.try_lock() else {
+            return false;
+        };
+        !state.closed
+            && self.shared.commands.try_is_open()
+            && state
+                .runtimes
+                .get(&binding.runtime_id())
+                .is_some_and(|entry| {
+                    entry.spec.runtime_mode() == binding.root_path().mode()
+                        && entry.connector.is_some()
+                        && entry
+                            .interests
+                            .values()
+                            .any(|interest| &interest.binding == binding)
+                        && matches!(entry.status, RuntimeInterestStatus::Ready(_))
+                })
+    }
+
     pub(in crate::cas_projection) fn initial_submission_preparation_open(
         &self,
         binding: &ExecutionBinding,
@@ -17,10 +44,14 @@ impl RuntimeInterestOwner {
                 .get(&binding.runtime_id())
                 .is_none_or(|entry| {
                     entry.spec.runtime_mode() == binding.root_path().mode()
-                        && matches!(
+                        && (matches!(
                             entry.status,
                             RuntimeInterestStatus::Starting | RuntimeInterestStatus::Ready(_)
-                        )
+                        ) || (entry.status == RuntimeInterestStatus::Retired
+                            && entry.cleanup_complete
+                            && entry.interests.is_empty()
+                            && entry.failed_runtime.is_none()
+                            && entry.failed_acquisition.is_none()))
                 })
     }
 
@@ -96,6 +127,7 @@ impl RuntimeInterestOwner {
                     closed: false,
                     next_identity: 1,
                     interest_count: 0,
+                    view_interest_count: 0,
                     runtimes: HashMap::new(),
                     interest_capacity_waiter: false,
                     runtime_capacity_waiter: false,
@@ -199,8 +231,17 @@ impl RuntimeInterestOwner {
             if entry.worker.is_some() || !entry.cleanup_complete {
                 return Err(RuntimeInterestError::Retiring);
             }
-            if state.interest_count - entry.interests.len()
-                >= self.shared.config.interest_capacity.get()
+            let replaced_charge = if kind == RuntimeInterestKind::RequiredWork {
+                entry
+                    .interests
+                    .values()
+                    .filter(|interest| interest.kind == kind)
+                    .count()
+            } else {
+                0
+            };
+            if state.charged_interests(kind) - replaced_charge
+                >= self.shared.config.interest_limit(kind)
             {
                 state.interest_capacity_waiter |= wake_on_release;
                 return Err(RuntimeInterestError::InterestCapacity);
@@ -219,7 +260,7 @@ impl RuntimeInterestOwner {
             }
             None
         };
-        if state.interest_count == self.shared.config.interest_capacity.get() {
+        if state.charged_interests(kind) >= self.shared.config.interest_limit(kind) {
             state.interest_capacity_waiter |= wake_on_release;
             return Err(RuntimeInterestError::InterestCapacity);
         }
@@ -246,6 +287,9 @@ impl RuntimeInterestOwner {
                 .map_err(|_| RuntimeInterestError::Closed)?;
             state.next_identity = next;
             state.interest_count += 1;
+            if kind == RuntimeInterestKind::View {
+                state.view_interest_count += 1;
+            }
             return Ok(RuntimeInterest {
                 shared: Arc::clone(&self.shared),
                 runtime_id,
@@ -294,6 +338,9 @@ impl RuntimeInterestOwner {
                     },
                 );
                 state.interest_count += 1;
+                if kind == RuntimeInterestKind::View {
+                    state.view_interest_count += 1;
+                }
                 state.next_identity = next;
             })
             .map_err(|_| RuntimeInterestError::Closed)?;
@@ -302,6 +349,9 @@ impl RuntimeInterestOwner {
             Err(error) => {
                 state.runtimes.remove(&runtime_id);
                 state.interest_count -= 1;
+                if kind == RuntimeInterestKind::View {
+                    state.view_interest_count -= 1;
+                }
                 if let Some(previous) = previous.take() {
                     state.interest_count += previous.interests.len();
                     state.runtimes.insert(runtime_id, previous);
@@ -319,6 +369,9 @@ impl RuntimeInterestOwner {
             Err(_) => {
                 state.runtimes.remove(&runtime_id);
                 state.interest_count -= 1;
+                if kind == RuntimeInterestKind::View {
+                    state.view_interest_count -= 1;
+                }
                 if let Some(previous) = previous.take() {
                     state.interest_count += previous.interests.len();
                     state.runtimes.insert(runtime_id, previous);

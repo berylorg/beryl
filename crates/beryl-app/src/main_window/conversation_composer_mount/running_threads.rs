@@ -9,12 +9,6 @@ impl MainWindowConversationComposerMount {
         &self,
         cx: &App,
     ) -> Option<gpui::Pixels> {
-        if let Some(layout) = self
-            .contribution()
-            .and_then(|selected| selected.read(cx).protected_resident_layout(cx))
-        {
-            return Some(layout.viewport_extent);
-        }
         let pending = self.pending_presentation.as_ref().filter(|pending| {
             pending
                 .contribution
@@ -23,13 +17,16 @@ impl MainWindowConversationComposerMount {
         });
         pending
             .and_then(|pending| {
-                pending
-                    .contribution
-                    .read(cx)
-                    .gpui_input()
-                    .read(cx)
+                let input = pending.contribution.read(cx).gpui_input();
+                let input = input.read(cx);
+                input
                     .surface()
-                    .map(|surface| surface.content_height())
+                    .map(|_| input.resident_layout_snapshot().viewport_extent)
+            })
+            .or_else(|| {
+                self.contribution()
+                    .and_then(|selected| selected.read(cx).protected_resident_layout(cx))
+                    .map(|layout| layout.viewport_extent)
             })
             .or_else(|| {
                 self.contribution().and_then(|selected| {

@@ -93,7 +93,17 @@ impl GpuiMainWindowShellHost<'_> {
                 prepared,
             });
         }
-        let minimum_size = gpui::size(px(160.), px(64.));
+        let metrics = match sizing::ShellMetrics::resolve(
+            &prepared.appearance.generation,
+            gpui::size(px(0.), px(0.)),
+            false,
+            true,
+            self.app,
+        ) {
+            Ok(metrics) => metrics,
+            Err(error) => return Err(ThreadlessShellBeforeFailure { error, prepared }),
+        };
+        let minimum_size = metrics.minimum();
         let mut options = WindowOptions {
             show: false,
             focus: false,
@@ -117,6 +127,7 @@ impl GpuiMainWindowShellHost<'_> {
             },
             appearance: prepared.appearance,
             minimum_size,
+            metrics,
             composer_mount: None,
         })));
         let root_pending = pending.clone();

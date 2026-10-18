@@ -71,6 +71,7 @@ fn converge_items(
             .unwrap()
             .unwrap();
         if item.provider_lifecycle() != syndic_storage::ProviderItemLifecycle::Completed {
+            project_item_if_needed(store, storage, item.id());
             return;
         }
         if let Some(content) = item.provider_content() {

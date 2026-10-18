@@ -1,6 +1,7 @@
 use std::sync::Weak;
 
 mod runtime_retry;
+mod runtime_warmup;
 
 use super::*;
 use crate::{
@@ -50,7 +51,8 @@ impl PublishedExactStopWorker {
         }
         let proof = self
             .worker
-            .selected_submission_proof(selection.claim().thread_id())?;
+            .selected_submission_proof(selection.claim().thread_id())?
+            .requiring_gui_readiness()?;
         let session = self.session.as_ref().ok_or(Denial::AuthorityUnavailable)?;
         let claim = session
             .thread_claim_catalog_source(store, selection.claim().thread_id())
@@ -106,6 +108,7 @@ impl PublishedExactStopWorker {
         let result = self
             .worker
             .selected_submission_proof(selection.claim().thread_id())
+            .and_then(|proof| proof.requiring_gui_readiness())
             .map(|proof| proof.with_publication(self.lifetime.clone()));
         if self.selection_current(selection) {
             result

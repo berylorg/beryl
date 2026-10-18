@@ -5,6 +5,22 @@ use beryl_home_store::{CommandOutcome, HomeCommand};
 mod shell_preparation;
 pub use shell_preparation::{prepared_shell, prepared_shell_with_appearance};
 
+pub fn record_home(path: &std::path::Path) {
+    if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
+        let ledger = std::path::PathBuf::from(ledger);
+        assert!(
+            ledger.is_absolute(),
+            "native fixture ledger must be absolute"
+        );
+        let mut ledger = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(ledger)
+            .unwrap();
+        std::io::Write::write_all(&mut ledger, format!("{}\n", path.display()).as_bytes()).unwrap();
+    }
+}
+
 pub struct Fixture {
     pub directory: tempfile::TempDir,
     pub store: Arc<HomeStore>,
@@ -19,6 +35,7 @@ pub struct Fixture {
 impl Fixture {
     pub fn new(seed: u8) -> Self {
         let (directory, store, state, storage, faults) = home_support::open_home(seed);
+        record_home(directory.path());
         let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
@@ -36,6 +53,21 @@ impl Fixture {
             service,
             seed,
         }
+    }
+
+    pub fn close(self) {
+        let Self {
+            directory,
+            store,
+            state,
+            storage,
+            faults,
+            process,
+            service,
+            ..
+        } = self;
+        drop((service, state, storage, faults, process, store));
+        directory.close().unwrap();
     }
 
     pub fn execution(&self) -> ExecutionBinding {

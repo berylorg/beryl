@@ -411,6 +411,24 @@ pub fn thread_records_with_activity(
     digest: beryl_model::SyndicPathDigest,
     last_activity_at: SyndicTimestamp,
 ) -> Vec<FixtureRecord> {
+    thread_records_with_root_history(
+        thread_id,
+        draft_id,
+        tail,
+        digest,
+        last_activity_at,
+        canonical_empty_root_history_pair_for(draft_id),
+    )
+}
+
+pub fn thread_records_with_root_history(
+    thread_id: SyndicThreadId,
+    draft_id: SyndicDraftId,
+    tail: Option<beryl_model::SyndicTurnId>,
+    digest: beryl_model::SyndicPathDigest,
+    last_activity_at: SyndicTimestamp,
+    root_history: syndic_storage::DraftRootHistoryPairV1,
+) -> Vec<FixtureRecord> {
     let thread_revision = ThreadRevision::new(1).unwrap();
     let draft_revision = DraftRevision::new(1).unwrap();
     let binding_revision = BindingRevision::new(1).unwrap();
@@ -434,7 +452,7 @@ pub fn thread_records_with_activity(
         thread_id,
         draft_revision,
         DraftSubmissionIntent::Ordinary,
-        canonical_empty_root_history_pair_for(draft_id),
+        root_history,
         timestamp(1),
         timestamp(1),
     );

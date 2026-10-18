@@ -50,6 +50,11 @@ fn retained_mount_settlement_refusal_preserves_selected_tickets(cx: &mut TestApp
     run_with_settlement(cx, false, true, true);
 }
 
+#[gpui::test]
+fn stale_recovered_editor_protection_refuses_both_appearance_adapters(cx: &mut TestAppContext) {
+    run_with_appearance(cx, false, false, false, true);
+}
+
 fn drive(shell: &MainWindowShell, cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update(|app| {
@@ -69,6 +74,16 @@ fn run_with_settlement(
     refuse: bool,
     aggregate: bool,
     settle_mounts: bool,
+) {
+    run_with_appearance(cx, refuse, aggregate, settle_mounts, false);
+}
+
+fn run_with_appearance(
+    cx: &mut TestAppContext,
+    refuse: bool,
+    aggregate: bool,
+    settle_mounts: bool,
+    stale_appearance: bool,
 ) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, prepared) = home_support::join(
@@ -515,9 +530,22 @@ fn run_with_settlement(
     });
     let window = shell.window();
     let old_owner = shell.appearance_owner.clone();
+    if stale_appearance {
+        let ticket = draft.as_ref().unwrap().test_ticket();
+        verify_stale_appearance(&shell, &resident, &mount, fresh_appearance.clone(), cx);
+        assert_eq!(draft.as_ref().unwrap().test_ticket(), ticket);
+    }
     cx.update(|app| shell.release_published_handle(app))
         .unwrap_or_else(|_| panic!("published selected shell handoff"));
-    let fresh_owner = (!refuse).then(|| {
+    if stale_appearance {
+        window
+            .read_with(cx, |root, _| {
+                assert!(root.appearance_release.is_some());
+                assert!(root.shutdown_interaction_gated);
+            })
+            .unwrap();
+    }
+    let fresh_owner = (!refuse && !stale_appearance).then(|| {
         cx.update(|app| old_owner.update(app, |owner, _| owner.retire()));
         let owner = cx.update(|app| {
             GpuiAppearanceWindowSet::new(
@@ -526,8 +554,20 @@ fn run_with_settlement(
                 app,
             )
         });
+        let protected = resident.read_with(cx, |resident, app| {
+            let protected = resident.test_unpublished_recovery_protection().unwrap();
+            assert!(resident.appearance_applicable(app));
+            assert!(input.read(app).resident_protection_is_current(protected.1));
+            protected
+        });
         cx.update(|app| MainWindowShellRoot::bind_interrupted_exit_appearance(window, &owner, app))
             .unwrap();
+        resident.read_with(cx, |resident, app| {
+            let renewed = resident.test_unpublished_recovery_protection().unwrap();
+            assert_eq!(renewed.0, protected.0);
+            assert_ne!(renewed.1, protected.1);
+            assert!(input.read(app).resident_protection_is_current(renewed.1));
+        });
         if let Some(draft) = draft.as_mut() {
             use crate::theme_runtime::AppearancePublicationTarget;
             let target = cx.update(|app| owner.read(app).target());
@@ -925,4 +965,164 @@ fn run_with_settlement(
     );
     assert_eq!(process.main_window_occupancy(), 0);
     drop(directory);
+}
+
+fn verify_stale_appearance(
+    shell: &MainWindowShell,
+    resident: &gpui::Entity<MainWindowConversationComposer>,
+    mount: &gpui::Entity<MainWindowConversationComposerMount>,
+    fresh: Arc<AppearanceGeneration>,
+    cx: &mut TestAppContext,
+) {
+    use crate::theme_runtime::{
+        AdapterFailureClass, AdapterRegistrationError, AppearancePublicationTarget,
+        AppearanceWindowAdapter, WindowAdapterId,
+    };
+
+    let window = shell.window();
+    let old_owner = shell.appearance_owner.clone();
+    let prior = window
+        .read_with(cx, |root, _| root.test_appearance())
+        .unwrap();
+    let prior_notice = window
+        .read_with(cx, |root, _| root.notices.widget.clone())
+        .unwrap();
+    let (input, selection, protected) = resident.read_with(cx, |resident, app| {
+        assert!(resident.appearance_applicable(app));
+        (
+            resident.gpui_input(),
+            resident.selection_identity(),
+            resident.test_unpublished_recovery_protection().unwrap(),
+        )
+    });
+    assert_eq!(protected.0.selection(), selection);
+    assert_eq!(
+        protected.1.seed().binding,
+        selection.binding().range_binding()
+    );
+    let focus = window
+        .update(cx, |_, native, app| native.focused(app))
+        .unwrap();
+    let ordinary = cx.update(|app| {
+        let mut prepared = crate::main_window::shell::appearance::ShellAppearanceAdapter {
+            id: WindowAdapterId::new(std::num::NonZeroU64::new(1).unwrap()),
+            window,
+        }
+        .prepare(prior.clone(), app)
+        .unwrap();
+        assert!(prepared.prepare_native(app).unwrap().is_none());
+        prepared.validate(app).unwrap();
+        old_owner.update(app, |owner, _| owner.retire());
+        prepared
+    });
+    let owner =
+        cx.update(|app| GpuiAppearanceWindowSet::new(fresh, NonZeroUsize::new(4).unwrap(), app));
+    let before = cx.update(|app| owner.read(app).target().snapshot());
+    let validations = Rc::new(std::cell::Cell::new(0));
+    let checked = validations.clone();
+    let guarded_resident = resident.clone();
+    let guarded_input = input.clone();
+    let commits = Rc::new(std::cell::Cell::new(0));
+    let committed = commits.clone();
+    let registration = cx
+        .update(|app| {
+            shell.begin_bind_interrupted_exit_appearance(
+                &owner,
+                Rc::new(move |app| {
+                    checked.set(checked.get() + 1);
+                    if checked.get() == 2 {
+                        assert!(guarded_resident.read(app).appearance_applicable(app));
+                        assert!(
+                            guarded_input
+                                .read(app)
+                                .resident_protection_is_current(protected.1)
+                        );
+                        let layout = guarded_input.read(app).resident_layout_snapshot();
+                        guarded_input.update(app, |input, cx| {
+                            assert!(matches!(
+                                input.set_layout(layout.layout, layout.style, cx),
+                                Err(RangeTextInputError::Busy)
+                            ));
+                        });
+                        assert!(
+                            !guarded_input
+                                .read(app)
+                                .resident_protection_is_current(protected.1)
+                        );
+                    }
+                    Ok(())
+                }),
+                Rc::new(move |_| committed.set(committed.get() + 1)),
+                app,
+            )
+        })
+        .unwrap();
+    let result = Rc::new(RefCell::new(None));
+    let returned = result.clone();
+    cx.update(|app| {
+        app.spawn(async move |_| *returned.borrow_mut() = Some(registration.await))
+            .detach();
+    });
+    cx.run_until_parked();
+    assert_eq!(validations.get(), 2);
+    assert_eq!(commits.get(), 0);
+    assert!(matches!(
+        result.borrow_mut().take().unwrap(),
+        Err(AdapterRegistrationError::Preparation {
+            class: AdapterFailureClass::Rejected,
+            ..
+        })
+    ));
+    cx.update(|app| {
+        shell
+            .require_interrupted_exit_appearance_custody()
+            .unwrap();
+        assert_eq!(
+            ordinary.validate(app),
+            Err(AdapterFailureClass::Unavailable)
+        );
+        let after = owner.read(app).target().snapshot();
+        assert_eq!(after.count, before.count);
+        assert_eq!(after.epoch, before.epoch);
+        assert!(Arc::ptr_eq(&after.current, &before.current));
+        assert_eq!(shell.appearance_owner, old_owner);
+        assert_eq!(resident.read(app).gpui_input(), input);
+        assert_eq!(resident.read(app).selection_identity(), selection);
+        assert_eq!(
+            resident.read(app).test_unpublished_recovery_protection(),
+            Some(protected)
+        );
+        assert!(resident.read(app).recovery_binding_current(protected.0));
+        assert!(resident.read(app).recovery_snapshot().is_none());
+        assert!(!resident.read(app).is_live());
+        assert!(resident.read(app).mutation_gated());
+        assert!(!input.read(app).is_enabled());
+        assert!(!input.read(app).resident_protection_is_current(protected.1));
+        assert_eq!(mount.read(app).contribution().as_ref(), Some(resident));
+        assert!(mount.read(app).recovery_binding_current(protected.0));
+        assert!(
+            mount
+                .read(app)
+                .bound_service()
+                .unwrap()
+                .test_window_close_is_current(protected.0)
+        );
+        window
+            .update(app, |root, native, app| {
+                assert!(Arc::ptr_eq(&root.test_appearance(), &prior));
+                assert_eq!(root.notices.widget, prior_notice);
+                assert_eq!(
+                    root.controller().unwrap().composer_mount().as_ref(),
+                    Some(mount)
+                );
+                assert!(root.appearance_registration.get());
+                assert!(root.appearance_release.is_none());
+                assert!(root.notices.publication_retired());
+                assert!(root.shutdown_interaction_gated);
+                assert!(root.set_shutdown_interaction_gated(false, app).is_err());
+                assert!(root.shutdown_interaction_gated);
+                assert_eq!(native.focused(app), focus);
+            })
+            .unwrap();
+    });
 }

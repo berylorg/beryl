@@ -54,6 +54,7 @@ unicode-segmentation.workspace = true
 [dev-dependencies]
 beryl-backend = { workspace = true, features = ["lifecycle-test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
+raw-window-handle.workspace = true
 syndic-storage = { workspace = true, features = ["provider-frame-test-support"] }
 tungstenite.workspace = true
 

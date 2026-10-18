@@ -19,6 +19,9 @@ use beryl_model::{
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
+#[path = "runtime_interest/quota.rs"]
+mod quota;
+
 #[test]
 fn failed_launch_keeps_original_cleanup_through_repeated_owner_shutdown() {
     let mut owner = harness(1, 2);
@@ -483,15 +486,15 @@ fn scheduled_interest_capacity_refusal_wakes_on_real_interest_release() {
     let current_probe = probe(520);
     current_probe.allow_retirement(false);
     let (spec, binding) = demand(1, 1);
-    let view = owner
+    let work = owner
         .acquire(
             spec,
             binding,
-            RuntimeInterestKind::View,
+            RuntimeInterestKind::RequiredWork,
             current_probe.clone(),
         )
         .unwrap();
-    ready(&view);
+    ready(&work);
     let next = probe(521);
     for _ in 0..2 {
         let (spec, binding) = demand(2, 1);
@@ -502,7 +505,7 @@ fn scheduled_interest_capacity_refusal_wakes_on_real_interest_release() {
     }
     assert!(!owner.preparation_wake_pending());
     assert_eq!(next.counts(), (0, 0, 0));
-    drop(view);
+    drop(work);
     assert!(owner.preparation_wake_pending());
     let (spec, binding) = demand(2, 1);
     let work = owner.acquire_scheduled(spec, binding, next).unwrap();

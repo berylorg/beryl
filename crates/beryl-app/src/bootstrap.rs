@@ -16,6 +16,8 @@ use gpui::{App, Application};
 
 mod diagnostic;
 mod inputs;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub(crate) fn thread_activation_request(
     thread: beryl_model::SyndicThreadId,
@@ -35,6 +37,8 @@ pub type HomeOpener = Arc<dyn Fn(&Path, CommandCancellation) -> HomeOpenOutcome 
 pub struct Configuration {
     startup: StartupConfiguration,
     diagnostic_target: bool,
+    #[cfg(test)]
+    app_hook: Option<Box<dyn FnOnce(&mut App)>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -90,6 +94,8 @@ impl Configuration {
                 service_hook: None,
             },
             diagnostic_target,
+            #[cfg(test)]
+            app_hook: None,
         })
     }
 }
@@ -110,10 +116,17 @@ pub fn run(configuration: Configuration) -> Result<(), BootstrapError> {
         .transpose()?;
     let unsuccessful = Rc::new(Cell::new(false));
     let outcome = unsuccessful.clone();
+    #[cfg(test)]
+    let app_hook = configuration.app_hook;
     Application::new()
         .with_quit_on_last_window_close(false)
         .run(move |app| {
+            gpui_text_input::ensure_text_input_bindings(app);
             launch(configuration.startup, outcome, endpoint, app);
+            #[cfg(test)]
+            if let Some(hook) = app_hook {
+                hook(app);
+            }
         });
     if unsuccessful.get() {
         Err(BootstrapError::Startup)

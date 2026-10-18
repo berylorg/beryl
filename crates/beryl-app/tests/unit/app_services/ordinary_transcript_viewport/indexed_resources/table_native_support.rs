@@ -202,9 +202,6 @@ async fn ready_with_visibility(
 ) {
     with_native(window, cx, |native, app| {
         native.draw_and_present_for_test(app);
-        if minimize {
-            native.minimize_window();
-        }
     })
     .unwrap();
     let mut observations = 0_u32;
@@ -233,7 +230,7 @@ async fn ready_with_visibility(
                 .unwrap()
         },
         "Table must publish admitted cells and measured native geometry",
-        minimize,
+        false,
     )
     .await;
     if minimize {

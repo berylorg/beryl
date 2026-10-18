@@ -5,13 +5,16 @@ mod publication;
 
 use beryl_app::{
     cas_projection::{MinimumTurnCaptureReserve, ProjectionServiceConfig, SubmissionExecutionWake},
-    composer_host::{ComposerHostSubmissionAdvance, ComposerHostSubmissionRequest},
+    composer_host::{
+        ComposerHostActivationOutcome, ComposerHostActivationRequest,
+        ComposerHostSubmissionAdvance, ComposerHostSubmissionRequest, SyndicComposerHost,
+    },
 };
 use beryl_home_store::CommandCancellation;
 use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId};
 use syndic_storage::{
-    DraftComposerMaterializationOperationIdV1, DraftPieceOperationIdV1, FirstAcceptanceKind,
-    SyndicTimestamp,
+    DraftComposerMaterializationOperationIdV1, DraftEditorCandidateSessionIdV1,
+    DraftPieceOperationIdV1, FirstAcceptanceKind, SyndicTimestamp,
 };
 
 pub(super) fn submit(fixture: &super::Fixture, thread: SyndicThreadId) {
@@ -95,8 +98,21 @@ fn submit_text_with_wake(
     let live = fixture.service().live_home_command().unwrap();
     let home = live.home();
     let assets = fixture.state.assets();
-    let (mut host, binding) =
-        composer::activated(fixture.storage.clone(), home, thread, seed, seed + 1);
+    let mut host = SyndicComposerHost::new(fixture.storage.clone());
+    let activation = ComposerHostActivationRequest::new(
+        thread,
+        DraftEditorCandidateSessionIdV1::from_bytes([seed; 16]),
+        DraftPieceOperationIdV1::from_bytes([seed + 1; 16]),
+        std::num::NonZeroU64::MIN,
+        None,
+        Box::new([]),
+    );
+    let ComposerHostActivationOutcome::Activated { binding, .. } = host
+        .test_activate_with_current_admission(home, activation, &CommandCancellation::new())
+        .unwrap()
+    else {
+        panic!("activation did not yield a composer binding");
+    };
     if let Some(hook) = before_execute {
         host.test_arm_submission_before_execute_fault(hook);
     }

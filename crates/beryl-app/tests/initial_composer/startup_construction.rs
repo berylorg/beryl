@@ -1,12 +1,12 @@
 use super::*;
 use gpui::{Application, AsyncApp};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     cell::RefCell,
     rc::Rc,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
-use windows::{Win32::UI::WindowsAndMessaging::FindWindowW, core::PCWSTR};
 
 #[path = "../support/shell_desktop_flight.rs"]
 mod flight;
@@ -40,56 +40,39 @@ impl Case {
 
 #[test]
 fn native_restored_startup_construction_retains_each_failure_until_proven_cleanup() {
-    let fixtures = home_support::worker(|| {
-        [
-            Case::MissingPlacement,
-            Case::MissingReceipt,
-            Case::NoEditor,
-            Case::PartialEditor,
-            Case::Appearance,
-            Case::Ready,
-        ]
-        .into_iter()
-        .enumerate()
-        .map(|(index, case)| {
-            let PreparedFixture {
-                prepared,
-                attempt,
-                _service,
-                fixture,
-                appearance: _,
-                seals,
-                snapshot,
-                draft: _,
-            } = prepared_fixture(110 + index as u8);
-            let appearance = AppearanceCoordinator::new(
-                AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-                flight::system_font_appearance(&fixture.state),
-            )
-            .current();
-            let prepared = RestoredWindowShellPrepared::prepare(
-                prepared,
-                &attempt,
-                &fixture.process,
-                Box::new(config),
-                seals,
-                submission(),
-                appearance.clone(),
-            )
-            .unwrap_or_else(|failure| panic!("{}", failure.error));
-            let geometry = prepare_windows_window_placement(
-                prepared.window_id(),
-                prepared.placement().clone(),
-            )
-            .unwrap();
-            (
-                case, fixture, attempt, _service, prepared, geometry, appearance, snapshot,
-            )
-        })
-        .collect::<Vec<_>>()
-    })
-    .join()
-    .unwrap();
+    let prepare = |index: usize, case| {
+        let PreparedFixture {
+            prepared,
+            attempt,
+            _service,
+            fixture,
+            appearance: _,
+            seals,
+            snapshot,
+            draft: _,
+        } = prepared_fixture(110 + index as u8);
+        let appearance = AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        )
+        .current();
+        let prepared = RestoredWindowShellPrepared::prepare(
+            prepared,
+            &attempt,
+            &fixture.process,
+            Box::new(config),
+            seals,
+            submission(),
+            appearance.clone(),
+        )
+        .unwrap_or_else(|failure| panic!("{}", failure.error));
+        let geometry =
+            prepare_windows_window_placement(prepared.window_id(), prepared.placement().clone())
+                .unwrap();
+        (
+            case, fixture, attempt, _service, prepared, geometry, appearance, snapshot,
+        )
+    };
     let completed = Arc::new(AtomicBool::new(false));
     let result = completed.clone();
     let watched = Rc::new(RefCell::new(
@@ -109,9 +92,31 @@ fn native_restored_startup_construction_retains_each_failure_until_proven_cleanu
                 gpui_text_input::ensure_text_input_bindings(app);
                 let (control, _) = native::open(app, "startup-construction-control");
                 app.spawn(async move |cx| {
-                    for (case, fixture, attempt, service, prepared, geometry, appearance, before) in
-                        fixtures
+                    for (index, case) in [
+                        Case::MissingPlacement,
+                        Case::MissingReceipt,
+                        Case::NoEditor,
+                        Case::PartialEditor,
+                        Case::Appearance,
+                        Case::Ready,
+                    ]
+                    .into_iter()
+                    .enumerate()
                     {
+                        let preparation = home_support::worker(move || prepare(index, case));
+                        while !preparation.is_finished() {
+                            native::pump(cx).await;
+                        }
+                        let (
+                            case,
+                            fixture,
+                            attempt,
+                            service,
+                            prepared,
+                            geometry,
+                            appearance,
+                            before,
+                        ) = preparation.join().unwrap();
                         let construction = cx
                             .update(|app| {
                                 let owner = GpuiAppearanceWindowSet::new(
@@ -260,6 +265,7 @@ fn native_restored_startup_construction_retains_each_failure_until_proven_cleanu
                             .spawn(async move {
                                 assert_eq!(snapshot(&fixture), before);
                                 drop((attempt, service));
+                                fixture.close();
                             })
                             .await;
                     }
@@ -382,15 +388,18 @@ fn native_acquired_startup_construction_failure_keeps_original_abandonment_autho
 }
 
 fn hidden_handle(shell: &MainWindowShell, cx: &mut AsyncApp) -> usize {
-    let title = format!("Beryl startup construction {}", std::process::id());
-    shell
+    let raw = shell
         .window()
-        .update(cx, |_, window, _| window.set_window_title(&title))
+        .update(cx, |_, window, _| {
+            let handle = window
+                .window_handle()
+                .expect("original native window is live");
+            let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+                panic!("expected the original Windows native handle");
+            };
+            handle.hwnd.get() as usize
+        })
         .unwrap();
-    let wide = title.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    let raw = unsafe { FindWindowW(None, PCWSTR(wide.as_ptr())) }
-        .unwrap()
-        .0 as usize;
     assert!(native::alive(raw));
     assert!(!native::visible(raw));
     raw

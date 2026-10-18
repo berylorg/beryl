@@ -92,6 +92,9 @@ impl SyndicTranscriptPanel {
         selected: bool,
         cx: &mut Context<Self>,
     ) {
+        if self.initial_history_loading {
+            return;
+        }
         self.supersede_resource_copies();
         if self.staged.is_some() {
             if let Some(panel) = self.code_panels.iter_mut().find(|panel| panel.id == id) {

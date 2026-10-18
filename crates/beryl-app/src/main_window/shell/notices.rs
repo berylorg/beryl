@@ -289,6 +289,7 @@ impl MainWindowShellRoot {
         );
         self.reset_recovered_runtime_setup(cx);
         self.reset_recovered_thread_switcher(cx);
+        self.resume_selected_runtime_warmup();
         self.set_notices_inert(true, window, cx);
         self.subscribe_notices(window, cx);
     }
@@ -311,6 +312,36 @@ impl MainWindowShellRoot {
 
     pub fn notice_projection(&self) -> Option<NoticeProjection<'_>> {
         self.notices.arbiter.active()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_retained_ordinary_close_failure_notice(
+        &self,
+    ) -> Result<
+        Option<(
+            NoticeRecordToken,
+            (
+                crate::main_window::NoticeKind,
+                crate::main_window::NoticeVariant,
+                crate::main_window::NoticeDismissal,
+                usize,
+            ),
+        )>,
+        &'static str,
+    > {
+        let Some(token) = self.notices.arbiter.test_retained_notice_token(
+            crate::main_window::NoticeKind::Error,
+            "Beryl couldn't close this window",
+        )?
+        else {
+            return Ok(None);
+        };
+        let metadata = self
+            .notices
+            .arbiter
+            .test_retained_notice_metadata(&token)
+            .ok_or("original ordinary close-failure notice is no longer retained")?;
+        Ok(Some((token, metadata)))
     }
 
     pub fn notice_diagnostics(&self) -> NoticeDiagnostics {
@@ -367,6 +398,7 @@ impl MainWindowShellRoot {
     }
 
     pub fn retire_notices(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.retire_selected_runtime_warmup();
         if self.notices.retired {
             return;
         }
@@ -454,7 +486,7 @@ impl MainWindowShellRoot {
 
     pub(super) fn notice_chrome_height(&self) -> f32 {
         if self.creation.is_some() || self.controller.is_some() {
-            44.
+            super::host::sizing::TOOLBAR_HEIGHT
         } else {
             0.
         }

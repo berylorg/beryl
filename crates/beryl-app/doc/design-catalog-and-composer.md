@@ -123,6 +123,15 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Range-Backed Composer Host
 
+- The canonical composer consumes its original input's current measured-layout rejection through its
+  existing input event subscription. It retains ordinary composer error custody and notifies its
+  owners. Startup readiness propagates that failure through the existing whole-set failure and
+  disposal path; it cannot publish an old-width surface as ready or silently await another paint.
+  It authenticates that the exact binding/width receipt remains the input's current rejection;
+  stale or superseded events have no authority over a replacement or newer accepted operation.
+  Ordinary source, save,
+  mutation and recovery ownership remain with their existing operations.
+
 - Running-thread claim activation separates worker-side source preparation, predecessor draft-save
   qualification and source publication from GUI editor fencing, widget-release capture and promotion.
   Prepared presentation and final publication are sealed to the exact composer service and receipt.
@@ -232,6 +241,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - One selected host opens one exact editor-candidate session from the durable selector and exposes
   revision-bound bounded text and zero-width-marker pages to the app-neutral widget. It never
   reconstructs or retains the complete draft.
+- Positive concurrent-runtime fixtures may explicitly select a feature-only host activation entry
+  that executes Syndic's sealed current opening command. It uses the same once-prepared exact
+  selector/session/operation, cancellation, reconciliation and host finalization, without retry or
+  source recapture. It changes only physical Home/domain revision capture to writer admission.
+  Ordinary activation retains its caller-fenced command and refusal behavior. Qualification must
+  prove unrelated-write success, unchanged logical guards, stale-selector refusal and cancellation;
+  fixture setup cannot silently select this path for production or the caller-fenced refusal proof.
 - Widget range and marker requests map to typed Syndic ranges without widening, merging, or
   reinterpreting scopes. Resident text, marker, geometry, edit, IME, and history facts remain
   within configured page, byte, and per-frame budgets.

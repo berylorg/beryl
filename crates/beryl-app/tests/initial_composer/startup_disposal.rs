@@ -14,35 +14,56 @@ use flight::{Case, native};
 
 #[test]
 fn native_acquired_startup_disposal_preserves_set_seal_and_drains_admitted_editor_work() {
-    let fixtures = home_support::worker(|| {
-        (0..4)
-            .map(|case| {
-                let seed = 201 + case * 3;
-                let fixture = Fixture::new(seed);
-                let mut initial = fixture.begin(seed + 1);
-                initial.advance(&CommandCancellation::new()).unwrap();
-                let draft = initial.acquisition().draft_id();
-                let placement = initial.acquisition().placement().clone();
-                let appearance = AppearanceCoordinator::new(
-                    AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-                    flight::system_font_appearance(&fixture.state),
-                )
-                .current();
-                let prepared = initial
-                    .prepare(&mut config)
-                    .unwrap_or_else(|failure| panic!("{}", failure.error));
-                let prepared = prepared
-                    .into_shell(
-                        Box::new(config),
-                        seals(&fixture),
-                        submission(),
-                        appearance.clone(),
-                    )
-                    .unwrap_or_else(|failure| panic!("{}", failure.error));
-                let window_id = prepared.window_id();
-                let geometry = prepare_windows_window_placement(window_id, placement).unwrap();
-                let before = snapshot(&fixture);
-                (
+    let prepare = |case: u8| {
+        let seed = 201 + case * 3;
+        let fixture = Fixture::new(seed);
+        let mut initial = fixture.begin(seed + 1);
+        initial.advance(&CommandCancellation::new()).unwrap();
+        let draft = initial.acquisition().draft_id();
+        let placement = initial.acquisition().placement().clone();
+        let appearance = AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        )
+        .current();
+        let prepared = initial
+            .prepare(&mut config)
+            .unwrap_or_else(|failure| panic!("{}", failure.error));
+        let prepared = prepared
+            .into_shell(
+                Box::new(config),
+                seals(&fixture),
+                submission(),
+                appearance.clone(),
+            )
+            .unwrap_or_else(|failure| panic!("{}", failure.error));
+        let window_id = prepared.window_id();
+        let geometry = prepare_windows_window_placement(window_id, placement).unwrap();
+        let before = snapshot(&fixture);
+        (
+            case,
+            fixture,
+            prepared,
+            geometry,
+            appearance,
+            before,
+            draft,
+            window_id,
+            seed + 1,
+        )
+    };
+    let completed = Arc::new(AtomicBool::new(false));
+    let result = completed.clone();
+    Application::new().run(move |app| {
+        gpui_text_input::ensure_text_input_bindings(app);
+        let (control, _) = native::open(app, "acquired-startup-disposal-control");
+        app.spawn(async move |cx| {
+            for case in 0..4 {
+                let preparation = home_support::worker(move || prepare(case));
+                while !preparation.is_finished() {
+                    native::pump(cx).await;
+                }
+                let (
                     case,
                     fixture,
                     prepared,
@@ -51,31 +72,8 @@ fn native_acquired_startup_disposal_preserves_set_seal_and_drains_admitted_edito
                     before,
                     draft,
                     window_id,
-                    seed + 1,
-                )
-            })
-            .collect::<Vec<_>>()
-    })
-    .join()
-    .unwrap();
-    let completed = Arc::new(AtomicBool::new(false));
-    let result = completed.clone();
-    Application::new().run(move |app| {
-        gpui_text_input::ensure_text_input_bindings(app);
-        let (control, _) = native::open(app, "acquired-startup-disposal-control");
-        app.spawn(async move |cx| {
-            for (
-                case,
-                fixture,
-                prepared,
-                geometry,
-                appearance,
-                before,
-                draft,
-                window_id,
-                session_seed,
-            ) in fixtures
-            {
+                    session_seed,
+                ) = preparation.join().unwrap();
                 let (mut shell, composer, gate) = cx
                     .update(|app| {
                         let owner = GpuiAppearanceWindowSet::new(
@@ -261,6 +259,7 @@ fn native_acquired_startup_disposal_preserves_set_seal_and_drains_admitted_edito
                         }
                     }
                     assert_eq!(fixture.process.main_window_occupancy(), 0);
+                    fixture.close();
                 }).await;
             }
             result.store(true, Ordering::SeqCst);

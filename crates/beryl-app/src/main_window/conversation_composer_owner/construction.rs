@@ -297,9 +297,7 @@ impl MainWindowConversationComposer {
             Some(cx.observe_in(&this.input, window, |this, _, window, cx| {
                 this.schedule_pump(window, cx);
             }));
-        if matches!(this.route, MainWindowConversationComposerRoute::Selected) {
-            this.install_interactive_subscription(window, cx);
-        }
+        this.install_input_event_subscription(window, cx);
         this.sync_mutation_gate(cx);
         this.schedule_pump(window, cx);
         this
@@ -522,7 +520,7 @@ impl MainWindowConversationComposer {
         })
     }
 
-    pub(super) fn install_interactive_subscription(
+    pub(super) fn install_input_event_subscription(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -530,7 +528,18 @@ impl MainWindowConversationComposer {
         self._input_event_subscription = Some(cx.subscribe_in(
             &self.input,
             window,
-            |this, _, event: &RangeTextInputEvent, window, cx| match event {
+            |this, input, event: &RangeTextInputEvent, window, cx| match event {
+                RangeTextInputEvent::MeasuredLayoutRejected(rejection) => {
+                    if input.read(cx).measured_layout_rejection() != Some(*rejection)
+                        || rejection.binding != this.selection.binding().range_binding()
+                    {
+                        return;
+                    }
+                    this.last_error
+                        .get_or_insert_with(|| "composer measured layout was rejected".into());
+                    cx.notify();
+                }
+                _ if !matches!(this.route, MainWindowConversationComposerRoute::Selected) => {}
                 RangeTextInputEvent::MutationSettled {
                     key,
                     outcome: gpui_text_input::MutationOutcome::Cancelled,

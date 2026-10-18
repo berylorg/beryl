@@ -182,6 +182,39 @@ impl MainWindowNoticeArbiter {
         self.find_exact(expected).is_ok()
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_retained_notice_token(
+        &self,
+        kind: NoticeKind,
+        title: &str,
+    ) -> Result<Option<NoticeRecordToken>, &'static str> {
+        let mut matches = self
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == kind && entry.content.title().as_str() == title);
+        let Some(entry) = matches.next() else {
+            return Ok(None);
+        };
+        if matches.next().is_some() {
+            return Err("retained notice title and kind are not unique");
+        }
+        Ok(Some(entry.token.clone()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_retained_notice_metadata(
+        &self,
+        expected: &NoticeRecordToken,
+    ) -> Option<(NoticeKind, NoticeVariant, NoticeDismissal, usize)> {
+        let entry = &self.entries[self.find_exact(expected).ok()?];
+        Some((
+            entry.kind,
+            entry.content.variant,
+            entry.content.dismissal,
+            entry.content.commands().count(),
+        ))
+    }
+
     pub fn diagnostics(&self) -> NoticeDiagnostics {
         NoticeDiagnostics {
             retained_records: self.entries.len(),

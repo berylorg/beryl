@@ -461,6 +461,92 @@ fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order()
 }
 
 #[test]
+fn small_candidate_pages_reserve_terminal_rows_and_preserve_continuation() {
+    let home = TestHome::new("ready-terminal-row-remainder");
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    seed_terminal_heavy(&store, &storage);
+    store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
+    let source = source(&store, &storage);
+    let too_small = CursorReadLimits::new(256, 189).unwrap();
+    let error = match storage.accepted_ready_candidate_page(&store, source, None, too_small) {
+        Err(error) => error,
+        Ok(_) => panic!("undersized first-row read unexpectedly returned a page"),
+    };
+    assert!(
+        matches!(
+            &error,
+            SyndicReadError::Read(beryl_home_store::ReadError::BoundExceeded {
+                family: "accepted-route-leaves",
+                maximum: 112,
+                actual: 113,
+                ..
+            })
+        ),
+        "unexpected first-row refusal: {error:?}"
+    );
+    let limits = CursorReadLimits::new(256, 379).unwrap();
+    let revision_before = storage.revision(&store).unwrap();
+    let mut cursor = None;
+    let mut ordinals = Vec::new();
+    let mut completed = false;
+    for index in 0..384 {
+        let page = storage
+            .accepted_ready_candidate_page(&store, source, cursor, limits)
+            .unwrap();
+        assert!(page.stored_bytes() <= 379);
+        assert!(page.decoded_bytes() <= 379);
+        assert_eq!(
+            page.stored_bytes(),
+            if index == 1 {
+                191
+            } else if index < 300 {
+                190
+            } else {
+                157
+            }
+        );
+        if index < 300 {
+            assert!(page.records().is_empty());
+        } else {
+            assert_eq!(page.records().len(), 1);
+            assert_eq!(page.records()[0].ordinal().get(), index + 1);
+            assert_eq!(
+                page.records()[0].lifecycle(),
+                AcceptedInputLifecycle::Admitted
+            );
+        }
+        ordinals.extend(
+            page.records()
+                .iter()
+                .map(|candidate| candidate.ordinal().get()),
+        );
+        match page.next_cursor() {
+            Some(next) => {
+                assert_ne!(Some(next), cursor);
+                cursor = Some(next);
+            }
+            None => {
+                assert_eq!(index, 383);
+                completed = true;
+                break;
+            }
+        }
+    }
+    assert!(completed);
+    assert_eq!(ordinals, (301..=384).collect::<Vec<_>>());
+    assert_eq!(storage.revision(&store).unwrap(), revision_before);
+    store.close().unwrap();
+}
+
+#[test]
 fn candidate_source_and_cursor_reject_route_revision_drift_separately() {
     let (_home, store, storage) = seeded_mixed("ready-candidate-drift");
     let old_source = source(&store, &storage);

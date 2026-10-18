@@ -66,6 +66,63 @@ pub(super) struct PreparationWorker {
 }
 
 impl ScheduledExecutionSessions {
+    #[cfg(feature = "test-faults")]
+    pub fn test_launch_spec_for(
+        &self,
+        thread: SyndicThreadId,
+        binding: &ExecutionBinding,
+    ) -> Result<ManagedBackendLaunchSpec, RuntimeInterestError> {
+        let context = {
+            let state = self.lock();
+            if state.closed {
+                return Err(RuntimeInterestError::Closed);
+            }
+            state
+                .preparation
+                .as_ref()
+                .cloned()
+                .ok_or(RuntimeInterestError::NotConfigured)?
+        };
+        context
+            .launch_spec_for(thread, binding)
+            .map_err(|error| match error {
+                target::TargetError::Closed => RuntimeInterestError::Closed,
+                target::TargetError::Configuration => RuntimeInterestError::ConfigurationMismatch,
+                _ => RuntimeInterestError::AdmissionUnavailable,
+            })
+    }
+
+    pub(crate) fn acquire_view_interest(
+        &self,
+        thread: SyndicThreadId,
+        binding: &ExecutionBinding,
+    ) -> Result<crate::cas_projection::RuntimeInterest, RuntimeInterestError> {
+        let context = {
+            let state = self.lock();
+            if state.closed {
+                return Err(RuntimeInterestError::Closed);
+            }
+            state
+                .preparation
+                .as_ref()
+                .cloned()
+                .ok_or(RuntimeInterestError::NotConfigured)?
+        };
+        let spec = context
+            .launch_spec_for(thread, binding)
+            .map_err(|error| match error {
+                target::TargetError::Closed => RuntimeInterestError::Closed,
+                target::TargetError::Configuration => RuntimeInterestError::ConfigurationMismatch,
+                _ => RuntimeInterestError::AdmissionUnavailable,
+            })?;
+        context.owner.acquire_managed(
+            spec,
+            binding.clone(),
+            crate::cas_projection::RuntimeInterestKind::View,
+            || Ok(context.admission.clone()),
+        )
+    }
+
     pub fn runtime_failure(
         &self,
         runtime_id: RuntimeId,

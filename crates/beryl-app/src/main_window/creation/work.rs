@@ -118,6 +118,9 @@ impl MainWindowCreation {
         if matches!(&self.state, CreationState::Initial(_)) {
             return self.advance_initial(appearance);
         }
+        if matches!(&self.state, CreationState::Acquired { .. }) {
+            return self.advance_acquired();
+        }
         self.advance_other_state(appearance)
     }
 
@@ -145,10 +148,9 @@ impl MainWindowCreation {
                 reconciliation,
                 reservation,
             } => self.reconcile_repair(request, reconciliation, reservation),
-            CreationState::Acquired {
-                acquisition,
-                reservation,
-            } => self.prepare_initial(acquisition, reservation),
+            CreationState::Acquired { .. } => {
+                unreachable!("acquired creation advances after extraction")
+            }
             CreationState::Initial(_) => unreachable!("initial creation advances in place"),
             CreationState::Retiring(initial) => self.retire_initial(initial),
             CreationState::Unpublished(unpublished) => self.prepare_abandonment(unpublished),

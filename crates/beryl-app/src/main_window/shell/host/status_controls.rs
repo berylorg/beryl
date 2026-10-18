@@ -14,6 +14,7 @@ use std::time::Duration;
 mod feedback;
 mod manual_compaction;
 mod render;
+mod runtime_warmup;
 use feedback::AcknowledgedStopFeedback;
 pub(super) use render::{render_menu, render_strip};
 
@@ -30,6 +31,7 @@ pub(super) struct ExactStatusControls {
     next_feedback_order: u64,
     stop_pending_orders: Vec<(ExactOperationOrigin, u64)>,
     compaction: manual_compaction::ManualCompactionControls,
+    warmup: runtime_warmup::SelectedRuntimeWarmup,
     worker: Option<PublishedExactStopWorker>,
     selection: Option<MainWindowComposerSelectionIdentity>,
     snapshot: ExactSelectedOperationSnapshot,
@@ -53,6 +55,7 @@ impl ExactStatusControls {
             next_feedback_order: 0,
             stop_pending_orders: Vec::new(),
             compaction: Default::default(),
+            warmup: Default::default(),
             worker: None,
             selection: None,
             snapshot: ExactSelectedOperationSnapshot::unavailable(),
@@ -297,6 +300,7 @@ impl MainWindowShellRoot {
             self.status_controls.snapshot = ExactSelectedOperationSnapshot::unavailable();
             self.status_controls.request_failure = None;
         }
+        self.sync_selected_runtime_warmup(window, cx);
         if !self.status_controls.menu_available()
             || self.status_controls.menu_anchor != self.status_controls.snapshot.origin
         {
@@ -320,12 +324,13 @@ impl MainWindowShellRoot {
                         root.status_controls.generation.load(Ordering::Acquire),
                         root.runtime_retry_observation_target(),
                         root.submission_observation_epoch(cx),
+                        root.selected_view_interest_observation_target(),
                     ))
                 });
                 let Ok(observation) = observation else {
                     break;
                 };
-                if let Some((worker, selection, generation, retained_failure, submission_epoch)) = observation {
+                if let Some((worker, selection, generation, retained_failure, submission_epoch, view_target)) = observation {
                     let result = background
                         .spawn(async move {
                             let runtime = worker.selected_runtime_failure(selection);
@@ -339,7 +344,11 @@ impl MainWindowShellRoot {
                                 let eligible = worker.selected_runtime_retry_eligible(selection, &execution, failure);
                                 (execution, failure, eligible)
                             });
-                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection), worker.selected_historical_edit_availability(selection))
+                            let view_observation = view_target.map(|(binding, epoch)| {
+                                let observation = worker.selected_view_binding_observation(selection, &binding);
+                                (worker.clone(), epoch, observation)
+                            });
+                            (worker.selected_operation_snapshot(selection), runtime, eligibility, worker.selected_compaction_availability(selection), worker.selected_submission_availability(selection), worker.selected_historical_edit_availability(selection), view_observation)
                         })
                         .await;
                     let _ = this.update_in(cx, |root, window, cx| {
@@ -350,6 +359,9 @@ impl MainWindowShellRoot {
                             selection, generation, result.1, result.2, window, cx,
                         );
                         root.apply_status_observation(selection, generation, result.0, window, cx);
+                        if let Some((worker, epoch, result)) = result.6 {
+                            root.apply_selected_view_interest_observation(worker, selection, epoch, result, cx);
+                        }
                     });
                 }
                 background.timer(Duration::from_millis(250)).await;

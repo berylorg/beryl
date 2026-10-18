@@ -676,28 +676,45 @@ impl Render for MainWindowConversationComposerMount {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_native_lineage_refresh_task(window, cx);
         let _ = self.refresh_native_lineage_recovery(window, cx);
+        let pending = self.pending_presentation.as_ref().and_then(|pending| {
+            let composer = if let Some(selected) = self.contribution.as_ref() {
+                selected.read(cx).pending_realizer(pending.receipt, cx)?
+            } else if self.native_lineage_prompt_published {
+                pending.contribution.clone()
+            } else {
+                return None;
+            };
+            (composer == pending.contribution
+                && composer.read(cx).matches_pending_target(pending.receipt))
+            .then_some(composer)
+        });
         div()
             .id(("main-window-user-input-contribution", cx.entity_id()))
-            .w_full()
+            .size_full()
             .relative()
             .when(!self.native_lineage_prompt_published, |root| {
                 root.children(self.contribution.clone())
             })
             .when(self.native_lineage_prompt_published, |root| {
-                root.child(self.render_native_lineage_prompt(cx)).children(
-                    self.pending_presentation.as_ref().map(|pending| {
-                        div().absolute().size_full().overflow_hidden().child(
-                            div()
-                                .debug_selector(|| {
-                                    "conversation-composer-pending-realization".to_owned()
-                                })
-                                .absolute()
-                                .size_full()
-                                .opacity(0.)
-                                .child(pending.contribution.clone()),
-                        )
-                    }),
-                )
+                root.child(self.render_native_lineage_prompt(cx))
             })
+            .children(pending.map(|pending| {
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .debug_selector(|| {
+                                "conversation-composer-pending-realization".to_owned()
+                            })
+                            .absolute()
+                            .size_full()
+                            .opacity(0.)
+                            .child(pending),
+                    )
+            }))
     }
 }

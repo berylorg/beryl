@@ -53,7 +53,7 @@ pub(in crate::main_window::shell::host) fn render_segment(
         .id("main-window-status-model")
         .debug_selector(|| "main-window-status-model".to_owned())
         .relative()
-        .w(px(170.))
+        .w(px(super::super::sizing::MODEL_WIDTH))
         .h_full()
         .flex_none()
         .px(px(10.))

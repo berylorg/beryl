@@ -148,13 +148,14 @@ fn service_steps_missing_companions_to_ready_without_changing_history() {
         ));
         fixture
             .reader
-            .publish_indexed_resource_if_current(prepared, &request, &cancelled, |response| {
+            .publish_indexed_resource_if_current(&prepared, &request, &cancelled, |response| {
                 let IndexedResourceValue::Display(display) = &response.value else {
                     panic!("display")
                 };
                 assert_eq!(display.binding.metadata, metadata);
             })
             .unwrap();
+        drop(prepared);
         assert_eq!(fixture.home.retained_frozen_read_count().unwrap(), 0);
         assert_eq!(fixture.service.worker_pool_diagnostics().active(), 0);
     }

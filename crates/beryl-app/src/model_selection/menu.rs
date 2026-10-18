@@ -160,6 +160,7 @@ fn election_contended(error: &ModelReadError) -> bool {
         error,
         ModelReadError::Busy
             | ModelReadError::Pending
+            | ModelReadError::AdmissionPending
             | ModelReadError::Source(
                 crate::cas_projection::ModelSourceError::Publication
                     | crate::cas_projection::ModelSourceError::Runtime(
@@ -227,9 +228,9 @@ pub(crate) fn read_model_range(
         .map_err(|error| ModelPageFailure {
             start,
             continuation: continuation.clone(),
+            waiting_election: matches!(&error, ModelReadError::AdmissionPending),
             error,
             retry_page: query.has_failed_page(),
-            waiting_election: false,
         })?;
         #[cfg(test)]
         eprintln!(

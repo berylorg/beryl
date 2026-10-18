@@ -29,6 +29,12 @@ The transcript view also composes applicable records from `transcript.context-re
 
 The feature selects tail-oriented placement unless an explicit navigation command provides another target. During selected-thread activation, it keeps the prior coherent `transcript view` visible in activation-pending state until the replacement content and initial viewport state can publish together.
 
+At startup, the selected thread's initial history uses the same dimmed, inert presentation until
+its coherent initial chunk and measured viewport publish together. The transcript remains mounted
+while preparation and measurement proceed. This state is independent of catalog and runtime
+readiness and does not disable a healthy current draft editor; see
+[progressive shell readiness](../conversation-threads/design.md#progressive-shell-readiness).
+
 Every recognized fenced code block configures a project-local `code panel`, including an empty or small unfinished block. Its panel appears when coherent saved Beryl/Syndic history publishes the recognized block descriptor and grows as that history advances. CAS item completion is not a visibility gate. Inline code spans retain their surrounding text treatment. Every recognized Table configures a project-local `table panel`, including small inline Tables. Transcript image references use the readonly-inline variant of the project-local `image marker`. The transcript feature supplies source ranges, presented resource state, media labels, and fallbacks; `doc/features/image-assets/design.md` owns image command eligibility and outcomes, and the canonical widgets own their reusable rendering and interaction mechanics.
 
 For range-backed code and table resources, the feature configures clipboard-limited Copy and

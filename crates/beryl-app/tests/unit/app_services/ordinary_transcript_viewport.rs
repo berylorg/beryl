@@ -17,6 +17,9 @@ fn resident_positions(panel: &crate::syndic_transcript::SyndicTranscriptPanel) -
 #[path = "ordinary_transcript_viewport/resources.rs"]
 mod resources;
 
+#[path = "../../support/native_window_geometry.rs"]
+mod native_geometry;
+
 #[test]
 fn native_mounted_transcript_scrolls_across_adjacent_seeds_in_both_directions() {
     run_mounted_with_prepared_home_retained(
@@ -363,6 +366,7 @@ fn native_mounted_transcript_publishes_measured_tail_and_routes_fractional_input
     run_mounted_with_prepared_home_retained(1, 0, seed_history, |owner, _, cx| {
         Box::pin(async move {
             let window = windows(&owner)[0];
+            native_geometry::prepare_width_for_shrink(window, cx, gpui::px(120.0)).await;
             let mut ready = None;
             for _ in 0..100 {
                 cx.update(|app| {

@@ -78,7 +78,20 @@ pub(super) fn project_item(store: &HomeStore, storage: &SyndicStorage, item: Syn
         .canonical_item(store, item, point_limit())
         .unwrap()
         .unwrap();
-    let generation = ItemProjectionGeneration::FIRST;
+    let head = storage
+        .item_projection_head(store, item, point_limit())
+        .unwrap();
+    if head
+        .as_ref()
+        .is_some_and(|head| head.lifecycle() == ProjectionLifecycle::Current)
+    {
+        return;
+    }
+    let generation = head
+        .as_ref()
+        .map_or(ItemProjectionGeneration::FIRST, |head| {
+            head.generation().checked_next().unwrap()
+        });
     execute(
         store,
         storage.start_item_projection_build(

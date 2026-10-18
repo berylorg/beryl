@@ -250,13 +250,6 @@ impl Render for MainWindowConversationComposer {
         self.schedule_pump(window, cx);
         let protected_layout = self.protected_resident_layout(cx);
         let selected = !self.is_pending_target();
-        let pending_realizer = self.pending_realizer.as_ref().and_then(|pending| {
-            pending.lifetime.upgrade()?;
-            pending
-                .composer
-                .upgrade()
-                .filter(|composer| composer.read(cx).matches_pending_target(pending.receipt))
-        });
         div()
             .id(("conversation-composer-root", cx.entity_id()))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
@@ -291,16 +284,6 @@ impl Render for MainWindowConversationComposer {
             .when(selected, |root| {
                 root.debug_selector(|| "conversation-composer-root".to_owned())
             })
-            .children(pending_realizer.map(|pending| {
-                div().absolute().size_full().overflow_hidden().child(
-                    div()
-                        .debug_selector(|| "conversation-composer-pending-realization".to_owned())
-                        .absolute()
-                        .size_full()
-                        .opacity(0.)
-                        .child(pending),
-                )
-            }))
             .child(self.input.clone())
             .children(self.submission_outcome.map(|reason| {
                 let outcome = div();

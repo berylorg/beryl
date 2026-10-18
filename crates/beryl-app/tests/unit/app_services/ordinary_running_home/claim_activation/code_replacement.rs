@@ -18,7 +18,7 @@ fn native_committed_target_replacement_loads_code_and_routes_fresh_inner_ranges(
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();
                 let (window, window_id, claim) = scenario::recover_with_entry(
-                    owner,
+                    owner.clone(),
                     faults,
                     Cut::ClaimCommitted,
                     control::Control::Normal,
@@ -60,7 +60,31 @@ fn native_committed_target_replacement_loads_code_and_routes_fresh_inner_ranges(
                             .is_empty())
                         .unwrap()
                 );
-                activate_exit(window, cx);
+                native_code::wait(
+                    window,
+                    cx,
+                    |cx| {
+                        window
+                            .update(cx, |root, _, _| {
+                                assert_eq!(
+                                    root.controller().map(|controller| controller.window_id()),
+                                    Some(window_id),
+                                );
+                                if !root.test_exit_command_enabled() {
+                                    return false;
+                                }
+                                root.test_activate_exit_command();
+                                assert!(
+                                    owner.borrow().exit_requested(),
+                                    "original eligible Exit did not synchronously admit its request"
+                                );
+                                true
+                            })
+                            .unwrap()
+                    },
+                    "original recovered Exit command did not become eligible",
+                )
+                .await;
             })
         },
         true,

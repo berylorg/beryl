@@ -38,7 +38,7 @@ pub(in crate::main_window::shell::host) fn render_command(
         .track_focus(&root.runtime_setup.focus)
         .tab_stop(true)
         .h_full()
-        .w(px(32.))
+        .w(px(super::super::sizing::CONTROL_HEIGHT))
         .flex_none()
         .flex()
         .items_center()
@@ -141,6 +141,8 @@ pub(in crate::main_window::shell::host) fn render_command(
         );
     div()
         .id("main-window-new-thread-split-button")
+        .debug_selector(|| "main-window-new-thread-split-button".into())
+        .w(root.controller().unwrap().metrics.new_thread_width)
         .h(px(32.))
         .flex_none()
         .flex()

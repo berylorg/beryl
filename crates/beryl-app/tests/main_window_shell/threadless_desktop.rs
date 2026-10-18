@@ -113,51 +113,33 @@ fn native_startup_shell_keeps_close_veto_after_interaction_release() {
 
 #[test]
 fn native_threadless_desktop_flights_preserve_shell_and_saved_state() {
-    let fixtures = support::worker(|| {
-        [
-            Case::Ready,
-            Case::MissingDesktop,
-            Case::CancelBefore,
-            Case::LeaseRefused,
-            Case::CancelDuring,
-            Case::CancelAfter,
-            Case::CloseDuring,
-            Case::CloseAfter,
-            Case::RemoveDuring,
-        ]
-        .into_iter()
-        .enumerate()
-        .map(|(index, case)| {
-            let saved = if matches!(case, Case::MissingDesktop) {
-                let mut absent = [0; 16];
-                getrandom::fill(&mut absent).unwrap();
-                WindowPlacement::new(
-                    WindowBounds::new(10, 20, 900, 700).unwrap(),
-                    WindowDisplayState::Normal,
-                    None,
-                    Some(beryl_model::VirtualDesktopId::from_bytes(absent)),
-                )
-            } else {
-                placement()
-            };
-            let mut fixture = Fixture::with_placement(150 + index as u8, saved);
-            fixture.coordinator = Some(AppearanceCoordinator::new(
-                AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-                flight::system_font_appearance(&fixture.state),
-            ));
-            let prepared = fixture.prepare().unwrap();
-            let geometry = beryl_app::main_window::prepare_windows_window_placement(
-                prepared.window_id(),
-                prepared.placement().clone(),
+    let prepare = |index: usize, case| {
+        let saved = if matches!(case, Case::MissingDesktop) {
+            let mut absent = [0; 16];
+            getrandom::fill(&mut absent).unwrap();
+            WindowPlacement::new(
+                WindowBounds::new(10, 20, 900, 700).unwrap(),
+                WindowDisplayState::Normal,
+                None,
+                Some(beryl_model::VirtualDesktopId::from_bytes(absent)),
             )
-            .unwrap();
-            let before = fixture.store.home_revision().unwrap();
-            (case, fixture, prepared, geometry, before)
-        })
-        .collect::<Vec<_>>()
-    })
-    .join()
-    .unwrap();
+        } else {
+            placement()
+        };
+        let mut fixture = Fixture::with_placement(150 + index as u8, saved);
+        fixture.coordinator = Some(AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        ));
+        let prepared = fixture.prepare().unwrap();
+        let geometry = beryl_app::main_window::prepare_windows_window_placement(
+            prepared.window_id(),
+            prepared.placement().clone(),
+        )
+        .unwrap();
+        let before = fixture.store.home_revision().unwrap();
+        (case, fixture, prepared, geometry, before)
+    };
     let completed = Arc::new(AtomicBool::new(false));
     let result = completed.clone();
     let destroyed = Rc::new(RefCell::new(Vec::new()));
@@ -170,7 +152,23 @@ fn native_threadless_desktop_flights_preserve_shell_and_saved_state() {
             Application::new().run(move |app| {
             let (control, control_raw) = native::open(app, "threadless-flight-control");
             app.spawn(async move |cx| {
-                for (case, mut fixture, prepared, geometry, before) in fixtures {
+                for (index, case) in [
+                    Case::Ready,
+                    Case::MissingDesktop,
+                    Case::CancelBefore,
+                    Case::LeaseRefused,
+                    Case::CancelDuring,
+                    Case::CancelAfter,
+                    Case::CloseDuring,
+                    Case::CloseAfter,
+                    Case::RemoveDuring,
+                ].into_iter().enumerate() {
+                    let preparation = support::worker(move || prepare(index, case));
+                    while !preparation.is_finished() {
+                        native::pump(cx).await;
+                    }
+                    let (case, mut fixture, prepared, geometry, before) =
+                        preparation.join().unwrap();
                     let (shell, owner) = cx.update(|app| {
                         let owner = GpuiAppearanceWindowSet::new(fixture.coordinator.as_ref().unwrap().current(), NonZeroUsize::new(4).unwrap(), app);
                         let target = owner.read(app).target();
@@ -207,6 +205,7 @@ fn native_threadless_desktop_flights_preserve_shell_and_saved_state() {
                         assert_eq!(saved.windows().len(), 1);
                         assert_eq!(saved.windows()[0].window_id(), fixture.window);
                         assert!(saved.windows()[0].selected_thread().is_none());
+                        fixture.close();
                     }).await;
                 }
                 expected_in_app.borrow_mut().push(control_raw);

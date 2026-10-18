@@ -83,10 +83,19 @@ impl NativeRestoreSetFlight {
                 }
             }
         }
-        self.wait_until_ready(cx).await?;
-        self.final_validation(cx).await?;
-        cx.update(|app| self.publish(app))
-            .expect("native startup retains a live GUI executor during publication")
+        let _observations = cx
+            .update(|app| self.observe_readiness(app))
+            .expect("native startup retains a live GUI executor during observation")?;
+        loop {
+            self.wait_until_ready(cx).await?;
+            self.final_validation(cx).await?;
+            if let Some(shells) = cx
+                .update(|app| self.publish(app))
+                .expect("native startup retains a live GUI executor during publication")?
+            {
+                return Ok(shells);
+            }
+        }
     }
 
     fn check_cancelled(&self) -> Result<(), String> {
@@ -128,6 +137,10 @@ impl NativeRestoreSetFlight {
             ready &= shell.startup_readiness(*expected, app)?;
         }
         #[cfg(feature = "test-faults")]
+        if let Some(observed) = &self.faults.observe_readiness {
+            observed(ready);
+        }
+        #[cfg(feature = "test-faults")]
         if ready && let Some(observed) = &self.faults.hold_readiness {
             observed();
             return Ok(false);
@@ -135,42 +148,50 @@ impl NativeRestoreSetFlight {
         Ok(ready)
     }
 
-    async fn wait_until_ready(&self, cx: &mut AsyncApp) -> Result<(), String> {
-        let subscriptions = cx
-            .update(|app| {
-                let mut subscriptions = Vec::with_capacity(self.members.len() * 2 + 2);
-                for member in &self.members {
-                    let NativeMemberState::Hidden(shell) = &member.state else {
-                        return Err("startup readiness lost a native member".to_owned());
-                    };
-                    let root = shell.window().entity(app).map_err(|e| e.to_string())?;
-                    let wake = self.cancellation.wake.clone();
-                    subscriptions.push(app.observe(&root, move |_, _| wake.notify()));
-                    if let Some(composer) = shell.startup_composer_entity(app) {
-                        let wake = self.cancellation.wake.clone();
-                        subscriptions.push(app.observe(&composer, move |_, _| wake.notify()));
+    fn observe_readiness(&self, app: &mut App) -> Result<Vec<gpui::Subscription>, String> {
+        let mut subscriptions = Vec::with_capacity(self.members.len() * 3 + 2);
+        for member in &self.members {
+            let NativeMemberState::Hidden(shell) = &member.state else {
+                return Err("startup readiness lost a native member".to_owned());
+            };
+            let root = shell.window().entity(app).map_err(|e| e.to_string())?;
+            let wake = self.cancellation.wake.clone();
+            subscriptions.push(app.observe(&root, move |_, _| wake.notify()));
+            if let Some(composer) = shell.startup_composer_entity(app) {
+                let input = composer.read(app).gpui_input();
+                let wake = self.cancellation.wake.clone();
+                #[cfg(feature = "test-faults")]
+                let observed = self.faults.observe_input_wake.clone();
+                subscriptions.push(app.observe(&input, move |_input, _app| {
+                    #[cfg(feature = "test-faults")]
+                    if let Some(observed) = &observed {
+                        observed(_input.read(_app).is_surface_current_and_interactive());
                     }
-                }
+                    wake.notify();
+                }));
                 let wake = self.cancellation.wake.clone();
-                subscriptions.push(app.observe(&self.appearance, move |_, _| wake.notify()));
-                let wake = self.cancellation.wake.clone();
-                subscriptions.push(app.on_window_closed(move |_| wake.notify()));
-                Ok(subscriptions)
-            })
-            .expect("native startup retains a live GUI executor during observation")?;
-        let result = loop {
+                subscriptions.push(app.observe(&composer, move |_, _| wake.notify()));
+            }
+        }
+        let wake = self.cancellation.wake.clone();
+        subscriptions.push(app.observe(&self.appearance, move |_, _| wake.notify()));
+        let wake = self.cancellation.wake.clone();
+        subscriptions.push(app.on_window_closed(move |_| wake.notify()));
+        Ok(subscriptions)
+    }
+
+    async fn wait_until_ready(&self, cx: &mut AsyncApp) -> Result<(), String> {
+        loop {
             let observed = self.cancellation.wake.version();
             match cx
                 .update(|app| self.readiness(app))
                 .expect("native startup retains a live GUI executor during readiness")
             {
-                Ok(true) => break Ok(()),
-                Err(error) => break Err(error),
+                Ok(true) => return Ok(()),
+                Err(error) => return Err(error),
                 Ok(false) => self.cancellation.wake.wait(observed).await,
             }
-        };
-        drop(subscriptions);
-        result
+        }
     }
 
     async fn final_validation(&mut self, cx: &mut AsyncApp) -> Result<(), String> {
@@ -182,9 +203,15 @@ impl NativeRestoreSetFlight {
         let validation = std::mem::take(&mut self.validation);
         #[cfg(feature = "test-faults")]
         let hook = self.faults.before_final_validation.take();
+        #[cfg(feature = "test-faults")]
+        let each_validation = self.faults.each_final_validation.clone();
         let task = cx.background_executor().spawn(async move {
             #[cfg(feature = "test-faults")]
             if let Some(hook) = hook {
+                hook();
+            }
+            #[cfg(feature = "test-faults")]
+            if let Some(hook) = each_validation {
                 hook();
             }
             let result = owner.revalidate_members(validation.len(), |index, expected| {
@@ -203,9 +230,28 @@ impl NativeRestoreSetFlight {
         self.check_cancelled()
     }
 
-    fn publish(&mut self, app: &mut App) -> Result<Vec<MainWindowShell>, String> {
+    fn publish(&mut self, app: &mut App) -> Result<Option<Vec<MainWindowShell>>, String> {
+        #[cfg(feature = "test-faults")]
+        if let Some(hook) = &mut self.faults.before_admission {
+            let shells = self
+                .members
+                .iter()
+                .filter_map(|member| {
+                    if let NativeMemberState::Hidden(shell) = &member.state {
+                        Some(shell)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            hook(&shells, app);
+        }
         if !self.readiness(app)? {
-            return Err("startup member lost first-presentable readiness".to_owned());
+            #[cfg(feature = "test-faults")]
+            if let Some(hook) = self.faults.after_admission_pending.take() {
+                hook(app);
+            }
+            return Ok(None);
         }
         let mut shells = Vec::with_capacity(self.members.len());
         for member in &mut self.members {
@@ -218,7 +264,7 @@ impl NativeRestoreSetFlight {
         }
         let result = self.publish_shells(&mut shells, app);
         match result {
-            Ok(()) => Ok(shells),
+            Ok(()) => Ok(Some(shells)),
             Err(error) => {
                 for (member, shell) in self.members.iter_mut().zip(shells) {
                     member.state = NativeMemberState::Hidden(shell);

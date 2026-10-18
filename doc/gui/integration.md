@@ -10,6 +10,21 @@ Its top-level layout is a fixed-height toolbar strip, an optional fixed-height c
 
 The minimum OS window size is derived from the minimum sizes of currently visible child widgets so pinned controls remain reachable. The main window content does not own vertical scrolling during normal operation; only explicitly designated child panels or regions own vertical scrolling.
 
+The editor-derived input-panel minimum and total window minimum are separate quantities. Shared
+resolved metrics supply the same visible toolbar, optional strips, status segments and input-panel
+dimensions to minimum derivation and rendering. Width accommodates the greatest visible child
+minimum, including complete pinned control groups. Height accommodates all visible pinned chrome,
+the input-panel minimum and the transcript-region minimum, and is at least twice the input-panel
+minimum so its half-window maximum remains feasible. The transcript-region minimum remains zero.
+Unfilled optional contributions add neither height nor width.
+
+Composer allocation uses the smaller of half the window height and the body height remaining
+after visible pinned chrome and the transcript minimum. Rendering and transcript attachment use
+that same allocation. At enforced native minimum, the usable input panel remains above and adjacent
+to the bottom-anchored status line; pinned controls neither overlap it nor extend outside the
+client viewport. Candidate appearance or contribution changes do not become visible before their
+derived minimum is applicable to the same native window.
+
 Feature-owned transient in-window popups, including flyouts, menus, and previews, and feature-owned notices remain bounded within the OS window or the owning feature-declared region.
 
 ### Slots

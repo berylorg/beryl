@@ -18,7 +18,11 @@ bounded filler and viewport-exceeds-rendering-capacity treatment; it does not ad
 surface, progress row, or per-region placeholder collection. Caret, IME, selection, and the active
 interaction anchor remain the first realization priorities.
 
-The feature supplies the composer height clamp as half the OS-window height, further constrained to preserve the transcript-region minimum height. The canonical widget grows and shrinks to wrapped content within that allocation and owns inner editor overflow.
+The feature supplies the composer height clamp as half the OS-window height, further constrained
+by the available body height after visible pinned chrome and the transcript-region minimum.
+The shared window allocation in [GUI integration](../../gui/integration.md) also governs transcript
+attachment. The canonical widget grows and shrinks to wrapped content within that allocation and
+owns inner editor overflow.
 
 The mounted composition adds no manual resize handle and no persistent `Run Turn` or submit
 command button. Submission remains an editor command under the product behavior in `design.md`.

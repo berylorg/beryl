@@ -13,6 +13,7 @@ pub(crate) struct IndexedReadGate {
 
 enum IndexedReadKind {
     RecoveryRange,
+    CodeRange { start: u64, end: u64 },
     Source,
     Display,
 }
@@ -24,6 +25,19 @@ impl IndexedReadGate {
 
     pub(crate) fn source(revision: crate::syndic_transcript::ProviderRevision) -> Arc<Self> {
         Self::with_kind(revision, IndexedReadKind::Source)
+    }
+
+    pub(crate) fn code_range(
+        revision: crate::syndic_transcript::ProviderRevision,
+        lines: Range<u64>,
+    ) -> Arc<Self> {
+        Self::with_kind(
+            revision,
+            IndexedReadKind::CodeRange {
+                start: lines.start,
+                end: lines.end,
+            },
+        )
     }
 
     pub(crate) fn display(revision: crate::syndic_transcript::ProviderRevision) -> Arc<Self> {
@@ -48,6 +62,9 @@ impl IndexedReadGate {
         match self.kind {
             IndexedReadKind::Source => matches!(value, IndexedResourceValue::Source(_)),
             IndexedReadKind::Display => matches!(value, IndexedResourceValue::Display(_)),
+            IndexedReadKind::CodeRange { start, end } => matches!(value, IndexedResourceValue::Range(range)
+                if matches!(range.cursor.request, syndic_storage::indexed_resource::Request::Code { lines } if lines.start == start && lines.end == end)
+                    && range.request_complete),
             IndexedReadKind::RecoveryRange => matches!(value, IndexedResourceValue::Range(range)
                 if matches!(range.cursor.request, syndic_storage::indexed_resource::Request::Code { lines } if lines.start == 902 && lines.end == 918)
                     && range.request_complete),

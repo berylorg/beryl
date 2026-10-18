@@ -174,9 +174,9 @@ impl Render for MountRoot {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>,
+        _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        div().children(self.mount.read(cx).contribution())
+        div().size_full().child(self.mount.clone())
     }
 }
 

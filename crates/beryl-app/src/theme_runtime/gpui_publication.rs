@@ -17,8 +17,18 @@ use super::{
 
 type PublicationResult = Result<(), AppearancePublicationFailure>;
 
+mod registration;
+
 pub trait PreparedWindowAppearance {
-    fn validate(&self, cx: &App) -> Result<(), super::AdapterFailureClass>;
+    fn prepare_native(
+        &mut self,
+        _: &mut App,
+    ) -> Result<Option<Task<Result<(), super::AdapterFailureClass>>>, super::AdapterFailureClass>
+    {
+        Ok(None)
+    }
+
+    fn validate(&self, cx: &mut App) -> Result<(), super::AdapterFailureClass>;
 
     fn commit(self: Box<Self>, cx: &mut App);
 }
@@ -58,6 +68,40 @@ struct Request {
     previous: Arc<AppearanceGeneration>,
     generation: Arc<AppearanceGeneration>,
     reply: Arc<Reply>,
+}
+
+struct PublicationCompletion {
+    reply: Arc<Reply>,
+    state: Arc<Mutex<Mailbox>>,
+    finished: bool,
+}
+
+impl PublicationCompletion {
+    fn finish(mut self, result: PublicationResult) {
+        let receiver = {
+            let mut state = self.state.lock().expect("appearance mailbox lock");
+            state.occupied = false;
+            state.receiver.take()
+        };
+        drop(receiver);
+        self.reply.complete(result);
+        self.finished = true;
+    }
+}
+
+impl Drop for PublicationCompletion {
+    fn drop(&mut self) {
+        if !self.finished {
+            let receiver = {
+                let mut state = self.state.lock().expect("appearance mailbox lock");
+                state.occupied = false;
+                state.receiver.take()
+            };
+            drop(receiver);
+            self.reply
+                .complete(Err(AppearancePublicationFailure::Unavailable));
+        }
+    }
 }
 
 struct Mailbox {
@@ -160,6 +204,26 @@ impl Future for NextRequest {
     }
 }
 
+struct AwaitNativePreparation {
+    ready: Task<Result<(), super::AdapterFailureClass>>,
+    state: Arc<Mutex<Mailbox>>,
+}
+
+impl Future for AwaitNativePreparation {
+    type Output = Result<(), super::AdapterFailureClass>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut FutureContext<'_>) -> Poll<Self::Output> {
+        {
+            let mut state = self.state.lock().expect("appearance mailbox lock");
+            if !state.snapshot.active {
+                return Poll::Ready(Err(super::AdapterFailureClass::Unavailable));
+            }
+            state.receiver = Some(cx.waker().clone());
+        }
+        Pin::new(&mut self.ready).poll(cx)
+    }
+}
+
 pub struct GpuiAppearanceWindowSet {
     target: Arc<GpuiAppearancePublicationTarget>,
     adapters: Vec<Box<dyn AppearanceWindowAdapter>>,
@@ -191,12 +255,64 @@ impl GpuiAppearanceWindowSet {
             let state = Arc::clone(&target.state);
             let task = cx.spawn(async move |owner, cx| {
                 while let Some(request) = NextRequest(Arc::clone(&state)).await {
-                    let reply = Arc::clone(&request.reply);
-                    let result = owner
-                        .update(cx, |owner, cx| owner.adopt(request, cx))
+                    let completion = PublicationCompletion {
+                        reply: Arc::clone(&request.reply),
+                        state: Arc::clone(&state),
+                        finished: false,
+                    };
+                    let preparation = owner
+                        .update(cx, |owner, cx| owner.prepare_adoption(&request, cx))
                         .unwrap_or(Err(AppearancePublicationFailure::Unavailable));
-                    state.lock().expect("appearance mailbox lock").occupied = false;
-                    reply.complete(result);
+                    let result = match preparation {
+                        Err(error) => Err(error),
+                        Ok(mut prepared) => {
+                            let mut failure = None;
+                            for (adapter, publication) in &mut prepared {
+                                let readiness = cx
+                                    .update(|cx| publication.prepare_native(cx))
+                                    .unwrap_or(Err(super::AdapterFailureClass::Unavailable));
+                                match readiness {
+                                    Err(class) => {
+                                        failure = Some(AppearancePublicationFailure::Adapter {
+                                            adapter: *adapter,
+                                            class,
+                                        });
+                                        break;
+                                    }
+                                    Ok(Some(ready)) => {
+                                        let result = AwaitNativePreparation {
+                                            ready,
+                                            state: Arc::clone(&state),
+                                        }
+                                        .await;
+                                        let receiver = state
+                                            .lock()
+                                            .expect("appearance mailbox lock")
+                                            .receiver
+                                            .take();
+                                        drop(receiver);
+                                        if let Err(class) = result {
+                                            failure = Some(AppearancePublicationFailure::Adapter {
+                                                adapter: *adapter,
+                                                class,
+                                            });
+                                            break;
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                }
+                            }
+                            match failure {
+                                Some(error) => Err(error),
+                                None => owner
+                                    .update(cx, |owner, cx| {
+                                        owner.finish_adoption(request, prepared, cx)
+                                    })
+                                    .unwrap_or(Err(AppearancePublicationFailure::Unavailable)),
+                            }
+                        }
+                    };
+                    completion.finish(result);
                 }
                 let _ = owner.update(cx, |owner, _| owner.retire());
             });
@@ -235,53 +351,19 @@ impl GpuiAppearanceWindowSet {
             -> Result<Box<dyn PreparedWindowAppearance>, super::AdapterFailureClass>,
         cx: &mut Context<Self>,
     ) -> Result<(), AdapterRegistrationError> {
-        let snapshot = self.target.snapshot();
         let id = adapter.id();
-        if !snapshot.active {
+        let (snapshot, mut prepared) = self.prepare_registration(adapter.as_ref(), prepare, cx)?;
+        if let Some(readiness) = prepared
+            .prepare_native(cx)
+            .map_err(|class| AdapterRegistrationError::Preparation { adapter: id, class })?
+        {
+            drop(readiness);
             return Err(AdapterRegistrationError::Preparation {
                 adapter: id,
                 class: super::AdapterFailureClass::Unavailable,
             });
         }
-        if self.adapters.len() == snapshot.capacity {
-            return Err(AdapterRegistrationError::CapacityReached);
-        }
-        if self.adapters.iter().any(|existing| existing.id() == id) {
-            return Err(AdapterRegistrationError::DuplicateIdentity(id));
-        }
-        let next_epoch = snapshot
-            .epoch
-            .checked_next()
-            .map_err(|_| AdapterRegistrationError::WindowEpochExhausted)?;
-        let prepared = prepare(adapter.as_ref(), Arc::clone(&snapshot.current), cx)
-            .map_err(|class| AdapterRegistrationError::Preparation { adapter: id, class })?;
-        prepared
-            .validate(cx)
-            .map_err(|class| AdapterRegistrationError::Preparation { adapter: id, class })?;
-        {
-            let state = self.target.state.lock().expect("appearance mailbox lock");
-            if !state.snapshot.active
-                || state.snapshot.epoch != snapshot.epoch
-                || !Arc::ptr_eq(&state.snapshot.current, &snapshot.current)
-            {
-                return Err(AdapterRegistrationError::Preparation {
-                    adapter: id,
-                    class: super::AdapterFailureClass::Unavailable,
-                });
-            }
-        }
-        prepared.commit(cx);
-        self.adapters.push(adapter);
-        let mut state = self.target.state.lock().expect("appearance mailbox lock");
-        let retired = !state.snapshot.active;
-        state.snapshot.count = if retired { 0 } else { self.adapters.len() };
-        state.snapshot.epoch = next_epoch;
-        drop(state);
-        if retired {
-            self.adapters.clear();
-        }
-        cx.refresh_windows();
-        Ok(())
+        self.finish_registration(adapter, snapshot, prepared, cx)
     }
 
     pub fn unregister(&mut self, id: WindowAdapterId) -> Result<bool, WindowEpochExhausted> {
@@ -309,7 +391,14 @@ impl GpuiAppearanceWindowSet {
             .count = 0;
     }
 
-    fn adopt(&mut self, request: Request, cx: &mut Context<Self>) -> PublicationResult {
+    fn prepare_adoption(
+        &mut self,
+        request: &Request,
+        cx: &mut Context<Self>,
+    ) -> Result<
+        Vec<(WindowAdapterId, Box<dyn PreparedWindowAppearance>)>,
+        AppearancePublicationFailure,
+    > {
         let snapshot = self.target.snapshot();
         if !snapshot.active {
             return Err(AppearancePublicationFailure::Unavailable);
@@ -341,6 +430,15 @@ impl GpuiAppearanceWindowSet {
                     })?,
             ));
         }
+        Ok(prepared)
+    }
+
+    fn finish_adoption(
+        &mut self,
+        request: Request,
+        prepared: Vec<(WindowAdapterId, Box<dyn PreparedWindowAppearance>)>,
+        cx: &mut Context<Self>,
+    ) -> PublicationResult {
         for (adapter, publication) in &prepared {
             publication
                 .validate(cx)

@@ -67,10 +67,12 @@ pub(super) struct ShellAppearanceAdapter {
 struct PreparedShellAppearance {
     window: WindowHandle<MainWindowShellRoot>,
     appearance: MainWindowShellAppearance,
+    metrics: host::sizing::ShellMetrics,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-faults"))]
 impl MainWindowShellRoot {
+    #[cfg(test)]
     pub(crate) fn test_appearance(&self) -> Arc<AppearanceGeneration> {
         self.controller
             .as_ref()
@@ -80,15 +82,18 @@ impl MainWindowShellRoot {
             .clone()
     }
 
-    pub(crate) fn test_apply_appearance(
+    pub fn test_apply_appearance(
         window: WindowHandle<Self>,
         generation: Arc<AppearanceGeneration>,
         app: &mut App,
     ) {
-        let prepared = Box::new(PreparedShellAppearance {
+        let mut prepared = ShellAppearanceAdapter {
+            id: WindowAdapterId::new(std::num::NonZeroU64::new(1).unwrap()),
             window,
-            appearance: MainWindowShellAppearance::prepare(generation),
-        });
+        }
+        .prepare(generation, app)
+        .unwrap();
+        assert!(prepared.prepare_native(app).unwrap().is_none());
         prepared.validate(app).unwrap();
         prepared.commit(app);
     }
@@ -101,23 +106,95 @@ impl AppearanceWindowAdapter for ShellAppearanceAdapter {
     fn prepare(
         &self,
         generation: Arc<AppearanceGeneration>,
-        _: &mut App,
+        app: &mut App,
     ) -> Result<Box<dyn PreparedWindowAppearance>, AdapterFailureClass> {
+        let metrics = self
+            .window
+            .read_with(app, |root, app| -> Result<_, AdapterFailureClass> {
+                let controller = root
+                    .controller
+                    .as_ref()
+                    .ok_or(AdapterFailureClass::Unavailable)?;
+                root.candidate_metrics(
+                    &generation,
+                    controller.metrics.panel,
+                    controller.metrics.lineage,
+                    app,
+                )
+                .map_err(|_| AdapterFailureClass::Unavailable)
+            })
+            .map_err(|_| AdapterFailureClass::Unavailable)??;
         Ok(Box::new(PreparedShellAppearance {
             window: self.window,
             appearance: MainWindowShellAppearance::prepare(generation),
+            metrics,
         }))
     }
 }
 
 impl PreparedWindowAppearance for PreparedShellAppearance {
-    fn validate(&self, app: &App) -> Result<(), AdapterFailureClass> {
+    fn prepare_native(
+        &mut self,
+        app: &mut App,
+    ) -> Result<Option<gpui::Task<Result<(), AdapterFailureClass>>>, AdapterFailureClass> {
+        let compatible = self
+            .window
+            .read_with(app, |root, _| {
+                root.controller.as_ref().is_some_and(|controller| {
+                    controller.appearance.generation.prepared().home()
+                        == self.appearance.generation.prepared().home()
+                })
+            })
+            .map_err(|_| AdapterFailureClass::Unavailable)?;
+        if !compatible {
+            return Err(AdapterFailureClass::Rejected);
+        }
+        let ready = self
+            .window
+            .update(app, |root, window, cx| {
+                root.prepare_appearance_minimum(self.metrics.clone(), window, cx)
+            })
+            .map_err(|_| AdapterFailureClass::Unavailable)?
+            .map_err(|_| AdapterFailureClass::Unavailable)?;
+        if self
+            .window
+            .read_with(app, |root, _| root.minimum_current(&self.metrics))
+            .map_err(|_| AdapterFailureClass::Unavailable)?
+        {
+            return Ok(None);
+        }
+        Ok(Some(app.spawn(async move |_| {
+            ready
+                .await
+                .map_err(|_| AdapterFailureClass::ApplicationFailed)
+        })))
+    }
+
+    fn validate(&self, app: &mut App) -> Result<(), AdapterFailureClass> {
         self.window
-            .read_with(app, |root, app| {
+            .update(app, |root, window, app| {
                 let controller = root
                     .controller
                     .as_ref()
                     .ok_or(AdapterFailureClass::Unavailable)?;
+                let expected = root
+                    .candidate_metrics(
+                        &self.appearance.generation,
+                        controller.metrics.panel,
+                        controller.metrics.lineage,
+                        app,
+                    )
+                    .map_err(|_| AdapterFailureClass::Unavailable)?;
+                if expected != self.metrics {
+                    return Err(AdapterFailureClass::Rejected);
+                }
+                if !root.minimum_current(&self.metrics)
+                    || window.is_minimized().is_none()
+                    || !host::sizing::contains(window.viewport_size(), self.metrics.minimum())
+                    || (self.metrics != controller.metrics && window.is_minimized() != Some(false))
+                {
+                    return Err(AdapterFailureClass::Unavailable);
+                }
                 if controller.appearance.generation.prepared().home()
                     != self.appearance.generation.prepared().home()
                 {
@@ -135,12 +212,13 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                     .as_ref()
                     .and_then(|mount| mount.read(app).contribution())
                     .ok_or(AdapterFailureClass::Unavailable)?;
-                if !composer.read(app).appearance_applicable() {
+                if !composer.read(app).appearance_applicable(app) {
                     return Err(AdapterFailureClass::Unavailable);
                 }
                 Ok(())
             })
-            .map_err(|_| AdapterFailureClass::Unavailable)?
+            .map_err(|_| AdapterFailureClass::Unavailable)??;
+        Ok(())
     }
     fn commit(self: Box<Self>, app: &mut App) {
         let window = self.window;
@@ -165,6 +243,8 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                     widget.set_appearance(self.appearance.generation.clone(), window, cx);
                 });
                 controller.appearance = self.appearance;
+                root.commit_metrics(self.metrics, window, app);
+                root.appearance_registration.set(true);
                 app.notify();
             })
             .expect("validated shell window");

@@ -10,6 +10,9 @@ use beryl_backend::BackendWebSocketEndpoint;
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
 
+#[path = "server/managed.rs"]
+mod managed;
+
 pub const AUTHORIZATION: &str = "Bearer normal-terminal";
 pub const CAS_THREAD_ID: &str = "cas-thread";
 pub const CAS_TURN_ID: &str = "cas-turn";
@@ -52,6 +55,12 @@ enum ServerScenario {
     ResumeDelayedRejection(Box<str>),
     ConnectionLoss(Box<str>),
     ControlledConnectionLoss,
+    ManagedControlledConnectionLoss {
+        root: std::path::PathBuf,
+    },
+    ManagedAdmissionOnly {
+        root: std::path::PathBuf,
+    },
     AcceptedStop,
     StopFeedbackTerminal(&'static str),
     PermissionStop,
@@ -323,27 +332,36 @@ fn run_server(
     scenario: ServerScenario,
     generated_starts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 ) {
-    let (stream, _) = listener.accept().unwrap();
-    let mut socket = accept_hdr(
-        stream,
-        |request: &tungstenite::handshake::server::Request, response| {
-            assert_eq!(
-                request
-                    .headers()
-                    .get("authorization")
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-                AUTHORIZATION,
-            );
-            Ok(response)
-        },
-    )
-    .unwrap();
+    let (mut socket, warmup) =
+        if let ServerScenario::ManagedControlledConnectionLoss { root } = &scenario {
+            let (socket, warmup) = managed::accept_managed_pair(listener, root);
+            (socket, Some(warmup))
+        } else if let ServerScenario::ManagedAdmissionOnly { root } = &scenario {
+            (managed::authenticated(&listener, root), None)
+        } else {
+            let (stream, _) = listener.accept().unwrap();
+            let socket = accept_hdr(
+                stream,
+                |request: &tungstenite::handshake::server::Request, response| {
+                    assert_eq!(
+                        request
+                            .headers()
+                            .get("authorization")
+                            .unwrap()
+                            .to_str()
+                            .unwrap(),
+                        AUTHORIZATION,
+                    );
+                    Ok(response)
+                },
+            )
+            .unwrap();
+            (socket, None)
+        };
     socket.get_mut().set_read_timeout(Some(TIMEOUT)).unwrap();
     complete_admission(&mut socket);
     match scenario {
-        ServerScenario::AdmissionOnly => {
+        ServerScenario::AdmissionOnly | ServerScenario::ManagedAdmissionOnly { .. } => {
             events.send(ServerEvent::AdmissionReady).unwrap();
             read_until_close(&mut socket).unwrap();
         }
@@ -524,57 +542,15 @@ fn run_server(
             complete_connection_loss(&mut socket, &cas_thread_id);
         }
         ServerScenario::ControlledConnectionLoss => {
-            complete_projection(&mut socket);
-            events.send(ServerEvent::ProjectionReady).unwrap();
-            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
-            send_json(
+            complete_controlled_connection_loss(&mut socket, &events, &commands, r"C:\work\beryl");
+        }
+        ServerScenario::ManagedControlledConnectionLoss { ref root } => {
+            complete_controlled_connection_loss(
                 &mut socket,
-                &format!(
-                    r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"{CAS_TURN_ID}","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37010,"completedAt":null,"durationMs":null}}}}}}"#
-                ),
+                &events,
+                &commands,
+                root.to_str().unwrap(),
             );
-            send_json(
-                &mut socket,
-                &format!(
-                    r#"{{"method":"thread/status/changed","params":{{"threadId":"{CAS_THREAD_ID}","status":{{"type":"active","activeFlags":[]}}}}}}"#
-                ),
-            );
-            loop {
-                match commands.recv_timeout(TIMEOUT).unwrap() {
-                    ServerCommand::SendObservation(wire) => send_json(&mut socket, &wire),
-                    ServerCommand::ExpectCompaction => {
-                        let request =
-                            read_json(&mut socket).expect("one exact manual compact start");
-                        assert_eq!(request["method"], "thread/compact/start");
-                        assert_eq!(request["params"], json!({"threadId": CAS_THREAD_ID}));
-                        send_json(
-                            &mut socket,
-                            &json!({"id": request["id"], "result": {}}).to_string(),
-                        );
-                        send_json(
-                            &mut socket,
-                            &format!(
-                                r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"manual-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37020,"completedAt":null,"durationMs":null}}}}}}"#
-                            ),
-                        );
-                        for (method, field, timestamp) in [
-                            ("item/started", "startedAtMs", 37021),
-                            ("item/completed", "completedAtMs", 37022),
-                        ] {
-                            send_json(
-                                &mut socket,
-                                &format!(
-                                    r#"{{"method":"{method}","params":{{"item":{{"type":"contextCompaction","id":"manual-compaction-marker"}},"threadId":"{CAS_THREAD_ID}","turnId":"manual-compaction","{field}":{timestamp}}}}}"#
-                                ),
-                            );
-                        }
-                        events.send(ServerEvent::CompactionObserved).unwrap();
-                    }
-                    ServerCommand::CloseConnection => break,
-                    _ => panic!("unexpected controlled connection command"),
-                }
-            }
-            socket.close(None).unwrap();
         }
         ServerScenario::AcceptedStop => {
             complete_projection(&mut socket);
@@ -646,6 +622,9 @@ fn run_server(
         }
     }
     events.send(ServerEvent::Closed).unwrap();
+    if let Some(warmup) = warmup {
+        warmup.join().unwrap();
+    }
 }
 
 pub(crate) fn complete_admission(socket: &mut WebSocket<TcpStream>) {
@@ -677,13 +656,29 @@ pub(crate) fn complete_projection(socket: &mut WebSocket<TcpStream>) {
 }
 
 fn complete_projection_on_thread(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
+    complete_projection_on_thread_at_root(socket, cas_thread_id, r"C:\work\beryl");
+}
+
+fn complete_projection_on_thread_at_root(
+    socket: &mut WebSocket<TcpStream>,
+    cas_thread_id: &str,
+    root: &str,
+) {
     let request = read_json(socket).unwrap();
     assert_eq!(request["jsonrpc"], "2.0");
     assert_eq!(request["method"], "thread/start");
     assert_eq!(request["params"]["ephemeral"], false);
     assert!(request["params"].get("input").is_none());
     let id = request["id"].as_u64().unwrap();
-    send_thread_load_response(socket, id, cas_thread_id, false);
+    send_thread_load_metadata_at_root(
+        socket,
+        id,
+        cas_thread_id,
+        false,
+        "gpt-5.6",
+        Some("high"),
+        root,
+    );
 }
 
 fn complete_resume_projection(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
@@ -991,9 +986,9 @@ pub fn terminal_wire() -> String {
 }
 
 fn terminal_wire_for(cas_thread_id: &str) -> String {
-    format!(
+    notification_wire(&format!(
         r#"{{"method":"turn/completed","params":{{"threadId":"{cas_thread_id}","turn":{{"id":"{CAS_TURN_ID}","items":[],"itemsView":"notLoaded","status":"completed","error":null,"startedAt":37010,"completedAt":37011,"durationMs":1}}}}}}"#,
-    )
+    ))
 }
 
 fn assert_quiet_then_close(socket: &mut WebSocket<TcpStream>) {
@@ -1030,8 +1025,14 @@ fn read_json(socket: &mut WebSocket<TcpStream>) -> Option<Value> {
 }
 
 fn send_json(socket: &mut WebSocket<TcpStream>, value: &str) {
+    socket
+        .send(Message::Text(notification_wire(value).into()))
+        .unwrap();
+}
+
+fn notification_wire(value: &str) -> String {
     let parsed: serde_json::Value = serde_json::from_str(value).unwrap();
-    let wire = if matches!(
+    if matches!(
         parsed["method"].as_str(),
         Some("turn/started" | "thread/status/changed" | "turn/completed")
     ) && parsed.get("emittedAtMs").is_none()
@@ -1042,8 +1043,7 @@ fn send_json(socket: &mut WebSocket<TcpStream>, value: &str) {
         )
     } else {
         value.to_owned()
-    };
-    socket.send(Message::Text(wire.into())).unwrap();
+    }
 }
 
 fn read_until_close(socket: &mut WebSocket<TcpStream>) -> Result<(), tungstenite::Error> {
@@ -1070,4 +1070,62 @@ fn read_until_close(socket: &mut WebSocket<TcpStream>) -> Result<(), tungstenite
             Err(error) => return Err(error),
         }
     }
+}
+
+fn complete_controlled_connection_loss(
+    socket: &mut WebSocket<TcpStream>,
+    events: &SyncSender<ServerEvent>,
+    commands: &Receiver<ServerCommand>,
+    root: &str,
+) {
+    complete_projection_on_thread_at_root(socket, CAS_THREAD_ID, root);
+    events.send(ServerEvent::ProjectionReady).unwrap();
+    begin_connection_loss_turn(socket, CAS_THREAD_ID);
+    send_json(
+        socket,
+        &format!(
+            r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"{CAS_TURN_ID}","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37010,"completedAt":null,"durationMs":null}}}}}}"#
+        ),
+    );
+    send_json(
+        socket,
+        &format!(
+            r#"{{"method":"thread/status/changed","params":{{"threadId":"{CAS_THREAD_ID}","status":{{"type":"active","activeFlags":[]}}}}}}"#
+        ),
+    );
+    loop {
+        match commands.recv_timeout(TIMEOUT).unwrap() {
+            ServerCommand::SendObservation(wire) => send_json(socket, &wire),
+            ServerCommand::ExpectCompaction => {
+                let request = read_json(socket).expect("one exact manual compact start");
+                assert_eq!(request["method"], "thread/compact/start");
+                assert_eq!(request["params"], json!({"threadId": CAS_THREAD_ID}));
+                send_json(
+                    socket,
+                    &json!({"id": request["id"], "result": {}}).to_string(),
+                );
+                send_json(
+                    socket,
+                    &format!(
+                        r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"manual-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":37020,"completedAt":null,"durationMs":null}}}}}}"#
+                    ),
+                );
+                for (method, field, timestamp) in [
+                    ("item/started", "startedAtMs", 37021),
+                    ("item/completed", "completedAtMs", 37022),
+                ] {
+                    send_json(
+                        socket,
+                        &format!(
+                            r#"{{"method":"{method}","params":{{"item":{{"type":"contextCompaction","id":"manual-compaction-marker"}},"threadId":"{CAS_THREAD_ID}","turnId":"manual-compaction","{field}":{timestamp}}}}}"#
+                        ),
+                    );
+                }
+                events.send(ServerEvent::CompactionObserved).unwrap();
+            }
+            ServerCommand::CloseConnection => break,
+            _ => panic!("unexpected controlled connection command"),
+        }
+    }
+    socket.close(None).unwrap();
 }

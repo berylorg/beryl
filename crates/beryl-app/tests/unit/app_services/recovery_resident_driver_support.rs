@@ -277,18 +277,17 @@ pub(super) async fn attempt(
     close: MainWindowConversationComposerCloseTicket,
     adapters: &mut Option<PreparedComposerRecoveryAdapters>,
     mut current: gpui_text_input::RangePrepublicationCurrent,
+    layout: gpui_text_input::RangeResidentLayoutSnapshot,
     scenario: ResidentScenario,
     cx: &mut AsyncApp,
 ) -> bool {
     let mut preparation = Some(key.clone());
-    let layout = resident
-        .read_with(cx, |resident, app| {
-            resident.gpui_input().read(app).resident_layout_snapshot()
-        })
-        .unwrap();
     let mut configurator: Option<MainWindowConversationComposerConfigurator> =
         Some(Box::new(move |selection| {
-            if scenario == ResidentScenario::DrivenAppearanceRefusal {
+            if matches!(
+                scenario,
+                ResidentScenario::DrivenAttachment | ResidentScenario::DrivenAppearanceRefusal
+            ) {
                 resident_fixture::configure_current(selection, &layout)
             } else {
                 resident_fixture::configure(selection)

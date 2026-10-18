@@ -70,6 +70,17 @@ fn run_inner(
     if !wanted(shared, &shared.lock(), runtime_id, attempt) {
         return (true, None);
     }
+    #[cfg(test)]
+    {
+        crate::bootstrap::test_support::checkpoint(
+            crate::bootstrap::test_support::Producer::RuntimeLaunch,
+            *runtime_id.as_bytes(),
+            || !wanted(shared, &shared.lock(), runtime_id, attempt),
+        );
+        if !wanted(shared, &shared.lock(), runtime_id, attempt) {
+            return (true, None);
+        }
+    }
     match launch() {
         Ok(runtime) => *owner = Some(runtime),
         Err(failure) => {

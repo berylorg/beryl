@@ -1,4 +1,5 @@
 use super::*;
+use gpui::Focusable;
 
 #[test]
 fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_worker_is_held() {
@@ -32,6 +33,12 @@ fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_w
                     .update(cx, |root, _, _| root.test_hold_lineage_head())
                     .unwrap();
                 let child = lineage_fixture::child();
+                let pending_geometry = Arc::new(std::sync::Mutex::new(None));
+                window
+                    .update(cx, |root, _, _| {
+                        root.test_observe_ordinary_pending_ready(Some(pending_geometry.clone()))
+                    })
+                    .unwrap();
                 let (picker, key) = switcher_entry::open(window, child, cx).await;
                 window
                     .update(cx, |_, _, app| {
@@ -40,6 +47,7 @@ fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_w
                     .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(20);
                 let widget = loop {
+                    native_code::draw(window, cx);
                     if let Some(widget) = window.update(cx, |root, window, app| {
                     let (claim, title) = root.coherent_selected_thread_title(app)?;
                     if claim.thread_id() != child || !gate.entered() { return None; }
@@ -87,6 +95,23 @@ fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_w
                     child_height > original_height,
                     "actual child target must be taller than the original editor"
                 );
+                let (staged_thread, staged_selection, _staged_viewport) = pending_geometry
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("original child supplied no staged Ready geometry");
+                assert_eq!(staged_thread, child);
+                assert_eq!(
+                    staged_selection,
+                    selected_child
+                        .read_with(cx, |composer, _| composer.selection_identity())
+                        .unwrap()
+                );
+                window
+                    .update(cx, |root, _, _| {
+                        root.test_observe_ordinary_pending_ready(None)
+                    })
+                    .unwrap();
                 let parent = SyndicThreadId::from_bytes([242; 16]);
                 ready(window, parent, cx).await;
                 focus(window, parent, cx).await;
@@ -99,6 +124,13 @@ fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_w
                     .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(20);
                 let final_claim = loop {
+                    cx.update(|app| {
+                        app.update_window(window.into(), |_, native, app| {
+                            native.draw_and_present_for_test(app)
+                        })
+                        .unwrap();
+                    })
+                    .unwrap();
                     if let Some(claim) = window
                         .update(cx, |root, window, app| {
                             let (claim, _) = root.coherent_selected_thread_title(app)?;
@@ -109,7 +141,28 @@ fn native_selected_child_publishes_exact_readonly_endpoint_while_original_head_w
                             }
                             assert!(root.test_thread_lineage_view().is_none());
                             assert!(!prior_focus.is_focused(window));
-                            assert!(root.notice_safe_focus(app).is_focused(window));
+                            let controller = root.controller().unwrap();
+                            let selected = controller
+                                .composer_mount()
+                                .unwrap()
+                                .read(app)
+                                .contribution()
+                                .unwrap();
+                            assert_ne!(selected.entity_id(), selected_child.entity_id());
+                            let composer = selected.read(app);
+                            assert_eq!(composer.selection_identity().claim(), claim);
+                            assert_eq!(
+                                composer.selection_identity().window_id(),
+                                controller.window_id()
+                            );
+                            assert!(!composer.is_pending_target());
+                            assert!(
+                                composer
+                                    .gpui_input()
+                                    .read(app)
+                                    .focus_handle(app)
+                                    .is_focused(window)
+                            );
                             Some(claim)
                         })
                         .unwrap()

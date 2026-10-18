@@ -36,10 +36,22 @@ pub use test_support::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};
 pub struct RuntimeInterestConfig {
     runtime_capacity: NonZeroUsize,
     interest_capacity: NonZeroUsize,
+    view_interest_capacity: NonZeroUsize,
     admission_timeout: Duration,
 }
 
 impl RuntimeInterestConfig {
+    pub fn with_view_interest_capacity(mut self, capacity: NonZeroUsize) -> Self {
+        self.view_interest_capacity = capacity;
+        self
+    }
+
+    fn interest_limit(self, kind: RuntimeInterestKind) -> usize {
+        match kind {
+            RuntimeInterestKind::View => self.view_interest_capacity.get(),
+            RuntimeInterestKind::RequiredWork => self.interest_capacity.get(),
+        }
+    }
     pub(in crate::cas_projection) fn runtime_capacity(self) -> usize {
         self.runtime_capacity.get()
     }
@@ -58,6 +70,7 @@ impl RuntimeInterestConfig {
         Ok(Self {
             runtime_capacity,
             interest_capacity,
+            view_interest_capacity: interest_capacity,
             admission_timeout,
         })
     }
@@ -251,6 +264,10 @@ impl RuntimeInterest {
 impl Drop for RuntimeInterest {
     fn drop(&mut self) {
         let mut state = self.shared.lock();
+        if self.kind == RuntimeInterestKind::View {
+            state.view_interest_count -= 1;
+            self.shared.changed.notify_all();
+        }
         let mut wake = false;
         let mut wake_idle = false;
         if let Some(entry) = state.runtimes.get_mut(&self.runtime_id)
@@ -323,9 +340,28 @@ struct RuntimeInterestState {
     closed: bool,
     next_identity: u64,
     interest_count: usize,
+    view_interest_count: usize,
     runtimes: HashMap<RuntimeId, RuntimeEntry>,
     interest_capacity_waiter: bool,
     runtime_capacity_waiter: bool,
+}
+
+impl RuntimeInterestState {
+    fn charged_interests(&self, kind: RuntimeInterestKind) -> usize {
+        if kind == RuntimeInterestKind::View {
+            return self.view_interest_count;
+        }
+        self.runtimes
+            .values()
+            .map(|entry| {
+                entry
+                    .interests
+                    .values()
+                    .filter(|interest| interest.kind == kind)
+                    .count()
+            })
+            .sum()
+    }
 }
 
 struct RuntimeEntry {

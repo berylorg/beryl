@@ -244,10 +244,18 @@ impl RunningProcessOwner {
                         )
                     })
                     .map_err(|e| e.to_string())??;
-                retained.bind_interrupted_exit_appearance(request, window, &appearance, app)?;
                 Ok((home_id, generation, appearance))
             })
             .map_err(|e| e.to_string())??;
+        Self::bind_prepared_interrupted_exit_appearance(
+            owner,
+            request,
+            window,
+            &appearance,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
         loop {
             if cancellation.is_cancelled() {
                 return Err("fresh first conversation widget preparation cancelled".into());

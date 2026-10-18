@@ -562,7 +562,12 @@ impl Fixture {
                 &NativeProjectionRequest::new(
                     thread,
                     selected_path,
-                    execution_binding(),
+                    self.storage
+                        .thread_execution(command_home.home(), thread, point_limit())
+                        .unwrap()
+                        .unwrap()
+                        .execution()
+                        .clone(),
                     exact::tool_profile(),
                 ),
                 point_limit(),

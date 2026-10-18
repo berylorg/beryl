@@ -41,3 +41,32 @@ semantic review passed. The two assembly artifacts and all six printed failed se
 removed and verified absent; successful selected fixtures cleaned themselves up. The separate
 retry-timer fixture correction and its cleanup limit are recorded in
 [recovery fixture evidence](recovery-mount-fixture.md#reopening-retry-deadline).
+
+### Acquired Replacement Composition
+
+Later progressive-startup qualification exposed the same overlap mechanism on the empty-session
+acquired path. Run 006's acquired case overflowed on an unnamed WinRT pool worker before its
+watchdog expired. First-chance debugger probes of binary SHA256
+`24E532A9BB253A1DD0A2E94F2F5CA4942435079B1DDEFED83FA47FA9327EE238`
+captured `c00000fd` under eligible-empty inspection, window acquisition, creation and restore-set
+preparation. Exact PE unwind ranges identify a 178,544-byte private inspection frame and further
+overlapping acquisition/creation frames; nearest public-symbol names are not exact private frame
+identities. The restored-path receipt above did not cover this acquired composition.
+
+`MainWindowRestoreSet::replacement_step` passed its already boxed creation owner through by-value
+`advance`, retaining a large result frame during nested acquisition. The bounded correction calls
+the existing `advance_owned` and handles its boxed outcome in a separate noninlined settlement
+frame after acquisition returns. It preserves original Pending/Prepared/Settled custody, revision
+checks, member order and commands. No executor stack increase or storage rewrite is involved.
+This alone did not remove the acquired-path overlap. Run 011 still overflowed, and its first-chance
+probe reached initial-composer claim validation, acquired-source inspection and pristine-thread audit.
+A small 6,280-byte crossbeam collection reserve exhausted the remaining stack beneath the overlapping
+creation, composer, validation and inspection frames. Moving the failure deeper is not successful
+qualification. The acquired variant now follows the existing initial-variant consumption pattern:
+extract its original acquisition and reservation in a separate noninlined frame, then invoke unchanged
+initial-composer preparation after extraction returns. This removes the measured 231,552-byte generic
+state-movement frame from nested claim inspection without new allocations or lifecycle state.
+The acquired case passes in `007e1088-b33b-4839-850f-c81b71a19df7`, including genuine producer
+release, native input, durable save and ordinary Exit with unchanged production stacks. Combined
+qualification and whole-boundary acceptance remain pending; the separate restored cases still
+require ordinary Exit qualification.

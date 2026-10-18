@@ -78,6 +78,22 @@ fn archived_parent_rejects_fresh_nested_resolution_without_a_job() {
     admitted(fixture.admit("parent", 210, "parent resolution").unwrap());
     let command = fixture.service.live_home_command().unwrap();
     let store = command.home();
+    let resolving_items = fixture
+        .syndic
+        .turn_items(
+            store,
+            fixture.source.resolving_target.pending().active_turn_id(),
+            None,
+            beryl_home_store::CursorReadLimits::new(1, 400_000).unwrap(),
+        )
+        .unwrap();
+    let resolving_item = resolving_items.records().first().unwrap();
+    assert_eq!(resolving_item.ordinal(), TurnItemOrdinal::FIRST);
+    support::exact_cas::project_item_if_needed(
+        store,
+        fixture.syndic.clone(),
+        resolving_item.item_id(),
+    );
     support::discussion_creation::create_child(store, &fixture.syndic, id(36), 230, 231);
     let source = support::discussion_handoff::active_request_for(
         store,

@@ -525,6 +525,8 @@ fn native_code_selection_copy_uses_raw_offscreen_ranges_and_atomic_successor_end
                                             == "ready"
                                         && panel.code_selection_for_test()
                                             == Some(anchor..BODY_START + 6352)
+                                        && (bytes != raw.len()
+                                            || panel.code_painted_body_glyphs_for_test() > 0)
                                 })
                                 .unwrap()
                         },

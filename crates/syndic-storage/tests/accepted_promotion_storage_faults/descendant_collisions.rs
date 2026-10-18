@@ -10,8 +10,6 @@ enum DescendantDrift {
     DraftReverse,
     SummaryActivity,
     GateAggregate,
-    ActivityHead,
-    ActivitySource,
     TranscriptLifecycle,
     TranscriptGeneration,
     ThreadPath,
@@ -19,14 +17,12 @@ enum DescendantDrift {
 }
 
 impl DescendantDrift {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 9] = [
         Self::MissingDraft,
         Self::MissingSuccessorTurn,
         Self::DraftReverse,
         Self::SummaryActivity,
         Self::GateAggregate,
-        Self::ActivityHead,
-        Self::ActivitySource,
         Self::TranscriptLifecycle,
         Self::TranscriptGeneration,
         Self::ThreadPath,
@@ -40,8 +36,6 @@ impl DescendantDrift {
             Self::DraftReverse => "draft-reverse",
             Self::SummaryActivity => "summary-activity",
             Self::GateAggregate => "gate-aggregate",
-            Self::ActivityHead => "activity-head",
-            Self::ActivitySource => "activity-source",
             Self::TranscriptLifecycle => "transcript-lifecycle",
             Self::TranscriptGeneration => "transcript-generation",
             Self::ThreadPath => "thread-path",
@@ -121,9 +115,7 @@ impl DescendantDrift {
                     ))
                     .unwrap();
             }
-            _ => {
-                self.put_projection_or_identity_drift(&mut batch, store, storage, fixture, request)
-            }
+            _ => self.put_projection_or_identity_drift(&mut batch, store, storage, fixture),
         }
         batch
     }
@@ -136,50 +128,8 @@ impl DescendantDrift {
         store: &HomeStore,
         storage: &SyndicStorage,
         fixture: &Fixture,
-        request: &PromoteAcceptedInput,
     ) {
         let record = match self {
-            Self::ActivityHead => {
-                let head = storage
-                    .activity_query_head(store, fixture.thread, limit())
-                    .unwrap()
-                    .unwrap();
-                FixtureRecord::ActivityQueryHead(
-                    ActivityQueryHeadRecord::new(
-                        head.thread_id(),
-                        head.work_period(),
-                        head.source(),
-                        head.source_active(),
-                        head.source_frontier(),
-                        head.revision().checked_next().unwrap(),
-                        head.source_count(),
-                        head.logical_row_count(),
-                        head.running_row_count(),
-                        head.completed_row_count(),
-                        head.completed_stored_bytes(),
-                        head.completed_retention_cutoff(),
-                        head.lifecycle(),
-                    )
-                    .unwrap(),
-                )
-            }
-            Self::ActivitySource => {
-                let head = storage
-                    .activity_query_head(store, fixture.thread, limit())
-                    .unwrap()
-                    .unwrap();
-                let source = head.source().expect("promoted turn is the root source");
-                assert_eq!(source.turn_id(), request.successor_turn_id());
-                FixtureRecord::ActivityQuerySource(ActivityQuerySourceRecord::new(
-                    fixture.thread,
-                    head.work_period(),
-                    source,
-                    None,
-                    0,
-                    false,
-                    None,
-                ))
-            }
             Self::TranscriptLifecycle => {
                 let head = storage
                     .transcript_view_head(store, fixture.thread, limit())
@@ -295,6 +245,77 @@ fn similar_but_incoherent_promotion_descendants_are_collisions() {
             drift.name(),
         );
     }
+}
+
+#[test]
+fn promotion_preserves_activity_and_remains_exact_after_runtime_enrollment() {
+    let fixture = promotion_fixture(120, id(120));
+    let (_home, store, storage) = seed("promotion-activity-enrollment", fixture.records.clone());
+    commit(
+        &store,
+        storage.clone(),
+        batch([FixtureRecord::ThreadExecution(ThreadExecutionRecord::new(
+            fixture.thread,
+            support::exact_cas::execution_binding(),
+        ))]),
+    );
+    let prior = storage
+        .activity_query_head(&store, fixture.thread, limit())
+        .unwrap()
+        .unwrap();
+    let request = promotion(
+        &store,
+        &storage,
+        SyndicTurnId::from_bytes([212; 16]),
+        SyndicItemId::from_bytes([232; 16]),
+    );
+    assert!(matches!(
+        execute_promotion(&store, &storage, request.clone()),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        storage
+            .activity_query_head(&store, fixture.thread, limit())
+            .unwrap(),
+        Some(prior.clone()),
+    );
+    assert_eq!(
+        storage
+            .accepted_input_promotion_status(&store, &request, limit())
+            .unwrap(),
+        AcceptedInputPromotionStatus::Exact,
+    );
+
+    let _qualification = support::enroll_fixture_activity(
+        &store,
+        &storage,
+        fixture.thread,
+        request.successor_turn_id(),
+    );
+    let enrolled = storage
+        .activity_query_head(&store, fixture.thread, limit())
+        .unwrap()
+        .unwrap();
+    assert_ne!(enrolled.work_period(), prior.work_period());
+    assert!(enrolled.revision() > prior.revision());
+    assert_eq!(
+        enrolled.source(),
+        Some(ActivityQuerySource::new(
+            fixture.thread,
+            request.successor_turn_id(),
+        )),
+    );
+    assert!(enrolled.source_active());
+    assert_eq!(enrolled.lifecycle(), ProjectionLifecycle::Current);
+    assert_eq!(
+        storage
+            .accepted_input_promotion_status(&store, &request, limit())
+            .unwrap(),
+        AcceptedInputPromotionStatus::Exact,
+    );
 }
 
 #[derive(Clone, Copy, Debug)]

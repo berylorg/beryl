@@ -172,7 +172,7 @@ pub(super) async fn submit_native_text(
     }
 }
 
-pub(super) fn reject_retained_proof(
+pub(super) async fn reject_retained_proof(
     window: gpui::WindowHandle<MainWindowShellRoot>,
     stamp: (
         MainWindowComposerSelectionIdentity,
@@ -210,6 +210,21 @@ pub(super) fn reject_retained_proof(
         .read_with(cx, |root, app| {
             assert_eq!(editor.read(app).selection_identity(), identity);
             assert_eq!(editor.read(app).submission_disabled_outcome(), Some(reason));
+            assert!(
+                !root
+                    .test_submission_mount()
+                    .unwrap()
+                    .read(app)
+                    .test_submission_diagnostics()
+                    .active_ticket()
+            );
+        })
+        .unwrap();
+    wait_painted_outcome(window, reason, Instant::now() + Duration::from_secs(10), cx).await;
+    window
+        .read_with(cx, |root, app| {
+            assert_eq!(editor.read(app).selection_identity(), identity);
+            assert_eq!(editor.read(app).submission_disabled_outcome(), Some(reason));
             let (painted, bounds) = editor.read(app).test_submission_outcome_rendered().unwrap();
             assert_eq!(painted, reason);
             assert!(bounds.size.width > gpui::px(0.) && bounds.size.height > gpui::px(0.));
@@ -231,14 +246,37 @@ pub(super) async fn wait_availability(
     cx: &mut AsyncApp,
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
+    native_geometry::restore(window, cx);
     loop {
+        cx.update_window(window.into(), |_, window, app| {
+            window.draw_and_present_for_test(app)
+        })
+        .unwrap();
         let observed = window
             .read_with(cx, |root, app| {
-                root.test_submission_composer(app)
-                    .map(|composer| composer.read(app).submission_unavailable())
+                let composer = root.test_submission_composer(app)?;
+                let editor = composer.read(app);
+                let input = editor.gpui_input();
+                let input = input.read(app);
+                Some((
+                    editor.submission_unavailable(),
+                    input.is_surface_current_and_interactive(),
+                    input.is_quiescent(),
+                    root.test_submission_mount()
+                        .and_then(|mount| mount.read(app).selected_identity())
+                        == Some(editor.selection_identity()),
+                    root.test_submission_observation(app).map(|_| ()),
+                ))
             })
             .unwrap();
-        if observed == Some(expected.err()) {
+        if observed
+            .as_ref()
+            .is_some_and(|(reason, interactive, quiescent, synchronized, proof)| {
+                *reason == expected.err()
+                    && (expected.is_err()
+                        || (*interactive && *quiescent && *synchronized && proof.is_ok()))
+            })
+        {
             return;
         }
         assert!(
@@ -249,16 +287,51 @@ pub(super) async fn wait_availability(
     }
 }
 
+pub(super) async fn wait_painted_outcome(
+    window: gpui::WindowHandle<MainWindowShellRoot>,
+    reason: SubmissionUnavailable,
+    deadline: Instant,
+    cx: &mut AsyncApp,
+) {
+    native_geometry::restore(window, cx);
+    loop {
+        cx.update_window(window.into(), |_, window, app| {
+            window.draw_and_present_for_test(app)
+        })
+        .unwrap();
+        let observed = composer(window, cx)
+            .read_with(cx, |editor, _| editor.test_submission_outcome_rendered())
+            .unwrap();
+        if observed.is_some_and(|(painted, bounds)| {
+            painted == reason
+                && bounds.size.width > gpui::px(0.)
+                && bounds.size.height > gpui::px(0.)
+        }) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "native submission outcome {reason:?} did not paint: {observed:?}"
+        );
+        native::pump(cx).await;
+    }
+}
+
 fn run(case: Case) {
-    let (fixture, prepared, acquisition) = support::worker(move || {
+    let (fixture, prepared, acquisition, mut runtime) = support::worker(move || {
         let mut fixture = syndic::Fixture::new(198);
         eprintln!(
             "native submission fixture: {}",
             fixture.home_path().display()
         );
         let theme = appearance::system_font_appearance(&fixture.state);
-        let (prepared, acquisition) = support::prepare_shell_with_theme(&mut fixture, theme);
-        (fixture, prepared, acquisition)
+        let runtime::Prepared {
+            shell: prepared,
+            acquisition,
+            composer: _,
+            runtime,
+        } = runtime::prepare(&mut fixture, theme, false);
+        (fixture, prepared, acquisition, runtime)
     })
     .join()
     .unwrap();
@@ -304,6 +377,14 @@ fn run(case: Case) {
                 window
                     .update(cx, |_, window, _| window.minimize_window())
                     .unwrap();
+                let (fixture, runtime) = join(
+                    support::worker(move || {
+                        runtime.activate(&fixture);
+                        (fixture, runtime)
+                    }),
+                    cx,
+                )
+                .await;
                 wait_availability(window, Ok(()), cx).await;
                 let initial_editor = composer(window, cx);
                 let initial_identity = initial_editor
@@ -494,17 +575,13 @@ fn run(case: Case) {
                 })
                 .unwrap();
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while editor
-                    .read_with(cx, |editor, _| editor.submission_disabled_outcome())
-                    .unwrap()
-                    != Some(denial)
-                {
-                    assert!(
-                        Instant::now() < deadline,
-                        "native disabled Enter did not report its reason"
-                    );
-                    native::pump(cx).await;
-                }
+                wait_painted_outcome(window, denial, deadline, cx).await;
+                assert_eq!(
+                    editor
+                        .read_with(cx, |editor, _| editor.submission_disabled_outcome())
+                        .unwrap(),
+                    Some(denial)
+                );
                 assert_eq!(
                     editor
                         .read_with(cx, |editor, _| editor.selection_identity())
@@ -612,6 +689,7 @@ fn run(case: Case) {
                 drop(shell);
                 join(
                     support::worker(move || {
+                        runtime.close();
                         drop(acquisition);
                         let (directory, service) = fixture.into_service();
                         assert!(matches!(

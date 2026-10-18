@@ -51,7 +51,7 @@ impl ProjectionConnectionService {
         config_cwd: &Path,
         timeout: Duration,
     ) -> Result<AdmittedProjectionSession, super::super::RuntimeSessionAdmissionError> {
-        use super::super::{RuntimeInterestStatus, RuntimeSessionAdmissionError};
+        use super::super::RuntimeSessionAdmissionError;
         if timeout.is_zero() {
             return Err(RuntimeSessionAdmissionError::InvalidTimeout);
         }
@@ -62,6 +62,58 @@ impl ProjectionConnectionService {
             .ok_or(RuntimeSessionAdmissionError::ServiceUnavailable)?
             .acquire_lifecycle_test_interest(binding, process_generation)
             .map_err(|_| RuntimeSessionAdmissionError::RuntimeUnavailable)?;
+        self.finish_runtime_lifecycle_test_admission(
+            connector,
+            runtime_id,
+            interest,
+            process_generation,
+            config_cwd,
+            timeout,
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn admit_configured_runtime_lifecycle_test_candidate(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        spec: beryl_backend::ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+    ) -> Result<AdmittedProjectionSession, super::super::RuntimeSessionAdmissionError> {
+        use super::super::RuntimeSessionAdmissionError;
+        if timeout.is_zero() {
+            return Err(RuntimeSessionAdmissionError::InvalidTimeout);
+        }
+        let runtime_id = binding.runtime_id();
+        let interest = self
+            .runtime_interest
+            .as_ref()
+            .ok_or(RuntimeSessionAdmissionError::ServiceUnavailable)?
+            .acquire_lifecycle_test_interest_with_launch_spec(spec, binding, process_generation)
+            .map_err(|_| RuntimeSessionAdmissionError::RuntimeUnavailable)?;
+        self.finish_runtime_lifecycle_test_admission(
+            connector,
+            runtime_id,
+            interest,
+            process_generation,
+            config_cwd,
+            timeout,
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    fn finish_runtime_lifecycle_test_admission(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        runtime_id: RuntimeId,
+        interest: super::super::RuntimeInterest,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+    ) -> Result<AdmittedProjectionSession, super::super::RuntimeSessionAdmissionError> {
+        use super::super::{RuntimeInterestStatus, RuntimeSessionAdmissionError};
         let ready = match interest.wait_for_change(RuntimeInterestStatus::Starting, timeout) {
             RuntimeInterestStatus::Ready(ready)
                 if ready.process_generation() == process_generation =>

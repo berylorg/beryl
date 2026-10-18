@@ -199,15 +199,17 @@ fn read_metadata(
         .reader
         .prepare_resource(request.clone(), &cancel)
         .unwrap();
-    fixture
+    let metadata = fixture
         .reader
-        .publish_resource_if_current(prepared, request, &cancel, |response| {
+        .publish_resource_if_current(&prepared, request, &cancel, |response| {
             let TranscriptProviderResponseKind::ResourceMetadata(metadata) = response else {
                 panic!("text metadata required");
             };
-            metadata
+            metadata.clone()
         })
-        .unwrap()
+        .unwrap();
+    drop(prepared);
+    metadata
 }
 
 #[test]
@@ -232,8 +234,9 @@ fn resource_delivery_is_metadata_first_and_reads_exact_relative_offsets_and_cont
             .unwrap();
         let response = fixture
             .reader
-            .publish_resource_if_current(prepared, &request, &cancel, |response| response)
+            .publish_resource_if_current(&prepared, &request, &cancel, |response| response.clone())
             .unwrap();
+        drop(prepared);
         let TranscriptProviderResponseKind::ResourceRange(range) = response else {
             panic!("text bytes required");
         };
@@ -285,11 +288,12 @@ fn resource_prepared_output_rejects_request_supersession_cancel_and_backing_repl
         assert!(
             fixture
                 .reader
-                .publish_resource_if_current(prepared, &expected, &cancel, |_| {
+                .publish_resource_if_current(&prepared, &expected, &cancel, |_| {
                     called.store(true, Ordering::Release);
                 })
                 .is_err()
         );
+        drop(prepared);
         assert!(!called.load(Ordering::Acquire));
         assert!(fixture.reader.retire());
         assert_eq!(metadata.revision().get(), 9);
@@ -380,8 +384,9 @@ fn resource_metadata_missing_is_terminal_and_unqualified_generated_media_fails_i
         let prepared = prepared.unwrap();
         let response = fixture
             .reader
-            .publish_resource_if_current(prepared, &request, &cancel, |response| response)
+            .publish_resource_if_current(&prepared, &request, &cancel, |response| response.clone())
             .unwrap();
+        drop(prepared);
         assert!(
             matches!(response, TranscriptProviderResponseKind::Rejected(rejection)
             if rejection.reason == TranscriptProviderRejectionReason::MissingResource)
@@ -425,8 +430,9 @@ fn owned_nontext_resource_descriptor_is_locally_unsupported_before_text_loading(
         .unwrap();
     let response = fixture
         .reader
-        .publish_resource_if_current(prepared, &request, &cancel, |response| response)
+        .publish_resource_if_current(&prepared, &request, &cancel, |response| response.clone())
         .unwrap();
+    drop(prepared);
     assert!(
         matches!(response, TranscriptProviderResponseKind::Rejected(rejection)
         if rejection.reason == crate::syndic_transcript::TranscriptProviderRejectionReason::UnsupportedResourceKind)

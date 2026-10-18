@@ -1,6 +1,22 @@
 use super::*;
+use gpui::prelude::FluentBuilder;
 
 impl MainWindowShellRoot {
+    pub(super) fn selected_history_loading(&self, app: &App) -> bool {
+        self.cached_running_selection(app)
+            .is_some_and(|(selection, _)| {
+                self.running_threads.transcript_claim != Some(selection.claim())
+            })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_progressive_readiness(&self, app: &App) -> (bool, bool) {
+        (
+            self.thread_switcher.catalog_ready(),
+            !self.selected_history_loading(app),
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn test_suspend_code_saves_for_close(
         &mut self,
@@ -71,19 +87,23 @@ impl MainWindowShellRoot {
         cx: &App,
     ) -> gpui::Size<gpui::Pixels> {
         let viewport = window.viewport_size();
-        let minimum = self
+        let mut metrics = self
             .controller
             .as_ref()
-            .map(|controller| controller.minimum_size.height * 0.5)
-            .unwrap_or(px(0.0));
+            .expect("mounted shell")
+            .metrics
+            .clone();
+        metrics.lineage = lineage_present;
+        if let Some(panel) = mount.and_then(|mount| mount.read(cx).panel_minimum_size(cx)) {
+            metrics.panel = panel;
+        }
         let input_height = mount
             .map(|mount| {
-                composer_panel_height(
+                metrics.composer_height(
                     mount
                         .read(cx)
                         .presentation_content_height(cx)
                         .unwrap_or(px(0.0)),
-                    minimum,
                     viewport.height,
                 )
             })
@@ -111,6 +131,7 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let minimum_protection = controller.minimum_size;
         let shell_focus = cx.focus_handle();
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
@@ -134,6 +155,10 @@ impl MainWindowShellRoot {
             creation: None,
             creation_observer: None,
             appearance_release: None,
+            minimum_flight: None,
+            minimum_protection,
+            minimum_viewport: window.viewport_size(),
+            appearance_registration: Rc::new(std::cell::Cell::new(false)),
             command_focus: cx.focus_handle(),
             exit_focus: cx.focus_handle(),
             shell_focus,
@@ -143,10 +168,18 @@ impl MainWindowShellRoot {
             branch_discussion: branch_discussion::BranchDiscussionContribution::default(),
         };
         root.subscribe_notices(window, cx);
+        cx.observe_window_bounds(window, |root, window, cx| {
+            root.minimum_viewport = window.viewport_size();
+            root.observe_minimum_restore(window);
+            cx.notify();
+        })
+        .detach();
         root.subscribe_quote(window, cx);
-        #[cfg(target_os = "windows")]
-        cx.observe_window_activation(window, |_, _, cx| {
-            crate::parent_completion_sound::refresh_focus(cx)
+        cx.observe_window_activation(window, |root, window, cx| {
+            root.observe_minimum_restore(window);
+            #[cfg(target_os = "windows")]
+            crate::parent_completion_sound::refresh_focus(cx);
+            cx.notify();
         })
         .detach();
         root
@@ -304,8 +337,35 @@ impl Render for MainWindowShellRoot {
         self.sync_thread_switcher(window, cx);
         self.sync_notices(window, cx);
         self.sync_historical_record_dimming(cx);
+        let history_loading = self.selected_history_loading(cx);
+        self.running_threads
+            .transcript
+            .update(cx, |panel, panel_cx| {
+                panel.set_initial_history_loading(history_loading, window, panel_cx);
+            });
         let image_preview = self.render_transcript_image_preview(window, cx);
         let lineage = self.render_selected_lineage(cx);
+        if let Some(controller) = self.controller.as_ref() {
+            let panel = if controller.composer_mount.is_some() || self.runtime_setup.mount.is_some()
+            {
+                controller.metrics.panel
+            } else {
+                gpui::size(px(0.), px(0.))
+            };
+            let candidate = self.candidate_metrics(
+                &controller.appearance.generation,
+                panel,
+                lineage.is_some(),
+                cx,
+            );
+            if let Ok(candidate) = candidate
+                && candidate != controller.metrics
+            {
+                if let Ok(true) = self.ensure_minimum(candidate.clone(), window, cx) {
+                    self.commit_metrics(candidate, window, cx);
+                }
+            }
+        }
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
         };
@@ -325,13 +385,13 @@ impl Render for MainWindowShellRoot {
             .as_ref()
             .and_then(|mount| mount.read(cx).presentation_content_height(cx))
             .unwrap_or(px(0.));
-        let minimum_panel_height = controller.minimum_size.height * 0.5;
-        let composer_height = composer_panel_height(
-            content_height,
-            minimum_panel_height,
-            window.viewport_size().height,
-        );
-        let command = (self.creation.is_some() || controller.is_threadless())
+        let minimum_panel_height = controller.metrics.panel.height;
+        let composer_height = controller
+            .metrics
+            .composer_height(content_height, window.viewport_size().height);
+        let command = controller
+            .metrics
+            .new_window
             .then(|| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         let exit = exit_command::render(self, window, cx);
         let running = running_threads::render_command(self, window, cx);
@@ -377,8 +437,9 @@ impl Render for MainWindowShellRoot {
                     .flex()
                     .items_center()
                     .justify_end()
-                    .gap(px(6.))
-                    .px(px(12.))
+                    .debug_selector(|| "main-window-toolbar".to_owned())
+                    .gap(px(sizing::TOOLBAR_GAP))
+                    .px(px(sizing::TOOLBAR_PADDING))
                     .flex_none()
                     .bg(appearance.toolbar)
                     .child(setup)
@@ -389,7 +450,11 @@ impl Render for MainWindowShellRoot {
                     .children(command)
                     .child(exit),
             )
-            .children(lineage)
+            .children(if controller.metrics.lineage {
+                lineage
+            } else {
+                None
+            })
             .child(
                 div()
                     .id("main-window-conversation-body")
@@ -403,6 +468,7 @@ impl Render for MainWindowShellRoot {
                             .debug_selector(|| "main-window-transcript-region".to_owned())
                             .flex_1()
                             .min_h_0()
+                            .when(history_loading, |region| region.opacity(0.55))
                             .child(self.running_threads.transcript.clone()),
                     )
                     .children(input_panel),
@@ -418,14 +484,4 @@ impl Render for MainWindowShellRoot {
             .children(image_preview)
             .into_any_element()
     }
-}
-
-fn composer_panel_height(
-    content_height: gpui::Pixels,
-    minimum: gpui::Pixels,
-    viewport_height: gpui::Pixels,
-) -> gpui::Pixels {
-    (content_height + px(22.0))
-        .max(minimum)
-        .min((viewport_height * 0.5).max(minimum))
 }

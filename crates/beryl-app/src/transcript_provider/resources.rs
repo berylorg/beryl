@@ -79,16 +79,14 @@ impl TranscriptProviderReader {
 
     pub(crate) fn publish_resource_delivery_if_current<T>(
         &self,
-        prepared: PreparedResourceDelivery,
+        prepared: &PreparedResourceDelivery,
         expected: &TranscriptResourceRequest,
         cancelled: &AtomicBool,
-        publish: impl FnOnce(ResourceDeliveryResponse) -> T,
+        publish: impl FnOnce() -> T,
     ) -> Result<T, TranscriptAttachmentError> {
         match (prepared, expected.demand.indexed.as_ref()) {
             (PreparedResourceDelivery::Raw(prepared), None) => {
-                self.publish_resource_if_current(prepared, expected, cancelled, |response| {
-                    publish(ResourceDeliveryResponse::Raw(response))
-                })
+                self.publish_resource_if_current(prepared, expected, cancelled, |_| publish())
             }
             (PreparedResourceDelivery::Indexed(prepared), Some(inner)) => self
                 .publish_indexed_resource_if_current(
@@ -100,7 +98,7 @@ impl TranscriptProviderReader {
                         query: inner.query.clone(),
                     },
                     cancelled,
-                    |response| publish(ResourceDeliveryResponse::Indexed(response)),
+                    |_| publish(),
                 ),
             _ => Err(TranscriptAttachmentError::Identity),
         }
@@ -144,10 +142,10 @@ impl TranscriptProviderReader {
 
     pub(crate) fn publish_resource_if_current<T>(
         &self,
-        prepared: PreparedTranscriptResource,
+        prepared: &PreparedTranscriptResource,
         expected: &TranscriptResourceRequest,
         cancelled: &AtomicBool,
-        publish: impl FnOnce(TranscriptProviderResponseKind) -> T,
+        publish: impl FnOnce(&TranscriptProviderResponseKind) -> T,
     ) -> Result<T, TranscriptAttachmentError> {
         self.check_resource_request(expected, cancelled)?;
         if !prepared.owner.ptr_eq(&Arc::downgrade(&self.state))
@@ -172,9 +170,17 @@ impl TranscriptProviderReader {
                 // The worker rechecked this exact backing under the retained observation.
                 // Election excludes later mutation; no storage read belongs on the GUI thread.
                 self.check_request(&expected.attachment, cancelled)?;
-                Ok(publish(prepared.response))
+                Ok(publish(&prepared.response))
             })
-            .map_err(|_| TranscriptAttachmentError::Stale)?
+            .map_err(|error| match error {
+                beryl_home_store::HomeObservedCoherenceError::Observation(
+                    beryl_home_store::HomeMutationObservationError::Busy,
+                )
+                | beryl_home_store::HomeObservedCoherenceError::Coherence(
+                    beryl_home_store::HomeCoherenceError::Busy,
+                ) => TranscriptAttachmentError::Busy,
+                _ => TranscriptAttachmentError::Stale,
+            })?
     }
 
     fn check_resource_request(

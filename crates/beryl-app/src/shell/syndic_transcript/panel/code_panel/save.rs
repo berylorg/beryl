@@ -296,6 +296,9 @@ impl SyndicTranscriptPanel {
     }
 
     pub(super) fn begin_code_save(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.initial_history_loading {
+            return;
+        }
         let Some(code) = self
             .code_panels
             .iter_mut()

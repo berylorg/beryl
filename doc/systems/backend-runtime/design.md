@@ -179,13 +179,21 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 ## Progressive Warm-Up
 
-- Opening Beryl and restoring conversation shells does not launch CAS.
+- Opening the home and preparing the complete restore set do not launch CAS. After the complete
+  native set is published, each selected view acquires runtime preparation interest independently
+  of catalog and transcript readiness. Threadless views acquire none. Preparation does not send
+  a draft or start a model turn and does not delay native publication.
 - Warm-up begins only for unique runtimes required by currently open selected threads or exact
   admitted process-owned work. Required work includes queued promotion admitted by the scheduler,
   pending request handling, compaction, continuation, and terminal capture/convergence independent
   of GUI selection. Catalog membership alone never warms a runtime.
 - The `beryl-app` runtime orchestrator coalesces concurrent interest in the same runtime and fans
   the result to interested windows.
+- GUI submission readiness requires the matching usable runtime and validated CAS admission;
+  absent or starting runtime interest grants preparation permission only. Internal canonical
+  admission before runtime readiness and already admitted process work retain their existing
+  preparation authority. Selected-view replacement and close release only their original interest;
+  stale preparation completions cannot attach to a successor selection or service generation.
 - Cancelling one interest does not cancel launch while another interest remains.
 - Cancelling the final interest permits the same orderly zero-interest retirement once no required
   operation remains; an in-flight required operation is not abandoned merely to reach zero interest.

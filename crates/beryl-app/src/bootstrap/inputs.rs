@@ -86,7 +86,8 @@ pub(super) fn services() -> Result<AppServiceConfiguration, BootstrapError> {
         )
         .map_err(configuration)?,
         runtime_interest: RuntimeInterestConfig::new(n(4), n(4), Duration::from_secs(10))
-            .map_err(configuration)?,
+            .map_err(configuration)?
+            .with_view_interest_capacity(n(beryl_state::MAX_RESTORABLE_WINDOWS)),
         session_policy: ScheduledOrdinaryRequestPolicy::new(
             ThreadStartOptions::persistent(),
             None,

@@ -354,6 +354,359 @@ fn assert_case_converged(
 }
 
 #[test]
+fn startup_projects_uncorrelated_input_and_later_text_without_finalizing_either() {
+    use beryl_app::cas_projection::test_faults::recover_startup;
+    use beryl_model::{CasItemId, SyndicItemId};
+    use syndic_storage::{
+        ProjectionLifecycle, ProjectionPayload, ProjectionTextSource, ProviderAgentMessageV1,
+        ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemLifecycle,
+        ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1, ProviderTextV1,
+    };
+
+    let _guard = TEST_LOCK.lock().unwrap();
+    for mode in 0..3 {
+        let mut fixture = Fixture::new(130 + mode);
+        let submitted = fixture.submit_text("uncorrelated Composer input");
+        let source = fixture.activate_without_user_correlation(submitted);
+        let assistant = SyndicItemId::from_bytes([190; 16]);
+        fixture.admit_provider_frame(
+            submitted,
+            &source,
+            assistant,
+            ProviderItemFrameV1::new(
+                ProviderFrameOrdinalV1::FIRST,
+                CasItemId::new("later-live-text").unwrap(),
+                ProviderItemObservationV1::Started {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(1_000),
+                    item: ProviderItemV1::AgentMessage(ProviderAgentMessageV1 {
+                        text: ProviderTextV1::inline("later live text"),
+                        phase: None,
+                        memory_citation: None,
+                    }),
+                },
+            ),
+        );
+        let thread = fixture.thread;
+        let before = [submitted.user_item, assistant].map(|item| {
+            let home = fixture.home();
+            assert!(
+                fixture
+                    .storage
+                    .item_projection_head(&home, item, limit())
+                    .unwrap()
+                    .is_none()
+            );
+            fixture
+                .storage
+                .canonical_item(&home, item, limit())
+                .unwrap()
+                .unwrap()
+        });
+        assert_eq!(
+            before[0].provider_lifecycle(),
+            ProviderItemLifecycle::AwaitingCorrelation
+        );
+        assert!(matches!(
+            before[0].projection_source(),
+            Some(ProjectionTextSource::Composer(_))
+        ));
+        let (directory, service) = fixture.into_service();
+        let _ = service.close().unwrap();
+        let faults = FaultController::new();
+        let (mut publication, storage) = open_candidate(directory.path(), faults.clone());
+        let (store, storage) = match mode {
+            0 => {
+                let store = publication.publish().unwrap();
+                recover_startup(&store, &storage).unwrap();
+                (store, storage)
+            }
+            1 => {
+                let access = publication.recovery_access().unwrap();
+                recover_startup_candidate(&access, &storage).unwrap();
+                recover_startup_candidate(&access, &storage).unwrap();
+                drop(access);
+                (publication.publish().unwrap(), storage)
+            }
+            2 => {
+                let store = publication.publish().unwrap();
+                faults.fail_next(FaultPoint::BeforeReadConfirmation);
+                assert!(store.home_revision().is_err());
+                let mut recovered = store.recover_same_home().unwrap();
+                let storage = SyndicStorage::reacquire_candidate(&recovered).unwrap();
+                let access = recovered.recovery_access().unwrap();
+                recover_startup_candidate(&access, &storage).unwrap();
+                recover_startup_candidate(&access, &storage).unwrap();
+                drop(access);
+                (recovered.publish().unwrap(), storage)
+            }
+            _ => unreachable!(),
+        };
+        assert_case_converged(
+            StartupCase::Active,
+            &storage,
+            &store,
+            thread,
+            submitted.turn,
+        );
+        let state = storage
+            .turn_state(&store, submitted.turn, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.finalized_item_count(), 0);
+        assert_eq!(state.item_count(), 2);
+        assert!(
+            !storage
+                .history_summary(&store, thread, limit())
+                .unwrap()
+                .unwrap()
+                .complete()
+        );
+        for item in &before {
+            assert_eq!(
+                storage
+                    .canonical_item(&store, item.id(), limit())
+                    .unwrap()
+                    .as_ref(),
+                Some(item)
+            );
+        }
+        let head = storage
+            .transcript_view_head(&store, thread, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
+        let entries = storage
+            .transcript_entries(
+                &store,
+                thread,
+                head.generation(),
+                None,
+                CursorReadLimits::new(4, 65_536).unwrap(),
+            )
+            .unwrap();
+        assert!(!entries.has_more());
+        assert_eq!(entries.records().len(), 2);
+        for ((entry, item), expected) in entries
+            .records()
+            .iter()
+            .zip(&before)
+            .zip(["uncorrelated Composer input", "later live text"])
+        {
+            assert_eq!(entry.item_id(), item.id());
+            let projection = storage
+                .projection(&store, entry.projection_id(), limit())
+                .unwrap()
+                .unwrap();
+            let ProjectionPayload::InlineMarkdown { source, .. } = projection.payload() else {
+                panic!("plain text must retain its exact inline projection")
+            };
+            assert_eq!(source.as_ref(), expected);
+        }
+        let revision = store.home_revision().unwrap();
+        recover_startup(&store, &storage).unwrap();
+        assert_eq!(store.home_revision().unwrap(), revision);
+        store.close().unwrap();
+        let (publication, storage) = open_candidate(directory.path(), FaultController::new());
+        let store = publication.publish().unwrap();
+        assert_case_converged(
+            StartupCase::Active,
+            &storage,
+            &store,
+            thread,
+            submitted.turn,
+        );
+        assert_eq!(
+            storage
+                .transcript_view_head(&store, thread, limit())
+                .unwrap()
+                .unwrap(),
+            head
+        );
+        store.close().unwrap();
+    }
+}
+
+#[test]
+fn startup_projects_later_text_behind_a_pending_generated_asset() {
+    use beryl_app::cas_projection::test_faults::recover_startup;
+    use beryl_model::{CasItemId, SyndicItemId};
+    use syndic_storage::{
+        ContentLifecycle, GeneratedMediaResourceDisposition, ProjectionLifecycle,
+        ProjectionPayload, ProviderAgentMessageV1, ProviderFrameOrdinalV1,
+        ProviderImageGenerationStatusV1, ProviderImageGenerationV1, ProviderItemFrameV1,
+        ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
+        ProviderLifecycleTimestampMsV1, ProviderTextV1, ResourceBacking,
+    };
+
+    let _guard = TEST_LOCK.lock().unwrap();
+    for candidate in [false, true] {
+        let mut fixture = Fixture::new(134);
+        let submitted = fixture.submit_text("input before generated asset");
+        let source = fixture.activate_without_terminal(submitted);
+        let generated = SyndicItemId::from_bytes([191; 16]);
+        for completed in [false, true] {
+            let item = ProviderItemV1::StandaloneImageGeneration(ProviderImageGenerationV1 {
+                status: if completed {
+                    ProviderImageGenerationStatusV1::Completed
+                } else {
+                    ProviderImageGenerationStatusV1::InProgress
+                },
+                revised_prompt: None,
+                saved_path: completed.then(|| ProviderTextV1::inline("pending.png")),
+            });
+            let observed_at = ProviderLifecycleTimestampMsV1::new(1_000 + u64::from(completed));
+            fixture.admit_provider_frame(
+                submitted,
+                &source,
+                generated,
+                ProviderItemFrameV1::new(
+                    ProviderFrameOrdinalV1::new(if completed { 2 } else { 1 }).unwrap(),
+                    CasItemId::new("pending-generated-asset").unwrap(),
+                    if completed {
+                        ProviderItemObservationV1::Completed { observed_at, item }
+                    } else {
+                        ProviderItemObservationV1::Started { observed_at, item }
+                    },
+                ),
+            );
+        }
+        let assistant = SyndicItemId::from_bytes([192; 16]);
+        fixture.admit_provider_frame(
+            submitted,
+            &source,
+            assistant,
+            ProviderItemFrameV1::new(
+                ProviderFrameOrdinalV1::FIRST,
+                CasItemId::new("text-after-pending-asset").unwrap(),
+                ProviderItemObservationV1::Started {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(1_002),
+                    item: ProviderItemV1::AgentMessage(ProviderAgentMessageV1 {
+                        text: ProviderTextV1::inline("text after pending asset"),
+                        phase: None,
+                        memory_citation: None,
+                    }),
+                },
+            ),
+        );
+        let thread = fixture.thread;
+        let home = fixture.home();
+        let generated_before = fixture
+            .storage
+            .canonical_item(&home, generated, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            generated_before.provider_lifecycle(),
+            ProviderItemLifecycle::Completed
+        );
+        let resource = generated_before.presentation().resource_id().unwrap();
+        let resource_before = fixture
+            .storage
+            .resource(&home, resource, limit())
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            resource_before.backing(),
+            ResourceBacking::GeneratedMedia(GeneratedMediaResourceDisposition::PendingAsset)
+        ));
+        assert!(
+            fixture
+                .storage
+                .item_projection_head(&home, assistant, limit())
+                .unwrap()
+                .is_none()
+        );
+        drop(home);
+        let (directory, service) = fixture.into_service();
+        let _ = service.close().unwrap();
+        let (mut publication, storage) = open_candidate(directory.path(), FaultController::new());
+        if candidate {
+            let access = publication.recovery_access().unwrap();
+            recover_startup_candidate(&access, &storage).unwrap();
+            drop(access);
+        }
+        let store = publication.publish().unwrap();
+        if !candidate {
+            recover_startup(&store, &storage).unwrap();
+        }
+        assert_case_converged(
+            StartupCase::Active,
+            &storage,
+            &store,
+            thread,
+            submitted.turn,
+        );
+        let state = storage
+            .turn_state(&store, submitted.turn, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.finalized_item_count(), 1);
+        assert_eq!(state.item_count(), 3);
+        assert_eq!(
+            storage
+                .resource(&store, resource, limit())
+                .unwrap()
+                .unwrap(),
+            resource_before
+        );
+        let assistant_item = storage
+            .canonical_item(&store, assistant, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            assistant_item.provider_lifecycle(),
+            ProviderItemLifecycle::Started
+        );
+        let provider = assistant_item.provider().unwrap().content().id();
+        assert_eq!(
+            storage
+                .content_manifest(&store, provider, limit())
+                .unwrap()
+                .unwrap()
+                .lifecycle(),
+            ContentLifecycle::Live
+        );
+        let head = storage
+            .transcript_view_head(&store, thread, limit())
+            .unwrap()
+            .unwrap();
+        assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
+        let entries = storage
+            .transcript_entries(
+                &store,
+                thread,
+                head.generation(),
+                None,
+                CursorReadLimits::new(8, 65_536).unwrap(),
+            )
+            .unwrap();
+        let entry = entries
+            .records()
+            .iter()
+            .find(|entry| entry.item_id() == assistant)
+            .unwrap();
+        let projection = storage
+            .projection(&store, entry.projection_id(), limit())
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(projection.payload(), ProjectionPayload::InlineMarkdown { source, .. } if source.as_ref() == "text after pending asset")
+        );
+        assert!(
+            !storage
+                .history_summary(&store, thread, limit())
+                .unwrap()
+                .unwrap()
+                .complete()
+        );
+        let revision = store.home_revision().unwrap();
+        recover_startup(&store, &storage).unwrap();
+        assert_eq!(store.home_revision().unwrap(), revision);
+        store.close().unwrap();
+    }
+}
+
+#[test]
 fn candidate_startup_restarts_once_for_source_drift_and_rejects_a_second_drift() {
     let _guard = TEST_LOCK.lock().unwrap();
     let (directory, thread, turn) = source_case(StartupCase::Active, 110);

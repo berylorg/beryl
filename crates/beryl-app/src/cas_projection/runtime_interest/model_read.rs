@@ -14,6 +14,8 @@ pub(crate) enum RuntimeModelReadError {
     Unavailable,
     #[error("runtime model publication is busy")]
     Busy,
+    #[error("runtime model request admission is pending")]
+    AdmissionPending,
     #[error("model request timeout must be positive")]
     Timeout,
     #[error("bounded backend model request failed: {0}")]
@@ -198,7 +200,10 @@ impl RuntimeModelRead {
         if timeout.is_zero() {
             return Err(RuntimeModelReadError::Timeout);
         }
-        self.with_current(|| ())?;
+        self.with_current(|| ()).map_err(|error| match error {
+            RuntimeModelReadError::Busy => RuntimeModelReadError::AdmissionPending,
+            other => other,
+        })?;
         let shared = self
             .shared
             .upgrade()

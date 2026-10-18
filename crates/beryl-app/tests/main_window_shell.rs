@@ -6,6 +6,8 @@ mod composer_support;
 mod custody;
 #[path = "main_window_shell/gpui.rs"]
 mod gpui_cases;
+#[path = "main_window_shell/minimum.rs"]
+mod minimum;
 #[path = "main_window_shell/support.rs"]
 mod support;
 #[path = "main_window_shell/threadless.rs"]
@@ -163,13 +165,20 @@ impl ShellFixture {
     }
 
     fn prepare(&mut self) -> MainWindowShellPrepared {
+        self.prepare_with(configurator())
+    }
+
+    fn prepare_with(
+        &mut self,
+        configure: beryl_app::main_window::MainWindowShellComposerConfigurator,
+    ) -> MainWindowShellPrepared {
         MainWindowShellPrepared::prepare(
             &self.process,
             &self.service,
             MainWindowShellPreparationRequest::new(
                 self.acquisition.take().expect("one exact acquisition"),
                 self.composer.clone(),
-                configurator(),
+                configure,
                 self.marker_seals.clone(),
                 submission_source(),
                 self.appearance.clone(),

@@ -5,13 +5,13 @@ use beryl_app::main_window::{
     MainWindowStartupShellPrepared as Prepared,
 };
 use gpui::{AppContext, Application};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     cell::RefCell,
     rc::Rc,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
-use windows::{Win32::UI::WindowsAndMessaging::FindWindowW, core::PCWSTR};
 
 #[path = "../support/shell_desktop_flight.rs"]
 mod flight;
@@ -19,27 +19,21 @@ use flight::native;
 
 #[test]
 fn native_threadless_startup_construction_retains_reservation_through_failure_and_destruction() {
-    let fixtures = support::worker(|| {
-        (0..4)
-            .map(|case| {
-                let mut fixture = Fixture::with_placement(150 + case, placement());
-                fixture.coordinator = Some(AppearanceCoordinator::new(
-                    AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
-                    flight::system_font_appearance(&fixture.state),
-                ));
-                let prepared = fixture.prepare().unwrap();
-                let geometry = beryl_app::main_window::prepare_windows_window_placement(
-                    prepared.window_id(),
-                    prepared.placement().clone(),
-                )
-                .unwrap();
-                let before = fixture.store.home_revision().unwrap();
-                (case, fixture, prepared, geometry, before)
-            })
-            .collect::<Vec<_>>()
-    })
-    .join()
-    .unwrap();
+    let prepare = |case: u8| {
+        let mut fixture = Fixture::with_placement(150 + case, placement());
+        fixture.coordinator = Some(AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        ));
+        let prepared = fixture.prepare().unwrap();
+        let geometry = beryl_app::main_window::prepare_windows_window_placement(
+            prepared.window_id(),
+            prepared.placement().clone(),
+        )
+        .unwrap();
+        let before = fixture.store.home_revision().unwrap();
+        (case, fixture, prepared, geometry, before)
+    };
     let finished = Arc::new(AtomicBool::new(false));
     let result = finished.clone();
     let watched = Rc::new(RefCell::new(
@@ -58,7 +52,13 @@ fn native_threadless_startup_construction_retains_reservation_through_failure_an
             Application::new().run(move |app| {
                 let (control, _) = native::open(app, "threadless-construction-control");
                 app.spawn(async move |cx| {
-                    for (case, fixture, prepared, geometry, before) in fixtures {
+                    for case in 0..4 {
+                        let preparation = support::worker(move || prepare(case));
+                        while !preparation.is_finished() {
+                            native::pump(cx).await;
+                        }
+                        let (case, fixture, prepared, geometry, before) =
+                            preparation.join().unwrap();
                         let construction = cx
                             .update(|app| {
                                 let owner = GpuiAppearanceWindowSet::new(
@@ -106,20 +106,20 @@ fn native_threadless_startup_construction_retains_reservation_through_failure_an
                                 }
                                 _ => panic!("threadless construction outcome mismatch"),
                             };
-                            let title =
-                                format!("Beryl threadless construction {}", std::process::id());
-                            shell
+                            let raw = shell
                                 .window()
                                 .update(cx, |root, window, _| {
                                     assert!(root.startup_interaction_gated());
                                     assert!(root.controller().unwrap().composer_mount().is_none());
-                                    window.set_window_title(&title);
+                                    let handle = window
+                                        .window_handle()
+                                        .expect("original native window is live");
+                                    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+                                        panic!("expected the original Windows native handle");
+                                    };
+                                    handle.hwnd.get() as usize
                                 })
                                 .unwrap();
-                            let wide = title.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-                            let raw = unsafe { FindWindowW(None, PCWSTR(wide.as_ptr())) }
-                                .unwrap()
-                                .0 as usize;
                             assert!(native::alive(raw));
                             assert!(!native::visible(raw));
                             assert_eq!(fixture.process.main_window_occupancy(), 1);
@@ -200,6 +200,7 @@ fn native_threadless_startup_construction_retains_reservation_through_failure_an
                                 assert_eq!(saved.windows().len(), 1);
                                 assert_eq!(saved.windows()[0].window_id(), fixture.window);
                                 assert!(saved.windows()[0].selected_thread().is_none());
+                                fixture.close();
                             })
                             .await;
                     }

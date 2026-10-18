@@ -540,17 +540,18 @@ fn durable_candidate_resumes_after_runtime_retirement_or_interest_capacity_relea
         fixture.reopen(Box::new(provider), 8);
         assert!(old_sessions.diagnostics().closed);
         fs::write(fixture.root(1).join("fixture-mode"), "pause-config").unwrap();
-        let mut views = Vec::new();
+        let mut interests = Vec::new();
+        let kind = if retiring {
+            beryl_app::cas_projection::RuntimeInterestKind::View
+        } else {
+            beryl_app::cas_projection::RuntimeInterestKind::RequiredWork
+        };
         for _ in 0..if retiring { 1 } else { 4 } {
-            views.push(
-                fixture
-                    .acquire(1, beryl_app::cas_projection::RuntimeInterestKind::View)
-                    .unwrap(),
-            );
+            interests.push(fixture.acquire(1, kind).unwrap());
         }
         wait_until(|| fixture.root(1).join("runtime-evidence.json").exists());
         if retiring {
-            views.clear();
+            interests.clear();
         }
         configure(&fixture, &sessions, &attention);
         wait_until(|| {
@@ -561,7 +562,7 @@ fn durable_candidate_resumes_after_runtime_retirement_or_interest_capacity_relea
         });
         fs::write(fixture.root(1).join("fixture-mode"), "pause-projection").unwrap();
         if !retiring {
-            drop(views.pop());
+            drop(interests.pop());
         }
         fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
         wait_until(|| {
@@ -571,7 +572,7 @@ fn durable_candidate_resumes_after_runtime_retirement_or_interest_capacity_relea
                 .exists()
         });
         assert_eq!(sessions.diagnostics().checked_out, 1);
-        drop(views);
+        drop(interests);
         let service = fixture.service.take().unwrap();
         let closed = thread::spawn(move || service.close());
         wait_until(|| sessions.diagnostics().closed);

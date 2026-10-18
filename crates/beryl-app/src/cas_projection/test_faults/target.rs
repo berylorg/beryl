@@ -87,6 +87,13 @@ impl Drop for LiveEventTargetAbandonmentController {
 }
 
 pub(crate) fn abandon_live_event_target_if_requested(target: &mut LiveEventTarget) {
+    if target_abandonment()
+        .lock()
+        .expect("target-abandonment fault registry is usable")
+        .is_none()
+    {
+        return;
+    }
     let key = TargetKey {
         connection: target.provider_test_key(),
         thread_id: target.syndic_thread_id(),

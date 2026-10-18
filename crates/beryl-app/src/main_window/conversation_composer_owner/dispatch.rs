@@ -639,13 +639,50 @@ impl MainWindowConversationComposer {
     #[cfg(test)]
     pub fn test_last_mutation_outcome(
         &self,
-    ) -> Option<&(gpui_text_input::MutationKey, ComposerHostMutationOutcome, bool)> {
+    ) -> Option<&(
+        gpui_text_input::MutationKey,
+        ComposerHostMutationOutcome,
+        bool,
+    )> {
         self.test_last_mutation_outcome.as_ref()
     }
 
     #[cfg(test)]
     pub fn test_historical_edit_disabled_reason(&self, cx: &gpui::App) -> Option<&'static str> {
         self.historical_edit_disabled_reason(cx)
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub fn test_saved_candidate_current(&self, cx: &gpui::App) -> bool {
+        self.test_edit_position_proof_ready(cx)
+            && self.input.read(cx).is_semantically_quiescent()
+            && self.service.as_ref().is_some_and(|service| {
+                service.test_with_selected_host(|host| {
+                    host.binding() == Some(self.selection.binding()) && !host.is_dirty()
+                })
+            })
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub fn test_autosave_observation(
+        &self,
+    ) -> Option<(
+        crate::composer_host::ComposerHostAutosaveInterval,
+        bool,
+        bool,
+    )> {
+        if !self.is_live() {
+            return None;
+        }
+        self.service.as_ref()?.test_with_selected_host(|host| {
+            (host.binding() == Some(self.selection.binding())).then(|| {
+                (
+                    host.autosave_interval(),
+                    host.autosave_timer().is_some(),
+                    host.is_dirty(),
+                )
+            })
+        })
     }
 
     #[cfg(all(test, feature = "test-faults"))]

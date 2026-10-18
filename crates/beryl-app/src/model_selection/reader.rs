@@ -39,6 +39,8 @@ pub(crate) enum ModelReadError {
     Closed,
     #[error("model query is pending")]
     Pending,
+    #[error("model page admission is pending")]
+    AdmissionPending,
     #[error("model query publication is busy")]
     Busy,
     #[error("model continuation belongs to another query")]
@@ -48,6 +50,18 @@ pub(crate) enum ModelReadError {
 }
 
 impl ModelReadError {
+    fn before_page_request(self) -> Self {
+        match self {
+            Self::Busy
+            | Self::Pending
+            | Self::Source(
+                ModelSourceError::Publication
+                | ModelSourceError::Runtime(crate::cas_projection::RuntimeModelReadError::Busy),
+            ) => Self::AdmissionPending,
+            other => other,
+        }
+    }
+
     pub(crate) fn runtime_unavailable(&self) -> bool {
         matches!(
             self,
@@ -494,7 +508,7 @@ impl ModelQuery {
         if !self.idle {
             return Err(ModelSourceError::Active.into());
         }
-        let _request = self.begin()?;
+        let _request = self.begin().map_err(ModelReadError::before_page_request)?;
         {
             let failed = self.failed.lock().map_err(|_| ModelReadError::Closed)?;
             if let Some(expected) = failed.as_ref() {
@@ -505,7 +519,9 @@ impl ModelQuery {
                 }
             }
         }
-        self.observation.validate_idle()?;
+        self.observation
+            .validate_idle()
+            .map_err(|error| ModelReadError::from(error).before_page_request())?;
         let slot = self
             .capacity
             .reserve(CapacityKind::Page, self.limits.pages.get())?;
@@ -521,6 +537,15 @@ impl ModelQuery {
         let (mut page, _) = match result {
             Ok(result) => result,
             Err(error) => {
+                if matches!(
+                    &error,
+                    ModelSourceError::AdmissionPending
+                        | ModelSourceError::Runtime(
+                            crate::cas_projection::RuntimeModelReadError::AdmissionPending
+                        )
+                ) {
+                    return Err(ModelReadError::AdmissionPending);
+                }
                 *self.failed.lock().map_err(|_| ModelReadError::Closed)? = Some(cursor);
                 return Err(error.into());
             }

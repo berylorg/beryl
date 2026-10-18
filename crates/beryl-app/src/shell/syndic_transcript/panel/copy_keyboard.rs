@@ -46,6 +46,11 @@ pub(super) struct CopyGesture {
 }
 
 impl CopyGesture {
+    #[cfg(test)]
+    pub(super) fn first_for_test(&self) -> Option<&CopyTarget> {
+        self.first.as_ref().map(|(target, _)| target)
+    }
+
     pub(super) fn press(
         &mut self,
         target: CopyTarget,
@@ -115,6 +120,9 @@ impl SyndicTranscriptPanel {
         item: &ClipboardItem,
         cx: &mut Context<Self>,
     ) -> Result<(), ()> {
+        if self.initial_history_loading {
+            return Err(());
+        }
         let text_budget = 65_536 * 4 + 2;
         let limits = ClipboardLimits {
             total_bytes: text_budget,
@@ -166,7 +174,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.is_held {
+        if self.initial_history_loading || event.is_held {
             return;
         }
         self.observe_copy_focus(window, cx);
@@ -255,7 +263,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.is_held {
+        if self.initial_history_loading || event.is_held {
             return;
         }
         self.observe_copy_focus(window, cx);
@@ -357,7 +365,7 @@ impl SyndicTranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.is_held {
+        if self.initial_history_loading || event.is_held {
             return;
         }
         self.observe_copy_focus(window, cx);

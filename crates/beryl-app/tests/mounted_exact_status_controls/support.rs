@@ -113,26 +113,42 @@ pub fn prepare_shell_with_composer(
     ),
     Arc<MainWindowConversationComposerService>,
 ) {
-    let home = fixture.home();
     let execution = syndic::execution_binding();
+    prepare_shell_with_runtime(fixture, theme, execution, r"C:\runtime\codex.exe")
+}
+
+pub fn prepare_shell_with_runtime(
+    fixture: &mut syndic::Fixture,
+    theme: beryl_state::PreparedThemeAppearance,
+    execution: ExecutionBinding,
+    executable: &str,
+) -> (
+    MainWindowShellPrepared,
+    (
+        RuntimeBackedWindowAcquisitionService,
+        RuntimeBackedWindowProcessRegistry,
+    ),
+    Arc<MainWindowConversationComposerService>,
+) {
+    let home = fixture.home();
     let host = |path| AdmittedHostPath::from_admitted(PathFlavor::Windows, path).unwrap();
     let native = |path| {
         RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, path).unwrap()
     };
     let runtime = RuntimeRegistration::new(
         execution.runtime_id(),
-        host(r"C:\runtime\codex.exe"),
+        host(executable),
         RuntimeMode::host(),
         beryl_model::RuntimeLaunchForm::CodexCli,
-        native(r"C:\runtime\codex.exe"),
+        native(executable),
         UnixMillis::new(1),
         AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(2)).unwrap(),
     )
     .unwrap();
     let root = RootRegistration::new(
         execution.root_id(),
-        native(EXECUTION_ROOT),
-        host(EXECUTION_ROOT),
+        execution.root_path().clone(),
+        host(execution.root_path().as_str()),
         UnixMillis::new(1),
         AvailabilitySnapshot::unknown(),
     );

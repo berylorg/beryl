@@ -101,6 +101,13 @@ pub struct SyndicComposerHost {
     activation_after_open_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
+    activation_before_execute_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    activation_after_execute_fault: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
+    #[cfg(feature = "test-faults")]
     mutation_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
@@ -119,6 +126,13 @@ pub struct SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     submission_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    submission_materializer_before_execute_fault:
+        Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    submission_materializer_after_execute_fault: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
     #[cfg(feature = "test-faults")]
     submission_after_indeterminate_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore) + Send>>,
@@ -191,6 +205,10 @@ impl SyndicComposerHost {
             #[cfg(feature = "test-faults")]
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
+            activation_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            activation_after_execute_fault: None,
+            #[cfg(feature = "test-faults")]
             mutation_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
             history_before_execute_fault: None,
@@ -202,6 +220,10 @@ impl SyndicComposerHost {
             publication_after_execute: None,
             #[cfg(feature = "test-faults")]
             submission_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_materializer_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_materializer_after_execute_fault: None,
             #[cfg(feature = "test-faults")]
             submission_after_indeterminate_fault: None,
             #[cfg(feature = "test-faults")]
@@ -355,6 +377,26 @@ impl SyndicComposerHost {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn test_arm_activation_before_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.activation_before_execute_fault.is_none());
+        self.activation_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_activation_after_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome)
+        + Send
+        + 'static,
+    ) {
+        assert!(self.activation_after_execute_fault.is_none());
+        self.activation_after_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_set_mutation_transition_limit(&mut self, limit: usize) {
         self.mutation_transition_limit = limit;
     }
@@ -410,6 +452,26 @@ impl SyndicComposerHost {
     ) {
         assert!(self.submission_before_execute_fault.is_none());
         self.submission_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_materializer_before_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send + 'static,
+    ) {
+        assert!(self.submission_materializer_before_execute_fault.is_none());
+        self.submission_materializer_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_materializer_after_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome)
+        + Send
+        + 'static,
+    ) {
+        assert!(self.submission_materializer_after_execute_fault.is_none());
+        self.submission_materializer_after_execute_fault = Some(Box::new(fault));
     }
 
     #[cfg(feature = "test-faults")]

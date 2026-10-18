@@ -571,8 +571,14 @@ fn foreign_recovery_candidate() -> (
     )
     .unwrap();
     BerylState::register(&mut candidate).unwrap();
+    SyndicStorage::register(&mut candidate).unwrap();
     let home = candidate
-        .prepare_publication(BerylState::required_domains().unwrap())
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
         .unwrap()
         .publish()
         .unwrap();

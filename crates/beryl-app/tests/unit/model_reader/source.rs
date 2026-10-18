@@ -210,6 +210,48 @@ fn failed_initial_and_later_pages_retry_only_the_same_query_cursor() {
 }
 
 #[test]
+fn page_admission_contention_issues_no_request_and_preserves_exact_retry_cursor() {
+    let fixture = Fixture::new();
+    let query = fixture.query();
+    {
+        let _closed = query.closed.lock().unwrap();
+        assert!(matches!(
+            query.read_page(None),
+            Err(ModelReadError::AdmissionPending)
+        ));
+        assert!(!query.has_failed_page());
+        assert!(fixture.server.requests("model/list").is_empty());
+    }
+    fixture
+        .server
+        .enqueue(ModelResponse::page(1, Some("later-page")));
+    let first = query.read_page(None).unwrap();
+    fixture.server.enqueue(ModelResponse::Failure);
+    assert!(matches!(
+        query.read_page(first.continuation()),
+        Err(ModelReadError::Source(_))
+    ));
+    {
+        let _closed = query.closed.lock().unwrap();
+        assert!(matches!(
+            query.retry_page(),
+            Err(ModelReadError::AdmissionPending)
+        ));
+        assert!(query.has_failed_page());
+        assert_eq!(fixture.server.requests("model/list").len(), 2);
+    }
+    assert!(matches!(query.read_page(None), Err(ModelReadError::Retry)));
+    fixture.server.enqueue(ModelResponse::page(0, None));
+    let empty = query.retry_page().unwrap();
+    assert!(empty.records().is_empty());
+    assert!(!query.has_failed_page());
+    let requests = fixture.server.requests("model/list");
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1]["params"], requests[2]["params"]);
+    assert_eq!(requests[2]["params"]["cursor"], "later-page");
+}
+
+#[test]
 fn foreign_continuation_never_dispatches_and_empty_page_is_current() {
     let fixture = Fixture::new();
     let (query, page) = fixture.first_page(0, Some("cursor"));
@@ -421,7 +463,7 @@ fn duplicate_pending_and_close_inflight_drain_capacity_after_exact_completion() 
     held.wait();
     assert!(matches!(
         query.read_page(None),
-        Err(ModelReadError::Pending)
+        Err(ModelReadError::AdmissionPending)
     ));
     assert_eq!(fixture.server.requests("model/list").len(), 1);
     assert_eq!(fixture.reader.capacity.pages.load(Ordering::Acquire), 1);

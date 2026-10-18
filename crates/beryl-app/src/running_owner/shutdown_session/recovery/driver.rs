@@ -191,14 +191,19 @@ impl RunningProcessOwner {
                         .map_err(|error| error.to_string())??;
                     preparation.take();
                     *attachment = Some(attached);
-                    owner
-                        .recovery_owner()?
-                        .borrow_mut()
-                        .bind_interrupted_exit_appearance(request, window, appearance, app)?;
                     Ok::<_, String>(Some(()))
                 })
                 .map_err(|error| error.to_string())??;
             if let Some(attached) = attached {
+                Self::bind_prepared_interrupted_exit_appearance(
+                    owner,
+                    request,
+                    window,
+                    appearance,
+                    cancellation.clone(),
+                    cx,
+                )
+                .await?;
                 return Ok(attached);
             }
             cx.background_executor()
@@ -284,12 +289,18 @@ impl RunningProcessOwner {
                         .attach_interrupted_exit_threadless(request, root, &mut source, window, cx)
                 })
                 .map_err(|error| error.to_string())??;
-            owner
-                .recovery_owner()?
-                .borrow_mut()
-                .bind_interrupted_exit_appearance(request, window, appearance, app)
+            Ok::<_, String>(())
         })
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+        Self::bind_prepared_interrupted_exit_appearance(
+            owner,
+            request,
+            window,
+            appearance,
+            cancellation,
+            cx,
+        )
+        .await
     }
 
     pub(crate) async fn prepare_interrupted_exit_service_graph(

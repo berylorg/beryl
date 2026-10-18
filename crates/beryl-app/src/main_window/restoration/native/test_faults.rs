@@ -6,6 +6,7 @@ type PublicationHook =
     Box<dyn FnMut(usize, &mut MainWindowShell, &mut App) -> Result<(), String> + Send>;
 type ReleaseHook = Box<dyn FnOnce(&[MainWindowShell], &mut App) + Send>;
 type RetirementHook = Box<dyn FnMut(WindowId, &mut MainWindowStartupRetirement) + Send>;
+type AdmissionHook = Box<dyn FnMut(&[&MainWindowShell], &mut App) + Send>;
 
 #[derive(Default)]
 pub(super) struct NativeRestoreSetFaults {
@@ -13,13 +14,26 @@ pub(super) struct NativeRestoreSetFaults {
     pub(super) before_desktop: Option<ShellHook>,
     pub(super) after_desktop: Option<ShellHook>,
     pub(super) before_final_validation: Option<Box<dyn FnOnce() + Send>>,
+    pub(super) each_final_validation: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub(super) before_admission: Option<AdmissionHook>,
+    pub(super) after_admission_pending: Option<Box<dyn FnOnce(&mut App) + Send>>,
     pub(super) before_publication: Option<PublicationHook>,
     pub(super) before_interaction_release: Option<ReleaseHook>,
     pub(super) before_retirement: Option<RetirementHook>,
     pub(super) hold_readiness: Option<Box<dyn Fn() + Send>>,
+    pub(super) observe_readiness: Option<Box<dyn Fn(bool) + Send>>,
+    pub(super) observe_input_wake: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
 
 impl PreparedNativeMainWindowRestoreSet {
+    pub fn test_observe_readiness(&mut self, observed: impl Fn(bool) + Send + 'static) {
+        self.faults.observe_readiness = Some(Box::new(observed));
+    }
+
+    pub fn test_observe_input_wake(&mut self, observed: impl Fn(bool) + Send + Sync + 'static) {
+        self.faults.observe_input_wake = Some(Arc::new(observed));
+    }
+
     pub fn test_hold_readiness(&mut self, observed: impl Fn() + Send + 'static) {
         self.faults.hold_readiness = Some(Box::new(observed));
     }
@@ -47,6 +61,21 @@ impl PreparedNativeMainWindowRestoreSet {
 
     pub fn test_before_final_validation(&mut self, hook: impl FnOnce() + Send + 'static) {
         self.faults.before_final_validation = Some(Box::new(hook));
+    }
+
+    pub fn test_each_final_validation(&mut self, hook: impl Fn() + Send + Sync + 'static) {
+        self.faults.each_final_validation = Some(Arc::new(hook));
+    }
+
+    pub fn test_before_admission(
+        &mut self,
+        hook: impl FnMut(&[&MainWindowShell], &mut App) + Send + 'static,
+    ) {
+        self.faults.before_admission = Some(Box::new(hook));
+    }
+
+    pub fn test_after_admission_pending(&mut self, hook: impl FnOnce(&mut App) + Send + 'static) {
+        self.faults.after_admission_pending = Some(Box::new(hook));
     }
 
     pub fn test_before_publication(

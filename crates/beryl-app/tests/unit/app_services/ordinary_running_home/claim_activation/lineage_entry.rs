@@ -17,6 +17,7 @@ pub(super) enum Input {
 }
 
 pub(super) async fn prepare(window: WindowHandle<MainWindowShellRoot>, cx: &mut gpui::AsyncApp) {
+    native_code::draw(window, cx);
     let child = lineage_fixture::child();
     let deadline = Instant::now() + Duration::from_secs(20);
     let selected = loop {
@@ -70,6 +71,7 @@ pub(super) async fn ready(
 ) {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
+        native_code::draw(window, cx);
         let (available, readiness) = window
             .update(cx, |root, window, app| {
                 let available = root.test_thread_lineage_view().is_some_and(|widget| {

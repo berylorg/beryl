@@ -23,7 +23,10 @@ impl MainWindowShellRoot {
             self.running_threads.workers.retained(),
             self.running_threads.activation_failure,
             self.running_threads.failure,
-            self.running_threads.activation_operation.as_ref().map(|operation| operation.diagnostics()),
+            self.running_threads
+                .activation_operation
+                .as_ref()
+                .map(|operation| operation.diagnostics()),
         )
     }
 

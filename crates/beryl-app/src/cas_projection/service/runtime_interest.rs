@@ -7,6 +7,18 @@ use crate::cas_projection::runtime_interest::{
 };
 
 impl ProjectionConnectionService {
+    #[cfg(feature = "test-faults")]
+    pub fn gui_runtime_submission_observer_for_test(
+        &self,
+    ) -> impl Fn(&ExecutionBinding) -> bool + use<> {
+        let owner = self.runtime_interest.as_ref().map(Arc::downgrade);
+        move |binding| {
+            owner
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .is_some_and(|owner| owner.gui_submission_ready(binding))
+        }
+    }
     #[cfg(all(test, feature = "test-faults"))]
     pub(crate) fn acquire_runtime_probe_for_test(
         &self,

@@ -160,37 +160,54 @@ pub fn open_root(
     generation: Arc<AppearanceGeneration>,
     cx: &mut gpui::TestAppContext,
 ) -> WindowHandle<TestRoot> {
+    open_root_with_visibility(fixture, prepared, generation, true, cx)
+}
+
+pub fn open_root_with_visibility(
+    fixture: &ComposerFixture,
+    prepared: MainWindowConversationComposerPreparedSelection,
+    generation: Arc<AppearanceGeneration>,
+    show: bool,
+    cx: &mut gpui::TestAppContext,
+) -> WindowHandle<TestRoot> {
     cx.update(ensure_text_input_bindings);
     cx.update(|app| {
-        app.open_window(gpui::WindowOptions::default(), |window, app| {
-            let source = MainWindowComposerSubmissionRequestSource::new(
-                beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
-                beryl_app::cas_projection::ProjectionServiceConfig::try_new(
-                    1,
-                    4,
-                    beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
-                )
-                .unwrap()
-                .turn_start_admission_requirement(),
-            );
-            let mount = app.new(|mount_cx| {
-                MainWindowConversationComposerMount::from_prepared(
-                    prepared,
-                    configurator(),
-                    fixture.seals.clone(),
-                    source,
-                    window,
-                    mount_cx,
-                )
-                .unwrap()
-            });
-            app.new(|_| TestRoot {
-                mount,
-                generation,
-                color: gpui::rgb(0),
-                snapshot: Rc::new(RefCell::new(None)),
-            })
-        })
+        app.open_window(
+            gpui::WindowOptions {
+                show,
+                focus: show,
+                ..Default::default()
+            },
+            |window, app| {
+                let source = MainWindowComposerSubmissionRequestSource::new(
+                    beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
+                    beryl_app::cas_projection::ProjectionServiceConfig::try_new(
+                        1,
+                        4,
+                        beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .turn_start_admission_requirement(),
+                );
+                let mount = app.new(|mount_cx| {
+                    MainWindowConversationComposerMount::from_prepared(
+                        prepared,
+                        configurator(),
+                        fixture.seals.clone(),
+                        source,
+                        window,
+                        mount_cx,
+                    )
+                    .unwrap()
+                });
+                app.new(|_| TestRoot {
+                    mount,
+                    generation,
+                    color: gpui::rgb(0),
+                    snapshot: Rc::new(RefCell::new(None)),
+                })
+            },
+        )
         .unwrap()
     })
 }
@@ -216,6 +233,11 @@ pub fn color(generation: &AppearanceGeneration) -> gpui::Rgba {
 
 #[derive(Clone, Default)]
 pub struct AdapterControls {
+    pub native_hold: Rc<std::cell::Cell<bool>>,
+    pub native_ready: Rc<std::cell::Cell<bool>>,
+    pub native_waker: Rc<RefCell<Option<std::task::Waker>>>,
+    pub native_minimum: Rc<std::cell::Cell<Option<gpui::Size<gpui::Pixels>>>>,
+    pub refuse_native: Arc<AtomicBool>,
     pub reject: Arc<AtomicBool>,
     pub retire_during_prepare: Arc<AtomicBool>,
     pub retire_during_commit: Arc<AtomicBool>,
@@ -237,7 +259,50 @@ struct Prepared {
 }
 
 impl PreparedWindowAppearance for Prepared {
-    fn validate(&self, app: &App) -> Result<(), AdapterFailureClass> {
+    fn prepare_native(
+        &mut self,
+        app: &mut App,
+    ) -> Result<Option<gpui::Task<Result<(), AdapterFailureClass>>>, AdapterFailureClass> {
+        if self.controls.refuse_native.load(Ordering::SeqCst) {
+            return Err(AdapterFailureClass::Rejected);
+        }
+        let Some(minimum) = self.controls.native_minimum.get() else {
+            return Ok(None);
+        };
+        let update = self
+            .window
+            .update(app, |_, window, _| window.update_minimum_size(minimum))
+            .map_err(|_| AdapterFailureClass::Unavailable)?
+            .map_err(|_| AdapterFailureClass::Unavailable)?;
+        let controls = self.controls.clone();
+        Ok(Some(app.spawn(async move |_| {
+            let result = match update.await {
+                gpui::WindowMinimumUpdateOutcome::Applied {
+                    minimum: actual,
+                    client_size,
+                } if actual == minimum
+                    && client_size.width >= minimum.width
+                    && client_size.height >= minimum.height =>
+                {
+                    Ok(())
+                }
+                _ => Err(AdapterFailureClass::ApplicationFailed),
+            };
+            controls.native_ready.set(true);
+            std::future::poll_fn(|cx| {
+                if controls.native_hold.get() {
+                    *controls.native_waker.borrow_mut() = Some(cx.waker().clone());
+                    std::task::Poll::Pending
+                } else {
+                    std::task::Poll::Ready(())
+                }
+            })
+            .await;
+            result
+        })))
+    }
+
+    fn validate(&self, app: &mut App) -> Result<(), AdapterFailureClass> {
         self.window
             .read_with(app, |root, app| {
                 root.mount.read(app).selected_first_presentable(app)

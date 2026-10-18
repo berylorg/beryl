@@ -89,11 +89,11 @@ impl MainWindowShell {
     }
 
     pub(crate) fn settle_final_native_cleanup(&mut self, app: &mut App) -> Result<(), String> {
-        if self.appearance_registered {
+        if self.appearance_registered.get() {
             self.appearance_owner
                 .update(app, |owner, _| owner.unregister(self.adapter_id))
                 .map_err(|error| error.to_string())?;
-            self.appearance_registered = false;
+            self.appearance_registered.set(false);
         }
         Ok(())
     }

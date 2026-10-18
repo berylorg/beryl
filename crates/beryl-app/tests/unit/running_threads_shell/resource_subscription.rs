@@ -31,6 +31,17 @@ fn transcript_replacement_routes_resource_wakeups_only_from_the_current_live_pan
             .unwrap();
         assert_ne!(prior.entity_id(), current.entity_id());
         cx.run_until_parked();
+        support::draw(cx);
+        cx.run_until_parked();
+        mounted
+            .window
+            .read_with(cx, |root, app| {
+                assert_eq!(
+                    current.read(app).initial_history_loading_for_test(),
+                    root.selected_history_loading(app),
+                );
+            })
+            .unwrap();
         notifications.set(0);
         prior.update(cx, |_, cx| cx.emit(ResourceViewportDemandChanged));
         cx.run_until_parked();

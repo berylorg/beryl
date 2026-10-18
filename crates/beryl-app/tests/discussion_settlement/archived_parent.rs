@@ -5,6 +5,29 @@ use support::{draft_id, exact_cas, timestamp};
 fn fixture(waiting_parent: bool) -> Fixture {
     let mut fixture = Fixture::new(false);
     let parent_gate = fixture.gate;
+    let resolving_turn = fixture
+        .state
+        .durable_jobs()
+        .job(&fixture.store, fixture.job)
+        .unwrap()
+        .unwrap()
+        .resolving_turn_id();
+    let resolving_items = fixture
+        .syndic
+        .turn_items(
+            &fixture.store,
+            resolving_turn,
+            None,
+            beryl_home_store::CursorReadLimits::new(1, 400_000).unwrap(),
+        )
+        .unwrap();
+    let resolving_item = resolving_items.records().first().unwrap();
+    assert_eq!(resolving_item.ordinal(), TurnItemOrdinal::FIRST);
+    exact_cas::project_item_if_needed(
+        &fixture.store,
+        fixture.syndic.clone(),
+        resolving_item.item_id(),
+    );
     support::discussion_creation::create_child(&fixture.store, &fixture.syndic, id(36), 230, 231);
     let request = support::discussion_handoff::active_request_for(
         &fixture.store,

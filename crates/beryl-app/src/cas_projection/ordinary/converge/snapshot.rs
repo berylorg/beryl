@@ -179,7 +179,7 @@ fn reread_resource(
     }
 }
 
-fn ordinal_after(finalized: u64) -> Option<TurnItemOrdinal> {
+pub(super) fn ordinal_after(finalized: u64) -> Option<TurnItemOrdinal> {
     (finalized != 0).then(|| {
         TurnItemOrdinal::new(finalized).expect("a nonzero finalized frontier is a valid ordinal")
     })

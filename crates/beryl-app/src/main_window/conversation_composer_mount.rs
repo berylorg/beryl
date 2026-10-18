@@ -460,6 +460,15 @@ impl MainWindowConversationComposerMount {
         })
     }
 
+    pub(in crate::main_window) fn panel_minimum_size(
+        &self,
+        app: &App,
+    ) -> Option<gpui::Size<gpui::Pixels>> {
+        self.contribution
+            .as_ref()
+            .map(|composer| composer.read(app).panel_minimum_size())
+    }
+
     pub(in crate::main_window) fn apply_appearance(
         &mut self,
         theme: gpui_text_input::TextInputTheme,

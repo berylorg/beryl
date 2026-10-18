@@ -482,6 +482,9 @@ fn run_transaction(
                 );
             }
             syndic_storage::DraftPieceSettlementClosureV1::Noncommit(_) => {}
+            syndic_storage::DraftPieceSettlementClosureV1::SealedImport(_) => {
+                panic!("edit transaction has unexpected imported settlement")
+            }
         },
         other => panic!("settled transaction has unexpected status: {other:?}"),
     }

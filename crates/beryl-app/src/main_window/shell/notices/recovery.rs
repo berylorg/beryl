@@ -20,6 +20,31 @@ pub(super) struct HomeRecoveryNoticeContribution {
 }
 
 impl MainWindowShellRoot {
+    #[cfg(test)]
+    pub(crate) fn test_recovered_home_notice(
+        &self,
+    ) -> Option<(
+        NoticeConditionId,
+        NoticeKind,
+        NoticeVariant,
+        NoticeDismissal,
+        usize,
+    )> {
+        if self.notices.retired
+            || self.notices.recovery.state != Some(MainWindowHomeRecoveryNoticeState::Recovered)
+        {
+            return None;
+        }
+        let condition = self.notices.recovery.condition.as_ref()?;
+        let token = self.notices.recovery.record.as_ref()?;
+        if token.condition() != condition {
+            return None;
+        }
+        let (kind, variant, dismissal, commands) =
+            self.notices.arbiter.test_retained_notice_metadata(token)?;
+        Some((condition.clone(), kind, variant, dismissal, commands))
+    }
+
     pub(crate) fn project_running_home_recovery_notice(
         &mut self,
         condition: &NoticeConditionId,

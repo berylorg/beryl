@@ -1,7 +1,72 @@
 use super::*;
 
+#[path = "../../support/native_window_geometry.rs"]
+mod native_geometry;
+
 type Window = WindowHandle<MainWindowShellRoot>;
 type Owner = Rc<RefCell<RunningProcessOwner>>;
+pub(super) type RuntimeFixtureConfiguration =
+    Box<dyn FnOnce(&crate::app_services::ProcessServiceOwner, Instant) + Send>;
+
+pub(super) fn run_mounted_with_runtime_configuration(
+    count: u8,
+    chunks: usize,
+    prepare: Option<Box<dyn FnOnce(&std::path::Path)>>,
+    final_selection: Option<Box<dyn FnOnce() -> Vec<(WindowId, beryl_model::SyndicThreadId)>>>,
+    runtime_configuration: RuntimeFixtureConfiguration,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+    expect_shutdown: bool,
+    restored_count: usize,
+) -> MinimalSessionBootstrap {
+    run_mounted_case_with_workers(
+        count,
+        chunks,
+        prepare,
+        final_selection,
+        scenario,
+        expect_shutdown,
+        Some(restored_count),
+        None,
+        Duration::from_secs(30),
+        Some(runtime_configuration),
+    )
+    .unwrap()
+}
+
+pub(super) fn run_mounted_retained_with_runtime_configuration(
+    count: u8,
+    chunks: usize,
+    workers: u64,
+    completion_deadline: Duration,
+    runtime_configuration: Option<RuntimeFixtureConfiguration>,
+    scenario: impl for<'a> FnOnce(
+        Owner,
+        FaultController,
+        &'a mut AsyncApp,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>
+    + 'static,
+) {
+    assert!(
+        run_mounted_case_with_workers(
+            count,
+            chunks,
+            None,
+            None,
+            scenario,
+            false,
+            None,
+            Some(workers),
+            completion_deadline,
+            runtime_configuration,
+        )
+        .is_none()
+    );
+}
 pub(super) fn run_mounted(
     count: u8,
     chunks: usize,
@@ -193,6 +258,7 @@ pub(super) fn run_mounted_with_prepared_home_retained_and_workers_and_deadline(
             None,
             Some(workers),
             completion_deadline,
+            None,
         )
         .is_none()
     );
@@ -222,6 +288,7 @@ fn run_mounted_case(
         restored_count,
         None,
         Duration::from_secs(30),
+        None,
     )
 }
 
@@ -240,6 +307,7 @@ fn run_mounted_case_with_workers(
     restored_count: Option<usize>,
     projection_workers: Option<u64>,
     completion_deadline: Duration,
+    runtime_configuration: Option<RuntimeFixtureConfiguration>,
 ) -> Option<MinimalSessionBootstrap> {
     let directory = if count == 0 {
         support::native_home()
@@ -252,7 +320,10 @@ fn run_mounted_case_with_workers(
     );
     if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
         let ledger_path = std::path::PathBuf::from(ledger);
-        assert!(ledger_path.is_absolute(), "native fixture ledger must be absolute");
+        assert!(
+            ledger_path.is_absolute(),
+            "native fixture ledger must be absolute"
+        );
         let mut ledger = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -358,6 +429,7 @@ fn run_mounted_case_with_workers(
     Application::new()
         .with_quit_on_last_window_close(false)
         .run(move |app| {
+            let readiness_deadline = Instant::now() + completion_deadline;
             startup_owner::start(
                 input,
                 move |result, app| {
@@ -377,16 +449,86 @@ fn run_mounted_case_with_workers(
                             shell.attach_creation(creation.clone(), app);
                         }
                     }
-                    let owner = RunningProcessOwner::start(process, app);
-                    eprintln!("mounted fixture command consumer installed");
-                    *original.borrow_mut() = snapshot(&owner).windows().to_vec();
-                    *returned.borrow_mut() = Some(owner.clone());
+                    let mut process = Some(process);
+                    let owner = if runtime_configuration.is_none() {
+                        let owner = RunningProcessOwner::start(process.take().unwrap(), app);
+                        eprintln!("mounted fixture command consumer installed");
+                        *original.borrow_mut() = snapshot(&owner).windows().to_vec();
+                        *returned.borrow_mut() = Some(owner.clone());
+                        Some(owner)
+                    } else {
+                        None
+                    };
                     app.spawn(async move |cx| {
-                        for window in windows(&owner) {
+                        let configured_runtime = runtime_configuration.is_some();
+                        let owner = match owner {
+                            Some(owner) => owner,
+                            None => {
+                                let mut process = process.take().unwrap();
+                                let configure = runtime_configuration.unwrap();
+                                let services = process.services;
+                                process.services = cx.background_executor().spawn(async move {
+                                    configure(&services, readiness_deadline);
+                                    services
+                                }).await;
+                                let owner = cx.update(|app| RunningProcessOwner::start(process, app)).unwrap();
+                                *original.borrow_mut() = snapshot(&owner).windows().to_vec();
+                                *returned.borrow_mut() = Some(owner.clone());
+                                owner
+                            }
+                        };
+                        let original_windows = windows(&owner);
+                        loop {
+                            let (sender, receiver) = futures_channel::oneshot::channel();
+                            let wake = Rc::new(RefCell::new(Some(sender)));
+                            let (ready, subscriptions) = cx.update(|app| {
+                                let subscriptions = original_windows.iter().map(|window| {
+                                    let root = window.entity(app).unwrap();
+                                    let wake = wake.clone();
+                                    app.observe(&root, move |_, _| {
+                                        if let Some(sender) = wake.borrow_mut().take() {
+                                            let _ = sender.send(());
+                                        }
+                                    })
+                                }).collect::<Vec<_>>();
+                                for window in &original_windows {
+                                    app.update_window((*window).into(), |_, native, app| {
+                                        native.draw_and_present_for_test(app);
+                                    }).unwrap();
+                                }
+                                let ready = owner.borrow().test_process().windows.shells().iter().all(|shell| {
+                                    shell.is_published()
+                                        && shell.ready_to_publish(app)
+                                        && shell.window().read_with(app, |root, _| {
+                                            !root.test_minimum_update_status().1
+                                        }).unwrap()
+                                });
+                                (ready, subscriptions)
+                            }).unwrap();
+                            if ready {
+                                break;
+                            }
+                            assert!(Instant::now() < readiness_deadline,
+                                "original mounted window contributions did not settle their native minimum");
+                            receiver.await.expect("original mounted roots retain their readiness observers");
+                            drop(subscriptions);
+                        }
+                        for window in original_windows {
                             eprintln!("mounted fixture observing native window");
                             handles.borrow_mut().push(native(window, cx).await);
                             eprintln!("mounted fixture capturing placement");
                             placements.borrow_mut().push(capture(window, cx).await);
+                        }
+                        if configured_runtime {
+                            let deadline = Instant::now() + Duration::from_secs(5);
+                            loop {
+                                let coalesced = cx.update(|app| windows(&owner).iter().all(|window| {
+                                    window.read_with(app, |root, _| root.test_selected_runtime_warmup_retained()).unwrap()
+                                })).unwrap();
+                                if coalesced { break; }
+                                assert!(Instant::now() < deadline, "native selected views did not retain original configured runtime interest");
+                                cx.background_executor().timer(Duration::from_millis(10)).await;
+                            }
                         }
                         eprintln!("mounted fixture entering scenario");
                         let diagnostic_owner = owner.clone();
@@ -674,19 +816,21 @@ pub(super) async fn wait_for_unviewed_catalog_source(
 }
 
 pub(super) async fn native(window: Window, cx: &mut AsyncApp) -> HWND {
-    static TITLE: AtomicUsize = AtomicUsize::new(0);
-    let title = format!(
-        "ordinary-command-{}-{}",
-        std::process::id(),
-        TITLE.fetch_add(1, Ordering::SeqCst)
-    );
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
     window
-        .update(cx, |_, window, _| window.set_window_title(&title))
-        .unwrap();
-    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
-    let handle = unsafe { FindWindowW(None, PCWSTR(title.as_ptr())) }.unwrap();
-    assert!(unsafe { IsWindow(Some(handle)).as_bool() });
-    handle
+        .update(cx, |_, window, _| {
+            let raw = window
+                .window_handle()
+                .expect("original native window is live");
+            let RawWindowHandle::Win32(raw) = raw.as_raw() else {
+                panic!("expected the original Windows native handle");
+            };
+            let handle = HWND(raw.hwnd.get() as *mut _);
+            assert!(unsafe { IsWindow(Some(handle)).as_bool() });
+            handle
+        })
+        .unwrap()
 }
 
 pub(super) fn post_close(window: HWND) {
@@ -963,9 +1107,12 @@ pub(super) async fn copy_all(
     resident: &gpui::Entity<MainWindowConversationComposer>,
     cx: &mut AsyncApp,
 ) -> String {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    native_geometry::restore(window, cx);
     let copied = Rc::new(RefCell::new(None));
     let written = copied.clone();
-    window
+    let frame_observed = Rc::new(std::cell::Cell::new(false));
+    let (input, binding) = window
         .update(cx, |_, window, app| {
             resident.update(app, |composer, _| {
                 composer.test_set_clipboard_writer(Box::new(move |text, _| {
@@ -973,18 +1120,87 @@ pub(super) async fn copy_all(
                     gpui_text_input::ClipboardWriteOutcome::Written
                 }))
             });
-            resident
-                .read(app)
-                .gpui_input()
-                .update(app, |input, _| input.focus(window));
-            window.dispatch_action(Box::new(gpui_text_input::SelectAll), app);
+            let composer = resident.read(app);
+            let input = composer.gpui_input();
+            let binding = composer.selection_identity().binding().range_binding();
+            input.update(app, |input, _| input.focus(window));
+            let frame_observed = frame_observed.clone();
+            window.on_next_frame(move |window, _| {
+                window.on_next_frame(move |_, _| frame_observed.set(true));
+            });
+            (input, binding)
         })
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let same_owner = |root: &MainWindowShellRoot, app: &gpui::App| {
+        let mounted = root
+            .controller()
+            .and_then(|controller| controller.composer_mount())
+            .and_then(|mount| mount.read(app).contribution());
+        if mounted.as_ref().map(|composer| composer.entity_id()) != Some(resident.entity_id()) {
+            return false;
+        }
+        let composer = resident.read(app);
+        composer.gpui_input().entity_id() == input.entity_id()
+            && composer.selection_identity().binding().range_binding() == binding
+    };
+    let mut select_all_dispatched = false;
     loop {
-        let ready = cx
-            .update(|app| resident.read(app).gpui_input().read(app).is_quiescent())
-            .unwrap();
+        if frame_observed.get() && !select_all_dispatched {
+            select_all_dispatched = window
+                .update(cx, |root, window, app| {
+                    if !same_owner(root, app) {
+                        return false;
+                    }
+                    let input = input.read(app);
+                    if !input.is_enabled()
+                        || !gpui::Focusable::focus_handle(input, app).is_focused(window)
+                    {
+                        return false;
+                    }
+                    window.dispatch_action(Box::new(gpui_text_input::SelectAll), app);
+                    true
+                })
+                .unwrap();
+        }
+        let ready = select_all_dispatched
+            && cx
+                .update(|app| {
+                    window
+                        .read_with(app, |root, app| {
+                            if !same_owner(root, app) {
+                                return false;
+                            }
+                            let input = input.read(app);
+                            if !input.is_enabled() || !input.is_quiescent() {
+                                return false;
+                            }
+                            let Some(surface) = input
+                                .surface()
+                                .filter(|surface| surface.binding() == binding)
+                            else {
+                                return false;
+                            };
+                            let Ok(selection) = surface.source_selection().range() else {
+                                return false;
+                            };
+                            let start = selection.start();
+                            let end = selection.end();
+                            start.byte_offset.get() == 0
+                                && matches!(
+                                    start.gap,
+                                    gpui_text_input::InlineObjectGap::NoObjects
+                                        | gpui_text_input::InlineObjectGap::Before(_)
+                                )
+                                && end.byte_offset.get() == binding.extent().byte_len()
+                                && matches!(
+                                    end.gap,
+                                    gpui_text_input::InlineObjectGap::NoObjects
+                                        | gpui_text_input::InlineObjectGap::After(_)
+                                )
+                        })
+                        .unwrap()
+                })
+                .unwrap();
         if ready {
             break;
         }
@@ -994,7 +1210,11 @@ pub(super) async fn copy_all(
             .await;
     }
     window
-        .update(cx, |_, window, app| {
+        .update(cx, |root, window, app| {
+            assert!(same_owner(root, app));
+            let input = input.read(app);
+            assert!(input.is_enabled());
+            assert!(gpui::Focusable::focus_handle(input, app).is_focused(window));
             window.dispatch_action(Box::new(gpui_text_input::Copy), app)
         })
         .unwrap();

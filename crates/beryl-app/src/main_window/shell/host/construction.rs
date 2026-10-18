@@ -136,12 +136,13 @@ impl GpuiMainWindowShellHost<'_> {
         let adapter_id = crate::theme_runtime::WindowAdapterId::new(
             std::num::NonZeroU64::new(root.entity_id().as_u64()).expect("GPUI entity identity"),
         );
-        let mut shell = MainWindowShell {
+        let appearance_registered = root.read(self.app).appearance_registration.clone();
+        let shell = MainWindowShell {
             window,
             root,
             appearance_owner: self.appearance_owner.clone(),
             adapter_id,
-            appearance_registered: false,
+            appearance_registered,
             published: false,
             #[cfg(target_os = "windows")]
             startup_disposal: admission,
@@ -169,7 +170,7 @@ impl GpuiMainWindowShellHost<'_> {
         }
         #[cfg(not(feature = "test-faults"))]
         let _ = construction;
-        let registration = self.appearance_owner.update(self.app, |owner, cx| {
+        let immediate = self.appearance_owner.update(self.app, |owner, cx| {
             owner.register(
                 Box::new(appearance::ShellAppearanceAdapter {
                     id: adapter_id,
@@ -178,12 +179,42 @@ impl GpuiMainWindowShellHost<'_> {
                 cx,
             )
         });
-        match registration {
-            Ok(()) => shell.appearance_registered = true,
-            Err(error) => shell.root.update(self.app, |root, _| {
-                root.construction_error = Some(error.to_string());
-            }),
+        match immediate {
+            Ok(()) => {
+                shell.appearance_registered.set(true);
+                return shell;
+            }
+            Err(crate::theme_runtime::AdapterRegistrationError::Preparation {
+                class: crate::theme_runtime::AdapterFailureClass::Unavailable,
+                ..
+            }) => {}
+            Err(error) => {
+                shell.root.update(self.app, |root, _| {
+                    root.construction_error = Some(error.to_string())
+                });
+                return shell;
+            }
         }
+        let registration = GpuiAppearanceWindowSet::begin_registration(
+            self.appearance_owner.clone(),
+            Box::new(appearance::ShellAppearanceAdapter {
+                id: adapter_id,
+                window,
+            }),
+            self.app,
+        );
+        let root = shell.root.downgrade();
+        self.app
+            .spawn(async move |cx| {
+                let result = registration.await;
+                let _ = root.update(cx, |root, cx| {
+                    if let Err(error) = result {
+                        root.construction_error = Some(error.to_string());
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
         shell
     }
 }

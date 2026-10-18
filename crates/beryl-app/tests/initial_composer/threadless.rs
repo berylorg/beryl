@@ -14,6 +14,7 @@ struct ThreadlessFixture {
 impl ThreadlessFixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
+        record_home(directory.path());
         let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
@@ -127,24 +128,26 @@ fn threadless_source_preserves_exact_member_and_has_no_editor_or_home_lifecycle_
 
 #[test]
 fn runtime_present_or_foreign_registry_cannot_authorize_threadless_source() {
-    let fixture = ThreadlessFixture::new();
-    let foreign = ThreadlessFixture::new();
-    let (attempt, _service) = fixture.attempt();
-    let snapshot = fixture
-        .state
-        .session()
-        .minimal_bootstrap(&fixture.store)
-        .unwrap()
-        .unwrap();
-    assert!(
-        attempt
-            .begin_threadless(
-                snapshot.header().revision(),
-                snapshot.windows()[0].window_id(),
-                foreign.state.runtime_roots()
-            )
-            .is_err()
-    );
+    {
+        let fixture = ThreadlessFixture::new();
+        let foreign = ThreadlessFixture::new();
+        let (attempt, _service) = fixture.attempt();
+        let snapshot = fixture
+            .state
+            .session()
+            .minimal_bootstrap(&fixture.store)
+            .unwrap()
+            .unwrap();
+        assert!(
+            attempt
+                .begin_threadless(
+                    snapshot.header().revision(),
+                    snapshot.windows()[0].window_id(),
+                    foreign.state.runtime_roots()
+                )
+                .is_err()
+        );
+    }
     let runtime_fixture = Fixture::new(81);
     let session = runtime_fixture.state.session();
     let empty = session

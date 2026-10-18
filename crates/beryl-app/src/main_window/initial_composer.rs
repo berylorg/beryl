@@ -80,6 +80,22 @@ impl MainWindowInitialComposerPrepared {
             .map_err(|failure| *failure)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_into_shell_owned(
+        self: Box<Self>,
+        composer_configurator: super::MainWindowShellComposerConfigurator,
+        marker_seals: crate::composer_marker_seal::DraftMarkerSealService,
+        submission_request_source: super::MainWindowComposerSubmissionRequestSource,
+        appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
+    ) -> Result<Box<super::MainWindowShellPrepared>, Box<MainWindowInitialComposerFailure>> {
+        self.into_shell_owned(
+            composer_configurator,
+            marker_seals,
+            submission_request_source,
+            appearance,
+        )
+    }
+
     #[inline(never)]
     pub(in crate::main_window) fn into_shell_owned(
         self: Box<Self>,

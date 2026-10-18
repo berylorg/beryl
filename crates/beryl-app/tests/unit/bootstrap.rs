@@ -8,6 +8,10 @@ mod creation_context;
 #[path = "bootstrap_diagnostic.rs"]
 mod diagnostic_stdio;
 
+#[cfg(all(feature = "test-faults", target_os = "windows"))]
+#[path = "bootstrap_progressive.rs"]
+mod progressive;
+
 #[test]
 fn relative_home_is_refused_before_open() {
     let result = Configuration::new(

@@ -7,8 +7,8 @@ use crate::syndic_transcript::SyndicTranscriptPanel;
 use gpui::{AsyncApp, Entity, PlatformInput, point, px};
 #[path = "table_native_support.rs"]
 pub(super) mod support;
-use self::support::*;
 pub(super) use self::support::large_table;
+use self::support::*;
 #[path = "table_native_actions.rs"]
 mod actions;
 #[path = "table_native_inline.rs"]
@@ -27,6 +27,12 @@ fn table_resize_and_font(source: fn() -> String, cell_limit: usize, preserve_sel
         move |owner, _, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
+                super::code_long_line::native_geometry::prepare_width_for_shrink(
+                    window,
+                    cx,
+                    px(120.0),
+                )
+                .await;
                 let panel = window
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();

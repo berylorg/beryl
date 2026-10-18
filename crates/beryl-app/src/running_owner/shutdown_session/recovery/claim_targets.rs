@@ -351,10 +351,18 @@ impl RunningProcessOwner {
                     })
                     .map_err(|error| error.to_string())??;
                 drop(slot);
-                retained.bind_interrupted_exit_appearance(request, window, appearance, app)?;
                 Ok((home_id, generation, close, record))
             })
             .map_err(|error| error.to_string())??;
+        Self::bind_prepared_interrupted_exit_appearance(
+            owner,
+            request,
+            window,
+            appearance,
+            cancellation.clone(),
+            cx,
+        )
+        .await?;
         #[cfg(test)]
         cx.update(|_| -> Result<(), String> {
             let retained = owner.recovery_owner()?;

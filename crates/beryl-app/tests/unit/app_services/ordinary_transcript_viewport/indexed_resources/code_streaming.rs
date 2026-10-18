@@ -89,6 +89,76 @@ mod live_capture {
     ));
 }
 
+type StreamingRuntimeFixture = (
+    live_capture::server::NormalTerminalServer,
+    crate::cas_projection::AdmittedProjectionSession,
+    beryl_model::ExecutionBinding,
+);
+
+fn configure_streaming_runtime(
+    services: &crate::app_services::ProcessServiceOwner,
+    readiness_deadline: Instant,
+) -> StreamingRuntimeFixture {
+    let server = live_capture::server::NormalTerminalServer::spawn_controlled_connection_loss();
+    let connector = beryl_backend::ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        live_capture::server::AUTHORIZATION,
+    );
+    let graph = services.graph().unwrap();
+    let selected = graph
+        .state()
+        .session()
+        .minimal_bootstrap(graph.home())
+        .unwrap()
+        .unwrap();
+    let thread = selected.windows()[0].selected_thread().unwrap().thread_id();
+    let binding = graph
+        .syndic()
+        .thread_execution(
+            graph.home(),
+            thread,
+            SyndicPointReadLimit::new(1_000_000).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .execution()
+        .clone();
+    let spec = loop {
+        assert!(
+            Instant::now() < readiness_deadline,
+            "streaming runtime fixture did not admit a launch specification before its original readiness deadline"
+        );
+        match graph.sessions().test_launch_spec_for(thread, &binding) {
+            Ok(spec) => break spec,
+            Err(crate::cas_projection::RuntimeInterestError::AdmissionUnavailable) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => {
+                panic!("streaming runtime fixture launch specification failed: {error:?}")
+            }
+        }
+    };
+    assert!(
+        Instant::now() < readiness_deadline,
+        "streaming runtime fixture launch specification arrived after its original readiness deadline"
+    );
+    let session = graph
+        .cas()
+        .admit_configured_runtime_lifecycle_test_candidate(
+            &connector,
+            spec,
+            binding.clone(),
+            beryl_model::CasProcessGeneration::new(37_144).unwrap(),
+            std::path::Path::new(binding.root_path().as_str()),
+            live_capture::server::TIMEOUT,
+        )
+        .unwrap();
+    assert!(!graph.cas().gui_runtime_submission_observer_for_test()(
+        &binding
+    ));
+    (server, session, binding)
+}
+
 fn streaming_code(opening: Option<OpeningFence>) {
     streaming_code_with_deadline(opening, Duration::from_secs(60));
 }
@@ -101,12 +171,22 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
         fragments: &["rust", "\n"],
         line_ending: "\n",
     });
-    run_mounted_with_prepared_home_retained_and_workers_and_deadline(
+    let configured = Arc::new(std::sync::Mutex::new(None));
+    let output = configured.clone();
+    let runtime_configuration: Option<RuntimeFixtureConfiguration> = live.then(|| {
+        Box::new(
+            move |services: &crate::app_services::ProcessServiceOwner, readiness_deadline| {
+                *output.lock().unwrap() =
+                    Some(configure_streaming_runtime(services, readiness_deadline));
+            },
+        ) as RuntimeFixtureConfiguration
+    });
+    run_mounted_retained_with_runtime_configuration(
         1,
         0,
         if live { 5 } else { 4 },
         completion_deadline,
-        |_| {},
+        runtime_configuration,
         move |owner, _, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
@@ -159,34 +239,19 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                     line.repeat(2000),
                 );
                 let mut capture = if live {
-                    let server = live_capture::server::NormalTerminalServer::spawn_controlled_connection_loss();
-                    let connector =
-                        beryl_backend::ManagedBackendClientConnector::for_lifecycle_test(
-                            server.endpoint(),
-                            live_capture::server::AUTHORIZATION,
-                        );
+                    let (server, session, binding) = configured.lock().unwrap().take().unwrap();
                     let retained = owner.borrow();
                     let graph = retained.test_services().graph().unwrap();
-                    let binding = beryl_model::ExecutionBinding::new(
-                        beryl_model::RuntimeId::from_bytes([194; 16]),
-                        beryl_model::RootId::from_bytes([195; 16]),
-                        beryl_model::RuntimeNativePath::from_admitted(
-                            beryl_model::RuntimeMode::host(),
-                            beryl_model::PathFlavor::Windows,
-                            r"C:\Work\Beryl",
-                        )
-                        .unwrap(),
+                    assert_eq!(
+                        &binding,
+                        graph
+                            .syndic()
+                            .thread_execution(&home, thread, point)
+                            .unwrap()
+                            .unwrap()
+                            .execution(),
+                        "live capture keeps the original configured execution binding"
                     );
-                    let session = graph
-                        .cas()
-                        .admit_runtime_lifecycle_test_candidate(
-                            &connector,
-                            binding.clone(),
-                            beryl_model::CasProcessGeneration::new(37_144).unwrap(),
-                            std::path::Path::new(r"C:\Work\Beryl"),
-                            live_capture::server::TIMEOUT,
-                        )
-                        .unwrap();
                     let driver = live_capture::Capture::start(
                         server,
                         session,
@@ -333,15 +398,44 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                             2000
                         };
                         let mut mounted = None;
+                        let mut last_facts = None;
                         for _ in 0..300 {
                             code_history_revision::draw(window, cx);
                             mounted = panel
                                 .read_with(cx, |panel, _| {
                                     let snapshot = panel.diagnostic_snapshot();
-                                    let code = snapshot.code_panels.first()?;
-                                    let resource = panel.code_viewport_for_test()?.0;
+                                    let code = snapshot.code_panels.first();
+                                    let resource =
+                                        panel.code_viewport_for_test().map(|view| view.0);
+                                    let response = resource.as_ref().and_then(|resource| {
+                                        panel.code_foreground_response_for_test(resource)
+                                    });
+                                    last_facts = Some((
+                                        code.map(|code| {
+                                            (
+                                                code.logical_lines,
+                                                code.source_bytes,
+                                                code.realized_visual_lines,
+                                                code.layout_state.to_owned(),
+                                            )
+                                        }),
+                                        response.as_ref().map(|response| match &response.value {
+                                            IndexedResourceValue::Pending => ("pending", None),
+                                            IndexedResourceValue::Range(range) => (
+                                                "range",
+                                                Some((
+                                                    range.binding.range.start,
+                                                    range.binding.range.end,
+                                                    range.items.len(),
+                                                    range.request_complete,
+                                                )),
+                                            ),
+                                            _ => ("other", None),
+                                        }),
+                                    ));
+                                    let code = code?;
                                     let source_bytes = expected_lines * line.len() as u64;
-                                    let response = panel.indexed_resource_response(&resource)?;
+                                    let response = response?;
                                     let IndexedResourceValue::Range(range) = &response.value else {
                                         return None;
                                     };
@@ -363,8 +457,10 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                                 .timer(Duration::from_millis(20))
                                 .await;
                         }
-                        let identity = mounted
-                            .expect("saved fenced Code did not mount at its expected extent");
+                        let identity = mounted.unwrap_or_else(|| panic!(
+                            "saved fenced Code did not mount at its expected extent: step={step}, expected_lines={expected_lines}, body_start={body_start}, facts={last_facts:?}, capture_worker_finished={:?}",
+                            capture.as_ref().map(|capture| capture.worker_finished()),
+                        ));
                         if let Some(previous) = initial_identity.as_ref() {
                             assert_eq!(previous, &identity);
                         } else {
@@ -384,7 +480,7 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                 if live {
                     panel.read_with(cx, |panel, _| {
                         let resource = panel.code_viewport_for_test().unwrap().0;
-                        let response = panel.indexed_resource_response(&resource).unwrap();
+                        let response = panel.code_foreground_response_for_test(&resource).unwrap();
                         let IndexedResourceValue::Range(range) = &response.value else {
                             panic!("grown opening fence must load an ordinary Code range");
                         };
@@ -417,7 +513,7 @@ fn streaming_code_with_deadline(opening: Option<OpeningFence>, completion_deadli
                     .unwrap();
                 })
                 .unwrap();
-                code_history_revision::wait_range(window, &panel, None, 900, cx).await;
+                code_history_revision::wait_painted_range(window, &panel, None, 900, cx).await;
                 let (identity, key, resource, revision, anchor, outer) = panel
                     .read_with(cx, |panel, _| {
                         assert!(panel.painted_glyphs_for_test() > 50);

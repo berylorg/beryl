@@ -11,6 +11,8 @@ use tungstenite::{
     handshake::server::{Request, Response},
 };
 
+#[path = "managed_runtime_fixture/context_proxy.rs"]
+mod context_proxy;
 #[path = "managed_runtime_fixture/execution.rs"]
 mod execution;
 #[path = "managed_runtime_fixture/paused_handoff.rs"]
@@ -58,6 +60,10 @@ fn main() {
             == argument(&arguments, "--ws-token-sha256")
     );
     let authorization = format!("Bearer {token}");
+    if fs::read_to_string("fixture-mode").unwrap_or_default() == "context-proxy" {
+        context_proxy::run(address, &authorization);
+        return;
+    }
     let listener = TcpListener::bind(address).unwrap();
     listener.set_nonblocking(true).unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(15);

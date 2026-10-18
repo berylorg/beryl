@@ -39,6 +39,8 @@ use syndic_storage::test_faults::{
     inject_draft_piece_descendant_corruption,
 };
 
+#[path = "syndic_composer_host/activation_refusal.rs"]
+mod activation_refusal;
 #[path = "syndic_composer_host/activation_replay.rs"]
 mod activation_replay;
 #[path = "syndic_composer_host/range_custody.rs"]

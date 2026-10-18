@@ -186,6 +186,21 @@ thread_local! {
 
 struct ObserveWake(std::sync::atomic::AtomicUsize);
 
+#[test]
+fn native_readiness_notifications_survive_both_wait_registration_orders() {
+    struct CountWake(std::sync::atomic::AtomicUsize);
+    impl Wake for CountWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let observed = Arc::new(CountWake(std::sync::atomic::AtomicUsize::new(0)));
+    MainWindowNativeRestoreSetCancellation::test_wake_notification_order(&Waker::from(
+        observed.clone(),
+    ));
+    assert_eq!(observed.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
 impl Wake for ObserveWake {
     fn wake(self: Arc<Self>) {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

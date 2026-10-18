@@ -13,6 +13,18 @@ fn ordinary_and_same_home_recovery_preserve_both_explicit_launch_forms() {
     ] {
         let (mut fixture, sessions, _attention) =
             fixture_with_launch_form(10, std::num::NonZeroUsize::new(1).unwrap(), launch_form);
+        let execution = binding(&fixture, 1);
+        let view = fixture
+            .service()
+            .acquire_runtime_interest(
+                sessions
+                    .test_launch_spec_for(thread_id(1), &execution)
+                    .unwrap(),
+                execution,
+                RuntimeInterestKind::View,
+            )
+            .unwrap();
+        super::support::ready(&view);
         let lease = checkout(&fixture, 1);
         let expected = format!("{launch_form:?}");
         let evidence: serde_json::Value = serde_json::from_slice(
@@ -21,6 +33,7 @@ fn ordinary_and_same_home_recovery_preserve_both_explicit_launch_forms() {
         .unwrap();
         assert_eq!(evidence["launch_form"], expected);
         drop(lease);
+        drop(view);
         close(&mut fixture, &sessions);
 
         let (mut fixture, sessions, _attention) =

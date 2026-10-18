@@ -25,6 +25,12 @@ impl MainWindowShell {
         if !self.desktop_native_publication_allowed(app) {
             return Err("startup native member was closed or lost".to_owned());
         }
+        if !self.appearance_registered.get() {
+            if let Some(error) = &self.root.read(app).construction_error {
+                return Err(error.clone());
+            }
+            return Ok(false);
+        }
         let appearance = self.appearance_owner.read(app).target().snapshot();
         self.window
             .read_with(app, |root, app| {

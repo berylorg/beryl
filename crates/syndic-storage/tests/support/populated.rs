@@ -33,7 +33,24 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
+#[derive(Clone, Copy)]
+struct PopulatedRootHistories {
+    source: DraftRootHistoryPairV1,
+    context: DraftRootHistoryPairV1,
+    active: DraftRootHistoryPairV1,
+}
+
 pub fn populated_records() -> Vec<FixtureRecord> {
+    populated_records_with_root_histories(PopulatedRootHistories {
+        source: canonical_empty_root_history_pair_for(draft_id(31)),
+        context: canonical_empty_root_history_pair_for(draft_id(37)),
+        active: canonical_empty_root_history_pair_for(draft_id(41)),
+    })
+}
+
+fn populated_records_with_root_histories(
+    root_histories: PopulatedRootHistories,
+) -> Vec<FixtureRecord> {
     let source_thread = id(30);
     let source_draft = draft_id(31);
     let root = SyndicTurnId::from_bytes([29; 16]);
@@ -154,7 +171,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             source_thread,
             draft_revision,
             DraftSubmissionIntent::Ordinary,
-            canonical_empty_root_history_pair_for(source_draft),
+            root_histories.source,
             timestamp(1),
             timestamp(1),
         )),
@@ -518,8 +535,8 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         lineage,
         source_cas_turn,
     ));
-    records.extend(context::records());
-    records.extend(active::records());
+    records.extend(context::records_with_root_history(root_histories.context));
+    records.extend(active::records_with_root_history(root_histories.active));
     records.extend(retained_text_records);
     records.retain(|record| !provider_command_owned(record));
     records

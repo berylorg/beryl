@@ -584,7 +584,7 @@ fn deletion_cases() -> Vec<DeletionCase> {
                 item: source_item(),
                 generation: ItemProjectionGeneration::FIRST,
             },
-            expected: "item projection generation sequence has a gap",
+            expected: "item-projection suffix owner set is missing",
         },
         DeletionCase {
             family: PhysicalFamily::TranscriptViewHeads,

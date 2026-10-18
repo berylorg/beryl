@@ -24,6 +24,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
         .id("main-window-status-turn")
         .debug_selector(|| "main-window-status-turn".to_owned())
         .flex_1()
+        .min_w(root.controller.as_ref().unwrap().metrics.turn_width)
         .min_w_0()
         .px(px(10.))
         .h_full()
@@ -52,7 +53,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
         .child(text);
     let divider = || {
         div()
-            .w(px(1.))
+            .w(px(super::super::sizing::STATUS_DIVIDER_WIDTH))
             .h_full()
             .flex_none()
             .bg(appearance.separator)
@@ -89,7 +90,7 @@ pub(in crate::main_window::shell::host) fn render_strip(
                         |value| format!("main-window-status-context:{value}"),
                     )
                 })
-                .w(px(180.))
+                .w(px(super::super::sizing::CONTEXT_WIDTH))
                 .flex_none()
                 .h_full()
                 .px(px(10.))

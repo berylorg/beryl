@@ -20,6 +20,8 @@ use native_support::*;
 mod cancellation;
 #[path = "native/failures.rs"]
 mod failures;
+#[path = "native/minimum.rs"]
+mod minimum;
 #[path = "native/retained.rs"]
 mod retained;
 #[path = "native/success.rs"]

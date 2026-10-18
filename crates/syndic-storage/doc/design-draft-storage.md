@@ -87,6 +87,14 @@ disposed-head advance, or clean disposal with unequal published/newest checkpoin
 A fresh session forks only from the current draft's published authority; it never adopts unpublished
 state from an earlier process or session.
 
+Candidate opening also exposes a sealed single-domain current command for the same prepared
+opening mutation. Following Home's current-command contract, serialized admission captures only
+physical Home/domain revisions; the original prepared selector, thread/draft revisions, root,
+history, session and operation identities remain exact writer-time guards. This is one execution,
+without retry, source recapture or substituted authority. Ordinary caller-fenced opening remains
+available with its original revision-conflict behavior. Both command shapes share opening
+validation, atomic writes, cancellation and outcome reconciliation.
+
 Candidate provenance validates one exact root, history frontier, and candidate generation. An
 unchanged opening candidate derives its authority from the session's opening durable checkpoint:
 its root remains the opening root, and its live history is the exact fork of the opening durable

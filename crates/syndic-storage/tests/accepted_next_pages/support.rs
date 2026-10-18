@@ -6,8 +6,9 @@ use syndic_storage::test_faults::{FixtureRecord, fixture_route_leaf_with_transit
 use syndic_storage::*;
 
 use crate::support::{
-    composer_content_records, fixture_turn_state, item_free_transcript_build_records,
-    thread_records, timestamp,
+    canonical_empty_root_history_pair_for, composer_content_records, fixture_turn_state,
+    item_free_transcript_build_records, seed_detached_canonical_draft_backing,
+    thread_records_with_root_history, timestamp,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,13 +54,52 @@ pub fn next_turn_records(
 ) -> Vec<FixtureRecord> {
     assert!(!specs.is_empty());
     assert!(specs.iter().all(|spec| spec.candidate_count != 0));
+    next_turn_records_with_root_history(
+        seed,
+        thread,
+        specs,
+        canonical_empty_root_history_pair_for(source_draft(seed, 0)),
+    )
+}
+
+pub fn next_turn_records_with_backing(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+    seed: u64,
+    thread: SyndicThreadId,
+    specs: &[GenerationSpec],
+) -> Vec<FixtureRecord> {
+    assert!(!specs.is_empty());
+    assert!(specs.iter().all(|spec| spec.candidate_count != 0));
+    let root_history = seed_detached_canonical_draft_backing(
+        store,
+        storage.clone(),
+        SyndicThreadId::from_bytes([0xf3; 16]),
+        source_draft(seed, 0),
+    );
+    next_turn_records_with_root_history(seed, thread, specs, root_history)
+}
+
+fn next_turn_records_with_root_history(
+    seed: u64,
+    thread: SyndicThreadId,
+    specs: &[GenerationSpec],
+    root_history: DraftRootHistoryPairV1,
+) -> Vec<FixtureRecord> {
     let total = specs.iter().map(|spec| spec.row_count()).sum::<u64>();
     let live_next = specs.iter().map(|spec| spec.candidate_count).sum::<u64>();
     let terminal_count = specs.iter().map(|spec| spec.terminal_prefix).sum::<u64>();
     let current_draft = source_draft(seed, 0);
     let prior_turn = source_turn(seed);
     let prior_digest = root_turn_chain_digest(prior_turn);
-    let mut records = thread_records(thread, current_draft, Some(prior_turn), prior_digest);
+    let mut records = thread_records_with_root_history(
+        thread,
+        current_draft,
+        Some(prior_turn),
+        prior_digest,
+        timestamp(1),
+        root_history,
+    );
     let content = composer_content_records(&ComposerPayload::default()).0;
     let final_thread_revision = ThreadRevision::new(total + 1).unwrap();
     let final_gate_revision = InputGateRevision::new(total + 1 + (terminal_count * 2)).unwrap();

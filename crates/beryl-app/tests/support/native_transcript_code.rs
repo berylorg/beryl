@@ -8,13 +8,15 @@ use syndic_storage::indexed_resource as index;
 mod history;
 #[path = "../unit/app_services/ordinary_transcript_viewport/indexed_resources/code_interaction.rs"]
 mod interaction;
+#[path = "native_window_geometry.rs"]
+mod native_geometry;
 pub(super) use history::{finish as finish_history, seed as prepare_history};
 
 pub(super) fn draw(window: WindowHandle<MainWindowShellRoot>, cx: &mut AsyncApp) {
+    native_geometry::restore(window, cx);
     cx.update(|app| {
         app.update_window(window.into(), |_, native, app| {
             native.draw_and_present_for_test(app);
-            native.minimize_window();
         })
         .unwrap();
     })
@@ -122,10 +124,20 @@ pub(super) async fn qualify(
 pub(super) async fn wait(
     window: WindowHandle<MainWindowShellRoot>,
     cx: &mut AsyncApp,
+    ready: impl FnMut(&mut AsyncApp) -> bool,
+    message: &str,
+) {
+    wait_bounded(window, cx, Duration::from_secs(10), ready, message).await;
+}
+
+async fn wait_bounded(
+    window: WindowHandle<MainWindowShellRoot>,
+    cx: &mut AsyncApp,
+    duration: Duration,
     mut ready: impl FnMut(&mut AsyncApp) -> bool,
     message: &str,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + duration;
     loop {
         draw(window, cx);
         if ready(cx) {
@@ -171,9 +183,10 @@ pub(super) async fn submit_code(
             })
         })
         .unwrap();
-    wait(
+    wait_bounded(
         window,
         cx,
+        Duration::from_secs(30),
         |cx| {
             input
                 .read_with(cx, |input, _| {

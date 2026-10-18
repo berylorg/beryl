@@ -143,7 +143,7 @@ pub fn promotion_fixture_with_newer_generation(
     }
 }
 
-fn promotion_fixture_for_generations(
+pub(super) fn promotion_fixture_for_generations(
     seed: u8,
     thread: SyndicThreadId,
     generations: &[GenerationSpec],

@@ -27,6 +27,9 @@ impl SyndicTranscriptPanel {
         self.begin_table_save_range(id, Some(row), cx);
     }
     fn begin_table_save_range(&mut self, id: u64, row: Option<u64>, cx: &mut Context<Self>) {
+        if self.initial_history_loading {
+            return;
+        }
         if self
             .table_panels
             .iter()

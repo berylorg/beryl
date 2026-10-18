@@ -162,6 +162,12 @@ fn native_narrative_wrapped_unicode_selection_crosses_coherent_spans_and_remeasu
         move |owner, _, cx| {
             Box::pin(async move {
                 let window = windows(&owner)[0];
+                super::code_long_line::native_geometry::prepare_width_for_shrink(
+                    window,
+                    cx,
+                    px(180.0),
+                )
+                .await;
                 let panel = window
                     .read_with(cx, |root, _| root.test_transcript_panel())
                     .unwrap();

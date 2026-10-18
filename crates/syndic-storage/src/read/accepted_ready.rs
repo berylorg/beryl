@@ -23,7 +23,7 @@ pub const ACCEPTED_READY_PAGE_MAX_RECORDS: usize = 256;
 pub const ACCEPTED_READY_PAGE_MAX_BYTES: usize = 65_536;
 
 const READY_POINT_MAX_BYTES: usize = 65_536;
-const READY_CANDIDATE_MAX_ROW_BYTES: usize = 189;
+const READY_CANDIDATE_MAX_ROW_BYTES: usize = 262;
 
 /// Domain-revision-bound continuation for the global ordered ready-source scan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

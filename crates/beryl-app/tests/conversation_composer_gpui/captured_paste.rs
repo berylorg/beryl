@@ -31,12 +31,36 @@ fn make_source_with_claim(
     image: bool,
     claim: beryl_state::WindowClaimSelection,
 ) -> PasteSource {
-    let assets = fixture.assets();
     let thread = if foreign {
         fixture.target_thread
     } else {
         fixture.selected_thread
     };
+    let image_bytes: &[u8] = if foreign {
+        b"destination-image"
+    } else {
+        b"source-image"
+    };
+    make_source_for_binding(
+        fixture,
+        seed,
+        fixture.window_id,
+        thread,
+        claim,
+        image.then_some(image_bytes),
+    )
+}
+
+fn make_source_for_binding(
+    fixture: &Fixture,
+    seed: u8,
+    window: beryl_model::WindowId,
+    thread: beryl_model::SyndicThreadId,
+    claim: beryl_state::WindowClaimSelection,
+    image_bytes: Option<&[u8]>,
+) -> PasteSource {
+    let assets = fixture.assets();
+    let image = image_bytes.is_some();
     let mut host = SyndicComposerHost::new(fixture.storage.clone());
     host.test_activate(
         &fixture.store,
@@ -54,12 +78,7 @@ fn make_source_with_claim(
     let binding = host.binding().unwrap();
     let mut binding =
         composer_support::commit_text(&mut host, &fixture.store, binding, 404, 0, 0, "AB", 2, 1);
-    if image {
-        let bytes: &[u8] = if foreign {
-            b"destination-image"
-        } else {
-            b"source-image"
-        };
+    if let Some(bytes) = image_bytes {
         let asset = publication_support::publish_image_asset(&fixture.store, assets.clone(), bytes);
         binding = insert_marker_at(&mut host, &fixture.store, &assets, binding, 405, asset, 0);
     }
@@ -80,7 +99,7 @@ fn make_source_with_claim(
     );
     assert_eq!(rebound.root(), binding.root());
     let slot = MainWindowComposerSlot::new(
-        fixture.window_id,
+        window,
         claim,
         host,
         fixture.storage.clone(),
@@ -725,7 +744,38 @@ fn captured_paste_configured_queue_holds_two_sources_and_admits_seven_byte_image
     let owner = MainWindowPrivateClipboardOwner::with_paste_resources(resources);
     assert_eq!(owner.paste_resources(), resources);
     let first_fixture = Fixture::new("configured-paste-first", 231);
-    let first = make_source(&first_fixture, 234, false, false);
+    let first_window = first_fixture.window_id;
+    let second_window = beryl_model::WindowId::from_bytes([247; 16]);
+    let first_claim = first_fixture.claim_window(first_window, first_fixture.selected_thread);
+    let second_claim = first_fixture.claim_window(second_window, first_fixture.target_thread);
+    assert_ne!(first_window, second_window);
+    assert_ne!(first_claim.thread_id(), second_claim.thread_id());
+    let current = first_fixture
+        .state()
+        .session()
+        .minimal_bootstrap(&first_fixture.store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.windows().len(), 2);
+    for (window, claim) in [(first_window, first_claim), (second_window, second_claim)] {
+        assert_eq!(
+            current
+                .windows()
+                .iter()
+                .find(|record| record.window_id() == window)
+                .unwrap()
+                .selected_thread(),
+            Some(claim)
+        );
+    }
+    let first = make_source_for_binding(
+        &first_fixture,
+        234,
+        first_window,
+        first_fixture.selected_thread,
+        first_claim,
+        None,
+    );
     first.service.set_private_clipboard_owner(owner.clone());
     let (first_composer, cx) = mount(cx, &first);
     let first_release = first.service.test_block_next_cut_preparation();
@@ -738,8 +788,14 @@ fn captured_paste_configured_queue_holds_two_sources_and_admits_seven_byte_image
     drive_owner(cx, 16);
     assert!(first_composer.read_with(cx, |composer, _| composer.paste_pending()));
     cx.simulate_keystrokes("escape");
-    let second_fixture = Fixture::new("configured-paste-second", 241);
-    let second = make_source(&second_fixture, 244, false, false);
+    let second = make_source_for_binding(
+        &first_fixture,
+        244,
+        second_window,
+        first_fixture.target_thread,
+        second_claim,
+        None,
+    );
     second.service.set_private_clipboard_owner(owner.clone());
     let (second_composer, cx) = mount(&mut cx.cx, &second);
     let second_release = second.service.test_block_next_cut_preparation();
@@ -754,6 +810,22 @@ fn captured_paste_configured_queue_holds_two_sources_and_admits_seven_byte_image
     cx.simulate_keystrokes("escape");
     let third_fixture = Fixture::new("configured-paste-third", 251);
     let third = make_source(&third_fixture, 254, false, false);
+    assert_eq!(first.selection.window_id(), first_window);
+    assert_eq!(second.selection.window_id(), second_window);
+    assert_eq!(first.selection.claim(), first_claim);
+    assert_eq!(second.selection.claim(), second_claim);
+    assert_eq!(
+        first.selection.binding().home_id(),
+        second.selection.binding().home_id()
+    );
+    assert_ne!(
+        first.selection.binding().home_id(),
+        third.selection.binding().home_id()
+    );
+    assert_ne!(
+        first.selection.binding().candidate().draft_id(),
+        second.selection.binding().candidate().draft_id()
+    );
     third.service.set_private_clipboard_owner(owner);
     let (composer, cx) = mount(&mut cx.cx, &third);
     let input = composer.read_with(cx, |composer, _| composer.gpui_input());

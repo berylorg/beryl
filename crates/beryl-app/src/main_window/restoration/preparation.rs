@@ -66,34 +66,43 @@ impl MainWindowRestoreSet {
     #[inline(never)]
     fn replacement_step(&mut self) -> Result<PreparationStep, String> {
         if let Some(work) = self.replacement.take() {
-            match work.advance(self.appearance.clone()) {
-                MainWindowCreationOutcome::Pending(work) => {
-                    self.replacement = Some(Box::new(work));
-                    return Ok(PreparationStep::Pending);
-                }
-                MainWindowCreationOutcome::Settled { error, .. } => {
-                    return Err(error.unwrap_or_else(|| "replacement creation failed".to_owned()));
-                }
-                MainWindowCreationOutcome::Prepared { prepared, .. } => {
-                    let actual = prepared.session_revision();
-                    self.members
-                        .push(PreparedRestoreSetMember::Replacement(Box::new(prepared)));
-                    let expected = self
-                        .expected_revision
-                        .unwrap()
-                        .checked_next()
-                        .map_err(|e| e.to_string())?;
-                    if actual != expected {
-                        return Err(
-                            "replacement session changed outside this startup attempt".to_owned()
-                        );
-                    }
-                    self.expected_revision = Some(expected);
-                    return Ok(PreparationStep::Continue);
-                }
-            }
+            let outcome = work.advance_owned(self.appearance.clone());
+            return self.settle_replacement_step(outcome);
         }
         unreachable!("replacement work was checked before dispatch")
+    }
+
+    #[inline(never)]
+    fn settle_replacement_step(
+        &mut self,
+        outcome: Box<MainWindowCreationOutcome>,
+    ) -> Result<PreparationStep, String> {
+        match *outcome {
+            MainWindowCreationOutcome::Pending(work) => {
+                self.replacement = Some(Box::new(work));
+                Ok(PreparationStep::Pending)
+            }
+            MainWindowCreationOutcome::Settled { error, .. } => {
+                Err(error.unwrap_or_else(|| "replacement creation failed".to_owned()))
+            }
+            MainWindowCreationOutcome::Prepared { prepared, .. } => {
+                let actual = prepared.session_revision();
+                self.members
+                    .push(PreparedRestoreSetMember::Replacement(Box::new(prepared)));
+                let expected = self
+                    .expected_revision
+                    .unwrap()
+                    .checked_next()
+                    .map_err(|e| e.to_string())?;
+                if actual != expected {
+                    return Err(
+                        "replacement session changed outside this startup attempt".to_owned()
+                    );
+                }
+                self.expected_revision = Some(expected);
+                Ok(PreparationStep::Continue)
+            }
+        }
     }
 
     #[inline(never)]

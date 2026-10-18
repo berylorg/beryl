@@ -39,6 +39,23 @@ impl Fixture {
 
     fn with_placement(seed: u8, saved: WindowPlacement) -> Self {
         let directory = tempfile::tempdir().unwrap();
+        if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
+            let ledger = std::path::PathBuf::from(ledger);
+            assert!(
+                ledger.is_absolute(),
+                "native fixture ledger must be absolute"
+            );
+            let mut ledger = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(ledger)
+                .unwrap();
+            std::io::Write::write_all(
+                &mut ledger,
+                format!("{}\n", directory.path().display()).as_bytes(),
+            )
+            .unwrap();
+        }
         let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
@@ -92,6 +109,21 @@ impl Fixture {
             store,
             _directory: directory,
         }
+    }
+
+    fn close(self) {
+        let Self {
+            attempt,
+            lifetime,
+            process,
+            coordinator,
+            state,
+            store,
+            _directory: directory,
+            ..
+        } = self;
+        drop((attempt, lifetime, process, coordinator, state, store));
+        directory.close().unwrap();
     }
 
     fn prepare(&self) -> Result<ThreadlessWindowShellPrepared, String> {
@@ -178,7 +210,7 @@ fn startup_geometry_is_required_and_bound_before_threadless_allocation(
 
 #[cfg(target_os = "windows")]
 #[gpui::test]
-fn threadless_hidden_construction_uses_prepared_normal_and_maximized_geometry(
+fn threadless_hidden_construction_preserves_adequate_prepared_normal_and_maximized_geometry(
     cx: &mut gpui::TestAppContext,
 ) {
     for state in [WindowDisplayState::Normal, WindowDisplayState::Maximized] {
@@ -187,7 +219,7 @@ fn threadless_hidden_construction_uses_prepared_normal_and_maximized_geometry(
                 let fixture = Fixture::with_placement(
                     143,
                     WindowPlacement::new(
-                        WindowBounds::new(80, 60, 800, 600).unwrap(),
+                        WindowBounds::new(80, 60, 1600, 1000).unwrap(),
                         state,
                         None,
                         None,
@@ -210,7 +242,14 @@ fn threadless_hidden_construction_uses_prepared_normal_and_maximized_geometry(
             .unwrap();
         shell
             .window()
-            .update(cx, |_, window, _| {
+            .update(cx, |root, window, _| {
+                let minimum = root.controller().unwrap().minimum_size();
+                let saved = match expected {
+                    gpui::WindowBounds::Windowed(bounds)
+                    | gpui::WindowBounds::Maximized(bounds) => bounds.size,
+                    _ => panic!("normal or maximized fixture"),
+                };
+                assert!(saved.width >= minimum.width && saved.height >= minimum.height);
                 assert_eq!(window.window_bounds(), expected)
             })
             .unwrap();

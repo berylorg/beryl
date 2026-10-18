@@ -20,6 +20,95 @@ fn exact_stop_feedback_indeterminate_admission_survives_service_disposal() {
     run_admission_failure(Some(FaultPoint::AfterCommitBeforePersist));
 }
 
+fn wait_for_initial_history_publication(
+    fixture: &Fixture,
+    session: &beryl_app::cas_projection::AdmittedProjectionSession,
+    submitted: syndic::SubmittedTurn,
+) {
+    use syndic_storage::{ProjectionLifecycle, TranscriptBuildPhase};
+
+    let deadline = std::time::Instant::now() + TIMEOUT;
+    loop {
+        let home = fixture.home();
+        let revision = fixture.storage.revision(&home).unwrap();
+        let limit = syndic::point_limit();
+        let item = fixture
+            .storage
+            .canonical_item(&home, submitted.user_item, limit)
+            .unwrap()
+            .expect("original submitted user item remains");
+        assert_eq!(item.turn_id(), submitted.turn);
+        let item_head = fixture
+            .storage
+            .item_projection_head(&home, submitted.user_item, limit)
+            .unwrap();
+        let item_current = item_head.is_some_and(|head| {
+            head.lifecycle() == ProjectionLifecycle::Current
+                && head.source_item_revision() == item.revision()
+                && fixture
+                    .storage
+                    .item_projection_build(&home, submitted.user_item, head.generation(), limit)
+                    .unwrap()
+                    .is_none()
+        });
+        let head = fixture
+            .storage
+            .transcript_view_head(&home, fixture.thread, limit)
+            .unwrap();
+        let mut transcript_current = false;
+        let mut original_entry_current = false;
+        if let Some(head) = head {
+            let build = fixture
+                .storage
+                .transcript_build(&home, fixture.thread, head.generation(), limit)
+                .unwrap();
+            transcript_current = head.lifecycle() == ProjectionLifecycle::Current
+                && build.is_some_and(|build| {
+                    build.generation() == head.generation()
+                        && build.revision() == head.revision()
+                        && build.committed_tail() == head.committed_tail()
+                        && build.selected_path_digest() == head.selected_path_digest()
+                        && build.entry_count() == head.entry_count()
+                        && build.phase() == TranscriptBuildPhase::Complete
+                });
+            let entries = fixture
+                .storage
+                .transcript_entries(
+                    &home,
+                    fixture.thread,
+                    head.generation(),
+                    None,
+                    beryl_home_store::CursorReadLimits::new(1, 65_536).unwrap(),
+                )
+                .unwrap();
+            original_entry_current = !entries.has_more()
+                && matches!(entries.records(), [entry]
+                    if entry.item_id() == submitted.user_item
+                        && entry.item_revision() == item.revision()
+                        && item_head.is_some_and(|item_head|
+                            entry.item_projection_generation() == item_head.generation()));
+        }
+        let stable = fixture.storage.revision(&home).unwrap() == revision;
+        let broker = beryl_app::cas_projection::test_faults::provider_broker_snapshot(session);
+        let initial_ingress_complete =
+            broker.submitted() == 4 && broker.acked() == 4 && broker.in_flight().current() == 0;
+        if stable
+            && item_current
+            && transcript_current
+            && original_entry_current
+            && initial_ingress_complete
+        {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "initial history publication did not settle: stable={stable} item={item_current} transcript={transcript_current} original_entry={original_entry_current} ingress={initial_ingress_complete}; broker={broker:?}",
+        );
+        drop(home);
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn run_admission_failure(fault: Option<FaultPoint>) {
     let _guard = TEST_LOCK.lock().unwrap();
     let faults = FaultController::new();
@@ -79,6 +168,7 @@ fn run_admission_failure(fault: Option<FaultPoint>) {
             )
         });
         super::stop_retention::wait_for_active(&fixture, submitted.turn);
+        wait_for_initial_history_publication(&fixture, &session, submitted);
         let ExactSoftStopAvailability::Eligible(token) =
             fixture.store.exact_soft_stop_eligibility(fixture.thread)
         else {

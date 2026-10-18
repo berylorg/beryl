@@ -13,8 +13,10 @@ use support::{Fixture, ProcessWitness, TIMEOUT, ready, wait_until};
 #[test]
 fn real_managed_launch_admits_once_and_required_work_keeps_the_process_alive() {
     let mut fixture = Fixture::new();
+    let gui_ready = fixture.service().gui_runtime_submission_observer_for_test();
     let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
     let first = ready(&view);
+    wait_until(|| gui_ready(view.binding()));
     let evidence = fixture.evidence(1);
     assert_eq!(evidence["authenticated"], true);
     assert_eq!(evidence["foreground"], true);
@@ -30,10 +32,13 @@ fn real_managed_launch_admits_once_and_required_work_keeps_the_process_alive() {
         .acquire(2, RuntimeInterestKind::RequiredWork)
         .unwrap();
     assert_eq!(ready(&work), first);
+    wait_until(|| gui_ready(work.binding()));
     drop(view);
     assert!(work.is_current(first.activity_period()));
     assert!(process.running());
+    let released_binding = work.binding().clone();
     drop(work);
+    assert!(!gui_ready(&released_binding));
     wait_until(|| {
         fixture.token_count() == 0 && fixture.service().worker_pool_diagnostics().active() == 0
     });
@@ -58,6 +63,10 @@ fn real_managed_launch_admits_once_and_required_work_keeps_the_process_alive() {
         ProjectionConnectionServiceCloseOutcome::Closed
     ));
     assert_eq!(fixture.token_count(), 0);
+    assert!(
+        !gui_ready(&released_binding),
+        "the original retired service cannot supply GUI readiness"
+    );
 }
 
 #[test]
@@ -82,12 +91,17 @@ fn real_admission_failure_removes_launch_token_and_releases_app_workers() {
 #[test]
 fn service_close_rejects_a_late_real_admission_and_joins_registered_resources() {
     let mut fixture = Fixture::new();
+    let gui_ready = fixture.service().gui_runtime_submission_observer_for_test();
     fs::write(fixture.root(1).join("fixture-mode"), "pause-config").unwrap();
     let interest = fixture
         .acquire(1, RuntimeInterestKind::RequiredWork)
         .unwrap();
     wait_until(|| fixture.root(1).join("runtime-evidence.json").exists());
     let process = ProcessWitness::open(fixture.evidence(1)["pid"].as_u64().unwrap() as u32);
+    assert!(
+        !gui_ready(interest.binding()),
+        "a real launched process waiting on release admission is not GUI ready"
+    );
     let service = fixture.service.take().unwrap();
     let close = thread::spawn(move || service.close());
     wait_until(|| interest.status() == RuntimeInterestStatus::Retired);
@@ -97,6 +111,10 @@ fn service_close_rejects_a_late_real_admission_and_joins_registered_resources() 
         ProjectionConnectionServiceCloseOutcome::Closed
     ));
     process.assert_exited();
+    assert!(
+        !gui_ready(interest.binding()),
+        "the original closed service cannot supply GUI readiness"
+    );
     assert_eq!(fixture.token_count(), 0);
 }
 

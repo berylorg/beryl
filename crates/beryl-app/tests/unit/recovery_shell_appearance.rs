@@ -36,6 +36,58 @@ fn record() -> NoticeRecord {
     }
 }
 
+fn pending_registration(
+    shell: &MainWindowShell,
+    owner: &Entity<GpuiAppearanceWindowSet>,
+    guard: Rc<dyn Fn(&mut App) -> Result<(), String>>,
+    cx: &mut TestAppContext,
+) -> (
+    Result<(), crate::theme_runtime::AdapterRegistrationError>,
+    usize,
+) {
+    let window = shell.window();
+    let minimum = window
+        .read_with(cx, |root, _| root.controller().unwrap().minimum_size())
+        .unwrap();
+    cx.simulate_window_resize(
+        window.into(),
+        gpui::size(minimum.width * 0.5, minimum.height * 0.5),
+    );
+    let commits = Rc::new(std::cell::Cell::new(0));
+    let commit_count = commits.clone();
+    let registration = cx
+        .update(|app| {
+            shell.begin_bind_interrupted_exit_appearance(
+                owner,
+                guard,
+                Rc::new(move |_| commit_count.set(commit_count.get() + 1)),
+                app,
+            )
+        })
+        .unwrap();
+    let result = Rc::new(RefCell::new(None));
+    let completion = result.clone();
+    cx.update(|app| {
+        app.spawn(async move |_| *completion.borrow_mut() = Some(registration.await))
+            .detach();
+    });
+    cx.run_until_parked();
+    window
+        .update(cx, |_, window, _| {
+            assert!(sizing::contains(window.viewport_size(), minimum));
+            assert!(sizing::contains(
+                window.minimum_size_for_test().unwrap(),
+                minimum
+            ));
+        })
+        .unwrap();
+    let result = result
+        .borrow_mut()
+        .take()
+        .expect("original native registration settled");
+    (result, commits.get())
+}
+
 pub(super) fn verify_retained(
     shell: &mut MainWindowShell,
     fresh: Arc<AppearanceGeneration>,
@@ -58,12 +110,12 @@ pub(super) fn verify_retained(
             .is_err()
     );
     shell.published = true;
-    shell.appearance_registered = false;
+    shell.appearance_registered.set(false);
     assert!(
         cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
             .is_err()
     );
-    shell.appearance_registered = true;
+    shell.appearance_registered.set(true);
     assert_eq!(shell.appearance_owner.entity_id(), old_owner.entity_id());
     assert!(
         cx.update(|app| MainWindowShellRoot::bind_interrupted_exit_appearance(window, &owner, app))
@@ -74,8 +126,115 @@ pub(super) fn verify_retained(
             root.appearance_release = Some(cx.on_release(|_, _| {}));
         })
         .unwrap();
-    cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))
+    let prior = window
+        .read_with(cx, |root, _| {
+            (
+                root.controller().unwrap().appearance.generation.clone(),
+                root.controller().unwrap().window_id(),
+            )
+        })
         .unwrap();
+    let cancellation = CommandCancellation::new();
+    let cancel = cancellation.clone();
+    let admitted = Rc::new(std::cell::Cell::new(false));
+    let validations = Rc::new(std::cell::Cell::new(0));
+    let validated = validations.clone();
+    let cancelled_owner = cx.update(|app| {
+        GpuiAppearanceWindowSet::new(fresh.clone(), NonZeroUsize::new(1).unwrap(), app)
+    });
+    let (result, commits) = pending_registration(
+        shell,
+        &cancelled_owner,
+        Rc::new(move |app| {
+            validated.set(validated.get() + 1);
+            if !admitted.replace(true) {
+                let cancel = cancel.clone();
+                app.defer(move |_| cancel.cancel());
+            }
+            if cancellation.is_cancelled() {
+                Err("original registration cancelled".into())
+            } else {
+                Ok(())
+            }
+        }),
+        cx,
+    );
+    assert!(matches!(
+        result,
+        Err(
+            crate::theme_runtime::AdapterRegistrationError::Preparation {
+                class: crate::theme_runtime::AdapterFailureClass::Unavailable,
+                ..
+            }
+        )
+    ));
+    assert_eq!(commits, 0);
+    assert_eq!(validations.get(), 2);
+    assert_eq!(
+        cx.update(|app| cancelled_owner.read(app).target().snapshot().count),
+        0
+    );
+    assert_eq!(shell.appearance_owner.entity_id(), old_owner.entity_id());
+    let retired_owner = cx.update(|app| {
+        GpuiAppearanceWindowSet::new(fresh.clone(), NonZeroUsize::new(1).unwrap(), app)
+    });
+    let retire = retired_owner.clone();
+    let admitted = Rc::new(std::cell::Cell::new(false));
+    let preparations = Rc::new(std::cell::Cell::new(0));
+    let prepared = preparations.clone();
+    let (result, commits) = pending_registration(
+        shell,
+        &retired_owner,
+        Rc::new(move |app| {
+            prepared.set(prepared.get() + 1);
+            if !admitted.replace(true) {
+                let retire = retire.clone();
+                app.defer(move |app| retire.update(app, |owner, _| owner.retire()));
+            }
+            Ok(())
+        }),
+        cx,
+    );
+    assert!(matches!(
+        result,
+        Err(
+            crate::theme_runtime::AdapterRegistrationError::Preparation {
+                class: crate::theme_runtime::AdapterFailureClass::Unavailable,
+                ..
+            }
+        )
+    ));
+    assert_eq!(commits, 0);
+    assert_eq!(preparations.get(), 1);
+    assert_eq!(
+        cx.update(|app| retired_owner.read(app).target().snapshot().count),
+        0
+    );
+    window
+        .read_with(cx, |root, _| {
+            assert!(Arc::ptr_eq(
+                &root.controller().unwrap().appearance.generation,
+                &prior.0
+            ));
+            assert_eq!(root.controller().unwrap().window_id(), prior.1);
+        })
+        .unwrap();
+    assert_eq!(shell.appearance_owner.entity_id(), old_owner.entity_id());
+    let validations = Rc::new(std::cell::Cell::new(0));
+    let validated = validations.clone();
+    let (result, commits) = pending_registration(
+        shell,
+        &owner,
+        Rc::new(move |_| {
+            validated.set(validated.get() + 1);
+            Ok(())
+        }),
+        cx,
+    );
+    result.unwrap();
+    assert_eq!(commits, 1);
+    assert_eq!(validations.get(), 2);
+    shell.complete_interrupted_exit_appearance_binding(owner.clone());
     assert_eq!(shell.appearance_owner.entity_id(), owner.entity_id());
     assert!(
         cx.update(|app| shell.bind_interrupted_exit_appearance(&owner, app))

@@ -64,8 +64,9 @@ fn selected_pending_refresh_reads_completed_companion_without_changing_outer_vis
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     let prior = core.core_snapshot();
     complete(&fixture, &metadata);
     assert!(core.resource_demand().is_none());
@@ -91,8 +92,9 @@ fn selected_pending_refresh_reads_completed_companion_without_changing_outer_vis
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert!(!core.refresh_pending_indexed_resource(&request.demand));
     assert!(core.resource_demand().is_none());
     assert_eq!(
@@ -171,8 +173,9 @@ fn selected_late_code_line_delivery_preserves_exact_source_and_bounded_resident_
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert_eq!(core.core_snapshot().resident.resource_bytes, bytes);
     assert_eq!(
         core.core_snapshot().resident.visible_range,
@@ -254,8 +257,9 @@ fn selected_narrow_table_delivery_preserves_empty_missing_alignment_and_exact_so
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert_eq!(core.core_snapshot().resident.resource_bytes, bytes);
     assert_eq!(
         core.core_snapshot().resident.visible_range,
@@ -292,8 +296,9 @@ fn selected_resource_delivery_admits_exact_indexed_payload_and_releases_changed_
     );
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert_eq!(candidate.core_snapshot().resident.resource_bytes, bytes);
     assert_eq!(
         candidate.core_snapshot().resident.visible_range,
@@ -380,8 +385,9 @@ fn selected_resource_range_and_anchor_transport_exact_root_and_source_into_resid
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     let inner = IndexedResourceDemand {
         revision: metadata.revision(),
         root: Some(root),
@@ -416,8 +422,9 @@ fn selected_resource_range_and_anchor_transport_exact_root_and_source_into_resid
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert!(
         core.indexed_resource_response(&request.demand.resource_id)
             .is_some()
@@ -452,8 +459,9 @@ fn selected_resource_pending_is_explicit_and_disposal_releases_its_charge() {
         .unwrap();
     fixture
         .reader
-        .publish_resource_delivery_if_current(prepared, &request, &cancel, |_| ())
+        .publish_resource_delivery_if_current(&prepared, &request, &cancel, || ())
         .unwrap();
+    drop(prepared);
     assert_eq!(core.core_snapshot().resident.resource_bytes, 1);
     assert!(core.resource_demand().is_none());
     assert!(core.set_indexed_resource_demand(&request.demand, None));
@@ -493,11 +501,12 @@ fn selected_indexed_delivery_rejects_capacity_stale_inner_query_and_obsolete_out
     assert!(
         fixture
             .reader
-            .publish_resource_delivery_if_current(prepared, &changed, &cancel, |_| panic!(
+            .publish_resource_delivery_if_current(&prepared, &changed, &cancel, || panic!(
                 "stale publication"
             ))
             .is_err()
     );
+    drop(prepared);
     let prepared = fixture
         .reader
         .prepare_resource_delivery(request.clone(), &cancel)

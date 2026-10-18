@@ -171,14 +171,23 @@ fn native_code_panels_transfer_wheel_ownership_and_release_retired_models() {
                                 assert!(viewports[0].3);
                                 assert_eq!(diagnostics.code_panels[0].key, selected_key);
                                 assert!(diagnostics.code_panels[0].selected_for_wheel);
-                                let position = viewports[0].1.center();
+                                let bounds = viewports[0].1;
+                                let outer_bounds =
+                                    panel.read(app).viewport_bounds_for_test().unwrap();
+                                let top =
+                                    f32::from(bounds.top()).max(f32::from(outer_bounds.top()));
+                                let bottom = f32::from(bounds.bottom())
+                                    .min(f32::from(outer_bounds.bottom()));
                                 assert!(
-                                    panel
-                                        .read(app)
-                                        .viewport_bounds_for_test()
-                                        .unwrap()
-                                        .contains(&position)
+                                    bottom > top,
+                                    "remaining Code text viewport must intersect the outer viewport: code={bounds:?}, outer={outer_bounds:?}"
                                 );
+                                let position = gpui::point(
+                                    outer_bounds.center().x,
+                                    gpui::px((top + bottom) / 2.0),
+                                );
+                                assert!(bounds.contains(&position));
+                                assert!(outer_bounds.contains(&position));
                                 let outer = panel
                                     .read(app)
                                     .measured_frame_for_test()

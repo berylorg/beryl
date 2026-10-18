@@ -70,6 +70,15 @@ impl MainWindowFirstConversationPreparation {
         self.mount_inputs.is_some() && self.publication_current()
     }
 
+    pub(in crate::main_window) fn panel_minimum_size(
+        &self,
+    ) -> Result<gpui::Size<gpui::Pixels>, String> {
+        self.mount_inputs
+            .as_ref()
+            .map(|inputs| inputs.0.panel_minimum_size())
+            .ok_or_else(|| "First conversation mount inputs are unavailable.".into())
+    }
+
     pub(in crate::main_window) fn take_mount_inputs(
         &mut self,
     ) -> Result<FirstConversationMountInputs, String> {

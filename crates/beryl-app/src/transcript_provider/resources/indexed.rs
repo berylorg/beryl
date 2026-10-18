@@ -205,10 +205,10 @@ impl TranscriptProviderReader {
 
     pub(crate) fn publish_indexed_resource_if_current<T>(
         &self,
-        prepared: PreparedIndexedResource,
+        prepared: &PreparedIndexedResource,
         expected: &TranscriptIndexedResourceRequest,
         cancelled: &AtomicBool,
-        publish: impl FnOnce(Arc<IndexedResourceResponse>) -> T,
+        publish: impl FnOnce(&Arc<IndexedResourceResponse>) -> T,
     ) -> Result<T, TranscriptAttachmentError> {
         if prepared.request.revision != expected.revision
             || prepared.request.root != expected.root
@@ -216,8 +216,8 @@ impl TranscriptProviderReader {
         {
             return Err(TranscriptAttachmentError::Identity);
         }
-        self.publish_resource_if_current(prepared.resource, &expected.resource, cancelled, |_| {
-            publish(prepared.response)
+        self.publish_resource_if_current(&prepared.resource, &expected.resource, cancelled, |_| {
+            publish(&prepared.response)
         })
     }
 }

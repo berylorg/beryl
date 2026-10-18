@@ -49,9 +49,9 @@ impl Render for MountRoot {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>,
+        _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        div().children(self.mount.read(cx).contribution())
+        div().size_full().child(self.mount.clone())
     }
 }
 
@@ -143,12 +143,9 @@ impl Render for StableMountRoot {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>,
+        _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        div()
-            .w(px(320.))
-            .h(px(64.))
-            .children(self.mount.read(cx).contribution())
+        div().w(px(320.)).h(px(64.)).child(self.mount.clone())
     }
 }
 
@@ -529,6 +526,9 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
         .read_with(cx, |mount, _| mount.test_pending_contribution())
         .unwrap()
         .read_with(cx, |composer, _| composer.gpui_input());
+    let staged_layout = pending_input.read_with(cx, |input, _| input.resident_layout_snapshot());
+    assert_eq!(staged_layout.layout.wrap_width, pending_bounds.size.width);
+    assert_eq!(staged_layout.viewport_extent, pending_bounds.size.height);
     assert!(!pending_input.read_with(cx, |input, _| input.is_enabled()));
     assert!(!cx.update(|window, app| pending_input.read(app).focus_handle(app).is_focused(window)));
     let pending_id = pending_id.unwrap();
@@ -545,6 +545,13 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
     let mut disposal_captured = false;
     for _ in 0..32 {
         drive(cx, 4);
+        pending_input.read_with(cx, |input, _| {
+            let layout = input.resident_layout_snapshot();
+            assert_eq!(layout.layout.wrap_width, staged_layout.layout.wrap_width);
+            assert_eq!(layout.viewport_extent, staged_layout.viewport_extent);
+            assert!(!input.is_enabled());
+            assert!(input.is_surface_current_and_interactive());
+        });
         match cx
             .update(|window, app| {
                 mount.update(app, |mount, mount_cx| {
@@ -641,6 +648,14 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
         }
     }
     let published = published.expect("activation publication did not settle within 32 advances");
+    drive(cx, 4);
+    pending_input.read_with(cx, |input, _| {
+        let layout = input.resident_layout_snapshot();
+        assert_eq!(layout.layout.wrap_width, staged_layout.layout.wrap_width);
+        assert_eq!(layout.viewport_extent, staged_layout.viewport_extent);
+        assert!(input.is_enabled());
+        assert!(input.is_surface_current_and_interactive());
+    });
     assert_eq!(service.selected_identity(), Some(published));
     assert_eq!(
         published.binding().logical_extent().logical_utf8_bytes(),

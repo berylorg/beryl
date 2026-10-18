@@ -343,6 +343,12 @@ impl MainWindowShellRoot {
             .track(release_running_read_output as fn());
         let work = self.running_threads.workers.track(move || {
             let result = (|| {
+                #[cfg(test)]
+                crate::bootstrap::test_support::checkpoint(
+                    crate::bootstrap::test_support::Producer::SelectedHistory,
+                    *expected.thread_id.as_bytes(),
+                    || cancelled.load(Ordering::Acquire),
+                );
                 source
                     .step_selected_transcript(expected.thread_id, &cancelled)
                     .map_err(|error| match error {

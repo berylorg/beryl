@@ -29,8 +29,8 @@ use beryl_home_store::{
 };
 use gpui::{
     AppContext, Entity, EntityInputHandler, IntoElement, ParentElement, Render, SharedString,
-    StreamingLayoutBinding, StreamingLayoutLimits, StreamingLayoutPosition, TextRun, black, div,
-    font, px,
+    StreamingLayoutBinding, StreamingLayoutLimits, StreamingLayoutPosition, Styled, TextRun, black,
+    div, font, px,
 };
 use gpui_scrollbar::ScrollbarStyle;
 use gpui_text_input::{
@@ -60,13 +60,9 @@ impl Render for MountRoot {
     fn render(
         &mut self,
         _window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>,
+        _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        div().children(
-            self.mount
-                .as_ref()
-                .and_then(|mount| mount.read(cx).contribution()),
-        )
+        div().size_full().children(self.mount.clone())
     }
 }
 

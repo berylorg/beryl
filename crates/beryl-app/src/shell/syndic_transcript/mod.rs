@@ -11,6 +11,8 @@ mod frame;
 mod host;
 mod media_action;
 mod panel;
+#[cfg(test)]
+pub(crate) use panel::OpenTranscriptContextMenu;
 mod provider;
 mod renderer_context_menu;
 mod renderer_media_action;

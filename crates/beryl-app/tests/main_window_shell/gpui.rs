@@ -1,3 +1,4 @@
+use super::support::editor_snapshot;
 use super::*;
 use beryl_app::main_window::{MainWindowShell, MainWindowShellHostFailure};
 use beryl_app::theme_runtime::{
@@ -218,27 +219,6 @@ fn two_shells_use_current_preview_and_later_atomic_adoption_rejects_released_edi
     );
 }
 
-fn editor_snapshot(
-    shell: &MainWindowShell,
-    cx: &gpui::TestAppContext,
-) -> beryl_app::main_window::MainWindowConversationComposerSurfaceSnapshot {
-    shell
-        .window()
-        .read_with(cx, |root, app| {
-            root.controller()
-                .unwrap()
-                .composer_mount()
-                .unwrap()
-                .read(app)
-                .contribution()
-                .unwrap()
-                .read(app)
-                .surface_snapshot(app)
-                .unwrap()
-        })
-        .unwrap()
-}
-
 #[gpui::test]
 fn native_minimum_has_usable_editor_and_absent_optional_mounts_consume_no_rows(
     cx: &mut gpui::TestAppContext,
@@ -262,19 +242,63 @@ fn native_minimum_has_usable_editor_and_absent_optional_mounts_consume_no_rows(
         .window()
         .read_with(cx, |root, _| root.controller().unwrap().minimum_size())
         .unwrap();
-    cx.simulate_window_resize(shell.window().into(), minimum);
+    let client_minimum = shell
+        .window()
+        .update(cx, |_, window, _| {
+            let scale = f64::from(window.scale_factor());
+            gpui::size(
+                gpui::px(((f64::from(minimum.width) * scale).ceil() / scale) as f32),
+                gpui::px(((f64::from(minimum.height) * scale).ceil() / scale) as f32),
+            )
+        })
+        .unwrap();
+    assert!(client_minimum.width >= minimum.width && client_minimum.height >= minimum.height);
+    cx.simulate_window_resize(shell.window().into(), client_minimum);
     draw(shell.window(), cx);
+    let viewport = shell
+        .window()
+        .update(cx, |_, window, _| window.viewport_size())
+        .unwrap();
+    assert_eq!(viewport, client_minimum);
     let mut visual = gpui::VisualTestContext::from_window(shell.window().into(), cx);
     let panel = visual.debug_bounds("main-window-user-input-panel").unwrap();
     let editor = visual.debug_bounds("conversation-composer-root").unwrap();
     let transcript = visual
         .debug_bounds("main-window-transcript-region")
         .unwrap();
+    let toolbar = visual.debug_bounds("main-window-toolbar").unwrap();
+    let status = visual.debug_bounds("main-window-status-line").unwrap();
     assert!(editor.size.width >= gpui::px(30.));
     assert!(editor.size.height >= gpui::px(16.));
     assert_eq!(panel.top(), transcript.bottom());
-    assert_eq!(panel.bottom(), minimum.height);
-    assert_eq!(panel.size.height, minimum.height * 0.5);
+    assert_eq!(toolbar.bottom(), transcript.top());
+    assert_eq!(panel.bottom(), status.top());
+    assert_eq!(status.bottom(), viewport.height);
+    assert!(panel.size.height <= viewport.height * 0.5);
+    for selector in [
+        "main-window-new-thread-split-button",
+        "main-window-thread-back",
+        "main-window-thread-forward",
+        "main-window-thread-selector",
+        "main-window-running-threads",
+        "main-window-exit",
+        "main-window-status-model",
+        "main-window-status-context:unknown",
+        "main-window-status-turn",
+    ] {
+        let bounds = visual
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("missing {selector}"));
+        assert!(
+            bounds.left() >= gpui::px(0.) && bounds.right() <= viewport.width,
+            "{selector} escapes {viewport:?}: {bounds:?}"
+        );
+        assert!(
+            bounds.top() >= gpui::px(0.) && bounds.bottom() <= viewport.height,
+            "{selector} escapes {viewport:?}: {bounds:?}"
+        );
+        assert!(bounds.size.width > gpui::px(0.) && bounds.size.height > gpui::px(0.));
+    }
     cx.update(|app| shell.publish(app)).unwrap();
     assert!(cx.window_visibility(shell.window().into()).is_visible);
 }

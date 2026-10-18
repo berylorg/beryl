@@ -8,7 +8,7 @@ use syndic_storage::{
 };
 
 use super::super::OrdinaryTurnExecutionError;
-use super::{command, snapshot};
+use super::{command, live, snapshot};
 
 pub(super) fn converge_turn_items(
     store: HistoryAccess<'_>,
@@ -31,14 +31,14 @@ pub(super) fn converge_turn_items(
     }
     require_terminal(&terminal.state, turn_id)?;
 
-    loop {
+    let after = loop {
         let frontier = snapshot::turn_frontier(store, storage, thread_id, turn_id, limit)?;
         require_terminal(&frontier.state, turn_id)?;
         let Some(next) = frontier.next.as_ref() else {
             return Ok(());
         };
         if next.item.provider_lifecycle() != ProviderItemLifecycle::Completed {
-            return Ok(());
+            break snapshot::ordinal_after(frontier.state.finalized_item_count());
         }
         let provider_manifest =
             next.provider_manifest
@@ -83,7 +83,7 @@ pub(super) fn converge_turn_items(
                 ResourceBacking::GeneratedMedia(
                     GeneratedMediaResourceDisposition::PendingAsset
                     | GeneratedMediaResourceDisposition::Unavailable(_),
-                ) => return Ok(()),
+                ) => break snapshot::ordinal_after(frontier.state.finalized_item_count()),
                 ResourceBacking::TextRange { .. } => {
                     return Err(OrdinaryTurnExecutionError::Invariant(
                         "generated item resource has text backing",
@@ -107,7 +107,8 @@ pub(super) fn converge_turn_items(
             limit,
             &frontier,
         )?;
-    }
+    };
+    live::converge_turn_projections(store, storage, thread_id, turn_id, after, limit)
 }
 
 fn require_terminal(

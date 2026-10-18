@@ -103,32 +103,34 @@ impl MainWindowShellRoot {
                 self.running_threads.measured_resource = Some(pending);
                 return true;
             }
-            if pending
-                .provider
-                .publish_resource_delivery_if_current(
-                    pending.prepared,
-                    &pending.request,
-                    &pending.cancel,
-                    |_| {
-                        panel.update(cx, |panel, panel_cx| {
-                            panel.publish_resource_candidate(demand);
-                            if pending.retry_pending {
-                                panel.refresh_pending_indexed_resource(demand);
-                            }
-                            panel_cx.notify();
-                        });
-                    },
-                )
-                .is_err()
-            {
-                panel.update(cx, |panel, panel_cx| {
-                    if !(panel.reject_code_source_candidate(demand)
-                        || panel.reject_table_source_candidate(demand))
-                    {
-                        panel.discard_staged_activation();
-                    }
-                    panel_cx.notify();
-                });
+            match pending.provider.publish_resource_delivery_if_current(
+                &pending.prepared,
+                &pending.request,
+                &pending.cancel,
+                || {
+                    panel.update(cx, |panel, panel_cx| {
+                        panel.publish_resource_candidate(demand);
+                        if pending.retry_pending {
+                            panel.refresh_pending_indexed_resource(demand);
+                        }
+                        panel_cx.notify();
+                    });
+                },
+            ) {
+                Ok(()) => drop(pending),
+                Err(crate::transcript_provider::TranscriptAttachmentError::Busy) => {
+                    self.running_threads.measured_resource = Some(pending);
+                }
+                Err(_) => {
+                    panel.update(cx, |panel, panel_cx| {
+                        if !(panel.reject_code_source_candidate(demand)
+                            || panel.reject_table_source_candidate(demand))
+                        {
+                            panel.discard_staged_activation();
+                        }
+                        panel_cx.notify();
+                    });
+                }
             }
             cx.notify();
             return true;

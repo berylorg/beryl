@@ -141,6 +141,12 @@ impl Capture {
         }}));
     }
 
+    pub(super) fn worker_finished(&self) -> bool {
+        self.worker
+            .as_ref()
+            .is_none_or(|worker| worker.is_finished())
+    }
+
     pub(super) fn append(&self, text: &str) {
         self.send(
             serde_json::json!({"method":"item/agentMessage/delta","params":{

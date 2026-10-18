@@ -16,7 +16,10 @@ impl MainWindowShell {
         if !self.nonfinal_native_recovery_allowed() {
             return Err("Recovery shell native destruction is unresolved".into());
         }
-        if !self.published || !self.appearance_registered || self.appearance_owner != *appearance {
+        if !self.published
+            || !self.appearance_registered.get()
+            || self.appearance_owner != *appearance
+        {
             return Err("Recovery shell appearance ownership is incomplete".into());
         }
         let target = appearance.read(app).target();

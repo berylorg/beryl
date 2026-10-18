@@ -15,6 +15,27 @@ topology and typed execution surfaces.
 - Admitted execution sessions hold required runtime interest separately from view interest.
   Process-owned work can preserve or acquire that exact demand without a mounted thread view;
   catalog queries and mere durable thread existence create none.
+- The ordinary published selected view owns bounded preparation demand through the existing
+  process runtime-interest owner. Hidden startup members acquire none until whole-set publication
+  succeeds. Acquisition runs off the GUI thread, authenticates the exact home/service generation
+  and selected runtime/root binding, and transfers its original interest only to the still-current
+  selection. Supersession, close and failed acquisition settle or release that same custody.
+  Catalog/history loading and healthy draft input remain independent of this work.
+- View interest has a separate finite admission budget derived from the process window limit,
+  including original acquisitions retained during cancellation or supersession. A window owns at
+  most one charged view acquisition or interest at a time. View warming cannot consume the reserved
+  required-work interest budget or enlarge managed-runtime/session capacity. Capacity contention
+  remains temporary unavailability, not evidence of a confirmed backend launch failure.
+  `RuntimeInterestConfig::with_view_interest_capacity` selects that independent finite view budget;
+  the existing runtime and required-work limits retain their meaning. Interest-budget separation
+  does not reserve another managed-runtime slot: a further runtime waits while the configured
+  active-runtime slots remain owned. View warm-up grants neither preemption nor a progress promise
+  before an original slot retires, and capacity waiting leaves local drafting and history usable.
+- Initial projection preparation permission is separate from GUI submission readiness. An absent
+  or starting runtime may permit internal preparation but cannot grant the GUI a usable submission
+  proof. GUI observation and final admission require the matching genuinely ready runtime, including
+  initialized connection and exact release admission. Required execution and canonical admission
+  keep their existing preparation route; view warm-up submits no draft and starts no model turn.
 - Failed launch or runtime disposal retains the original concrete cleanup owner in its existing
   runtime slot, separately from finite failure presentation. Incomplete cleanup blocks replacement.
   Coordinated shutdown retries disposal off the owner lock and preserves failed slots and their
@@ -396,6 +417,11 @@ topology and typed execution surfaces.
 
 ## Fresh-Service Establishment
 
+- When terminal finalization stops at an uncompleted provider item or an unresolved generated
+  resource, convergence prepares coherent live item projections from that frontier through the
+  remaining turn before transcript publication. It uses the existing one-index, at-most-one-command
+  projection step and shared ordinary/candidate access. This presentation pass neither correlates
+  provider items nor resolves assets, freezes content, advances finalization, or bypasses gate checks.
 - The unpublished fresh stack performs bounded durable pending, stop, compaction, terminal-history,
   and repair convergence off the GPUI thread before scheduler, projection acquisition, admission,
   or execution wakes open.

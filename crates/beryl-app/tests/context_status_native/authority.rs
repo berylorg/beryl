@@ -185,6 +185,31 @@ pub(super) async fn qualify(
                 editor.read(app).submission_disabled_outcome(),
                 Some(SubmissionUnavailable::RepairRequired)
             );
+            assert!(
+                !root
+                    .test_submission_mount()
+                    .unwrap()
+                    .read(app)
+                    .test_submission_diagnostics()
+                    .active_ticket()
+            );
+        })
+        .unwrap();
+    submission::wait_painted_outcome(
+        window,
+        SubmissionUnavailable::RepairRequired,
+        Instant::now() + Duration::from_secs(10),
+        cx,
+    )
+    .await;
+    window
+        .read_with(cx, |root, app| {
+            let editor = root.test_submission_composer(app).unwrap();
+            assert_eq!(editor.read(app).selection_identity(), identity);
+            assert_eq!(
+                editor.read(app).submission_disabled_outcome(),
+                Some(SubmissionUnavailable::RepairRequired)
+            );
             assert_eq!(
                 editor
                     .read(app)

@@ -121,6 +121,60 @@ pub(super) async fn prepare_for_binding(
     prepare_inner(cx, true).await
 }
 
+fn prepare_resident_shell(
+    fixture: &shell_support::Fixture,
+    custody: Box<MainWindowInitialComposer>,
+    appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
+) -> Box<MainWindowShellPrepared> {
+    use crate::composer_marker_seal::{DraftMarkerSealService, DraftMarkerSealServiceLimits};
+
+    let prepared = custody
+        .test_prepare_owned(&mut shell_support::config)
+        .unwrap_or_else(|failure| panic!("{}", failure.error));
+    let seals = DraftMarkerSealService::test_new(
+        &fixture.store,
+        fixture.store.health().generation().unwrap(),
+        fixture.storage.clone(),
+        fixture.state.assets(),
+        DraftMarkerSealServiceLimits::new(
+            NonZeroUsize::new(1).unwrap(),
+            NonZeroUsize::new(1).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let submission = MainWindowComposerSubmissionRequestSource::new(
+        crate::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
+        crate::cas_projection::ProjectionServiceConfig::try_new(
+            1,
+            4,
+            beryl_home_store::MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap()
+        .turn_start_admission_requirement(),
+    );
+    prepared
+        .test_into_shell_owned(Box::new(shell_support::config), seals, submission, appearance)
+        .unwrap_or_else(|failure| panic!("{}", failure.error))
+}
+
+fn register_resident_fixture(path: &std::path::Path) {
+    eprintln!("native resident fixture: {}", path.display());
+    if let Some(ledger) = std::env::var_os("BERYL_NATIVE_RETAINED_FIXTURE_LEDGER") {
+        let ledger_path = std::path::PathBuf::from(ledger);
+        assert!(
+            ledger_path.is_absolute(),
+            "native fixture ledger must be absolute"
+        );
+        let mut ledger = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(ledger_path)
+            .unwrap();
+        std::io::Write::write_all(&mut ledger, format!("{}\n", path.display()).as_bytes()).unwrap();
+    }
+}
+
 async fn prepare_inner(
     cx: &mut AsyncApp,
     published: bool,
@@ -129,6 +183,7 @@ async fn prepare_inner(
         .background_executor()
         .spawn(async move {
             let fixture = shell_support::Fixture::new(194);
+            register_resident_fixture(fixture.directory.path());
             if published {
                 native_appearance::install_native_theme(&fixture.store, &fixture.state);
             }
@@ -141,8 +196,7 @@ async fn prepare_inner(
                 native_appearance::system_font_appearance(&fixture.state),
             )
             .current();
-            let prepared =
-                shell_support::prepared_shell_with_appearance(&fixture, initial, appearance);
+            let prepared = prepare_resident_shell(&fixture, Box::new(initial), appearance);
             (fixture, prepared)
         })
         .await;
@@ -155,7 +209,7 @@ async fn prepare_inner(
                 app,
             );
             let shell = GpuiMainWindowShellHost::new(app, appearance.clone())
-                .construct_hidden(prepared)
+                .construct_hidden(*prepared)
                 .unwrap_or_else(|_| panic!("shell construction"));
             (shell, appearance)
         })

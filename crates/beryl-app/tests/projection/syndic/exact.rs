@@ -127,7 +127,12 @@ pub fn establish_turn(
                     thread,
                     current.binding().revision(),
                     selected,
-                    execution_binding(),
+                    storage
+                        .thread_execution(store, thread, point_limit())
+                        .unwrap()
+                        .unwrap()
+                        .execution()
+                        .clone(),
                     cas_thread.clone(),
                     represented,
                     native_turn_count,

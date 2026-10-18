@@ -417,6 +417,11 @@ fn stage_and_publish(
         ),
         "provider-frame live-source publication",
     );
+    support::exact_cas::project_item_if_needed(
+        store,
+        storage.clone(),
+        prepared.initial_build().item_id(),
+    );
     converge_transcript(store, &storage, thread);
     (build, batches)
 }

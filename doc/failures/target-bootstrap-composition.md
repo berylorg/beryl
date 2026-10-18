@@ -907,6 +907,14 @@ Stale and superseded entries now authenticate their immutable source frames; sou
 may lag canonical progress while retaining exact identities and monotonic frontiers. Current
 projections retain exact validation. Missing retirement-owner heads are errors, not unenrollment.
 
+Restoration qualification run424 exposed another retained reset assumption: the promotion
+descendant-collision matrix expected an Activity-head revision change to invalidate an exact
+canonical promotion, then assumed promotion itself enrolled the successor source. The existing
+history-storage contract excludes Activity from this proof. Keep all nine canonical drift checks;
+replace the two obsolete Activity collision cases with real enrollment of the promoted pending
+turn, proving that promotion preserves the prior head and remains Exact after enrollment changes
+the period, source and head revision. Run425 passed all nine promotion fault target cases.
+
 Test fixtures also encoded the removed per-turn resets and fixed numeric periods. Explicit test
 enrollment and returned period identities replace those assumptions. Sixteen enrollment/producer
 cases passed across `f65c448a-e9fc-4291-9e28-cf21f383129d`,

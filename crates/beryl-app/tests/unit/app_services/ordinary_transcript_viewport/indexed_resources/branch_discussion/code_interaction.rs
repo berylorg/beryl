@@ -21,9 +21,12 @@ async fn ready_code(
         |cx| {
             panel
                 .read_with(cx, |panel, _| {
+                    let diagnostics = panel.diagnostic_snapshot();
                     panel.code_source_point_for_test(21).is_some()
                         && panel.code_source_point_for_test(25).is_some()
-                        && panel.diagnostic_snapshot().code_panels[0].layout_state == "ready"
+                        && diagnostics.code_panels.first().is_some_and(|code| {
+                            code.layout_state == "ready" && code.complete_inline_extent.is_some()
+                        })
                 })
                 .unwrap()
         },

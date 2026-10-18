@@ -30,6 +30,12 @@ use crate::support::{
 pub(super) use provider_seed::seed_provider_records;
 
 pub(super) fn records() -> Vec<FixtureRecord> {
+    records_with_root_history(canonical_empty_root_history_pair_for(draft_id(41)))
+}
+
+pub(super) fn records_with_root_history(
+    root_history: DraftRootHistoryPairV1,
+) -> Vec<FixtureRecord> {
     let thread = id(40);
     let draft = draft_id(41);
     let turn = super::active_turn();
@@ -234,7 +240,7 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             thread,
             draft_revision,
             DraftSubmissionIntent::Ordinary,
-            canonical_empty_root_history_pair_for(draft),
+            root_history,
             timestamp(8),
             timestamp(8),
         )),

@@ -271,12 +271,12 @@ impl MainWindowConversationComposerConfig {
                 .map_err(|error| format!("Recovery composer configuration was rejected: {error:?}"))
         }))
     }
-    pub(in crate::main_window) fn shell_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
+    pub(in crate::main_window) fn panel_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
         gpui::size(
             self.widget.layout.font_size.max(gpui::px(1.))
                 + self.widget.scrollbar_style.hit_lane_thickness
                 + gpui::px(26.),
-            (self.widget.layout.line_height + gpui::px(22.)).max(gpui::px(48.)) * 2.,
+            (self.widget.layout.line_height + gpui::px(22.)).max(gpui::px(48.)),
         )
     }
 

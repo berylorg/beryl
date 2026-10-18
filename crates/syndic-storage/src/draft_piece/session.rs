@@ -1,9 +1,9 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CommandOutcome, DomainMutation, DomainReader, HomeCandidateRecoveryAccess, HomeStore,
-    MutationBuilder, MutationContribution, ReconciliationFailure, ReconciliationReservation,
-    ReconciliationResolution,
+    CommandOutcome, CurrentDomainCommand, DomainMutation, DomainReader,
+    HomeCandidateRecoveryAccess, HomeStore, MutationBuilder, MutationContribution,
+    ReconciliationFailure, ReconciliationReservation, ReconciliationResolution,
 };
 use beryl_model::DomainRevision;
 
@@ -661,6 +661,14 @@ impl SyndicStorage {
     ) -> MutationContribution {
         self.handle
             .contribution(expected_domain_revision, OpenSessionMutation { prepared })
+    }
+
+    pub fn current_open_draft_editor_candidate_session(
+        &self,
+        prepared: PreparedDraftEditorCandidateSessionOpenV1,
+    ) -> CurrentDomainCommand {
+        self.handle
+            .current_command(OpenSessionMutation { prepared })
     }
 
     pub fn reconcile_draft_editor_candidate_session_open(

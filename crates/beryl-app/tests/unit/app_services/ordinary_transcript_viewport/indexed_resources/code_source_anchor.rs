@@ -270,6 +270,7 @@ fn native_code_source_anchor_survives_font_and_saved_source_epochs() {
                             && code.layout_state == "ready"
                             && code.source_bytes == Some(bytes)
                             && code.complete_inline_extent.is_some()
+                            && (bytes == 0 || panel.code_painted_body_glyphs_for_test() > 0)
                     }).unwrap(), "successor source must resolve the caret through ordinary indexed admission").await;
                     panel
                         .read_with(cx, |panel, _| {

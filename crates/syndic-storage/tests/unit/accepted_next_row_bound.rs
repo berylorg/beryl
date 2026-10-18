@@ -40,16 +40,53 @@ fn maximal_v3_route_scan_row_matches_the_continuation_guard() {
     .with_promotion_proof(promotion);
     let order =
         AcceptedOrderIndexRecord::new(thread, AcceptedInputOrdinal::FIRST, input, generation);
-    let stored = AcceptedOrderCodec::encode_key(&ThreadAcceptedKey {
+    let order_bytes = AcceptedOrderCodec::encode_key(&ThreadAcceptedKey {
         owner: thread,
         ordinal: AcceptedInputOrdinal::FIRST,
     })
     .unwrap()
     .len()
         + RECORD_VERSION_BYTES
-        + AcceptedOrderCodec::encode_value(&order).unwrap().len()
-        + AcceptedRouteLeavesCodec::encode_key(&input).unwrap().len()
+        + AcceptedOrderCodec::encode_value(&order).unwrap().len();
+    let leaf_bytes = AcceptedRouteLeavesCodec::encode_key(&input).unwrap().len()
         + RECORD_VERSION_BYTES
         + AcceptedRouteLeavesCodec::encode_value(&leaf).unwrap().len();
-    assert_eq!(stored, NEXT_CANDIDATE_MAX_ROW_BYTES);
+    assert_eq!(order_bytes, 77);
+    assert_eq!(leaf_bytes, 185);
+    assert_eq!(order_bytes + leaf_bytes, NEXT_CANDIDATE_MAX_ROW_BYTES);
+
+    for (state, kind, expected_bytes) in [
+        (
+            AcceptedRouteLeafState::Routed,
+            AcceptedRouteLeafTransitionKind::Retry,
+            190,
+        ),
+        (
+            AcceptedRouteLeafState::NextTurn(NextTurnReason::SteeringRejected),
+            AcceptedRouteLeafTransitionKind::SteeringRejected,
+            191,
+        ),
+    ] {
+        let leaf = AcceptedRouteLeafRecord::new(
+            input,
+            thread,
+            generation,
+            AcceptedInputOrdinal::FIRST,
+            AcceptedInputRevision::new(2).unwrap(),
+            state,
+            AcceptedInputLifecycle::Retryable,
+        )
+        .with_transition_proof(AcceptedRouteLeafTransitionProof::new(
+            transition.expected_gate_revision(),
+            transition.expected_route(),
+            transition.expected_input_revision(),
+            kind,
+        ));
+        let stored = order_bytes
+            + AcceptedRouteLeavesCodec::encode_key(&input).unwrap().len()
+            + RECORD_VERSION_BYTES
+            + AcceptedRouteLeavesCodec::encode_value(&leaf).unwrap().len();
+        assert_eq!(stored, expected_bytes);
+        assert!(stored <= NEXT_CANDIDATE_MAX_ROW_BYTES);
+    }
 }

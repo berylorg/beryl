@@ -363,7 +363,16 @@ impl SyndicComposerHost {
                     self.storage.revision(store)?,
                     captured.build,
                 ))?;
-                self.settle_materializer_command(store.execute(command), captured, cancellation)
+                #[cfg(feature = "test-faults")]
+                if let Some(fault) = self.submission_materializer_before_execute_fault.take() {
+                    fault(store, self.storage.clone());
+                }
+                let outcome = store.execute(command);
+                #[cfg(feature = "test-faults")]
+                if let Some(fault) = self.submission_materializer_after_execute_fault.take() {
+                    fault(store, &outcome);
+                }
+                self.settle_materializer_command(outcome, captured, cancellation)
             }
             DraftComposerMaterializationStatusV1::Building(_) => {
                 let Some(prepared) = self

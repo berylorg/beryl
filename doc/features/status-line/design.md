@@ -29,6 +29,9 @@ Expose compact, exact conversation status and selected-thread controls without m
   choices supported by the selected model. Results for a runtime or selection that is no longer
   current never replace the visible choices.
 - While the initial model query is pending, the popup remains open with bounded loading feedback.
+  Transient local admission contention before a page request is issued retains that pending
+  state and the exact requested page. It issues no duplicate backend request and requires no
+  user Retry. Selection or runtime retirement still ends the original scope.
   An exact successful query with no supported models presents an explicit empty result rather than
   failure feedback or inferred choices.
 - If the initial model query fails, the popup remains open with bounded failure feedback and a

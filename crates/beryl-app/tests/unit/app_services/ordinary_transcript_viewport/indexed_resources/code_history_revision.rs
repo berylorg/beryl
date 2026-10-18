@@ -289,11 +289,33 @@ pub(super) async fn wait_range(
     top: u64,
     cx: &mut AsyncApp,
 ) {
+    wait_range_ready(window, panel, revision, top, false, cx).await;
+}
+
+pub(super) async fn wait_painted_range(
+    window: WindowHandle<MainWindowShellRoot>,
+    panel: &Entity<SyndicTranscriptPanel>,
+    revision: Option<ProviderRevision>,
+    top: u64,
+    cx: &mut AsyncApp,
+) {
+    wait_range_ready(window, panel, revision, top, true, cx).await;
+}
+
+async fn wait_range_ready(
+    window: WindowHandle<MainWindowShellRoot>,
+    panel: &Entity<SyndicTranscriptPanel>,
+    revision: Option<ProviderRevision>,
+    top: u64,
+    require_paint: bool,
+    cx: &mut AsyncApp,
+) {
     for _ in 0..300 {
         draw(window, cx);
         if panel.read_with(cx, |panel, _| {
             let Some((resource, _, actual_top, _)) = panel.code_viewport_for_test() else { return false; };
-            actual_top == top && revision.is_none_or(|revision| panel.code_provider_revision_for_test() == Some(revision))
+            actual_top == top && (!require_paint || panel.painted_glyphs_for_test() > 50)
+                && revision.is_none_or(|revision| panel.code_provider_revision_for_test() == Some(revision))
                 && panel.code_foreground_response_for_test(&resource).is_some_and(|response| {
                     matches!(&response.value, IndexedResourceValue::Range(range) if range.request_complete
                         && !range.items.is_empty() && range.items.len() <= 16

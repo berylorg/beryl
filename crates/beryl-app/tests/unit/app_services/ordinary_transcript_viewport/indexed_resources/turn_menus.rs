@@ -18,15 +18,34 @@ async fn nonempty_composer(
             input.focus(native);
             input.replace_text_in_range(None, RETAINED_DRAFT, native, cx);
         });
-    }).unwrap();
-    wait_until(window, cx, |cx| resident.read_with(cx, |resident, app| {
-        assert_eq!(resident.last_error(), None);
-        resident.selection_identity().binding().logical_extent().logical_utf8_bytes() == RETAINED_DRAFT.len() as u64
-            && resident.gpui_input().read(app).is_quiescent()
-            && resident.gpui_input().read(app).is_surface_current_and_interactive()
-            && resident.test_edit_position_proof_ready(app)
-            && !resident.test_has_active_flight()
-    }).unwrap(), "the real nonempty composer must settle before menu refusal assertions").await;
+    })
+    .unwrap();
+    wait_until(
+        window,
+        cx,
+        |cx| {
+            resident
+                .read_with(cx, |resident, app| {
+                    assert_eq!(resident.last_error(), None);
+                    resident
+                        .selection_identity()
+                        .binding()
+                        .logical_extent()
+                        .logical_utf8_bytes()
+                        == RETAINED_DRAFT.len() as u64
+                        && resident.gpui_input().read(app).is_quiescent()
+                        && resident
+                            .gpui_input()
+                            .read(app)
+                            .is_surface_current_and_interactive()
+                        && resident.test_edit_position_proof_ready(app)
+                        && !resident.test_has_active_flight()
+                })
+                .unwrap()
+        },
+        "the real nonempty composer must settle before menu refusal assertions",
+    )
+    .await;
     resident
 }
 

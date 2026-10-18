@@ -2,6 +2,29 @@ use super::*;
 
 impl MainWindowCreation {
     #[inline(never)]
+    pub(super) fn advance_acquired(&mut self) -> CreationStep {
+        let (acquisition, reservation) = self.take_acquired();
+        self.prepare_initial(acquisition, reservation)
+    }
+
+    #[inline(never)]
+    fn take_acquired(
+        &mut self,
+    ) -> (
+        RuntimeBackedWindowAcquisition,
+        RuntimeBackedWindowMainWindowReservation,
+    ) {
+        let CreationState::Acquired {
+            acquisition,
+            reservation,
+        } = std::mem::replace(&mut self.state, CreationState::Settled)
+        else {
+            unreachable!("acquired creation retains its acquisition")
+        };
+        (acquisition, reservation)
+    }
+
+    #[inline(never)]
     pub(super) fn prepare_initial(
         &mut self,
         acquisition: RuntimeBackedWindowAcquisition,

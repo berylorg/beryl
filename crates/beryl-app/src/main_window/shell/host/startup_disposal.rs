@@ -198,11 +198,11 @@ impl MainWindowShell {
             }
             let removal = cx
                 .update(|app| {
-                    if self.appearance_registered {
+                    if self.appearance_registered.get() {
                         self.appearance_owner
                             .update(app, |owner, _| owner.unregister(self.adapter_id))
                             .map_err(|error| error.to_string())?;
-                        self.appearance_registered = false;
+                        self.appearance_registered.set(false);
                     }
                     self.window
                         .update(app, |root, window, cx| {

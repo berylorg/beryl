@@ -1,4 +1,6 @@
 use super::*;
+use crate::bootstrap::test_support::{Producer, ProducerHold};
+use std::{cell::RefCell, rc::Rc};
 
 #[path = "indexed_resources.rs"]
 mod indexed_resources;
@@ -62,11 +64,14 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                 }
                 let (panel, prior_activation) =
                     pending.expect("mounted text range request before replacement");
-                {
+                let mut fixture_committed = false;
+                for _ in 0..32 {
                     let owner = owner.borrow();
                     let graph = owner.test_services().graph().unwrap();
                     let home = graph.home();
                     let storage = graph.syndic();
+                    let home_revision = home.home_revision().unwrap();
+                    let domain_revision = storage.revision(home).unwrap();
                     let thread = graph
                         .state()
                         .session()
@@ -91,6 +96,11 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                         .transcript_build(home, thread, head.generation(), point)
                         .unwrap()
                         .unwrap();
+                    if home.home_revision().unwrap() != home_revision
+                        || storage.revision(home).unwrap() != domain_revision
+                    {
+                        continue;
+                    }
                     assert_eq!(
                         build.phase(),
                         syndic_storage::TranscriptBuildPhase::Complete
@@ -147,18 +157,33 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                             ),
                         ))
                         .unwrap();
-                    let mut command =
-                        beryl_home_store::HomeCommand::new(home.home_revision().unwrap());
+                    let mut command = beryl_home_store::HomeCommand::new(home_revision);
                     command
-                        .add(storage.fixture_contribution(storage.revision(home).unwrap(), batch))
+                        .add(storage.fixture_contribution(domain_revision, batch))
                         .unwrap();
-                    assert!(matches!(
-                        home.execute(command),
-                        beryl_home_store::CommandOutcome::Committed {
-                            later_failure: None,
-                            ..
-                        }
-                    ));
+                    let outcome = home.execute(command);
+                    if matches!(&outcome,
+                        beryl_home_store::CommandOutcome::NotCommitted { evidence }
+                            if evidence.conflicts().is_some_and(|conflicts| {
+                                !conflicts.is_empty() && conflicts.iter().all(|conflict| matches!(
+                                    conflict,
+                                    beryl_home_store::RevisionConflict::Home { .. }
+                                        | beryl_home_store::RevisionConflict::Domain { domain: "syndic", .. }
+                                ))
+                            })
+                    ) {
+                        continue;
+                    }
+                    assert!(
+                        matches!(
+                            &outcome,
+                            beryl_home_store::CommandOutcome::Committed {
+                                later_failure: None,
+                                ..
+                            }
+                        ),
+                        "resource refresh fixture command failed: {outcome:?}"
+                    );
                     assert!(revision.get() > summary.revision().get());
                     let refreshed = storage
                         .transcript_build(home, thread, head.generation(), point)
@@ -180,7 +205,13 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
                         refreshed_head.selected_path_digest()
                     );
                     assert_eq!(refreshed.history_complete(), refreshed_summary.complete());
+                    fixture_committed = true;
+                    break;
                 }
+                assert!(
+                    fixture_committed,
+                    "resource refresh fixture admission remained contended"
+                );
                 let mut refreshed = false;
                 for _ in 0..200 {
                     cx.update(|app| {
@@ -219,10 +250,12 @@ fn native_mounted_resource_failure_yields_to_selected_history_refresh() {
 #[test]
 fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges() {
     for dispose_pending in [false, true] {
+        let metadata_hold = Rc::new(RefCell::new(None));
+        let prepared_hold = metadata_hold.clone();
         run_mounted_with_prepared_home_retained(
             1,
             0,
-            |path| {
+            move |path| {
                 seed_history_text(
                     path,
                     1,
@@ -230,10 +263,37 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                         "```rust\n{}\n```",
                         "let payload = 1;\n".repeat(2000)
                     )),
-                )
+                );
+                let StartupHomeOpen::Ready {
+                    candidate,
+                    state,
+                    syndic,
+                } = support::open(path)
+                else {
+                    panic!("resource fixture Home")
+                };
+                let home = candidate.publish().unwrap();
+                let thread = state
+                    .session()
+                    .minimal_bootstrap(&home)
+                    .unwrap()
+                    .unwrap()
+                    .windows()[0]
+                    .selected_thread()
+                    .unwrap()
+                    .thread_id();
+                drop((state, syndic));
+                home.close().unwrap();
+                *prepared_hold.borrow_mut() = Some((
+                    ProducerHold::install(Producer::ResourceMetadata, *thread.as_bytes()),
+                    thread,
+                ));
             },
             move |owner, _, cx| {
                 Box::pin(async move {
+                    let (metadata_hold, selected_thread) =
+                        metadata_hold.borrow_mut().take().unwrap();
+                    let metadata = metadata_hold.gate();
                     let window = windows(&owner)[0];
                     let mut published = None;
                     for _ in 0..150 {
@@ -246,6 +306,9 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                         .unwrap();
                         published = window
                             .update(cx, |root, _, app| {
+                                if metadata.entered() == 0 {
+                                    return None;
+                                }
                                 let title = root.coherent_selected_thread_title(app)?;
                                 let panel = root.test_transcript_panel();
                                 let snapshot = panel.read(app).snapshot();
@@ -265,6 +328,24 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                     }
                     let (panel, title, activation, _) =
                         published.expect("selected text resource publication");
+                    assert_eq!(title.0.thread_id(), selected_thread);
+                    let range_gate = window
+                        .update(cx, |root, _, app| {
+                            if !dispose_pending {
+                                return None;
+                            }
+                            let demand = panel.read(app).resource_demand().unwrap();
+                            assert!(demand.indexed.is_none());
+                            assert!(demand.metadata.is_none());
+                            assert!(demand.range.is_none());
+                            let gate = crate::transcript_provider::IndexedReadGate::code_range(
+                                demand.revision,
+                                0..16,
+                            );
+                            root.test_diagnostic_resource_gate(gate.clone());
+                            Some(gate)
+                        })
+                        .unwrap();
                     let anchor = cx
                         .update(|app| {
                             assert!(
@@ -297,6 +378,8 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                                 .unwrap()
                         })
                         .unwrap();
+                    metadata.release();
+                    drop(metadata_hold);
                     let mut settled = false;
                     for _ in 0..150 {
                         cx.update(|app| {
@@ -317,7 +400,9 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                                     activation
                                 );
                                 if dispose_pending {
-                                    root.test_fence_pending_resource_read(native, app)
+                                    range_gate.as_ref().unwrap().entered()
+                                        && root.test_pending_resource_read()
+                                        && root.test_fence_pending_resource_read(native, app)
                                 } else {
                                     indexed_code_loaded(panel.read(app))
                                 }
@@ -334,6 +419,9 @@ fn native_mounted_text_resources_load_after_selection_and_dispose_pending_ranges
                         settled,
                         "mounted resource must load or expose its pending range to disposal"
                     );
+                    if let Some(gate) = &range_gate {
+                        gate.release();
+                    }
                     let before_disposal = cx
                         .update(|app| {
                             let current = panel

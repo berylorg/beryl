@@ -1,6 +1,21 @@
 use super::*;
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearanceWindowSet};
 
+struct AppearanceRecoveryRequest {
+    identity: Rc<()>,
+    lifecycle: Option<RunningExitRequest>,
+}
+
+impl RecoveryIdentity for AppearanceRecoveryRequest {
+    fn identity(&self) -> Rc<()> {
+        self.identity.clone()
+    }
+
+    fn lifecycle(&self) -> Option<&RunningExitRequest> {
+        self.lifecycle.as_ref()
+    }
+}
+
 impl RunningProcessOwner {
     pub(crate) fn bind_interrupted_exit_process(
         &mut self,
@@ -114,12 +129,26 @@ impl RunningProcessOwner {
         self.process.appearance.clone()
     }
 
+    #[cfg(test)]
     pub(crate) fn bind_interrupted_exit_appearance(
         &mut self,
         request: &impl RecoveryIdentity,
         window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
         appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
         app: &mut App,
+    ) -> Result<(), String> {
+        let target = appearance.read(app).target();
+        self.require_interrupted_exit_appearance(request, window, target.as_ref())?;
+        self.process
+            .windows
+            .bind_interrupted_exit_appearance(window, appearance, app)
+    }
+
+    fn require_interrupted_exit_appearance(
+        &self,
+        request: &impl RecoveryIdentity,
+        window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+        target: &crate::theme_runtime::GpuiAppearancePublicationTarget,
     ) -> Result<(), String> {
         self.interrupted_exit_services_result(request)?;
         let recovery = self.interrupted_exit.as_ref().unwrap();
@@ -132,7 +161,7 @@ impl RunningProcessOwner {
         {
             return Err("Interrupted Exit recovery custody is unavailable".into());
         }
-        let snapshot = appearance.read(app).target().snapshot();
+        let snapshot = target.snapshot();
         let home = snapshot.current.prepared().home();
         let mut settlement = recovery.settlement.borrow_mut();
         let Some(settlement::CandidateSettlement::Services(Ok(graph))) = settlement.as_mut() else {
@@ -152,6 +181,78 @@ impl RunningProcessOwner {
         drafts.require_recovery_window(window)?;
         self.process
             .windows
-            .bind_interrupted_exit_appearance(window, appearance, app)
+            .shells()
+            .iter()
+            .find(|shell| shell.window() == window)
+            .ok_or("Recovery window is absent from the published set")?
+            .require_interrupted_exit_appearance_custody()
+    }
+
+    pub(crate) async fn bind_prepared_interrupted_exit_appearance(
+        owner: &impl RecoveryOwnerAccess,
+        request: &impl RecoveryIdentity,
+        window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
+        appearance: &gpui::Entity<GpuiAppearanceWindowSet>,
+        cancellation: beryl_home_store::CommandCancellation,
+        cx: &mut gpui::AsyncApp,
+    ) -> Result<(), String> {
+        let retained = owner.recovery_owner()?;
+        let weak = Rc::downgrade(&retained);
+        let request = AppearanceRecoveryRequest {
+            identity: request.identity(),
+            lifecycle: request
+                .lifecycle()
+                .map(RunningExitRequest::retain_for_recovery),
+        };
+        let target = cx
+            .update(|app| appearance.read(app).target())
+            .map_err(|error| error.to_string())?;
+        let guard: Rc<dyn Fn(&mut App) -> Result<(), String>> = Rc::new(move |_| {
+            if cancellation.is_cancelled() {
+                return Err("Interrupted Exit appearance binding was cancelled".into());
+            }
+            let owner = weak
+                .upgrade()
+                .ok_or("Interrupted Exit owner was disposed")?;
+            let owner = owner
+                .try_borrow()
+                .map_err(|_| "Interrupted Exit owner is busy")?;
+            owner.require_interrupted_exit_appearance(&request, window, target.as_ref())
+        });
+        let weak = Rc::downgrade(&retained);
+        let target = appearance.clone();
+        let committed: Rc<dyn Fn(&mut App)> = Rc::new(move |_| {
+            let owner = weak.upgrade().expect("validated recovery owner");
+            let mut owner = owner.borrow_mut();
+            owner
+                .process
+                .windows
+                .shells_mut()
+                .iter_mut()
+                .find(|shell| shell.window() == window)
+                .expect("validated original recovery shell")
+                .complete_interrupted_exit_appearance_binding(target.clone());
+        });
+        let registration = cx
+            .update(|app| {
+                guard(app)?;
+                let retained = retained.borrow();
+                retained
+                    .process
+                    .windows
+                    .shells()
+                    .iter()
+                    .find(|shell| shell.window() == window)
+                    .ok_or("Recovery window is absent from the published set")?
+                    .begin_bind_interrupted_exit_appearance(
+                        appearance,
+                        guard.clone(),
+                        committed,
+                        app,
+                    )
+            })
+            .map_err(|error| error.to_string())??;
+        drop(retained);
+        registration.await.map_err(|error| error.to_string())
     }
 }

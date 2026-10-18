@@ -60,6 +60,21 @@ impl RuntimeInterestOwner {
             native(native_tokens),
         )
         .expect("fixture launch specification");
+        self.acquire_lifecycle_test_interest_with_launch_spec(spec, binding, generation)
+    }
+
+    pub(in crate::cas_projection) fn acquire_lifecycle_test_interest_with_launch_spec(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        generation: CasProcessGeneration,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        if spec.runtime_id() != binding.runtime_id()
+            || spec.runtime_mode() != binding.root_path().mode()
+            || spec.working_directory() != binding.root_path()
+        {
+            return Err(RuntimeInterestError::ConfigurationMismatch);
+        }
         let probe = RuntimeInterestTestProbe::new(generation);
         self.acquire(spec, binding, RuntimeInterestKind::RequiredWork, || {
             Ok(Box::new(move || probe.launch()))

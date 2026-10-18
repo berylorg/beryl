@@ -84,6 +84,7 @@ impl PublishedMainWindowRestoreSet {
     pub(crate) fn release_retired_shells(&mut self) {
         self.shells.clear();
     }
+    #[cfg(test)]
     pub(crate) fn bind_interrupted_exit_appearance(
         &mut self,
         window: gpui::WindowHandle<crate::main_window::MainWindowShellRoot>,
@@ -168,6 +169,36 @@ pub struct MainWindowNativeRestoreSetCancellation {
 }
 
 impl MainWindowNativeRestoreSetCancellation {
+    #[cfg(test)]
+    pub(crate) fn test_wake_notification_order(waiter: &std::task::Waker) {
+        use std::future::Future;
+        let wake = signal::StartupWake::default();
+        let observed = wake.version();
+        wake.notify();
+        let mut completed = std::pin::pin!(wake.wait(observed));
+        assert!(
+            completed
+                .as_mut()
+                .poll(&mut std::task::Context::from_waker(waiter))
+                .is_ready()
+        );
+        let observed = wake.version();
+        let mut waiting = std::pin::pin!(wake.wait(observed));
+        assert!(
+            waiting
+                .as_mut()
+                .poll(&mut std::task::Context::from_waker(waiter))
+                .is_pending()
+        );
+        wake.notify();
+        assert!(
+            waiting
+                .as_mut()
+                .poll(&mut std::task::Context::from_waker(waiter))
+                .is_ready()
+        );
+    }
+
     #[cfg(test)]
     pub(crate) fn test_with_waiter(waiter: &std::task::Waker) -> Self {
         use std::future::Future;

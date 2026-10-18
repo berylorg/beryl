@@ -238,9 +238,28 @@ authority.
   live window adapter in the captured epoch. No adapter changes its current generation until all
   required adapters accept; one coordinator commit then advances the shared generation and reports
   success.
+- Adapter preparation includes asynchronous native geometry readiness when candidate metrics
+  require a different window minimum. The existing publication attempt retains its exact
+  candidate and window-set epoch while those original-window checks settle; current metrics and
+  generations remain unchanged in every adapter. Native work runs outside App/entity borrows.
+  Preparation protects both committed and candidate minimums; it cannot relax tracking below the
+  prior generation's requirements. After coherent commit, an adapter may use its same bounded
+  flight owner to relax protection to the exact committed minimum. Until successful relaxation,
+  stricter native protection may remain; it neither delays nor creates another generation commit.
+  Only after all required checks succeed may the existing final validation and single coordinator
+  commit publish the generation. A refused, unverified, closed or superseded check fails that
+  attempt with all adapters still on the prior generation. An already completed native enlargement
+  may remain; it is not partial appearance publication. No adapter commits its generation later
+  on an independent per-window completion or starts a second publication coordinator.
 - A window renders all theme roles for one generation in a frame. It never combines cached role
   values from different generations. A newly registered window receives the coordinator's current
   complete generation before its first themed presentation.
+- New-window registration may retain one original hidden window and one preparation while its
+  current-generation native minimum readiness settles. Revalidate coordinator activity, epoch,
+  generation and adapter eligibility immediately before committing and registering it. Pending
+  readiness never authorizes first publication. Stale registration preparation may resample the
+  current generation after its original work settles; it does not replay a theme mutation or
+  retain a history of candidates.
 - Window creation or closure during preparation invalidates that attempt or joins it through a new
   window-set epoch. Adapter rejection, unavailable window state, or application failure leaves all
   windows on the prior coherent generation and reports no partial success.

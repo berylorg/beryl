@@ -390,6 +390,9 @@ impl SyndicTranscriptPanel {
         method: CopyMethod,
         cx: &mut Context<Self>,
     ) {
+        if self.initial_history_loading {
+            return;
+        }
         self.supersede_resource_copies();
         if self
             .table_panels

@@ -7,7 +7,7 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 ## Non-goals
 
 - Reimplementing Codex authentication, execution, sandboxing, approvals, configuration, skills, MCP, subagents, or enterprise policy.
-- Restricting the client to Windows only.
+- Permanently restricting the architecture to Windows only.
 - Retaining workspaces, semantic graph, graph upkeep, checklists, or checklist-bound threaded decisions behind renamed models or compatibility adapters.
 - Implementing graph-independent semantic search or turn/resource garbage collection.
 - Providing built-in file diff or agent-edit review workflows in V1.
@@ -192,8 +192,13 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 ## Platform Targeting
 
-- Windows is the primary product-quality and developer-attention target.
-- The architecture preserves operation on other GPUI-supported platforms when the backend and windowing boundaries permit it.
+- Windows is the currently supported GUI host platform.
+- Other GUI host platforms remain unsupported until their native backends implement and qualify the same
+  required guarantees. Missing native capabilities reject the affected operation, including
+  initial window publication; there is no reduced-guarantee platform mode.
+- Shared product and application contracts remain platform-independent. Native implementations
+  belong behind GPUI's backend boundaries, so adding a platform supplies the existing contracts
+  without replacing application ownership, publication or lifecycle architecture.
 
 # Engineering Rigor
 

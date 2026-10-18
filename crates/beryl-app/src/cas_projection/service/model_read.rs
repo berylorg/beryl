@@ -23,6 +23,8 @@ pub(crate) enum ModelSourceError {
     Active,
     #[error("model source publication is busy or changed")]
     Publication,
+    #[error("model page source admission is pending")]
+    AdmissionPending,
     #[error(transparent)]
     Runtime(#[from] RuntimeModelReadError),
 }
@@ -389,7 +391,13 @@ impl ModelReadObservation {
         options: &ModelListOptions,
         timeout: Duration,
     ) -> Result<(Box<ModelPage>, HomeMutationObservation), ModelSourceError> {
-        self.validate()?;
+        self.validate().map_err(|error| match error {
+            ModelSourceError::Publication
+            | ModelSourceError::Runtime(RuntimeModelReadError::Busy) => {
+                ModelSourceError::AdmissionPending
+            }
+            other => other,
+        })?;
         let page = self.runtime.read_page(options, timeout)?;
         let boundary = self.validate()?;
         Ok((page, boundary))

@@ -12,7 +12,9 @@ use beryl_model::{InputGateRevision, SyndicThreadId, SyndicTurnId};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
-use accepted_next_support::{GenerationSpec, next_turn_records, set_gate_state};
+use accepted_next_support::{
+    GenerationSpec, next_turn_records, next_turn_records_with_backing, set_gate_state,
+};
 use support::{TestHome, batch, commit, id, open, seed_detached_canonical_draft_backing};
 
 const FIXTURE_DELTA_RECORDS_PER_COMMAND: usize = 96;
@@ -69,10 +71,18 @@ fn seeded(
             );
         }
     }
-    for delta in records.chunks(FIXTURE_DELTA_RECORDS_PER_COMMAND) {
-        commit(&store, storage.clone(), batch(delta.iter().cloned()));
-    }
+    install_records(&store, &storage, records);
     (home, store, storage)
+}
+
+fn install_records(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+    records: Vec<FixtureRecord>,
+) {
+    for delta in records.chunks(FIXTURE_DELTA_RECORDS_PER_COMMAND) {
+        commit(store, storage.clone(), batch(delta.iter().cloned()));
+    }
 }
 
 fn limits(items: usize) -> CursorReadLimits {
@@ -105,14 +115,17 @@ fn ordered_thread(value: u64) -> SyndicThreadId {
 
 #[test]
 fn global_source_pages_are_ordered_clamped_and_revision_fenced() {
+    let (_home, store, storage) = seeded("next-global-bounds", Vec::new());
     let records = (1..=300).flat_map(|value| {
-        next_turn_records(
+        next_turn_records_with_backing(
+            &store,
+            &storage,
             value,
             ordered_thread(value),
             &[GenerationSpec::new(0, 1, NextTurnReason::PendingTurn)],
         )
     });
-    let (_home, store, storage) = seeded("next-global-bounds", records.collect::<Vec<_>>());
+    install_records(&store, &storage, records.collect::<Vec<_>>());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

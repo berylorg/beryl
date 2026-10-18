@@ -36,6 +36,14 @@ impl DispatchWork {
             self.test_flight.advance(1);
             super::DispatchFlightWorkerObservation(self.test_flight.clone())
         };
+        #[cfg(test)]
+        if matches!(self.request.as_ref(), Some(RangeTextInputRequest::Page(_))) {
+            crate::bootstrap::test_support::checkpoint(
+                crate::bootstrap::test_support::Producer::DraftPage,
+                *self.selection.claim().thread_id().as_bytes(),
+                || self.cancellation.is_cancelled(),
+            );
+        }
         let mut slot = service.slot.lock().map_err(|_| {
             MainWindowConversationComposerTaskError::exact(
                 "conversation composer service lock failed".to_owned(),
