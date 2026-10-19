@@ -1,45 +1,38 @@
 # Scope
 
-Continue the active [Beryl-home rework](rework/beryl-home/REWORK.md) with bounded readiness for
-accepted-input composer history, the remaining composer-history part of Checkpoint 4's paged
-source mounting item. Preserve accepted Activity, catalog/model/navigation, transcript and
-restoration behavior. Explicit-incomplete recovery remains selected.
+Continue the active [Beryl-home rework](rework/beryl-home/REWORK.md) with accepted-input composer
+history. Preserve accepted Activity, catalog/model/navigation, transcript and restoration behavior;
+explicit-incomplete recovery remains selected. Preserve unrelated Operator skills/memory.
+Commit and push accepted phases; no software installation is authorized.
 
-Follow the [Composer feature](features/composer/design.md#composer-history), its
-[GUI composition](features/composer/gui.md), the
-[composer widget](gui/widgets/conversation-composer/spec.md),
-[App catalog/composer supplement](../crates/beryl-app/doc/design-catalog-and-composer.md) and
-[bounded resource dataflow](systems/bounded-resource-dataflow/design.md).
-Preserve unrelated Operator skills/memory. Commit and push accepted phases; no installation.
+The [Composer feature](features/composer/design.md#composer-history),
+[App supplement](../crates/beryl-app/doc/design-catalog-and-composer.md#range-backed-composer-host),
+[Syndic draft contract](../crates/syndic-storage/doc/design-draft-storage.md),
+[Asset proofs](systems/image-assets/design.md#reference-and-label-evidence) and
+[bounded dataflow](systems/bounded-resource-dataflow/design.md) control this slice.
 
-# Phase 788: Mount The Selected-Thread Activity Panel (finished)
+# Phase 789: Establish Accepted-Input Composer History Readiness (finished)
 
-Accepted actual shell mounting, bounded fixed-row pages, exact Retry and Auto lifecycle,
-persisted resize, optional metadata and process-owned command custody. Combined owning checks,
-final production checks and independent semantic/lifetime review passed;
-[evidence and limits](audits/activity-panel-mounting.md).
+Reviewed exact acceptance, mounted routing, Undo/Redo and replacement import against the owning
+contracts. No accepted-input browsing consumer exists; replacement import cannot implement it.
+The [source-backed inventory and recommendation](audits/composer-input-history-readiness.md)
+identify missing target decisions and the next observable implementation boundary. No production
+source changed or browsing acceptance claimed.
 
-# Phase 789: Establish Accepted-Input Composer History Readiness (pending)
+# Phase 790: Reconcile Accepted-Input History Recall Authority (pending)
 
-Produce a source-backed readiness audit for the actual selected-thread composer's `Alt+Up` and
-`Alt+Down` accepted-input browsing consumer. This phase authorizes investigation and documentation,
-not production implementation. Distinguish GUI-local accepted-input history from durable editor
-Undo/Redo and transcript history.
+Resolve the target decisions identified in the readiness audit before scheduling production code.
+The Operator must settle GUI session ownership/lifetime and recall/restoration editing semantics.
+The audit gives a concrete recommended direction for review. Then update the Composer feature and
+the App/Syndic/Asset technical contracts for exact acceptance delivery, ordinary recall, retained
+pre-browse state, bounded source/proof work and original outcome custody.
 
-Map exact accepted-submission capture, current conversation scope and activation/recovery lifetime,
-configured retention and eviction, duplicate comparison, range-backed recall including image
-markers, and restoration of the pre-browse draft. Trace how rejected/empty inputs, thread-edit
-mode, direction exhaustion, edits after recall and stale asynchronous completion preserve the
-feature's required state. Identify bounded working sets and exact mutation/reconciliation custody
-without requiring whole inputs to become resident.
+Review ownership, scope activation, recovery/disposal, failure and cancellation against the
+existing durable draft, Undo/Redo, submission and marker contracts. Preserve replacement import's
+separate eligibility and intent. Complete independent semantic review of the resulting authority
+before authoring an actionable implementation phase for the selected-thread browsing workflow.
 
-Read the owning source with semantic navigation and inspect relevant existing tests; preserve
-source references and reusable findings in the audit. Review ownership, lifecycle, dataflow,
-failure handling, supported limits and acceptance evidence against the linked authorities. Record
-any missing target-state decision in its owning authority and notify Operator before implementing
-that slice. Do not infer accepted-input history from transcript content or silently add persistence.
-
-Completion requires a reviewed readiness audit stating what already exists, concrete authority or
-implementation gaps, and the next bounded implementation acceptance boundary with its verification
-needs. No source mutation or broad test run is required merely to inventory readiness. The audit
-must not claim mounted browsing acceptance. Current milestone: investigation has not started.
+Current blocker: the existing importer requires an empty idle editor and replacement target;
+ordinary recall over a nonempty draft and restoration have no owning technical contract. The
+readiness audit records the exact source and a concrete example. No implementation workaround or
+target policy choice is authorized by this plan.

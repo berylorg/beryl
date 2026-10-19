@@ -495,6 +495,7 @@
   [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
+- [ ] Resolve accepted-input history lifetime and ordinary recall/restoration authority in the Composer feature, App composer supplement and Syndic draft contract before mounting; [readiness](../../audits/composer-input-history-readiness.md).
 - [x] Accepted window-local Activity height persistence, bounded source preparation and selected-thread mounting with exact Retry, metadata and command custody; [persistence](../../audits/activity-panel-persistence.md), [pages](../../audits/activity-panel-pages.md) and [mounting acceptance](../../audits/activity-panel-mounting.md).
 - [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current
   invalidation is accepted with all 546 Home/State cases and independent review;
