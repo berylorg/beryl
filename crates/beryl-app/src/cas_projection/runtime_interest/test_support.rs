@@ -83,7 +83,6 @@ impl RuntimeInterestOwner {
 }
 
 impl RuntimeInterestTestHarness {
-    #[cfg(test)]
     pub(crate) fn activity_read_source(
         &self,
         home_id: beryl_model::BerylHomeId,

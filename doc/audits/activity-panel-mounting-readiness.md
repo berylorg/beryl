@@ -7,8 +7,9 @@ The persistence boundary was implemented and independently accepted in 666cff4f;
 but that traversal can span bounded, cancellable preparation quanta with bounded retained state.
 The subsequent claim that this requires new durable summary facts is withdrawn;
 [corrected lesson](../failures/activity-display-source-readiness.md). A resumable typed source
-extractor remains implementation work. Existing synchronous whole-item validation is not itself
-that extractor. No display/widget runtime acceptance is claimed.
+extractor and selected-window preparation are now independently accepted;
+[reader/display evidence](activity-panel-pages.md). Actual widget mounting and native interaction
+remain implementation work.
 
 ## Scope
 

@@ -7,7 +7,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CursorReadLimits, HomeCoherenceError, HomeGeneration, HomeServiceReference, HomeStore,
+    CursorReadLimits, HomeCoherenceError, HomeGeneration, HomeMutationObservation,
+    HomeObservedCoherenceError, HomeServiceReference, HomeStore,
 };
 use beryl_model::{BerylHomeId, RuntimeId, SyndicThreadId};
 use syndic_storage::{SyndicPointReadLimit, SyndicReadError, SyndicStorage};
@@ -15,11 +16,28 @@ use syndic_storage::{SyndicPointReadLimit, SyndicReadError, SyndicStorage};
 use crate::cas_projection::{RuntimeActivityReadError, RuntimeActivityReadSource};
 
 mod collection;
+mod display;
+#[cfg(feature = "test-faults")]
+pub use display::test_support as display_test_support;
 mod preparation;
+mod viewport;
+mod window;
+#[cfg(feature = "test-faults")]
+pub(crate) mod test_support {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/support/activity_window_harness.rs"
+    ));
+}
 pub(crate) use collection::{
     ActivityCollection, ActivityCollectionRequest, ActivityContinuation, ActivityPage,
 };
 pub(crate) use preparation::{ActivityPreparationError, PreparedActivityService};
+pub(crate) use viewport::{
+    ActivityDemand, ActivityDemandOwner, ActivityPreparedWindow, ActivityViewport,
+    ActivityViewportStep,
+};
+pub(crate) use window::{ActivityWindowFacts, ActivityWindowReader, ActivityWindowSelection};
 
 #[derive(Clone, Copy)]
 pub(crate) struct ActivityServiceLimits {
@@ -54,6 +72,12 @@ pub(crate) enum ActivityReadError {
     PageCapacity,
     #[error("Activity query is already pending")]
     RequestPending,
+    #[error("Activity publication is busy")]
+    Busy,
+    #[error("Activity window selection is no longer current")]
+    Selection,
+    #[error("Activity preparation was cancelled")]
+    Cancelled,
     #[error("Activity initial request already completed")]
     RequestCompleted,
     #[error("Activity thread is unavailable")]
@@ -68,6 +92,8 @@ pub(crate) enum ActivityReadError {
     Read(#[from] SyndicReadError),
     #[error("Activity home authority is unavailable: {0}")]
     Coherence(#[from] HomeCoherenceError),
+    #[error("Activity source observation is unavailable: {0}")]
+    Observation(#[from] HomeObservedCoherenceError),
 }
 
 pub(crate) struct ActivityService {
@@ -219,10 +245,10 @@ impl Shared {
     }
 
     fn publish<T>(&self, publish: impl FnOnce() -> T) -> Result<T, ActivityReadError> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| ActivityReadError::Unavailable)?;
+        let state = self.state.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => ActivityReadError::Busy,
+            std::sync::TryLockError::Poisoned(_) => ActivityReadError::Unavailable,
+        })?;
         if !state.live {
             return Err(ActivityReadError::Unavailable);
         }
@@ -233,6 +259,27 @@ impl Shared {
         Ok(resources
             .home
             .try_elect_coherent(self.generation, publish)?)
+    }
+
+    fn publish_observed<T>(
+        &self,
+        observation: &HomeMutationObservation,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, ActivityReadError> {
+        let state = self.state.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => ActivityReadError::Busy,
+            std::sync::TryLockError::Poisoned(_) => ActivityReadError::Unavailable,
+        })?;
+        if !state.live {
+            return Err(ActivityReadError::Unavailable);
+        }
+        let resources = state
+            .resources
+            .as_ref()
+            .ok_or(ActivityReadError::Unavailable)?;
+        Ok(resources
+            .home
+            .try_elect_observed_coherent(observation, self.generation, publish)?)
     }
 }
 

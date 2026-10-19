@@ -108,12 +108,27 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   source payload, full provider aggregates and complete collections never enter widget state.
   Existing compact handoff facts supply byte counts. Optional metadata completion updates exact
   realized row identities and cannot resume a thread or enter another runtime period.
+- A metadata request captures the exact prepared window and a realized CAS thread before optional
+  asynchronous metadata work. Completion accepts only normalized `ThreadReadMetadata` for that
+  target and revalidates the captured query, runtime period, demand, selection and Home observation.
+  Its bounded nickname may decorate that exact row; `model_provider` never supplies a model suffix.
+  Request and completion remain owned by the worker across busy publication so revalidation needs
+  neither another backend request nor fresh authority. Successful decoration revokes preceding
+  prepared row snapshots. Raw strings paired retrospectively with a newer window cannot enter the
+  viewport metadata completion path.
 - An initial query failure retains its original prepared request for explicit Retry. Page failure
   retains the exact collection and continuation; failure on the first page after successful open
   retries that page on the opened collection, not the completed one-shot initial request.
   Query revision staleness instead invalidates the
   cursor walk and prepares a replacement collection; it cannot be retried forever against the old
   head. Busy publication retains the same prepared result and invokes no consumer update.
+- Retry keeps its failure feedback while pending and disables repeated activation. Coherent
+  success clears feedback; repeated failure enables Retry again. A failed scope still observes
+  current claim, query head and original runtime authority each bounded step, so actual query or
+  runtime replacement retires the old scope without requiring Retry. A changed Home observation
+  interval yields to fresh observation before classifying a query or selection change. Cache
+  retention counts only pages overlapping the current demand, with at most four distinct resident
+  pages; earlier cached pages cannot consume a new demand's capacity.
 - Height persistence uses State's window-presentation participant bundle off GPUI, preserving
   original command disposition through failure/reconciliation and rejecting late window results.
   The host provides a coherent fresh page window before restoring interaction after period change;

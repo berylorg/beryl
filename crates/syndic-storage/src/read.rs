@@ -2,6 +2,7 @@ mod accepted_delivery;
 mod accepted_next;
 mod accepted_ready;
 pub(crate) mod access;
+mod activity_display;
 mod admission;
 mod binding;
 mod candidate_history;
@@ -26,6 +27,11 @@ mod stop_admission;
 mod terminal_history;
 mod threads;
 
+pub use activity_display::{
+    ActivityDisplayPreparation, ActivityDisplayReadError, ActivityDisplaySource,
+    ActivityDisplayStatus, ActivityDisplayStep, ActivityDisplayText, ActivityDisplayValue,
+    ActivityFileChangeDisplay,
+};
 pub use threads::{THREAD_DISCOVERY_PAGE_MAX_BYTES, THREAD_DISCOVERY_PAGE_MAX_ITEMS};
 
 pub use accepted_delivery::{AcceptedInputDeliveryTransitionStatus, SyndicReadySteeringInput};

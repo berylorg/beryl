@@ -1668,6 +1668,23 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   terminal state without pinning resident page bytes. Completed rows retain the deterministic
   maximal newest prefix that fits both fixed row and stored-byte budgets; a smaller fitting prefix
   is not a valid alternative state.
+- `prepare_activity_display` captures one exact entry and canonical item. Its moveable preparation
+  owns neither HomeStore nor Syndic handles; `step` accepts current read authority and cancellation
+  separately. Each step charges at most 4,096 parser operations, including zero-byte structural
+  transitions, and acquires at most one source chunk of 65,536 encoded bytes. Bounded point reads
+  authenticate canonical/event authority; an indexed event advance consumes at most one bounded
+  event page. Parser continuation is fixed-depth, with bounded display prefixes and counters.
+  Large items may require arbitrarily many cancellable steps; total source length is not a
+  per-item rejection threshold.
+- Completed items select their exact terminal frame; live items replay only their indexed item
+  events through the entry's source frontier. Replacement file-change frames replace preceding
+  counters. Exact additions/deletions and change-record count publish only on completion, with a
+  sole path only when every complete bounded path agrees. No complete diff, line vector or path
+  set is retained. Selected reused text validates its incremental UTF-8 and declared digest, even
+  for provider fields without a separately indexed text span. Malformed text returns typed
+  invalid-source failure. Cancellation, stale source, read failure and completion terminalize the
+  preparation and release its parser/chunk state; explicit retry prepares the same still-current
+  entry again. Final source revalidation precedes any successful display result.
 - Provider publication advances affected canonical state, exact source membership, and activity
   index state atomically. Scoped activity reconciliation proves current and retired memberships against their exact turn
   state and terminal frontier in constant memory; a widened interval or retired active member is

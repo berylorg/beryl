@@ -783,6 +783,11 @@ pub use read::{
     ThreadLineageEntry, ThreadLineageHead, ThreadLineagePage,
 };
 pub use read::{
+    ActivityDisplayPreparation, ActivityDisplayReadError, ActivityDisplaySource,
+    ActivityDisplayStatus, ActivityDisplayStep, ActivityDisplayText, ActivityDisplayValue,
+    ActivityFileChangeDisplay,
+};
+pub use read::{
     SyndicCurrentDraft, SyndicThreadTail, THREAD_DISCOVERY_PAGE_MAX_BYTES,
     THREAD_DISCOVERY_PAGE_MAX_ITEMS,
 };

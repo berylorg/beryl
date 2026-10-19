@@ -14,6 +14,16 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(crate) fn activity_reader(&self) -> Option<crate::activity_service::ActivityWindowReader> {
+        if self.shutdown.is_some() {
+            return None;
+        }
+        Some(self.activity.as_ref()?.window_reader(
+            self.state.session(),
+            self.cas().home_mutation_observer(),
+            Arc::downgrade(self.restore_lifetime.as_ref()?),
+        ))
+    }
     pub(crate) fn catalog_query_reader(&self) -> crate::catalog_query::PublishedCatalogQueryReader {
         self.catalog_query
             .as_ref()

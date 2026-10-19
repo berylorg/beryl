@@ -17,6 +17,7 @@ struct Scope {
     _capacity: Capacity,
 }
 
+#[derive(Clone)]
 pub(crate) struct ActivityCollection {
     query: Arc<Query>,
 }
@@ -27,6 +28,7 @@ struct Query {
     request: Mutex<()>,
 }
 
+#[derive(Clone)]
 pub(crate) struct ActivityContinuation {
     query: Weak<Query>,
     cursor: ActivityQueryCursor,
@@ -65,6 +67,19 @@ impl Scope {
             .upgrade()
             .ok_or(ActivityReadError::Unavailable)?;
         self.runtime.with_current(|| shared.publish(publish))?
+    }
+
+    fn with_observed<T>(
+        &self,
+        observation: &HomeMutationObservation,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, ActivityReadError> {
+        let shared = self
+            .service
+            .upgrade()
+            .ok_or(ActivityReadError::Unavailable)?;
+        self.runtime
+            .with_current(|| shared.publish_observed(observation, publish))?
     }
 }
 
@@ -117,6 +132,20 @@ impl ActivityCollectionRequest {
 }
 
 impl ActivityCollection {
+    pub(crate) fn same_query(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.query, &other.query)
+    }
+    pub(crate) fn head(&self) -> &ActivityQueryHeadRecord {
+        &self.query.head
+    }
+
+    pub(crate) fn with_observed<T>(
+        &self,
+        observation: &HomeMutationObservation,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, ActivityReadError> {
+        self.query.scope.with_observed(observation, publish)
+    }
     pub(crate) fn with_current_head<T>(
         &self,
         publish: impl FnOnce(&ActivityQueryHeadRecord) -> T,
@@ -159,6 +188,16 @@ impl ActivityCollection {
 }
 
 impl ActivityPage {
+    pub(crate) fn records(&self) -> &[syndic_storage::ActivityQueryEntryRecord] {
+        self.page.records()
+    }
+
+    pub(crate) fn next(&self) -> Option<ActivityContinuation> {
+        self.page.next_cursor().map(|cursor| ActivityContinuation {
+            query: Arc::downgrade(&self.query),
+            cursor,
+        })
+    }
     pub(crate) fn with_current<T>(
         &self,
         publish: impl FnOnce(&ActivityQueryHeadRecord, &ActivityQueryPage) -> T,

@@ -13,53 +13,50 @@ Continue bounded technical prerequisites autonomously; preserve unrelated Operat
 Use normal Cargo/Git and required evidence, without the canceled snapshot/archive/guard workflow.
 Commit and push accepted phases. No software installation is authorized.
 
-# Phase 786: Persist Window-Local Activity Panel Height (finished)
+# Phase 787: Prepare Bounded Window Activity Pages (finished)
 
-Accepted additive persistence with unchanged Session V1, exact guarded updates and complete atomic
-cleanup/recovery bundles. State 313, selected App 275 and Home 43 cases qualified, production checks
-passed and independent persistence review accepted; [evidence and limits](audits/activity-panel-persistence.md).
+Accepted resumable source extraction and exact weak selected-window preparation with bounded
+cursor/pages/demands, Retry, publication and metadata custody. All 44 distinct owning cases,
+production checks and independent semantic/lifetime review qualified;
+[evidence and limits](audits/activity-panel-pages.md).
 
-# Phase 787: Prepare Bounded Window Activity Pages (wip)
+# Phase 788: Mount The Selected-Thread Activity Panel (wip)
 
-Expose weak selected-window Activity access with exact period/query/publication authority,
-bounded off-GUI display projection and cancellable one-page cursor-walk quanta. Preserve exact
-initial/page Retry, query replacement, fixed residency/cursor checkpoints, capacity and retirement.
-Verify current/stale/busy/failure/selection/period paths without a whole-collection model.
+Mount Auto-visible current-period Activity through the accepted prepared inputs in the actual
+`MainWindowShellRoot` conversation layout. The observable boundary is the native selected-thread
+Activity slot: bounded fixed-row display and scrolling, Auto lifecycle, exact Retry and persisted
+resize without moving the composer, discussion strip or global status line outside the window.
 
-The intended consumer is the selected-window Activity slot in the next mounting phase. Prepare
-typed window/claim authority from a weak published graph, validate exact query heads off GPUI and
-publish only through nonblocking current-Home/runtime fences. Walk at most one existing page per
-quantum, retaining at most eight cursor checkpoints, four prepared resident pages and one pending
-demand. Raw page capacity is released after bounded display preparation. Preserve original initial
-requests and failed page continuations for explicit Retry; drop all checkpoints on query replacement.
+Implement the existing project-local widget contract and theme roles with fixed-height paged
+virtualization, visible rows plus four-row overscan on each side, full logical scroll extent,
+stable row identity, stable viewport focus and bounded tooltip anchoring. Missing rows remain
+unmaterialized with one deduplicated demand. Preserve top attachment, or the first visible stable
+row and offset while manually scrolled. Keep at most four prepared pages and one pending demand;
+no whole-collection projection or source preparation runs in render/input callbacks.
 
-Prepare protocol display values and exact optional agent metadata from bounded canonical/source
-reads, including PowerShell token normalization, permitted file-change paths and compact handoff
-counts. No whole-history projection, backend request, inferred label or payload retention enters
-the window model. Verify display provenance/limits, distant and backward demand cancellation,
-failure/Retry, busy publication, changed selection/head/period, capacity and graph retirement.
-Require independent semantic/lifetime review and focused owning checks before mounting begins.
+Connect one cancellable selected-window preparation loop to the weak published Activity reader,
+using the graph's current Home observation and original window claim/lifetime. Publish only under
+its exact period/query/demand/selection fences. Auto eligibility is independent of query success
+and row count. Preserve original initial/page Retry, visible pending feedback and old coherent
+rows during allowed page failure. Retired/replacement periods make old rows and interaction inert
+until coherent fresh inputs arrive. Optional normalized metadata scheduling must retain the
+captured request/completion through Busy and cannot resume a thread or infer model suffixes.
 
-Use resumable source projection: a quantum performs a bounded source read or one bounded activity
-page read, then checks cancellation/current demand and yields. Source traversal may span many
-quanta. Retain bounded counters, parser continuation and display prefixes rather than complete
-diffs, lines, path sets or provider items. Keep preparation outside widget state. Publish exact
-counts only after completion and source/window/period revalidation; incomplete counters are never
-finished row values. Verify chunk-split line prefixes/UTF-8, long lines, reused source ranges,
-cancellation and stale completion as well as ordinary display cases.
+Load and commit height through the accepted State window-presentation bundle off GPUI. Clamp the
+transient/default/persisted allocation to the conversation body's current bounds and transcript
+minimum. Implement pointer-captured and keyboard resize, separate viewport/handle focus targets,
+wheel/touchpad/keyboard boundary ownership, disabled Retry and explicit focus settlement.
+Inert/unmount cancels capture without a height commit, closes tooltips and releases all selected
+window worker, demand, raw-page and prepared-model ownership.
 
-Current milestone: persistence is accepted and pushed in 666cff4f. Existing request/collection/page
-and Home publication APIs are mapped. The reported display blocker conflated bounded per-step
-work with fixed total item work; it is withdrawn. Implement a resumable typed source extractor and
-the window cursor adapter under the existing bounded preparation contract. No new durable summary
-schema is required by this finding. See [the corrected lesson](failures/activity-display-source-readiness.md).
-No Phase 787 source changes or Activity widget/runtime acceptance are claimed yet.
+Qualify the real shell composition and content-free widget diagnostics: bounded realization at
+large logical count, missing/distant/overlapping pages, scroll geometry, focus/tooltip stability,
+resize/minimums/persistence, accepted-turn/compaction Auto visibility, initial/page Retry,
+selection/runtime/graph replacement, stale delivery and disposal. Use focused integration and
+native owning cases, final no-fault production checks and independent semantic/lifetime review.
+Keep earlier accepted catalog/model/transcript/restoration behavior covered by relevant owning
+regressions; do not reopen it as a broad rewrite.
 
-# Phase 788: Mount The Selected-Thread Activity Panel (pending)
-
-Mount Auto-visible current-period Activity through the prepared inputs, with fixed-height paged
-virtualization, visible rows plus four-row overscan on each side, bounded retention and full logical
-scroll extent. Preserve exact period/query identity, current selection, resize persistence,
-keyboard/wheel ownership, inert teardown and initial/page Retry. Qualify real shell composition,
-selection/runtime replacement, stale delivery, layout/minimums and owned-resource release under
-the original feature contracts; require independent semantic review and focused production checks.
+Current milestone: reader/display preparation is accepted and ready for mounting. No Activity
+widget/native acceptance is claimed. Mounting implementation has not started; inspect current
+shell owner, selected-window refresh and reusable scroll/resize/theme inputs before editing.

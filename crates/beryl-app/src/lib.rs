@@ -184,6 +184,13 @@ extern crate self as beryl_app;
 #[cfg(all(test, feature = "test-faults"))]
 const EXECUTION_ROOT: &str = r"C:\work\beryl";
 mod activity_service;
+#[cfg(feature = "test-faults")]
+pub use activity_service::display_test_support as activity_display_test_support;
+#[cfg(feature = "test-faults")]
+pub use activity_service::test_support::{
+    ActivityWindowHarness, ActivityWindowTestMetadataCompletion, ActivityWindowTestMetadataRequest,
+    ActivityWindowTestPrepared, ActivityWindowTestSnapshot, ActivityWindowTestStep,
+};
 mod app_services;
 #[cfg(target_os = "windows")]
 pub mod bootstrap;
