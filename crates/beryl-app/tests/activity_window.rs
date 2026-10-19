@@ -351,6 +351,54 @@ fn metadata_completion_keeps_its_original_query_demand_and_runtime_authority() {
     }
 }
 
+#[gpui::test]
+fn child_nickname_scheduling_retains_busy_completion_and_renews_after_query_revision(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (f, mut reader, source, child) = std::thread::spawn(|| {
+        let f = Fixture::new(true);
+        let source = f.activate();
+        let child = f.child_answer();
+        let mut reader = harness(&f, 2, 1);
+        ready(&mut reader);
+        (f, reader, source, child)
+    })
+    .join()
+    .unwrap();
+    let mut scheduler = beryl_app::main_window::ActivityMetadataSchedulingHarness::default();
+    let response = |nickname| {
+        beryl_backend::lifecycle_test_support::thread_read_metadata(
+            child.clone(),
+            beryl_backend::ThreadStatus::Idle,
+            "provider-is-not-model",
+            Some(nickname),
+        )
+    };
+    assert_eq!(reader.prepared().unwrap().publish().unwrap().rows[0].2, "");
+    assert!(scheduler.enqueue(&mut reader, response("Scout")));
+    reader.with_publication_gate_held(|reader| scheduler.step(reader, &cx.background_executor));
+    assert_eq!(reader.prepared().unwrap().publish().unwrap().rows[0].2, "");
+    scheduler.step(&mut reader, &cx.background_executor);
+    assert_eq!(
+        reader.prepared().unwrap().publish().unwrap().rows[0].2,
+        "Scout"
+    );
+    assert!(!scheduler.enqueue(&mut reader, response("duplicate")));
+    let (f, mut reader) = std::thread::spawn(move || {
+        f.add_command(&source, 231);
+        ready(&mut reader);
+        (f, reader)
+    })
+    .join()
+    .unwrap();
+    assert!(scheduler.enqueue(&mut reader, response("Scout 2")));
+    scheduler.step(&mut reader, &cx.background_executor);
+    let rows = reader.prepared().unwrap().publish().unwrap().rows;
+    assert!(rows.iter().any(|row| row.2 == "Scout 2"));
+    assert!(rows.iter().any(|row| row.2 == "Main"));
+    drop((reader, f));
+}
+
 #[test]
 fn a_changed_query_replaces_a_failed_page_without_retrying_its_old_scope() {
     let f = Fixture::new(true);
@@ -366,6 +414,59 @@ fn a_changed_query_replaces_a_failed_page_without_retrying_its_old_scope() {
     assert!(reader.failure().is_none());
     ready(&mut reader);
     assert_eq!(reader.prepared().unwrap().publish().unwrap().total, 2);
+}
+
+#[test]
+fn height_save_outcomes_remain_owned_after_window_read_retirement() {
+    use beryl_home_store::test_faults::FaultPoint;
+    for (fault, expected) in [
+        (None, ("committed", false)),
+        (Some(FaultPoint::BeforeCommit), ("not_committed", false)),
+        (
+            Some(FaultPoint::AfterCommitBeforePersist),
+            ("indeterminate", true),
+        ),
+        (Some(FaultPoint::AfterPersist), ("committed", true)),
+    ] {
+        let f = Fixture::new(true);
+        let mut reader = harness(&f, 2, 1);
+        if let Some(fault) = fault {
+            f.faults.fail_next(fault);
+        }
+        reader.save_height(202.25).unwrap();
+        reader.retire_window();
+        assert_eq!(reader.retained_height_outcome(), Some(expected));
+        assert_eq!(reader.step(), ActivityWindowTestStep::Retired);
+        assert_eq!(reader.retained_height_outcome(), Some(expected));
+        assert!(reader.save_height(222.).is_err());
+        assert_eq!(reader.retained_height_outcome(), Some(expected));
+    }
+}
+
+#[test]
+fn metadata_request_and_completion_do_not_pin_retired_collection_capacity() {
+    let f = Fixture::new(true);
+    let source = f.activate();
+    f.add_command(&source, 230);
+    let mut reader = harness(&f, 2, 1);
+    ready(&mut reader);
+    let prepared = reader.prepared().unwrap();
+    let thread = prepared.first_thread().unwrap();
+    let request = prepared.metadata_request(&thread).unwrap();
+    let metadata = beryl_backend::lifecycle_test_support::thread_read_metadata(
+        thread,
+        beryl_backend::ThreadStatus::Idle,
+        "provider",
+        Some("Scout"),
+    );
+    let completion = request.complete(&metadata).unwrap();
+    drop(prepared);
+    assert_eq!(reader.collection_count(), 1);
+    reader.cancel();
+    assert_eq!(reader.step(), ActivityWindowTestStep::Retired);
+    assert_eq!(reader.collection_count(), 0);
+    assert!(request.complete(&metadata).is_none());
+    assert!(!reader.apply_metadata(&completion));
 }
 
 #[test]

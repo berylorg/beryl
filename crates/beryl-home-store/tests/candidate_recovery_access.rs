@@ -139,7 +139,8 @@ fn candidate_writes_are_bounded_revision_checked_and_durable_before_publication(
             .unwrap()
             .is_none()
     );
-    let store = publication.publish().unwrap();
+    let (store, published_identity) = publication.publish_with_identity().unwrap();
+    assert_eq!(store.generation_identity().unwrap(), published_identity);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     store.close().unwrap();
 }
@@ -172,6 +173,7 @@ fn recovered_candidate_uses_fresh_identity_and_can_commit_before_publication() {
         store.execute_current(old.current_command(PutBytes::<AlphaDomain>::new(1, b"old"))),
     );
     let old_generation = store.health().generation().unwrap();
+    let old_identity = store.generation_identity().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
     let mut candidate = store.recover_same_home().unwrap();
@@ -189,7 +191,9 @@ fn recovered_candidate_uses_fresh_identity_and_can_commit_before_publication() {
             .unwrap()
             .is_some()
     );
-    let store = candidate.publish().unwrap();
+    let (store, published_identity) = candidate.publish_with_identity().unwrap();
+    assert_ne!(published_identity, old_identity);
+    assert_eq!(store.generation_identity().unwrap(), published_identity);
     assert_eq!(
         store
             .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(

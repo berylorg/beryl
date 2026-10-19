@@ -34,10 +34,15 @@ pub(crate) use collection::{
 };
 pub(crate) use preparation::{ActivityPreparationError, PreparedActivityService};
 pub(crate) use viewport::{
-    ActivityDemand, ActivityDemandOwner, ActivityPreparedWindow, ActivityViewport,
-    ActivityViewportStep,
+    ActivityDemand, ActivityDemandOwner, ActivityMetadataCompletion, ActivityMetadataRequest,
+    ActivityPreparedFacts, ActivityPreparedPage, ActivityPreparedWindow, ActivityRetry,
+    ActivityViewport, ActivityViewportStep,
 };
-pub(crate) use window::{ActivityWindowFacts, ActivityWindowReader, ActivityWindowSelection};
+pub(crate) use window::{
+    ActivityHeightCommit, ActivityHeightCustody, ActivityHeightError, ActivityHeightFlight,
+    ActivityHeightRead, ActivityInteractionGate, ActivityWindowFacts, ActivityWindowReader,
+    ActivityWindowSelection,
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct ActivityServiceLimits {
@@ -101,6 +106,7 @@ pub(crate) struct ActivityService {
 }
 
 struct Shared {
+    identity: Option<beryl_home_store::HomeGenerationIdentity>,
     home_id: BerylHomeId,
     generation: HomeGeneration,
     limits: ActivityServiceLimits,
@@ -140,9 +146,14 @@ struct Capacity {
 }
 
 impl ActivityService {
-    fn dormant(resources: Resources, limits: ActivityServiceLimits) -> Self {
+    fn dormant(
+        resources: Resources,
+        limits: ActivityServiceLimits,
+        identity: Option<beryl_home_store::HomeGenerationIdentity>,
+    ) -> Self {
         Self {
             shared: Arc::new(Shared {
+                identity,
                 home_id: resources.runtime.home_id(),
                 generation: resources.runtime.home_generation(),
                 limits,

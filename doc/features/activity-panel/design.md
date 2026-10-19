@@ -21,6 +21,11 @@ Show bounded live and recent backend activity for the selected conversation with
   thread until that turn ends, and while selected-thread context compaction is active. It is hidden
   when the selected thread has neither an active parent turn nor active context compaction.
 - The panel height persists as window-local Beryl-home state.
+- A height read or save failure keeps the last known allocation and reports bounded window-local
+  notice feedback. A failed read is not treated as an absent preference. A definite unsaved height
+  may be retried by resizing again. An unresolved save waits for home recovery to classify its
+  original outcome; the panel does not automatically issue a replacement save. A saved height
+  followed by an access failure remains a saved outcome.
 - The panel is vertically resizable by dragging its top border, taking space from or returning space to the transcript region while preserving any discussion-status strip, the pinned composer, and the global status line.
 - If visible rows exceed the panel height, the panel owns vertical scrolling. Otherwise it does not scroll.
 - Row rendering remains bounded to the visible viewport plus small overscan while scrollbar

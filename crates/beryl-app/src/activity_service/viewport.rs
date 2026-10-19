@@ -12,9 +12,13 @@ use super::{
     *,
 };
 
+mod facts;
 mod metadata;
 mod preparation;
+mod retry;
+pub(crate) use facts::ActivityPreparedFacts;
 pub(crate) use metadata::{ActivityMetadataCompletion, ActivityMetadataRequest};
+pub(crate) use retry::ActivityRetry;
 
 const CHECKPOINTS: usize = 8;
 const RESIDENT_PAGES: usize = 4;
@@ -99,6 +103,13 @@ pub(crate) struct ActivityPreparedWindow {
 }
 
 impl ActivityPreparedWindow {
+    pub(crate) fn interaction_gate(&self) -> super::window::ActivityInteractionGate {
+        super::window::ActivityInteractionGate::new(
+            self.selection.clone(),
+            self.facts.observation.clone(),
+            Some(self.collection.runtime()),
+        )
+    }
     pub(crate) fn head(&self) -> &syndic_storage::ActivityQueryHeadRecord {
         self.collection.head()
     }
@@ -151,6 +162,7 @@ pub(crate) struct ActivityViewport {
     preparing: Option<Preparing>,
     failure: Option<String>,
     retrying: bool,
+    failure_token: Option<Arc<()>>,
     ready: bool,
     metadata: VecDeque<display::ActivityAgentMetadata>,
 }
@@ -190,6 +202,7 @@ impl ActivityViewport {
             preparing: None,
             failure: None,
             retrying: false,
+            failure_token: None,
             ready: false,
             metadata: VecDeque::new(),
         }
@@ -201,6 +214,7 @@ impl ActivityViewport {
         self.demand = demand;
         self.preparing = None;
         self.failure = None;
+        self.failure_token = None;
         self.retrying = false;
         self.ready = false;
         self.resident.retain(|page| {
@@ -220,6 +234,10 @@ impl ActivityViewport {
         self.retrying = true;
         true
     }
+
+    pub(crate) fn retry_pending(&self) -> bool {
+        self.retrying
+    }
     pub(crate) fn facts(&self) -> Option<&ActivityWindowFacts> {
         self.facts.as_ref()
     }
@@ -228,13 +246,9 @@ impl ActivityViewport {
         &self,
         publish: impl FnOnce(&ActivityWindowFacts) -> T,
     ) -> Result<T, ActivityReadError> {
-        let facts = self.facts.as_ref().ok_or(ActivityReadError::Unavailable)?;
-        self.selection.publish_observed(&facts.observation, || {
-            if !self.demand.current() {
-                return Err(ActivityReadError::Selection);
-            }
-            Ok(publish(facts))
-        })?
+        self.prepared_facts()
+            .ok_or(ActivityReadError::Unavailable)?
+            .with_current(publish)
     }
 
     fn restart_walk(&mut self) {
@@ -266,6 +280,7 @@ impl ActivityViewport {
         self.facts = None;
         self.execution = None;
         self.failure = None;
+        self.failure_token = None;
         self.retrying = false;
         self.ready = false;
         self.walk = Walk {
@@ -301,6 +316,7 @@ impl ActivityViewport {
             text.push_str("...");
         }
         self.failure = Some(text);
+        self.failure_token.get_or_insert_with(|| Arc::new(()));
         self.retrying = false;
         self.ready = false;
         ActivityViewportStep::Failed
@@ -339,7 +355,14 @@ impl ActivityViewport {
     }
 
     pub(crate) fn prepared(&self) -> Option<ActivityPreparedWindow> {
-        if !self.ready || !self.demand.current() {
+        if !self.ready {
+            return None;
+        }
+        self.snapshot()
+    }
+
+    pub(crate) fn snapshot(&self) -> Option<ActivityPreparedWindow> {
+        if !self.demand.current() {
             return None;
         }
         Some(ActivityPreparedWindow {
@@ -353,6 +376,14 @@ impl ActivityViewport {
     }
 
     pub(crate) fn step(&mut self, cancelled: &AtomicBool) -> ActivityViewportStep {
+        self.step_inner(cancelled, false)
+    }
+
+    pub(crate) fn step_visible(&mut self, cancelled: &AtomicBool) -> ActivityViewportStep {
+        self.step_inner(cancelled, true)
+    }
+
+    fn step_inner(&mut self, cancelled: &AtomicBool, visible_only: bool) -> ActivityViewportStep {
         if cancelled.load(Ordering::Acquire) || !self.selection.current() || !self.demand.current()
         {
             self.replace();
@@ -373,6 +404,11 @@ impl ActivityViewport {
         {
             self.replace();
             return ActivityViewportStep::Pending;
+        }
+        if visible_only && !facts.auto_visible {
+            self.replace();
+            self.facts = Some(facts);
+            return ActivityViewportStep::Ready;
         }
         self.facts = Some(facts);
         let scope = if let Some(collection) = &self.collection {
@@ -420,6 +456,7 @@ impl ActivityViewport {
         if self.covered() {
             self.ready = true;
             self.failure = None;
+            self.failure_token = None;
             self.retrying = false;
             return ActivityViewportStep::Ready;
         }

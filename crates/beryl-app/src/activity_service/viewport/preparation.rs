@@ -32,6 +32,7 @@ impl ActivityViewport {
             if self.covered() {
                 self.ready = true;
                 self.failure = None;
+                self.failure_token = None;
                 self.retrying = false;
                 return ActivityViewportStep::Ready;
             }

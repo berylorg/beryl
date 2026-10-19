@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::support::populated) fn seed_provider_records(
+pub(in super::super) fn seed_provider_records(
     store: &beryl_home_store::HomeStore,
     storage: &SyndicStorage,
     receipts: &mut Vec<beryl_home_store::CommitReceipt>,

@@ -229,6 +229,120 @@ impl Fixture {
         source
     }
 
+    pub fn child_answer(&self) -> beryl_model::CasThreadId {
+        use support::exact_cas::{
+            admit_event, admit_started_then_completed_item, correlate_user_item, establish_turn,
+            submit_current_draft,
+        };
+        let child = id(36);
+        let submitted = SyndicItemId::from_bytes([224; 16]);
+        let turn = submit_current_draft(
+            &self.home,
+            self.storage.clone(),
+            child,
+            draft_id(223),
+            submitted,
+            "child question",
+            timestamp(120),
+        );
+        let source = establish_turn(
+            &self.home,
+            self.storage.clone(),
+            child,
+            turn,
+            timestamp(121),
+        );
+        admit_event(
+            &self.home,
+            self.storage.clone(),
+            child,
+            turn,
+            &source,
+            SourceEventPayload::TurnActivated,
+            timestamp(121),
+        );
+        correlate_user_item(
+            &self.home,
+            self.storage.clone(),
+            child,
+            turn,
+            submitted,
+            &source,
+            timestamp(122),
+        );
+        let final_answer = SyndicItemId::from_bytes([225; 16]);
+        let answer = ProviderItemV1::AgentMessage(ProviderAgentMessageV1 {
+            text: ProviderTextV1::inline("child final"),
+            phase: Some(ProviderMessagePhaseV1::FinalAnswer),
+            memory_citation: None,
+        });
+        admit_started_then_completed_item(
+            &self.home,
+            self.storage.clone(),
+            child,
+            turn,
+            final_answer,
+            &source,
+            CasItemId::new("child-final-answer").unwrap(),
+            answer.clone(),
+            answer,
+            timestamp(123),
+            timestamp(124),
+        );
+        admit_event(
+            &self.home,
+            self.storage.clone(),
+            child,
+            turn,
+            &source,
+            SourceEventPayload::TurnEnded(
+                TurnEndStatus::new(
+                    TurnTerminalOutcome::Interrupted,
+                    Some(TurnIncompleteReason::ItemAuditFailed),
+                )
+                .unwrap(),
+            ),
+            timestamp(125),
+        );
+        let head = self
+            .storage
+            .activity_query_head(&self.home, id(30), point_limit())
+            .unwrap()
+            .unwrap();
+        self.interest
+            .as_ref()
+            .unwrap()
+            .with_activity_for_test(
+                ActivityQuerySource::new(id(30), self.turn),
+                |qualification| {
+                    let mut command = HomeCommand::new(self.home.home_revision().unwrap());
+                    command
+                        .add(self.storage.publish_activity_child_handoff(
+                            self.storage.revision(&self.home).unwrap(),
+                            PublishActivityChildHandoff::new(
+                                id(30),
+                                head.revision(),
+                                child,
+                                turn,
+                                final_answer,
+                                ProjectionSourceRange::new(0, 11).unwrap(),
+                            ),
+                            qualification,
+                        ))
+                        .unwrap();
+                    assert!(matches!(
+                        self.home.execute(command),
+                        CommandOutcome::Committed {
+                            later_failure: None,
+                            ..
+                        }
+                    ));
+                },
+            )
+            .unwrap();
+        source.thread_id().clone()
+    }
+
     pub fn renew_window_claim(&self) {
         let session = self.state.session();
         for thread in [id(99), id(30)] {

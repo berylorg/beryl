@@ -560,6 +560,7 @@ impl MainWindowShellRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.suspend_activity(window, cx);
         self.suspend_captured_branch();
         self.running_threads.reads_suspended = true;
         self.running_threads.workers.suspend(true);

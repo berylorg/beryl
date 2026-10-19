@@ -29,6 +29,10 @@ fn candidate_preparation_preserves_provenance_and_admits_only_after_publication(
     ));
     let home = candidate.publish().unwrap();
     let service = prepared.admit_published(&home).unwrap();
+    assert_eq!(
+        service.shared.identity,
+        Some(home.generation_identity().unwrap())
+    );
     assert!(matches!(
         service.prepare_collection(id(30), support::exact_cas::execution_binding().runtime_id()),
         Err(ActivityReadError::Runtime(

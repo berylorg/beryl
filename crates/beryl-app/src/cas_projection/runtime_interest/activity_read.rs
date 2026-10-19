@@ -19,6 +19,7 @@ pub(crate) struct RuntimeActivityReadSource {
     service_generation: ProjectionServiceGeneration,
 }
 
+#[derive(Clone)]
 pub(crate) struct RuntimeActivityObservation {
     source: RuntimeActivityReadSource,
     runtime_id: RuntimeId,
@@ -131,6 +132,51 @@ impl RuntimeActivityReadSource {
 }
 
 impl RuntimeActivityObservation {
+    pub(crate) fn read_thread_metadata(
+        &self,
+        thread: &beryl_model::CasThreadId,
+        timeout: std::time::Duration,
+    ) -> Result<Option<beryl_backend::ThreadReadMetadata>, RuntimeActivityReadError> {
+        if timeout.is_zero() {
+            return Ok(None);
+        }
+        self.with_current(|| ())?;
+        let shared = self
+            .source
+            .shared
+            .upgrade()
+            .ok_or(RuntimeActivityReadError::RuntimeUnavailable)?;
+        let connector = {
+            let state = shared
+                .state
+                .lock()
+                .map_err(|_| RuntimeActivityReadError::Unavailable)?;
+            let entry = state
+                .runtimes
+                .get(&self.runtime_id)
+                .ok_or(RuntimeActivityReadError::RuntimeUnavailable)?;
+            if entry.attempt != self.attempt
+                || entry.status != RuntimeInterestStatus::Ready(self.readiness)
+            {
+                return Err(RuntimeActivityReadError::RuntimeUnavailable);
+            }
+            let Some(connector) = entry.connector.clone() else {
+                return Ok(None);
+            };
+            connector
+        };
+        drop(shared);
+        let Ok(mut session) = connector.connect_request_client(timeout) else {
+            return Ok(None);
+        };
+        let result = session.read_thread_metadata(thread, timeout);
+        let shutdown = session.shutdown();
+        if shutdown.is_err() {
+            return Ok(None);
+        }
+        Ok(result.ok())
+    }
+
     pub(crate) fn runtime_id(&self) -> RuntimeId {
         self.runtime_id
     }

@@ -14,12 +14,12 @@ The editor-derived input-panel minimum and total window minimum are separate qua
 resolved metrics supply the same visible toolbar, optional strips, status segments and input-panel
 dimensions to minimum derivation and rendering. Width accommodates the greatest visible child
 minimum, including complete pinned control groups. Height accommodates all visible pinned chrome,
-the input-panel minimum and the transcript-region minimum, and is at least twice the input-panel
+the input-panel minimum, the minimum of a visible Activity panel and the transcript-region minimum, and is at least twice the input-panel
 minimum so its half-window maximum remains feasible. The transcript-region minimum remains zero.
 Unfilled optional contributions add neither height nor width.
 
 Composer allocation uses the smaller of half the window height and the body height remaining
-after visible pinned chrome and the transcript minimum. Rendering and transcript attachment use
+after visible pinned chrome, the minimum allocation of a visible Activity panel and the transcript minimum. Rendering and transcript attachment use
 that same allocation. At enforced native minimum, the usable input panel remains above and adjacent
 to the bottom-anchored status line; pinned controls neither overlap it nor extend outside the
 client viewport. Candidate appearance or contribution changes do not become visible before their

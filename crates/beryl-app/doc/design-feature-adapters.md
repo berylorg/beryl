@@ -65,6 +65,23 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 
 ## Activity, Status, Notices, And Audio
 
+Activity height writes have process-owned bounded custody, separate from the selected-window read
+loop. Admission reserves one outcome slot per window before executing a command. Cancelling a
+read loop or closing its widget cannot drop an admitted command's original outcome. A pending,
+indeterminate or committed local-finalization outcome blocks replacement in that window; recovery
+may release old-generation custody only after publishing a different Home generation. The custody
+registry retains no Home, graph, window or query resources and is bounded by the restorable-window
+limit. Ordinary completed outcomes can be replaced by a later explicitly committed resize.
+Published Activity identity and its resource reference are supplied by the owning Home publication
+transition before exposing Activity. Publication returns the exact immutable identity with the
+published store, adding no fallible admission after publication succeeds. Initial and recovery
+graphs use this same transition; candidate failure retains its original typed cleanup ownership.
+
+The Activity widget maps its canonical secondary command-button colors to the existing
+`button.secondary` normal/hover/pressed/disabled roles, its command typography to
+`button.secondary.label`, and its focus ring to `focus.ring`. Tooltip fill uses `tooltip` and
+tooltip text/typography use `tooltip.text`. Activity-specific roles remain direct canonical roles.
+
 - Running-thread attachment consumes a worker-prepared canonical transcript seed from a bounded
   source provider. The provider validates exact Syndic history authority, tail range and placement,
   shares immutable snapshot payloads and retains only one prepared attachment. Its final election
@@ -97,6 +114,15 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   Auto visibility derives from accepted-parent/compaction facts independently of query success or
   row count. Initial failure cannot become an empty hidden panel. No GUI callback performs storage
   work or decorates labels through a synchronous backend request.
+- Incoming Activity models additionally validate their exact demand and preparation lifetime.
+  Already accepted viewport interaction uses a separate lightweight no-I/O gate over the exact
+  observed query/claim/Home interval and original runtime period. It retains weak publication and
+  runtime authority, never a collection slot, page model or Home handle. Replacing a page demand
+  therefore does not retire viewport focus or pin every collection slot. Busy or a changed Home
+  observation suppresses input pending fresh observation without tearing down focus/capture;
+  actual selection, graph or period retirement enters the widget's specified inert teardown.
+  Fully prepared resident pages may publish while another page is pending or failed, with exact
+  logical count and honest missing rows; unfinished extractor values never publish.
 - Arbitrary viewport demands use a cancellable off-GUI cursor walk: each quantum reads at most one
   existing bounded page, checks the current demand and yields before another read. Retain at most
   eight opaque cursor checkpoints, a fixed resident page window and one pending demand; neither
@@ -122,7 +148,9 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   Query revision staleness instead invalidates the
   cursor walk and prepares a replacement collection; it cannot be retried forever against the old
   head. Busy publication retains the same prepared result and invokes no consumer update.
-- Retry keeps its failure feedback while pending and disables repeated activation. Coherent
+- Retry keeps its failure feedback while pending and disables repeated activation. Command
+  delivery carries the original opaque failed-request identity, so a late button activation cannot
+  retry a newer demand's failure. Coherent
   success clears feedback; repeated failure enables Retry again. A failed scope still observes
   current claim, query head and original runtime authority each bounded step, so actual query or
   runtime replacement retires the old scope without requiring Retry. A changed Home observation

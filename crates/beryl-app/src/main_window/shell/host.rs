@@ -21,6 +21,9 @@ mod selection_invocation;
 pub(crate) use selection_invocation::MainWindowSelectionInvocation;
 mod running_threads;
 pub(crate) use running_threads::OrdinaryThreadActivationAcceptance;
+mod activity;
+#[cfg(feature = "test-faults")]
+pub use activity::metadata::ActivityMetadataSchedulingHarness;
 mod branch_discussion;
 mod historical_replacement;
 mod model_controls;
@@ -693,6 +696,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    activity: activity::Contribution,
     thread_switcher: thread_switcher::ThreadSwitcherContribution,
     thread_navigation: thread_navigation::ThreadNavigationControls,
     runtime_setup: runtime_setup::RuntimeSetupContribution,

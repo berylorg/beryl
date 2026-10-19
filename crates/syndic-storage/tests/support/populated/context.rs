@@ -2,8 +2,8 @@ use beryl_model::{BindingRevision, DiscussionContextOwnerId, DraftRevision, Proj
 use syndic_storage::test_faults::{FixtureRecord, fixture_transcript_digest_seed};
 use syndic_storage::*;
 
+use super::super::{canonical_empty_root_history_pair_for, draft_id, id, timestamp};
 use super::{source_item, source_projection, source_turn};
-use crate::support::{canonical_empty_root_history_pair_for, draft_id, id, timestamp};
 
 pub(super) fn records() -> Vec<FixtureRecord> {
     records_with_root_history(canonical_empty_root_history_pair_for(draft_id(37)))

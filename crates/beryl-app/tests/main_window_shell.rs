@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "main_window_shell/activity.rs"]
+mod activity;
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
 #[path = "main_window_shell/custody.rs"]

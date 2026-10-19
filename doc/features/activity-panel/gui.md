@@ -26,3 +26,7 @@ The feature supplies the design-owned committed window-local panel height and th
 and maximum bounds from the conversation layout. Showing the widget takes height only from the
 transcript region; hiding it unmounts the slot contribution without moving the discussion-status
 strip, pinned composer, or global status line.
+
+Height read/save failures use the existing window-local notification surface. They do not reuse
+the row-query feedback region or add another Activity command. Query Retry retains its exact
+initial/page scope independently of height-save feedback.

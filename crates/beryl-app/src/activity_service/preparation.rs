@@ -77,18 +77,26 @@ impl PreparedActivityService {
                     runtime,
                 },
                 limits,
+                None,
             ),
         })
     }
 
-    pub(crate) fn into_service(mut self) -> ActivityService {
+    pub(crate) fn into_service(
+        mut self,
+        home: &HomeStore,
+        identity: beryl_home_store::HomeGenerationIdentity,
+    ) -> ActivityService {
         let shared =
             Arc::get_mut(&mut self.service.shared).expect("unshared prepared Activity service");
-        shared
-            .state
-            .get_mut()
-            .expect("unobserved Activity state")
-            .live = true;
+        shared.identity = Some(identity);
+        let state = shared.state.get_mut().expect("unobserved Activity state");
+        state
+            .resources
+            .as_mut()
+            .expect("prepared Activity resources")
+            .home = home.service_reference();
+        state.live = true;
         self.service
     }
 
@@ -97,21 +105,13 @@ impl PreparedActivityService {
         self,
         home: &HomeStore,
     ) -> Result<ActivityService, ActivityReadError> {
-        let shared = &self.service.shared;
-        if home.home_id() != shared.home_id {
+        if home.home_id() != self.service.shared.home_id {
             return Err(ActivityReadError::Identity);
         }
-        home.try_elect_coherent(shared.generation, || {
-            let mut state = shared
-                .state
-                .lock()
-                .map_err(|_| ActivityReadError::Unavailable)?;
-            if state.resources.is_none() {
-                return Err(ActivityReadError::Unavailable);
-            }
-            state.live = true;
-            Ok(())
-        })??;
-        Ok(self.service)
+        let identity = home.generation_identity().map_err(SyndicReadError::from)?;
+        home.try_elect_coherent(self.service.shared.generation, || {
+            self.into_service(home, identity)
+        })
+        .map_err(ActivityReadError::from)
     }
 }

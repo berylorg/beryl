@@ -279,6 +279,12 @@ impl HomeOpenPublication {
     }
 
     pub fn publish(self) -> Result<HomeStore, HomeCandidateFailure<Self>> {
+        self.publish_with_identity().map(|(home, _)| home)
+    }
+
+    pub fn publish_with_identity(
+        self,
+    ) -> Result<(HomeStore, crate::HomeGenerationIdentity), HomeCandidateFailure<Self>> {
         let result = self.initial.validate(&self.requirements).and_then(|()| {
             let count = self.initial.store.reconciliation.pending_scope_count();
             if count != 0 {
@@ -291,7 +297,10 @@ impl HomeOpenPublication {
                 .map_err(HomeCandidateError::from)
         });
         match result {
-            Ok(()) => Ok(self.initial.store),
+            Ok(()) => {
+                let identity = self.initial.store.generation_identity_at_publication();
+                Ok((self.initial.store, identity))
+            }
             Err(error) => {
                 if !matches!(error, HomeCandidateError::PendingReconciliation { .. }) {
                     self.initial.fail();

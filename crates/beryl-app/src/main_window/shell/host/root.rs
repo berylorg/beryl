@@ -119,6 +119,7 @@ impl MainWindowShellRoot {
                 - px(self.notice_chrome_height())
                 - px(status_controls::STATUS_STRIP_HEIGHT_PX)
                 - input_height
+                - self.activity_allocation(&metrics, input_height, viewport.height)
                 - lineage_height)
                 .max(px(0.0)),
         )
@@ -136,6 +137,7 @@ impl MainWindowShellRoot {
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
         let mut root = Self {
+            activity: activity::Contribution::new(),
             thread_switcher: thread_switcher::ThreadSwitcherContribution::new(cx),
             thread_navigation: thread_navigation::ThreadNavigationControls::new(cx),
             runtime_setup: runtime_setup::RuntimeSetupContribution::new(cx),
@@ -335,6 +337,7 @@ impl Render for MainWindowShellRoot {
         self.sync_captured_branch(window, cx);
         self.sync_runtime_setup(window, cx);
         self.sync_thread_switcher(window, cx);
+        self.sync_activity(window, cx);
         self.sync_notices(window, cx);
         self.sync_historical_record_dimming(cx);
         let history_loading = self.selected_history_loading(cx);
@@ -377,7 +380,6 @@ impl Render for MainWindowShellRoot {
             .update(cx, |panel, cx| {
                 panel.render_quote_menu(quote_colors, window, cx)
             });
-        let appearance = &controller.appearance;
         let composer = controller
             .composer_mount()
             .or_else(|| self.runtime_setup.mount.clone());
@@ -389,6 +391,9 @@ impl Render for MainWindowShellRoot {
         let composer_height = controller
             .metrics
             .composer_height(content_height, window.viewport_size().height);
+        let activity = self.render_activity(composer_height, window, cx);
+        let controller = self.controller.as_ref().unwrap();
+        let appearance = &controller.appearance;
         let command = controller
             .metrics
             .new_window
@@ -471,6 +476,7 @@ impl Render for MainWindowShellRoot {
                             .when(history_loading, |region| region.opacity(0.55))
                             .child(self.running_threads.transcript.clone()),
                     )
+                    .children(activity)
                     .children(input_panel),
             )
             .child(status)

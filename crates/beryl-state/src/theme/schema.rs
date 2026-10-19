@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
+mod activity;
+
 use super::{
     ThemeColor, ThemeFontFamily, ThemeFontScale, ThemeFontStyle, ThemeFontWeight,
     ThemeLogicalPixels, ThemePropertyId, ThemeRoleId, ThemeTextDecoration, ThemeValue,
@@ -178,6 +180,9 @@ const NARRATIVE_BLOCK: &[ThemePropertyId] = &[
 ];
 
 fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
+    if let Some(properties) = activity::properties(id) {
+        return properties;
+    }
     if id.starts_with("transcript-view.narrative-block") {
         return NARRATIVE_BLOCK;
     }
@@ -423,6 +428,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if let Some(value) = activity::palette(id) {
+        return value;
+    }
     if id.starts_with("transcript-view.narrative-") {
         return Palette {
             background: [0x11, 0x18, 0x27],
@@ -689,6 +697,29 @@ fn notice_severity_palette(id: &str) -> Option<Palette> {
 }
 
 const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
+    ("activity-panel", Some("surface.panel")),
+    ("activity-panel.resize-handle", Some("activity-panel")),
+    (
+        "activity-panel.resize-handle.focus-visible",
+        Some("focus.ring"),
+    ),
+    ("activity-panel.feedback", Some("activity-panel")),
+    ("activity-panel.key", Some("text")),
+    ("activity-panel.agent-value", Some("text")),
+    ("activity-panel.activity-value", Some("text")),
+    ("activity-panel.status-marker", Some("activity-panel")),
+    (
+        "activity-panel.status-marker.running",
+        Some("activity-panel.status-marker"),
+    ),
+    (
+        "activity-panel.status-marker.finished-ok",
+        Some("activity-panel.status-marker"),
+    ),
+    (
+        "activity-panel.status-marker.finished-error",
+        Some("activity-panel.status-marker"),
+    ),
     ("root", None),
     ("text", Some("root")),
     ("text.muted", Some("text")),

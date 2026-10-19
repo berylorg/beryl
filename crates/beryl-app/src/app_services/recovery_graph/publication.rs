@@ -39,7 +39,7 @@ impl ProcessServiceOwner {
             services.marker.is_some() && services.activity.is_some() && services.theme.is_some()
         );
         assert!(graph.attention.is_some());
-        let (home, cas, start, handoff) = services
+        let (home, cas, start, handoff, identity) = services
             .cas
             .as_mut()
             .expect("complete recovery CAS")
@@ -65,7 +65,13 @@ impl ProcessServiceOwner {
             shutdown: None,
             shutdown_ready: false,
             handoff: Some(handoff),
-            activity: Some(services.activity.take().unwrap().into_service()),
+            activity: Some(
+                services
+                    .activity
+                    .take()
+                    .unwrap()
+                    .into_service(&home, identity),
+            ),
             marker: Some(services.marker.take().unwrap().into_service()),
             theme: services.theme.take(),
             loaded_theme: None,

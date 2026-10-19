@@ -5,12 +5,20 @@ use syndic_storage::{ActivityQueryHeadRecord, InputGateState, TurnLifecycle};
 
 use super::*;
 
+mod height_custody;
+mod interaction;
+mod presentation;
+pub(crate) use height_custody::{ActivityHeightCustody, ActivityHeightFlight};
+pub(crate) use interaction::ActivityInteractionGate;
+pub(crate) use presentation::{ActivityHeightCommit, ActivityHeightError, ActivityHeightRead};
+
 #[derive(Clone)]
 pub(crate) struct ActivityWindowReader {
     service: Weak<Shared>,
     session: SessionState,
     mutations: HomeMutationObserver,
     graph: Weak<()>,
+    heights: Arc<ActivityHeightCustody>,
 }
 
 #[derive(Clone)]
@@ -40,11 +48,22 @@ impl ActivityService {
             session,
             mutations,
             graph,
+            heights: Arc::default(),
         }
     }
 }
 
 impl ActivityWindowReader {
+    pub(crate) fn generation(&self) -> Option<beryl_home_store::HomeGenerationIdentity> {
+        self.service.upgrade().and_then(|service| service.identity)
+    }
+    pub(crate) fn with_height_custody(mut self, custody: Arc<ActivityHeightCustody>) -> Self {
+        self.heights = custody;
+        self
+    }
+    pub(crate) fn same_publication(&self, other: &Self) -> bool {
+        self.service.ptr_eq(&other.service) && self.graph.ptr_eq(&other.graph)
+    }
     pub(crate) fn select(
         &self,
         window: WindowId,
@@ -61,6 +80,9 @@ impl ActivityWindowReader {
 }
 
 impl ActivityWindowSelection {
+    pub(super) fn window_id(&self) -> WindowId {
+        self.window
+    }
     pub(crate) fn current(&self) -> bool {
         self.reader.graph.strong_count() != 0 && self.lifetime.strong_count() != 0
     }

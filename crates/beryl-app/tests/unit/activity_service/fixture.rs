@@ -167,6 +167,7 @@ impl Fixture {
                 runtime,
             },
             limits,
+            Some(self.home.generation_identity().unwrap()),
         );
         service.shared.state.lock().unwrap().live = true;
         service

@@ -22,6 +22,21 @@ pub(crate) struct ActivityCollection {
     query: Arc<Query>,
 }
 
+#[derive(Clone)]
+pub(super) struct ActivityWeakCollection(Weak<Query>);
+
+impl ActivityWeakCollection {
+    pub(super) fn upgrade(&self) -> Option<ActivityCollection> {
+        self.0.upgrade().map(|query| ActivityCollection { query })
+    }
+}
+
+impl ActivityCollection {
+    pub(super) fn downgrade(&self) -> ActivityWeakCollection {
+        ActivityWeakCollection(Arc::downgrade(&self.query))
+    }
+}
+
 struct Query {
     scope: Arc<Scope>,
     head: ActivityQueryHeadRecord,
@@ -38,6 +53,22 @@ pub(crate) struct ActivityPage {
     query: Arc<Query>,
     page: ActivityQueryPage,
     _capacity: Capacity,
+}
+
+#[derive(Clone)]
+pub(super) struct ActivityPublicationScope(Arc<Scope>);
+
+impl ActivityPublicationScope {
+    pub(super) fn runtime(&self) -> RuntimeActivityObservation {
+        self.0.runtime.clone()
+    }
+    pub(super) fn with_observed<T>(
+        &self,
+        observation: &HomeMutationObservation,
+        publish: impl FnOnce() -> T,
+    ) -> Result<T, ActivityReadError> {
+        self.0.with_observed(observation, publish)
+    }
 }
 
 pub(super) fn prepare(
@@ -84,6 +115,9 @@ impl Scope {
 }
 
 impl ActivityCollectionRequest {
+    pub(super) fn publication_scope(&self) -> ActivityPublicationScope {
+        ActivityPublicationScope(Arc::clone(&self.scope))
+    }
     pub(crate) fn with_current<T>(
         &self,
         publish: impl FnOnce() -> T,
@@ -132,6 +166,12 @@ impl ActivityCollectionRequest {
 }
 
 impl ActivityCollection {
+    pub(super) fn runtime(&self) -> RuntimeActivityObservation {
+        self.query.scope.runtime.clone()
+    }
+    pub(super) fn publication_scope(&self) -> ActivityPublicationScope {
+        ActivityPublicationScope(Arc::clone(&self.query.scope))
+    }
     pub(crate) fn same_query(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.query, &other.query)
     }

@@ -191,6 +191,10 @@ pub use activity_service::test_support::{
     ActivityWindowHarness, ActivityWindowTestMetadataCompletion, ActivityWindowTestMetadataRequest,
     ActivityWindowTestPrepared, ActivityWindowTestSnapshot, ActivityWindowTestStep,
 };
+#[cfg(feature = "test-faults")]
+pub use widgets::activity_panel::model as activity_panel_test_support;
+#[cfg(feature = "test-faults")]
+pub use widgets::activity_panel::test_support as activity_panel_native_test_support;
 mod app_services;
 #[cfg(target_os = "windows")]
 pub mod bootstrap;

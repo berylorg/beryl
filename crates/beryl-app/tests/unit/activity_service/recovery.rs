@@ -78,8 +78,12 @@ fn recovery_activity_stays_dormant_until_publication_and_disposes_before_abort()
             0
         );
         let home = if publish {
-            let home = candidate.publish().unwrap();
-            let service = prepared.into_service();
+            let (home, identity) = candidate.publish_with_identity().unwrap();
+            let service = prepared.into_service(&home, identity);
+            assert_eq!(
+                service.shared.identity,
+                Some(home.generation_identity().unwrap())
+            );
             assert!(matches!(
                 service.prepare_collection(
                     id(30),

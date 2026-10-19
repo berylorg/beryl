@@ -35,6 +35,7 @@ impl MainWindowShellRoot {
             "resourcePreparationPending": self.running_threads.diagnostic_resource_preparation_pending()
                 || self.running_threads.transcript.read(app).resource_demand().is_some(),
             "transcript": self.running_threads.transcript.read(app).diagnostic_ui_facts(limit),
+            "activity": self.diagnostic_activity_facts(app),
         })
     }
 }

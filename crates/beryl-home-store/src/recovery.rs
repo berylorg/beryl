@@ -249,7 +249,13 @@ impl HomeRecoveryCandidate {
 
     /// Publishes the candidate as the new healthy store generation.
     #[must_use]
-    pub fn publish(mut self) -> Result<HomeStore, crate::HomeCandidateFailure<Self>> {
+    pub fn publish(self) -> Result<HomeStore, crate::HomeCandidateFailure<Self>> {
+        self.publish_with_identity().map(|(home, _)| home)
+    }
+
+    pub fn publish_with_identity(
+        mut self,
+    ) -> Result<(HomeStore, crate::HomeGenerationIdentity), crate::HomeCandidateFailure<Self>> {
         if let Err(error) = self.validate_publication() {
             return Err(crate::HomeCandidateFailure::new(error, self));
         }
@@ -261,7 +267,9 @@ impl HomeRecoveryCandidate {
             return Err(crate::HomeCandidateFailure::new(error.into(), self));
         }
         drop(self.maintenance.take());
-        Ok(self.store.take().expect("candidate store is present"))
+        let home = self.store.take().expect("candidate store is present");
+        let identity = home.generation_identity_at_publication();
+        Ok((home, identity))
     }
 
     /// Aborts unpublished stack construction and returns failed authority for

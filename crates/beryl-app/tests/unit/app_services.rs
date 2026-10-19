@@ -247,6 +247,10 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
     assert_eq!(graph.home().home_id(), home_id);
     assert_eq!(graph.home().health().generation(), Some(generation));
     assert_eq!(graph.home().health().state(), HomeHealthState::Healthy);
+    assert_eq!(
+        graph.activity_reader().unwrap().generation(),
+        Some(graph.home().generation_identity().unwrap())
+    );
     assert!(graph.handoff.is_some() && graph.activity.is_some() && graph.marker.is_some());
     assert_eq!(themes.diagnostics().active_subscriptions(), 1);
     assert!(!observation.wait_until_reached(Duration::from_millis(60)));

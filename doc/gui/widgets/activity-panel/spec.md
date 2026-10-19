@@ -272,6 +272,8 @@ Default variant: compact fixed-row activity list with a top-edge resize handle.
   --gap: 8px;
   --background: #172033;
   --foreground: #fecaca;
+  --font-size: 12px;
+  --font-weight: 400;
 }
 
 .activity-panel__row {

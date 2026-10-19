@@ -24,6 +24,8 @@ pub(in crate::main_window) struct ShellMetrics {
     pub exit_width: gpui::Pixels,
     pub turn_width: gpui::Pixels,
     pub lineage: bool,
+    pub activity: bool,
+    pub activity_width: gpui::Pixels,
     pub new_window: bool,
 }
 
@@ -73,6 +75,8 @@ impl ShellMetrics {
             exit_width,
             turn_width: width("M", "status.line.value", 12., 400.)? + px(20.),
             lineage,
+            activity: false,
+            activity_width: px(0.),
             new_window,
         };
         if environment.is_some() && environment != app.text_system().font_environment_key() {
@@ -106,8 +110,21 @@ impl ShellMetrics {
             self.panel
                 .width
                 .max(toolbar)
+                .max(if self.activity {
+                    self.activity_width
+                } else {
+                    px(0.)
+                })
                 .max(px(MODEL_WIDTH + CONTEXT_WIDTH + STATUS_DIVIDER_WIDTH * 2.) + self.turn_width),
-            (self.panel.height * 2.).max(self.pinned_height() + self.panel.height),
+            (self.panel.height * 2.).max(
+                self.pinned_height()
+                    + self.panel.height
+                    + if self.activity {
+                        px(crate::widgets::activity_panel::model::MIN_HEIGHT)
+                    } else {
+                        px(0.)
+                    },
+            ),
         )
     }
 
@@ -116,10 +133,44 @@ impl ShellMetrics {
         content: gpui::Pixels,
         viewport: gpui::Pixels,
     ) -> gpui::Pixels {
-        (content + px(22.))
-            .max(self.panel.height)
-            .min((viewport * 0.5).min((viewport - self.pinned_height()).max(px(0.))))
+        (content + px(22.)).max(self.panel.height).min(
+            (viewport * 0.5).min(
+                (viewport
+                    - self.pinned_height()
+                    - if self.activity {
+                        px(crate::widgets::activity_panel::model::MIN_HEIGHT)
+                    } else {
+                        px(0.)
+                    })
+                .max(px(0.)),
+            ),
+        )
     }
+}
+
+fn activity_minimum_width(
+    generation: &AppearanceGeneration,
+    app: &App,
+) -> Result<gpui::Pixels, String> {
+    let environment = app.text_system().font_environment_key();
+    let font = theme_font(generation, "activity-panel.key", 11., 500.);
+    let mut style = gpui::TextStyle::default();
+    style.font_weight = gpui::FontWeight(font.weight);
+    if let Some(family) = font.family {
+        style.font_family = family;
+    }
+    let mut width = px(60.);
+    for caption in ["Agent", "Activity"] {
+        width += app
+            .text_system()
+            .layout_line_checked(caption, px(font.size), &[style.to_run(caption.len())], None)
+            .map_err(|error| format!("Activity keys could not be measured: {error}"))?
+            .width;
+    }
+    if environment.is_some() && environment != app.text_system().font_environment_key() {
+        return Err("Activity key font environment changed during measurement.".into());
+    }
+    Ok(width)
 }
 
 pub(in crate::main_window) fn contains(
@@ -221,13 +272,18 @@ impl MainWindowShellRoot {
         lineage: bool,
         app: &App,
     ) -> Result<ShellMetrics, String> {
-        ShellMetrics::resolve(
+        let mut metrics = ShellMetrics::resolve(
             generation,
             panel,
             lineage,
             self.creation.is_some() || self.controller.as_ref().is_some_and(|c| c.is_threadless()),
             app,
-        )
+        )?;
+        metrics.activity = self.activity_visible();
+        if metrics.activity {
+            metrics.activity_width = activity_minimum_width(generation, app)?;
+        }
+        Ok(metrics)
     }
 
     pub(in crate::main_window) fn prepare_minimum(

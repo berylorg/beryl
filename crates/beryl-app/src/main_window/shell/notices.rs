@@ -8,6 +8,7 @@ use crate::main_window::{
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearancePublicationTarget};
 use gpui::Focusable;
 
+mod activity;
 mod composer;
 mod home_warning;
 mod lifecycle_attention;

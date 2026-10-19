@@ -298,6 +298,13 @@ impl HomeStore {
         Ok(identity)
     }
 
+    pub(crate) fn generation_identity_at_publication(&self) -> HomeGenerationIdentity {
+        HomeGenerationIdentity {
+            instance: self.writer_id,
+            generation: self.admitted_generation,
+        }
+    }
+
     /// Returns the durable opaque identity stored in the home header.
     #[must_use]
     pub const fn home_id(&self) -> BerylHomeId {

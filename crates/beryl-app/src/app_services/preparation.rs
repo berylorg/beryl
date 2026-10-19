@@ -231,7 +231,12 @@ impl PreparedAppServices {
                 prepared: Box::new(self),
             });
         }
-        let home = match self.candidate.take().expect("private candidate").publish() {
+        let (home, identity) = match self
+            .candidate
+            .take()
+            .expect("private candidate")
+            .publish_with_identity()
+        {
             Ok(home) => home,
             Err(failure) => {
                 let (error, candidate) = failure.into_parts();
@@ -270,7 +275,7 @@ impl PreparedAppServices {
                 self.activity
                     .take()
                     .expect("prepared Activity")
-                    .into_service(),
+                    .into_service(&home, identity),
             ),
             marker: Some(self.marker.take().expect("prepared marker").into_service()),
             theme: self.theme.take(),

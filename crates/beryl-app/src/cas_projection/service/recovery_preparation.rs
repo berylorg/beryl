@@ -61,15 +61,16 @@ impl PreparedRecoveryCasServices {
             ProjectionConnectionService,
             InitialStartOwner,
             crate::discussion_settlement::coordinator::HandoffCoordinator,
+            beryl_home_store::HomeGenerationIdentity,
         ),
         beryl_home_store::HomeCandidateError,
     > {
         assert!(self.service.is_some() && self.initial_start.is_some() && self.handoff.is_some());
-        let home = match self
+        let (home, identity) = match self
             .candidate
             .take()
             .expect("reopening candidate custody")
-            .publish()
+            .publish_with_identity()
         {
             Ok(home) => home,
             Err(failure) => {
@@ -83,6 +84,7 @@ impl PreparedRecoveryCasServices {
             self.service.take().unwrap(),
             self.initial_start.take().unwrap(),
             self.handoff.take().unwrap(),
+            identity,
         ))
     }
 

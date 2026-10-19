@@ -18,6 +18,11 @@ Beryl metadata domains without exposing Fjall internals to application or backen
 
 ## Package Boundary
 
+Initial and recovery publication can return the published store together with its exact immutable
+store-instance/generation identity. This identity is captured within the successful publication
+transition and adds no later fallible read. Abort/reopen creates a different store instance even
+when the numeric generation repeats. The identity grants no read or mutation authority.
+
 - The package owns one Fjall database, one serialized writer-admission permit, the home lifecycle
   and health gate, the process-local reconciliation registry, typed domain registration, bounded
   typed reads, atomic commands, and the physical theme and sidecar repositories for one home.

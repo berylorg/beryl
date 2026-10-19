@@ -157,6 +157,7 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 }
 
 pub(crate) struct ProcessServiceOwner {
+    activity_heights: Arc<crate::activity_service::ActivityHeightCustody>,
     runtime_setup_inputs: std::sync::Mutex<Option<MainWindowServiceInputs>>,
     first_configurator:
         std::sync::Mutex<Option<crate::main_window::MainWindowCreationConfiguratorSource>>,
@@ -247,6 +248,7 @@ impl ProcessServiceOwner {
             attempt: InitialServiceAttemptState::Initial,
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
+            activity_heights: Arc::default(),
             settlements: DiscussionSettlementOperations::new(process.clone(), settlement_slots),
             discussion_creations: crate::discussion_creation::DiscussionCreationOperations::new(
                 process.clone(),

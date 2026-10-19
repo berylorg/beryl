@@ -8,6 +8,13 @@ pub(crate) enum AppThemeLoadError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn activity_reader(&self) -> Option<crate::activity_service::ActivityWindowReader> {
+        Some(
+            self.graph()?
+                .activity_reader()?
+                .with_height_custody(self.activity_heights.clone()),
+        )
+    }
     pub(crate) fn graph_mut(&mut self) -> Option<&mut PublishedAppServices> {
         self.graph.as_mut()
     }

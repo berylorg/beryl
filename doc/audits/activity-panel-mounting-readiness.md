@@ -1,6 +1,10 @@
 # Activity Panel Mounting Readiness
 
-## Current Preparation Status
+## Accepted Mounting And Historical Preparation
+
+The selected-thread widget and native interaction boundary are now independently accepted;
+[mounting evidence and coverage limits](activity-panel-mounting.md). The source inventory below
+records the earlier readiness assessment and does not describe the current implementation state.
 
 The persistence boundary was implemented and independently accepted in 666cff4f;
 [evidence](activity-panel-persistence.md). Exact addition/deletion totals require source traversal,
@@ -8,8 +12,7 @@ but that traversal can span bounded, cancellable preparation quanta with bounded
 The subsequent claim that this requires new durable summary facts is withdrawn;
 [corrected lesson](../failures/activity-display-source-readiness.md). A resumable typed source
 extractor and selected-window preparation are now independently accepted;
-[reader/display evidence](activity-panel-pages.md). Actual widget mounting and native interaction
-remain implementation work.
+[reader/display evidence](activity-panel-pages.md).
 
 ## Scope
 
