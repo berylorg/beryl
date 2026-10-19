@@ -272,6 +272,122 @@ tooltip text/typography use `tooltip.text`. Activity-specific roles remain direc
   identity preserves the prior appearance. Replacement transfers no cursor, subscription, preview,
   observation, reconciliation descriptor, or publication authority.
 
+### Settings Application Ownership
+
+- The process composition owns one auxiliary Settings window controller and distributes non-owning
+  open/reveal commands to main-window controllers. The external `gpui-settings-window` directly owns
+  the preheated OS window. Settings receives no Session window/claim record. Opening uses the latest
+  coherent prepared presentation immediately; unavailable or slower feature pages remain localized.
+  Main-window close does not destroy this process-owned window or transfer its draft to that window.
+- One Settings service belongs to each published app-service generation. Initial and recovery graph
+  preparation construct it from that generation's Home service reference, State Settings handle and
+  existing theme service/runtime composition. Only the published graph exposes its non-owning
+  reader/commands. The controller owns the window-local staged draft; the service owns admitted
+  command custody and process-lifetime unresolved-key exclusions independently of GUI observers.
+  Across generation replacement, the process composition retains home-qualified compact exclusions,
+  original intent/outcome facts and the installed Home-registry operation handle. Old executable
+  Home/State/theme handles retire; the registry handle preserves only its original reconciliation
+  scope under Home ownership and never admits a replacement command.
+- Ordinary scalar preparation reads only the closed five-key State schema, including exact absence,
+  record/schema revisions and values. Bounded cursor or point reads plus an unchanged Settings
+  domain revision prove one coherent preparation; a race returns a typed changed/unavailable result,
+  not a mixed snapshot. Feature validation distinguishes absent clean defaults from invalid saved
+  values and supplies row-local availability/feedback without silently accepting invalid values.
+  No backend configuration or arbitrary key/value extension is admitted.
+- Prepared presentation has exact home/service generation and source revision. GUI draft identity
+  additionally includes the Settings window instance and monotonically advancing draft revision;
+  commands bind that original draft, selected route and operation identity. Late loads, page results,
+  command observations or callbacks cannot attach to a replaced source/window/draft by coincidence.
+  Navigation preserves the complete draft; Reset replaces only its named scalar from the proven
+  baseline. Apply/OK consume one immutable, completely validated modified draft.
+- The scalar baseline and staged updates have at most five entries. Developer Instructions retain
+  the feature's separate 60 KiB saved and 64 KiB draft caps; every editor mutation route enforces
+  its hard cap before mutation, including paste/drop and IME commit. Other text uses the owning
+  typed scalar/path limits. Bounded undo and feedback cannot retain unbounded rejected payloads.
+  Ordinary sections/detail rows are statically bounded by the finite schema and external widget
+  limits. Installed-theme and role collections use revision-bound bounded pages and fixed residency;
+  they never become resident vectors to populate a picker or selected detail.
+- Off-GPUI preparation validates the entire modified scalar set and, when needed, prepares the exact
+  active-theme appearance. One typed State `ApplySettings` contribution publishes every modified
+  scalar atomically with captured expected records/revisions or none. No repository file write or
+  theme-document draft is part of that scalar batch. A stale preparation is a definite refusal;
+  there is no automatic resubmission of an edited or rejected draft.
+- The service admits at most one scalar command/reconciliation flight at a time and retains the
+  exact original `CommandOutcome`, receipt, later failure, local finalization and reconciliation
+  capability before any fallible observation or delivery. Caller cancellation before admission may
+  retract the request. An `Indeterminate` result synchronously installs its move-only Home custody
+  into the already reserved original registry scope before any translation or observation; the
+  service retains its original failure and installed handle, never a copied descriptor.
+  Cancellation, window detachment and observer loss after admission cannot discard or duplicate it.
+  Only exact confirmed commit/`ExactNew` cleans the matching draft and
+  permits OK to hide. Definite noncommit/`ExactOld` restores that same staged draft with feedback.
+- Indeterminate scalar custody applies the external window interaction gate and the existing
+  running Exit Settings-reconciliation gate. Repeated Apply, OK, close or Exit cannot queue a second
+  command. Reconciliation only inspects/retries the original capability; it never reissues updates.
+  Healthy-home inability to prove a complete outcome excludes exactly the original modified keys
+  for that process lifetime, retains bounded row-local unresolved feedback, and releases the global
+  interaction/Exit gates. Unrelated keys may form a later valid draft after the old local draft is
+  discarded. No whole-domain or whole-home failure is inferred from scoped uncertainty.
+- Unresolved-key exclusions are bounded by the five-key schema; overlapping updates remain refused,
+  while disjoint requests retain ordinary revision validation. The Settings service does not create
+  another durable journal or reconciliation registry. Home-owned reserved/collision custody follows
+  its existing limits and disposal rules, and capacity refusal is explicit rather than queued.
+- One bounded applied-settings source is the operation-time boundary for App scalar consumers,
+  with at most five validated values/defaults and separate per-key availability. State remains the
+  durable authority; this source is a generation-qualified active projection, not another journal.
+  It starts from a coherent validated startup snapshot and publishes every confirmed modified value
+  atomically before notifying consumers through coalesced generation/revision-qualified invalidations.
+  Staged fields and unproven intended values never enter it. While the original command is pending,
+  it retains the prior proven active values; after scoped unresolved classification, the affected
+  keys become unavailable rather than being guessed or trusted through a raw State reread. Healthy
+  disjoint keys remain usable. Fresh same-process preparation preserves those exclusions.
+- Compaction timeout, outbound Developer Instructions and sound resolve their operation-time
+  values through that applied source. Unavailability follows each owning feature's existing refusal
+  or best-effort policy: do not start work with guessed timeout/instructions, and do not play or
+  repeat a sound whose setting is unavailable. Already admitted operations retain their captured
+  configuration. State reads remain for coherent source preparation and proof-qualified refresh,
+  not a second activation path around pending or unresolved settings.
+  Autosave additionally consumes a validated prepared interval: initial,
+  newly selected and recovered composers receive the current generation's proven interval, and
+  committed interval changes update current mounts through their existing timer/publication APIs.
+  Pending or refused drafts do not reschedule timers. Obsolete interval completions cannot replace
+  a newer source. An unavailable interval prevents timer admission/rescheduling while preserving
+  ordinary drafting and explicit checkpoint/submission flush authority. Structural unavailability
+  uses existing composer/Home availability policy.
+- Active-theme selection remains an ordinary scalar in this draft. Its exact prepared appearance
+  reaches the existing ThemeRuntime only after confirmed Settings commit or reconciled new outcome.
+  Appearance application failure preserves the durable batch and matching clean Settings draft,
+  retaining the previous coherent appearance under the theme-runtime contract. The Settings window
+  participates in the same appearance window-set barrier as other themed OS windows.
+  A same-process recovered unresolved active-theme key remains unavailable; it does not select a
+  raw newly observed identity or flash a fallback. Only bounded prior coherent resolved presentation
+  may remain visible as context while a freshly constructed runtime has no publishable durable
+  selection. Old runtime, repository and appearance-publication capabilities never transfer.
+- Repository actions, theme editing, Save/Save As and previews retain distinct theme-runtime
+  ownership, bounded source/draft identities and original outcomes. They do not enter scalar
+  Apply/OK. Their cancellation/close/Exit restrictions follow the owning theming contract; notably
+  Save As never rebinds or cleans the original document draft or activates the new installed id.
+  Orphan old shell Settings sources are not a production dependency or a persistence adapter.
+- Structural Home failure fences new work and presents existing Home unavailability. Retirement
+  cancels source/page preparation, drains admitted work and transfers only bounded original intent
+  and outcome custody needed by explicit recovery; it releases old Home/State/theme handles before
+  old-generation disposal. The Home registry remains the sole original descriptor owner and outlives
+  service generations under its existing contract. A fresh same-home candidate first joins/observes
+  that exact original scope, subordinate to the original `CommandOutcome` and receipt; fresh State
+  reads may then qualify its already classified old/new side without writing or retrying the scalar
+  operation. Natural records alone cannot upgrade a pending/collision scope, reopen a closed scope,
+  or reinterpret original committed/noncommitted evidence. Foreign home, contradictory records or
+  insufficient evidence cannot become success; unresolved exclusions remain for the same process.
+  No old execution capability admits a replacement-generation command.
+- A retained GUI draft may remain bounded read-only context during Home unavailability. Executable
+  editing/commit authority returns only with a coherent fresh baseline and exact original-operation
+  classification; it is never silently rebased onto changed records. Cancel/close may discard a
+  non-reconciling unavailable draft and later opening starts from freshly proven current values.
+  Process termination loses the window draft as specified by the Settings feature. Final shutdown
+  closes/releases the native window and subscriptions, joins/drains command custody and source
+  workers, and releases the service before Home disposal; abandoned waits retain explicit cleanup
+  custody rather than fabricating completion.
+
 ## Discussion Creation Adapter
 
 - The non-GUI creation operation owns one exact captured request, stable child/draft identities,

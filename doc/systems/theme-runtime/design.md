@@ -175,6 +175,12 @@ authority.
 - The Settings command may commit the active identity with unrelated scalar settings. A later theme
   application failure cannot roll back or reinterpret that durable batch; the runtime keeps the
   prior coherent appearance and retries application from the newly durable identity when requested.
+- Same-process service recovery preserves an unresolved Settings active-identity exclusion. A fresh
+  runtime cannot treat a raw Settings reread as confirmation of that original operation or activate
+  an unproven identity. It retains only bounded prior coherent resolved presentation as unavailable
+  context until a publishable selection is proven; it does not flash a fallback or reuse an old
+  repository/runtime/publication capability. This differs from a new process startup, which has no
+  retained window draft or process-local unresolved exclusions and loads the current durable snapshot.
 - The feature-owned theme-document draft is separate from the Settings draft and binds installed
   theme id, base repository generation, document revision, and draft revision. Theme property rows
   may use settings widgets, but their events never enter Settings Apply/OK.

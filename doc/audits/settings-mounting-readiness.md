@@ -90,3 +90,14 @@ Independent source/authority review accepted this readiness boundary and the ord
 correction, with no major architectural or technical blocker. It accepts ownership/custody design
 formalization followed by the complete mount, not a Settings implementation. No source, Cargo
 manifest or runtime mutation was performed for this readiness phase.
+
+## Application Ownership Review
+
+Independent semantic/lifetime review accepted the subsequent
+[Settings application ownership](../../crates/beryl-app/doc/design-feature-adapters.md#settings-application-ownership)
+and matching [theme recovery rule](../systems/theme-runtime/design.md). Original Home registry
+classification controls reconciliation across service replacement. A finite applied-settings source
+preserves proven values while pending and excludes only unresolved keys from new consumer work.
+Same-process theme recovery retains bounded presentation context without transferring old execution
+authority. No material architecture choice blocks the complete mount. This acceptance covers
+authority only; implementation and runtime qualification remain outstanding.
