@@ -495,7 +495,7 @@
   [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
 - [x] Qualified Settings mounting readiness and its live scalar consumers; [readiness](../../audits/settings-mounting-readiness.md).
 - [x] Defined and independently reviewed Settings application ownership, applied values and original recovery custody; [review](../../audits/settings-mounting-readiness.md#application-ownership-review).
-- [ ] Mount the complete Settings workflow and committed scalar publication through bounded presentation.
+- [ ] Mount the complete Settings workflow and committed scalar publication through bounded presentation; pinned widget interaction/input prerequisites are incomplete ([source correction](../../failures/settings-widget-contract-readiness.md)).
 - [x] Mounted ordinary accepted-input history with bounded authenticated recall, undoable pre-browse restoration and exact acceptance/recovery custody; [acceptance](../../audits/composer-input-history-mounting.md).
 - [x] Accepted window-local Activity height persistence, bounded source preparation and selected-thread mounting with exact Retry, metadata and command custody; [persistence](../../audits/activity-panel-persistence.md), [pages](../../audits/activity-panel-pages.md) and [mounting acceptance](../../audits/activity-panel-mounting.md).
 - [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current

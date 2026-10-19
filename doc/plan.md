@@ -51,5 +51,12 @@ theme, startup, recovery and shell regressions. Run focused development checks, 
 production checks and complete independent semantic/lifetime review before acceptance. Preserve
 evidence in a durable audit; simulated GUI tests do not prove native paint or sustained scrolling.
 
-Current milestone: authority accepted with no major blocker. Establish the concrete service/window
-API seam, replace orphan Settings sources and implement the live graph and consumer integration.
+Current milestone: authority accepted; exact orphan shell Settings sources archived outside the
+live module graph. No replacement production source or manifest changes yet.
+
+Blocked prerequisite: the pinned external Settings widget does not implement its documented
+window interaction/field availability contracts, footer gates or pre-mutation input size limit.
+Its native close hides before host observation. Host callbacks cannot satisfy atomic input refusal
+or reconciliation freeze. Implement and qualify the missing contracts in the owned widget/input
+dependencies and publish their exact revisions before resuming this App mount; resolve their
+owning design/plan boundary first. [Evidence and readiness correction](failures/settings-widget-contract-readiness.md).

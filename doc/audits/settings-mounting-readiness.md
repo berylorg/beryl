@@ -32,8 +32,11 @@ settings journal, a new family, backend configuration UI or an unbounded generic
   noncommit, uncertainty and collision. Appearance failure cannot reinterpret the durable scalar
   batch. The process graph prepares and retires these services through current startup/recovery.
 - The external window supports four static sections within its 32-section limit, bounded detail
-  rows, independently gated row availability/validity, a window-wide reconciliation gate and
-  revision-bound paged split lists. Its preheated OS window is the product window itself.
+  rows and revision-bound paged split lists. Its preheated OS window is the product window itself.
+  The original readiness review incorrectly treated documented field availability and window-wide
+  reconciliation gating as implemented. Follow-up inspection of pinned revision
+  `feb598064dcc6b5ea85ba7fad02173f3dd8f2109` found these production APIs missing; see the
+  [source-readiness correction](../failures/settings-widget-contract-readiness.md).
 - The running Exit producer already exposes a Settings-reconciliation availability gate. It is a
   primitive awaiting its owning Settings state, not evidence of a mounted Settings workflow.
 
@@ -101,3 +104,12 @@ preserves proven values while pending and excludes only unresolved keys from new
 Same-process theme recovery retains bounded presentation context without transferring old execution
 authority. No material architecture choice blocks the complete mount. This acceptance covers
 authority only; implementation and runtime qualification remain outstanding.
+
+## Source Readiness Correction
+
+The authority review remains valid, but production source readiness is incomplete. The pinned
+external Settings widget always enables its footer, hides on native close before host observation,
+and constructs ordinary text inputs with only undo retention limits. It cannot enforce the
+required reconciliation freeze or atomic Developer Instructions size refusal through host event
+callbacks. Implement and qualify those contracts in the owning widget/input dependencies before
+resuming the complete App mount. No Settings service or window implementation is claimed.
