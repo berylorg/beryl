@@ -1,28 +1,35 @@
 # Scope
 
-Continue the ordered [Beryl-home rework](rework/beryl-home/REWORK.md). Ordinary accepted-input
-composer history is accepted; qualify the remaining Settings source mounting boundary next.
-Preserve accepted shell, catalog/navigation, Activity, transcript, composer submission/history,
-restoration and replacement-edit workflows, and unrelated skills/memory. Commit and push accepted
+Continue the ordered [Beryl-home rework](rework/beryl-home/REWORK.md) without stopping between ready
+phases unless a major blocker requires Operator input. Mount the remaining Settings workflow while
+preserving accepted shell, catalog/navigation, Activity, transcript, composer history/submission,
+restoration and replacement editing. Preserve unrelated skills/memory. Commit and push accepted
 phases; no installation is authorized.
 
-# Phase 791: Mount Ordinary Accepted-Input Composer History (finished)
+# Phase 792: Qualify Remaining Settings Source Mounting Readiness (finished)
 
-Mounted exact acceptance capture, bounded ordinary recall and same-session directed restoration
-through real composer keys, Undo/Redo and original recovery custody. All 317 owning/affected cases,
-final production checks and independent semantic/lifetime review passed;
-[qualification](audits/composer-input-history-mounting.md).
+Independent source/authority review accepted the production prerequisite inventory and complete
+next boundary, including committed autosave publication. No source or runtime mutation;
+[readiness](audits/settings-mounting-readiness.md).
 
-# Phase 792: Qualify Remaining Settings Source Mounting Readiness (pending)
+# Phase 793: Define Complete Settings Application Ownership (wip)
 
-Resolve the remaining Settings portion of Checkpoint 4 into one source-backed next implementation
-boundary. Read the [Settings feature](features/settings/design.md) and [GUI](features/settings/gui.md),
-[Home storage](systems/beryl-home-storage/design.md), [State](../crates/beryl-state/doc/design.md) and
-[App](../crates/beryl-app/doc/design.md) authority. Trace actual toolbar/window entry, coherent bounded
-settings presentation, typed draft validation/commit and same-home recovery/retirement consumers.
-Distinguish accepted widget lifecycle and split-source primitives from a complete product mount.
+Formalize the app-owned Settings process/window/service boundary before source implementation.
+Use the existing Settings feature/GUI, State typed setting schema, Home outcomes, theme runtime
+and external settings-window contracts identified by the readiness audit. Record coherent finite
+scalar preparation, exact window draft/command identities, bounded input and pending custody,
+scoped unresolved keys, publication to live scalar consumers, active-theme integration, and
+startup/same-home retirement/final shutdown ownership in the authoritative app design.
 
-Record the existing accepted behavior, exact remaining consumer or authority gaps, and the next
-bounded observable acceptance boundary in a readiness audit. Apply the effective rigor and an
-independent readiness review; check links and reconcile indexed docs. This phase authorizes
-read-only diagnosis and evidence, not production source changes or new design choices.
+Preserve all product choices and existing dependency guarantees. Resolve architecture in its
+owning authority, obtain independent semantic/lifetime review, then detail the complete mounting
+phase. No production source changes belong to this authority phase.
+
+Current milestone: readiness is accepted with no major blocker; formalize the missing App
+ownership/custody and autosave-consumer path while keeping existing validated primitives.
+
+# Phase 794: Mount The Complete Settings Workflow (pending)
+
+After ownership authority is accepted, deliver actual toolbar/window entry, bounded pages and
+staged fields, atomic Apply/OK, Reset/Cancel/close, original reconciliation/recovery/Exit custody,
+committed scalar publication and feature-owned theme integration with complete qualification.
