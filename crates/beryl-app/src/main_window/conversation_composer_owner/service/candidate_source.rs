@@ -19,6 +19,12 @@ pub struct MainWindowComposerCandidateSource {
 }
 
 impl MainWindowComposerCandidateSource {
+    pub(in crate::main_window) fn bind_accepted_input_history(
+        &self,
+        owner: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
+    ) -> Result<(), String> {
+        self.service.bind_accepted_input_history(owner)
+    }
     pub fn new(
         candidate: &mut HomeRecoveryCandidate,
         retired: MainWindowComposerRetiredClose,

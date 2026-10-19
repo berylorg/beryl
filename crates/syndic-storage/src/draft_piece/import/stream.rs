@@ -1,4 +1,4 @@
-use beryl_model::{HistoricalInputMarkerAssociationV1, ImageLabelOrdinal, SyndicDraftMarkerId};
+use beryl_model::{ImageLabelOrdinal, SyndicDraftMarkerId};
 use sha2::{Digest, Sha256};
 
 use super::super::{DRAFT_PIECE_TEXT_LEAF_MAX_BYTES, DraftPieceLeafValueV1, DraftPieceMarkerV1};
@@ -8,16 +8,21 @@ use super::{
 };
 use crate::{ContentPieceRecord, SyndicReadError};
 
-pub(super) struct StreamStep {
-    pub frontier: DraftSealedImportFrontierV1,
+pub(crate) struct StreamStep<B> {
+    pub frontier: DraftSealedComposerFrontierV1<B>,
     pub leaf: Option<DraftPieceLeafValueV1>,
 }
 
-pub(super) fn marker_frame(
+pub(crate) fn marker_frame<B: SealedComposerBasisV1>(
     reader: &impl SourceReader,
-    frontier: DraftSealedImportFrontierV1,
+    frontier: DraftSealedComposerFrontierV1<B>,
 ) -> Result<(SyndicDraftMarkerId, ImageLabelOrdinal), SyndicReadError> {
-    let bytes = encoded_range(reader, frontier.basis.content, frontier.encoded_cursor, 25)?;
+    let bytes = encoded_range(
+        reader,
+        frontier.basis.content(),
+        frontier.encoded_cursor,
+        25,
+    )?;
     if bytes[0] != 1 {
         return invalid();
     }
@@ -27,7 +32,7 @@ pub(super) fn marker_frame(
     }
     let label = ImageLabelOrdinal::new(u64::from_be_bytes(bytes[17..25].try_into().unwrap()))
         .map_err(|_| SyndicReadError::Invariant("import image label invalid"))?;
-    let piece = source_piece(reader, frontier.basis.content, frontier.next_piece)?;
+    let piece = source_piece(reader, frontier.basis.content(), frontier.next_piece)?;
     match piece {
         ContentPieceRecord::ImageMarker {
             atom_ordinal,
@@ -62,19 +67,19 @@ pub(super) fn marker_frame(
     }
 }
 
-pub(super) fn next_stream_step(
+pub(crate) fn next_stream_step<B: SealedComposerBasisV1>(
     reader: &impl SourceReader,
-    mut f: DraftSealedImportFrontierV1,
-    association: Option<HistoricalInputMarkerAssociationV1>,
-) -> Result<StreamStep, SyndicReadError> {
+    mut f: DraftSealedComposerFrontierV1<B>,
+    association: Option<SealedComposerMarkerAssociationV1>,
+) -> Result<StreamStep<B>, SyndicReadError> {
     if f.phase != DraftSealedImportPhaseV1::Streaming {
         return invalid();
     }
-    let summary = f.basis.content.summary();
+    let summary = f.basis.content().summary();
     let mut leaf = None;
     match f.decoder {
         DraftSealedImportDecoderV1::BeforeHeader => {
-            let header = encoded_range(reader, f.basis.content, 0, 9)?;
+            let header = encoded_range(reader, f.basis.content(), 0, 9)?;
             if header[0] != 1
                 || u64::from_be_bytes(header[1..9].try_into().unwrap()) != summary.atom_count()
             {
@@ -96,7 +101,7 @@ pub(super) fn next_stream_step(
                     || f.piece_text_offset != 0
                     || f.sequential_digest != summary.marker_digest()
                     || f.maximum_label != summary.maximum_image_label()
-                    || f.basis.assets.is_some_and(|p| {
+                    || f.basis.assets().is_some_and(|p| {
                         p.ordered_assets().marker_asset_digest() != f.ordered_digest
                     })
                 {
@@ -111,10 +116,10 @@ pub(super) fn next_stream_step(
                     return invalid();
                 }
             } else {
-                let tag = encoded_range(reader, f.basis.content, f.encoded_cursor, 1)?[0];
+                let tag = encoded_range(reader, f.basis.content(), f.encoded_cursor, 1)?[0];
                 match tag {
                     0 => {
-                        let frame = encoded_range(reader, f.basis.content, f.encoded_cursor, 9)?;
+                        let frame = encoded_range(reader, f.basis.content(), f.encoded_cursor, 9)?;
                         let length = u64::from_be_bytes(frame[1..9].try_into().unwrap());
                         f.encoded_cursor = add(f.encoded_cursor, 9)?;
                         if add(f.encoded_cursor, length)? > summary.encoded_bytes() {
@@ -128,7 +133,7 @@ pub(super) fn next_stream_step(
                         }
                     }
                     1 => {
-                        let (id, label) = marker_frame(reader, f)?;
+                        let (id, label) = marker_frame(reader, f.clone())?;
                         let association = association
                             .ok_or(SyndicReadError::Invariant("import image proof required"))?;
                         if association.marker_id() != id
@@ -167,7 +172,7 @@ pub(super) fn next_stream_step(
         DraftSealedImportDecoderV1::TextBody => {
             let mut bytes = Vec::new();
             for _ in 0..4 {
-                let piece = source_piece(reader, f.basis.content, f.next_piece)?;
+                let piece = source_piece(reader, f.basis.content(), f.next_piece)?;
                 let ContentPieceRecord::Text(span) = piece else {
                     return invalid();
                 };
@@ -180,7 +185,7 @@ pub(super) fn next_stream_step(
                 }
                 let whole_span = encoded_range(
                     reader,
-                    f.basis.content,
+                    f.basis.content(),
                     span.encoded_start(),
                     span.len() as usize,
                 )?;

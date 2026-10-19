@@ -78,6 +78,9 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
     let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 82, 83);
+    let owner =
+        std::sync::Arc::new(beryl_app::composer_host::ComposerAcceptedInputHistoryOwner::default());
+    host.bind_accepted_input_history(owner.clone());
     commit_text(&mut host, &store, empty, 1, 0, 0, "acceptance", 10, 1);
     let ticket = host.begin_submission(request(84)).unwrap();
     advance_until_stage(
@@ -90,6 +93,8 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
         85,
         None,
     );
+    let expected = host.test_captured_accepted_input_reference().unwrap();
+    assert_eq!(owner.entry_count(store.home_id(), thread), 0);
     let injected = faults.clone();
     host.test_arm_submission_before_execute_fault(move |_, _| {
         injected.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -99,12 +104,24 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
         ComposerHostSubmissionAdvance::ReconciliationPending
     );
     assert_eq!(store.pending_reconciliations().len(), 1);
+    assert_eq!(owner.entry_count(store.home_id(), thread), 0);
 
     assert_eq!(
         host.dispose_composer_service(&store).unwrap(),
         ComposerHostServiceDisposalCompletion::Disposed
     );
+    assert_eq!(owner.entry_count(store.home_id(), thread), 1);
+    let captured = owner.entry(store.home_id(), thread, 0).unwrap();
+    assert_eq!(captured, expected);
+    assert_eq!(captured.source_draft_id(), expected.source_draft_id());
+    assert_eq!(captured.session_id(), expected.session_id());
+    assert_eq!(captured.operation_id(), expected.operation_id());
+    storage
+        .authenticate_composer_accepted_input(&store, &captured)
+        .unwrap();
     assert_disposed_submission(&mut host, &store, assets, &seals, ticket, 85);
+    assert_eq!(owner.entry_count(store.home_id(), thread), 1);
+    assert_eq!(owner.entry(store.home_id(), thread, 0), Some(expected));
 }
 
 fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {

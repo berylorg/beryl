@@ -387,6 +387,8 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_selected_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
+    test_accepted_input_recall_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
     test_selected_page_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
     test_native_lineage_seed_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
@@ -413,6 +415,24 @@ pub struct MainWindowConversationComposerService {
 }
 
 impl MainWindowConversationComposerService {
+    pub fn accepted_input_history(
+        &self,
+    ) -> Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner> {
+        self.slot
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .accepted_input_history()
+    }
+
+    pub fn bind_accepted_input_history(
+        &self,
+        owner: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
+    ) -> Result<(), String> {
+        self.slot
+            .lock()
+            .map_err(|_| "Composer history service is unavailable")?
+            .bind_accepted_input_history(owner)
+    }
     #[cfg(feature = "test-faults")]
     pub(in crate::main_window) fn test_native_lineage_disposal_diagnostics(
         &self,
@@ -522,6 +542,8 @@ impl MainWindowConversationComposerService {
             test_pending_dispatch_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_selected_dispatch_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_accepted_input_recall_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_selected_page_dispatch_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
@@ -1294,6 +1316,19 @@ impl MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     pub(super) fn take_test_selected_dispatch_gate(&self) -> Option<PendingCompletionTestGate> {
         self.test_selected_dispatch_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_accepted_input_recall(
+        &self,
+    ) -> MainWindowComposerPendingCompletionTestRelease {
+        install_pending_test_gate(&self.test_accepted_input_recall_gate)
+            .expect("accepted-input recall gate is already installed")
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_accepted_input_recall_gate(&self) -> Option<PendingCompletionTestGate> {
+        self.test_accepted_input_recall_gate.lock().ok()?.take()
     }
 
     #[cfg(feature = "test-faults")]

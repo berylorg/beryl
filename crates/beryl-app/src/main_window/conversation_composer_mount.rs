@@ -159,6 +159,7 @@ pub struct MainWindowNativeLineageDisposalDiagnostics {
 }
 
 pub struct MainWindowConversationComposerMount {
+    accepted_input_history: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
     service: Option<Arc<MainWindowConversationComposerService>>,
     configurator: Option<MainWindowConversationComposerConfigurator>,
     contribution: Option<Entity<MainWindowConversationComposer>>,
@@ -396,6 +397,7 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
+            accepted_input_history: service.accepted_input_history(),
             service: Some(service),
             configurator: Some(configurator),
             contribution: Some(contribution),

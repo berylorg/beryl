@@ -82,6 +82,19 @@ impl MainWindowComposerSlot {
 }
 
 impl MainWindowFailedComposerRetirement {
+    pub fn recall_prior_binding(&self) -> Option<crate::composer_host::ComposerHostBinding> {
+        self.host
+            .as_ref()
+            .and_then(|host| host.recall_prior_binding())
+    }
+
+    pub fn recall_restoration(
+        &self,
+    ) -> Option<crate::composer_host::ComposerHostRecallRestoration> {
+        self.host
+            .as_ref()
+            .and_then(|host| host.recall_restoration())
+    }
     pub fn observe_historical_recovery(
         &mut self,
         candidate: &mut HomeRecoveryCandidate,

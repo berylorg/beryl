@@ -502,6 +502,10 @@ fn dec_build_boundary(d: &mut Decoder<'_>) -> Result<DraftPieceBuildBoundaryV1, 
 
 fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
     match frontier {
+        DraftPieceBuildFrontierV1::OrdinaryRecall(value) => {
+            e.u8(8);
+            recall::enc_recall_frontier(e, &value);
+        }
         DraftPieceBuildFrontierV1::SealedImport(value) => {
             e.u8(7);
             enc_import_frontier(e, value);
@@ -569,6 +573,9 @@ fn enc_build_frontier(e: &mut Encoder, frontier: DraftPieceBuildFrontierV1) {
 
 fn dec_build_frontier(d: &mut Decoder<'_>) -> Result<DraftPieceBuildFrontierV1, CodecError> {
     match d.u8()? {
+        8 => Ok(DraftPieceBuildFrontierV1::OrdinaryRecall(
+            recall::dec_recall_frontier(d)?,
+        )),
         7 => Ok(DraftPieceBuildFrontierV1::SealedImport(
             dec_import_frontier(d)?,
         )),
@@ -970,7 +977,7 @@ pub(crate) fn decode_candidate_disposal_request_bytes(
     Ok(request)
 }
 
-fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1) {
+pub(crate) fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1) {
     e.fixed16(key.draft_id().as_bytes());
     e.fixed16(key.session_id().as_bytes());
     match key {
@@ -997,7 +1004,7 @@ fn enc_session_key(e: &mut Encoder, key: DraftEditorCandidateSessionRecordKeyV1)
     }
 }
 
-fn dec_session_key(
+pub(crate) fn dec_session_key(
     d: &mut Decoder<'_>,
 ) -> Result<DraftEditorCandidateSessionRecordKeyV1, CodecError> {
     let draft_id = SyndicDraftId::from_bytes(d.fixed16()?);
@@ -1204,7 +1211,7 @@ pub(crate) fn dec_session_head(
     Ok(value)
 }
 
-fn encode_session_record(
+pub(crate) fn encode_session_record(
     value: &DraftEditorCandidateSessionRecordV1,
 ) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
@@ -1226,11 +1233,14 @@ fn encode_session_record(
                 enc_session_head(&mut e, receipt.after_head());
                 enc_history_frontier(&mut e, receipt.captured_frontier());
             } else if let Some(receipt) = receipt.disposal() {
-                e.u8(3);
+                e.u8(if receipt.acceptance().is_some() { 5 } else { 3 });
                 e.bytes(receipt.request_bytes());
                 enc_session_head(&mut e, receipt.before_head());
                 enc_session_head(&mut e, receipt.after_head());
                 enc_history_frontier(&mut e, receipt.frontier());
+                if receipt.acceptance().is_some() {
+                    recall::enc_acceptance_disposal(&mut e, receipt)?;
+                }
             } else {
                 e.u8(1);
                 e.bytes(receipt.request_bytes());
@@ -1241,13 +1251,26 @@ fn encode_session_record(
     Ok(e.finish())
 }
 
-fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
+pub(crate) fn decode_session_record(
+    bytes: &[u8],
+) -> Result<DraftEditorCandidateSessionRecordV1, CodecError> {
     let mut d = Decoder::new(bytes);
     let value = match d.u8()? {
         0 => decode_session_head_record(&mut d)?,
         1 => decode_session_open_receipt(&mut d)?,
         2 => decode_session_publication_receipt(&mut d)?,
         3 => decode_session_disposal_receipt(&mut d)?,
+        5 => {
+            let record = decode_session_disposal_receipt(&mut d)?;
+            let DraftEditorCandidateSessionRecordV1::OpenReceipt(record) = record else {
+                unreachable!()
+            };
+            let receipt =
+                recall::dec_acceptance_disposal(&mut d, record.disposal().unwrap().clone())?;
+            DraftEditorCandidateSessionRecordV1::OpenReceipt(
+                DraftEditorCandidateSessionOpenReceiptV1::from_disposal(receipt),
+            )
+        }
         4 => DraftEditorCandidateSessionRecordV1::OpenReceipt(
             DraftEditorCandidateSessionOpenReceiptV1::from_replacement_cancellation(
                 dec_cancellation_receipt(&mut d)?,
@@ -1756,7 +1779,11 @@ fn decode_node(bytes: &[u8]) -> Result<DraftPieceNodeRecordV1, CodecError> {
 
 fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> {
     if value.mapping().is_none()
-        && !matches!(value.frontier(), DraftPieceBuildFrontierV1::SealedImport(_))
+        && !matches!(
+            value.frontier(),
+            DraftPieceBuildFrontierV1::SealedImport(_)
+                | DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+        )
     {
         return Err(CodecError::InvalidLength("edit mapping required"));
     }
@@ -1832,7 +1859,11 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
     let mapping = dec_mapping(
         &mut d,
-        matches!(frontier, DraftPieceBuildFrontierV1::SealedImport(_)),
+        matches!(
+            frontier,
+            DraftPieceBuildFrontierV1::SealedImport(_)
+                | DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+        ),
     )?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
@@ -2018,7 +2049,11 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
     let mapping = dec_mapping(
         &mut d,
-        matches!(frontier, DraftPieceBuildFrontierV1::SealedImport(_)),
+        matches!(
+            frontier,
+            DraftPieceBuildFrontierV1::SealedImport(_)
+                | DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+        ),
     )?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let successor = match d.u8()? {
@@ -2293,7 +2328,19 @@ fn encode_settlement_payload(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, 
         }
         None => e.u8(0),
     }
-    enc_progress_reference(&mut e, value.terminal_receipt());
+    match value.terminal_progress_receipt() {
+        Some(receipt) => enc_progress_reference(&mut e, receipt),
+        None if matches!(
+            value.closure(),
+            DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+                DraftComposerRootReplacementV1 {
+                    purpose: DraftComposerRootReplacementPurposeV1::CheckpointRestore { .. },
+                    ..
+                }
+            )
+        ) => {}
+        None => return Err(CodecError::InvalidLength("settlement progress origin")),
+    }
     match value.outcome() {
         DraftPieceSettlementOutcomeV1::Committed {
             candidate_generation,
@@ -2330,6 +2377,17 @@ fn encode_settlement_payload(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, 
         }
     }
     match value.closure() {
+        DraftPieceSettlementClosureV1::OrdinaryRootReplacement(replacement) => {
+            e.u8(3);
+            recall::enc_replacement_purpose(&mut e, replacement.purpose());
+            let adoption = replacement.adoption();
+            enc_session_head(&mut e, adoption.predecessor_session());
+            enc_session_head(&mut e, adoption.adopted_session());
+            enc_root_reference(&mut e, adoption.adopted_root().reference());
+            enc_history_frontier(&mut e, adoption.predecessor_history());
+            enc_history_transition(&mut e, adoption.transition());
+            enc_history_frontier(&mut e, adoption.adopted_history());
+        }
         DraftPieceSettlementClosureV1::SealedImport(selection) => {
             e.u8(2);
             enc_import_selection(&mut e, selection)?;
@@ -2402,7 +2460,25 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
             });
         }
     };
-    let terminal_receipt = dec_progress_reference(&mut d)?;
+    let header = DraftPieceEditHeaderV1::new(
+        key.draft_id(),
+        key.session_id(),
+        predecessor_candidate_generation,
+        predecessor_root,
+        predecessor_history,
+        key.operation_id(),
+        predecessor_caret,
+        predecessor_selection,
+        caret,
+        selection,
+        fragment_count,
+        fragment_chain,
+    );
+    let terminal_receipt = if recall::header_has_restore_suffix(&canonical_header, header) {
+        None
+    } else {
+        Some(dec_progress_reference(&mut d)?)
+    };
     let outcome = match d.u8()? {
         0 => DraftPieceSettlementOutcomeV1::Committed {
             candidate_generation: d.u64()?,

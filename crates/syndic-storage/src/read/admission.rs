@@ -239,6 +239,12 @@ impl FirstAcceptanceObservation {
                                     == acceptance.candidate()
                                     && receipt.after_head() == session
                                     && self.source_history.as_ref() == Some(receipt.frontier())
+                                    && receipt.acceptance().is_none_or(|purpose| {
+                                        purpose.request == *acceptance && match purpose.result {
+                                            crate::draft_piece::recall::AcceptanceResultV1::Idle { turn, item } => turn == acceptance.submitted_turn_id() && item == acceptance.idle_user_item_id(),
+                                            crate::draft_piece::recall::AcceptanceResultV1::Accepted { input, ordinal, generation } => self.input.as_ref().is_some_and(|record| record.id() == input && record.ordinal() == ordinal && record.route_generation() == Some(generation)),
+                                        }
+                                    })
                             }))
                     }))
         });

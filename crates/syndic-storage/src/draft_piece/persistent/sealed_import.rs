@@ -4,7 +4,7 @@ pub(crate) fn append_import_leaf(
     storage: &SyndicStorage,
     store: &HomeStore,
     build: &DraftPieceBuildRecordV1,
-    frontier: DraftSealedImportFrontierV1,
+    frontier: DraftPieceBuildFrontierV1,
     leaf: Option<DraftPieceLeafValueV1>,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
     let mut context = BuildContext::with_ordinal(
@@ -54,7 +54,7 @@ pub(crate) fn append_import_leaf(
         roots,
         DraftPieceBuildBoundaryV1::new(0, 0),
         end,
-        DraftPieceBuildFrontierV1::SealedImport(frontier),
+        frontier,
         None,
         None,
     ))
@@ -109,11 +109,11 @@ fn append_sequence_path(
     pack_inserted_sequence_children(context, root.height, children)
 }
 
-pub(crate) fn cross_validate_import_leaf(
+pub(crate) fn cross_validate_import_leaf<B: super::super::import::model::SealedComposerBasisV1>(
     storage: &SyndicStorage,
     store: &HomeStore,
     build: &DraftPieceBuildRecordV1,
-    mut frontier: DraftSealedImportFrontierV1,
+    mut frontier: DraftSealedComposerFrontierV1<B>,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
     let mut context = BuildContext::with_ordinal(
         storage,
@@ -178,10 +178,10 @@ pub(crate) fn cross_validate_import_leaf(
             .checked_add(1)
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
     } else if frontier.next_leaf_rank == count && frontier.checked_markers == frontier.markers {
-        let summary = frontier.basis.content.summary();
+        let summary = frontier.basis.content().summary();
         if frontier.sequential_digest != summary.marker_digest()
             || frontier.maximum_label != summary.maximum_image_label()
-            || frontier.basis.assets.is_some_and(|p| {
+            || frontier.basis.assets().is_some_and(|p| {
                 p.ordered_assets().marker_asset_digest() != frontier.ordered_digest
             })
         {
@@ -205,7 +205,7 @@ pub(crate) fn cross_validate_import_leaf(
         build.working_roots(),
         build.base_frontier(),
         build.successor_frontier(),
-        DraftPieceBuildFrontierV1::SealedImport(frontier),
+        B::wrap(frontier),
         root,
         digest,
     ))

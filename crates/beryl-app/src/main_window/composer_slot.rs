@@ -12,6 +12,7 @@ use crate::composer_host::{
 };
 use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
+mod accepted_input_recall;
 mod activation_preparation;
 mod close;
 mod close_retirement;
@@ -48,6 +49,7 @@ use state::{DisposalStage, PendingComposer, PendingStage, SelectedComposer};
 pub use submission::*;
 
 pub struct MainWindowComposerSlot {
+    accepted_input_history: std::sync::Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
     window_id: WindowId,
     storage: SyndicStorage,
     marker_authority: MainWindowComposerMarkerMetadataAuthority,
@@ -195,6 +197,9 @@ impl MainWindowComposerSlot {
         selected: SelectedComposer,
     ) -> Self {
         Self {
+            accepted_input_history: std::sync::Arc::new(
+                crate::composer_host::ComposerAcceptedInputHistoryOwner::default(),
+            ),
             window_id,
             storage,
             marker_authority,
@@ -727,6 +732,10 @@ impl MainWindowComposerSlot {
             draft_state,
             host: pending.host,
         });
+        self.accepted_input_history.select(
+            target_identity.binding().home_id(),
+            target_identity.claim().thread_id(),
+        );
         Ok(MainWindowComposerPublishAdvance::Published(target_identity))
     }
 

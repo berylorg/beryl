@@ -28,10 +28,14 @@ enum ComposerFeedbackSource {
     Clipboard(MainWindowComposerClipboardFeedback),
     Quote(crate::main_window::conversation_composer_owner::ComposerQuoteFeedback),
     HistoricalReplacement(String),
+    AcceptedInputHistory(String, bool),
 }
 
 impl ComposerFeedbackSource {
     fn persistent(&self) -> bool {
+        if matches!(self, Self::AcceptedInputHistory(_, true)) {
+            return true;
+        }
         matches!(
             self,
             Self::Mutation(MainWindowComposerMutationFeedback {
@@ -45,6 +49,7 @@ impl ComposerFeedbackSource {
 
     fn text(&self) -> (&str, &str) {
         match self {
+            Self::AcceptedInputHistory(reason, _) => ("Composer history is unavailable", reason.as_str()),
             Self::HistoricalReplacement(reason) => ("Historical editing is unavailable", reason.as_str()),
             Self::Quote(feedback) => match feedback.kind {
                 crate::main_window::conversation_composer_owner::ComposerQuoteFeedbackKind::TooLarge => (
@@ -146,6 +151,7 @@ impl MainWindowShellRoot {
                     matches!(
                         feedback.source,
                         ComposerFeedbackSource::HistoricalReplacement(_)
+                            | ComposerFeedbackSource::AcceptedInputHistory(_, _)
                     ) && feedback.attempted
                         && feedback
                             .token
@@ -153,7 +159,10 @@ impl MainWindowShellRoot {
                             .is_some_and(|token| !self.notices.arbiter.contains(token))
                 });
         if historical_dismissed && let Some(owner) = &owner {
-            owner.update(cx, |owner, _| owner.clear_historical_replacement_feedback());
+            owner.update(cx, |owner, _| {
+                owner.clear_historical_replacement_feedback();
+                owner.clear_accepted_input_history_feedback();
+            });
         }
         let source = owner.and_then(|owner| {
             let composer = owner.read(cx);
@@ -164,8 +173,18 @@ impl MainWindowShellRoot {
                 mutation
             } else {
                 composer
-                    .historical_replacement_feedback()
-                    .map(|reason| ComposerFeedbackSource::HistoricalReplacement(reason.to_owned()))
+                    .accepted_input_history_feedback()
+                    .map(|reason| {
+                        ComposerFeedbackSource::AcceptedInputHistory(
+                            reason.to_owned(),
+                            composer.accepted_input_history_pending(),
+                        )
+                    })
+                    .or_else(|| {
+                        composer.historical_replacement_feedback().map(|reason| {
+                            ComposerFeedbackSource::HistoricalReplacement(reason.to_owned())
+                        })
+                    })
                     .or_else(|| composer.quote_feedback().map(ComposerFeedbackSource::Quote))
                     .or_else(|| {
                         composer

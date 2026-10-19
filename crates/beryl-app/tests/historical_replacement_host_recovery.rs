@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "accepted_input_history/recovery.rs"]
+mod accepted_input_recovery;
 #[path = "syndic_composer_history/support.rs"]
 mod history_support;
 #[path = "syndic_composer_host/support.rs"]

@@ -709,6 +709,15 @@ fn terminal_first_session_closure_is_exact(
 }
 
 pub(crate) fn settlement_closure_is_exact(settlement: &DraftPieceSettlementV1) -> bool {
+    if matches!(
+        settlement.closure(),
+        DraftPieceSettlementClosureV1::OrdinaryRootReplacement(_)
+    ) || settlement
+        .terminal_source()
+        .is_some_and(|b| matches!(b.frontier(), DraftPieceBuildFrontierV1::OrdinaryRecall(_)))
+    {
+        return recall::recall_settlement_is_exact(settlement);
+    }
     if settlement
         .terminal_source()
         .is_some_and(|s| matches!(s.frontier(), DraftPieceBuildFrontierV1::SealedImport(_)))
@@ -943,6 +952,18 @@ pub(crate) fn settlement_terminal_build_is_exact(
     settlement: &DraftPieceSettlementV1,
     stored: Option<&DraftPieceBuildRecordV1>,
 ) -> bool {
+    if matches!(
+        settlement.closure(),
+        DraftPieceSettlementClosureV1::OrdinaryRootReplacement(DraftComposerRootReplacementV1 {
+            purpose: DraftComposerRootReplacementPurposeV1::CheckpointRestore { .. },
+            ..
+        })
+    ) {
+        return stored.is_none()
+            && settlement.terminal_source().is_none()
+            && settlement.terminal_progress_receipt().is_none()
+            && recall::recall_settlement_is_exact(settlement);
+    }
     let lifecycle = match settlement.outcome() {
         DraftPieceSettlementOutcomeV1::Committed { .. } => DraftPieceBuildLifecycleV1::Committed,
         DraftPieceSettlementOutcomeV1::Rejected(_) => DraftPieceBuildLifecycleV1::Rejected,
@@ -1088,6 +1109,12 @@ pub(crate) fn canonical_proposal_digest(bytes: &[u8]) -> DraftPieceDigestV1 {
 }
 
 pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
+    if matches!(
+        build.frontier(),
+        DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+    ) {
+        return recall::recall_build_is_exact(build);
+    }
     if matches!(build.frontier(), DraftPieceBuildFrontierV1::SealedImport(_)) {
         return import_build_is_exact(build);
     }
@@ -1232,7 +1259,8 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
         return false;
     }
     match build.frontier() {
-        DraftPieceBuildFrontierV1::SealedImport(_) => return false,
+        DraftPieceBuildFrontierV1::SealedImport(_)
+        | DraftPieceBuildFrontierV1::OrdinaryRecall(_) => return false,
         DraftPieceBuildFrontierV1::Receiving {
             next_ordinal,
             chain,
@@ -1444,6 +1472,13 @@ pub(crate) fn canonical_fragment_endpoint(
 }
 
 pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceiptV1) -> bool {
+    if matches!(
+        receipt.frontier(),
+        DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+    ) {
+        return recall::recall_progress_is_exact(receipt)
+            && receipt.reference().digest() == progress_receipt_digest_from_value(receipt);
+    }
     if matches!(
         receipt.frontier(),
         DraftPieceBuildFrontierV1::SealedImport(_)
@@ -1678,6 +1713,15 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
 ) -> bool {
     if matches!(
         previous.frontier(),
+        DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+    ) || matches!(
+        current.frontier(),
+        DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+    ) {
+        return scanned_fragment.is_none() && recall::recall_transition_is_exact(previous, current);
+    }
+    if matches!(
+        previous.frontier(),
         DraftPieceBuildFrontierV1::SealedImport(_)
     ) || matches!(
         current.frontier(),
@@ -1704,6 +1748,12 @@ fn hash_build_boundary(digest: &mut Sha256, value: DraftPieceBuildBoundaryV1) {
 
 fn hash_build_frontier(digest: &mut Sha256, value: DraftPieceBuildFrontierV1) {
     match value {
+        DraftPieceBuildFrontierV1::OrdinaryRecall(frontier) => {
+            let mut e = crate::codec::parts::Encoder::new();
+            e.u8(8);
+            recall::enc_recall_frontier(&mut e, &frontier);
+            digest.update(e.finish());
+        }
         DraftPieceBuildFrontierV1::SealedImport(frontier) => {
             let mut encoder = crate::codec::parts::Encoder::new();
             encoder.u8(7);

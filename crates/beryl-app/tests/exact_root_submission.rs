@@ -24,6 +24,8 @@ mod publication;
 use composer as composer_support;
 #[cfg(feature = "test-faults")]
 use publication as publication_support;
+#[path = "exact_root_submission/accepted_input_history.rs"]
+mod accepted_input_history;
 #[cfg(feature = "test-faults")]
 #[path = "exact_root_submission/corrections.rs"]
 mod corrections;

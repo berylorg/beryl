@@ -139,6 +139,13 @@ pub(crate) fn import_progress_is_exact(receipt: &DraftPieceBuildProgressReceiptV
     let DraftPieceBuildFrontierV1::SealedImport(frontier) = receipt.frontier() else {
         return false;
     };
+    sealed_progress_is_exact(receipt, frontier)
+}
+
+pub(crate) fn sealed_progress_is_exact<B: super::model::SealedComposerBasisV1>(
+    receipt: &DraftPieceBuildProgressReceiptV1,
+    frontier: DraftSealedComposerFrontierV1<B>,
+) -> bool {
     let key = receipt.key();
     let complete = frontier.phase() == DraftSealedImportPhaseV1::Complete;
     frontier.is_locally_exact(receipt.lifecycle())
@@ -191,13 +198,22 @@ pub(crate) fn import_transition_is_exact(
     previous: &DraftPieceBuildProgressReceiptV1,
     current: &DraftPieceBuildProgressReceiptV1,
 ) -> bool {
-    use DraftSealedImportDecoderV1 as Decoder;
-    use DraftSealedImportPhaseV1 as Phase;
     let (DraftPieceBuildFrontierV1::SealedImport(a), DraftPieceBuildFrontierV1::SealedImport(b)) =
         (previous.frontier(), current.frontier())
     else {
         return false;
     };
+    sealed_transition_is_exact(previous, current, a, b)
+}
+
+pub(crate) fn sealed_transition_is_exact<B: super::model::SealedComposerBasisV1 + PartialEq>(
+    previous: &DraftPieceBuildProgressReceiptV1,
+    current: &DraftPieceBuildProgressReceiptV1,
+    a: DraftSealedComposerFrontierV1<B>,
+    b: DraftSealedComposerFrontierV1<B>,
+) -> bool {
+    use DraftSealedImportDecoderV1 as Decoder;
+    use DraftSealedImportPhaseV1 as Phase;
     if !progress_receipt_is_exact(previous)
         || !progress_receipt_is_exact(current)
         || current.previous() != Some(previous.reference())
@@ -242,10 +258,10 @@ pub(crate) fn import_transition_is_exact(
     let same_roots = previous.working_roots() == current.working_roots();
     let reset = a.phase == Phase::Streaming && b.phase == Phase::CrossValidating;
     let folds_valid = if reset {
-        a.sequential_digest == a.basis.content.summary().marker_digest()
-            && a.maximum_label == a.basis.content.summary().maximum_image_label()
+        a.sequential_digest == a.basis.content().summary().marker_digest()
+            && a.maximum_label == a.basis.content().summary().maximum_image_label()
             && a.basis
-                .assets
+                .assets()
                 .is_none_or(|p| a.ordered_digest == p.ordered_assets().marker_asset_digest())
             && b.sequential_digest == beryl_model::sequential_marker_digest_seed()
             && b.ordered_digest == beryl_model::ordered_marker_asset_digest_seed()
@@ -319,8 +335,8 @@ pub(crate) fn import_transition_is_exact(
     }) && folds_valid
 }
 
-fn import_roots_are_exact(
-    frontier: DraftSealedImportFrontierV1,
+pub(crate) fn import_roots_are_exact<B: super::model::SealedComposerBasisV1>(
+    frontier: DraftSealedComposerFrontierV1<B>,
     roots: DraftPieceBuildRootsV1,
     base: DraftPieceBuildBoundaryV1,
     successor: DraftPieceBuildBoundaryV1,

@@ -34,7 +34,7 @@ pub(super) fn endpoint_is_exact(
     let Some(active) = active else {
         return true;
     };
-    let deferred = super::super::deferred_prefix::active_is_deferred(frontier, active);
+    let deferred = super::super::deferred_prefix::active_is_deferred(frontier.clone(), active);
     if !active.is_program_exact_for_deferred(deferred) || active.source_roots() != roots {
         return false;
     }

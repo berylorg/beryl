@@ -1679,6 +1679,19 @@ pub fn inject_draft_piece_settlement_closure_corruption(
         .expect("fixture settlement reads")
         .expect("fixture settlement exists");
     let closure = match settlement.closure() {
+        DraftPieceSettlementClosureV1::OrdinaryRootReplacement(replacement) => {
+            let mut corrupt = replacement.clone();
+            let adoption = replacement.adoption();
+            corrupt.adoption = DraftPieceCommittedAdoptionV1::new(
+                adoption.predecessor_session().clone(),
+                adoption.adopted_session().clone(),
+                DraftPieceRootRecordV1::new(settlement.predecessor_root()),
+                adoption.predecessor_history().clone(),
+                adoption.transition().clone(),
+                adoption.adopted_history().clone(),
+            );
+            DraftPieceSettlementClosureV1::OrdinaryRootReplacement(corrupt)
+        }
         DraftPieceSettlementClosureV1::SealedImport(selection) => {
             let mut corrupt = selection.clone();
             corrupt.imported_root = settlement.predecessor_root();
@@ -1721,7 +1734,7 @@ pub fn inject_draft_piece_settlement_closure_corruption(
         settlement.build_digest(),
         settlement.canonical_header().to_vec(),
         settlement.terminal_source().cloned(),
-        settlement.terminal_receipt(),
+        settlement.terminal_progress_receipt(),
         settlement.outcome().clone(),
         Box::new(closure),
     );

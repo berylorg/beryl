@@ -5,12 +5,7 @@ use beryl_home_store::{
 use beryl_model::HistoricalInputMarkerPageV1;
 use sha2::{Digest, Sha256};
 
-use super::{
-    AssetDomain, AssetEntryKey, AssetMetadataCodec, AssetOwner, AssetOwnerHeadCodec,
-    AssetReferenceCompletionEvidenceCodec, AssetReferenceEntryCodec, AssetReferenceManifestCodec,
-    AssetReferenceOrdinal, AssetSidecarState, AssetState, asset_sidecar_address, entry_point_limit,
-    manifest_point_limit, metadata_point_limit, read,
-};
+use super::{AssetDomain, AssetOwner, AssetState, asset_sidecar_address, marker_source};
 
 pub type HistoricalInputMarkerProofProtocolV1 =
     FixedDigestHomeProofProtocol<0x5348494d50525631, 0x494d504147455631>;
@@ -101,57 +96,17 @@ pub(crate) fn prove_historical_input(
     reader: &DomainReader<'_, AssetDomain>,
 ) -> Result<ProofCorrelationBytes, AssetHistoricalInputError> {
     let page = &input.page;
-    let proof = page.proof();
-    let association = page.association();
-    let head = reader
-        .point::<AssetOwnerHeadCodec>(
-            &AssetOwner::SubmittedTurnItem(page.item_id()),
-            super::head_point_limit(),
-        )?
-        .ok_or(AssetHistoricalInputError::Rejected)?;
-    if head.owner() != AssetOwner::SubmittedTurnItem(page.item_id()) || head.set() != proof {
-        return Err(AssetHistoricalInputError::Rejected);
-    }
-    let manifest = reader
-        .point::<AssetReferenceManifestCodec>(&proof.set_id(), manifest_point_limit())?
-        .ok_or(AssetHistoricalInputError::Rejected)?;
-    let completion = reader
-        .point::<AssetReferenceCompletionEvidenceCodec>(
-            &proof.set_id(),
-            beryl_home_store::PointReadLimit::new(super::ASSET_COMPLETION_EVIDENCE_LIMIT + 4)
-                .unwrap(),
-        )?
-        .ok_or(AssetHistoricalInputError::Rejected)?;
-    read::verify_sealed_manifest(&manifest, &completion, proof)
-        .map_err(|_| AssetHistoricalInputError::Rejected)?;
-    let ordinal = AssetReferenceOrdinal::new(association.ordinal())
-        .map_err(|_| AssetHistoricalInputError::Rejected)?;
-    let entry = reader
-        .point::<AssetReferenceEntryCodec>(
-            &AssetEntryKey {
-                set_id: proof.set_id(),
-                ordinal,
-            },
-            entry_point_limit(),
-        )?
-        .ok_or(AssetHistoricalInputError::Rejected)?;
-    if entry.set_id() != proof.set_id()
-        || entry.ordinal() != ordinal
-        || entry.marker_id() != association.marker_id()
-        || entry.label() != association.label()
-        || entry.asset_id() != association.asset_id()
-    {
-        return Err(AssetHistoricalInputError::Rejected);
-    }
-    let metadata = reader
-        .point::<AssetMetadataCodec>(&association.asset_id(), metadata_point_limit())?
-        .ok_or(AssetHistoricalInputError::Rejected)?;
-    if metadata.asset_id() != association.asset_id()
-        || metadata.sidecar_state() != AssetSidecarState::Committed
-        || input.available.address() != &asset_sidecar_address(association.asset_id())
-    {
-        return Err(AssetHistoricalInputError::Rejected);
-    }
+    marker_source::prove_marker_source(
+        reader,
+        AssetOwner::SubmittedTurnItem(page.item_id()),
+        page.proof(),
+        page.association().into(),
+        &input.available,
+    )
+    .map_err(|error| match error {
+        marker_source::MarkerSourceError::Read(error) => AssetHistoricalInputError::Read(error),
+        marker_source::MarkerSourceError::Rejected => AssetHistoricalInputError::Rejected,
+    })?;
     Ok(ProofCorrelationBytes::new(historical_input_correlation(
         page,
     )))

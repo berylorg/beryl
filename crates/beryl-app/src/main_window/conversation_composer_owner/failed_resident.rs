@@ -76,6 +76,7 @@ impl MainWindowConversationComposer {
             ticket,
             capture_taken: false,
         });
+        self.end_accepted_input_browse();
         self.sync_mutation_gate(cx);
         cx.notify();
         Ok(ticket)
@@ -122,6 +123,7 @@ impl MainWindowConversationComposer {
         self.admitted_positions = None;
         self.scheduled = false;
         self.retire_failed_historical_replacement();
+        self.retire_failed_accepted_input_history();
         cx.notify();
         Ok(Some(MainWindowFailedResidentCapture {
             ticket,

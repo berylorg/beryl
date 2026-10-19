@@ -14,6 +14,23 @@ pub(super) fn decode_settlement_closure(
     d: &mut Decoder<'_>,
 ) -> Result<Box<DraftPieceSettlementClosureV1>, CodecError> {
     match d.u8()? {
+        3 => {
+            let purpose = recall::dec_replacement_purpose(d)?;
+            let parts = decode_committed_parts(d)?;
+            let adoption = DraftPieceCommittedAdoptionV1::new(
+                *parts.predecessor_session,
+                *parts.adopted_session,
+                *parts.adopted_root,
+                *parts.predecessor_history,
+                *parts.transition,
+                *parts.adopted_history,
+            );
+            Ok(Box::new(
+                DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+                    DraftComposerRootReplacementV1 { purpose, adoption },
+                ),
+            ))
+        }
         0 => {
             let parts = decode_committed_parts(d)?;
             Ok(assemble_committed(parts))

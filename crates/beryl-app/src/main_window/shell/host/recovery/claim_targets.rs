@@ -64,6 +64,9 @@ impl MainWindowShellRoot {
         }
         retirement.validate_complete_retirement()?;
         let prepared = preparation.prepare(&mut configure)?;
+        prepared
+            .service()
+            .bind_accepted_input_history(controller.accepted_input_history.clone())?;
         let original = draft.composer.clone().unwrap();
         let result = MainWindowConversationComposerMount::from_fresh_recovery(
             prepared,

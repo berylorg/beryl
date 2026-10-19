@@ -27,6 +27,7 @@ use super::{
     MainWindowConversationComposerConfig,
 };
 
+mod accepted_input_history;
 mod clipboard;
 mod close;
 mod construction;
@@ -208,6 +209,9 @@ pub(in crate::main_window) struct MainWindowConversationComposerPendingRealizerT
 }
 
 pub struct MainWindowConversationComposer {
+    accepted_input_browse: Option<accepted_input_history::BrowseBookmark>,
+    accepted_input_recall: Option<accepted_input_history::MountedAcceptedInputRecall>,
+    accepted_input_history_feedback: Option<String>,
     recovery_config: MainWindowConversationComposerConfig,
     input: Entity<RangeTextInput>,
     service: Option<Arc<MainWindowConversationComposerService>>,
@@ -311,6 +315,7 @@ impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversatio
 
 impl Drop for MainWindowConversationComposer {
     fn drop(&mut self) {
+        self.end_accepted_input_browse();
         if let Some(replacement) = self.historical_replacement.as_ref() {
             replacement.cancel();
         }

@@ -172,7 +172,7 @@ fn prepare_transition(
         quantum.base_frontier,
         quantum.successor_frontier,
         quantum.next_record_ordinal,
-        quantum.frontier,
+        quantum.frontier.clone(),
         quantum
             .successor
             .as_ref()

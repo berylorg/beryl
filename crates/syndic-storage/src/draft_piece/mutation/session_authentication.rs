@@ -240,6 +240,19 @@ fn authenticate_unpublished_history(
     );
     let stored_root = build_custody::required_record::<DraftPieceRootsFamily>(reader, &root.key())?;
     let settlement = build_custody::required_record::<DraftPieceSettlementsFamily>(reader, &key)?;
+    if matches!(
+        settlement.closure(),
+        DraftPieceSettlementClosureV1::OrdinaryRootReplacement(_)
+    ) {
+        if !super::super::checkpoint::candidate_is_exact_in_transaction(
+            reader,
+            head,
+            &newest_history,
+        )? {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+        return Ok(());
+    }
     let build = build_custody::optional_authenticated_build(reader, &key)?;
     let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
         return Err(SyndicMutationError::IdentityCollision);

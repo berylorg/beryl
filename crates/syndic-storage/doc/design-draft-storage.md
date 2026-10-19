@@ -885,6 +885,13 @@ The original atomic first-acceptance command records its complete request and ac
 distinct acceptance-purpose form of its existing session-disposal receipt. Source authentication
 requires that exact canonical receipt and sealed materialization/disposed-session closure; ordinary
 disposal is insufficient. This extends closed record forms without changing the family declaration.
+Persisted recall work retains only the exact receipt key/digest and compact thread/content/Asset
+descriptors. It never nests the full acceptance request or disposal receipt in repeated build,
+progress or settlement records. Every authority-consuming operation loads and authenticates the
+original immutable receipt and compares those descriptors before using its source closure. Local
+codec validity alone grants no source authority. Existing record and command bounds remain in force.
+Termination that only releases an unadopted destination builder proves its exact custody and
+terminal outcome independently of source availability; it consumes no source adoption authority.
 Source and destination must have the same durable home and exact conversation thread; foreign
 sources are typed nonmutating refusals, never relabelled or imported across conversations.
 

@@ -181,8 +181,18 @@ pub(super) fn prepare_step(
     };
     let quantum = match f.phase {
         DraftSealedImportPhaseV1::Streaming => {
-            let step = next_stream_step(&StoreSourceReader { storage, store }, f, association)?;
-            append_import_leaf(storage, store, &build, step.frontier, step.leaf)?
+            let step = next_stream_step(
+                &StoreSourceReader { storage, store },
+                f,
+                association.map(Into::into),
+            )?;
+            append_import_leaf(
+                storage,
+                store,
+                &build,
+                DraftPieceBuildFrontierV1::SealedImport(step.frontier),
+                step.leaf,
+            )?
         }
         DraftSealedImportPhaseV1::CrossValidating => {
             cross_validate_import_leaf(storage, store, &build, f)?
@@ -215,7 +225,7 @@ pub(super) fn prepare_step(
         quantum.base_frontier,
         quantum.successor_frontier,
         quantum.next_record_ordinal,
-        quantum.frontier,
+        quantum.frontier.clone(),
         build.progress_receipt(),
         quantum.successor.as_ref().map(|r| r.reference()),
         quantum.build_digest,

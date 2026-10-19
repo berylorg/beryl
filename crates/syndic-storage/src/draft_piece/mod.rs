@@ -16,6 +16,7 @@ mod persistent;
 mod proof_dispatch;
 mod publication;
 mod read;
+pub(crate) mod recall;
 mod session;
 mod staging;
 mod staging_model;
@@ -49,6 +50,7 @@ pub use publication::{
 };
 pub(crate) use publication::{PreparedCandidateDisposal, prepare_candidate_disposal};
 pub use read::DraftPieceCommandReconciliationErrorV1;
+pub use recall::*;
 pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
 };

@@ -49,6 +49,15 @@ impl MainWindowComposerRecoveryPreparation {
 }
 
 impl<C: Send + 'static> MainWindowComposerRecoveryPreparation<C> {
+    pub(in crate::main_window) fn bind_accepted_input_history(
+        &self,
+        owner: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
+    ) -> Result<(), String> {
+        self.custody
+            .source()
+            .ok_or("Composer recovery source is unavailable")?
+            .bind_accepted_input_history(owner)
+    }
     fn from_worker(
         predecessor: RangeRestorationSeed,
         worker: MainWindowComposerCandidateWorker<C>,

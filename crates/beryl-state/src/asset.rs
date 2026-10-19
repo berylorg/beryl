@@ -15,12 +15,14 @@ use crate::StatePage;
 
 mod codec;
 mod completion;
+mod composer_recall;
 mod digest;
 mod draft_marker_label_readiness;
 mod error;
 mod footprint;
 mod historical_input;
 mod historical_input_selection;
+mod marker_source;
 mod model;
 mod mutation;
 mod read;
@@ -33,6 +35,7 @@ use codec::{
     AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec,
     AssetReferenceMarkerCodec,
 };
+pub use composer_recall::{AssetComposerRecallError, ComposerRecallMarkerProofProtocolV1};
 pub use draft_marker_label_readiness::AssetDraftMarkerLabelReadinessError;
 pub use error::{
     AssetAdmissionError, AssetMutationError, AssetOwnerHeadUpdateError,

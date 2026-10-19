@@ -1,6 +1,9 @@
+use super::super::accepted_input_recall::RetiredAcceptedInputRecall;
 use super::super::historical_replacement::{
     ComposerHostHistoricalRestoration, RetiredHistoricalReplacement,
 };
+
+mod recall;
 use super::super::publication::{PreparedPublication, RetainedComposerCommandOutcome};
 use super::*;
 use beryl_home_store::{HomeCandidateRecoveryAccess, HomeCommand, HomeRecoveryCandidate};
@@ -14,6 +17,8 @@ pub struct ComposerHostFailedResident {
     historical_prior: Option<ComposerHostBinding>,
     historical: Option<RetiredHistoricalReplacement>,
     historical_applied: bool,
+    recall: Option<RetiredAcceptedInputRecall>,
+    recall_applied: bool,
     binding: ComposerHostBinding,
     checkpoint: DraftEditorCandidateActivationBindingV1,
     captured_checkpoint: DraftEditorCandidateActivationBindingV1,
@@ -97,9 +102,13 @@ impl SyndicComposerHost {
             || !self.detached_mutations.is_empty()
             || self.pending_history.is_some()
             || (self.historical_replacement.is_some() && active.submission_intent.is_none())
+            || (self.accepted_input_recall.is_some()
+                && active.submission_intent
+                    != Some(syndic_storage::DraftSubmissionIntent::Ordinary))
             || !self.detached_history.is_empty()
             || self.settlement_custody_in_use()
                 != usize::from(self.historical_replacement.is_some())
+                    + usize::from(self.accepted_input_recall.is_some())
             || self.submission_pending()
             || self
                 .publication
@@ -132,10 +141,16 @@ impl SyndicComposerHost {
                 active.submission_intent.unwrap(),
             )
         });
+        let recall = self
+            .accepted_input_recall
+            .take()
+            .map(RetiredAcceptedInputRecall::capture);
         Ok(ComposerHostFailedResident {
             historical_prior,
             historical,
             historical_applied: false,
+            recall,
+            recall_applied: false,
             binding: active.binding,
             checkpoint: active.storage_candidate,
             captured_checkpoint: active.storage_candidate,
@@ -166,6 +181,9 @@ impl ComposerHostFailedResident {
         if let Some(historical) = self.historical.as_mut() {
             historical.observe(&access, storage)?;
         }
+        if let Some(recall) = self.recall.as_mut() {
+            recall.observe(&access, storage)?;
+        }
         if let Some(original) = self.original.as_mut() {
             original.outcome.reconcile(&access)?;
         }
@@ -181,7 +199,8 @@ impl ComposerHostFailedResident {
     ) -> Result<(), String> {
         self.require_candidate(candidate)?;
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
-        self.settle_historical(&access, storage)
+        self.settle_historical(&access, storage)?;
+        self.settle_recall(&access, storage)
     }
     pub fn historical_prior_binding(&self) -> Option<ComposerHostBinding> {
         self.historical_prior
@@ -281,6 +300,7 @@ impl ComposerHostFailedResident {
         self.require_candidate(candidate)?;
         let access = candidate.recovery_access().map_err(|e| e.to_string())?;
         self.settle_historical(&access, storage)?;
+        self.settle_recall(&access, storage)?;
         let correspondence = if let Some((prepared, outcome)) = &mut self.recovery {
             if !outcome.reconcile(&access)? {
                 return Ok(false);
@@ -294,7 +314,10 @@ impl ComposerHostFailedResident {
                     )
                     .map_err(|e| e.to_string())?,
             )
-        } else if let Some(original) = self.original.as_mut().filter(|_| self.historical.is_none())
+        } else if let Some(original) = self
+            .original
+            .as_mut()
+            .filter(|_| self.historical.is_none() && self.recall.is_none())
         {
             if original.binding.home_id() != self.binding.home_id()
                 || original.binding.home_generation() != self.binding.home_generation()

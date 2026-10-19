@@ -107,12 +107,37 @@ pub fn commit_text(
     caret: u64,
     lines: u64,
 ) -> ComposerHostBinding {
+    commit_text_at_positions(
+        host,
+        store,
+        binding,
+        operation,
+        position(start),
+        position(end),
+        text,
+        caret,
+        lines,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn commit_text_at_positions(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    binding: ComposerHostBinding,
+    operation: u64,
+    start: SourcePosition,
+    end: SourcePosition,
+    text: &str,
+    caret: u64,
+    lines: u64,
+) -> ComposerHostBinding {
     let key = mutation_key(binding, operation);
     let proposal = MutationProposal::new(
         key,
         MutationKind::Edit,
-        MutationPositions::collapsed(position(start)),
-        SourceRange::new(position(start), position(end)).unwrap(),
+        MutationPositions::collapsed(start),
+        SourceRange::new(start, end).unwrap(),
         0,
     );
     host.begin_mutation(
@@ -171,7 +196,16 @@ pub fn commit_text(
             other => panic!("mutation did not commit: {other:?}"),
         }
     }
-    panic!("mutation remained pending")
+    let diagnostics = host.mutation_build_diagnostics().map(|d| {
+        (
+            d.state,
+            d.classification,
+            d.result,
+            d.original_failure,
+            d.local_failure,
+        )
+    });
+    panic!("text mutation {operation} remained pending after 16 quanta: {diagnostics:?}")
 }
 
 pub fn begin_text(

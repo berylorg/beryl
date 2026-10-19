@@ -394,7 +394,7 @@ fn write_settlement(
         build.build_digest(),
         build.canonical_header().to_vec(),
         Some(build.clone()),
-        receipt.reference(),
+        Some(receipt.reference()),
         outcome,
         closure,
     );

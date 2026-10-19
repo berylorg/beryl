@@ -6,7 +6,7 @@ use beryl_home_store::{
     RecordVersion, StorageDomain,
 };
 use beryl_model::HistoricalInputMarkerPageV1;
-use beryl_state::HistoricalInputMarkerProofProtocolV1;
+use beryl_state::{ComposerRecallMarkerProofProtocolV1, HistoricalInputMarkerProofProtocolV1};
 use sha2::{Digest, Sha256};
 
 pub struct SourceDomain;
@@ -16,6 +16,7 @@ pub enum NoWitness {}
 pub struct SourceInput {
     pub correlation: [u8; 32],
     pub wrong_protocol: bool,
+    pub recall_protocol: bool,
 }
 
 impl RecordCodec<SourceDomain> for SourceCodec {
@@ -70,6 +71,8 @@ impl ProofDomain for SourceDomain {
     fn source_protocol(input: &SourceInput) -> ProofProtocolIdentity {
         if input.wrong_protocol {
             ProofProtocolIdentity::of::<FixedDigestHomeProofProtocol<1, 1>>()
+        } else if input.recall_protocol {
+            ProofProtocolIdentity::of::<ComposerRecallMarkerProofProtocolV1>()
         } else {
             ProofProtocolIdentity::of::<HistoricalInputMarkerProofProtocolV1>()
         }

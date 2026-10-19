@@ -79,7 +79,7 @@ pub fn sealed_import_coherent_marker_substitution_for_test(
             storage,
             store,
             &trial,
-            f,
+            DraftPieceBuildFrontierV1::SealedImport(f),
             Some(DraftPieceLeafValueV1::Marker(*marker)),
         )
         .unwrap();

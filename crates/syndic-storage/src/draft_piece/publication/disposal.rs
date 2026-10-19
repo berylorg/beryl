@@ -144,6 +144,13 @@ pub(crate) fn prepare_candidate_disposal(
 }
 
 impl PreparedCandidateDisposal {
+    pub(crate) fn bind_acceptance(
+        mut self,
+        acceptance: super::super::recall::AcceptanceDisposalV1,
+    ) -> Self {
+        self.receipt = self.receipt.with_acceptance(acceptance);
+        self
+    }
     pub(crate) fn contribute(
         &self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,

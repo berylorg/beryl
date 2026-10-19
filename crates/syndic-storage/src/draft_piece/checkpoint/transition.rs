@@ -35,6 +35,32 @@ fn ordinary_transition_is_exact<R: CheckpointReader>(
         transition.operation_id(),
     );
     let settlement = reader.boxed_point::<DraftPieceSettlementsFamily>(&key)?;
+    if let Some(settlement) = settlement.as_deref() {
+        if let DraftPieceSettlementClosureV1::OrdinaryRootReplacement(c) = settlement.closure() {
+            let a = c.adoption();
+            if !settlement_closure_is_exact(settlement)
+                || !session::adopted_head_matches_current(a.adopted_session(), head)
+                || a.adopted_history() != frontier
+                || a.transition() != transition
+            {
+                return Ok(false);
+            }
+            let root =
+                reader.point::<DraftPieceRootsFamily>(&a.adopted_root().reference().key())?;
+            if root.as_ref() != Some(a.adopted_root()) {
+                return Ok(false);
+            }
+            if settlement.terminal_source().is_none() {
+                return Ok(settlement.terminal_progress_receipt().is_none());
+            }
+            let build = reader.boxed_point::<DraftPieceBuildsFamily>(&key)?;
+            return match build {
+                Some(build) => Ok(build_progress_is_exact(reader, &build)?
+                    && settlement_terminal_build_is_exact(settlement, Some(&build))),
+                None => Ok(false),
+            };
+        }
+    }
     ordinary_build_is_exact(
         reader,
         head,
@@ -90,14 +116,14 @@ fn build_progress_is_exact<R: CheckpointReader>(
     else {
         return Ok(false);
     };
-    if reader
-        .contains::<DraftPieceBuildProgressFamily>(&DraftPieceBuildProgressReceiptKeyV1::new(
+    if reader.contains::<DraftPieceBuildProgressFamily>(
+        &DraftPieceBuildProgressReceiptKeyV1::new(
             build.draft_id(),
             build.session_id(),
             build.operation_id(),
             next_ordinal,
-        ))?
-        || !progress_receipt_matches_build(&receipt, build)
+        ),
+    )? || !progress_receipt_matches_build(&receipt, build)
         || !reader.authenticate_progress(&receipt)?
     {
         return Ok(false);

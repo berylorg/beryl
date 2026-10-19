@@ -259,15 +259,19 @@ pub fn finish(
     assets: &AssetState,
     ticket: ComposerHostHistoricalTicket,
 ) -> ComposerHostHistoricalCompletion {
+    finish_at(host, store, assets, ticket, timestamp())
+}
+
+pub fn finish_at(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    assets: &AssetState,
+    ticket: ComposerHostHistoricalTicket,
+    at: SyndicTimestamp,
+) -> ComposerHostHistoricalCompletion {
     for _ in 0..1_000 {
         match host
-            .advance_historical_replacement(
-                store,
-                ticket,
-                assets,
-                timestamp(),
-                &CommandCancellation::new(),
-            )
+            .advance_historical_replacement(store, ticket, assets, at, &CommandCancellation::new())
             .unwrap()
         {
             ComposerHostHistoricalAdvance::Progress => {}

@@ -42,9 +42,15 @@ enum ErrorKind {
     Read(ReadError),
     Rejected,
     HistoricalInput(super::historical_input::AssetHistoricalInputError),
+    ComposerRecall(super::composer_recall::AssetComposerRecallError),
 }
 
 impl AssetDraftMarkerLabelReadinessError {
+    fn composer_recall(error: super::composer_recall::AssetComposerRecallError) -> Self {
+        Self {
+            kind: ErrorKind::ComposerRecall(error),
+        }
+    }
     fn historical_input(error: super::historical_input::AssetHistoricalInputError) -> Self {
         Self {
             kind: ErrorKind::HistoricalInput(error),
@@ -60,6 +66,7 @@ impl AssetDraftMarkerLabelReadinessError {
 impl fmt::Debug for AssetDraftMarkerLabelReadinessError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            ErrorKind::ComposerRecall(error) => fmt::Debug::fmt(error, formatter),
             ErrorKind::HistoricalInput(error) => fmt::Debug::fmt(error, formatter),
             ErrorKind::Read(error) => formatter
                 .debug_tuple("AssetDraftMarkerLabelReadinessError::Read")
@@ -75,6 +82,7 @@ impl fmt::Debug for AssetDraftMarkerLabelReadinessError {
 impl fmt::Display for AssetDraftMarkerLabelReadinessError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            ErrorKind::ComposerRecall(error) => fmt::Display::fmt(error, formatter),
             ErrorKind::HistoricalInput(error) => fmt::Display::fmt(error, formatter),
             ErrorKind::Read(error) => {
                 write!(formatter, "asset readiness witness access failed: {error}")
@@ -91,6 +99,10 @@ impl Error for AssetDraftMarkerLabelReadinessError {}
 impl DomainCallbackError for AssetDraftMarkerLabelReadinessError {
     fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
         match self.kind {
+            ErrorKind::ComposerRecall(super::composer_recall::AssetComposerRecallError::Read(
+                error,
+            )) => Ok(DomainCallbackSource::Read(error)),
+            ErrorKind::ComposerRecall(error) => Err(Self::composer_recall(error)),
             ErrorKind::HistoricalInput(
                 super::historical_input::AssetHistoricalInputError::Read(error),
             ) => Ok(DomainCallbackSource::Read(error)),
@@ -113,6 +125,7 @@ pub(crate) enum WitnessInput {
     Accepted(AcceptedWitnessInput),
     FreshAssets(FreshAssetWitnessInput),
     HistoricalInput(super::historical_input::HistoricalInputWitness),
+    ComposerRecall(super::composer_recall::ComposerRecallWitness),
 }
 
 pub(crate) struct AcceptedWitnessInput {
@@ -210,6 +223,11 @@ impl ProofDomain for AssetDomain {
     }
 
     fn witness_protocol(input: &Self::WitnessInput) -> ProofProtocolIdentity {
+        if matches!(input, WitnessInput::ComposerRecall(_)) {
+            return ProofProtocolIdentity::of::<
+                super::composer_recall::ComposerRecallMarkerProofProtocolV1,
+            >();
+        }
         if matches!(input, WitnessInput::HistoricalInput(_)) {
             return ProofProtocolIdentity::of::<
                 super::historical_input::HistoricalInputMarkerProofProtocolV1,
@@ -230,6 +248,10 @@ impl ProofDomain for AssetDomain {
         reader: &DomainReader<'_, Self>,
     ) -> Result<ProofCorrelationBytes, Self::Error> {
         match input {
+            WitnessInput::ComposerRecall(input) => {
+                super::composer_recall::prove_composer_recall(input, reader)
+                    .map_err(AssetDraftMarkerLabelReadinessError::composer_recall)
+            }
             WitnessInput::HistoricalInput(input) => {
                 super::historical_input::prove_historical_input(input, reader)
                     .map_err(AssetDraftMarkerLabelReadinessError::historical_input)

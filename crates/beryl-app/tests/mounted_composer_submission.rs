@@ -3,8 +3,12 @@
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
+#[path = "mounted_composer_submission/accepted_input_history.rs"]
+mod accepted_input_history;
 #[path = "mounted_composer_submission/disabled.rs"]
 mod disabled;
+#[path = "mounted_composer_submission/history_cancellation.rs"]
+mod history_cancellation;
 #[path = "mounted_composer_submission/replacement.rs"]
 mod replacement;
 #[path = "mounted_composer_submission/start.rs"]
@@ -679,6 +683,13 @@ fn mounted_successor_readiness_interruption_promotes_the_same_successor_without_
     );
     let successor = fixture.service.selected_identity().unwrap();
     assert_eq!(successor.claim(), predecessor_selection.claim());
+    assert_eq!(
+        fixture
+            .service
+            .accepted_input_history()
+            .entry_count(successor.binding().home_id(), successor.claim().thread_id()),
+        1
+    );
     assert_eq!(successor.binding().presentation_generation().get(), 2);
     let successor_entity = fixture
         .mount

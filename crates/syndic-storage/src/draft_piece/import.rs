@@ -1,16 +1,16 @@
-mod codec;
-mod model;
+pub(crate) mod codec;
+pub(crate) mod model;
 
 pub(crate) use codec::*;
 pub use model::*;
-mod validation;
+pub(crate) mod validation;
 pub(crate) use validation::*;
-mod read;
-mod request;
+pub(crate) mod read;
+pub(crate) mod request;
 #[cfg(feature = "test-faults")]
 #[path = "../test_faults/sealed_import_source_validation.rs"]
 mod source_validation_fixture;
-mod stream;
+pub(crate) mod stream;
 pub use request::*;
 #[cfg(feature = "test-faults")]
 pub(crate) use source_validation_fixture::check_sealed_import_eof_corruption_for_test;

@@ -155,6 +155,7 @@ impl Fixture {
                 SourceInput {
                     correlation: correlation(page),
                     wrong_protocol: false,
+                    recall_protocol: false,
                 },
             );
         let mut command = HomeProofCommand::new(

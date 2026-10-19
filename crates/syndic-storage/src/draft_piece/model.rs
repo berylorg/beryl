@@ -1207,6 +1207,7 @@ pub struct DraftEditorCandidateSessionDisposeReceiptV1 {
     before_head: DraftEditorCandidateSessionV1,
     after_head: DraftEditorCandidateSessionV1,
     frontier: DraftEditHistoryFrontierV1,
+    acceptance: Option<Box<super::recall::AcceptanceDisposalV1>>,
 }
 
 impl DraftEditorCandidateSessionDisposeReceiptV1 {
@@ -1221,6 +1222,7 @@ impl DraftEditorCandidateSessionDisposeReceiptV1 {
             before_head,
             after_head,
             frontier,
+            acceptance: None,
         }
     }
     pub fn request_bytes(&self) -> &[u8] {
@@ -1234,6 +1236,16 @@ impl DraftEditorCandidateSessionDisposeReceiptV1 {
     }
     pub const fn frontier(&self) -> &DraftEditHistoryFrontierV1 {
         &self.frontier
+    }
+    pub(crate) fn with_acceptance(
+        mut self,
+        acceptance: super::recall::AcceptanceDisposalV1,
+    ) -> Self {
+        self.acceptance = Some(Box::new(acceptance));
+        self
+    }
+    pub(crate) fn acceptance(&self) -> Option<&super::recall::AcceptanceDisposalV1> {
+        self.acceptance.as_deref()
     }
 }
 
@@ -2635,8 +2647,9 @@ impl DraftPieceBuildBoundaryV1 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DraftPieceBuildFrontierV1 {
+    OrdinaryRecall(super::recall::DraftComposerRecallFrontierV1),
     SealedImport(DraftSealedImportFrontierV1),
     Receiving {
         next_ordinal: u64,
@@ -2845,8 +2858,8 @@ impl DraftPieceBuildRecordV1 {
     pub const fn next_record_ordinal(&self) -> u64 {
         self.next_record_ordinal
     }
-    pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
-        self.frontier
+    pub fn frontier(&self) -> DraftPieceBuildFrontierV1 {
+        self.frontier.clone()
     }
     pub const fn progress_receipt(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
         self.progress_receipt
@@ -3017,8 +3030,8 @@ impl DraftPieceBuildProgressReceiptV1 {
     pub const fn next_record_ordinal(&self) -> u64 {
         self.next_record_ordinal
     }
-    pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
-        self.frontier
+    pub fn frontier(&self) -> DraftPieceBuildFrontierV1 {
+        self.frontier.clone()
     }
     pub const fn durable_continuation(&self) -> Option<DraftPieceDurableBuildContinuationV1> {
         self.durable_continuation
@@ -3298,6 +3311,7 @@ impl DraftPieceNoncommitClosureV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DraftPieceSettlementClosureV1 {
+    OrdinaryRootReplacement(super::recall::DraftComposerRootReplacementV1),
     Committed(DraftPieceCommittedAdoptionV1),
     Noncommit(DraftPieceNoncommitClosureV1),
     SealedImport(DraftSealedImportSelectionV1),
@@ -3319,7 +3333,7 @@ pub struct DraftPieceSettlementV1 {
     build_digest: Option<DraftPieceDigestV1>,
     canonical_header: Vec<u8>,
     terminal_source: Option<Box<DraftPieceBuildRecordV1>>,
-    terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
+    terminal_receipt: Option<DraftPieceBuildProgressReceiptReferenceV1>,
     outcome: DraftPieceSettlementOutcomeV1,
     closure: Box<DraftPieceSettlementClosureV1>,
 }
@@ -3359,7 +3373,7 @@ impl DraftPieceSettlementV1 {
             build_digest,
             canonical_header,
             terminal_source: terminal_source.map(Box::new),
-            terminal_receipt,
+            terminal_receipt: Some(terminal_receipt),
             outcome,
             closure: Box::new(closure),
         }
@@ -3380,7 +3394,7 @@ impl DraftPieceSettlementV1 {
         build_digest: Option<DraftPieceDigestV1>,
         canonical_header: Vec<u8>,
         terminal_source: Option<DraftPieceBuildRecordV1>,
-        terminal_receipt: DraftPieceBuildProgressReceiptReferenceV1,
+        terminal_receipt: Option<DraftPieceBuildProgressReceiptReferenceV1>,
         outcome: DraftPieceSettlementOutcomeV1,
         closure: Box<DraftPieceSettlementClosureV1>,
     ) -> Self {
@@ -3451,6 +3465,14 @@ impl DraftPieceSettlementV1 {
         }
     }
     pub const fn terminal_receipt(&self) -> DraftPieceBuildProgressReceiptReferenceV1 {
+        match self.terminal_receipt {
+            Some(receipt) => receipt,
+            None => panic!("checkpoint restoration has no build progress receipt"),
+        }
+    }
+    pub const fn terminal_progress_receipt(
+        &self,
+    ) -> Option<DraftPieceBuildProgressReceiptReferenceV1> {
         self.terminal_receipt
     }
     pub const fn outcome(&self) -> &DraftPieceSettlementOutcomeV1 {

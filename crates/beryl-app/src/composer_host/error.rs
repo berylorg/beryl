@@ -14,6 +14,10 @@ use crate::composer_marker_seal::DraftMarkerSealServiceError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComposerHostError {
+    #[error("accepted-input recall failed: {0}")]
+    AcceptedInputRecall(#[from] syndic_storage::DraftComposerRecallErrorV1),
+    #[error("accepted-input image proof failed: {0}")]
+    AcceptedInputRecallAsset(#[from] beryl_state::AssetComposerRecallError),
     #[error("historical replacement failed: {0}")]
     HistoricalReplacement(#[from] syndic_storage::DraftReplacementErrorV1),
     #[error("historical image proof failed: {0}")]

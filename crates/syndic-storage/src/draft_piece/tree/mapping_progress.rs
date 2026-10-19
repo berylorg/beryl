@@ -195,7 +195,7 @@ pub(super) fn endpoint_is_exact(
         || active.is_some_and(|a| {
             a.source_roots() != roots
                 || !a.is_program_exact_for_deferred(
-                    super::super::deferred_prefix::active_is_deferred(frontier, a),
+                    super::super::deferred_prefix::active_is_deferred(frontier.clone(), a),
                 )
         })
     {
@@ -204,8 +204,8 @@ pub(super) fn endpoint_is_exact(
     let stage = mapping.mapping_stage;
     let fragment_end = mapping.fragment_source_end_unit;
     let planning = matches!(frontier, Frontier::Planning { .. });
-    let deferred =
-        active.is_some_and(|a| super::super::deferred_prefix::active_is_deferred(frontier, a));
+    let deferred = active
+        .is_some_and(|a| super::super::deferred_prefix::active_is_deferred(frontier.clone(), a));
     let applying = matches!(frontier, Frontier::Applying { .. });
     let inserting = matches!(frontier, Frontier::Inserting { .. });
     let text_planning = planning && active.is_none();
@@ -224,7 +224,7 @@ pub(super) fn endpoint_is_exact(
     };
     match stage {
         Stage::Idle => match frontier {
-            Frontier::SealedImport(_) => false,
+            Frontier::SealedImport(_) | Frontier::OrdinaryRecall(_) => false,
             Frontier::Receiving { .. } | Frontier::CrossValidating | Frontier::Complete | Frontier::Planning { .. } => active.is_none() && fragment_end.is_none(),
             Frontier::Removing { next_rank, end_rank, removed_markers, .. } => fragment_end.is_some() && marker_idle && next_rank == end_rank && removed_markers == 0,
             Frontier::Applying { .. } => fragment_end.is_some() && marker_idle,
@@ -306,7 +306,7 @@ fn splice_valid(
         Kind::TextDelete => {
             (active.is_none()
                 || active.is_some_and(|a| {
-                    super::super::deferred_prefix::active_is_deferred(frontier, a)
+                    super::super::deferred_prefix::active_is_deferred(frontier.clone(), a)
                         && a.phase() == Phase::DerivingInsertionGap
                 }))
                 && splice.leaf.is_some()
@@ -334,7 +334,7 @@ fn splice_valid(
         Kind::MarkerDelete => {
             (matches!(frontier, Frontier::Planning { .. })
                 || active.is_some_and(|a| {
-                    super::super::deferred_prefix::active_is_deferred(frontier, a)
+                    super::super::deferred_prefix::active_is_deferred(frontier.clone(), a)
                         && a.phase() == Phase::Removing
                 }))
                 && splice.leaf.is_none()

@@ -901,7 +901,10 @@ impl SyndicStorage {
                         "sealed import cannot be verified as an ordinary edit",
                     ));
                 }
-                DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session(),
+                DraftPieceSettlementClosureV1::Committed(adoption)
+                | DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+                    DraftComposerRootReplacementV1 { adoption, .. },
+                ) => adoption.adopted_session(),
                 DraftPieceSettlementClosureV1::Noncommit(noncommit) => noncommit.observed_session(),
             };
             if !operation_terminal_session_is_authenticated(self, store, target_session)? {
@@ -915,7 +918,10 @@ impl SyndicStorage {
                         "sealed import cannot be verified as an ordinary edit",
                     ));
                 }
-                DraftPieceSettlementClosureV1::Committed(adoption) => {
+                DraftPieceSettlementClosureV1::Committed(adoption)
+                | DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+                    DraftComposerRootReplacementV1 { adoption, .. },
+                ) => {
                     let published = self.point::<DraftPieceRootsFamily>(
                         store,
                         adoption.adopted_root().reference().key(),

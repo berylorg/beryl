@@ -493,9 +493,8 @@
 - [x] Reconstructed the executable bootstrap with fixed-home selection, complete private registration,
   production inputs, ordinary process ownership and diagnostic channel-loss Exit;
   [canonical acceptance](../../failures/executable-bootstrap.md#bootstrap-acceptance).
-- [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
-  composer-history, transcript, and settings sources with virtualized presentation.
-- [x] Accepted clean ordinary composer-history recall, source proof and pre-browse restoration authority; [reconciliation](../../audits/composer-input-history-readiness.md#authority-reconciliation).
+- [ ] Qualify and mount the remaining Settings sources through bounded presentation.
+- [x] Mounted ordinary accepted-input history with bounded authenticated recall, undoable pre-browse restoration and exact acceptance/recovery custody; [acceptance](../../audits/composer-input-history-mounting.md).
 - [x] Accepted window-local Activity height persistence, bounded source preparation and selected-thread mounting with exact Retry, metadata and command custody; [persistence](../../audits/activity-panel-persistence.md), [pages](../../audits/activity-panel-pages.md) and [mounting acceptance](../../audits/activity-panel-mounting.md).
 - [x] Established source-backed frozen catalog and producer-currentness readiness; atomic current
   invalidation is accepted with all 546 Home/State cases and independent review;

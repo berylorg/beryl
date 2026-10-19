@@ -129,6 +129,9 @@ impl GpuiMainWindowShellHost<'_> {
             minimum_size,
             metrics,
             composer_mount: None,
+            accepted_input_history: Arc::new(
+                crate::composer_host::ComposerAcceptedInputHistoryOwner::default(),
+            ),
         })));
         let root_pending = pending.clone();
         #[cfg(target_os = "windows")]

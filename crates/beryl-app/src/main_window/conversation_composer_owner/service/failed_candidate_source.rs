@@ -18,6 +18,12 @@ pub struct MainWindowFailedResidentCandidateSource {
 }
 
 impl MainWindowFailedResidentCandidateSource {
+    pub(in crate::main_window) fn bind_accepted_input_history(
+        &self,
+        owner: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
+    ) -> Result<(), String> {
+        self.service.bind_accepted_input_history(owner)
+    }
     pub(in crate::main_window) fn authenticate_adopted_return(
         candidate: &mut HomeRecoveryCandidate,
         retained: &MainWindowFailedComposerRetirement,
@@ -36,6 +42,7 @@ impl MainWindowFailedResidentCandidateSource {
         retained.qualify_adopted_return(selection)?;
         let prior = retained
             .historical_prior_binding()
+            .or_else(|| retained.recall_prior_binding())
             .filter(|prior| predecessor.binding == prior.range_binding())
             .unwrap_or(retained.selection().binding());
         if predecessor.binding != prior.range_binding()
@@ -106,6 +113,7 @@ impl MainWindowFailedResidentCandidateSource {
         let current_binding = retired.selection().binding();
         let binding = retired
             .historical_prior_binding()
+            .or_else(|| retired.recall_prior_binding())
             .filter(|prior| seed.binding == prior.range_binding())
             .unwrap_or(current_binding);
         if seed.binding != binding.range_binding()
@@ -119,6 +127,21 @@ impl MainWindowFailedResidentCandidateSource {
         }
         let positions = (|| {
             let access = candidate.recovery_access().map_err(|e| e.to_string())?;
+            let recalled = retired
+                .recall_restoration()
+                .filter(|restoration| seed.binding == restoration.prior_binding().range_binding())
+                .and_then(|restoration| {
+                    restoration
+                        .positions()
+                        .map(|positions| (restoration.candidate().root(), positions))
+                })
+                .map(|(root, (caret, anchor))| {
+                    Ok::<_, String>((
+                        imported_source_position(&access, &storage, root, caret)?,
+                        imported_source_position(&access, &storage, root, anchor)?,
+                    ))
+                })
+                .transpose()?;
             let imported = retired
                 .historical_restoration()
                 .filter(|restoration| seed.binding == restoration.prior_binding().range_binding())
@@ -128,14 +151,16 @@ impl MainWindowFailedResidentCandidateSource {
                         .map(|position| (restoration.candidate().root(), position))
                 })
                 .map(|(root, position)| imported_source_position(&access, &storage, root, position))
-                .transpose()?;
-            if imported.is_none() {
+                .transpose()?
+                .map(|position| (position, position));
+            let positions = recalled.or(imported);
+            if positions.is_none() {
                 validate_positions(&access, &storage, binding, seed)?;
             }
-            Ok(imported)
+            Ok(positions)
         })();
-        let imported_caret = match positions {
-            Ok(caret) => caret,
+        let replacement_positions = match positions {
+            Ok(positions) => positions,
             Err(error) => return Err((retired, error)),
         };
         let (slot, window, retired) =
@@ -152,10 +177,10 @@ impl MainWindowFailedResidentCandidateSource {
             history: Some(selection.binding().range_history_frontier()),
             ..seed
         };
-        if let Some(caret) = imported_caret {
+        if let Some((caret, anchor)) = replacement_positions {
             seed.caret = caret;
             seed.selection = gpui_text_input::RangeSourceSelection {
-                anchor: caret,
+                anchor,
                 head: caret,
             };
             seed.scroll = gpui_text_input::RangeRestorationScrollAnchor {
@@ -173,7 +198,7 @@ impl MainWindowFailedResidentCandidateSource {
             selector,
             seed,
             predecessor,
-            source_replacement: imported_caret.is_some(),
+            source_replacement: replacement_positions.is_some(),
         })
     }
 

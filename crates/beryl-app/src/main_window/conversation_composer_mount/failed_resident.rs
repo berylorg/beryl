@@ -211,6 +211,7 @@ impl MainWindowConversationComposerMount {
         {
             return Err("failed resident fresh adapters do not match".into());
         }
+        preparation.bind_accepted_input_history(self.accepted_input_history.clone())?;
         let publication = self.autosave.recovery_adapters()?;
         let submission = self.submission.recovery_source()?;
         if publication.is_some() || submission.is_some() {

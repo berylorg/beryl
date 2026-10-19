@@ -215,6 +215,9 @@ impl MainWindowConversationComposer {
                 .expect("exact initial composer history frontier");
         }
         let mut this = Self {
+            accepted_input_browse: None,
+            accepted_input_recall: None,
+            accepted_input_history_feedback: None,
             recovery_config: config,
             input,
             service: Some(service),

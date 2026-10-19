@@ -295,6 +295,9 @@ impl MainWindowConversationComposer {
             self.pump_dispatch(request, window, cx);
             return;
         }
+        if self.pump_accepted_input_history(window, cx) {
+            return;
+        }
         if self.pump_historical_replacement(window, cx) {
             return;
         }

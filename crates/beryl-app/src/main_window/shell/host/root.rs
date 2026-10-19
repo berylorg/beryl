@@ -133,6 +133,8 @@ impl MainWindowShellRoot {
         cx: &mut Context<Self>,
     ) -> Self {
         let minimum_protection = controller.minimum_size;
+        let input_history = controller.accepted_input_history.clone();
+        cx.on_release(move |_, _| input_history.close()).detach();
         let shell_focus = cx.focus_handle();
         let notices =
             notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);

@@ -253,11 +253,27 @@ impl Render for MainWindowConversationComposer {
         div()
             .id(("conversation-composer-root", cx.entity_id()))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                use gpui::Focusable;
+                let modifiers = event.keystroke.modifiers;
+                if modifiers.alt
+                    && !modifiers.control
+                    && !modifiers.platform
+                    && !modifiers.shift
+                    && matches!(event.keystroke.key.as_str(), "up" | "down")
+                    && this.input.read(cx).focus_handle(cx).is_focused(window)
+                {
+                    this.browse_accepted_input_history(event.keystroke.key == "up", window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 if this.submission_outcome.is_some() && event.keystroke.key != "enter" {
                     this.submission_outcome = None;
                     cx.notify();
                 }
-                if event.keystroke.key == "escape" && this.paste_pending() {
+                if event.keystroke.key == "escape" && this.accepted_input_history_pending() {
+                    this.cancel_accepted_input_history(window, cx);
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.paste_pending() {
                     this.cancel_captured_paste(cx);
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape"
@@ -274,7 +290,10 @@ impl Render for MainWindowConversationComposer {
                     root.tooltip(move |_, cx| cx.new(|_| SubmissionTooltip(reason)).into())
                 },
             )
-            .when(self.paste_pending(), |root| root.opacity(0.55))
+            .when(
+                self.paste_pending() || self.accepted_input_history_pending(),
+                |root| root.opacity(0.55),
+            )
             .size_full()
             .when_some(protected_layout, |root, layout| {
                 root.w(layout.layout.wrap_width)

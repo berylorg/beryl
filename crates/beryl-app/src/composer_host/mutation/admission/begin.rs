@@ -16,6 +16,7 @@ impl SyndicComposerHost {
         if self.lifecycle.freezes_admission()
             || self.submission_pending()
             || self.historical_replacement_pending()
+            || self.accepted_input_recall_pending()
         {
             return Err(ComposerHostError::LifecycleBlocked);
         }

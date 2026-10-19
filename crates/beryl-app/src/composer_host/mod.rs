@@ -1,3 +1,10 @@
+mod accepted_input_history;
+pub use accepted_input_history::ComposerAcceptedInputHistoryOwner;
+mod accepted_input_recall;
+pub use accepted_input_recall::{
+    ComposerHostRecallAdvance, ComposerHostRecallCompletion, ComposerHostRecallRefusal,
+    ComposerHostRecallRestoration, ComposerHostRecallTicket,
+};
 mod activation;
 #[cfg(test)]
 mod disposal_execution_observation;
@@ -65,6 +72,14 @@ struct ActiveComposerHost {
 const DEFAULT_SETTLEMENT_CUSTODY_CAPACITY: usize = 4;
 
 pub struct SyndicComposerHost {
+    accepted_input_recall: Option<Box<accepted_input_recall::PendingAcceptedInputRecall>>,
+    #[cfg(feature = "test-faults")]
+    recall_after_execute_fault: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
+    #[cfg(feature = "test-faults")]
+    recall_preparation_refusal: Option<ComposerHostRecallRefusal>,
+    accepted_input_history: Option<std::sync::Arc<ComposerAcceptedInputHistoryOwner>>,
     storage: SyndicStorage,
     active: Option<Box<ActiveComposerHost>>,
     last_generation: Option<ComposerHostGeneration>,
@@ -127,6 +142,12 @@ pub struct SyndicComposerHost {
     submission_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
+    submission_after_execute_fault: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome) + Send>,
+    >,
+    #[cfg(feature = "test-faults")]
+    submission_last_materializer_outcome: Option<String>,
+    #[cfg(feature = "test-faults")]
     submission_materializer_before_execute_fault:
         Option<Box<dyn FnOnce(&beryl_home_store::HomeStore, SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
@@ -174,6 +195,12 @@ impl SyndicComposerHost {
         capacity: NonZeroUsize,
     ) -> Self {
         Self {
+            accepted_input_recall: None,
+            #[cfg(feature = "test-faults")]
+            recall_after_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            recall_preparation_refusal: None,
+            accepted_input_history: None,
             storage,
             active: None,
             last_generation: None,
@@ -220,6 +247,10 @@ impl SyndicComposerHost {
             publication_after_execute: None,
             #[cfg(feature = "test-faults")]
             submission_before_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_after_execute_fault: None,
+            #[cfg(feature = "test-faults")]
+            submission_last_materializer_outcome: None,
             #[cfg(feature = "test-faults")]
             submission_materializer_before_execute_fault: None,
             #[cfg(feature = "test-faults")]
@@ -315,6 +346,7 @@ impl SyndicComposerHost {
             + self.detached_mutations.len()
             + usize::from(self.pending_history.is_some())
             + usize::from(self.historical_replacement.is_some())
+            + usize::from(self.accepted_input_recall.is_some())
             + self.detached_history.len()
     }
 
@@ -322,6 +354,7 @@ impl SyndicComposerHost {
         self.pending_mutation.is_some()
             || self.pending_history.is_some()
             || self.historical_replacement.is_some()
+            || self.accepted_input_recall.is_some()
     }
 
     pub(crate) fn submission_pending(&self) -> bool {
@@ -452,6 +485,22 @@ impl SyndicComposerHost {
     ) {
         assert!(self.submission_before_execute_fault.is_none());
         self.submission_before_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_submission_after_execute_fault(
+        &mut self,
+        fault: impl FnOnce(&beryl_home_store::HomeStore, &beryl_home_store::CommandOutcome)
+        + Send
+        + 'static,
+    ) {
+        assert!(self.submission_after_execute_fault.is_none());
+        self.submission_after_execute_fault = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_submission_materializer_outcome(&self) -> Option<&str> {
+        self.submission_last_materializer_outcome.as_deref()
     }
 
     #[cfg(feature = "test-faults")]

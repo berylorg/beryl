@@ -240,7 +240,20 @@ impl Evidence {
         if !progress_receipt_is_exact(receipt) {
             return Ok(false);
         }
-        if matches!(
+        if let DraftPieceBuildFrontierV1::OrdinaryRecall(frontier) = receipt.frontier() {
+            if !super::super::recall::recall_progress_is_exact(receipt)
+                || super::super::recall::authenticated_recall_basis(
+                    &super::super::recall::AccessRecallAuthorityReader {
+                        storage,
+                        access: store,
+                    },
+                    &frontier.basis,
+                )?
+                .is_none()
+            {
+                return Ok(false);
+            }
+        } else if matches!(
             receipt.frontier(),
             DraftPieceBuildFrontierV1::SealedImport(_)
         ) {

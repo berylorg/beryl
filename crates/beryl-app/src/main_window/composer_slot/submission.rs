@@ -82,6 +82,11 @@ impl MainWindowComposerSlot {
             .as_mut()
             .filter(|selected| selected.identity == selection)
             .ok_or(MainWindowComposerSlotError::StaleActivationReceipt)?;
+        self.accepted_input_history
+            .select(selection.binding().home_id(), selection.claim().thread_id());
+        selected
+            .host
+            .bind_accepted_input_history(self.accepted_input_history.clone());
         selected.host.begin_submission(request).map_err(Into::into)
     }
 

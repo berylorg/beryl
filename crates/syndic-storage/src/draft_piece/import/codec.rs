@@ -50,6 +50,13 @@ pub(crate) fn dec_import_basis(
 
 pub(crate) fn enc_import_frontier(e: &mut Encoder, value: DraftSealedImportFrontierV1) {
     enc_import_basis(e, value.basis);
+    enc_sealed_stream_frontier(e, &value);
+}
+
+pub(crate) fn enc_sealed_stream_frontier<B>(
+    e: &mut Encoder,
+    value: &DraftSealedComposerFrontierV1<B>,
+) {
     e.u8(match value.phase {
         DraftSealedImportPhaseV1::Streaming => 0,
         DraftSealedImportPhaseV1::CrossValidating => 1,
@@ -79,6 +86,13 @@ pub(crate) fn dec_import_frontier(
     d: &mut Decoder<'_>,
 ) -> Result<DraftSealedImportFrontierV1, CodecError> {
     let basis = dec_import_basis(d)?;
+    dec_sealed_stream_frontier(d, basis)
+}
+
+pub(crate) fn dec_sealed_stream_frontier<B>(
+    d: &mut Decoder<'_>,
+    basis: B,
+) -> Result<DraftSealedComposerFrontierV1<B>, CodecError> {
     let phase = match d.u8()? {
         0 => DraftSealedImportPhaseV1::Streaming,
         1 => DraftSealedImportPhaseV1::CrossValidating,
@@ -106,7 +120,7 @@ pub(crate) fn dec_import_frontier(
             });
         }
     };
-    Ok(DraftSealedImportFrontierV1 {
+    Ok(DraftSealedComposerFrontierV1 {
         basis,
         phase,
         encoded_cursor,

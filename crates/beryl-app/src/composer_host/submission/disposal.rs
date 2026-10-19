@@ -8,25 +8,26 @@ impl SyndicComposerHost {
         &mut self,
         store: &HomeStore,
     ) -> Result<(), ComposerHostError> {
-        let reconciliation =
-            self.submission
-                .pending
-                .as_ref()
-                .and_then(|pending| match &pending.stage {
-                    PendingSubmissionStage::Materializing { reconciliation, .. }
-                    | PendingSubmissionStage::Accepting { reconciliation, .. } => {
-                        reconciliation.clone()
-                    }
-                    PendingSubmissionStage::Flushing(_)
-                    | PendingSubmissionStage::Capturing
-                    | PendingSubmissionStage::Transitioning => None,
-                });
+        let (reconciliation, acceptance) = match self.submission.pending.as_ref().map(|p| &p.stage)
+        {
+            Some(PendingSubmissionStage::Accepting {
+                acceptance,
+                reconciliation,
+            }) => (reconciliation.clone(), Some(acceptance)),
+            Some(PendingSubmissionStage::Materializing { reconciliation, .. }) => {
+                (reconciliation.clone(), None)
+            }
+            _ => (None, None),
+        };
         if let Some(handle) = reconciliation {
             match store.reconcile(&handle)? {
-                ReconciliationResolution::ExactOld
-                | ReconciliationResolution::ExactNew { .. }
-                | ReconciliationResolution::ExactSuccessor { .. }
-                | ReconciliationResolution::Collision => {}
+                ReconciliationResolution::ExactNew { .. }
+                | ReconciliationResolution::ExactSuccessor { .. } => {
+                    if let Some(acceptance) = acceptance {
+                        self.remember_accepted_input(acceptance);
+                    }
+                }
+                ReconciliationResolution::ExactOld | ReconciliationResolution::Collision => {}
             }
         }
         self.submission.pending = None;

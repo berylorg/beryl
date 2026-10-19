@@ -6,6 +6,9 @@ use crate::{
     *,
 };
 
+mod composer_recall;
+pub use composer_recall::*;
+
 pub fn lifecycle_compaction_settlement_fault_scope() -> beryl_home_store::test_faults::FaultScope {
     crate::mutation::lifecycle_compaction_settlement_fault_scope()
 }

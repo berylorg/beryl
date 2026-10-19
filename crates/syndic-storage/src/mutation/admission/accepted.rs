@@ -322,7 +322,13 @@ pub(super) fn records(
             draft_index,
             fresh_root: base.fresh_root,
             fresh_history: base.fresh_history,
-            disposal: base.disposal,
+            disposal: base.disposal.bind_acceptance(
+                crate::draft_piece::recall::AcceptanceDisposalV1::accepted(
+                    acceptance.clone(),
+                    ordinal,
+                    generation_id,
+                ),
+            ),
             origin_span,
             advanced_image_label_authority,
             summary,

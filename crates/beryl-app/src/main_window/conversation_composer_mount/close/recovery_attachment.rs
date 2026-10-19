@@ -261,6 +261,7 @@ impl MainWindowConversationComposerMount {
                 "recovery mount adapters are missing or belong to another candidate".into(),
             );
         }
+        preparation.bind_accepted_input_history(self.accepted_input_history.clone())?;
         let publication_slot = self.autosave.recovery_adapters()?;
         let submission_slot = self.submission.recovery_source()?;
         let (candidate, service, fresh_close) = resident.update(cx, |resident, cx| {

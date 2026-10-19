@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "historical_input_proofs/composer_recall.rs"]
+mod composer_recall;
 #[path = "historical_input_proofs/fixture.rs"]
 mod fixture;
 #[path = "historical_input_proofs/sidecar_cases.rs"]
@@ -228,6 +230,7 @@ fn protocol_mismatch_rejects_before_composition_without_mutation() {
                 SourceInput {
                     correlation: correlation(&fixture.page(1)),
                     wrong_protocol: true,
+                    recall_protocol: false,
                 },
             );
         assert!(matches!(
@@ -255,6 +258,7 @@ fn opaque_receipt_cannot_be_consumed_by_another_marker_attempt() {
                     SourceInput {
                         correlation: correlation(&page),
                         wrong_protocol: false,
+                        recall_protocol: false,
                     },
                 );
             let mut command = HomeProofCommand::new(

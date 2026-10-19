@@ -428,7 +428,8 @@ impl SyndicComposerHost {
             })
     }
     pub fn historical_recovery_accepts_binding(&self, binding: ComposerHostBinding) -> bool {
-        self.binding() == Some(binding)
+        self.recall_recovery_accepts_binding(binding)
+            || self.binding() == Some(binding)
             || self.historical_recovery_prior_binding() == Some(binding)
             || self
                 .historical_replacement

@@ -169,3 +169,7 @@ after correcting Redo branching, same-session checkpoint retirement, foreign-thr
 closed build/header/frontier discrimination. The review inspected source acceptance/disposal fields
 and exact schema relationships. This accepts architecture readiness only; implementation and
 mounted workflow qualification remain separate.
+
+The complete ordinary recall and mounted history workflow is now independently accepted in the
+[mounting qualification](composer-input-history-mounting.md). The recommendations above remain
+historical readiness evidence; the reconciled feature/package authority controls the implementation.

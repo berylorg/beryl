@@ -25,7 +25,7 @@ impl SyndicComposerHost {
                 ReconciliationResolution::ExactNew { .. }
                 | ReconciliationResolution::ExactSuccessor { .. } => {
                     let kind = submission_acceptance_kind(&acceptance);
-                    self.finish_submission_success(kind);
+                    self.finish_submission_success(kind, &acceptance);
                     Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind))
                 }
                 ReconciliationResolution::Collision => {
@@ -75,7 +75,7 @@ impl SyndicComposerHost {
         };
         let command = match command {
             crate::input_admission::FirstAcceptanceCommand::AlreadyAccepted(kind) => {
-                self.finish_submission_success(kind);
+                self.finish_submission_success(kind, &acceptance);
                 return Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind));
             }
             crate::input_admission::FirstAcceptanceCommand::Execute(command) => command,
@@ -153,6 +153,10 @@ impl SyndicComposerHost {
             cancellation,
         );
         let outcome = store.execute(command.with_cancellation(cancellation.clone()));
+        #[cfg(feature = "test-faults")]
+        if let Some(fault) = self.submission_after_execute_fault.take() {
+            fault(store, &outcome);
+        }
         match outcome {
             CommandOutcome::NotCommitted { .. } if cancellation.is_cancelled() => {
                 self.cancel_submission()
@@ -192,7 +196,7 @@ impl SyndicComposerHost {
             }
             CommandOutcome::Committed { .. } => {
                 let kind = submission_acceptance_kind(&acceptance);
-                self.finish_submission_success(kind);
+                self.finish_submission_success(kind, &acceptance);
                 Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind))
             }
             CommandOutcome::Indeterminate { reconciliation, .. } => {

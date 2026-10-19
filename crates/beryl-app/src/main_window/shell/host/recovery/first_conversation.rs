@@ -185,6 +185,9 @@ impl MainWindowShellRoot {
             );
         }
         let prepared = preparation.prepare(&mut configure)?;
+        prepared
+            .service()
+            .bind_accepted_input_history(controller.accepted_input_history.clone())?;
         let result = MainWindowConversationComposerMount::from_fresh_recovery(
             prepared,
             configure,

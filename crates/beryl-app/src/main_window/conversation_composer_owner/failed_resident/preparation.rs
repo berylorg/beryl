@@ -112,6 +112,15 @@ impl
 }
 
 impl<C: Send + 'static> MainWindowFailedResidentPreparation<C> {
+    pub(in crate::main_window) fn bind_accepted_input_history(
+        &self,
+        owner: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
+    ) -> Result<(), String> {
+        self.custody
+            .source()
+            .ok_or("Composer recovery source is unavailable")?
+            .bind_accepted_input_history(owner)
+    }
     pub(crate) fn adopt_failed_recovery(
         &mut self,
         resident: &mut MainWindowConversationComposer,

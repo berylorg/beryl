@@ -22,6 +22,7 @@ impl MainWindowConversationComposer {
             || self.failed_resident.is_some()
             || self.paste.is_some()
             || self.historical_replacement.is_some()
+            || self.accepted_input_recall.is_some()
             || self.replacement_intent.is_none()
             || self.mutation_feedback().is_some_and(|feedback| {
                 matches!(

@@ -24,6 +24,18 @@ pub use model::{
 };
 
 impl SyndicComposerHost {
+    #[cfg(feature = "test-faults")]
+    pub fn test_captured_accepted_input_reference(
+        &self,
+    ) -> Option<syndic_storage::ComposerAcceptedInputReferenceV1> {
+        let PendingSubmissionStage::Accepting { acceptance, .. } =
+            &self.submission.pending.as_ref()?.stage
+        else {
+            return None;
+        };
+        Some(acceptance.composer_accepted_input_reference(self.binding()?.home_id()))
+    }
+
     pub fn begin_submission(
         &mut self,
         request: ComposerHostSubmissionRequest,
@@ -447,6 +459,10 @@ impl SyndicComposerHost {
         captured: CapturedSubmission,
         cancellation: &CommandCancellation,
     ) -> Result<ComposerHostSubmissionAdvance, ComposerHostSubmissionError> {
+        #[cfg(feature = "test-faults")]
+        {
+            self.submission_last_materializer_outcome = Some(format!("{outcome:?}"));
+        }
         match outcome {
             CommandOutcome::Committed { .. } => {
                 self.pending_submission_mut().stage = PendingSubmissionStage::Materializing {
@@ -484,7 +500,12 @@ impl SyndicComposerHost {
         Ok(ComposerHostSubmissionAdvance::Cancelled)
     }
 
-    fn finish_submission_success(&mut self, kind: syndic_storage::FirstAcceptanceKind) {
+    fn finish_submission_success(
+        &mut self,
+        kind: syndic_storage::FirstAcceptanceKind,
+        acceptance: &syndic_storage::FirstAcceptance,
+    ) {
+        self.remember_accepted_input(acceptance);
         self.submission
             .pending
             .as_ref()
@@ -500,6 +521,29 @@ impl SyndicComposerHost {
         self.detached_history.clear();
         self.publication.lane = None;
         self.lifecycle.clear_runtime();
+    }
+
+    fn remember_accepted_input(&self, acceptance: &syndic_storage::FirstAcceptance) {
+        if let Some(owner) = &self.accepted_input_history {
+            owner.accepted(
+                self.submission
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .ticket
+                    .binding
+                    .home_id(),
+                acceptance.composer_accepted_input_reference(
+                    self.submission
+                        .pending
+                        .as_ref()
+                        .unwrap()
+                        .ticket
+                        .binding
+                        .home_id(),
+                ),
+            );
+        }
     }
 
     fn pending_submission_mut(&mut self) -> &mut PendingSubmission {

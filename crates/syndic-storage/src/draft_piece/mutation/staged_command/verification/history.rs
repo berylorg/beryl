@@ -11,7 +11,10 @@ pub(super) fn terminal(
         DraftPieceSettlementClosureV1::SealedImport(_) => {
             Err(invariant("sealed import is outside staged edit history"))
         }
-        DraftPieceSettlementClosureV1::Committed(adoption) => {
+        DraftPieceSettlementClosureV1::Committed(adoption)
+        | DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+            DraftComposerRootReplacementV1 { adoption, .. },
+        ) => {
             if selected.session != *adoption.adopted_session()
                 || current_history != adoption.adopted_history()
                 || selected.session.newest_root() != adoption.adopted_root().reference()

@@ -48,6 +48,7 @@
 
 mod asset;
 mod availability;
+mod composer_recall;
 mod historical_input;
 mod ids;
 mod placement;
@@ -66,6 +67,10 @@ pub use asset::{
     sequential_marker_digest_seed,
 };
 pub use availability::{Availability, UnavailableReason};
+pub use composer_recall::{
+    ComposerRecallMarkerAssociationV1, ComposerRecallMarkerPageV1, ComposerRecallSourceOwnerV1,
+    composer_recall_marker_correlation,
+};
 pub use historical_input::{HistoricalInputMarkerAssociationV1, HistoricalInputMarkerPageV1};
 pub use ids::{
     BerylHomeId, CommandId, IdempotencyKey, IdentityParseError, JobId, ProviderObservationId,

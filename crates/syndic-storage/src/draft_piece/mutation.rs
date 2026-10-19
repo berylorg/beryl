@@ -4,6 +4,7 @@ use beryl_home_store::{
 };
 use beryl_model::{DomainRevision, SyndicDraftId};
 
+use crate::codec::Family;
 use crate::domain::SyndicDomain;
 use crate::mutation::{point, required};
 use crate::{SyndicMutationError, SyndicStorage};
@@ -16,10 +17,10 @@ use super::*;
 
 pub(in super::super) mod advance_budget;
 mod build_custody;
+mod deferred_prefix;
 pub(super) mod mapping_custody;
 pub(super) mod marker_advance;
 pub(in crate::draft_piece) mod sequence_advance;
-mod deferred_prefix;
 mod session_authentication;
 mod settlement;
 pub use advance_budget::DraftPieceBuildWorkV1;
@@ -100,7 +101,7 @@ impl PreparedDraftPieceAdvanceV1 {
             + 1
     }
 
-    pub const fn frontier(&self) -> DraftPieceBuildFrontierV1 {
+    pub fn frontier(&self) -> DraftPieceBuildFrontierV1 {
         self.next.frontier()
     }
 }
@@ -593,7 +594,17 @@ fn authenticate_progress_receipt_effects_from_acquisition(
         )?;
         marker_advance::validate_pending_roots_with(reader, receipt.key().draft_id(), active)?;
     }
-    if matches!(
+    if let DraftPieceBuildFrontierV1::OrdinaryRecall(frontier) = receipt.frontier() {
+        if !recall::recall_progress_is_exact(receipt)
+            || recall::authenticated_recall_basis(
+                &AcquiredRecallAuthorityReader(std::cell::RefCell::new(reader)),
+                &frontier.basis,
+            )?
+            .is_none()
+        {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+    } else if matches!(
         receipt.frontier(),
         DraftPieceBuildFrontierV1::SealedImport(_)
     ) {
@@ -612,6 +623,16 @@ fn authenticate_progress_receipt_effects_from_acquisition(
         )?;
     }
     Ok(fragment)
+}
+
+struct AcquiredRecallAuthorityReader<'a, 'b>(
+    std::cell::RefCell<&'a mut super::staging::StagingWindowAcquisitionReader<'b>>,
+);
+impl recall::RecallAuthorityReader for AcquiredRecallAuthorityReader<'_, '_> {
+    type Error = DraftPiecePrepareErrorV1;
+    fn recall_point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, Self::Error> {
+        self.0.borrow_mut().point::<F>(key.clone())
+    }
 }
 
 fn authenticate_build_roots_from_acquisition(
@@ -1393,6 +1414,31 @@ pub(super) fn authenticate_progress_receipt(
     reader: &DomainReader<'_, SyndicDomain>,
     receipt: &DraftPieceBuildProgressReceiptV1,
 ) -> Result<(), SyndicMutationError> {
+    if let DraftPieceBuildFrontierV1::OrdinaryRecall(frontier) = receipt.frontier() {
+        if recall::authenticated_recall_basis(
+            &TransactionRecallAuthorityReader(reader),
+            &frontier.basis,
+        )?
+        .is_none()
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    }
+    authenticate_progress_receipt_destination(reader, receipt)
+}
+
+struct TransactionRecallAuthorityReader<'a, 'b>(&'a DomainReader<'b, SyndicDomain>);
+impl recall::RecallAuthorityReader for TransactionRecallAuthorityReader<'_, '_> {
+    type Error = SyndicMutationError;
+    fn recall_point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, Self::Error> {
+        point::<F>(self.0, key)
+    }
+}
+
+pub(super) fn authenticate_progress_receipt_destination(
+    reader: &DomainReader<'_, SyndicDomain>,
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Result<(), SyndicMutationError> {
     if !progress_receipt_is_exact(receipt) {
         return Err(SyndicMutationError::IdentityCollision);
     }
@@ -1458,6 +1504,13 @@ fn authenticate_progress_receipt_effects(
         .map_err(|_| SyndicMutationError::IdentityCollision)?;
     }
     if matches!(
+        receipt.frontier(),
+        DraftPieceBuildFrontierV1::OrdinaryRecall(_)
+    ) {
+        if !recall::recall_progress_is_exact(receipt) {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    } else if matches!(
         receipt.frontier(),
         DraftPieceBuildFrontierV1::SealedImport(_)
     ) {
@@ -1653,7 +1706,10 @@ fn settlement_matches(
     )?;
     let target_session = match settlement.closure() {
         DraftPieceSettlementClosureV1::SealedImport(_) => return Ok(false),
-        DraftPieceSettlementClosureV1::Committed(adoption) => adoption.adopted_session(),
+        DraftPieceSettlementClosureV1::Committed(adoption)
+        | DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+            DraftComposerRootReplacementV1 { adoption, .. },
+        ) => adoption.adopted_session(),
         DraftPieceSettlementClosureV1::Noncommit(noncommit) => noncommit.observed_session(),
     };
     let terminal_exact = settlement_terminal_build_is_exact(settlement, stored.as_ref())
@@ -1692,7 +1748,10 @@ fn settlement_matches(
     }
     match settlement.closure() {
         DraftPieceSettlementClosureV1::SealedImport(_) => Ok(false),
-        DraftPieceSettlementClosureV1::Committed(adoption) => {
+        DraftPieceSettlementClosureV1::Committed(adoption)
+        | DraftPieceSettlementClosureV1::OrdinaryRootReplacement(
+            DraftComposerRootReplacementV1 { adoption, .. },
+        ) => {
             authenticate_draft_edit_history_frontier_v1(reader, adoption.adopted_history())?;
             Ok(
                 point::<DraftPieceRootsFamily>(reader, &adoption.adopted_root().reference().key())?

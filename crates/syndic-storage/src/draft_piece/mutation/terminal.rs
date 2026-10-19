@@ -133,7 +133,7 @@ fn prepare_first(
         None,
         prepared.canonical_header().to_vec(),
         None,
-        receipt.reference(),
+        Some(receipt.reference()),
         outcome,
         Box::new(DraftPieceSettlementClosureV1::Noncommit(
             DraftPieceNoncommitClosureV1::new(
@@ -222,7 +222,7 @@ fn prepare_existing(
         build.build_digest(),
         build.canonical_header().to_vec(),
         Some(build.as_ref().clone()),
-        receipt.reference(),
+        Some(receipt.reference()),
         outcome,
         Box::new(DraftPieceSettlementClosureV1::Noncommit(
             DraftPieceNoncommitClosureV1::new(

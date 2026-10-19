@@ -78,8 +78,8 @@ pub enum DraftSealedImportDecoderV1 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DraftSealedImportFrontierV1 {
-    pub(crate) basis: DraftSealedImportBasisV1,
+pub struct DraftSealedComposerFrontierV1<B> {
+    pub(crate) basis: B,
     pub(crate) phase: DraftSealedImportPhaseV1,
     pub(crate) encoded_cursor: u64,
     pub(crate) atoms: u64,
@@ -96,22 +96,22 @@ pub struct DraftSealedImportFrontierV1 {
     pub(crate) ordered_digest: [u8; 32],
 }
 
-impl DraftSealedImportFrontierV1 {
-    pub const fn basis(self) -> DraftSealedImportBasisV1 {
-        self.basis
+impl<B: SealedComposerBasisV1> DraftSealedComposerFrontierV1<B> {
+    pub fn basis(&self) -> B {
+        self.basis.clone()
     }
-    pub const fn phase(self) -> DraftSealedImportPhaseV1 {
+    pub const fn phase(&self) -> DraftSealedImportPhaseV1 {
         self.phase
     }
-    pub const fn encoded_cursor(self) -> u64 {
+    pub const fn encoded_cursor(&self) -> u64 {
         self.encoded_cursor
     }
-    pub const fn marker_count(self) -> u64 {
+    pub const fn marker_count(&self) -> u64 {
         self.markers
     }
 
-    pub(crate) fn is_locally_exact(self, lifecycle: DraftPieceBuildLifecycleV1) -> bool {
-        let summary = self.basis.content.summary();
+    pub(crate) fn is_locally_exact(&self, lifecycle: DraftPieceBuildLifecycleV1) -> bool {
+        let summary = self.basis.content().summary();
         let fold_count = if self.phase == DraftSealedImportPhaseV1::Streaming {
             self.markers
         } else {
@@ -158,7 +158,7 @@ impl DraftSealedImportFrontierV1 {
             && self.piece_text_offset == 0;
         let folds_complete = self.sequential_digest == summary.marker_digest()
             && self.maximum_label == summary.maximum_image_label()
-            && self.basis.assets.is_none_or(|proof| {
+            && self.basis.assets().is_none_or(|proof| {
                 self.ordered_digest == proof.ordered_assets().marker_asset_digest()
             });
         match self.phase {
@@ -198,6 +198,76 @@ impl DraftSealedImportFrontierV1 {
                             | DraftPieceBuildLifecycleV1::Cancelled
                     )
             }
+        }
+    }
+}
+
+pub type DraftSealedImportFrontierV1 = DraftSealedComposerFrontierV1<DraftSealedImportBasisV1>;
+
+pub(crate) trait SealedComposerBasisV1: Clone {
+    fn content(&self) -> ContentReference;
+    fn assets(&self) -> Option<SealedAssetReferenceSetProof>;
+    fn is_locally_exact(&self) -> bool;
+    fn wrap(
+        frontier: DraftSealedComposerFrontierV1<Self>,
+    ) -> super::super::DraftPieceBuildFrontierV1
+    where
+        Self: Sized;
+}
+
+impl SealedComposerBasisV1 for DraftSealedImportBasisV1 {
+    fn content(&self) -> ContentReference {
+        self.content
+    }
+    fn assets(&self) -> Option<SealedAssetReferenceSetProof> {
+        self.assets
+    }
+    fn is_locally_exact(&self) -> bool {
+        (*self).is_locally_exact()
+    }
+    fn wrap(frontier: DraftSealedImportFrontierV1) -> super::super::DraftPieceBuildFrontierV1 {
+        super::super::DraftPieceBuildFrontierV1::SealedImport(frontier)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct SealedComposerMarkerAssociationV1 {
+    ordinal: u64,
+    marker_id: beryl_model::SyndicDraftMarkerId,
+    label: ImageLabelOrdinal,
+    asset: beryl_model::AssetId,
+}
+impl SealedComposerMarkerAssociationV1 {
+    pub fn ordinal(self) -> u64 {
+        self.ordinal
+    }
+    pub fn marker_id(self) -> beryl_model::SyndicDraftMarkerId {
+        self.marker_id
+    }
+    pub fn label(self) -> ImageLabelOrdinal {
+        self.label
+    }
+    pub fn asset_id(self) -> beryl_model::AssetId {
+        self.asset
+    }
+}
+impl From<beryl_model::HistoricalInputMarkerAssociationV1> for SealedComposerMarkerAssociationV1 {
+    fn from(a: beryl_model::HistoricalInputMarkerAssociationV1) -> Self {
+        Self {
+            ordinal: a.ordinal(),
+            marker_id: a.marker_id(),
+            label: a.label(),
+            asset: a.asset_id(),
+        }
+    }
+}
+impl From<beryl_model::ComposerRecallMarkerAssociationV1> for SealedComposerMarkerAssociationV1 {
+    fn from(a: beryl_model::ComposerRecallMarkerAssociationV1) -> Self {
+        Self {
+            ordinal: a.ordinal(),
+            marker_id: a.marker_id(),
+            label: a.label(),
+            asset: a.asset_id(),
         }
     }
 }

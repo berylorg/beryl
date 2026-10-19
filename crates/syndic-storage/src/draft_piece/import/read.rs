@@ -9,7 +9,7 @@ use crate::{
     domain::SyndicDomain,
 };
 
-pub(super) trait SourceReader {
+pub(crate) trait SourceReader {
     fn point<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, SyndicReadError>;
     #[inline(never)]
     fn boxed_point<F: Family>(
@@ -28,10 +28,12 @@ pub(super) trait SourceReader {
     fn session_head(
         &self,
         key: &DraftEditorCandidateSessionRecordKeyV1,
-    ) -> Result<Box<DraftEditorCandidateSessionV1>, super::request::DraftReplacementErrorV1> {
+    ) -> Result<Box<DraftEditorCandidateSessionV1>, SyndicReadError> {
         match self.point::<DraftEditorCandidateSessionsFamily>(key)? {
             Some(DraftEditorCandidateSessionRecordV1::Head(head)) => Ok(Box::new(head)),
-            _ => Err(super::request::DraftReplacementErrorV1::Conflict),
+            _ => Err(SyndicReadError::Invariant(
+                "sealed source editor head missing",
+            )),
         }
     }
     fn byte_span(
@@ -41,7 +43,7 @@ pub(super) trait SourceReader {
     ) -> Result<ContentByteSpanRecord, SyndicReadError>;
 }
 
-pub(super) struct StoreSourceReader<'a> {
+pub(crate) struct StoreSourceReader<'a> {
     pub storage: &'a SyndicStorage,
     pub store: &'a HomeStore,
 }
@@ -110,7 +112,7 @@ impl SourceReader for DomainReader<'_, SyndicDomain> {
     }
 }
 
-pub(super) fn authenticate_manifest(
+pub(crate) fn authenticate_manifest(
     reader: &impl SourceReader,
     content: ContentReference,
 ) -> Result<(), SyndicReadError> {
@@ -130,7 +132,7 @@ pub(super) fn authenticate_manifest(
     Ok(())
 }
 
-pub(super) fn encoded_range(
+pub(crate) fn encoded_range(
     reader: &impl SourceReader,
     content: ContentReference,
     start: u64,
@@ -192,7 +194,7 @@ pub(super) fn encoded_range(
     Ok(output)
 }
 
-pub(super) fn source_piece(
+pub(crate) fn source_piece(
     reader: &impl SourceReader,
     content: ContentReference,
     ordinal: u64,

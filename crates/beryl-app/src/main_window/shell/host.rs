@@ -293,6 +293,7 @@ impl GpuiMainWindowShellHost<'_> {
         } = prepared;
         let minimum_size = metrics.minimum();
         options.window_min_size = Some(minimum_size);
+        let accepted_input_history = composer.service().accepted_input_history();
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
                 identity: Rc::new(()),
@@ -301,6 +302,7 @@ impl GpuiMainWindowShellHost<'_> {
                 minimum_size,
                 metrics,
                 composer_mount: None,
+                accepted_input_history,
             },
             (
                 composer,
@@ -421,6 +423,7 @@ pub struct MainWindowShellController {
     minimum_size: gpui::Size<gpui::Pixels>,
     pub(in crate::main_window) metrics: sizing::ShellMetrics,
     pub(super) composer_mount: Option<Entity<MainWindowConversationComposerMount>>,
+    accepted_input_history: Arc<crate::composer_host::ComposerAcceptedInputHistoryOwner>,
 }
 
 impl MainWindowShellController {

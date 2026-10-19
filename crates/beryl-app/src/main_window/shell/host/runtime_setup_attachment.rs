@@ -130,17 +130,30 @@ impl MainWindowShellRoot {
                     }
                     first.take_mount_inputs()
                 })?;
-            match MainWindowConversationComposerMount::from_prepared_entity_retained(
-                prepared,
-                configure,
-                marker,
-                submission,
-                true,
-                #[cfg(feature = "test-faults")]
-                false,
-                window,
-                cx,
-            ) {
+            let history = self
+                .controller
+                .as_ref()
+                .unwrap()
+                .accepted_input_history
+                .clone();
+            let result = prepared
+                .service()
+                .bind_accepted_input_history(history)
+                .map_err(|error| (error, None))
+                .and_then(|()| {
+                    MainWindowConversationComposerMount::from_prepared_entity_retained(
+                        prepared,
+                        configure,
+                        marker,
+                        submission,
+                        true,
+                        #[cfg(feature = "test-faults")]
+                        false,
+                        window,
+                        cx,
+                    )
+                });
+            match result {
                 Ok(mount) => {
                     self.runtime_setup.mount = Some(mount);
                     self.commit_metrics(metrics, window, cx);

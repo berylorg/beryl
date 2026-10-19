@@ -694,9 +694,17 @@ replacement bytes. The common command header adds suffix tag `2`,
 `B("syndic/draft-composer-recall/v1")`, and the exact accepted-source basis; checkpoint restore uses
 suffix tag `3`, `B("syndic/draft-composer-checkpoint-restore/v1")`, and its exact checkpoint basis.
 The common header retains exact destination draft/session/candidate/root/history, operation and
-before/after positions. The recall basis is, in order, the existing disposal-receipt key grammar
-(source draft, session, tag `3`, disposal operation) and `B` of the complete canonical tag `5`
-acceptance-disposal record, including its sealed materialization/content/Asset source. The checkpoint
+before/after positions. The persisted recall basis is, in order, the existing disposal-receipt key
+grammar (source draft, session, tag `3`, disposal operation), its 32-byte tag `5` acceptance-disposal
+digest, exact source thread id, sealed content reference and optional sealed Asset proof under their
+existing canonical grammars. The full receipt and request are not embedded in build headers,
+frontiers, progress receipts or settlements. Local decoding checks the compact descriptor grammar
+and repeated-field agreement; it does not grant acceptance authority. Preparation, writer admission,
+progress and candidate recovery load the original receipt by its exact key, authenticate its complete
+canonical body and digest, compare the descriptor's thread/content/Asset fields to that request,
+and prove the original materialization/disposed-session closure. A substituted digest or equal content
+alone is insufficient. This representation stays within existing family and reconciliation bounds;
+no bound is increased to accommodate duplicated source evidence. The checkpoint
 basis is, in order, the captured candidate activation under the existing activation field grammar,
 the original captured caret and directed-selection composite positions under their existing
 position grammar. The activation includes the checkpoint's exact root and matching history; no
@@ -726,6 +734,12 @@ and clear redo. Build/progress/frontier and settlement digest arms cover the new
 canonical payloads under existing enclosing digest domains. Unknown purpose/frontier/closure tags
 reject. Existing tags `0` through `2` retain their exact settlement bytes. A restore needs no new
 tree record or persisted pin family; its checkpoint is a non-deserializable process capability.
+The settlement's terminal-progress origin is logically optional: existing build-backed forms keep
+their required actual progress reference and byte encoding. Only the explicit checkpoint-restore
+header suffix `3` with purpose `1` omits that progress-reference field and has no progress record.
+Decode chooses this layout from the already decoded canonical request header, then requires the
+matching restore closure. Its actual original command/request and settlement closure authenticate
+the terminal result. A fabricated progress ordinal or digest never stands in for a missing record.
 
 #### Sealed Import Canonical Extension
 
